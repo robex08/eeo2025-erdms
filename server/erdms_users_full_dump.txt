@@ -1,0 +1,1849 @@
+[dotenv@17.2.3] injecting env (17) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+✅ Připojeno k databázi
+
+🔵 SELECT * FROM erdms_users
+
+======================================================================================================================================================
+Dokončeno za 8ms | Celkem 102 uživatelů
+
+======================================================================================================================================================
+
+--- [001] ID: 0 ---
+  Username:        system
+Jméno:            system global
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     N/A
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 04 2025 11:27:30 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 04 2025 11:27:30 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   (nikdy)
+
+--- [002] ID: 1 ---
+  Username:        admin
+Jméno:           IT RH ADMIN
+  Email:           robert.holovsky@zachranka.cz
+  Telefon:         731137100
+  Pozice ID:       68
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            admin
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 12:15:06 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:39:54 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Dec 01 2025 23:41:29 GMT+0100 (středoevropský standardní čas)
+
+--- [003] ID: 2 ---
+  Username:        nologin_lp
+Jméno:            Leoš Procházka
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Jul 26 2016 15:37:21 GMT+0200 (středoevropský letní čas)
+
+--- [004] ID: 3 ---
+  Username:        nologin_novakova
+Jméno:            Michaela Nováková
+  Email:           michaela.novakova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 10 2025 13:16:35 GMT+0200 (středoevropský letní čas)
+
+--- [005] ID: 4 ---
+  Username:        nologin_pellichova
+Jméno:            Jitka Pellichová
+  Email:           jitka.pellichova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Dec 03 2024 07:41:07 GMT+0100 (středoevropský standardní čas)
+
+--- [006] ID: 5 ---
+  Username:        nologin_163
+Jméno:            Robert Holovský
+  Email:           r.holovsky@zachranka.cz
+  Telefon:         777007763
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Sep 09 2024 15:23:27 GMT+0200 (středoevropský letní čas)
+
+--- [007] ID: 6 ---
+  Username:        nologin_frolikova
+Jméno:            Zuzana Frolíková
+  Email:           zuzana.frolikova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   (nikdy)
+
+--- [008] ID: 7 ---
+  Username:        nologin_chochola
+Jméno:            Roman Chochola
+  Email:           roman.chochola@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Mar 31 2023 12:44:57 GMT+0200 (středoevropský letní čas)
+
+--- [009] ID: 8 ---
+  Username:        nologin_2399
+Jméno:            Patrik Merhaut
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jun 24 2009 15:52:11 GMT+0200 (středoevropský letní čas)
+
+--- [010] ID: 10 ---
+  Username:        nologin_1985
+Jméno:            Věra Zemanová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jun 24 2009 15:52:11 GMT+0200 (středoevropský letní čas)
+
+--- [011] ID: 11 ---
+  Username:        nologin_9838
+Jméno:            Petr Mach
+  Email:           petr.mach@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Sep 19 2025 10:30:31 GMT+0200 (středoevropský letní čas)
+
+--- [012] ID: 12 ---
+  Username:        nologin_2700
+Jméno:            Pavel Zahradníček
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jun 24 2009 15:52:11 GMT+0200 (středoevropský letní čas)
+
+--- [013] ID: 13 ---
+  Username:        u00288
+Jméno:           Bc. Dana Jirsová
+  Email:           dana.jirsova@zachranka.cz
+  Telefon:         607675334
+  Pozice ID:       55
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 07:26:17 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Oct 15 2025 13:01:27 GMT+0200 (středoevropský letní čas)
+
+--- [014] ID: 14 ---
+  Username:        nologin_1885
+Jméno:            Jiří Knor
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jun 24 2009 15:52:11 GMT+0200 (středoevropský letní čas)
+
+--- [015] ID: 15 ---
+  Username:        nologin_3730
+Jméno:            Šárka Kehlová
+  Email:           sarka.kehlova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Oct 17 2018 07:50:22 GMT+0200 (středoevropský letní čas)
+
+--- [016] ID: 16 ---
+  Username:        nologin_rouckova
+Jméno:            Olina Roučková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Aug 09 2016 13:16:41 GMT+0200 (středoevropský letní čas)
+
+--- [017] ID: 17 ---
+  Username:        nologin_blazkova
+Jméno:            Anna Blažková Kozlíková
+  Email:           blazkova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Feb 11 2021 11:21:34 GMT+0100 (středoevropský standardní čas)
+
+--- [018] ID: 18 ---
+  Username:        nologin_thp_r
+Jméno:            Robert Holovský (THP Tester)
+  Email:           r.holovsky@zachranka.cz
+  Telefon:         777007763
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Sep 17 2019 11:02:59 GMT+0200 (středoevropský letní čas)
+
+--- [019] ID: 19 ---
+  Username:        nologin_2604
+Jméno:            Soňa Štursová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Oct 16 2025 10:42:16 GMT+0200 (středoevropský letní čas)
+
+--- [020] ID: 20 ---
+  Username:        nologin_1480
+Jméno:            Marie Hanibalová Šimáková
+  Email:           tereza.balousova@zachranka.cz
+  Telefon:         123123123
+  Pozice ID:       N/A
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Mon Nov 10 2025 14:15:15 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Oct 16 2025 10:18:06 GMT+0200 (středoevropský letní čas)
+
+--- [021] ID: 21 ---
+  Username:        nologin_182
+Jméno:            Olga Roučková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Apr 07 2017 11:10:51 GMT+0200 (středoevropský letní čas)
+
+--- [022] ID: 22 ---
+  Username:        nologin_7482
+Jméno:            Miroslava Němcová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Oct 16 2025 12:41:47 GMT+0200 (středoevropský letní čas)
+
+--- [023] ID: 23 ---
+  Username:        u01241
+Jméno:            Iva Švehlová
+  Email:           iva.svehlova@zachranka.cz
+  Telefon:         731137105
+  Pozice ID:       60
+  Lokalita ID:     20
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:48:18 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 10 2025 13:18:12 GMT+0200 (středoevropský letní čas)
+
+--- [024] ID: 24 ---
+  Username:        nologin_8200
+Jméno:            Jakub Holeňa
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Oct 09 2025 08:02:13 GMT+0200 (středoevropský letní čas)
+
+--- [025] ID: 25 ---
+  Username:        nologin_399
+Jméno:            Ivana Plíšková
+  Email:           ivana.pliskova@zachranka.cz
+  Telefon:         731137076
+  Pozice ID:       60
+  Lokalita ID:     30
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:53:10 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Sep 24 2025 11:01:51 GMT+0200 (středoevropský letní čas)
+
+--- [026] ID: 27 ---
+  Username:        u00836
+Jméno:            Jitka Indrová
+  Email:           jitka.indrova@zachranka.cz
+  Telefon:         731124487
+  Pozice ID:       60
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 07:31:17 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 17 2025 14:06:07 GMT+0200 (středoevropský letní čas)
+
+--- [027] ID: 28 ---
+  Username:        u00883
+Jméno:            Jiří Hájek
+  Email:           jiri.hajek@zachranka.cz
+  Telefon:         731137152
+  Pozice ID:       60
+  Lokalita ID:     11
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 07:31:28 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Nov 26 2025 07:53:44 GMT+0100 (středoevropský standardní čas)
+
+--- [028] ID: 29 ---
+  Username:        nologin_77
+Jméno:            Tomáš Čech
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Oct 13 2025 18:46:07 GMT+0200 (středoevropský letní čas)
+
+--- [029] ID: 31 ---
+  Username:        nologin_2747
+Jméno:            Eva Durasová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed May 23 2018 05:16:00 GMT+0200 (středoevropský letní čas)
+
+--- [030] ID: 32 ---
+  Username:        nologin_2517
+Jméno:            Jakub Vachek
+  Email:           jakub.vachek@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Aug 09 2016 10:59:44 GMT+0200 (středoevropský letní čas)
+
+--- [031] ID: 33 ---
+  Username:        nologin_156
+Jméno:            Pavel Tlustý
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Dec 03 2024 08:10:36 GMT+0100 (středoevropský standardní čas)
+
+--- [032] ID: 34 ---
+  Username:        nologin_912
+Jméno:            Peter Matej
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jul 27 2016 09:47:19 GMT+0200 (středoevropský letní čas)
+
+--- [033] ID: 35 ---
+  Username:        nologin_7396
+Jméno:            Zuzana Ekrtová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:41 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Aug 24 2020 13:43:15 GMT+0200 (středoevropský letní čas)
+
+--- [034] ID: 36 ---
+  Username:        u05510
+Jméno:            Lenka Škarvadová
+  Email:           lenka.skarvadova@zachranka.cz
+  Telefon:         604206234
+  Pozice ID:       72
+  Lokalita ID:     16
+  Organizace ID:   1
+  Úsek ID:         7
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:54:39 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 17 2025 11:52:44 GMT+0200 (středoevropský letní čas)
+
+--- [035] ID: 37 ---
+  Username:        nologin_5157
+Jméno:            Veronika Aulická
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Sep 29 2025 11:14:20 GMT+0200 (středoevropský letní čas)
+
+--- [036] ID: 38 ---
+  Username:        nologin_2298
+Jméno:            Hana Kubešková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Nov 15 2021 13:51:16 GMT+0100 (středoevropský standardní čas)
+
+--- [037] ID: 39 ---
+  Username:        nologin_2027
+Jméno:            Barbora Zemanová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Mar 02 2017 13:31:47 GMT+0100 (středoevropský standardní čas)
+
+--- [038] ID: 40 ---
+  Username:        nologin_2651
+Jméno:            Marie Tůmová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Apr 13 2022 08:31:19 GMT+0200 (středoevropský letní čas)
+
+--- [039] ID: 41 ---
+  Username:        nologin_fricova
+Jméno:            Lucie Dudáková
+  Email:           lucie.fricova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jan 17 2024 19:09:14 GMT+0100 (středoevropský standardní čas)
+
+--- [040] ID: 42 ---
+  Username:        nologin_majetek
+Jméno:            Robert Holovský (vyřazení)
+  Email:           robert.holovsky@zachranka.cz
+  Telefon:         777007763
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Sep 27 2019 10:03:13 GMT+0200 (středoevropský letní čas)
+
+--- [041] ID: 43 ---
+  Username:        nologin_251
+Jméno:            Štěpánka Kachlířová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         3
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Oct 16 2025 14:47:16 GMT+0200 (středoevropský letní čas)
+
+--- [042] ID: 44 ---
+  Username:        u08184
+Jméno:            Nikola Konopásková
+  Email:           nikola.konopaskova@zachranka.cz
+  Telefon:         +420123456789
+  Pozice ID:       17
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 14:16:03 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Oct 16 2025 15:22:30 GMT+0200 (středoevropský letní čas)
+
+--- [043] ID: 45 ---
+  Username:        nologin_brozova
+Jméno:            Hana Brožová
+  Email:           hana.brozova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed May 22 2024 12:11:22 GMT+0200 (středoevropský letní čas)
+
+--- [044] ID: 47 ---
+  Username:        u08240
+Jméno:           Ing. Tereza Balousová
+  Email:           tereza.balousova@zachranka.cz
+  Telefon:         123123123
+  Pozice ID:       5
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:37:26 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Dec 01 2025 15:04:02 GMT+0100 (středoevropský standardní čas)
+
+--- [045] ID: 48 ---
+  Username:        nologin_matousek
+Jméno:            Michal Matoušek
+  Email:           michal.matousek@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Jul 11 2023 11:14:53 GMT+0200 (středoevropský letní čas)
+
+--- [046] ID: 49 ---
+  Username:        nologin_08269
+Jméno:            Jan Roth
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         5
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Feb 15 2022 09:20:28 GMT+0100 (středoevropský standardní čas)
+
+--- [047] ID: 50 ---
+  Username:        nologin_08282
+Jméno:            Anna Brožová
+  Email:           anna.brozova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Sun Nov 17 2024 23:51:34 GMT+0100 (středoevropský standardní čas)
+
+--- [048] ID: 51 ---
+  Username:        u09343
+Jméno:           Ing. Jindřich Fajka
+  Email:           jindrich.fajka@zachranka.cz
+  Telefon:         736131215
+  Pozice ID:       6
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:27:59 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Nov 03 2025 17:35:49 GMT+0100 (středoevropský standardní čas)
+
+--- [049] ID: 52 ---
+  Username:        u09605
+Jméno:           Bc. Hana Jonášová
+  Email:           hana.jonasova@zachranka.cz
+  Telefon:         731137164
+  Pozice ID:       70
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:38:05 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Nov 27 2025 13:57:44 GMT+0100 (středoevropský standardní čas)
+
+--- [050] ID: 53 ---
+  Username:        nologin_6818
+Jméno:            Štěpánka Kubíčková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Sep 26 2025 09:24:18 GMT+0200 (středoevropský letní čas)
+
+--- [051] ID: 54 ---
+  Username:        nologin_5628
+Jméno:            Petr Kolínský
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Oct 15 2025 19:11:15 GMT+0200 (středoevropský letní čas)
+
+--- [052] ID: 55 ---
+  Username:        nologin_2039
+Jméno:            Jitka Pellichová
+  Email:           jitka.pellichova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Aug 16 2023 16:43:21 GMT+0200 (středoevropský letní čas)
+
+--- [053] ID: 56 ---
+  Username:        nologin_09636
+Jméno:            Jiří Havel
+  Email:           jiri.havel@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Oct 03 2023 09:25:51 GMT+0200 (středoevropský letní čas)
+
+--- [054] ID: 57 ---
+  Username:        u09641
+Jméno:           Mgr. Bc. Ján Čižmárik MPH.
+  Email:           jan.cizmarik@zachrnaka.cz
+  Telefon:         725567579
+  Pozice ID:       35
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:35:26 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Aug 13 2025 14:57:28 GMT+0200 (středoevropský letní čas)
+
+--- [055] ID: 58 ---
+  Username:        nologin_3231
+Jméno:            Patricia Sedláčková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         8
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Mon Nov 27 2023 15:05:37 GMT+0100 (středoevropský standardní čas)
+
+--- [056] ID: 59 ---
+  Username:        nologin_9657
+Jméno:            Zuzana Kubáňová
+  Email:           zuzana.kubanova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Jan 21 2025 12:34:52 GMT+0100 (středoevropský standardní čas)
+
+--- [057] ID: 60 ---
+  Username:        nologin_9660
+Jméno:            Pavlína Stinková
+  Email:           pavlina.stinkova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Oct 14 2025 10:34:53 GMT+0200 (středoevropský letní čas)
+
+--- [058] ID: 61 ---
+  Username:        nologin_9669
+Jméno:            Jaroslav Štěpán
+  Email:           jaroslav.stepan@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Jul 23 2024 15:15:09 GMT+0200 (středoevropský letní čas)
+
+--- [059] ID: 62 ---
+  Username:        u08258
+Jméno:           MUDr. Jan Sedláček
+  Email:           jan.sedlacek@zachranka.cz
+  Telefon:         603812244
+  Pozice ID:       2
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         2
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:26:38 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 18 2024 08:51:59 GMT+0200 (středoevropský letní čas)
+
+--- [060] ID: 63 ---
+  Username:        u03754
+Jméno:           Mgr. Vít Dvořák
+  Email:           vit.dvorak@zachranka.cz
+  Telefon:         705891519
+  Pozice ID:       3
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         3
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:42 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:24:00 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Sun Dec 31 2023 15:05:37 GMT+0100 (středoevropský standardní čas)
+
+--- [061] ID: 64 ---
+  Username:        u00147
+Jméno:           MUDr. Pavel Rusý
+  Email:           pavel.rusy@zachranka.cz
+  Telefon:         722952400
+  Pozice ID:       1
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:58:01 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Sun Dec 31 2023 10:38:27 GMT+0100 (středoevropský standardní čas)
+
+--- [062] ID: 65 ---
+  Username:        u08279
+Jméno:           Bc. Monika Nováková
+  Email:           monika.novakova@zachranka.cz
+  Telefon:         605398242
+  Pozice ID:       15
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 22:21:35 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 17 2025 11:00:30 GMT+0200 (středoevropský letní čas)
+
+--- [063] ID: 66 ---
+  Username:        nologin_8121
+Jméno:            Markéta Bednářová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Sun Dec 31 2023 10:38:27 GMT+0100 (středoevropský standardní čas)
+
+--- [064] ID: 67 ---
+  Username:        u08834
+Jméno:            Denisa Kvapilová
+  Email:           denisa.kvapilova@zachranka.cz
+  Telefon:         731137010
+  Pozice ID:       12
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Mon Oct 27 2025 12:34:04 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Dec 02 2025 07:48:48 GMT+0100 (středoevropský standardní čas)
+
+--- [065] ID: 68 ---
+  Username:        nologin_9281
+Jméno:            Kateřina Pávková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         10
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Sep 24 2025 10:35:44 GMT+0200 (středoevropský letní čas)
+
+--- [066] ID: 69 ---
+  Username:        u08281
+Jméno:            Hana Broučková
+  Email:           hana.brouckova@zachranka.cz
+  Telefon:         312256623
+  Pozice ID:       51
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:51:47 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Oct 07 2025 08:32:12 GMT+0200 (středoevropský letní čas)
+
+--- [067] ID: 70 ---
+  Username:        u09628
+Jméno:            Martina Slezáčková
+  Email:           martina.slezackova@zachranka.cz
+  Telefon:         123123123
+  Pozice ID:       50
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Mon Dec 01 2025 07:53:54 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Dec 01 2025 14:59:09 GMT+0100 (středoevropský standardní čas)
+
+--- [068] ID: 71 ---
+  Username:        u09658
+Jméno:            Jaroslava Zahrádková Vavrochová
+  Email:           jaroslava.zahradkova@zachranka.cz
+  Telefon:         +420111111111
+  Pozice ID:       53
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Wed Nov 12 2025 09:19:28 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Nov 12 2025 10:35:46 GMT+0100 (středoevropský standardní čas)
+
+--- [069] ID: 73 ---
+  Username:        nologin_9341
+Jméno:            Pavlína Püchnerová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Jun 12 2024 11:21:32 GMT+0200 (středoevropský letní čas)
+
+--- [070] ID: 74 ---
+  Username:        nologin_9214
+Jméno:            Marie křížová
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Jul 21 2022 14:08:26 GMT+0200 (středoevropský letní čas)
+
+--- [071] ID: 75 ---
+  Username:        u07176
+Jméno:            Alice Menšíková
+  Email:           alice.mensikova@zachranka.cz
+  Telefon:         603815389
+  Pozice ID:       23
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         2
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:45:06 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Oct 17 2025 08:47:35 GMT+0200 (středoevropský letní čas)
+
+--- [072] ID: 76 ---
+  Username:        u08777
+Jméno:           Mgr. Lucie Poláčková
+  Email:           lucie.polackova@zachranka.cz
+  Telefon:         605203815
+  Pozice ID:       4
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         5
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:59:50 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Nov 28 2025 20:58:20 GMT+0100 (středoevropský standardní čas)
+
+--- [073] ID: 77 ---
+  Username:        u09638
+Jméno:            Hana Sochůrková
+  Email:           hana.sochurkova@zachranka.cz
+  Telefon:         723623637
+  Pozice ID:       72
+  Lokalita ID:     16
+  Organizace ID:   1
+  Úsek ID:         7
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sun Nov 16 2025 21:49:05 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Nov 26 2025 13:02:33 GMT+0100 (středoevropský standardní čas)
+
+--- [074] ID: 78 ---
+  Username:        nologin_8
+Jméno:            Zdena Kosprtová
+  Email:           zdena.kosprtova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 17 2025 13:53:59 GMT+0200 (středoevropský letní čas)
+
+--- [075] ID: 79 ---
+  Username:        u09671
+Jméno:            Michaela Steklá
+  Email:           michaela.stekla@zachranka.cz
+  Telefon:         705782469
+  Pozice ID:       46
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Wed Nov 12 2025 08:53:34 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Nov 13 2025 08:51:45 GMT+0100 (středoevropský standardní čas)
+
+--- [076] ID: 80 ---
+  Username:        nologin_9692
+Jméno:            Andrea Čiháková
+  Email:           andrea.cihakova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Wed Apr 03 2024 15:02:12 GMT+0200 (středoevropský letní čas)
+
+--- [077] ID: 81 ---
+  Username:        nologin_9694
+Jméno:            Tereza Bezoušková
+  Email:           tereza.bezouskova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Sep 19 2025 12:39:32 GMT+0200 (středoevropský letní čas)
+
+--- [078] ID: 82 ---
+  Username:        u09729
+Jméno:            Karolína Wlachová
+  Email:           karolina.wlachova@zachranka.cz
+  Telefon:         705764145
+  Pozice ID:       47
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Mon Nov 17 2025 16:52:36 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Dec 01 2025 07:44:52 GMT+0100 (středoevropský standardní čas)
+
+--- [079] ID: 83 ---
+  Username:        nologin_9731
+Jméno:            Kateřina Veselá
+  Email:           katerina.vesela@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 17 2025 15:22:37 GMT+0200 (středoevropský letní čas)
+
+--- [080] ID: 84 ---
+  Username:        nologin_9730
+Jméno:            Hana Černá
+  Email:           hana.cerna@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Dec 03 2024 09:11:09 GMT+0100 (středoevropský standardní čas)
+
+--- [081] ID: 85 ---
+  Username:        u09764
+Jméno:           Ing. Jan Černohorský
+  Email:           jan.cernohorosky@zachranka.cz
+  Telefon:         607121582
+  Pozice ID:       63
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:32:17 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Apr 15 2025 09:22:17 GMT+0200 (středoevropský letní čas)
+
+--- [082] ID: 86 ---
+  Username:        nologin_9753
+Jméno:            Tereza Brodecká
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Oct 15 2024 13:36:32 GMT+0200 (středoevropský letní čas)
+
+--- [083] ID: 87 ---
+  Username:        nologin_9763
+Jméno:            Michaela Procházková
+  Email:           (neuvedeno)
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         2
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 17 2025 13:50:59 GMT+0200 (středoevropský letní čas)
+
+--- [084] ID: 88 ---
+  Username:        nologin_9768
+Jméno:            Ivana Bubnová
+  Email:           ivana.bubnova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Jan 07 2025 12:13:21 GMT+0100 (středoevropský standardní čas)
+
+--- [085] ID: 89 ---
+  Username:        nologin_9800
+Jméno:            Luboš Příhoda
+  Email:           lubos.prihoda@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 10 2025 12:30:49 GMT+0200 (středoevropský letní čas)
+
+--- [086] ID: 90 ---
+  Username:        u09801
+Jméno:            Vojtěch Voštinka
+  Email:           vojtech.vostinka@zachranka.cz
+  Telefon:         111111111
+  Pozice ID:       52
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Wed Nov 12 2025 09:15:51 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Wed Nov 12 2025 12:10:26 GMT+0100 (středoevropský standardní čas)
+
+--- [087] ID: 91 ---
+  Username:        u03303
+Jméno:            Klára Šulgánová
+  Email:           klara.sulganova@zachranka.cz
+  Telefon:         776640155
+  Pozice ID:       60
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:35:42 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Mon Dec 01 2025 14:53:00 GMT+0100 (středoevropský standardní čas)
+
+--- [088] ID: 92 ---
+  Username:        nologin_9832
+Jméno:            Renata Grossmannová
+  Email:           renata.grossmannova@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Nov 28 2024 16:53:38 GMT+0100 (středoevropský standardní čas)
+
+--- [089] ID: 94 ---
+  Username:        nologin_9866
+Jméno:            Veronika Doksanská
+  Email:           veronika.doksanska@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Fri Oct 17 2025 13:26:06 GMT+0200 (středoevropský letní čas)
+
+--- [090] ID: 95 ---
+  Username:        nologin_ondrak
+Jméno:            Jan Ondrák
+  Email:           jan.ondrak@zachranka.cz
+  Telefon:         731137137
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Apr 01 2025 19:23:16 GMT+0200 (středoevropský letní čas)
+
+--- [091] ID: 96 ---
+  Username:        nologin_admin
+Jméno:            Robert ADMIN
+  Email:           robert.holovsky@zachranka.cz
+  Telefon:         731137100
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   (nikdy)
+
+--- [092] ID: 97 ---
+  Username:        nologin_9930
+Jméno:            Michal Witosz
+  Email:           michal.witosz@zachranka.cz
+  Telefon:         (neuvedeno)
+  Pozice ID:       N/A
+  Lokalita ID:     40
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Tue Oct 14 2025 13:37:01 GMT+0200 (středoevropský letní čas)
+
+--- [093] ID: 98 ---
+  Username:        u09933
+Jméno:            Radka Vacinová
+  Email:           radka.vacinova@zachranka.cz
+  Telefon:         705591291
+  Pozice ID:       75
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Tue Nov 25 2025 07:16:50 GMT+0100 (středoevropský standardní čas)
+  Aktualizováno:   Tue Nov 25 2025 07:18:40 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   (nikdy)
+
+--- [094] ID: 99 ---
+  Username:        u09949
+Jméno:           Bc. Radek Mojžíš
+  Email:           radek.mojzis@zachranka.cz
+  Telefon:         731191854
+  Pozice ID:       52
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 21:09:43 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Tue Nov 25 2025 08:01:49 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Fri Nov 28 2025 15:16:49 GMT+0100 (středoevropský standardní čas)
+
+--- [095] ID: 100 ---
+  Username:        u03924
+Jméno:            Robert Holovský
+  Email:           robert.holovsky@zachranka.cz
+  Telefon:         731137077
+  Pozice ID:       68
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 12:08:09 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sun Nov 23 2025 12:59:32 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Dec 02 2025 07:48:15 GMT+0100 (středoevropský standardní čas)
+
+--- [096] ID: 101 ---
+  Username:        u09764_test
+Jméno:           Ing. Jan Černohorský
+  Email:           jan.cernohorsky@zachranka.cz
+  Telefon:         731137
+  Pozice ID:       63
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 13:11:11 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:30:51 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Sun Sep 28 2025 00:00:00 GMT+0200 (středoevropský letní čas)
+
+--- [097] ID: 102 ---
+  Username:        u09694
+Jméno:           Ing. Tereza Bezoušková MBA
+  Email:           tereza.bezouskova@zachranka.cz
+  Telefon:         737851735
+  Pozice ID:       54
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 13:16:22 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:38:36 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Dec 02 2025 07:49:46 GMT+0100 (středoevropský standardní čas)
+
+--- [098] ID: 103 ---
+  Username:        jonasova
+Jméno:            Hana Jonášová (THP)
+  Email:           hana.jonasova@zachranka.cz
+  Telefon:         731137164
+  Pozice ID:       39
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         4
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Thu Oct 09 2025 12:08:09 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Oct 23 2025 22:24:11 GMT+0200 (středoevropský letní čas)
+  Poslední akt.:   Thu Oct 23 2025 22:10:05 GMT+0200 (středoevropský letní čas)
+
+--- [099] ID: 104 ---
+  Username:        u09343_test
+Jméno:           Ing. Jindřich Fajka
+  Email:           jindrich.fajka@zachranka.cz
+  Telefon:         736131215
+  Pozice ID:       6
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 04 2025 10:57:18 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Mon Nov 03 2025 12:17:17 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Sun Oct 05 2025 02:16:02 GMT+0200 (středoevropský letní čas)
+
+--- [100] ID: 105 ---
+  Username:        bezouskova
+Jméno:            Tereza Bezoušková (THP)
+  Email:           tereza.bezouskova@zachranka.cz
+  Telefon:         737851735
+  Pozice ID:       54
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 13:16:22 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Sun Oct 26 2025 20:08:55 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Tue Dec 02 2025 07:50:03 GMT+0100 (středoevropský standardní čas)
+
+--- [101] ID: 106 ---
+  Username:        u03303_test
+Jméno:            Klára Šulgánová
+  Email:           klara.sulganova@zachranka.cz
+  Telefon:         776640155
+  Pozice ID:       60
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         6
+  Role:            user
+  Auth source:     
+  Aktivní:         ❌ NE
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Sep 27 2025 12:08:09 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Thu Nov 20 2025 21:33:45 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Nov 20 2025 20:59:33 GMT+0100 (středoevropský standardní čas)
+
+--- [102] ID: 107 ---
+  Username:        jurova
+Jméno:            Monika Jurová
+  Email:           fijuna@seznam.cz
+  Telefon:         731137100
+  Pozice ID:       53
+  Lokalita ID:     1
+  Organizace ID:   1
+  Úsek ID:         1
+  Role:            user
+  Auth source:     
+  Aktivní:         ✅ ANO
+  EntraID:         (není)
+  UPN:             (není)
+  Vytvořeno:       Sat Oct 18 2025 11:52:29 GMT+0200 (středoevropský letní čas)
+  Aktualizováno:   Wed Nov 26 2025 21:20:51 GMT+0100 (středoevropský standardní čas)
+  Poslední akt.:   Thu Nov 27 2025 00:05:43 GMT+0100 (středoevropský standardní čas)
+
+======================================================================================================================================================
+✅ DOKONČENO
+======================================================================================================================================================

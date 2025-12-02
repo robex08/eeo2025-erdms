@@ -8,6 +8,7 @@ const msal = require('@azure/msal-node');
 const crypto = require('crypto');
 const { msalConfig, REDIRECT_URI, POST_LOGOUT_REDIRECT_URI, SCOPES } = require('../config/entraConfig');
 const authService = require('../services/authService');
+const db = require('../db/connection');
 
 // In-memory store pro PKCE verifiers (v produkci použít Redis)
 const pkceStore = new Map();
@@ -20,13 +21,16 @@ const msalClient = new msal.ConfidentialClientApplication(msalConfig);
  * Zahájí OAuth flow - redirect na Microsoft
  */
 router.get('/login', async (req, res) => {
+  console.log('🟢 SERVER: /auth/login endpoint CALLED');
   try {
     // Generuj PKCE code verifier a challenge
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+    console.log('🟢 SERVER: PKCE verifier generated');
     
     // State pro CSRF ochranu
     const state = crypto.randomBytes(16).toString('base64url');
+    console.log('🟢 SERVER: State generated:', state);
     
     // Ulož code verifier pro pozdější použití
     pkceStore.set(state, codeVerifier);
@@ -41,11 +45,17 @@ router.get('/login', async (req, res) => {
       codeChallengeMethod: 'S256',
       state,
     };
+    console.log('🟢 SERVER: Auth params:', authCodeUrlParameters);
 
+    console.log('🟢 SERVER: Calling msalClient.getAuthCodeUrl()...');
     const authUrl = await msalClient.getAuthCodeUrl(authCodeUrlParameters);
-    res.redirect(authUrl);
+    console.log('🟢 SERVER: Got authUrl:', authUrl);
+    console.log('🟢 SERVER: Sending authUrl as JSON...');
+    
+    // Vrátíme JSON s URL místo redirect
+    res.json({ authUrl });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('🔴 SERVER: Login error:', error);
     res.status(500).json({ error: 'Failed to initiate login' });
   }
 });
@@ -55,19 +65,33 @@ router.get('/login', async (req, res) => {
  * Zpracuje odpověď od Microsoftu
  */
 router.get('/callback', async (req, res) => {
+  console.log('🟣 SERVER: /auth/callback CALLED');
+  console.log('🟣 SERVER: Query params:', req.query);
+  
   const { code, state, error, error_description } = req.query;
 
   // Chyba od Microsoftu
   if (error) {
-    console.error('Auth error:', error, error_description);
+    console.error('🔴 Auth error from Microsoft:', error, error_description);
     return res.redirect(`${process.env.CLIENT_URL}/login?error=${error}`);
   }
 
+  // Kontrola povinných parametrů
+  if (!code || !state) {
+    console.error('🔴 Missing required parameters - code:', !!code, 'state:', !!state);
+    console.error('🔴 This callback was called WITHOUT proper OAuth response!');
+    return res.status(400).json({ 
+      error: 'Missing required parameters',
+      details: 'This endpoint should only be called by Microsoft OAuth redirect'
+    });
+  }
+
   try {
+    console.log('🟣 SERVER: Looking for PKCE verifier for state:', state);
     // Získej code verifier ze store
     const codeVerifier = pkceStore.get(state);
     if (!codeVerifier) {
-      console.error('PKCE verifier not found or expired for state:', state);
+      console.error('🔴 PKCE verifier not found or expired for state:', state);
       return res.redirect(`${process.env.CLIENT_URL}/login?error=invalid_state`);
     }
     
@@ -82,38 +106,70 @@ router.get('/callback', async (req, res) => {
       codeVerifier,
     };
 
+    console.log('🟣 SERVER: Exchanging code for tokens...');
     const tokenResponse = await msalClient.acquireTokenByCode(tokenRequest);
     const { account, accessToken, idToken, expiresOn } = tokenResponse;
+    console.log('🟣 SERVER: ✅ Got tokens from Microsoft');
+    console.log('🟣 SERVER: Account:', account.username, 'ID:', account.homeAccountId);
 
+    // Extrahuj username z Microsoft UPN (např. u03924 z u03924@zachranka.cz)
+    const msUsername = account.username.includes('@') 
+      ? account.username.split('@')[0] 
+      : account.username;
+    
+    // TEST: Rychlý DB test před hlavní query
+    console.log('🟣 SERVER: Testing DB connection...');
+    try {
+      const testResult = await db.query('SELECT 1 as test');
+      console.log('🟣 SERVER: ✅ DB connection OK, test result:', testResult[0][0]);
+    } catch (testErr) {
+      console.error('🔴 SERVER: ❌ DB test FAILED:', testErr.message);
+    }
+    
     // Najdi nebo synchronizuj uživatele
-    let user = await authService.findUserByEntraId(account.homeAccountId);
+    // NEJDŘÍV podle username (rychlé), pak teprve podle EntraID
+    console.log('🟣 SERVER: Looking for user by username:', msUsername);
+    let user = await authService.findUserByUsername(msUsername);
     
     if (!user) {
-      // Zkus najít podle emailu
-      user = await authService.findUserByEmail(account.username);
+      // Zkus ještě podle EntraID (pro případ že už byl synchronizován)
+      console.log('🟣 SERVER: User not found by username, trying EntraID:', account.homeAccountId);
+      user = await authService.findUserByEntraId(account.homeAccountId);
+    }
+    
+    if (user) {
+      console.log('🟣 SERVER: ✅ User found:', user.username, 'ID:', user.id);
       
-      if (user) {
-        // Synchronizuj s EntraID
+      // Pokud uživatel nemá EntraID nebo je jiné, synchronizuj
+      if (!user.entra_id || user.entra_id !== account.homeAccountId) {
+        console.log('🟣 SERVER: Syncing with EntraID...');
         await authService.syncUserWithEntra(user.id, {
           id: account.homeAccountId,
           userPrincipalName: account.username
         });
+        console.log('🟣 SERVER: ✅ EntraID sync completed');
       } else {
-        // Uživatel neexistuje v databázi
-        await authService.logAuthEvent(
-          null,
-          account.username,
-          'login_failed',
-          'entra_id',
-          req.ip,
-          req.get('user-agent'),
-          'User not found in database'
-        );
-        return res.redirect(`${process.env.CLIENT_URL}/login?error=user_not_found`);
+        console.log('🟣 SERVER: EntraID already synced');
       }
+    } else {
+      console.error('🔴 SERVER: ❌ User NOT found in database!');
+      console.error('🔴 SERVER: Tried username:', msUsername);
+      console.error('🔴 SERVER: Tried EntraID:', account.homeAccountId);
+      // Uživatel neexistuje v databázi
+      await authService.logAuthEvent(
+        null,
+        account.username,
+        'login_failed',
+        'entra_id',
+        req.ip,
+        req.get('user-agent'),
+        'User not found in database'
+      );
+      return res.redirect(`${process.env.CLIENT_URL}/login?error=user_not_found`);
     }
 
     // Vytvoř session
+    console.log('🟣 SERVER: Creating session for user:', user.username);
     const sessionId = await authService.createSession(
       user.id,
       {
@@ -124,6 +180,7 @@ router.get('/callback', async (req, res) => {
       req.ip,
       req.get('user-agent')
     );
+    console.log('🟣 SERVER: ✅ Session created:', sessionId);
 
     // Log úspěšného přihlášení
     await authService.logAuthEvent(
@@ -142,9 +199,12 @@ router.get('/callback', async (req, res) => {
       sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000 // 24 hodin
     });
+    console.log('🟣 SERVER: ✅ Cookie set');
 
     // Redirect zpět na klienta
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+    const redirectUrl = `${process.env.CLIENT_URL}/dashboard`;
+    console.log('🟣 SERVER: 🚀 Redirecting to:', redirectUrl);
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error('Callback error:', error);
     res.redirect(`${process.env.CLIENT_URL}/login?error=auth_failed`);

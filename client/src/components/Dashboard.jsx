@@ -15,22 +15,29 @@ function Dashboard() {
   }, []);
 
   const loadUserData = async () => {
+    console.log('🟣 Dashboard: loadUserData() START');
     try {
       setLoading(true);
+      console.log('🟣 Dashboard: Volám authService.getCurrentUser()...');
       const userData = await authService.getCurrentUser();
+      console.log('🟣 Dashboard: getCurrentUser() response:', userData);
       
       if (!userData) {
         // Nepřihlášen - redirect na login
+        console.log('🟣 Dashboard: Žádná data - redirect na /login');
         window.location.href = '/login';
         return;
       }
 
+      console.log('🟣 Dashboard: Setting user data:', userData);
       setUser(userData);
     } catch (err) {
+      console.error('🔴 Dashboard ERROR:', err);
       setError('Nepodařilo se načíst údaje uživatele');
       console.error(err);
     } finally {
       setLoading(false);
+      console.log('🟣 Dashboard: loadUserData() KONEC');
     }
   };
 
