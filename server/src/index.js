@@ -8,26 +8,21 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { validateConfig } = require('./config/msalConfig');
+const cookieParser = require('cookie-parser');
+
+// Inicializace databázového připojení
+require('./db/connection');
 
 // Inicializace Express
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// Validace konfigurace
-try {
-  validateConfig();
-  console.log('✓ Configuration validated');
-} catch (error) {
-  console.error('Configuration error:', error.message);
-  process.exit(1);
-}
 
 // Middleware
 app.use(helmet()); // Bezpečnostní headers
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined')); // Logování
 app.use(express.json()); // Parse JSON
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded
+app.use(cookieParser()); // Parse cookies
 
 // CORS konfigurace
 app.use(cors({
@@ -46,10 +41,8 @@ app.get('/api/health', (req, res) => {
 
 // Routes
 const authRoutes = require('./routes/auth');
-const protectedRoutes = require('./routes/protected');
 
-app.use('/api/auth', authRoutes);
-app.use('/api/protected', protectedRoutes);
+app.use('/auth', authRoutes);
 
 // 404 handler
 app.use((req, res) => {

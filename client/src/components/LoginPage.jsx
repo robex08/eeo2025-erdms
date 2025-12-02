@@ -1,23 +1,34 @@
-import { useMsal } from '@azure/msal-react';
-import { loginRequest } from '../config/authConfig';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import authService from '../services/authService';
 import './LoginPage.css';
 
 /**
  * Přihlašovací stránka s Microsoft Entra ID - ZZS Středočeský kraj
  */
 function LoginPage() {
-  const { instance } = useMsal();
+  const [searchParams] = useSearchParams();
+  const [error, setError] = useState(null);
 
-  const handleLogin = async (loginType) => {
-    try {
-      if (loginType === 'popup') {
-        await instance.loginPopup(loginRequest);
-      } else if (loginType === 'redirect') {
-        await instance.loginRedirect(loginRequest);
+  useEffect(() => {
+    // Zkontroluj jestli není error parametr z callbacku
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      switch (errorParam) {
+        case 'user_not_found':
+          setError('Uživatel nebyl nalezen v databázi. Kontaktujte administrátora.');
+          break;
+        case 'auth_failed':
+          setError('Přihlášení se nezdařilo. Zkuste to prosím znovu.');
+          break;
+        default:
+          setError('Došlo k chybě při přihlašování.');
       }
-    } catch (error) {
-      console.error('Login error:', error);
     }
+  }, [searchParams]);
+
+  const handleLogin = () => {
+    authService.login();
   };
 
   return (
@@ -48,9 +59,18 @@ function LoginPage() {
               Microsoft účtu vaší organizace
             </p>
 
+            {error && (
+              <div className="error-message">
+                <svg className="error-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                <span>{error}</span>
+              </div>
+            )}
+
             <button 
               className="btn-login-microsoft"
-              onClick={() => handleLogin('popup')}
+              onClick={handleLogin}
             >
               <svg className="microsoft-icon" viewBox="0 0 23 23" fill="none">
                 <rect width="11" height="11" fill="#f25022"/>
