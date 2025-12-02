@@ -4,24 +4,94 @@ const { v4: uuidv4 } = require('uuid');
 class AuthService {
   /**
    * Najde uživatele podle EntraID
+   * Používá pool.query() - automatické connection management
    */
   async findUserByEntraId(entraId) {
-    const [rows] = await db.query(
-      'SELECT * FROM erdms_users WHERE entra_id = ? AND aktivni = 1',
-      [entraId]
-    );
-    return rows[0] || null;
+    try {
+      const [rows] = await db.query(
+        `SELECT id, username, entra_id, upn, auth_source, email, 
+                jmeno, prijmeni, titul_pred, titul_za, telefon,
+                pozice_id, lokalita_id, organizace_id, usek_id, role,
+                aktivni, dt_vytvoreni
+         FROM erdms_users 
+         WHERE entra_id = ? AND aktivni = 1`,
+        [entraId]
+      );
+      return rows[0] || null;
+    } catch (err) {
+      console.error('🔴 findUserByEntraId ERROR:', err.message);
+      throw err;
+    }
   }
 
   /**
    * Najde uživatele podle emailu
+   * Používá pool.query() - automatické connection management
    */
   async findUserByEmail(email) {
-    const [rows] = await db.query(
-      'SELECT * FROM erdms_users WHERE email = ? AND aktivni = 1',
-      [email]
-    );
-    return rows[0] || null;
+    try {
+      const [rows] = await db.query(
+        `SELECT id, username, entra_id, upn, auth_source, email, 
+                jmeno, prijmeni, titul_pred, titul_za, telefon,
+                pozice_id, lokalita_id, organizace_id, usek_id, role,
+                aktivni, dt_vytvoreni
+         FROM erdms_users 
+         WHERE email = ? AND aktivni = 1`,
+        [email]
+      );
+      return rows[0] || null;
+    } catch (err) {
+      console.error('🔴 findUserByEmail ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Najde uživatele podle username (bez domény z emailu)
+   * Pokud email je ve formátu u03924@zachranka.cz, hledá username=u03924
+   */
+  async findUserByUsername(usernameOrEmail) {
+    console.log('🔵 authService.findUserByUsername() START');
+    console.log('🔵 Input:', usernameOrEmail);
+    
+    // Pokud obsahuje @, extrahuj část před @
+    const username = usernameOrEmail.includes('@') 
+      ? usernameOrEmail.split('@')[0] 
+      : usernameOrEmail;
+    
+    console.log('🔵 Extracted username:', username);
+    
+    try {
+      console.log('🔵 Executing query with pool.query() - auto connection management');
+      const startTime = Date.now();
+      
+      // BEST PRACTICE: Použij pool.query() přímo - automaticky spravuje connection
+      const [rows] = await db.query(
+        `SELECT id, username, entra_id, upn, auth_source, email, 
+                jmeno, prijmeni, titul_pred, titul_za, telefon,
+                pozice_id, lokalita_id, organizace_id, usek_id, role,
+                aktivni, dt_vytvoreni
+         FROM erdms_users 
+         WHERE username = ? AND aktivni = 1`,
+        [username]
+      );
+      
+      const duration = Date.now() - startTime;
+      console.log('🔵 ✅ Query completed in', duration, 'ms');
+      console.log('🔵 Rows count:', rows ? rows.length : 0);
+      
+      if (rows && rows.length > 0) {
+        console.log('🔵 Found user:', rows[0].username, 'ID:', rows[0].id);
+      } else {
+        console.log('🔵 No user found');
+      }
+      
+      return rows[0] || null;
+    } catch (err) {
+      console.error('🔴 Query ERROR:', err.message);
+      console.error('🔴 Error code:', err.code);
+      throw err;
+    }
   }
 
   /**

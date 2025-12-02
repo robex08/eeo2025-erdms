@@ -27,8 +27,12 @@ function LoginPage() {
     }
   }, [searchParams]);
 
-  const handleLogin = () => {
-    authService.login();
+  const handleLogin = async () => {
+    console.log('🔵 LoginPage: handleLogin() zavolán');
+    console.log('🔵 API_URL:', import.meta.env.VITE_API_URL);
+    console.log('🔵 Volám authService.login()...');
+    await authService.login();
+    console.log('🔵 authService.login() dokončen (tenhle log by se neměl zobrazit, protože redirect by měl přejít na MS)');
   };
 
   return (
@@ -68,9 +72,10 @@ function LoginPage() {
               </div>
             )}
 
+            {/* Použijeme button s onClick handlerem */}
             <button 
-              className="btn-login-microsoft"
               onClick={handleLogin}
+              className="btn-login-microsoft"
             >
               <svg className="microsoft-icon" viewBox="0 0 23 23" fill="none">
                 <rect width="11" height="11" fill="#f25022"/>

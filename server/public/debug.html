@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERDMS Debug Console</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #005a9e;
+        }
+        
+        button.danger {
+            background: #d73a49;
+        }
+        
+        button.danger:hover {
+            background: #b52a39;
+        }
+        
+        button.success {
+            background: #28a745;
+        }
+        
+        button.success:hover {
+            background: #218838;
+        }
+        
+        .status {
+            padding: 10px;
+            background: #252526;
+            border-left: 3px solid #007acc;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .status.error {
+            border-color: #d73a49;
+        }
+        
+        .status.success {
+            border-color: #28a745;
+        }
+        
+        .logs-container {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #2d2d30;
+            border-left: 3px solid #4ec9b0;
+            border-radius: 2px;
+            font-size: 13px;
+        }
+        
+        .log-entry .timestamp {
+            color: #858585;
+            font-size: 11px;
+        }
+        
+        .log-entry .method {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .method.GET { background: #4ec9b0; color: #000; }
+        .method.POST { background: #569cd6; color: #fff; }
+        .method.PUT { background: #dcdcaa; color: #000; }
+        .method.DELETE { background: #f48771; color: #000; }
+        .method.OPTIONS { background: #858585; color: #fff; }
+        
+        .log-entry .path {
+            color: #9cdcfe;
+            font-weight: bold;
+        }
+        
+        .log-entry .details {
+            color: #858585;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .auto-refresh input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .auto-refresh label {
+            cursor: pointer;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #3e3e42;
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e52;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 ERDMS Debug Console</h1>
+    
+    <div class="status" id="status">
+        <strong>Status:</strong> <span id="statusText">Inicializace...</span>
+    </div>
+    
+    <div class="controls">
+        <button onclick="fetchLogs()" class="success">🔄 Načíst logy</button>
+        <button onclick="clearLogs()" class="danger">🗑️ Vymazat</button>
+        <button onclick="testBackend()">🧪 Test Backend</button>
+        <button onclick="testLogin()">🔐 Test Login Endpoint</button>
+        <div class="auto-refresh">
+            <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+            <label for="autoRefresh">Auto-refresh (2s)</label>
+        </div>
+    </div>
+    
+    <div class="logs-container" id="logsContainer">
+        <p style="color: #858585;">Načítání logů...</p>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let autoRefreshInterval = null;
+        
+        async function fetchLogs() {
+            try {
+                const response = await fetch(`${API_URL}/api/debug/logs?limit=50`);
+                const data = await response.json();
+                
+                displayLogs(data.logs);
+                updateStatus('success', `✅ Načteno ${data.logs.length} logů (celkem: ${data.total})`);
+            } catch (error) {
+                updateStatus('error', `❌ Chyba: ${error.message}`);
+                console.error('Fetch error:', error);
+            }
+        }
+        
+        function displayLogs(logs) {
+            const container = document.getElementById('logsContainer');
+            
+            if (logs.length === 0) {
+                container.innerHTML = '<p style="color: #858585;">Žádné logy k zobrazení.</p>';
+                return;
+            }
+            
+            container.innerHTML = logs.map(log => `
+                <div class="log-entry">
+                    <div>
+                        <span class="timestamp">${new Date(log.timestamp).toLocaleTimeString('cs-CZ')}</span>
+                        <span class="method ${log.method}">${log.method}</span>
+                        <span class="path">${log.path}</span>
+                    </div>
+                    ${log.query && Object.keys(log.query).length > 0 ? 
+                        `<div class="details">Query: ${JSON.stringify(log.query)}</div>` : ''}
+                    ${log.origin ? 
+                        `<div class="details">Origin: ${log.origin}</div>` : ''}
+                    <div class="details">IP: ${log.ip} | UA: ${log.userAgent || 'N/A'}</div>
+                </div>
+            `).reverse().join('');
+            
+            // Auto-scroll to bottom pokud není uživatel scrollnutý nahoru
+            if (container.scrollHeight - container.scrollTop - container.clientHeight < 100) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('logsContainer').innerHTML = '<p style="color: #858585;">Logy vymazány. Klikni na "Načíst logy" pro refresh.</p>';
+            updateStatus('', 'Logy vyčištěny z UI');
+        }
+        
+        async function testBackend() {
+            updateStatus('', '🧪 Testuji backend health...');
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                const data = await response.json();
+                updateStatus('success', `✅ Backend OK: ${data.status} | ${data.environment}`);
+            } catch (error) {
+                updateStatus('error', `❌ Backend nedostupný: ${error.message}`);
+            }
+        }
+        
+        async function testLogin() {
+            updateStatus('', '🔐 Testuji /auth/login endpoint...');
+            try {
+                // Použijeme HEAD request abychom nedělali plný redirect
+                const response = await fetch(`${API_URL}/auth/login`, { 
+                    method: 'HEAD',
+                    redirect: 'manual' 
+                });
+                
+                if (response.type === 'opaqueredirect' || response.status === 0) {
+                    updateStatus('success', '✅ /auth/login vrací redirect (OK)');
+                } else {
+                    updateStatus('error', `⚠️ /auth/login vrátil status: ${response.status}`);
+                }
+            } catch (error) {
+                updateStatus('error', `❌ Chyba při testu: ${error.message}`);
+            }
+        }
+        
+        function updateStatus(type, message) {
+            const status = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+            
+            status.className = 'status' + (type ? ' ' + type : '');
+            statusText.textContent = message;
+        }
+        
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(fetchLogs, 2000);
+                updateStatus('success', '🔄 Auto-refresh zapnut (každé 2s)');
+            } else {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                updateStatus('', 'Auto-refresh vypnut');
+            }
+        }
+        
+        // Initial load
+        fetchLogs();
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>

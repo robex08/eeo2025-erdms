@@ -9,7 +9,7 @@
 - [ ] **Allow public client flows**: No ❌
 - [ ] API Permissions granted (User.Read, email, openid, profile)
 - [ ] Client Secret je platný (není expirovaný)
-
+-
 ### 2. Zkontroluj Server ENV
 ```bash
 cd /var/www/eeo2025/server

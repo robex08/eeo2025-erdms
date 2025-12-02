@@ -30,6 +30,31 @@ app.use(cors({
   credentials: true,
 }));
 
+// In-memory log storage pro debugging
+const requestLogs = [];
+const MAX_LOGS = 100;
+
+// Middleware pro logování všech requestů
+app.use((req, res, next) => {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    ip: req.ip,
+    userAgent: req.get('user-agent')?.substring(0, 50),
+    origin: req.get('origin'),
+  };
+  
+  requestLogs.push(logEntry);
+  if (requestLogs.length > MAX_LOGS) {
+    requestLogs.shift(); // Odstraň nejstarší
+  }
+  
+  console.log(`[${logEntry.timestamp}] ${logEntry.method} ${logEntry.path}`);
+  next();
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
@@ -38,6 +63,24 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
+
+// Debug endpoint - poslední requesty (jen pro development)
+app.get('/api/debug/logs', (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Debug endpoint only in development' });
+  }
+  
+  const limit = parseInt(req.query.limit) || 20;
+  res.json({
+    logs: requestLogs.slice(-limit),
+    total: requestLogs.length,
+  });
+});
+
+// Static files pro debug (jen development)
+if (process.env.NODE_ENV === 'development') {
+  app.use('/debug', express.static('public'));
+}
 
 // Routes
 const authRoutes = require('./routes/auth');
