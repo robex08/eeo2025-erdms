@@ -1,47 +1,46 @@
-import { MsalProvider, AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from '@azure/msal-react';
-import { PublicClientApplication, EventType } from '@azure/msal-browser';
-import { msalConfig, loginRequest } from './config/authConfig';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import authService from './services/authService';
 import LoginPage from './components/LoginPage';
-import HomePage from './components/HomePage';
+import Dashboard from './components/Dashboard';
 import './App.css';
-import { useEffect } from 'react';
 
-// Vytvoření MSAL instance
-const msalInstance = new PublicClientApplication(msalConfig);
+// Protected Route component
+function ProtectedRoute({ children }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
 
-// Inicializace MSAL - pokus o SSO při načtení
-msalInstance.initialize().then(() => {
-  // Pokus o tiché přihlášení (SSO)
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length === 0) {
-    // Zkus získat účet přes SSO
-    msalInstance.ssoSilent(loginRequest).catch(error => {
-      // SSO selhalo - uživatel se musí přihlásit manuálně
-      console.log('SSO not available:', error);
-    });
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const authenticated = await authService.isAuthenticated();
+    setIsAuthenticated(authenticated);
+  };
+
+  if (isAuthenticated === null) {
+    return <div className="loading">Načítám...</div>;
   }
-});
 
-// Event callback pro logování MSAL událostí
-msalInstance.addEventCallback((event) => {
-  if (event.eventType === EventType.LOGIN_SUCCESS) {
-    console.log('Login successful via SSO');
-  }
-});
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
+}
 
 function App() {
   return (
-    <MsalProvider instance={msalInstance}>
-      <div className="App">
-        <AuthenticatedTemplate>
-          <HomePage />
-        </AuthenticatedTemplate>
-        
-        <UnauthenticatedTemplate>
-          <LoginPage />
-        </UnauthenticatedTemplate>
-      </div>
-    </MsalProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

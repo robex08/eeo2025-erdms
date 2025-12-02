@@ -171,6 +171,33 @@
   font-size: 1rem;
 }
 
+/* Error message */
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: 8px;
+  color: #c62828;
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+  animation: shake 0.5s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
+}
+
+.error-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 /* Bezpečnostní poznámka */
 .security-note {
   display: flex;
