@@ -22,13 +22,15 @@
    Supported account types: 
    ☑ Accounts in this organizational directory only (Single tenant)
    
-   Redirect URI (SPA): 
-   - Type: Single-page application (SPA)
-   - Value: http://localhost:5173
-   - (Alternativně můžeš přidat i http://localhost:3000)
+   Redirect URI: 
+   - Type: Web (DŮLEŽITÉ: Ne SPA!)
+   - Value: http://localhost:5000/auth/callback
    ```
 
 3. **Kliknout:** Create
+
+⚠️ **DŮLEŽITÉ:** Aplikace MUSÍ být typu **Web** (Confidential Client), ne SPA (Public Client), 
+protože používáme server-side OAuth flow s client secret.
 
 ---
 
@@ -51,46 +53,46 @@ Tyto hodnoty najdeš na stránce **Overview** tvé aplikace.
 
 2. **Přidat Redirect URI pro všechna prostředí:**
    ```
-   Type: Single-page application (SPA)
+   Type: Web (DŮLEŽITÉ: Ne SPA!)
    
    Development (localhost):
-   - http://localhost:5173
-   - http://localhost:5173/auth/callback
-   - http://localhost:3000
-   - http://localhost:3000/auth/callback
+   - http://localhost:5000/auth/callback
    
    Staging/Testing:
-   - https://erdms-dev.zachranka.cz
    - https://erdms-dev.zachranka.cz/auth/callback
    
    Production:
-   - https://erdms.zachranka.cz
    - https://erdms.zachranka.cz/auth/callback
    ```
    
-   ⚠️ **Poznámka:** Můžeš přidat všechny najednou! Aplikace automaticky použije 
-   správnou URL podle toho, odkud běží.
+   ⚠️ **POZNÁMKA:** URIs odkazují na BACKEND (port 5000), ne frontend!
+   Frontend (port 5173) se přihlašuje přes backend OAuth flow.
 
-4. **Nastavit Front-channel logout URL (volitelné):**
+3. **Front-channel logout URL (volitelné):**
    ```
    Development:
-   - http://localhost:5173/logout
-   - http://localhost:3000/logout
+   - http://localhost:5173
    
    Staging:
-   - https://erdms-dev.zachranka.cz/logout
+   - https://erdms-dev.zachranka.cz
    
    Production:
-   - https://erdms.zachranka.cz/logout
+   - https://erdms.zachranka.cz
    ```
 
-5. **Implicit grant and hybrid flows:**
+4. **Implicit grant and hybrid flows:**
    ```
-   ☐ Access tokens (pro legacy aplikace - NEVYBÍRAT)
-   ☐ ID tokens (pro legacy aplikace - NEVYBÍRAT)
+   ☐ Access tokens - NEVYBÍRAT
+   ☐ ID tokens - NEVYBÍRAT
    
-   ⚠️ Pro moderní SPA používáme Authorization Code Flow with PKCE
+   ⚠️ Používáme Authorization Code Flow s PKCE (bezpečnější)
    ```
+
+5. **Advanced settings:**
+   ```
+   Allow public client flows: No ❌
+   ```
+   Důvod: Confidential client s client secret.
 
 6. **Kliknout:** Save
 
@@ -157,9 +159,9 @@ Tyto hodnoty najdeš na stránce **Overview** tvé aplikace.
 
 ---
 
-### KROK 6: Certificates & secrets (Pro Backend)
+### KROK 6: Certificates & secrets (POVINNÉ pro Web aplikaci)
 
-⚠️ **Pouze pokud budeš validovat tokeny na backendu!**
+⚠️ **DŮLEŽITÉ: Pro confidential client flow je client secret POVINNÝ!**
 
 1. V menu: **Certificates & secrets** → **Client secrets** → **New client secret**
 
@@ -175,6 +177,7 @@ Tyto hodnoty najdeš na stránce **Overview** tvé aplikace.
    
    ⚠️ VAROVÁNÍ: Secret se zobrazí pouze jednou! 
    Po obnovení stránky ho už neuvidíš!
+   Ulož si ho do /var/www/eeo2025/server/.env jako ENTRA_CLIENT_SECRET
    ```
 
 ---
@@ -183,19 +186,21 @@ Tyto hodnoty najdeš na stránce **Overview** tvé aplikace.
 
 Po dokončení registrace kolega musí poskytnout tyto hodnoty:
 
-```yaml
-# Povinné hodnoty
-AZURE_TENANT_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-AZURE_CLIENT_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```bash
+# Povinné hodnoty pro server .env
+ENTRA_TENANT_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+ENTRA_CLIENT_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+ENTRA_CLIENT_SECRET="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # POVINNÝ pro Web app
+ENTRA_AUTHORITY="https://login.microsoftonline.com/{tenant_id}"
+ENTRA_REDIRECT_URI="http://localhost:5000/auth/callback"  # Backend port!
 
-# Pro backend API (pokud je potřeba)
-AZURE_CLIENT_SECRET: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-AZURE_API_SCOPE: "api://{client_id}/access_as_user"
-
-# Doplňkové info
-AZURE_AUTHORITY: "https://login.microsoftonline.com/{tenant_id}"
-AZURE_REDIRECT_URI: "http://localhost:5173"  # Vite dev server (nebo 3000)
+# Client URL (pro CORS)
+CLIENT_URL="http://localhost:5173"  # Frontend Vite dev server
 ```
+
+**Kam tyto hodnoty zapsat:**
+- Server: `/var/www/eeo2025/server/.env`
+- Frontend nepotřebuje Azure credentials! Používá backend OAuth flow.
 
 ---
 
