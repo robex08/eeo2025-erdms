@@ -72,99 +72,102 @@ function Dashboard() {
       <header className="dashboard-header">
         <div className="header-content">
           <div className="logo-section">
-            <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
-            <div className="system-title">
-              <h1>ERDMS</h1>
-              <p>Elektronický Rozcestník pro Document Management</p>
-            </div>
+            <h1>ERDMS</h1>
+            <p className="subtitle">Elektronický Rozcestník</p>
           </div>
           <div className="user-section">
             <div className="user-info">
               <span className="user-name">
-                {user.titul_pred && `${user.titul_pred} `}
-                {user.jmeno} {user.prijmeni}
-                {user.titul_za && `, ${user.titul_za}`}
+                {user.entraData?.displayName || `${user.jmeno} ${user.prijmeni}`}
               </span>
-              <span className="user-email">{user.email}</span>
-              <span className="user-role">{user.role === 'admin' ? 'Administrátor' : 'Uživatel'}</span>
+              <span className="user-email">{user.entraData?.mail || user.email}</span>
             </div>
             <button className="btn-logout" onClick={handleLogout}>
-              Odhlásit se
+              Odhlásit
             </button>
           </div>
         </div>
       </header>
 
       <main className="dashboard-main">
-        <div className="welcome-section">
-          <h2>Vítejte v systému ERDMS</h2>
-          <p>
-            Jste přihlášen jako: <strong>{user.username}</strong>
-          </p>
-        </div>
+        <div className="content-wrapper">
+          {/* Profil uživatele */}
+          <section className="profile-card">
+            <h3>Můj profil</h3>
+            <div className="profile-grid">
+              <div className="profile-item">
+                <span className="label">Jméno</span>
+                <span className="value">{user.entraData?.displayName || `${user.jmeno} ${user.prijmeni}`}</span>
+              </div>
+              <div className="profile-item">
+                <span className="label">Email</span>
+                <span className="value">{user.entraData?.mail || user.email}</span>
+              </div>
+              {user.entraData?.jobTitle && (
+                <div className="profile-item">
+                  <span className="label">Pozice</span>
+                  <span className="value">{user.entraData.jobTitle}</span>
+                </div>
+              )}
+              {user.entraData?.department && (
+                <div className="profile-item">
+                  <span className="label">Oddělení</span>
+                  <span className="value">{user.entraData.department}</span>
+                </div>
+              )}
+              {user.entraData?.officeLocation && (
+                <div className="profile-item">
+                  <span className="label">Pracoviště</span>
+                  <span className="value">{user.entraData.officeLocation}</span>
+                </div>
+              )}
+              {(user.entraData?.mobilePhone || user.entraData?.businessPhones?.[0]) && (
+                <div className="profile-item">
+                  <span className="label">Telefon</span>
+                  <span className="value">
+                    {user.entraData.mobilePhone || user.entraData.businessPhones[0]}
+                  </span>
+                </div>
+              )}
+              <div className="profile-item">
+                <span className="label">Uživatel</span>
+                <span className="value">{user.username}</span>
+              </div>
+              <div className="profile-item">
+                <span className="label">Role</span>
+                <span className="value badge-role">
+                  {user.role === 'admin' ? 'Admin' : 'Uživatel'}
+                </span>
+              </div>
+            </div>
+          </section>
 
-        <div className="user-details-card">
-          <h3>Údaje z EntraID</h3>
-          <div className="details-grid">
-            <div className="detail-item">
-              <span className="detail-label">ID:</span>
-              <span className="detail-value">{user.id}</span>
+          {/* Aplikace */}
+          <section className="apps-section">
+            <h3>Aplikace</h3>
+            <div className="apps-grid">
+              <a href="/eeo" className="app-card">
+                <div className="app-icon">🚗</div>
+                <h4>EEO</h4>
+                <p>Evidence osobního automobilu</p>
+              </a>
+              <a href="/intranet" className="app-card">
+                <div className="app-icon">📋</div>
+                <h4>Intranet</h4>
+                <p>Interní systém</p>
+              </a>
+              <a href="/vozidla" className="app-card">
+                <div className="app-icon">🚑</div>
+                <h4>Vozidla</h4>
+                <p>Správa vozového parku</p>
+              </a>
+              <a href="/szm" className="app-card">
+                <div className="app-icon">🏥</div>
+                <h4>SZM</h4>
+                <p>Zdravotnický materiál</p>
+              </a>
             </div>
-            <div className="detail-item">
-              <span className="detail-label">Uživatelské jméno:</span>
-              <span className="detail-value">{user.username}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Email:</span>
-              <span className="detail-value">{user.email}</span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Jméno:</span>
-              <span className="detail-value">
-                {user.titul_pred && `${user.titul_pred} `}
-                {user.jmeno} {user.prijmeni}
-                {user.titul_za && `, ${user.titul_za}`}
-              </span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Role:</span>
-              <span className="detail-value badge-role">
-                {user.role === 'admin' ? 'Administrátor' : 'Uživatel'}
-              </span>
-            </div>
-            <div className="detail-item">
-              <span className="detail-label">Zdroj autentizace:</span>
-              <span className="detail-value badge-auth">
-                {user.auth_source === 'entra_id' ? 'Microsoft EntraID' : 'Databáze'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="applications-section">
-          <h3>Dostupné aplikace</h3>
-          <div className="apps-grid">
-            <div className="app-card">
-              <h4>EEO</h4>
-              <p>Elektronická evidence osobního automobilu</p>
-              <button className="btn-app">Otevřít</button>
-            </div>
-            <div className="app-card">
-              <h4>Intranet</h4>
-              <p>Interní informační systém</p>
-              <button className="btn-app">Otevřít</button>
-            </div>
-            <div className="app-card">
-              <h4>Vozidla</h4>
-              <p>Správa vozového parku</p>
-              <button className="btn-app">Otevřít</button>
-            </div>
-            <div className="app-card">
-              <h4>SZM</h4>
-              <p>Systém zdravotnického materiálu</p>
-              <button className="btn-app">Otevřít</button>
-            </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>

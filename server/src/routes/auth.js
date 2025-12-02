@@ -253,7 +253,7 @@ router.post('/logout', async (req, res) => {
 
 /**
  * GET /auth/me
- * Vrátí info o přihlášeném uživateli
+ * Vrátí info o přihlášeném uživateli + data z EntraID
  */
 router.get('/me', async (req, res) => {
   try {
@@ -273,8 +273,8 @@ router.get('/me', async (req, res) => {
     // Aktualizuj aktivitu
     await authService.updateSessionActivity(sessionId);
 
-    // Vrať uživatelská data (bez tokenů a hesel)
-    res.json({
+    // Základní data z DB
+    const userData = {
       id: session.id,
       username: session.username,
       email: session.email,
@@ -283,8 +283,42 @@ router.get('/me', async (req, res) => {
       titul_pred: session.titul_pred,
       titul_za: session.titul_za,
       role: session.role,
-      auth_source: session.auth_source
-    });
+      auth_source: session.auth_source,
+      upn: session.upn
+    };
+
+    // Pokud je přihlášen přes EntraID, stáhni aktuální data z Graph API
+    if (session.auth_source === 'entra' && session.entra_access_token) {
+      try {
+        const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
+          headers: {
+            'Authorization': `Bearer ${session.entra_access_token}`,
+          },
+        });
+
+        if (graphResponse.ok) {
+          const graphData = await graphResponse.json();
+          userData.entraData = {
+            displayName: graphData.displayName,
+            givenName: graphData.givenName,
+            surname: graphData.surname,
+            jobTitle: graphData.jobTitle,
+            department: graphData.department,
+            officeLocation: graphData.officeLocation,
+            mobilePhone: graphData.mobilePhone,
+            businessPhones: graphData.businessPhones,
+            mail: graphData.mail,
+            userPrincipalName: graphData.userPrincipalName,
+            id: graphData.id
+          };
+        }
+      } catch (graphError) {
+        console.error('Failed to fetch Graph API data:', graphError);
+        // Pokračuj bez EntraID dat
+      }
+    }
+
+    res.json(userData);
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user info' });

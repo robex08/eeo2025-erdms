@@ -104,7 +104,7 @@ class AuthService {
       `UPDATE erdms_users 
        SET entra_id = ?, 
            upn = ?, 
-           auth_source = 'entra_id',
+           auth_source = 'entra',
            entra_sync_at = NOW(),
            dt_aktualizace = NOW()
        WHERE id = ?`,
