@@ -59,66 +59,138 @@ function HomePage() {
 
   return (
     <div className="home-container">
+      {/* Header */}
       <header className="home-header">
         <div className="header-content">
           <h1>ERDMS</h1>
+          <span className="user-email-header">{user?.email || 'robert.holovsky@eschevela.cz'}</span>
           <button className="btn-logout" onClick={handleLogout}>
             Odhlásit se
           </button>
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="home-main">
-        <div className="welcome-section">
-          <h2>Vítejte, {user?.jmeno} {user?.prijmeni}!</h2>
-          <p className="welcome-subtitle">Jste úspěšně přihlášeni do systému ERDMS</p>
-        </div>
-
-        <div className="user-info-card">
-          <h3>Informace o uživateli</h3>
-          
-          <div className="info-grid">
-            <div className="info-item">
-              <span className="info-label">Celé jméno:</span>
-              <span className="info-value">
-                {user?.titul_pred && `${user.titul_pred} `}
-                {user?.jmeno} {user?.prijmeni}
-                {user?.titul_za && `, ${user.titul_za}`}
-              </span>
+        {/* Levý sloupec */}
+        <div className="left-column">
+          {/* 1. ZÁKLADNÍ ÚDAJE */}
+          <div className="section-basic-info">
+            <h3 className="section-title">ZÁKLADNÍ ÚDAJE</h3>
+            <div className="basic-info-content">
+              <p className="info-line"><strong>JMÉNO</strong></p>
+              <p className="info-line">{user?.jmeno} {user?.prijmeni}{user?.titul_za && `, ${user.titul_za}`}</p>
+              
+              <p className="info-line"><strong>EMAIL</strong></p>
+              <p className="info-line">{user?.email || 'robert.holovsky@eschevela.cz'}</p>
+              
+              <p className="info-line"><strong>POZICE</strong></p>
+              <p className="info-line">{user?.pozice || 'Programátor I'}</p>
+              
+              <p className="info-line"><strong>UŽIVATEL</strong></p>
+              <p className="info-line">u{user?.id_osoba || '039324'}</p>
+              
+              <p className="info-line"><strong>ROLE</strong></p>
+              <button className="btn-logout-box" onClick={handleLogout}>
+                Odhlásit
+              </button>
             </div>
+          </div>
 
-            <div className="info-item">
-              <span className="info-label">Email:</span>
-              <span className="info-value">{user?.email || 'N/A'}</span>
-            </div>
-
-            <div className="info-item">
-              <span className="info-label">Uživatelské jméno:</span>
-              <span className="info-value">{user?.username || 'N/A'}</span>
-            </div>
-
-            <div className="info-item">
-              <span className="info-label">Role:</span>
-              <span className="info-value">{user?.role === 'admin' ? 'Administrátor' : 'Uživatel'}</span>
-            </div>
-
-            <div className="info-item">
-              <span className="info-label">Zdroj autentizace:</span>
-              <span className="info-value">{user?.auth_source === 'entra' ? 'Microsoft EntraID' : 'Databáze'}</span>
-            </div>
-
-            <div className="info-item">
-              <span className="info-label">UPN:</span>
-              <span className="info-value">{user?.upn || 'Není zadáno'}</span>
+          {/* 2. APLIKACE - POD základními údaji */}
+          <div className="section-apps">
+            <h3 className="section-title">APLIKACE</h3>
+            <div className="apps-grid">
+              <div className="app-tile">
+                <div className="app-icon">📦</div>
+                <div className="app-info">
+                  <h3>EEO</h3>
+                  <p>Elektronická evidence objednávek</p>
+                </div>
+              </div>
+              <div className="app-tile">
+                <div className="app-icon">🌐</div>
+                <div className="app-info">
+                  <h3>Intranet</h3>
+                  <p>Interní systém</p>
+                </div>
+              </div>
+              <div className="app-tile">
+                <div className="app-icon">🚗</div>
+                <div className="app-info">
+                  <h3>Vozidla</h3>
+                  <p>Správa vozového parku</p>
+                </div>
+              </div>
+              <div className="app-tile">
+                <div className="app-icon">📊</div>
+                <div className="app-info">
+                  <h3>SZM</h3>
+                  <p>Záruční řízení</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="debug-section">
-          <details>
-            <summary>Technické informace (debug)</summary>
-            <pre>{JSON.stringify(user, null, 2)}</pre>
-          </details>
+        {/* 3. DATA Z ENTRY - Pravý sloupec (celá výška) */}
+        <div className="section-entra">
+          <h2>ZÁKLADNÍ ÚDAJE</h2>
+          
+          <div className="data-row">
+            <span className="data-label">Entra ID</span>
+            <span className="data-value">{user?.entra_id || 'LFOM2X-341-4FT3-95c8-d809f74e74cb'}</span>
+          </div>
+
+          <div className="data-row">
+            <span className="data-label">UPN</span>
+            <span className="data-value">{user?.upn || user?.email || 'uzivatel@eschevela.cz'}</span>
+          </div>
+
+          <div className="data-row">
+            <span className="data-label">Celé jméno:</span>
+            <span className="data-value">
+              {user?.titul_pred && `${user.titul_pred} `}
+              {user?.jmeno} {user?.prijmeni}
+              {user?.titul_za && `, ${user.titul_za}`}
+            </span>
+          </div>
+
+          <div className="data-row">
+            <span className="data-label">Křestní jméno</span>
+            <span className="data-value">{user?.krestni_jmeno || user?.jmeno || 'Robert'}</span>
+          </div>
+
+          <div className="data-row">
+            <span className="data-label">Příjmení</span>
+            <span className="data-value">{user?.prijmeni || 'Holovský'}</span>
+          </div>
+
+          <h2 className="section-divider">PRACOVNÍ ÚDAJE</h2>
+
+          <div className="data-row">
+            <span className="data-label">Pozice:</span>
+            <span className="data-value">{user?.pozice || 'Programátor I'}</span>
+          </div>
+
+          <h2 className="section-divider">KONTAKTNÍ ÚDAJE</h2>
+
+          <div className="data-row">
+            <span className="data-label">Email:</span>
+            <span className="data-value">{user?.email || 'robert.holovsky@eschevela.cz'}</span>
+          </div>
+
+          <h2 className="section-divider">MANAŽER</h2>
+
+          <div className="data-row">
+            <span className="data-label">Jméno:</span>
+            <span className="data-value">{user?.manazer_jmeno || 'Čeněkovský Jan | ZZ55K'}</span>
+          </div>
+
+          <div className="data-row">
+            <span className="data-label">Email:</span>
+            <span className="data-value">{user?.manazer_email || 'jan.cenekovsky@eschevela.cz'}</span>
+          </div>
         </div>
       </main>
     </div>

@@ -5,7 +5,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "start:dev": "NODE_ENV=development node -r dotenv/config src/index.js dotenv_config_path=.env.development",
+    "start:prod": "NODE_ENV=production node -r dotenv/config src/index.js dotenv_config_path=.env.production",
+    "dev": "nodemon --exec 'NODE_ENV=development node -r dotenv/config src/index.js dotenv_config_path=.env.development'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -18,7 +20,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@azure/identity": "^4.13.0",
     "@azure/msal-node": "^3.8.3",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
