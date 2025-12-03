@@ -282,14 +282,17 @@ router.get('/me', async (req, res) => {
       prijmeni: session.prijmeni,
       titul_pred: session.titul_pred,
       titul_za: session.titul_za,
+      telefon: session.telefon,
       role: session.role,
       auth_source: session.auth_source,
-      upn: session.upn
+      upn: session.upn,
+      entra_id: session.entra_id  // DŮLEŽITÉ: Přidat entra_id!
     };
 
     // Pokud je přihlášen přes EntraID, stáhni aktuální data z Graph API
     if (session.auth_source === 'entra' && session.entra_access_token) {
       try {
+        // Základní profil
         const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
           headers: {
             'Authorization': `Bearer ${session.entra_access_token}`,
@@ -298,19 +301,37 @@ router.get('/me', async (req, res) => {
 
         if (graphResponse.ok) {
           const graphData = await graphResponse.json();
-          userData.entraData = {
-            displayName: graphData.displayName,
-            givenName: graphData.givenName,
-            surname: graphData.surname,
-            jobTitle: graphData.jobTitle,
-            department: graphData.department,
-            officeLocation: graphData.officeLocation,
-            mobilePhone: graphData.mobilePhone,
-            businessPhones: graphData.businessPhones,
-            mail: graphData.mail,
-            userPrincipalName: graphData.userPrincipalName,
-            id: graphData.id
-          };
+          userData.entraData = graphData;
+
+          // Pokus o získání skupin
+          try {
+            const groupsResponse = await fetch('https://graph.microsoft.com/v1.0/me/memberOf', {
+              headers: {
+                'Authorization': `Bearer ${session.entra_access_token}`,
+              },
+            });
+            if (groupsResponse.ok) {
+              const groupsData = await groupsResponse.json();
+              userData.entraData.memberOf = groupsData.value;
+            }
+          } catch (e) {
+            console.log('Groups not available');
+          }
+
+          // Pokus o získání manažera
+          try {
+            const managerResponse = await fetch('https://graph.microsoft.com/v1.0/me/manager', {
+              headers: {
+                'Authorization': `Bearer ${session.entra_access_token}`,
+              },
+            });
+            if (managerResponse.ok) {
+              const managerData = await managerResponse.json();
+              userData.entraData.manager = managerData;
+            }
+          } catch (e) {
+            console.log('Manager not available');
+          }
         }
       } catch (graphError) {
         console.error('Failed to fetch Graph API data:', graphError);

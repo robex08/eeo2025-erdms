@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTU Fix - Síťový problém s databází</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 3rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 3px solid #3498db;
+        }
+        
+        h2 {
+            color: #34495e;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        
+        h3 {
+            color: #555;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        p {
+            margin-bottom: 1rem;
+        }
+        
+        ul {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        
+        code {
+            background: #f8f9fa;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #c7254e;
+        }
+        
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 1.5rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        pre code {
+            background: none;
+            color: #ecf0f1;
+            padding: 0;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 1rem;
+            border-left: 4px solid #ffc107;
+            margin: 1rem 0;
+        }
+        
+        .highlight strong {
+            color: #856404;
+        }
+        
+        .section {
+            margin-bottom: 2rem;
+        }
+        
+        .date {
+            color: #7f8c8d;
+            font-style: italic;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #ecf0f1;
+        }
+        
+        .symptom-list {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 5px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MTU Fix - Síťový problém s databází</h1>
+        
+        <div class="section">
+            <h2>Problém</h2>
+            <p>
+                <code>SELECT * FROM erdms_users</code> se zasekával a nikdy nevracel data kvůli problému 
+                se síťovou komunikací mezi aplikačním serverem (10.3.174.11) a databázovým serverem (10.3.172.11).
+            </p>
+        </div>
+        
+        <div class="section">
+            <h2>Příčina</h2>
+            <div class="highlight">
+                <strong>MTU (Maximum Transmission Unit) bylo nastaveno na 9000 bajtů (jumbo frames)</strong>, 
+                ale síť mezi servery nepodporuje jumbo frames. Větší TCP pakety se fragmentovaly nebo zahazovaly.
+            </div>
+            
+            <h3>Symptomy:</h3>
+            <div class="symptom-list">
+                <ul>
+                    <li><span class="success">✅</span> Malé dotazy (SELECT s WHERE) fungovaly</li>
+                    <li><span class="error">❌</span> Velké dotazy (SELECT * bez LIMIT) timeout</li>
+                    <li><span class="error">❌</span> PING nefungoval (100% packet loss)</li>
+                    <li><span class="success">✅</span> TCP port 3306 dostupný</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Řešení</h2>
+            <p>Snížení MTU z 9000 na standardních <strong>1500 bajtů</strong>.</p>
+            
+            <h3>Dočasná změna (do restartu):</h3>
+            <pre><code>ip link set ens18 mtu 1500</code></pre>
+            
+            <h3>Permanentní změna:</h3>
+            <p>Přidáno do <code>/etc/network/interfaces</code>:</p>
+            <pre><code>iface ens18 inet static
+        address 10.3.174.11/24
+        gateway 10.3.174.1
+        mtu 1500  # &lt;-- PŘIDÁNO
+        dns-nameservers 10.3.100.11 10.3.100.12
+        dns-search zzssk.zachranka.cz</code></pre>
+            
+            <h3>Restart sítě:</h3>
+            <pre><code>systemctl restart networking
+# nebo
+ifdown ens18 && ifup ens18</code></pre>
+        </div>
+        
+        <div class="section">
+            <h2>Výsledky po opravě</h2>
+            <div class="symptom-list">
+                <ul>
+                    <li><span class="success">✅</span> SELECT * FROM erdms_users: <strong>5ms</strong> (dříve timeout)</li>
+                    <li><span class="success">✅</span> Všechna data načtena úspěšně</li>
+                    <li><span class="success">✅</span> Stabilní spojení s databází</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Test</h2>
+            <pre><code>cd /var/www/eeo2025/server
+node test-final-select.js</code></pre>
+        </div>
+        
+        <p class="date">Datum opravy: 2. prosince 2025</p>
+    </div>
+</body>
+</html>
