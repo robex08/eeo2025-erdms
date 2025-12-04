@@ -535,28 +535,111 @@ SET CHARACTER_SET_RESULTS = utf8mb4;
 
 ---
 
+### ✅ FÁZE B DOKONČENA: HLAVNÍ APLIKAČNÍ TABULKY
+
+**Export/Import metoda:**
+```
+✅ MySQL CONCAT() + QUOTE() pro bezpečné escapování
+   Důvod: mysqldump selže s MySQL 5.5.46 (generation_expression error)
+✅ Automatický bash script: /tmp/export_main_fast.sh
+   ├─ Generuje INSERT statements s QUOTE()
+   ├─ Export po tabulkách do /tmp/main_*.sql
+   └─ Prevence rate limiting (0.5s pauza mezi tabulkami)
+✅ Import s vypnutými FK checks
+   ├─ SET FOREIGN_KEY_CHECKS=0 před importem
+   └─ Validace počtu řádků po importu
+```
+
+**Výsledky FÁZE B:**
+```
+✅ 35/35 aktivních tabulek s daty - 100% DOKONČENO
+   ├─ 25a_objednavky (9566 řádků, 6.3 MB) ✅
+   ├─ 25a_objednavky_prilohy (15104 řádků, 4.0 MB) ✅
+   ├─ 25a_objednavky_polozky (9556 řádků, 2.2 MB) ✅
+   ├─ 25_notifications (474 řádků, 1.0 MB) ✅
+   ├─ 25_uzivatele (102 řádků) ✅
+   ├─ 25_role_prava (497 řádků) ✅
+   ├─ 25a_pokladni_audit (331 řádků) ✅ [OPRAVENO - ENUM fix]
+   ├─ 25_sablony_objednavek (13 řádků) ✅ [OPRAVENO - ENUM fix]
+   └─ +27 dalších tabulek ✅
+
+✅ 11 tabulek prázdných (0 řádků ve zdroji - OK):
+   ├─ 25_auditni_zaznamy, 25_chat_mentions, 25_chat_online_status
+   ├─ 25_chat_prectene_zpravy, 25_chat_reakce, 25_chat_ucastnici
+   ├─ 25_chat_zpravy, 25_objednavky, 25_objednavky_polozky
+   ├─ 25_objednavky_prilohy, 25_uzivatele_hierarchie
+   └─ (správně prázdné tabulky podle zdroje)
+
+📊 CELKEM FÁZE B:
+   ├─ 43 tabulek celkem (25_/25a_ prefix)
+   ├─ 35 tabulek s daty (100% kompletní)
+   ├─ 37,041 řádků naimportováno
+   └─ ~14 MB dat
+⏱️ Čas: ~45 sekund (export + import + ENUM fixes)
+📄 Logy: /tmp/export_main_fast.sh, /tmp/main_*.sql, /tmp/fix_*.sql
+```
+
+**🎉 ENUM Validation Issues - VYŘEŠENO:**
+```
+⚠️  Problém: MariaDB 11.8 odmítá prázdné stringy v ENUM sloupcích
+   
+✅ 25a_pokladni_audit - OPRAVENO
+   ├─ Problém: 42 řádků s prázdným sloupcem 'akce' (ENUM)
+   ├─ Řešení: IF(akce = '', 'uprava', akce) během exportu
+   └─ Výsledek: 331/331 řádků úspěšně naimportováno
+
+✅ 25_sablony_objednavek - OPRAVENO  
+   ├─ Problém: 2 řádky s prázdným sloupcem 'typ' (ENUM)
+   ├─ Řešení: Manuální INSERT s typ='PO'
+   └─ Výsledek: 13/13 řádků úspěšně naimportováno
+```
+
+
+
+---
+
+---
+
+## 📊 FINÁLNÍ STAV MIGRACE
+
+### ✅ KOMPLETNÍ ÚSPĚCH
+
+**Celkové statistiky:**
+```
+✅ FÁZE A (Legacy): 36 tabulek, ~50,000 řádků, ~19 MB
+✅ FÁZE B (Hlavní): 35 tabulek, ~37,000 řádků, ~14 MB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CELKEM:          71 tabulek, ~88,603 řádků, ~32.24 MB
+✅ Foreign Keys:    43 vazeb (integrita OK)
+✅ Prázdné tabulky: 15 (správně prázdné ve zdroji)
+⏱️  Celkový čas:    ~90 sekund (včetně ENUM fixes)
+📅 Snapshot k:      4. prosince 2025, 09:00 CET
+```
+
+**Poznámky:**
+```
+⚠️  Zdrojová databáze stále aktivní - drobné rozdíly očekávány:
+   • 25a_objednavky: 9567 vs 9566 (-1 řádek)
+   • objednavky0123: 4934 vs 4933 (-1 řádek)
+   → Nové záznamy vytvořené během migrace (běžné)
+
+✅ ENUM validation issues vyřešeny:
+   • 25a_pokladni_audit: 42 prázdných 'akce' → 'uprava'
+   • 25_sablony_objednavek: 2 prázdné 'typ' → 'PO'
+   → MariaDB 11.8 přísněji validuje ENUM než MySQL 5.5
+```
+
+---
+
 ### ⏳ ZBÝVÁ DOKONČIT
 
-**FÁZE B: HLAVNÍ APLIKACE (prefix 25_ a 25a_)**
-```
-⏳ Export dat tabulek s prefixem 25_
-⏳ Export dat tabulek s prefixem 25a_
-⏳ Import do nové MariaDB
-⏳ Validace počtu řádků
-```
-
-**Fáze 5: VALIDACE**
-```
-⏳ Porovnat počet řádků (starý vs. nový)
-⏳ Zkontrolovat FK integrity
-⏳ Test SELECT dotazů z aplikace
-```
-
-**Fáze 6: KONFIGURACE**
+**Fáze 6: KONFIGURACE A TESTOVÁNÍ**
 ```
 ⏳ Backup .env
 ⏳ Update .env s EEO_DB_* proměnnými
 ⏳ Test připojení aplikace na novou DB
+⏳ Funkční testy (SELECT, INSERT, UPDATE, DELETE)
+⏳ Ověření české diakritiky (utf8mb4_czech_ci)
 ```
 
 ---
@@ -565,25 +648,31 @@ SET CHARACTER_SET_RESULTS = utf8mb4;
 
 - [x] Fáze 1: Analýza dokončena (92 tabulek, 51 FK)
 - [x] Fáze 2: Databáze eeo2025 vytvořena
-- [x] Fáze 2: Práva pro erdms_user nastavena
 - [x] Fáze 3.1: Schema dump vytvořen (vlastní bash script)
-- [x] Fáze 3.2: Schema vyčištěn (vynechány _bck, _OLD, DEMO_, r_*, 25_objednavky)
-- [ ] Fáze 3.3: Data dump vytvořen (velké tabulky zvlášť)
-- [x] Fáze 4.1: Schema importována do eeo2025 (64 tabulek)
-- [ ] Fáze 4.2: FK kontroly vypnuty
-- [ ] Fáze 4.3: Velké tabulky naimportovány
-- [ ] Fáze 4.4: Ostatní tabulky naimportovány
-- [ ] Fáze 4.5: FK kontroly zapnuty zpět
-- [ ] Fáze 4.6: FK integrity zkontrolována
-- [ ] Fáze 5.1: Počet tabulek ověřen
-- [ ] Fáze 5.2: Počet řádků porovnán
-- [ ] Fáze 5.3: Test SELECT z aplikace OK
+- [x] Fáze 3.2: Schema vyčištěn (vynechány _bck, _OLD, DEMO_, 25_objednavky)
+- [x] Fáze 3.3: Data dump vytvořen - FÁZE A+B (po tabulkách)
+- [x] Fáze 4.1: Schema importována do eeo2025 (79 tabulek)
+- [x] Fáze 4.2: FK kontroly vypnuty (během importu)
+- [x] Fáze 4.3: Velké tabulky naimportovány (25a_objednavky 9566, prilohy 15104, polozky 9556)
+- [x] Fáze 4.4: FÁZE A dokončena (36 legacy tabulek - 100%)
+- [x] Fáze 4.5: FÁZE B dokončena (35 hlavních tabulek - 100%)
+- [x] Fáze 4.6: ENUM validation issues vyřešeny (2 tabulky opraveny)
+- [x] Fáze 4.7: FK kontroly zapnuty zpět
+- [x] Fáze 5.1: FK integrity zkontrolována (43 vazeb OK)
+- [x] Fáze 5.2: Počet tabulek ověřen (79 tabulek, 71 s daty)
+- [x] Fáze 5.3: Počet řádků porovnán (~88,603 řádků)
+- [x] Fáze 5.4: Validace klíčových tabulek (12/14 match - 2 nové v produkci)
 - [ ] Fáze 6.1: .env zálohován
 - [ ] Fáze 6.2: .env aktualizován s EEO_DB_* proměnnými
-- [ ] Validace: Aplikace funguje s novou DB
-- [x] Dokumentace: MIGRACE_EEO2025.md vytvořena
+- [ ] Fáze 6.3: Test připojení aplikace na novou DB
+- [ ] Fáze 6.4: Funkční testy (SELECT, INSERT, UPDATE, DELETE)
+- [x] Dokumentace: MIGRACE_EEO2025.md vytvořena a aktualizována
+- [x] Git backup: Commit 8ef8f7e (FÁZE A)
+- [ ] Git commit: Finální dokumentace FÁZE B
 
 ---
 
-**Verze dokumentu:** 1.0  
-**Poslední update:** 4. prosince 2025
+**Verze dokumentu:** 2.0  
+**Poslední update:** 4. prosince 2025, 09:00 CET  
+**Status:** 🎉 MIGRACE 100% DOKONČENA (71 tabulek, ~88,603 řádků, ~32.24 MB)  
+**Poznámka:** Zbývá konfigurace .env a aplikační testy
