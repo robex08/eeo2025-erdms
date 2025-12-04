@@ -1,0 +1,355 @@
+<?php
+/**
+ * CashbookService.php
+ * Hlavní service pro business logiku pokladních knih
+ * PHP 5.6 kompatibilní
+ */
+
+require_once __DIR__ . '/../models/CashbookModel.php';
+require_once __DIR__ . '/../models/CashbookEntryModel.php';
+require_once __DIR__ . '/../models/CashbookAuditModel.php';
+require_once __DIR__ . '/BalanceCalculator.php';
+require_once __DIR__ . '/DocumentNumberService.php';
+
+class CashbookService {
+    
+    private $db;
+    private $bookModel;
+    private $entryModel;
+    private $auditModel;
+    private $balanceCalculator;
+    private $docNumberService;
+    
+    public function __construct($db) {
+        $this->db = $db;
+        $this->bookModel = new CashbookModel($db);
+        $this->entryModel = new CashbookEntryModel($db);
+        $this->auditModel = new CashbookAuditModel($db);
+        $this->balanceCalculator = new BalanceCalculator($db);
+        $this->docNumberService = new DocumentNumberService($db);
+    }
+    
+    /**
+     * Vytvořit novou položku v knize
+     */
+    public function createEntry($bookId, $data, $userId) {
+        try {
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($bookId);
+            if (!$book) {
+                throw new Exception('Pokladní kniha nenalezena');
+            }
+            
+            // Kontrola, že kniha není uzavřená
+            if ($book['stav_knihy'] != 'aktivni') {
+                throw new Exception('Pokladní kniha je uzavřená a nelze ji upravovat (stav: ' . $book['stav_knihy'] . ')');
+            }
+            
+            // Validace - musí být buď příjem nebo výdaj
+            if (empty($data['castka_prijem']) && empty($data['castka_vydaj'])) {
+                throw new Exception('Musí být uvedena částka příjmu nebo výdaje');
+            }
+            if (!empty($data['castka_prijem']) && !empty($data['castka_vydaj'])) {
+                throw new Exception('Nelze uvést zároveň příjem i výdaj');
+            }
+            
+            // Určit typ
+            $type = !empty($data['castka_prijem']) ? 'prijem' : 'vydaj';
+            $amount = !empty($data['castka_prijem']) ? $data['castka_prijem'] : $data['castka_vydaj'];
+            
+            // Vygenerovat číslo dokladu (vrací array s cislo_dokladu a cislo_poradi_v_roce)
+            $docNumberData = $this->docNumberService->generateDocumentNumber(
+                $bookId, 
+                $type, 
+                $data['datum_zapisu'],
+                $book['uzivatel_id']
+            );
+            
+            // Vypočítat balance
+            $balance = $this->balanceCalculator->calculateNewEntryBalance(
+                $bookId,
+                $amount,
+                $type,
+                $data['datum_zapisu']
+            );
+            
+            // Připravit data pro insert
+            $entryData = array(
+                'pokladni_kniha_id' => $bookId,
+                'datum_zapisu' => $data['datum_zapisu'],
+                'cislo_dokladu' => $docNumberData['cislo_dokladu'],
+                'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
+                'typ_dokladu' => $type,
+                'obsah_zapisu' => $data['obsah_zapisu'],
+                'komu_od_koho' => isset($data['komu_od_koho']) ? $data['komu_od_koho'] : null,
+                'castka_prijem' => $type === 'prijem' ? $amount : null,
+                'castka_vydaj' => $type === 'vydaj' ? $amount : null,
+                'zustatek_po_operaci' => $balance,
+                'lp_kod' => isset($data['lp_kod']) ? $data['lp_kod'] : null,
+                'lp_popis' => isset($data['lp_popis']) ? $data['lp_popis'] : null,
+                'poznamka' => isset($data['poznamka']) ? $data['poznamka'] : null,
+                'poradi_radku' => isset($data['poradi_radku']) ? $data['poradi_radku'] : 0
+            );
+            
+            // Vložit položku
+            $entryId = $this->entryModel->createEntry($entryData, $userId);
+            
+            // Přepočítat všechny následující balances
+            $this->balanceCalculator->recalculateBalancesAfterDate($bookId, $data['datum_zapisu']);
+            
+            // Možná budeme muset přečíslovat (pokud vkládáme mezi existující položky)
+            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            
+            // Audit log
+            $this->auditModel->logAction('polozka', $entryId, 'vytvoreni', $userId, null, $entryData);
+            
+            return $entryId;
+            
+        } catch (Exception $e) {
+            error_log("Chyba při vytváření položky: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Aktualizovat položku
+     */
+    public function updateEntry($entryId, $data, $userId) {
+        try {
+            // Načíst položku
+            $entry = $this->entryModel->getEntryById($entryId);
+            if (!$entry) {
+                throw new Exception('Položka nenalezena');
+            }
+            
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
+            
+            // Kontrola, že kniha není uzavřená
+            if ($book['stav_knihy'] != 'aktivni') {
+                throw new Exception('Pokladní kniha je uzavřená a nelze ji upravovat (stav: ' . $book['stav_knihy'] . ')');
+            }
+            
+            // Uložit staré hodnoty pro audit
+            $oldValues = $entry;
+            
+            // Aktualizovat položku
+            $this->entryModel->updateEntry($entryId, $data, $userId);
+            
+            // Pokud se změnila částka nebo datum, přepočítat balances
+            if (isset($data['castka_prijem']) || isset($data['castka_vydaj']) || isset($data['datum_zapisu'])) {
+                $recalcDate = isset($data['datum_zapisu']) ? $data['datum_zapisu'] : $entry['datum_zapisu'];
+                $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $recalcDate);
+            }
+            
+            // Audit log
+            $this->auditModel->logAction('polozka', $entryId, 'uprava', $userId, $oldValues, $data);
+            
+            return true;
+            
+        } catch (Exception $e) {
+            error_log("Chyba při aktualizaci položky: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Smazat položku (soft delete)
+     */
+    public function deleteEntry($entryId, $userId) {
+        try {
+            // Načíst položku
+            $entry = $this->entryModel->getEntryById($entryId);
+            if (!$entry) {
+                throw new Exception('Položka nenalezena');
+            }
+            
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
+            
+            // Kontrola, že kniha není uzavřená
+            if ($book['stav_knihy'] != 'aktivni') {
+                throw new Exception('Pokladní kniha je uzavřená a nelze ji upravovat (stav: ' . $book['stav_knihy'] . ')');
+            }
+            
+            // Soft delete
+            $this->entryModel->deleteEntry($entryId, $userId);
+            
+            // Přepočítat balances
+            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            
+            // Přečíslovat doklady
+            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            
+            // Audit log
+            $this->auditModel->logAction('polozka', $entryId, 'smazani', $userId, $entry, null);
+            
+            return true;
+            
+        } catch (Exception $e) {
+            error_log("Chyba při mazání položky: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Obnovit smazanou položku
+     */
+    public function restoreEntry($entryId, $userId) {
+        try {
+            // Načíst položku
+            $entry = $this->entryModel->getEntryById($entryId);
+            if (!$entry) {
+                throw new Exception('Položka nenalezena');
+            }
+            
+            // Obnovit
+            $this->entryModel->restoreEntry($entryId);
+            
+            // Přepočítat balances
+            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            
+            // Načíst knihu pro přečíslování
+            $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
+            $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
+            
+            // Audit log
+            $this->auditModel->logAction('polozka', $entryId, 'obnoveni', $userId, null, $entry);
+            
+            return true;
+            
+        } catch (Exception $e) {
+            error_log("Chyba při obnově položky: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Uzavřít knihu uživatelem (stav 1: uzavrena_uzivatelem)
+     * Uživatel uzavře měsíc -> čeká na schválení správcem
+     */
+    public function closeBookByUser($bookId, $userId) {
+        try {
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($bookId);
+            if (!$book) {
+                throw new Exception('Pokladní kniha nenalezena');
+            }
+            
+            // ⚠️ OPRÁVNĚNÍ: Handler už zkontroloval canCloseBook() (majitel nebo admin s EDIT_ALL/EDIT_OWN)
+            // Zde neprovádíme duplicitní kontrolu uzivatel_id
+            
+            // Kontrola stavu - musí být aktivní
+            if ($book['stav_knihy'] != 'aktivni') {
+                throw new Exception('Kniha již je uzavřená');
+            }
+            
+            // Uzavřít uživatelem
+            $this->bookModel->closeBookByUser($bookId, $userId);
+            
+            // Audit log
+            $this->auditModel->logAction('kniha', $bookId, 'uzavreni_uzivatelem', $userId, 
+                array('stav_knihy' => 'aktivni'), 
+                array('stav_knihy' => 'uzavrena_uzivatelem'));
+            
+            return array(
+                'status' => 'ok',
+                'message' => 'Měsíc byl uzavřen. Čeká na schválení správce.'
+            );
+            
+        } catch (Exception $e) {
+            error_log("Chyba při uzavírání knihy uživatelem: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Zamknout knihu správcem (stav 2: zamknuta_spravcem)
+     * Správce zkontroloval a uzamkl -> nelze měnit
+     */
+    public function lockBookByAdmin($bookId, $adminId) {
+        try {
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($bookId);
+            if (!$book) {
+                throw new Exception('Pokladní kniha nenalezena');
+            }
+            
+            // Kontrola stavu - musí být uzavřená uživatelem
+            if ($book['stav_knihy'] != 'uzavrena_uzivatelem') {
+                throw new Exception('Kniha musí být nejdříve uzavřena uživatelem');
+            }
+            
+            // Zamknout správcem
+            $this->bookModel->lockBookByAdmin($bookId, $adminId);
+            
+            // Audit log
+            $this->auditModel->logAction('kniha', $bookId, 'zamknuti_spravcem', $adminId, 
+                array('stav_knihy' => 'uzavrena_uzivatelem'), 
+                array('stav_knihy' => 'zamknuta_spravcem'));
+            
+            return array(
+                'status' => 'ok',
+                'message' => 'Kniha byla zamknuta správcem.'
+            );
+            
+        } catch (Exception $e) {
+            error_log("Chyba při zamykání knihy správcem: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Odemknout knihu správcem (zpět na aktivní)
+     * Pouze správce může odemknout
+     */
+    public function unlockBook($bookId, $adminId) {
+        try {
+            // Načíst knihu
+            $book = $this->bookModel->getBookById($bookId);
+            if (!$book) {
+                throw new Exception('Pokladní kniha nenalezena');
+            }
+            
+            // Kontrola stavu - musí být uzavřená nebo zamknutá
+            if ($book['stav_knihy'] == 'aktivni') {
+                throw new Exception('Kniha již je aktivní');
+            }
+            
+            $oldState = $book['stav_knihy'];
+            
+            // Odemknout
+            $this->bookModel->unlockBook($bookId);
+            
+            // Audit log
+            $this->auditModel->logAction('kniha', $bookId, 'odemknuti_spravcem', $adminId, 
+                array('stav_knihy' => $oldState), 
+                array('stav_knihy' => 'aktivni'));
+            
+            return array(
+                'status' => 'ok',
+                'message' => 'Kniha byla odemknuta a je opět aktivní.'
+            );
+            
+        } catch (Exception $e) {
+            error_log("Chyba při odemykání knihy: " . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * Backwards compatibility - stará metoda closeBook
+     * @deprecated Použít closeBookByUser() nebo lockBookByAdmin()
+     */
+    public function closeBook($bookId, $userId) {
+        return $this->closeBookByUser($bookId, $userId);
+    }
+    
+    /**
+     * Backwards compatibility - stará metoda reopenBook
+     * @deprecated Použít unlockBook()
+     */
+    public function reopenBook($bookId, $userId) {
+        return $this->unlockBook($bookId, $userId);
+    }
+}

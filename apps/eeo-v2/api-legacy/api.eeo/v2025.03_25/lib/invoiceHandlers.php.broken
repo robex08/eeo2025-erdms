@@ -1,0 +1,721 @@
+<?php
+/**
+ * Invoice Handlers - Faktury API
+ * PHP 5.6 kompatibilní
+ * Všechny endpointy jsou POST s token + username autorizací
+ */
+
+require_once 'orderQueries.php';
+
+/**
+ * POST - Načte faktury pro konkrétní objednávku
+ * Endpoint: invoices25/by-order
+ * POST: {token, username, objednavka_id}
+ */
+function handle_invoices25_by_order($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    $objednavka_id = isset($input['objednavka_id']])]') ? (int)$input['objednavka_id']] : 0;
+    
+    if (!$token || !$request_username || $objednavka_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array(
+            'err' => 'Chybí povinné parametry',
+            'debug' => array(
+                'has_token' => !empty($token),
+                'username' => $request_username,
+                'objednavka_id' => $objednavka_id
+            )
+        ));
+        return;
+    }
+
+    // Ověř token
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token'));
+        return;
+    }
+    
+    // Kontrola uživatele
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup'));
+        return;
+    }
+
+    try {
+        // Připojení k DB - stejný způsob jako orders25
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi'));
+            return;
+        }
+
+        // Načti faktury pro objednávku - bez kontroly oprávnění (stejně jako orders25)
+        // Pokud má uživatel platný token, má přístup k fakturám
+        $faktury_table = get_invoices_table_name();
+        $stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE objednavka_id = ? AND aktivni = 1 ORDER BY dt_vytvoreni DESC");
+        $stmt->execute(array($objednavka_id));
+        $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode(array(
+            'faktury' => $faktury,
+            'count' => count($faktury),
+            'objednavka_id' => $objednavka_id
+        ));
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání faktur: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST - Vytvoření nové faktury
+ * Endpoint: invoices25/create
+ * POST: {token, username, objednavka_id, fa_castka, fa_cislo_vema, ...}
+ */
+function handle_invoices25_create($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    
+    if (!$token || !$request_username) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí token nebo username'));
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup'));
+        return;
+    }
+
+    // Validace povinných polí
+    $objednavka_id = isset($input['objednavka_id']])]') ? (int)$input['objednavka_id']] : 0;
+    $fa_castka = isset($input['fa_castka']) ? $input['fa_castka'] : null;
+    $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema') : '';
+
+    if ($objednavka_id <= 0 || !$fa_castka || empty($fa_cislo_vema)) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí povinná pole: objednavka_id, fa_castka, fa_cislo_vema'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi'));
+            return;
+        }
+
+        // Sestavení INSERT dotazu
+        $faktury_table = get_invoices_table_name();
+        $sql = "INSERT INTO `$faktury_table` (
+            objednavka_id,
+            fa_dorucena,
+            fa_castka,
+            fa_cislo_vema,
+            fa_datum_vystaveni,
+            fa_datum_splatnosti,
+            fa_datum_doruceni,
+            fa_strediska_kod,
+            fa_poznamka,
+            rozsirujici_data,
+            vytvoril_uzivatel_id,
+            dt_vytvoreni,
+            aktivni
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
+        )";
+
+        $stmt = $db->prepare($sql);
+        
+        // Připrav hodnoty
+        $fa_dorucena = isset($input['fa_dorucena']) ? (int)$input['fa_dorucena'] : 0;
+        $fa_datum_vystaveni = isset($input['fa_datum_vystaveni']) ? $input['fa_datum_vystaveni'] : null;
+        $fa_datum_splatnosti = isset($input['fa_datum_splatnosti']) ? $input['fa_datum_splatnosti'] : null;
+        $fa_datum_doruceni = isset($input['fa_datum_doruceni']) ? $input['fa_datum_doruceni'] : null;
+        $fa_strediska_kod = isset($input['fa_strediska_kod']) ? $input['fa_strediska_kod'] : null;
+        $fa_poznamka = isset($input['fa_poznamka']) ? $input['fa_poznamka'] : null;
+        $rozsirujici_data = isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data') : null;
+
+        $stmt->execute(array(
+            $objednavka_id,
+            $fa_dorucena,
+            $fa_castka,
+            $fa_cislo_vema,
+            $fa_datum_vystaveni,
+            $fa_datum_splatnosti,
+            $fa_datum_doruceni,
+            $fa_strediska_kod,
+            $fa_poznamka,
+            $rozsirujici_data,
+            $token_data['id']
+        ));
+
+        $new_id = $db->lastInsertId();
+
+        http_response_code(201);
+        echo json_encode(array(
+            'success' => true,
+            'message' => 'Faktura byla úspěšně vytvořena',
+            'id' => (int)$new_id
+        ));
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při vytváření faktury: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST - Načtení konkrétní faktury
+ * Endpoint: invoices25/by-id
+ * POST: {token, username, faktura_id}
+ */
+function handle_invoices25_by_id($input, $config, $queries) {
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    $faktura_id = isset($input['faktura_id'])]') ? (int)$input['faktura_id'] : 0;
+    
+    if (!$token || !$request_username || $faktura_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí token, username nebo ID faktury'));
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi'));
+            return;
+        }
+
+/**
+ * POST - Aktualizace faktury
+ * Endpoint: invoices25/update
+ * POST: {token, username, id, ...pole k aktualizaci}
+ */
+function handle_invoices25_update($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    $faktura_id = isset($input['id']') ? (int)$input['id'] : 0;
+    
+    if (!$token || !$request_username || $faktura_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí token, username nebo ID faktury');
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token');
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup');
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi');
+            return;
+        }
+
+        // Ověř, že faktura existuje
+        $faktury_table = get_invoices_table_name();
+        $check_stmt = $db->prepare("SELECT id FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
+        $check_stmt->execute([$faktura_id);
+        
+        if (!$check_stmt->fetch()) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'Faktura nenalezena');
+            return;
+        }
+
+        // Sestavení UPDATE dotazu - jen pole která přišla
+        $fields = [];
+        $values = [];
+
+        if (isset($input['fa_dorucena'])) {
+            $fields[] = 'fa_dorucena = ?';
+            $values[] = (int)$input['fa_dorucena'];
+        }
+        if (isset($input['fa_castka'])) {
+            $fields[] = 'fa_castka = ?';
+            $values[] = $input['fa_castka'];
+        }
+        if (isset($input['fa_cislo_vema'])) {
+            $fields[] = 'fa_cislo_vema = ?';
+            $values[] = $input['fa_cislo_vema'];
+        }
+        if (isset($input['fa_datum_vystaveni'])) {
+            $fields[] = 'fa_datum_vystaveni = ?';
+            $values[] = $input['fa_datum_vystaveni'];
+        }
+        if (isset($input['fa_datum_splatnosti'])) {
+            $fields[] = 'fa_datum_splatnosti = ?';
+            $values[] = $input['fa_datum_splatnosti'];
+        }
+        if (isset($input['fa_datum_doruceni'])) {
+            $fields[] = 'fa_datum_doruceni = ?';
+            $values[] = $input['fa_datum_doruceni'];
+        }
+        if (isset($input['fa_strediska_kod'])) {
+            $fields[] = 'fa_strediska_kod = ?';
+            $values[] = $input['fa_strediska_kod'];
+        }
+        if (isset($input['fa_poznamka'])) {
+            $fields[] = 'fa_poznamka = ?';
+            $values[] = $input['fa_poznamka'];
+        }
+        if (isset($input['rozsirujici_data'])) {
+            $fields[] = 'rozsirujici_data = ?';
+            $values[] = json_encode($input['rozsirujici_data');
+        }
+
+        // Vždy aktualizuj dt_aktualizace
+        $fields[] = 'dt_aktualizace = NOW()';
+        
+        if (empty($fields)) {
+            http_response_code(400);
+            echo json_encode(array('err' => 'Žádná data k aktualizaci');
+            return;
+        }
+
+        $values[] = $faktura_id;
+        $sql = "UPDATE `$faktury_table` SET " . implode(', ', $fields) . " WHERE id = ?";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($values);
+
+        http_response_code(200);
+        echo json_encode(array(
+            'success' => true,
+            'message' => 'Faktura byla úspěšně aktualizována'
+        );
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při aktualizaci faktury: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST - Smazání faktury (soft delete)
+ * Endpoint: invoices25/delete
+ * POST: {token, username, id}
+ */
+function handle_invoices25_delete($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    $faktura_id = isset($input['id']') ? (int)$input['id'] : 0;
+    
+    if (!$token || !$request_username || $faktura_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí token, username nebo ID faktury');
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token');
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup');
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi');
+            return;
+        }
+
+        // Soft delete - nastavení aktivni = 0
+        $faktury_table = get_invoices_table_name();
+        $sql = "UPDATE `$faktury_table` SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$faktura_id);
+
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'Faktura nenalezena nebo již byla smazána');
+            return;
+        }
+
+        http_response_code(200);
+        echo json_encode(array(
+            'success' => true,
+            'message' => 'Faktura byla úspěšně smazána'
+        );
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při mazání faktury: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST - Načtení konkrétní faktury podle ID
+ * Endpoint: invoices25/by-id
+ * POST: {token, username, id}
+ */
+function handle_invoices25_by_id($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']])]') ? $input['token']] : '';
+    $request_username = isset($input['username']])]') ? $input['username']] : '';
+    $faktura_id = isset($input['id']') ? (int)$input['id'] : 0;
+    
+    if (!$token || !$request_username || $faktura_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí token, username nebo ID faktury');
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token');
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup');
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi');
+            return;
+        }
+
+        $faktury_table = get_invoices_table_name();
+        $stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
+        $stmt->execute([$faktura_id);
+        $faktura = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$faktura) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'Faktura nenalezena');
+            return;
+        }
+
+        http_response_code(200);
+        echo json_encode($faktura);
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání faktury: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST - Vytvoření faktury včetně nahrání přílohy (atomická operace)
+ * Endpoint: invoices25/create-with-attachment
+ * 
+ * Multipart POST:
+ *   - token, username (autorizace)
+ *   - objednavka_id (povinné)
+ *   - fa_castka, fa_cislo_vema (povinné metadata faktury)
+ *   - fa_datum_vystaveni, fa_datum_splatnosti, fa_poznamka... (volitelné)
+ *   - file (povinné - ISDOC nebo jiný soubor)
+ *   - typ_prilohy (default: ISDOC)
+ * 
+ * Response: {faktura_id, priloha_id, faktura: {...}, priloha: {...}}
+ * 
+ * Výhody:
+ * - Vše v 1 transakci - buď se vytvoří oboje, nebo nic
+ * - FE nemusí dělat 2 požadavky
+ * - Ideální pro ISDOC workflow
+ */
+function handle_invoices25_create_with_attachment($input, $config, $queries) {
+    // Pro multipart/form-data používáme $_POST místo $input (stejně jako v handle_invoices25_attachments_upload)
+    $token = isset($_POST['token']) ? $_POST['token'] : '';
+    $request_username = isset($_POST['username']) ? $_POST['username'] : '';
+    $objednavka_id = isset($_POST['objednavka_id']) ? (int)$_POST['objednavka_id'] : 0;
+    $fa_castka = isset($_POST['fa_castka']) ? $_POST['fa_castka'] : null;
+    $fa_cislo_vema = isset($_POST['fa_cislo_vema']) ? trim($_POST['fa_cislo_vema') : '';
+    $typ_prilohy = isset($_POST['typ_prilohy']) ? $_POST['typ_prilohy'] : 'ISDOC';
+    
+    if (!$token || !$request_username || $objednavka_id <= 0 || !$fa_castka || empty($fa_cislo_vema)) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí povinné parametry'));
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(403);
+        echo json_encode(array('err' => 'Neautorizovaný přístup'));
+        return;
+    }
+
+    // Kontrola uploaded file
+    if (!isset($_FILES['file') || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chyba při nahrávání souboru'));
+        return;
+    }
+
+    $file = $_FILES['file'];
+    $original_name = basename($file['name');
+    $file_size = $file['size'];
+    $tmp_path = $file['tmp_name'];
+
+    // Validace typu souboru (whitelist) - stejně jako v upload handleru
+    $allowed_extensions = array('pdf', 'isdoc', 'jpg', 'jpeg', 'png', 'xml');
+    $pathinfo = pathinfo($original_name);
+    $ext = isset($pathinfo['extension') ? strtolower($pathinfo['extension') : '';
+    
+    if (!in_array($ext, $allowed_extensions)) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Nepodporovaný typ souboru. Povolené: ' . implode(', ', $allowed_extensions)));
+        return;
+    }
+
+    // Validace velikosti (max 10MB)
+    $max_size = 10 * 1024 * 1024;
+    if ($file_size > $max_size) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Soubor je příliš velký. Maximum: 10MB'));
+        return;
+    }
+
+    // Validace MIME type
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $tmp_path);
+    finfo_close($finfo);
+    
+    $allowed_mimes = array(
+        'application/pdf',
+        'application/xml',
+        'text/xml',
+        'image/jpeg',
+        'image/png'
+    );
+    
+    if (!in_array($mime_type, $allowed_mimes)) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Nepodporovaný MIME type souboru'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba připojení k databázi'));
+            return;
+        }
+
+        // ========== TRANSAKCE: Vytvoř fakturu + nahraj přílohu ==========
+        $db->beginTransaction();
+
+        // 1. VYTVOŘ FAKTURU
+        $faktury_table = get_invoices_table_name();
+        $sql_faktura = "INSERT INTO `$faktury_table` (
+            objednavka_id,
+            fa_dorucena,
+            fa_castka,
+            fa_cislo_vema,
+            fa_datum_vystaveni,
+            fa_datum_splatnosti,
+            fa_datum_doruceni,
+            fa_strediska_kod,
+            fa_poznamka,
+            rozsirujici_data,
+            vytvoril_uzivatel_id,
+            dt_vytvoreni,
+            aktivni
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+
+        $stmt_faktura = $db->prepare($sql_faktura);
+        
+        $fa_dorucena = isset($_POST['fa_dorucena']) ? (int)$_POST['fa_dorucena'] : 0;
+        $fa_datum_vystaveni = isset($_POST['fa_datum_vystaveni']) ? $_POST['fa_datum_vystaveni'] : null;
+        $fa_datum_splatnosti = isset($_POST['fa_datum_splatnosti']) ? $_POST['fa_datum_splatnosti'] : null;
+        $fa_datum_doruceni = isset($_POST['fa_datum_doruceni']) ? $_POST['fa_datum_doruceni'] : null;
+        $fa_strediska_kod = isset($_POST['fa_strediska_kod']) ? $_POST['fa_strediska_kod'] : null;
+        $fa_poznamka = isset($_POST['fa_poznamka']) ? $_POST['fa_poznamka'] : null;
+        $rozsirujici_data = isset($_POST['rozsirujici_data']) ? json_encode($_POST['rozsirujici_data') : null;
+
+        $stmt_faktura->execute(array(
+            $objednavka_id,
+            $fa_dorucena,
+            $fa_castka,
+            $fa_cislo_vema,
+            $fa_datum_vystaveni,
+            $fa_datum_splatnosti,
+            $fa_datum_doruceni,
+            $fa_strediska_kod,
+            $fa_poznamka,
+            $rozsirujici_data,
+            $token_data['id']
+        ));
+
+        $faktura_id = $db->lastInsertId();
+
+        // 2. PŘIPRAV PŘÍLOHU - stejný kód jako v handle_invoices25_attachments_upload
+        $upload_dir = get_orders25_upload_path($config, $objednavka_id, $token_data['id');
+        
+        $guid_part = sprintf('%08x%04x%04x%04x%012x',
+            mt_rand(), mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff), mt_rand()
+        );
+        $systemovy_nazev = 'fa-' . date('Y-m-d') . '_' . $guid_part;
+        $filename = $systemovy_nazev . '.' . $ext;
+        $full_path = $upload_dir . $filename;
+        
+        // Vytvoř složky pokud neexistují
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0755, true);
+        }
+
+        // Přesuň soubor
+        if (!move_uploaded_file($tmp_path, $full_path)) {
+            $db->rollBack();
+            http_response_code(500);
+            echo json_encode(array('err' => 'Chyba při ukládání souboru na disk'));
+            return;
+        }
+
+        // 3. VYTVOŘ ZÁZNAM PŘÍLOHY - stejný kód jako v handle_invoices25_attachments_upload
+        $je_isdoc = ($ext === 'isdoc') ? 1 : 0;
+
+        $sql_priloha = "INSERT INTO `25a_faktury_prilohy` (
+            faktura_id,
+            objednavka_id,
+            guid,
+            typ_prilohy,
+            originalni_nazev_souboru,
+            systemova_cesta,
+            velikost_souboru_b,
+            je_isdoc,
+            nahrano_uzivatel_id,
+            dt_vytvoreni
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+        
+        $stmt_priloha = $db->prepare($sql_priloha);
+        $stmt_priloha->execute(array(
+            $faktura_id,
+            $objednavka_id,
+            $systemovy_nazev,
+            $typ_prilohy,
+            $original_name,
+            $full_path,
+            $file_size,
+            $je_isdoc,
+            $token_data['id']
+        ));
+
+        $priloha_id = $db->lastInsertId();
+
+        // 4. COMMIT transakce
+        $db->commit();
+
+        // 5. Načti vytvořenou fakturu
+        $stmt_get_faktura = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ?");
+        $stmt_get_faktura->execute(array($faktura_id));
+        $faktura = $stmt_get_faktura->fetch(PDO::FETCH_ASSOC);
+
+        // 6. Načti vytvořenou přílohu - stejný kód jako v handle_invoices25_attachments_upload
+        $stmt_get_priloha = $db->prepare("
+            SELECT 
+                fp.*,
+                u.jmeno AS nahrano_uzivatel_jmeno,
+                u.prijmeni AS nahrano_uzivatel_prijmeni
+            FROM `25a_faktury_prilohy` fp
+            LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
+            WHERE fp.id = ?
+        ");
+        $stmt_get_priloha->execute(array($priloha_id));
+        $priloha = $stmt_get_priloha->fetch(PDO::FETCH_ASSOC);
+        
+        // Formátuj pro frontend - stejně jako v handle_invoices25_attachments_upload
+        $priloha['velikost_kb'] = round($priloha['velikost_souboru_b'] / 1024, 2);
+        $priloha['velikost_mb'] = round($priloha['velikost_souboru_b'] / 1024 / 1024, 2);
+        $priloha['nahrano_uzivatel'] = trim($priloha['nahrano_uzivatel_jmeno'] . ' ' . $priloha['nahrano_uzivatel_prijmeni');
+        $priloha['je_isdoc'] = (int)$priloha['je_isdoc'] === 1;
+        $priloha['isdoc_parsed'] = (int)$priloha['isdoc_parsed'] === 1;
+
+        http_response_code(201);
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Faktura včetně přílohy byla úspěšně vytvořena',
+            'faktura_id' => (int)$faktura_id,
+            'priloha_id' => (int)$priloha_id,
+            'faktura' => $faktura,
+            'priloha' => $priloha
+        ));
+
+    } catch (Exception $e) {
+        if (isset($db) && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        
+        // Pokud nastala chyba, smaž soubor pokud existuje - stejně jako v handle_invoices25_attachments_upload
+        if (isset($full_path) && file_exists($full_path)) {
+            unlink($full_path);
+        }
+        
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při vytváření faktury s přílohou: ' . $e->getMessage()));
+    }
+}
+

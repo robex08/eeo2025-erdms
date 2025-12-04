@@ -1,0 +1,1187 @@
+<?php
+
+require_once 'dbconfig.php';
+require_once 'orderQueries.php';
+
+// Include necessary functions from handlers.php
+if (!function_exists('verify_token')) {
+    require_once 'handlers.php';
+}
+if (!function_exists('get_db')) {
+    require_once 'handlers.php';
+}
+
+// ========== ORDER HANDLERS ==========
+
+function handle_orders25_list($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select all orders
+        $stmt = $db->prepare(selectAllOrdersQuery());
+        $stmt->execute();
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $orders
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání objednávek: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_by_id($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID objednávky']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select order by ID
+        $stmt = $db->prepare(selectOrderByIdQuery());
+        $stmt->bindParam(':id', $order_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['err' => 'Objednávka nebyla nalezena']);
+            return;
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $order
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_by_user($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $user_id = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    // Pokud není zadán user_id, použij ID z tokenu
+    if ($user_id <= 0) {
+        $user_id = $token_data['id'];
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select orders by user ID
+        $stmt = $db->prepare(selectOrdersByUserIdQuery());
+        $stmt->bindParam(':uzivatel_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $orders
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání objednávek uživatele: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_insert($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $db->beginTransaction();
+
+        // Kontrola a zajištění unikátního čísla objednávky
+        $requested_order_number = isset($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null;
+        $final_order_number = $requested_order_number;
+        
+        if ($requested_order_number !== null) {
+            // Kontrola, zda číslo už existuje
+            $check_stmt = $db->prepare("SELECT COUNT(*) FROM " . get_orders_table_name() . " WHERE cislo_objednavky = :cislo_objednavky");
+            $check_stmt->bindParam(':cislo_objednavky', $requested_order_number);
+            $check_stmt->execute();
+            
+            if ($check_stmt->fetchColumn() > 0) {
+                // Číslo je obsazené, najdi poslední použité číslo v roce a přičti 1
+                $pattern_parts = explode('/', $requested_order_number);
+                if (count($pattern_parts) >= 4) {
+                    // Format: O-0001/12345678/2025/IT
+                    $ico = $pattern_parts[1];
+                    $year = $pattern_parts[2];
+                    $usek = $pattern_parts[3];
+                    
+                    // Najdi poslední použité číslo v roce
+                    $last_number_stmt = $db->prepare("
+                        SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) as last_number 
+                        FROM " . get_orders_table_name() . "
+                        WHERE cislo_objednavky LIKE 'O-%/" . $ico . "/" . $year . "/" . $usek . "'
+                    ");
+                    $last_number_stmt->execute();
+                    $last_result = $last_number_stmt->fetch();
+                    $next_available = (isset($last_result['last_number']) ? $last_result['last_number'] : 0) + 1;
+                    
+                    $final_order_number = 'O-' . sprintf('%04d', $next_available) . '/' . $ico . '/' . $year . '/' . $usek;
+                }
+            }
+        }
+
+        // Partial insert - pouze povinné a zadané hodnoty
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
+        
+        $orderData = [
+            ':cislo_objednavky' => $final_order_number,
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : $current_date,
+            ':predmet' => isset($input['predmet']) ? $input['predmet'] : 'Návrh objednávky',
+            ':strediska_kod' => isset($input['strediska_kod']) ? $input['strediska_kod'] : 'NEZADANO',
+            ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
+            ':financovani' => isset($input['financovani']) ? (is_array($input['financovani']) ? json_encode($input['financovani']) : $input['financovani']) : null,
+            ':druh_objednavky_kod' => isset($input['druh_objednavky_kod']) ? $input['druh_objednavky_kod'] : 'STANDARDNI',
+            ':stav_workflow_kod' => isset($input['stav_workflow_kod']) ? $input['stav_workflow_kod'] : 'ROZPRACOVANA',
+            ':uzivatel_id' => $token_data['id'],
+            ':uzivatel_akt_id' => $token_data['id'],
+            ':garant_uzivatel_id' => isset($input['garant_uzivatel_id']) && !empty($input['garant_uzivatel_id']) ? (int)$input['garant_uzivatel_id'] : null,
+            ':objednatel_id' => isset($input['objednatel_id']) && !empty($input['objednatel_id']) ? (int)$input['objednatel_id'] : null,
+            ':schvalovatel_id' => isset($input['schvalovatel_id']) && !empty($input['schvalovatel_id']) ? (int)$input['schvalovatel_id'] : null,
+            ':prikazce_id' => isset($input['prikazce_id']) && !empty($input['prikazce_id']) ? (int)$input['prikazce_id'] : null,
+            ':dt_schvaleni' => isset($input['dt_schvaleni']) && !empty($input['dt_schvaleni']) ? $input['dt_schvaleni'] : null,
+            ':schvaleni_komentar' => isset($input['schvaleni_komentar']) && !empty($input['schvaleni_komentar']) ? $input['schvaleni_komentar'] : null,
+            ':dodavatel_id' => isset($input['dodavatel_id']) && !empty($input['dodavatel_id']) ? (int)$input['dodavatel_id'] : null,
+            ':dodavatel_nazev' => isset($input['dodavatel_nazev']) && !empty($input['dodavatel_nazev']) ? $input['dodavatel_nazev'] : null,
+            ':dodavatel_adresa' => isset($input['dodavatel_adresa']) && !empty($input['dodavatel_adresa']) ? $input['dodavatel_adresa'] : null,
+            ':dodavatel_ico' => isset($input['dodavatel_ico']) && !empty($input['dodavatel_ico']) ? $input['dodavatel_ico'] : null,
+            ':dodavatel_dic' => isset($input['dodavatel_dic']) && !empty($input['dodavatel_dic']) ? $input['dodavatel_dic'] : null,
+            ':dodavatel_zastoupeny' => isset($input['dodavatel_zastoupeny']) && !empty($input['dodavatel_zastoupeny']) ? $input['dodavatel_zastoupeny'] : null,
+            ':dodavatel_kontakt_jmeno' => isset($input['dodavatel_kontakt_jmeno']) && !empty($input['dodavatel_kontakt_jmeno']) ? $input['dodavatel_kontakt_jmeno'] : null,
+            ':dodavatel_kontakt_email' => isset($input['dodavatel_kontakt_email']) && !empty($input['dodavatel_kontakt_email']) ? $input['dodavatel_kontakt_email'] : null,
+            ':dodavatel_kontakt_telefon' => isset($input['dodavatel_kontakt_telefon']) && !empty($input['dodavatel_kontakt_telefon']) ? $input['dodavatel_kontakt_telefon'] : null,
+            ':dt_predpokladany_termin_dodani' => isset($input['dt_predpokladany_termin_dodani']) && !empty($input['dt_predpokladany_termin_dodani']) ? $input['dt_predpokladany_termin_dodani'] : null,
+            ':misto_dodani' => isset($input['misto_dodani']) && !empty($input['misto_dodani']) ? $input['misto_dodani'] : null,
+            ':zaruka' => isset($input['zaruka']) && !empty($input['zaruka']) ? $input['zaruka'] : null,
+            ':registr_iddt' => isset($input['registr_iddt']) && !empty($input['registr_iddt']) ? $input['registr_iddt'] : null,
+            ':poznamka' => isset($input['poznamka']) && !empty($input['poznamka']) ? $input['poznamka'] : null,
+            ':aktivni' => 1
+        ];
+
+        // Insert order
+        $stmt = $db->prepare(insertOrderQuery());
+        $stmt->execute($orderData);
+        $order_id = $db->lastInsertId();
+
+        $db->commit();
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => [
+                'id' => (int)$order_id,
+                'cislo_objednavky' => $final_order_number,
+                'requested_number' => $requested_order_number,
+                'number_changed' => ($final_order_number !== $requested_order_number)
+            ],
+            'message' => 'Objednávka byla úspěšně vytvořena' . 
+                        ($final_order_number !== $requested_order_number ? 
+                         ' s číslem ' . $final_order_number . ' (původně požadované číslo bylo obsazené)' : '')
+        ]);
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při vytváření objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_update($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID objednávky']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+
+        // Check if order exists
+        $stmtCheck = $db->prepare(checkOrderExistsQuery());
+        $stmtCheck->bindParam(':id', $order_id, PDO::PARAM_INT);
+        $stmtCheck->execute();
+        $exists = $stmtCheck->fetchColumn();
+
+        if (!$exists) {
+            http_response_code(404);
+            echo json_encode(['err' => 'Objednávka nebyla nalezena']);
+            return;
+        }
+
+        // Prepare update data
+        $updateData = [
+            ':id' => $order_id,
+            ':cislo_objednavky' => isset($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null,
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : null,
+            ':predmet' => isset($input['predmet']) ? $input['predmet'] : '',
+            ':strediska_kod' => isset($input['strediska_kod']) ? $input['strediska_kod'] : '',
+            ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
+            ':financovani' => isset($input['financovani']) ? json_encode($input['financovani']) : null,
+            ':druh_objednavky_kod' => isset($input['druh_objednavky_kod']) ? $input['druh_objednavky_kod'] : '',
+            ':stav_workflow_kod' => isset($input['stav_workflow_kod']) ? $input['stav_workflow_kod'] : 'NOVA',
+            ':uzivatel_akt_id' => $token_data['id'],
+            ':garant_uzivatel_id' => isset($input['garant_uzivatel_id']) ? $input['garant_uzivatel_id'] : null,
+            ':objednatel_id' => isset($input['objednatel_id']) ? $input['objednatel_id'] : null,
+            ':schvalovatel_id' => isset($input['schvalovatel_id']) ? $input['schvalovatel_id'] : null,
+            ':prikazce_id' => isset($input['prikazce_id']) ? $input['prikazce_id'] : null,
+            ':dt_schvaleni' => isset($input['dt_schvaleni']) ? $input['dt_schvaleni'] : null,
+            ':schvaleni_komentar' => isset($input['schvaleni_komentar']) ? $input['schvaleni_komentar'] : null,
+            ':dodavatel_id' => isset($input['dodavatel_id']) ? $input['dodavatel_id'] : null,
+            ':dodavatel_nazev' => isset($input['dodavatel_nazev']) ? $input['dodavatel_nazev'] : null,
+            ':dodavatel_adresa' => isset($input['dodavatel_adresa']) ? $input['dodavatel_adresa'] : null,
+            ':dodavatel_ico' => isset($input['dodavatel_ico']) ? $input['dodavatel_ico'] : null,
+            ':dodavatel_dic' => isset($input['dodavatel_dic']) ? $input['dodavatel_dic'] : null,
+            ':dodavatel_zastoupeny' => isset($input['dodavatel_zastoupeny']) ? $input['dodavatel_zastoupeny'] : null,
+            ':dodavatel_kontakt_jmeno' => isset($input['dodavatel_kontakt_jmeno']) ? $input['dodavatel_kontakt_jmeno'] : null,
+            ':dodavatel_kontakt_email' => isset($input['dodavatel_kontakt_email']) ? $input['dodavatel_kontakt_email'] : null,
+            ':dodavatel_kontakt_telefon' => isset($input['dodavatel_kontakt_telefon']) ? $input['dodavatel_kontakt_telefon'] : null,
+            ':dt_predpokladany_termin_dodani' => isset($input['dt_predpokladany_termin_dodani']) ? $input['dt_predpokladany_termin_dodani'] : null,
+            ':misto_dodani' => isset($input['misto_dodani']) ? $input['misto_dodani'] : null,
+            ':zaruka' => isset($input['zaruka']) ? $input['zaruka'] : null,
+            ':registr_iddt' => isset($input['registr_iddt']) ? $input['registr_iddt'] : null,
+            ':poznamka' => isset($input['poznamka']) ? $input['poznamka'] : null,
+            ':aktivni' => isset($input['aktivni']) ? (int)$input['aktivni'] : 1
+        ];
+
+        // Update order
+        $stmt = $db->prepare(updateOrderByIdQuery());
+        $stmt->execute($updateData);
+
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně aktualizována'
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při aktualizaci objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_partial_insert($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $db->beginTransaction();
+
+        // Minimální požadované hodnoty pro částečný insert
+        $requiredFields = ['predmet'];
+        foreach ($requiredFields as $field) {
+            if (!isset($input[$field]) || empty(trim($input[$field]))) {
+                http_response_code(400);
+                echo json_encode(['err' => 'Chybí povinné pole: ' . $field]);
+                return;
+            }
+        }
+
+        // Pouze zadané hodnoty - ostatní NULL nebo výchozí hodnoty
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
+        
+        $fields = [];
+        $values = [];
+        $params = [];
+
+        // Vždy přítomné hodnoty
+        $fields[] = 'uzivatel_id';
+        $values[] = ':uzivatel_id';
+        $params[':uzivatel_id'] = $token_data['id'];
+
+        $fields[] = 'uzivatel_akt_id';
+        $values[] = ':uzivatel_akt_id';
+        $params[':uzivatel_akt_id'] = $token_data['id'];
+
+        $fields[] = 'aktivni';
+        $values[] = ':aktivni';
+        $params[':aktivni'] = 1;
+
+        $fields[] = 'stav_workflow_kod';
+        $values[] = ':stav_workflow_kod';
+        $params[':stav_workflow_kod'] = isset($input['stav_workflow_kod']) ? $input['stav_workflow_kod'] : 'ROZPRACOVANA';
+
+        // Volitelné hodnoty - přidáme pouze pokud jsou zadané a neprázdné
+        $optionalFields = [
+            'cislo_objednavky', 'dt_objednavky', 'predmet', 'strediska_kod', 'max_cena_s_dph',
+            'financovani', 'druh_objednavky_kod', 'garant_uzivatel_id', 'objednatel_id',
+            'schvalovatel_id', 'prikazce_id', 'dt_schvaleni', 'schvaleni_komentar',
+            'dodavatel_id', 'dodavatel_nazev', 'dodavatel_adresa', 'dodavatel_ico',
+            'dodavatel_dic', 'dodavatel_zastoupeny', 'dodavatel_kontakt_jmeno',
+            'dodavatel_kontakt_email', 'dodavatel_kontakt_telefon', 
+            'dt_predpokladany_termin_dodani', 'misto_dodani', 'zaruka',
+            'registr_iddt', 'poznamka'
+        ];
+
+        foreach ($optionalFields as $field) {
+            if (isset($input[$field]) && $input[$field] !== '' && $input[$field] !== null) {
+                $fields[] = $field;
+                $values[] = ':' . $field;
+                
+                // Speciální zpracování pro některé typy polí
+                if ($field === 'financovani' && is_array($input[$field])) {
+                    $params[':' . $field] = json_encode($input[$field]);
+                } elseif (in_array($field, ['garant_uzivatel_id', 'objednatel_id', 'schvalovatel_id', 'prikazce_id', 'dodavatel_id'])) {
+                    $params[':' . $field] = (int)$input[$field];
+                } else {
+                    $params[':' . $field] = $input[$field];
+                }
+            }
+        }
+        
+        // Automatické nastavení dt_ polí na současné datum, pokud nejsou zadána
+        $dateFields = [
+            'dt_objednavky' => $current_date,
+            'dt_predpokladany_termin_dodani' => null  // toto pole necháme NULL pokud není zadáno
+        ];
+        
+        foreach ($dateFields as $field => $defaultValue) {
+            if (!isset($input[$field]) || $input[$field] === '' || $input[$field] === null) {
+                if ($defaultValue !== null) {  // pouze pokud má být nastavena výchozí hodnota
+                    if (!in_array($field, $fields)) { // pouze pokud ještě není přidáno
+                        $fields[] = $field;
+                        $values[] = ':' . $field;
+                        $params[':' . $field] = $defaultValue;
+                    }
+                }
+            }
+        }
+
+        // Kontrola a zajištění unikátního čísla objednávky
+        $requested_order_number = isset($input['cislo_objednavky']) && !empty($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null;
+        $assigned_order_number = $requested_order_number;
+        
+        if ($requested_order_number !== null) {
+            // Kontrola, zda číslo už existuje
+            $check_stmt = $db->prepare("SELECT COUNT(*) FROM " . get_orders_table_name() . " WHERE cislo_objednavky = :cislo_objednavky");
+            $check_stmt->bindParam(':cislo_objednavky', $requested_order_number);
+            $check_stmt->execute();
+            
+            if ($check_stmt->fetchColumn() > 0) {
+                // Číslo je obsazené, najdi poslední použité číslo v roce a přičti 1
+                $pattern_parts = explode('/', $requested_order_number);
+                if (count($pattern_parts) >= 4) {
+                    // Format: O-0001/12345678/2025/IT
+                    $ico = $pattern_parts[1];
+                    $year = $pattern_parts[2];
+                    $usek = $pattern_parts[3];
+                    
+                    // Najdi poslední použité číslo v roce
+                    $last_number_stmt = $db->prepare("
+                        SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) as last_number 
+                        FROM " . get_orders_table_name() . "
+                        WHERE cislo_objednavky LIKE 'O-%/" . $ico . "/" . $year . "/" . $usek . "'
+                    ");
+                    $last_number_stmt->execute();
+                    $last_result = $last_number_stmt->fetch();
+                    $next_available = (isset($last_result['last_number']) ? $last_result['last_number'] : 0) + 1;
+                    
+                    $assigned_order_number = 'O-' . sprintf('%04d', $next_available) . '/' . $ico . '/' . $year . '/' . $usek;
+                }
+            }
+        } elseif (isset($input['auto_assign_number']) && $input['auto_assign_number']) {
+            // Automatické přiřazení čísla objednávky
+            try {
+                // Získání dalšího čísla
+                $stmtNext = $db->prepare("
+                    SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) + 1 as next_number 
+                    FROM " . get_orders_table_name() . "
+                    WHERE SUBSTRING_INDEX(SUBSTRING_INDEX(cislo_objednavky, '/', -2), '/', 1) = YEAR(NOW()) AND cislo_objednavky LIKE 'O-%'
+                ");
+                $stmtNext->execute();
+                $nextResult = $stmtNext->fetch();
+                
+                // Získání organizačních dat uživatele
+                $stmtOrg = $db->prepare($queries['uzivatele_org_data_by_username']);
+                $stmtOrg->bindParam(':username', $request_username);
+                $stmtOrg->execute();
+                $org_data = $stmtOrg->fetch();
+                
+                if ($org_data && $nextResult) {
+                    $ico = $org_data['organizace_ico'];
+                    $usek_zkr = $org_data['usek_zkr'];
+                    $current_year = date('Y');
+                    $formatted_number = sprintf('%04d', $nextResult['next_number']);
+                    $assigned_order_number = 'O-' . $formatted_number . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
+                    
+                    // Přidání do parametrů
+                    if (!in_array('cislo_objednavky', $fields)) {
+                        $fields[] = 'cislo_objednavky';
+                        $values[] = ':cislo_objednavky';
+                    }
+                    $params[':cislo_objednavky'] = $assigned_order_number;
+                }
+            } catch (Exception $e) {
+                // Pokud se nepodaří přiřadit číslo, pokračujeme bez něj
+            }
+        }
+
+        // Sestavení dynamického SQL dotazu
+        $sql = "INSERT INTO " . get_orders_table_name() . " (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $order_id = $db->lastInsertId();
+
+        $db->commit();
+
+        $responseData = [
+            'id' => (int)$order_id,
+            'inserted_fields' => array_keys($params)
+        ];
+        
+        if ($assigned_order_number) {
+            $responseData['cislo_objednavky'] = $assigned_order_number;
+            $responseData['requested_number'] = $requested_order_number;
+            $responseData['number_changed'] = ($assigned_order_number !== $requested_order_number);
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $responseData,
+            'message' => 'Částečná objednávka byla úspěšně vytvořena' . 
+                        ($assigned_order_number && $assigned_order_number !== $requested_order_number ? 
+                         ' s číslem ' . $assigned_order_number . ' (původně požadované číslo bylo obsazené)' : '')
+        ]);
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při vytváření částečné objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_partial_update($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu']);
+        return;
+    }
+
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID objednávky']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+
+        // Kontrola existence objednávky
+        $stmtCheck = $db->prepare(checkOrderExistsQuery());
+        $stmtCheck->bindParam(':id', $order_id, PDO::PARAM_INT);
+        $stmtCheck->execute();
+        $exists = $stmtCheck->fetchColumn();
+
+        if (!$exists) {
+            http_response_code(404);
+            echo json_encode(['err' => 'Objednávka nebyla nalezena']);
+            return;
+        }
+
+        // Pouze zadané hodnoty budou aktualizovány
+        $fields = [];
+        $params = [':id' => $order_id];
+
+        // Vždy aktualizujeme uživatele který provádí změnu
+        $fields[] = 'uzivatel_akt_id = :uzivatel_akt_id';
+        $params[':uzivatel_akt_id'] = $token_data['id'];
+
+        $fields[] = 'dt_aktualizace = NOW()';
+
+        // Volitelné hodnoty - aktualizujeme pouze pokud jsou zadané
+        $optionalFields = [
+            'cislo_objednavky', 'dt_objednavky', 'predmet', 'strediska_kod', 'max_cena_s_dph',
+            'financovani', 'druh_objednavky_kod', 'stav_workflow_kod', 'garant_uzivatel_id', 
+            'objednatel_id', 'schvalovatel_id', 'prikazce_id', 'dt_schvaleni', 'schvaleni_komentar',
+            'dodavatel_id', 'dodavatel_nazev', 'dodavatel_adresa', 'dodavatel_ico',
+            'dodavatel_dic', 'dodavatel_zastoupeny', 'dodavatel_kontakt_jmeno',
+            'dodavatel_kontakt_email', 'dodavatel_kontakt_telefon', 
+            'dt_predpokladany_termin_dodani', 'misto_dodani', 'zaruka',
+            'registr_iddt', 'poznamka', 'aktivni'
+        ];
+
+        $updatedFields = [];
+        foreach ($optionalFields as $field) {
+            if (array_key_exists($field, $input)) { // Použijeme array_key_exists aby šly i NULL hodnoty
+                $fields[] = $field . ' = :' . $field;
+                $updatedFields[] = $field;
+                
+                // Speciální zpracování pro některé typy polí
+                if ($field === 'financovani' && is_array($input[$field])) {
+                    $params[':' . $field] = json_encode($input[$field]);
+                } elseif (in_array($field, ['garant_uzivatel_id', 'objednatel_id', 'schvalovatel_id', 'prikazce_id', 'dodavatel_id'])) {
+                    $params[':' . $field] = $input[$field] ? (int)$input[$field] : null;
+                } elseif ($field === 'aktivni') {
+                    $params[':' . $field] = (int)$input[$field];
+                } else {
+                    $params[':' . $field] = $input[$field];
+                }
+            }
+        }
+
+        if (count($fields) <= 2) { // Pouze uzivatel_akt_id a dt_aktualizace
+            http_response_code(400);
+            echo json_encode(['err' => 'Nebyla zadána žádná pole k aktualizaci']);
+            return;
+        }
+
+        // Sestavení dynamického SQL dotazu
+        $sql = "UPDATE " . get_orders_table_name() . " SET " . implode(', ', $fields) . " WHERE id = :id";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => [
+                'id' => $order_id,
+                'updated_fields' => $updatedFields
+            ],
+            'message' => 'Objednávka byla částečně aktualizována'
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při částečné aktualizaci objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_delete($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID objednávky']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $db->beginTransaction();
+
+        // Check if order exists
+        $stmtCheck = $db->prepare(checkOrderExistsQuery());
+        $stmtCheck->bindParam(':id', $order_id, PDO::PARAM_INT);
+        $stmtCheck->execute();
+        $exists = $stmtCheck->fetchColumn();
+
+        if (!$exists) {
+            $db->rollBack();
+            http_response_code(404);
+            echo json_encode(['err' => 'Objednávka nebyla nalezena']);
+            return;
+        }
+
+        // Get attachment file paths for deletion from disk
+        $stmtPaths = $db->prepare(selectAttachmentPathsForDeletionQuery());
+        $stmtPaths->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
+        $stmtPaths->execute();
+        $filePaths = $stmtPaths->fetchAll(PDO::FETCH_COLUMN);
+
+        // Delete attachments from database
+        $stmtDelAtt = $db->prepare(deleteOrderAttachmentsByOrderIdQuery());
+        $stmtDelAtt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
+        $stmtDelAtt->execute();
+
+        // Delete order items from database
+        $stmtDelItems = $db->prepare(deleteOrderItemsByOrderIdQuery());
+        $stmtDelItems->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
+        $stmtDelItems->execute();
+
+        // Delete order from database
+        $stmtDelOrder = $db->prepare(deleteOrderByIdQuery());
+        $stmtDelOrder->bindParam(':id', $order_id, PDO::PARAM_INT);
+        $stmtDelOrder->execute();
+
+        $db->commit();
+
+        // Delete files from disk (after successful database operations)
+        $deletedFiles = 0;
+        $failedFiles = [];
+        
+        foreach ($filePaths as $filePath) {
+            if (!empty($filePath) && file_exists($filePath)) {
+                if (unlink($filePath)) {
+                    $deletedFiles++;
+                } else {
+                    $failedFiles[] = $filePath;
+                }
+            }
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně smazána',
+            'data' => [
+                'files_deleted' => $deletedFiles,
+                'files_failed' => count($failedFiles)
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při mazání objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_next_number($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Update last activity for the authenticated user
+        try {
+            $stmtUpd = $db->prepare($queries['uzivatele_update_last_activity']);
+            $stmtUpd->bindParam(':id', $token_data['id']);
+            $stmtUpd->execute();
+        } catch (Exception $e) {
+            // non-fatal
+        }
+        
+        // Get last used order number for new table (25a_objednavky)
+        $stmt = $db->prepare("
+            SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) as last_used_number 
+            FROM " . get_orders_table_name() . "
+            WHERE SUBSTRING_INDEX(SUBSTRING_INDEX(cislo_objednavky, '/', -2), '/', 1) = YEAR(NOW()) AND cislo_objednavky LIKE 'O-%'
+        ");
+        $stmt->execute();
+        $result = $stmt->fetch();
+        $last_used_number = $result['last_used_number'];
+        
+        // Next number to use will be last_used + 1
+        $next_number = $last_used_number + 1;
+        
+        // Get user org data
+        $stmtOrg = $db->prepare($queries['uzivatele_org_data_by_username']);
+        $stmtOrg->bindParam(':username', $request_username);
+        $stmtOrg->execute();
+        $org_data = $stmtOrg->fetch();
+        
+        if (!$org_data) {
+            http_response_code(404);
+            echo json_encode(['err' => 'Uživatel nenalezen nebo nemá přiřazenou organizaci/úsek']);
+            return;
+        }
+        
+        $ico = $org_data['organizace_ico'];
+        $usek_zkr = $org_data['usek_zkr'];
+        $current_year = date('Y');
+        
+        // Format numbers with leading zeros to 4 digits
+        $formatted_last_used = sprintf('%04d', $last_used_number);
+        $formatted_next = sprintf('%04d', $next_number);
+        
+        // Compose order number strings in format O-cislo/ICO/ROK/usekZKRatka
+        $last_used_order_string = 'O-' . $formatted_last_used . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
+        $next_order_string = 'O-' . $formatted_next . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
+        
+        echo json_encode([
+            'status' => 'ok',
+            'data' => [
+                'last_used_number' => $last_used_number,
+                'next_number' => $next_number,
+                'formatted_last_used' => $formatted_last_used,
+                'formatted_next' => $formatted_next,
+                'ico' => $ico,
+                'usek_zkr' => $usek_zkr,
+                'current_year' => $current_year,
+                'last_used_order_string' => $last_used_order_string,
+                'next_order_string' => $next_order_string,
+                'order_number_string' => $next_order_string, // FE potřebuje NEXT volné číslo pro formulář
+                'note' => 'order_number_string = posledně použité číslo, pro další insert použij next_order_string'
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při získávání dalšího čísla objednávky: ' . $e->getMessage()]);
+    }
+}
+
+function handle_orders25_check_number($input, $config, $queries) {
+    // Validate token & username
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $orderNumber = null;
+    
+    // Accept either root key orderNumber or inside payload for flexibility
+    if (isset($input['orderNumber'])) {
+        $orderNumber = trim($input['orderNumber']);
+    } elseif (isset($input['payload']['orderNumber'])) {
+        $orderNumber = trim($input['payload']['orderNumber']);
+    }
+    
+    $suggest = false;
+    if (isset($input['suggest'])) {
+        $suggest = (bool)$input['suggest'];
+    } elseif (isset($input['payload']['suggest'])) {
+        $suggest = (bool)$input['payload']['suggest'];
+    }
+
+    if (!$token || !$request_username) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Chybí token nebo username']);
+        return;
+    }
+    
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný token nebo username']);
+        return;
+    }
+    
+    if (!$orderNumber) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Chybí orderNumber']);
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // Check if order number exists in new table (25a_objednavky)
+        $stmt = $db->prepare("SELECT id, objednatel_id FROM " . get_orders_table_name() . " WHERE cislo_objednavky = :cislo_objednavky LIMIT 1");
+        $stmt->execute([':cislo_objednavky' => $orderNumber]);
+        $exists = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $canUse = $exists ? false : true;
+        
+        $response = [
+            'status' => 'ok',
+            'data' => [
+                'orderNumber' => $orderNumber,
+                'exists' => (bool)$exists,
+                'canUse' => $canUse
+            ]
+        ];
+        
+        if ($exists) {
+            $response['data']['existing_order'] = [
+                'id' => (int)$exists['id'],
+                'objednatel_id' => (int)$exists['objednatel_id']
+            ];
+        }
+        
+        // If suggest=true and number is taken, suggest next available
+        if (!$canUse && $suggest) {
+            // Call next_number logic to get suggestion
+            $stmtNext = $db->prepare("
+                SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) + 1 as next_number 
+                FROM " . get_orders_table_name() . "
+                WHERE SUBSTRING_INDEX(SUBSTRING_INDEX(cislo_objednavky, '/', -2), '/', 1) = YEAR(NOW()) AND cislo_objednavky LIKE 'O-%'
+            ");
+            $stmtNext->execute();
+            $nextResult = $stmtNext->fetch();
+            
+            if ($nextResult) {
+                // Get user org data for suggestion
+                $stmtOrg = $db->prepare($queries['uzivatele_org_data_by_username']);
+                $stmtOrg->bindParam(':username', $request_username);
+                $stmtOrg->execute();
+                $org_data = $stmtOrg->fetch();
+                
+                if ($org_data) {
+                    $ico = $org_data['organizace_ico'];
+                    $usek_zkr = $org_data['usek_zkr'];
+                    $current_year = date('Y');
+                    $formatted_number = sprintf('%04d', $nextResult['next_number']);
+                    $suggested_number = 'O-' . $formatted_number . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
+                    
+                    $response['data']['suggestion'] = $suggested_number;
+                }
+            }
+        }
+        
+        echo json_encode($response);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při kontrole čísla objednávky: ' . $e->getMessage()]);
+    }
+}
+
+// ========== STATES HANDLERS (25_ciselnik_stavy) ==========
+
+function handle_states25_by_id($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $state_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($state_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID stavu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select state by ID
+        $stmt = $db->prepare(selectStateByIdQuery());
+        $stmt->bindParam(':id', $state_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $state = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$state) {
+            http_response_code(404);
+            echo json_encode(['err' => 'Stav nebyl nalezen']);
+            return;
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $state
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání stavu: ' . $e->getMessage()]);
+    }
+}
+
+function handle_states25_by_type_and_code($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $typ_objektu = isset($input['typ_objektu']) ? $input['typ_objektu'] : '';
+    $kod_stavu = isset($input['kod_stavu']) ? $input['kod_stavu'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if (!$typ_objektu || !$kod_stavu) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Chybí typ_objektu nebo kod_stavu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select states by object type and state code
+        $stmt = $db->prepare(selectStatesByTypeAndCodeQuery());
+        $stmt->bindParam(':typ_objektu', $typ_objektu, PDO::PARAM_STR);
+        $stmt->bindParam(':kod_stavu', $kod_stavu, PDO::PARAM_STR);
+        $stmt->execute();
+        $states = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $states
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání stavů: ' . $e->getMessage()]);
+    }
+}
+
+function handle_states25_by_parent_code($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $nadrazeny_kod_stavu = isset($input['nadrazeny_kod_stavu']) ? $input['nadrazeny_kod_stavu'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if (!$nadrazeny_kod_stavu) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Chybí nadrazeny_kod_stavu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select states by parent state code
+        $stmt = $db->prepare(selectStatesByParentCodeQuery());
+        $stmt->bindParam(':nadrazeny_kod_stavu', $nadrazeny_kod_stavu, PDO::PARAM_STR);
+        $stmt->execute();
+        $states = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $states
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání stavů podle nadřazeného kódu: ' . $e->getMessage()]);
+    }
+}
+
+function handle_states25_by_object_type($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $typ_objektu = isset($input['typ_objektu']) ? $input['typ_objektu'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if (!$typ_objektu) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Chybí typ_objektu']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select all states by object type
+        $stmt = $db->prepare(selectStatesByObjectTypeQuery());
+        $stmt->bindParam(':typ_objektu', $typ_objektu, PDO::PARAM_STR);
+        $stmt->execute();
+        $states = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $states
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání stavů podle typu objektu: ' . $e->getMessage()]);
+    }
+}
+
+function handle_states25_list($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Select all states
+        $stmt = $db->prepare(selectAllStatesQuery());
+        $stmt->execute();
+        $states = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'ok',
+            'data' => $states
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání všech stavů: ' . $e->getMessage()]);
+    }
+}
