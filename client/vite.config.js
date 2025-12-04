@@ -13,6 +13,16 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: true, // umožní přístup z vnější sítě
+      proxy: {
+        '/api': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+        },
+        '/auth': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+        },
+      },
     },
     
     // Build konfigurace

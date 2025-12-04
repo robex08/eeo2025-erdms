@@ -16,7 +16,9 @@ class AuthService {
       const loginUrl = `${API_URL}/auth/login`;
       console.log('🟢 Fetching auth URL from:', loginUrl);
       
-      const response = await fetch(loginUrl);
+      const response = await fetch(loginUrl, {
+        credentials: 'include'
+      });
       console.log('🟢 Response status:', response.status);
       
       if (!response.ok) {
