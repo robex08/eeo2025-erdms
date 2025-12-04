@@ -1,40 +1,20 @@
 #!/bin/bash
-# Start Development Environment
+# ERDMS Development Start Script
+echo "🚀 Spouštím ERDMS development servery..."
+cd /var/www/erdms-dev
+pkill -f "node.*auth-api" || true
+pkill -f "vite.*dashboard" || true
+sleep 2
 
-echo "🛑 Zastavuji produkční službu..."
-systemctl stop eeo2025-api.service
+# Auth API (port 3000)
+cd /var/www/erdms-dev/auth-api
+npm run dev > /tmp/erdms-auth-api.log 2>&1 &
+echo "🔐 Auth API: http://localhost:3000 (PID: $!)"
 
-echo ""
-echo "✅ Produkční služba zastavena"
-echo ""
-echo "🚀 Spouštím development servery..."
-echo ""
+# Dashboard (port 5173)
+cd /var/www/erdms-dev/dashboard
+npm run dev > /tmp/erdms-dashboard.log 2>&1 &
+echo "🏠 Dashboard: http://localhost:5173 (PID: $!)"
 
-# Spusť server v novém terminalu
-cd /var/www/eeo2025/server
-echo "📦 Server: http://localhost:5000"
-npm run dev &
-SERVER_PID=$!
-
-# Počkej chvíli než server nastartuje
 sleep 3
-
-# Spusť klienta v novém terminalu
-cd /var/www/eeo2025/client
-echo "🌐 Client: http://localhost:5173"
-npm run dev &
-CLIENT_PID=$!
-
-echo ""
-echo "════════════════════════════════════════════"
-echo "✅ Development prostředí běží!"
-echo "════════════════════════════════════════════"
-echo "   Server: http://localhost:5000"
-echo "   Client: http://localhost:5173"
-echo ""
-echo "Pro zastavení použij: ./dev-stop.sh"
-echo "════════════════════════════════════════════"
-
-# Ulož PID pro pozdější zastavení
-echo $SERVER_PID > /tmp/eeo2025-server.pid
-echo $CLIENT_PID > /tmp/eeo2025-client.pid
+echo "✅ Servery spuštěny! Logy: tail -f /tmp/erdms-*.log"
