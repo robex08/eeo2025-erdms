@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const entraService = require('../services/entraService');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateSession } = require('../middleware/sessionMiddleware');
 const { readLimiter } = require('../middleware/rateLimitMiddleware');
 
 // SECURITY: Aplikuj rate limiting na všechny Entra API endpointy
@@ -13,7 +13,7 @@ router.use(readLimiter);
  * 
  * SECURITY: Uživatel může načíst jen své vlastní data (pokud není admin)
  */
-router.get('/user/:userId', authenticateToken, async (req, res) => {
+router.get('/user/:userId', authenticateSession, async (req, res) => {
   try {
     const { userId } = req.params;
     
@@ -26,14 +26,8 @@ router.get('/user/:userId', authenticateToken, async (req, res) => {
       });
     }
     
-    // SECURITY: Ověř, že uživatel žádá vlastní data (nebo je admin)
-    if (req.user.id !== userId && !req.user.roles.includes('Admin')) {
-      console.warn(`🔴 SECURITY: User ${req.user.id} attempted to access ${userId}`);
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. You can only access your own data.'
-      });
-    }
+    // SECURITY: Profily kolegů jsou veřejné v rámci organizace
+    // Každý přihlášený uživatel může vidět ostatní
     
     const user = await entraService.getUserById(userId);
     res.json({ success: true, data: user });
@@ -50,15 +44,11 @@ router.get('/user/:userId', authenticateToken, async (req, res) => {
  * GET /api/entra/user/:userId/groups
  * Získat všechny skupiny uživatele (včetně GUID)
  */
-router.get('/user/:userId/groups', authenticateToken, async (req, res) => {
+router.get('/user/:userId/groups', authenticateSession, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // SECURITY: Ověř přístupová práva
-    if (req.user.id !== userId && !req.user.roles.includes('Admin')) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-    
+    // SECURITY: Skupiny kolegů jsou veřejné v rámci organizace
     const groups = await entraService.getUserGroups(userId);
     res.json({ success: true, data: groups, count: groups.length });
   } catch (err) {
@@ -74,15 +64,11 @@ router.get('/user/:userId/groups', authenticateToken, async (req, res) => {
  * GET /api/entra/user/:userId/manager
  * Získat nadřízeného uživatele
  */
-router.get('/user/:userId/manager', authenticateToken, async (req, res) => {
+router.get('/user/:userId/manager', authenticateSession, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // SECURITY: Ověř přístupová práva
-    if (req.user.id !== userId && !req.user.roles.includes('Admin')) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-    
+    // SECURITY: Informace o nadřízených jsou veřejné v rámci organizace
     const manager = await entraService.getUserManager(userId);
     res.json({ success: true, data: manager });
   } catch (err) {
@@ -98,15 +84,11 @@ router.get('/user/:userId/manager', authenticateToken, async (req, res) => {
  * GET /api/entra/user/:userId/direct-reports
  * Získat podřízené uživatele
  */
-router.get('/user/:userId/direct-reports', authenticateToken, async (req, res) => {
+router.get('/user/:userId/direct-reports', authenticateSession, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // SECURITY: Ověř přístupová práva
-    if (req.user.id !== userId && !req.user.roles.includes('Admin')) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-    
+    // SECURITY: Informace o podřízených jsou veřejné v rámci organizace
     const directReports = await entraService.getUserDirectReports(userId);
     res.json({ success: true, data: directReports, count: directReports.length });
   } catch (err) {
@@ -122,15 +104,11 @@ router.get('/user/:userId/direct-reports', authenticateToken, async (req, res) =
  * GET /api/entra/user/:userId/profile
  * Získat kompletní profil uživatele (user + groups + manager + direct reports)
  */
-router.get('/user/:userId/profile', authenticateToken, async (req, res) => {
+router.get('/user/:userId/profile', authenticateSession, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // SECURITY: Ověř přístupová práva
-    if (req.user.id !== userId && !req.user.roles.includes('Admin')) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-    
+    // SECURITY: Kompletní profily kolegů jsou veřejné v rámci organizace
     const profile = await entraService.getUserFullProfile(userId);
     res.json({ success: true, data: profile });
   } catch (err) {
@@ -146,7 +124,7 @@ router.get('/user/:userId/profile', authenticateToken, async (req, res) => {
  * GET /api/entra/group/:groupId
  * Získat detaily skupiny podle GUID
  */
-router.get('/group/:groupId', authenticateToken, async (req, res) => {
+router.get('/group/:groupId', authenticateSession, async (req, res) => {
   try {
     const { groupId } = req.params;
     const group = await entraService.getGroupById(groupId);
@@ -164,7 +142,7 @@ router.get('/group/:groupId', authenticateToken, async (req, res) => {
  * GET /api/entra/group/:groupId/members
  * Získat členy skupiny
  */
-router.get('/group/:groupId/members', authenticateToken, async (req, res) => {
+router.get('/group/:groupId/members', authenticateSession, async (req, res) => {
   try {
     const { groupId } = req.params;
     const members = await entraService.getGroupMembers(groupId);
@@ -182,7 +160,7 @@ router.get('/group/:groupId/members', authenticateToken, async (req, res) => {
  * GET /api/entra/groups
  * Získat všechny skupiny v tenantovi
  */
-router.get('/groups', authenticateToken, async (req, res) => {
+router.get('/groups', authenticateSession, async (req, res) => {
   try {
     const groups = await entraService.getAllGroups();
     res.json({ success: true, data: groups, count: groups.length });
@@ -203,7 +181,7 @@ router.get('/groups', authenticateToken, async (req, res) => {
  * SECURITY: Toto je OK - seznam zaměstnanců je veřejný v rámci organizace
  * (každý přihlášený uživatel může vidět kolegy, není to citlivá data)
  */
-router.get('/users', authenticateToken, async (req, res) => {
+router.get('/users', authenticateSession, async (req, res) => {
   try {
     // SECURITY: Validace a omezení limitu
     let limit = parseInt(req.query.limit) || 50;
@@ -227,11 +205,80 @@ router.get('/users', authenticateToken, async (req, res) => {
 });
 
 /**
+ * GET /api/entra/users/search
+ * Fulltextové vyhledávání uživatelů
+ * Query params:
+ *   - q: vyhledávací dotaz (min 3 znaky)
+ *   - limit: max výsledků (default 50)
+ * 
+ * Vyhledává v: displayName, givenName, surname, mail, userPrincipalName, jobTitle, department, officeLocation
+ */
+router.get('/users/search', authenticateSession, async (req, res) => {
+  try {
+    const { q, limit = 50 } = req.query;
+    
+    if (!q || q.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vyhledávací dotaz musí mít alespoň 3 znaky'
+      });
+    }
+    
+    const users = await entraService.searchUsers(q, parseInt(limit));
+    
+    res.json({
+      success: true,
+      data: users,
+      count: users.length,
+      query: q
+    });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/users/search ERROR:', err.message);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/entra/users/paginated
+ * Získat seznam uživatelů s paginací
+ * Query params: ?pageSize=25&skipToken=xxx
+ * 
+ * Response: { success, data: { users, nextLink, skipToken, hasMore, count } }
+ */
+router.get('/users/paginated', authenticateSession, async (req, res) => {
+  try {
+    // SECURITY: Validace a omezení page size
+    let pageSize = parseInt(req.query.pageSize) || 25;
+    if (isNaN(pageSize) || pageSize < 1) {
+      pageSize = 25;
+    }
+    // SECURITY: Max 100 uživatelů na stránku
+    if (pageSize > 100) {
+      pageSize = 100;
+    }
+
+    const skipToken = req.query.skipToken || null;
+
+    const result = await entraService.getUsersPaginated(pageSize, skipToken);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/users/paginated ERROR:', err.message);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * GET /api/entra/search/user
  * Vyhledat uživatele podle emailu
  * Query params: ?email=user@example.com
  */
-router.get('/search/user', authenticateToken, async (req, res) => {
+router.get('/search/user', authenticateSession, async (req, res) => {
   try {
     const { email } = req.query;
     if (!email) {

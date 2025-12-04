@@ -14,6 +14,18 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' nebo 'employees'
   const [employees, setEmployees] = useState([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingMoreEmployees, setLoadingMoreEmployees] = useState(false);
+  const [employeesSkipToken, setEmployeesSkipToken] = useState(null);
+  const [hasMoreEmployees, setHasMoreEmployees] = useState(true);
+  const [managerTest, setManagerTest] = useState(null);
+  const [managerDirectReports, setManagerDirectReports] = useState(null);
+  const [loadingManagerTest, setLoadingManagerTest] = useState(false);
+  const [expandedEmployee, setExpandedEmployee] = useState(null);
+  const [employeeDetails, setEmployeeDetails] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState(false); // true = zobrazit výsledky hledání
 
   useEffect(() => {
     loadUserData();
@@ -77,11 +89,23 @@ function Dashboard() {
     }
   };
 
-  const loadEmployees = async () => {
-    console.log('🟣 Dashboard: loadEmployees() START');
+  const loadEmployees = async (reset = false) => {
+    console.log('🟣 Dashboard: loadEmployees() START, reset:', reset);
     try {
-      setLoadingEmployees(true);
-      const response = await fetch('/api/entra/users?limit=50', {
+      if (reset) {
+        setLoadingEmployees(true);
+        setEmployees([]);
+        setEmployeesSkipToken(null);
+        setHasMoreEmployees(true);
+      } else {
+        setLoadingMoreEmployees(true);
+      }
+
+      const url = reset || !employeesSkipToken
+        ? `/api/entra/users/paginated?pageSize=25`
+        : `/api/entra/users/paginated?pageSize=25&skipToken=${encodeURIComponent(employeesSkipToken)}`;
+
+      const response = await fetch(url, {
         credentials: 'include'
       });
       
@@ -89,16 +113,155 @@ function Dashboard() {
         throw new Error(`HTTP ${response.status}`);
       }
       
-      const data = await response.json();
-      console.log('🟣 Dashboard: Employees loaded:', data);
+      const result = await response.json();
+      console.log('🟣 Dashboard: Employees loaded:', result);
       
-      if (data.success) {
-        setEmployees(data.data);
+      if (result.success && result.data) {
+        if (reset) {
+          setEmployees(result.data.users);
+        } else {
+          setEmployees(prev => [...prev, ...result.data.users]);
+        }
+        setEmployeesSkipToken(result.data.skipToken);
+        setHasMoreEmployees(result.data.hasMore);
       }
     } catch (err) {
       console.error('🔴 loadEmployees ERROR:', err);
     } finally {
       setLoadingEmployees(false);
+      setLoadingMoreEmployees(false);
+    }
+  };
+
+  const loadMoreEmployees = () => {
+    if (!loadingMoreEmployees && hasMoreEmployees) {
+      loadEmployees(false);
+    }
+  };
+
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    
+    // Méně než 3 znaky = zrušit hledání
+    if (query.trim().length < 3) {
+      setSearchMode(false);
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchMode(true);
+    
+    try {
+      const response = await fetch(`/api/entra/users/search?q=${encodeURIComponent(query)}&limit=100`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('🔍 Search results:', result);
+      
+      if (result.success) {
+        setSearchResults(result.data);
+      }
+    } catch (err) {
+      console.error('🔴 handleSearch ERROR:', err);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchMode(false);
+    setSearchResults([]);
+  };
+
+  const testManagerAccess = async () => {
+    console.log('🟣 Dashboard: testManagerAccess() START');
+    try {
+      setLoadingManagerTest(true);
+      setManagerTest(null);
+      setManagerDirectReports(null);
+
+      // Zkus najít Jana Černhorského
+      const searchResponse = await fetch(`/api/entra/users?search=Černhorský&limit=10`, {
+        credentials: 'include'
+      });
+      
+      if (!searchResponse.ok) {
+        throw new Error(`HTTP ${searchResponse.status}`);
+      }
+      
+      const searchData = await searchResponse.json();
+      console.log('🟣 Dashboard: Search results:', searchData);
+      
+      if (searchData.success && searchData.data.length > 0) {
+        const manager = searchData.data.find(u => 
+          u.displayName?.includes('Černhorský') || 
+          u.surname?.includes('Černhorský')
+        );
+        
+        if (manager) {
+          setManagerTest(manager);
+          console.log('🟣 Dashboard: Manager found:', manager);
+
+          // Zkus načíst jeho podřízené
+          const reportsResponse = await fetch(`/api/entra/user/${manager.id}/direct-reports`, {
+            credentials: 'include'
+          });
+          
+          if (reportsResponse.ok) {
+            const reportsData = await reportsResponse.json();
+            console.log('🟣 Dashboard: Direct reports:', reportsData);
+            if (reportsData.success) {
+              setManagerDirectReports(reportsData.data);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('🔴 testManagerAccess ERROR:', err);
+      setManagerTest({ error: err.message });
+    } finally {
+      setLoadingManagerTest(false);
+    }
+  };
+
+  const toggleEmployeeDetail = async (employee) => {
+    if (expandedEmployee === employee.id) {
+      setExpandedEmployee(null);
+      return;
+    }
+
+    setExpandedEmployee(employee.id);
+
+    // Pokud už máme detaily, nenačítáme znovu
+    if (employeeDetails[employee.id]) {
+      return;
+    }
+
+    // Načteme plný profil včetně skupin
+    try {
+      const response = await fetch(`/api/entra/user/${employee.id}/profile`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setEmployeeDetails(prev => ({
+            ...prev,
+            [employee.id]: data.data
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Chyba při načítání detailů:', err);
     }
   };
 
@@ -157,22 +320,22 @@ function Dashboard() {
             <section className="apps-section">
               <h3>Dostupné aplikace</h3>
               <div className="apps-grid">
-                <a href="/eeo" className="app-card">
+                <a href="https://eeo.zachranka.cz" className="app-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-icon">📦</div>
                   <h4>EEO</h4>
                   <p>Elektronická evidence objednávek</p>
                 </a>
-                <a href="/intranet" className="app-card">
+                <a href="https://intranet.zachranka.cz" className="app-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-icon">📋</div>
                   <h4>Intranet</h4>
                   <p>Interní systém</p>
                 </a>
-                <a href="/vozidla" className="app-card">
+                <a href="http://10.1.1.253/vehicle" className="app-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-icon">🚑</div>
                   <h4>Vozidla</h4>
                   <p>Správa vozového parku</p>
                 </a>
-                <a href="/szm" className="app-card">
+                <a href="https://szm.zachranka.cz" className="app-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-icon">🏥</div>
                   <h4>SZM</h4>
                   <p>Zdravotnický materiál</p>
@@ -404,14 +567,6 @@ function Dashboard() {
               {/* === ROZŠÍŘENÉ INFORMACE Z GRAPH API === */}
               {(user.entraData?.id || user.entra_id) && (
                 <>
-                  <div className="entra-section" style={{background: 'rgba(102, 126, 234, 0.1)', marginTop: '1.5rem'}}>
-                    <h4 style={{margin: '0 0 0.5rem 0', color: '#5a67d8'}}>📊 Rozšířené informace z Microsoft Graph API</h4>
-                    <p style={{margin: 0, fontSize: '0.85rem', color: '#4a5568'}}>
-                      Data níže vyžadují oprávnění v Azure Portal. 
-                      {!entraProfile && !loadingEntra && ' Nastavte oprávnění podle docs/GRAPH_API_QUICKSTART.md'}
-                    </p>
-                  </div>
-
                   {/* Manažer - z Graph API */}
                   {entraProfile?.manager && (
                     <div className="entra-section">
@@ -620,76 +775,231 @@ function Dashboard() {
               {/* Tab: Zaměstnanci */}
               {activeTab === 'employees' && (
                 <div className="employees-tab">
+                  {/* Vyhledávací lišta */}
+                  <div className="search-bar">
+                    <div className="search-input-wrapper">
+                      <span className="search-icon">🔍</span>
+                      <input
+                        type="text"
+                        className="search-input"
+                        placeholder="Hledat zaměstnance (jméno, email, pozice, oddělení, lokalita)..."
+                        value={searchQuery}
+                        onChange={(e) => handleSearch(e.target.value)}
+                      />
+                      {searchQuery && (
+                        <button className="search-clear" onClick={clearSearch}>✕</button>
+                      )}
+                    </div>
+                    {isSearching && (
+                      <div className="search-status">
+                        <div className="spinner-tiny"></div>
+                        <span>Vyhledávám...</span>
+                      </div>
+                    )}
+                    {searchMode && !isSearching && (
+                      <div className="search-status">
+                        <span>Nalezeno: {searchResults.length}</span>
+                      </div>
+                    )}
+                  </div>
+
                   {loadingEmployees ? (
                     <div className="entra-loading">
                       <div className="spinner-small"></div>
                       <span>Načítám seznam zaměstnanců...</span>
                     </div>
-                  ) : employees.length > 0 ? (
+                  ) : (
                     <div className="employees-list">
                       <div className="employees-header">
-                        <h4>Seznam zaměstnanců ({employees.length})</h4>
-                        <p className="employees-subtitle">První zaměstnanci seřazení podle jména</p>
+                        {searchMode ? (
+                          <>
+                            <h4>Výsledky hledání: "{searchQuery}"</h4>
+                            <p className="employees-subtitle">
+                              Nalezeno {searchResults.length} zaměstnanců
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <h4>Seznam zaměstnanců ({employees.length}{hasMoreEmployees ? '+' : ''})</h4>
+                            <p className="employees-subtitle">
+                              {hasMoreEmployees 
+                                ? 'Načítám po 25 zaměstnancích. Seřazeni podle jména.'
+                                : `Zobrazeni všichni zaměstnanci (${employees.length}).`
+                              }
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="employees-grid">
-                        {employees.map((emp, idx) => (
-                          <div key={emp.id || idx} className="employee-card">
-                            <div className="employee-header">
-                              <div className="employee-avatar">
-                                {emp.givenName?.[0]}{emp.surname?.[0]}
+                        {(searchMode ? searchResults : employees).map((emp, idx) => {
+                          const isExpanded = expandedEmployee === emp.id;
+                          const details = employeeDetails[emp.id];
+                          
+                          return (
+                            <div 
+                              key={emp.id || idx} 
+                              className={`employee-card ${isExpanded ? 'expanded' : ''}`}
+                              onClick={() => toggleEmployeeDetail(emp)}
+                            >
+                              <div className="employee-header">
+                                <div className="employee-avatar">
+                                  {emp.givenName?.[0]}{emp.surname?.[0]}
+                                </div>
+                                <div className="employee-info">
+                                  <div className="employee-name">{emp.displayName}</div>
+                                  {emp.jobTitle && (
+                                    <div className="employee-title">{emp.jobTitle}</div>
+                                  )}
+                                </div>
+                                <div className="expand-icon">
+                                  {isExpanded ? '▼' : '▶'}
+                                </div>
                               </div>
-                              <div className="employee-info">
-                                <div className="employee-name">{emp.displayName}</div>
-                                {emp.jobTitle && (
-                                  <div className="employee-title">{emp.jobTitle}</div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="employee-details">
-                              <div className="employee-detail-item">
-                                <span className="detail-label">📧</span>
-                                <span className="detail-value">{emp.mail || emp.userPrincipalName}</span>
-                              </div>
-                              {emp.department && (
+                              
+                              <div className="employee-details">
                                 <div className="employee-detail-item">
-                                  <span className="detail-label">🏢</span>
-                                  <span className="detail-value">{emp.department}</span>
+                                  <span className="detail-label">📧</span>
+                                  <span className="detail-value">{emp.mail || emp.userPrincipalName}</span>
+                                </div>
+                                {emp.department && (
+                                  <div className="employee-detail-item">
+                                    <span className="detail-label">🏢</span>
+                                    <span className="detail-value">{emp.department}</span>
+                                  </div>
+                                )}
+                                {emp.officeLocation && (
+                                  <div className="employee-detail-item">
+                                    <span className="detail-label">📍</span>
+                                    <span className="detail-value">{emp.officeLocation}</span>
+                                  </div>
+                                )}
+                                <div className="employee-status">
+                                  {emp.accountEnabled ? (
+                                    <span className="status-badge active">✓ Aktivní</span>
+                                  ) : (
+                                    <span className="status-badge inactive">✗ Neaktivní</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isExpanded && (
+                                <div className="employee-expanded-details">
+                                  {!details ? (
+                                    <div className="loading-detail">
+                                      <div className="spinner-tiny"></div>
+                                      <span>Načítám detaily...</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="detail-section">
+                                        <h5>📋 Základní informace</h5>
+                                        <div className="detail-grid">
+                                          {details.user?.mobilePhone && (
+                                            <div className="detail-row">
+                                              <span className="detail-label">📱 Mobil:</span>
+                                              <span>{details.user.mobilePhone}</span>
+                                            </div>
+                                          )}
+                                          {details.user?.businessPhones?.length > 0 && (
+                                            <div className="detail-row">
+                                              <span className="detail-label">☎️ Telefon:</span>
+                                              <span>{details.user.businessPhones.join(', ')}</span>
+                                            </div>
+                                          )}
+                                          <div className="detail-row">
+                                            <span className="detail-label">🆔 ID:</span>
+                                            <span className="entra-guid-tiny">{emp.id}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {details.groups && details.groups.length > 0 && (
+                                        <div className="detail-section">
+                                          <h5>👥 Skupiny ({details.groups.length})</h5>
+                                          <div className="groups-list">
+                                            {details.groups.map((group, i) => (
+                                              <div key={i} className="group-item">
+                                                <span className="group-icon">
+                                                  {group.mailEnabled ? '📧' : '🔒'}
+                                                </span>
+                                                <div className="group-info">
+                                                  <div className="group-name">{group.displayName}</div>
+                                                  {group.description && (
+                                                    <div className="group-desc">{group.description}</div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {details.manager && (
+                                        <div className="detail-section">
+                                          <h5>👤 Nadřízený</h5>
+                                          <div className="manager-info">
+                                            <div className="manager-name">{details.manager.displayName}</div>
+                                            {details.manager.jobTitle && (
+                                              <div className="manager-title">{details.manager.jobTitle}</div>
+                                            )}
+                                            {details.manager.mail && (
+                                              <div className="manager-email">📧 {details.manager.mail}</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {details.directReports && details.directReports.length > 0 && (
+                                        <div className="detail-section">
+                                          <h5>👥 Podřízení ({details.directReports.length})</h5>
+                                          <div className="reports-list">
+                                            {details.directReports.map((report, i) => (
+                                              <div key={i} className="report-item">
+                                                <div className="report-name">{report.displayName}</div>
+                                                {report.jobTitle && (
+                                                  <div className="report-title">{report.jobTitle}</div>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
                                 </div>
                               )}
-                              {emp.officeLocation && (
-                                <div className="employee-detail-item">
-                                  <span className="detail-label">📍</span>
-                                  <span className="detail-value">{emp.officeLocation}</span>
-                                </div>
-                              )}
-                              <div className="employee-detail-item">
-                                <span className="detail-label">🆔</span>
-                                <span className="detail-value entra-guid-small">{emp.id}</span>
-                              </div>
-                              <div className="employee-status">
-                                {emp.accountEnabled ? (
-                                  <span className="status-badge active">✓ Aktivní</span>
-                                ) : (
-                                  <span className="status-badge inactive">✗ Neaktivní</span>
-                                )}
-                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="entra-info-box">
-                      <p>ℹ️ Nejsou dostupná data o zaměstnancích.</p>
-                      <p className="entra-info-small">
-                        Nastavte oprávnění v Azure Portal podle <strong>docs/GRAPH_API_QUICKSTART.md</strong>
-                      </p>
-                      <button 
-                        className="btn-retry"
-                        onClick={loadEmployees}
-                      >
-                        Zkusit znovu
-                      </button>
+
+                      {/* Tlačítko načíst další - jen pokud NENÍ aktivní vyhledávání */}
+                      {!searchMode && hasMoreEmployees && (
+                        <div className="load-more-container">
+                          <button 
+                            className="btn-load-more"
+                            onClick={loadMoreEmployees}
+                            disabled={loadingMoreEmployees}
+                          >
+                            {loadingMoreEmployees ? (
+                              <>
+                                <div className="spinner-tiny"></div>
+                                <span>Načítám další...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>⬇️ Načíst dalších 25 zaměstnanců</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {!searchMode && !hasMoreEmployees && employees.length > 0 && (
+                        <div className="end-of-list">
+                          ✓ Načteni všichni zaměstnanci ({employees.length})
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -698,6 +1008,136 @@ function Dashboard() {
           </div>
         </div>
       </main>
+
+      {/* DEBUG SEKCE - EntraID Data */}
+      {user && (
+        <section className="debug-section">
+          <h3>🔍 Debug - EntraID Data</h3>
+          
+          <div className="debug-box">
+            <h4>Základní info z databáze</h4>
+            <pre>{JSON.stringify({
+              id: user.id,
+              username: user.username,
+              email: user.email,
+              jmeno: user.jmeno,
+              prijmeni: user.prijmeni,
+              auth_source: user.auth_source,
+              entra_id: user.entra_id,
+              upn: user.upn
+            }, null, 2)}</pre>
+          </div>
+
+          {user.entraData && (
+            <div className="debug-box">
+              <h4>EntraID Graph API Data (/me)</h4>
+              <pre>{JSON.stringify(user.entraData, null, 2)}</pre>
+            </div>
+          )}
+
+          {entraProfile && (
+            <div className="debug-box">
+              <h4>EntraID Extended Profile</h4>
+              <pre>{JSON.stringify(entraProfile, null, 2)}</pre>
+            </div>
+          )}
+
+          {!user.entraData && !entraProfile && (
+            <div className="debug-box warning">
+              <p>⚠️ Žádná EntraID data nejsou dostupná</p>
+              <p>Zkontrolujte:</p>
+              <ul>
+                <li>Máte nastavený <code>entra_id</code>?</li>
+                <li>Je <code>auth_source === 'entra'</code>?</li>
+                <li>Máte platný access token?</li>
+              </ul>
+            </div>
+          )}
+
+          <div className="debug-box">
+            <h4>Dostupná Microsoft Graph API oprávnění</h4>
+            <p>Podle konfigurace v Azure Portal by měly být dostupné:</p>
+            <ul className="permissions-list">
+              <li>✓ <code>User.Read</code> - Základní profil</li>
+              <li>✓ <code>email</code> - Emailová adresa</li>
+              <li>✓ <code>openid</code> - OpenID Connect</li>
+              <li>✓ <code>profile</code> - Základní profil</li>
+              <li>✓ <code>offline_access</code> - Refresh token</li>
+              <li>{user.entraData?.memberOf ? '✓' : '⚠️'} <code>Group.Read.All</code> - Skupiny</li>
+              <li>{user.entraData?.memberOf ? '✓' : '⚠️'} <code>GroupMember.Read.All</code> - Členství ve skupinách</li>
+              <li>? <code>ProfilePhoto.Read.All</code> - Profilové fotky</li>
+              <li>? <code>User.ReadBasic.All</code> - Základní info o všech uživatelích</li>
+            </ul>
+          </div>
+
+          {user.entraData?.memberOf && (
+            <div className="debug-box">
+              <h4>Skupiny (memberOf) - {user.entraData.memberOf.length} skupin</h4>
+              <pre>{JSON.stringify(user.entraData.memberOf, null, 2)}</pre>
+            </div>
+          )}
+
+          {user.entraData?.manager && (
+            <div className="debug-box">
+              <h4>Manažer</h4>
+              <pre>{JSON.stringify(user.entraData.manager, null, 2)}</pre>
+            </div>
+          )}
+
+          {/* Test přístupu k jiným uživatelům */}
+          <div className="debug-box">
+            <h4>🧪 Test: Přístup k profilem jiných zaměstnanců</h4>
+            <p>Test vyhledání manažera (Jan Černhorský) a jeho podřízených.</p>
+            <p className="entra-info-small">
+              Vyžaduje: <code>User.Read.All</code> nebo <code>User.ReadBasic.All</code> (Application permissions)
+            </p>
+            <button 
+              className="btn-test"
+              onClick={testManagerAccess}
+              disabled={loadingManagerTest}
+            >
+              {loadingManagerTest ? '⏳ Testuji...' : '▶️ Spustit test'}
+            </button>
+
+            {managerTest && (
+              <div style={{ marginTop: '1rem' }}>
+                {managerTest.error ? (
+                  <div className="debug-box warning">
+                    <p>❌ Chyba: {managerTest.error}</p>
+                    <p>Pravděpodobně chybí oprávnění v Azure Portal:</p>
+                    <ul>
+                      <li><code>User.Read.All</code> (Application permission)</li>
+                      <li><code>User.ReadBasic.All</code> (Application permission)</li>
+                    </ul>
+                    <p>📚 Návod: <code>docs/GRAPH_API_QUICKSTART.md</code></p>
+                  </div>
+                ) : (
+                  <>
+                    <h5 style={{ color: '#48bb78', marginTop: '1rem' }}>✅ Manažer nalezen:</h5>
+                    <pre>{JSON.stringify(managerTest, null, 2)}</pre>
+
+                    {managerDirectReports && (
+                      <>
+                        <h5 style={{ color: '#48bb78', marginTop: '1rem' }}>
+                          👥 Podřízení ({managerDirectReports.length}):
+                        </h5>
+                        <pre>{JSON.stringify(managerDirectReports, null, 2)}</pre>
+                      </>
+                    )}
+
+                    {!managerDirectReports && (
+                      <div className="debug-box warning" style={{ marginTop: '1rem' }}>
+                        <p>⚠️ Podřízené se nepodařilo načíst</p>
+                        <p>Chybí oprávnění: <code>User.Read.All</code> nebo endpoint není dostupný</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

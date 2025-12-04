@@ -533,6 +533,89 @@
   font-size: 0.875rem;
 }
 
+/* === SEARCH BAR === */
+.search-bar {
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 1rem;
+  font-size: 1.2rem;
+  color: #718096;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.875rem 3rem 0.875rem 3rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.search-input::placeholder {
+  color: #a0aec0;
+}
+
+.search-clear {
+  position: absolute;
+  right: 1rem;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #718096;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.search-clear:hover {
+  background: #cbd5e0;
+  color: #2d3748;
+}
+
+.search-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: #718096;
+  font-size: 0.875rem;
+}
+
+.spinner-tiny {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(66, 153, 225, 0.2);
+  border-top-color: #4299e1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 .employees-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -540,6 +623,35 @@
   max-height: calc(100vh - 300px);
   overflow-y: auto;
   padding-right: 0.5rem;
+}
+
+/* Vlastní scrollbar pro seznam zaměstnanců - moderní design */
+.employees-grid::-webkit-scrollbar {
+  width: 10px;
+}
+
+.employees-grid::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.3);
+  border-radius: 10px;
+  margin: 4px 0;
+}
+
+.employees-grid::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #4299e1 0%, #3182ce 100%);
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.employees-grid::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #3182ce 0%, #2c5282 100%);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Firefox scrollbar styling */
+.employees-grid {
+  scrollbar-width: thin;
+  scrollbar-color: #4299e1 rgba(226, 232, 240, 0.3);
 }
 
 .employee-card {
@@ -564,6 +676,7 @@
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #e2e8f0;
+  width: 100%;
 }
 
 .employee-avatar {
@@ -681,3 +794,396 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(66, 153, 225, 0.3);
 }
+
+/* Debug Section */
+.debug-section {
+  display: none; /* Schováno pro produkci - pro debug změnit na: display: block */
+  max-width: 1400px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #1a202c;
+  border-radius: 12px;
+  border: 2px solid #2d3748;
+}
+
+.debug-section h3 {
+  color: #48bb78;
+  margin: 0 0 1.5rem 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.debug-box {
+  background: #2d3748;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #4a5568;
+}
+
+.debug-box.warning {
+  background: #744210;
+  border-color: #c05621;
+}
+
+.debug-box.warning p {
+  color: #feebc8;
+  margin: 0.5rem 0;
+}
+
+.debug-box.warning ul {
+  color: #fbd38d;
+  margin: 0.5rem 0 0 1.5rem;
+}
+
+.debug-box.warning code {
+  background: #652b19;
+  color: #fed7aa;
+}
+
+.debug-box h4 {
+  color: #63b3ed;
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.debug-box pre {
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  color: #e2e8f0;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin: 0;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.debug-box p {
+  color: #cbd5e0;
+  margin: 0.5rem 0;
+}
+
+.debug-box ul {
+  color: #cbd5e0;
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.5rem;
+}
+
+.debug-box code {
+  background: #1a202c;
+  color: #68d391;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.permissions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0 0;
+}
+
+.permissions-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #4a5568;
+  color: #e2e8f0;
+}
+
+.permissions-list li:last-child {
+  border-bottom: none;
+}
+
+.permissions-list code {
+  margin-left: 0.5rem;
+}
+
+.btn-test {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(72, 187, 120, 0.25);
+  margin-top: 0.5rem;
+}
+
+.btn-test:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(72, 187, 120, 0.3);
+}
+
+.btn-test:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.debug-box h5 {
+  color: #63b3ed;
+  margin: 1rem 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* Rozšířené styly pro rozklikávací zaměstnance */
+.employee-card {
+  cursor: pointer;
+  position: relative;
+}
+
+.employee-card.expanded {
+  box-shadow: 0 8px 24px rgba(66, 153, 225, 0.25);
+  border-color: #4299e1;
+}
+
+.expand-icon {
+  color: #4299e1;
+  font-size: 0.9rem;
+  transition: transform 0.3s;
+  margin-left: auto;
+}
+
+.employee-card.expanded .expand-icon {
+  transform: rotate(90deg);
+}
+
+.employee-expanded-details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #e2e8f0;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.loading-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: #718096;
+  font-size: 0.85rem;
+}
+
+.spinner-tiny {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #4299e1;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.detail-section {
+  margin-bottom: 1.5rem;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section h5 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.detail-row .detail-label {
+  min-width: 100px;
+  color: #718096;
+  font-weight: 500;
+}
+
+.entra-guid-tiny {
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  background: #edf2f7;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  color: #4a5568;
+  word-break: break-all;
+}
+
+/* Skupiny */
+.groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.group-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.group-item:hover {
+  border-color: #cbd5e0;
+  background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+}
+
+.group-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.group-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-name {
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.group-desc {
+  font-size: 0.75rem;
+  color: #718096;
+  line-height: 1.3;
+}
+
+/* Nadřízený */
+.manager-info {
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+  border-radius: 8px;
+  border: 1px solid #feb2b2;
+}
+
+.manager-name {
+  font-weight: 600;
+  color: #742a2a;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.manager-title {
+  font-size: 0.8rem;
+  color: #9b2c2c;
+  margin-bottom: 0.25rem;
+}
+
+.manager-email {
+  font-size: 0.75rem;
+  color: #742a2a;
+}
+
+/* Podřízení */
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.report-item {
+  padding: 0.5rem;
+  background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+  border-radius: 6px;
+  border: 1px solid #9ae6b4;
+}
+
+.report-name {
+  font-weight: 600;
+  color: #22543d;
+  font-size: 0.85rem;
+}
+
+.report-title {
+  font-size: 0.75rem;
+  color: #2f855a;
+  margin-top: 0.25rem;
+}
+
+/* Load more button */
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+  margin-top: 1rem;
+}
+
+.btn-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+  min-width: 280px;
+}
+
+.btn-load-more:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(66, 153, 225, 0.4);
+  background: linear-gradient(135deg, #3182ce 0%, #2c5aa0 100%);
+}
+
+.btn-load-more:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.end-of-list {
+  text-align: center;
+  padding: 2rem;
+  color: #48bb78;
+  font-weight: 600;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+  border-radius: 12px;
+  margin-top: 1rem;
+  border: 2px solid #9ae6b4;
+}
+

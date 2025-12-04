@@ -225,6 +225,136 @@ class EntraService {
   }
 
   /**
+   * Fulltextové vyhledávání uživatelů
+   * Hledá v: displayName, givenName, surname, mail, userPrincipalName, jobTitle, department, officeLocation
+   * @param {string} searchQuery - Vyhledávací dotaz (min 3 znaky)
+   * @param {number} limit - Max výsledků (default 50, max 999)
+   * @returns {Array} Seznam nalezených uživatelů
+   */
+  async searchUsers(searchQuery, limit = 50) {
+    await this.ensureInitialized();
+    
+    if (!searchQuery || searchQuery.trim().length < 3) {
+      return [];
+    }
+
+    try {
+      // Normalizace pro český vyhledávání - odstranění diakritiky
+      const normalize = (text) => {
+        if (!text) return '';
+        return text
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, ''); // Odstraní diakritiku (čárky, háčky atd.)
+      };
+      
+      const query = normalize(searchQuery.trim());
+      
+      // POZNÁMKA: Graph API $search podporuje jen: displayName, givenName, surname, mail, userPrincipalName
+      // Pro jobTitle, department, officeLocation musíme filtrovat na serveru
+      
+      // Načteme více uživatelů (až 999) a filtrujeme lokálně
+      const response = await this.client
+        .api('/users')
+        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled')
+        .top(999)
+        .orderby('displayName')
+        .get();
+      
+      const allUsers = response.value || [];
+      
+      console.log(`🔍 Search query: "${searchQuery}" -> normalized: "${query}"`);
+      console.log(`📊 Total users to search: ${allUsers.length}`);
+      
+      // Filtrování na serveru - hledáme ve všech relevantních polích
+      // Porovnávání BEZ diakritiky pro český text
+      let matchCount = 0;
+      const filtered = allUsers.filter(user => {
+        const fields = [
+          user.displayName,
+          user.givenName,
+          user.surname,
+          user.mail,
+          user.userPrincipalName,
+          user.jobTitle,
+          user.department,
+          user.officeLocation
+        ];
+        
+        const match = fields.some(field => 
+          field && normalize(field).includes(query)
+        );
+        
+        // Debug: Vypsat prvních 5 matchů
+        if (match && matchCount < 5) {
+          console.log(`✅ Match: ${user.displayName} | JobTitle: "${user.jobTitle}"`);
+          matchCount++;
+        }
+        
+        return match;
+      });
+      
+      console.log(`✅ Found ${filtered.length} matches`);
+      
+      // Omezení počtu výsledků
+      return filtered.slice(0, Math.min(limit, 999));
+    } catch (err) {
+      console.error('🔴 searchUsers ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Získat seznam uživatelů s paginací
+   * @param {number} pageSize - Počet uživatelů na stránku (default 25)
+   * @param {string} skipToken - Token pro další stránku (z předchozího requestu)
+   * @returns {Object} { users: [], nextLink: string|null, hasMore: boolean }
+   */
+  async getUsersPaginated(pageSize = 25, skipToken = null) {
+    await this.ensureInitialized();
+    try {
+      let query = this.client
+        .api('/users')
+        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled')
+        .top(pageSize)
+        .orderby('displayName');
+
+      // Pokud máme skipToken, použij ho
+      if (skipToken) {
+        query = query.skipToken(skipToken);
+      }
+
+      const response = await query.get();
+      
+      return {
+        users: response.value || [],
+        nextLink: response['@odata.nextLink'] || null,
+        skipToken: response['@odata.nextLink'] ? this.extractSkipToken(response['@odata.nextLink']) : null,
+        hasMore: !!response['@odata.nextLink'],
+        count: (response.value || []).length
+      };
+    } catch (err) {
+      console.error('🔴 getUsersPaginated ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Extrahuj skipToken z @odata.nextLink URL
+   * @param {string} nextLink - URL s $skiptoken
+   * @returns {string|null} skipToken
+   */
+  extractSkipToken(nextLink) {
+    try {
+      const url = new URL(nextLink);
+      return url.searchParams.get('$skiptoken');
+    } catch (err) {
+      console.error('🔴 extractSkipToken ERROR:', err.message);
+      return null;
+    }
+  }
+
+  /**
    * Získat kompletní profil uživatele včetně skupin a managera
    * @param {string} userId - Entra ID (GUID)
    */
