@@ -1,0 +1,1063 @@
+<?php
+/**
+ * Order V2 Endpoints - Standardized API Implementation
+ * 
+ * Nové API endpointy s prefixem /order-v2/ podle standardizačního dokumentu.
+ * Zachovává zpětnou kompatibilitu - nemodifikuje stávající /orders25/ endpointy.
+ * 
+ * Endpoints:
+ * - GET /api/order-v2/{id} - Načtení objednávky podle ID
+ * - GET /api/order-v2/list - Listing objednávek s filtering
+ * - POST /api/order-v2 - Vytvoření nové objednávky  
+ * - PUT /api/order-v2/{id} - Update objednávky
+ * - DELETE /api/order-v2/{id} - Smazání objednávky
+ * 
+ * @author Senior Developer
+ * @date 29. října 2025
+ */
+
+require_once __DIR__ . '/orderQueries.php';
+require_once __DIR__ . '/OrderV2Handler.php';
+
+/**
+ * GET /api/order-v2/{id}
+ * Načtení objednávky podle ID s standardizovaným výstupem
+ */
+function handle_order_v2_get($input, $config, $queries) {
+    // Ověření tokenu - V2 authentication pattern
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    // Connect to database for token verification
+    $db = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
+    if ($db->connect_error) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Database connection failed'));
+        return;
+    }
+    
+    $token_data = verify_token_v2($username, $token, $db);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        $db->close();
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $handler = new OrderV2Handler($config);
+        $current_user_id = $token_data['id'];
+        
+        // Volitelný parametr archivovano
+        $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
+        
+        $order = $handler->getOrderById($order_id, $current_user_id, $includeArchived);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
+            return;
+        }
+        
+        // Volitelný enrichment (pokud parametr enriched=1)
+        if (isset($input['enriched']) && $input['enriched'] == 1) {
+            $db = get_db($config);
+            enrichOrderWithItems($db, $order);
+            enrichOrderWithInvoices($db, $order);
+            enrichOrderWithCodebooks($db, $order);
+        }
+        
+        require_once __DIR__ . '/TimezoneHelper.php';
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $order,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 GET Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * GET /api/order-v2/list
+ * Listing objednávek s filtering a pagination
+ */
+function handle_order_v2_list($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $current_user_id = $auth_result['id'];
+        $handler = new OrderV2Handler($config);
+        
+        // Pagination parametry
+        $limit = isset($input['limit']) ? (int)$input['limit'] : 20;
+        $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
+        
+        // Filtering parametry
+        $filters = array();
+        $params = array();
+        
+        // Základní WHERE podmínka
+        $whereConditions = array();
+        
+        // Filter: aktivni objednávky (default)
+        if (!isset($input['archivovano']) || $input['archivovano'] != 1) {
+            $whereConditions[] = "o.aktivni = 1";
+        }
+        
+        // Filter: podle uživatele
+        if (isset($input['uzivatel_id']) && is_numeric($input['uzivatel_id'])) {
+            $whereConditions[] = "(o.objednatel_id = :uzivatel_id OR o.garant_uzivatel_id = :uzivatel_id)";
+            $params['uzivatel_id'] = (int)$input['uzivatel_id'];
+        }
+        
+        // Filter: podle stavu workflow
+        if (isset($input['stav']) && !empty($input['stav'])) {
+            $whereConditions[] = "JSON_CONTAINS(o.stav_workflow_kod, :stav_json)";
+            $params['stav_json'] = json_encode($input['stav']);
+        }
+        
+        // Filter: podle druhu objednávky
+        if (isset($input['druh']) && !empty($input['druh'])) {
+            $whereConditions[] = "o.druh_objednavky_kod = :druh";
+            $params['druh'] = $input['druh'];
+        }
+        
+        // Filter: podle střediska
+        if (isset($input['stredisko']) && !empty($input['stredisko'])) {
+            $whereConditions[] = "JSON_CONTAINS(o.strediska_kod, :stredisko_json)";
+            $params['stredisko_json'] = json_encode($input['stredisko']);
+        }
+        
+        // Filter: podle data od-do
+        if (isset($input['datum_od']) && !empty($input['datum_od'])) {
+            $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+            $params['datum_od'] = $input['datum_od'];
+        }
+        
+        if (isset($input['datum_do']) && !empty($input['datum_do'])) {
+            $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+            $params['datum_do'] = $input['datum_do'];
+        }
+        
+        // Sestavení WHERE klauzule
+        $whereClause = '';
+        if (!empty($whereConditions)) {
+            $whereClause = 'WHERE ' . implode(' AND ', $whereConditions);
+        }
+        
+        // Připojení k databázi pro business logiku
+        $db = get_db($config);
+        
+        // Hlavní dotaz pro data
+        $sql = "SELECT o.*
+                FROM " . get_orders_table_name() . " o
+                {$whereClause}
+                ORDER BY o.dt_vytvoreni DESC
+                LIMIT :limit OFFSET :offset";
+        
+        $stmt = $db->prepare($sql);
+        
+        // Bind parametry
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        
+        $stmt->execute();
+        $rawOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Dotaz pro celkový počet (bez LIMIT)
+        $countSql = "SELECT COUNT(*) as total
+                     FROM " . get_orders_table_name() . " o
+                     {$whereClause}";
+        
+        $countStmt = $db->prepare($countSql);
+        foreach ($params as $key => $value) {
+            $countStmt->bindValue(':' . $key, $value);
+        }
+        $countStmt->execute();
+        $totalCount = $countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        
+        // Transformace dat do standardizovaného formátu
+        $orders = array();
+        foreach ($rawOrders as $rawOrder) {
+            $standardOrder = $handler->transformFromDB($rawOrder);
+            
+            // Volitelný enrichment pro listing (pokud parametr enriched=1)
+            if (isset($input['enriched']) && $input['enriched'] == 1) {
+                enrichOrderWithItems($db, $standardOrder);
+                enrichOrderWithInvoices($db, $standardOrder);
+                enrichOrderWithCodebooks($db, $standardOrder);
+            }
+            
+            $orders[] = $standardOrder;
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $orders,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'pagination' => array(
+                    'total' => (int)$totalCount,
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'has_more' => ($offset + $limit) < $totalCount
+                ),
+                'filters_applied' => count($params),
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 LIST Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání seznamu objednávek: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST /api/order-v2
+ * Vytvoření nové objednávky se standardizovanými daty
+ */
+function handle_order_v2_create($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    try {
+        $handler = new OrderV2Handler($config);
+        
+        // AUTOMATICKÉ GENEROVÁNÍ ČÍSLA OBJEDNÁVKY pokud není zadáno
+        if (empty($input['cislo_objednavky'])) {
+            $numberData = $handler->generateNextOrderNumber($username);
+            if (!$numberData) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => 'Nepodařilo se vygenerovat číslo objednávky - uživatel nemá přiřazenou organizaci/úsek'
+                ));
+                return;
+            }
+            // Přidej vygenerované číslo do inputu
+            $input['cislo_objednavky'] = $numberData['next_order_string'];
+        }
+        
+        // Validace vstupních dat
+        $validation = $handler->validateOrderData($input);
+        if (!$validation['valid']) {
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Chyba validace dat',
+                'errors' => $validation['errors']
+            ));
+            return;
+        }
+        
+        // Transformace dat pro DB
+        $dbData = $handler->transformToDB($input);
+        
+        // Automatické nastavení - opraveno timezone handling
+        require_once __DIR__ . '/TimezoneHelper.php';
+        TimezoneHelper::setMysqlTimezone($db);
+        $dbData['dt_vytvoreni'] = TimezoneHelper::getCzechDateTime();
+        $dbData['aktivni'] = 1;
+        
+        // Sestavení INSERT dotazu
+        $fields = array();
+        $placeholders = array();
+        $values = array();
+        
+        foreach ($dbData as $key => $value) {
+            if ($key !== 'id') { // ID je auto-increment
+                $fields[] = "`{$key}`";
+                $placeholders[] = ":{$key}";
+                $values[$key] = $value;
+            }
+        }
+        
+        $sql = "INSERT INTO " . get_orders_table_name() . " (" . implode(', ', $fields) . ") 
+                VALUES (" . implode(', ', $placeholders) . ")";
+        
+        $db = get_db($config);
+        $stmt = $db->prepare($sql);
+        
+        foreach ($values as $key => $value) {
+            $stmt->bindValue(":{$key}", $value);
+        }
+        
+        $stmt->execute();
+        $newOrderId = $db->lastInsertId();
+        
+        // Načtení vytvořené objednávky ve standardizovaném formátu
+        $newOrder = $handler->getOrderById($newOrderId, $token_data['id']);
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně vytvořena',
+            'data' => $newOrder,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'created_id' => (int)$newOrderId,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 CREATE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při vytváření objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * PUT /api/order-v2/{id}
+ * Update objednávky se standardizovanými daty
+ */
+function handle_order_v2_update($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result['valid']) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $handler = new OrderV2Handler($config);
+        $current_user_id = $token_data['id'];
+        
+        // Ověř že objednávka existuje
+        $existingOrder = $handler->getOrderById($order_id, $current_user_id);
+        if (!$existingOrder) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
+            return;
+        }
+        
+        // Kontrola lock stavu
+        if ($existingOrder['lock_info']['locked'] === true) {
+            http_response_code(423); // Locked
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Objednávka je zamčená jiným uživatelem',
+                'lock_info' => $existingOrder['lock_info']
+            ));
+            return;
+        }
+        
+        // Validace vstupních dat (pro UPDATE - partial update povoleno)
+        $validation = $handler->validateOrderDataForUpdate($input);
+        if (!$validation['valid']) {
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Chyba validace dat pro UPDATE',
+                'errors' => $validation['errors']
+            ));
+            return;
+        }
+        
+        // Transformace dat pro DB
+        $dbData = $handler->transformToDB($input);
+        
+        $db = get_db($config);
+        $db->beginTransaction();
+        
+        // Automatické nastavení - timezone handling PO inicializaci DB
+        require_once __DIR__ . '/TimezoneHelper.php';
+        TimezoneHelper::setMysqlTimezone($db);
+        $dbData['dt_aktualizace'] = TimezoneHelper::getCzechDateTime();
+        // $dbData['uzivatel_akt_id'] = $current_user_id; // Commented out - sloupec možná neexistuje v produkci
+        
+        try {
+            // ========== UPDATE HLAVNÍ OBJEDNÁVKY ==========
+            $setParts = array();
+            $values = array();
+            
+            foreach ($dbData as $key => $value) {
+                if ($key !== 'id') { // ID neměníme
+                    $setParts[] = "`{$key}` = :{$key}";
+                    $values[$key] = $value;
+                }
+            }
+            
+            $sql = "UPDATE " . get_orders_table_name() . " SET " . implode(', ', $setParts) . " WHERE id = :id";
+            $values['id'] = $order_id;
+            
+            $stmt = $db->prepare($sql);
+            foreach ($values as $key => $value) {
+                $stmt->bindValue(":{$key}", $value);
+            }
+            $stmt->execute();
+            
+            // ========== UPDATE POLOŽEK OBJEDNÁVKY ==========
+            // Zpracování položek podle vzoru z Order25 (saveOrderItems pattern)
+            $items_processed = 0;
+            $items_updated = false;
+            
+            // Kontrola, zda jsou v input datech položky k aktualizaci
+            if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
+                // Validace a parsování položek
+                $order_items = validateAndParseOrderItems($input);
+                if ($order_items !== false) {
+                    // saveOrderItems pattern: smaž stávající + vlož nové
+                    if (saveOrderV2Items($db, $order_id, $order_items)) {
+                        $items_processed = count($order_items);
+                        $items_updated = true;
+                    } else {
+                        throw new Exception('Chyba při aktualizaci položek objednávky');
+                    }
+                } else {
+                    throw new Exception('Nevalidní formát položek objednávky');
+                }
+            }
+            
+            // ========== ZPRACOVÁNÍ FAKTUR V2 ==========
+            // Frontend může poslat pole faktur podle vzoru Order25:
+            // - Pokud má faktura id=null nebo chybí → CREATE nové faktury
+            // - Pokud má faktura id (number) → UPDATE existující faktury
+            // - Přílohy se spravují separátně v invoice attachments API
+            
+            $invoices_processed = 0;
+            $invoices_updated = false;
+            
+            if (isset($input['faktury']) && is_array($input['faktury'])) {
+                $faktury_table = get_invoices_table_name(); // 25a_objednavky_faktury
+                
+                foreach ($input['faktury'] as $faktura) {
+                    $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
+                    
+                    if ($faktura_id === null || $faktura_id === 0) {
+                        // ========== CREATE nová faktura ==========
+                        $fa_castka = isset($faktura['fa_castka']) ? $faktura['fa_castka'] : null;
+                        $fa_cislo_vema = isset($faktura['fa_cislo_vema']) ? trim($faktura['fa_cislo_vema']) : '';
+                        
+                        if (!$fa_castka || empty($fa_cislo_vema)) {
+                            continue; // Přeskoč neplatnou fakturu
+                        }
+                        
+                        // Zpracuj fa_strediska_kod - array → JSON, string → přímo (PHP 5.6)
+                        $fa_strediska_value = null;
+                        if (isset($faktura['fa_strediska_kod'])) {
+                            if (is_array($faktura['fa_strediska_kod'])) {
+                                $fa_strediska_value = json_encode($faktura['fa_strediska_kod']);
+                            } else {
+                                $fa_strediska_value = $faktura['fa_strediska_kod'];
+                            }
+                        }
+                        
+                        // Zpracuj rozsirujici_data - array → JSON, string → přímo (PHP 5.6)
+                        $rozsirujici_value = null;
+                        if (isset($faktura['rozsirujici_data'])) {
+                            if (is_array($faktura['rozsirujici_data'])) {
+                                $rozsirujici_value = json_encode($faktura['rozsirujici_data']);
+                            } else {
+                                $rozsirujici_value = $faktura['rozsirujici_data'];
+                            }
+                        }
+                        
+                        // MySQL 5.5.43 kompatibilní INSERT
+                        $sql_insert = "INSERT INTO `{$faktury_table}` (
+                            objednavka_id,
+                            fa_dorucena,
+                            fa_castka,
+                            fa_cislo_vema,
+                            fa_datum_vystaveni,
+                            fa_datum_splatnosti,
+                            fa_datum_doruceni,
+                            fa_strediska_kod,
+                            fa_poznamka,
+                            rozsirujici_data,
+                            vytvoril_uzivatel_id,
+                            dt_vytvoreni,
+                            aktivni
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                        
+                        $stmt_insert = $db->prepare($sql_insert);
+                        $stmt_insert->execute(array(
+                            $order_id,
+                            isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
+                            $fa_castka,
+                            $fa_cislo_vema,
+                            isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
+                            isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
+                            isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
+                            $fa_strediska_value,
+                            isset($faktura['fa_poznamka']) ? $faktura['fa_poznamka'] : null,
+                            $rozsirujici_value,
+                            $current_user_id
+                        ));
+                        
+                        $invoices_processed++;
+                        $invoices_updated = true;
+                        
+                    } else {
+                        // ========== UPDATE existující faktura ==========
+                        $update_fields = array();
+                        $update_values = array();
+                        
+                        // Pouze zadané hodnoty budou aktualizovány (PHP 5.6 array syntax)
+                        if (isset($faktura['fa_castka'])) {
+                            $update_fields[] = 'fa_castka = ?';
+                            $update_values[] = $faktura['fa_castka'];
+                        }
+                        if (isset($faktura['fa_cislo_vema'])) {
+                            $update_fields[] = 'fa_cislo_vema = ?';
+                            $update_values[] = trim($faktura['fa_cislo_vema']);
+                        }
+                        if (isset($faktura['fa_dorucena'])) {
+                            $update_fields[] = 'fa_dorucena = ?';
+                            $update_values[] = (int)$faktura['fa_dorucena'];
+                        }
+                        if (isset($faktura['fa_datum_vystaveni'])) {
+                            $update_fields[] = 'fa_datum_vystaveni = ?';
+                            $update_values[] = $faktura['fa_datum_vystaveni'];
+                        }
+                        if (isset($faktura['fa_datum_splatnosti'])) {
+                            $update_fields[] = 'fa_datum_splatnosti = ?';
+                            $update_values[] = $faktura['fa_datum_splatnosti'];
+                        }
+                        if (isset($faktura['fa_datum_doruceni'])) {
+                            $update_fields[] = 'fa_datum_doruceni = ?';
+                            $update_values[] = $faktura['fa_datum_doruceni'];
+                        }
+                        
+                        // Zpracování JSON polí pro UPDATE
+                        if (isset($faktura['fa_strediska_kod'])) {
+                            $update_fields[] = 'fa_strediska_kod = ?';
+                            if (is_array($faktura['fa_strediska_kod'])) {
+                                $update_values[] = json_encode($faktura['fa_strediska_kod']);
+                            } else {
+                                $update_values[] = $faktura['fa_strediska_kod'];
+                            }
+                        }
+                        
+                        if (isset($faktura['rozsirujici_data'])) {
+                            $update_fields[] = 'rozsirujici_data = ?';
+                            if (is_array($faktura['rozsirujici_data'])) {
+                                $update_values[] = json_encode($faktura['rozsirujici_data']);
+                            } else {
+                                $update_values[] = $faktura['rozsirujici_data'];
+                            }
+                        }
+                        
+                        if (isset($faktura['fa_poznamka'])) {
+                            $update_fields[] = 'fa_poznamka = ?';
+                            $update_values[] = $faktura['fa_poznamka'];
+                        }
+                        
+                        // Pokud jsou nějaká pole k aktualizaci
+                        if (!empty($update_fields)) {
+                            // Automatické pole
+                            $update_fields[] = 'dt_aktualizace = NOW()';
+                            // $update_fields[] = 'uzivatel_akt_id = ?'; // Commented out - sloupec možná neexistuje v produkci
+                            // $update_values[] = $current_user_id;
+                            
+                            // ID faktury na konec
+                            $update_values[] = $faktura_id;
+                            
+                            // MySQL 5.5.43 kompatibilní UPDATE
+                            $sql_update = "UPDATE `{$faktury_table}` SET " . implode(', ', $update_fields) . " WHERE id = ?";
+                            $stmt_update = $db->prepare($sql_update);
+                            $stmt_update->execute($update_values);
+                            
+                            $invoices_processed++;
+                            $invoices_updated = true;
+                        }
+                    }
+                }
+            }
+            
+            $db->commit();
+            
+            // Načtení aktualizované objednávky ve standardizovaném formátu
+            $updatedOrder = $handler->getOrderById($order_id, $current_user_id);
+            
+        } catch (Exception $e) {
+            $db->rollback();
+            throw $e; // Re-throw pro vnější catch
+        }
+        
+        // Sestavení zprávy o úspěšné aktualizaci
+        $message_parts = array('Objednávka byla úspěšně aktualizována');
+        if ($items_updated) {
+            $message_parts[] = "{$items_processed} položek";
+        }
+        if ($invoices_updated) {
+            $message_parts[] = "{$invoices_processed} faktur";
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => implode(' včetně ', $message_parts),
+            'data' => $updatedOrder,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'updated_id' => $order_id,
+                'items_processed' => $items_processed,
+                'items_updated' => $items_updated,
+                'invoices_processed' => $invoices_processed,
+                'invoices_updated' => $invoices_updated,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 UPDATE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při aktualizaci objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * DELETE /api/order-v2/{id}
+ * Smazání objednávky (soft delete - aktivni = 0)
+ */
+function handle_order_v2_delete($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result['valid']) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $handler = new OrderV2Handler($config);
+        $current_user_id = $token_data['id'];
+        
+        // Ověř že objednávka existuje
+        $existingOrder = $handler->getOrderById($order_id, $current_user_id);
+        if (!$existingOrder) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
+            return;
+        }
+        
+        // Kontrola lock stavu
+        if ($existingOrder['lock_info']['locked'] === true) {
+            http_response_code(423); // Locked
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Objednávka je zamčená jiným uživatelem',
+                'lock_info' => $existingOrder['lock_info']
+            ));
+            return;
+        }
+        
+        // Soft delete - nastavíme aktivni = 0
+        $sql = "UPDATE " . get_orders_table_name() . " 
+                SET aktivni = 0, dt_aktualizace = :dt_aktualizace 
+                WHERE id = :id";
+        
+        $db = get_db($config);
+        require_once __DIR__ . '/TimezoneHelper.php';
+        TimezoneHelper::setMysqlTimezone($db);
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
+        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Objednávka byla úspěšně smazána',
+            'meta' => array(
+                'version' => 'v2',
+                'deleted_id' => $order_id,
+                'soft_delete' => true,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 DELETE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání objednávky: ' . $e->getMessage()));
+    }
+} 
+
+/**
+ * GET/POST /api/order-v2/{id}/enriched
+ * Načtení objednávky podle ID s VŽDY enriched daty (položky, faktury, číselníky)
+ */
+function handle_order_v2_get_enriched($input, $config, $queries) {
+    // Force enriched = 1
+    $input['enriched'] = 1;
+    
+    // Zavolej standardní GET handler s vynuceným enrichment
+    handle_order_v2_get($input, $config, $queries);
+}
+
+/**
+ * GET/POST /api/order-v2/list-enriched  
+ * Listing objednávek s VŽDY enriched daty (položky, faktury, číselníky)
+ */
+function handle_order_v2_list_enriched($input, $config, $queries) {
+    // Force enriched = 1
+    $input['enriched'] = 1;
+    
+    // Zavolej standardní LIST handler s vynuceným enrichment
+    handle_order_v2_list($input, $config, $queries);
+}
+
+/**
+ * POST /api/order-v2/next-number
+ * Generování dalšího dostupného evidenčního čísla objednávky
+ */
+function handle_order_v2_next_number($input, $config, $queries) {
+    // Ověření tokenu
+    
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+
+    if (!$auth_result['valid']) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+   
+    try {
+        $handler = new OrderV2Handler($config);
+        
+        // Update last activity pro autentizovaného uživatele
+        try {
+            $db = get_db($config);
+            $stmtUpd = $db->prepare($queries['uzivatele_update_last_activity']);
+            $stmtUpd->bindParam(':id', $token_data['id']);
+            $stmtUpd->execute();
+        } catch (Exception $e) {
+            // non-fatal
+        }
+        
+        // Generování dalšího čísla
+       
+        $numberData = $handler->generateNextOrderNumber($username);
+    
+        if (!$numberData) {
+            http_response_code(404);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Uživatel nenalezen nebo nemá přiřazenou organizaci/úsek'
+            ));
+            return;
+        }
+        
+        // Přidání note pro FE kompatibilitu s Order25
+        $numberData['note'] = 'order_number_string = následující volné číslo pro novou objednávku';
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $numberData,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 NEXT-NUMBER Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání dalšího čísla objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * POST /api/order-v2/check-number
+ * Kontrola dostupnosti evidenčního čísla objednávky
+ */
+function handle_order_v2_check_number($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result['valid']) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+    
+    // Získání orderNumber - podporujeme různé formáty pro kompatibilitu
+    $orderNumber = null;
+    if (isset($input['orderNumber'])) {
+        $orderNumber = trim($input['orderNumber']);
+    } elseif (isset($input['payload']['orderNumber'])) {
+        $orderNumber = trim($input['payload']['orderNumber']);
+    }
+    
+    // Suggest flag - zda navrhnout alternativní číslo
+    $suggest = false;
+    if (isset($input['suggest'])) {
+        $suggest = (bool)$input['suggest'];
+    } elseif (isset($input['payload']['suggest'])) {
+        $suggest = (bool)$input['payload']['suggest'];
+    }
+    
+    if (!$orderNumber) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí orderNumber'));
+        return;
+    }
+    
+    try {
+        $handler = new OrderV2Handler($config);
+        
+        // Kontrola čísla
+        $checkResult = $handler->checkOrderNumber($orderNumber, $username, $suggest);
+        
+        if (!$checkResult) {
+            http_response_code(500);
+            echo json_encode(array('status' => 'error', 'message' => 'Chyba při kontrole čísla objednávky'));
+            return;
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $checkResult,
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 CHECK-NUMBER Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při kontrole čísla objednávky: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * GET /api/order-v2/{id}/dt-aktualizace
+ * Načtení pouze dt_aktualizace objednávky podle ID
+ * PHP 5.6 + MySQL 5.5.43 compatible
+ */
+function handle_order_v2_get_dt_aktualizace($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result['valid']) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+    
+    if ($order_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // SQL query pro načtení pouze dt_aktualizace podle ID
+        $sql = "SELECT dt_aktualizace FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$result) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena nebo není aktivní'));
+            return;
+        }
+        
+        // Standardizovaná response s dt_aktualizace
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'id' => $order_id,
+                'dt_aktualizace' => $result['dt_aktualizace']
+            ),
+            'meta' => array(
+                'version' => 'v2',
+                'endpoint' => 'dt-aktualizace',
+                'timestamp' => TimezoneHelper::getApiTimestamp(),
+                'compatibility' => 'PHP 5.6 + MySQL 5.5.43'
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log("Order V2 GET DT-AKTUALIZACE Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání dt_aktualizace: ' . $e->getMessage()));
+    }
+}
+
+// ========== ORDER V2 ITEMS MANAGEMENT FUNCTIONS ==========
+
+/**
+ * Vloží položky objednávky pro Order V2 (25a_objednavky_polozky)
+ * Batch insert pro lepší výkon - PHP 5.6 kompatibilní
+ * @param PDO $db - Databázové spojení
+ * @param int $order_id - ID objednávky
+ * @param array $items - Pole položek k vložení
+ * @return bool - True při úspěchu
+ */
+function insertOrderV2Items($db, $order_id, $items) {
+    if (empty($items)) {
+        return true; // Žádné položky k vložení
+    }
+    
+    try {
+        // Batch insert pro lepší výkon
+        $itemsCount = count($items);
+        $sql = insertOrderItemsBatchQuery($itemsCount);
+        $stmt = $db->prepare($sql);
+        
+        $params = array(':objednavka_id' => $order_id);
+        
+        foreach ($items as $index => $item) {
+            $params[":popis_{$index}"] = $item['popis'];
+            $params[":cena_bez_dph_{$index}"] = $item['cena_bez_dph'];
+            $params[":sazba_dph_{$index}"] = $item['sazba_dph'];
+            $params[":cena_s_dph_{$index}"] = $item['cena_s_dph'];
+            // Lokalizační data - 3 kódy + poznamka
+            $params[":usek_kod_{$index}"] = isset($item['usek_kod']) ? $item['usek_kod'] : null;
+            $params[":budova_kod_{$index}"] = isset($item['budova_kod']) ? $item['budova_kod'] : null;
+            $params[":mistnost_kod_{$index}"] = isset($item['mistnost_kod']) ? $item['mistnost_kod'] : null;
+            $params[":poznamka_{$index}"] = isset($item['poznamka']) ? $item['poznamka'] : null;
+        }
+        
+        $stmt->execute($params);
+        return true;
+        
+    } catch (Exception $e) {
+        error_log("Order V2 insertOrderV2Items Error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Uloží položky objednávky Order V2 (smaže staré, vloží nové)
+ * Implementuje "saveOrderItems" pattern pro 25a_objednavky_polozky
+ * @param PDO $db - Databázové spojení
+ * @param int $order_id - ID objednávky
+ * @param array $items - Pole položek k uložení
+ * @return bool - True při úspěchu
+ */
+function saveOrderV2Items($db, $order_id, $items) {
+    try {
+        // Nejprve smažeme všechny stávající položky
+        $deleteStmt = $db->prepare(deleteOrderItemsByOrderIdQuery());
+        $deleteStmt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
+        $deleteStmt->execute();
+        
+        // Pak vložíme nové položky
+        return insertOrderV2Items($db, $order_id, $items);
+        
+    } catch (Exception $e) {
+        error_log("Order V2 saveOrderV2Items Error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Aktualizuje položky objednávky Order V2 (smaže staré, vloží nové)
+ * Alias pro saveOrderV2Items() - zachovává konzistenci s Order25 API
+ * @param PDO $db - Databázové spojení
+ * @param int $order_id - ID objednávky
+ * @param array $items - Pole nových položek
+ * @return bool - True při úspěchu
+ */
+function updateOrderV2Items($db, $order_id, $items) {
+    return saveOrderV2Items($db, $order_id, $items);
+}

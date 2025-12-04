@@ -1,0 +1,17 @@
+# PHP-FPM NEPOUŽÍVÁ php_value v .htaccess!
+# Tyto nastavení jsou v php.ini nebo Apache Directory config
+
+RewriteEngine On
+
+## DirectoryIndex api.php
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/old_endpoints\.php$
+RewriteRule ^(.*)$ api.php [QSA,L]
+
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>

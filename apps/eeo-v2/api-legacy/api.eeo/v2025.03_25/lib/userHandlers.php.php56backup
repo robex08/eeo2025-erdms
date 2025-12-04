@@ -1,0 +1,593 @@
+<?php
+
+require_once 'dbconfig.php';
+
+// Include necessary functions from handlers.php
+if (!function_exists('verify_token')) {
+    require_once 'handlers.php';
+}
+if (!function_exists('get_db')) {
+    require_once 'handlers.php';
+}
+
+/**
+ * Validuje a normalizuje user input data
+ * @param array $input - Input data
+ * @param bool $is_update - Zda je to update (některá pole nejsou povinná)
+ * @return array - Array s 'valid' => bool, 'data' => normalized_data, 'errors' => array
+ */
+function validateUserInput($input, $is_update = false) {
+    $errors = array();
+    $data = array();
+    
+    // Username (povinné pouze při vytváření)
+    if (!$is_update || isset($input['username'])) {
+        $username = isset($input['username']) ? trim($input['username']) : '';
+        if (empty($username) && !$is_update) {
+            $errors[] = 'Username je povinný';
+        } elseif (!empty($username)) {
+            if (strlen($username) < 3) {
+                $errors[] = 'Username musí mít alespoň 3 znaky';
+            } elseif (!preg_match('/^[a-zA-Z0-9._-]+$/', $username)) {
+                $errors[] = 'Username může obsahovat pouze písmena, číslice, tečky, pomlčky a podtržítka';
+            } else {
+                $data['username'] = $username;
+            }
+        }
+    }
+    
+    // Jméno (povinné)
+    if (!$is_update || isset($input['jmeno'])) {
+        $jmeno = isset($input['jmeno']) ? trim($input['jmeno']) : '';
+        if (empty($jmeno) && !$is_update) {
+            $errors[] = 'Jméno je povinné';
+        } elseif (!empty($jmeno)) {
+            $data['jmeno'] = $jmeno;
+        }
+    }
+    
+    // Příjmení (povinné)
+    if (!$is_update || isset($input['prijmeni'])) {
+        $prijmeni = isset($input['prijmeni']) ? trim($input['prijmeni']) : '';
+        if (empty($prijmeni) && !$is_update) {
+            $errors[] = 'Příjmení je povinné';
+        } elseif (!empty($prijmeni)) {
+            $data['prijmeni'] = $prijmeni;
+        }
+    }
+    
+    // Email (volitelný, ale pokud je zadán, musí být validní)
+    if (isset($input['email'])) {
+        $email = trim($input['email']);
+        if (!empty($email)) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Neplatný formát emailu';
+            } else {
+                $data['email'] = $email;
+            }
+        } else {
+            $data['email'] = null;
+        }
+    }
+    
+    // Telefon (volitelný)
+    if (isset($input['telefon'])) {
+        $telefon = trim($input['telefon']);
+        $data['telefon'] = !empty($telefon) ? $telefon : null;
+    }
+    
+    // Tituly (volitelné)
+    if (isset($input['titul_pred'])) {
+        $titul_pred = trim($input['titul_pred']);
+        $data['titul_pred'] = !empty($titul_pred) ? $titul_pred : null;
+    }
+    
+    if (isset($input['titul_za'])) {
+        $titul_za = trim($input['titul_za']);
+        $data['titul_za'] = !empty($titul_za) ? $titul_za : null;
+    }
+    
+    // Foreign key IDs (volitelné, ale musí být validní čísla)
+    $fk_fields = array('usek_id', 'lokalita_id', 'pozice_id', 'organizace_id');
+    foreach ($fk_fields as $field) {
+        if (isset($input[$field])) {
+            $value = $input[$field];
+            if ($value === '' || $value === null) {
+                $data[$field] = null;
+            } elseif (is_numeric($value) && (int)$value > 0) {
+                $data[$field] = (int)$value;
+            } else {
+                $errors[] = "Neplatná hodnota pro $field";
+            }
+        }
+    }
+    
+    // Aktivní (default 1)
+    if (isset($input['aktivni'])) {
+        $data['aktivni'] = (int)$input['aktivni'];
+    } elseif (!$is_update) {
+        $data['aktivni'] = 1;
+    }
+    
+    // Password (pouze při vytváření nebo změně hesla)
+    if (isset($input['password']) && !empty($input['password'])) {
+        $password = trim($input['password']);
+        if (strlen($password) < 6) {
+            $errors[] = 'Heslo musí mít alespoň 6 znaků';
+        } else {
+            // Hash password
+            if (function_exists('password_hash')) {
+                $data['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
+            } else {
+                // Fallback pro starší PHP
+                $data['password_hash'] = md5($password);
+            }
+        }
+    }
+    
+    return array(
+        'valid' => empty($errors),
+        'data' => $data,
+        'errors' => $errors
+    );
+}
+
+/**
+ * Validuje vazby na další tabulky
+ * @param PDO $db - Databázové spojení
+ * @param array $queries - Dotazy
+ * @param array $data - Data k validaci
+ * @return array - Array s chybami
+ */
+function validateUserRelations($db, $queries, $data) {
+    $errors = array();
+    
+    $relations = array(
+        'usek_id' => 'validate_usek_exists',
+        'lokalita_id' => 'validate_lokalita_exists', 
+        'pozice_id' => 'validate_pozice_exists',
+        'organizace_id' => 'validate_organizace_exists'
+    );
+    
+    foreach ($relations as $field => $query_key) {
+        if (isset($data[$field]) && $data[$field] !== null) {
+            try {
+                $stmt = $db->prepare($queries[$query_key]);
+                $stmt->bindParam(':id', $data[$field], PDO::PARAM_INT);
+                $stmt->execute();
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$result || (int)$result['count'] === 0) {
+                    $errors[] = "Neplatná hodnota pro $field - záznam neexistuje";
+                }
+            } catch (Exception $e) {
+                $errors[] = "Chyba při validaci $field: " . $e->getMessage();
+            }
+        }
+    }
+    
+    return $errors;
+}
+
+/**
+ * Zkontroluje duplicity username a email
+ * @param PDO $db - Databázové spojení  
+ * @param array $queries - Dotazy
+ * @param array $data - Data k validaci
+ * @param int $exclude_id - ID k vyloučení (při update)
+ * @return array - Array s chybami
+ */
+function validateUserUniqueness($db, $queries, $data, $exclude_id = 0) {
+    $errors = array();
+    
+    // Kontrola username
+    if (isset($data['username'])) {
+        try {
+            $stmt = $db->prepare($queries['uzivatele_check_username']);
+            $stmt->bindParam(':username', $data['username'], PDO::PARAM_STR);
+            $stmt->bindParam(':exclude_id', $exclude_id, PDO::PARAM_INT);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result && (int)$result['count'] > 0) {
+                $errors[] = 'Username již existuje';
+            }
+        } catch (Exception $e) {
+            $errors[] = 'Chyba při kontrole username: ' . $e->getMessage();
+        }
+    }
+    
+    // Kontrola email (pouze pokud není null)
+    if (isset($data['email']) && $data['email'] !== null) {
+        try {
+            $stmt = $db->prepare($queries['uzivatele_check_email']);
+            $stmt->bindParam(':email', $data['email'], PDO::PARAM_STR);
+            $stmt->bindParam(':exclude_id', $exclude_id, PDO::PARAM_INT);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result && (int)$result['count'] > 0) {
+                $errors[] = 'Email již existuje';
+            }
+        } catch (Exception $e) {
+            $errors[] = 'Chyba při kontrole email: ' . $e->getMessage();
+        }
+    }
+    
+    return $errors;
+}
+
+/**
+ * Spravuje role uživatele
+ * @param PDO $db - Databázové spojení
+ * @param array $queries - Dotazy
+ * @param int $user_id - ID uživatele
+ * @param array $role_ids - Array ID rolí
+ * @return bool - Úspěch
+ */
+function manageUserRoles($db, $queries, $user_id, $role_ids) {
+    try {
+        // Smaž všechny stávající role
+        $stmt = $db->prepare($queries['uzivatele_roles_delete_all']);
+        $stmt->bindParam(':uzivatel_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        // Přidej nové role
+        if (!empty($role_ids) && is_array($role_ids)) {
+            foreach ($role_ids as $role_id) {
+                if (is_numeric($role_id) && (int)$role_id > 0) {
+                    $stmt = $db->prepare($queries['uzivatele_roles_insert']);
+                    $stmt->bindParam(':uzivatel_id', $user_id, PDO::PARAM_INT);
+                    $stmt->bindParam(':role_id', (int)$role_id, PDO::PARAM_INT);
+                    $stmt->execute();
+                }
+            }
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Spravuje přímá práva uživatele
+ * @param PDO $db - Databázové spojení
+ * @param array $queries - Dotazy
+ * @param int $user_id - ID uživatele
+ * @param array $pravo_ids - Array ID práv
+ * @return bool - Úspěch
+ */
+function manageUserDirectRights($db, $queries, $user_id, $pravo_ids) {
+    try {
+        // Smaž všechna stávající přímá práva
+        $stmt = $db->prepare($queries['uzivatele_direct_rights_delete_all']);
+        $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        // Přidej nová práva
+        if (!empty($pravo_ids) && is_array($pravo_ids)) {
+            foreach ($pravo_ids as $pravo_id) {
+                if (is_numeric($pravo_id) && (int)$pravo_id > 0) {
+                    $stmt = $db->prepare($queries['uzivatele_direct_rights_insert']);
+                    $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+                    $stmt->bindParam(':pravo_id', (int)$pravo_id, PDO::PARAM_INT);
+                    $stmt->execute();
+                }
+            }
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+// ========== USER MANAGEMENT HANDLERS ==========
+
+function handle_users_create($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Validace input dat
+        $validation = validateUserInput($input, false);
+        if (!$validation['valid']) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $validation['errors']), 'code' => 'VALIDATION_ERROR'));
+            return;
+        }
+        
+        $data = $validation['data'];
+        
+        // Kontrola povinného hesla při vytváření
+        if (!isset($data['password_hash'])) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => 'Heslo je povinné při vytváření uživatele', 'code' => 'MISSING_PASSWORD'));
+            return;
+        }
+        
+        // Validace vazeb
+        $relation_errors = validateUserRelations($db, $queries, $data);
+        if (!empty($relation_errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $relation_errors), 'code' => 'RELATION_ERROR'));
+            return;
+        }
+        
+        // Kontrola duplicit
+        $uniqueness_errors = validateUserUniqueness($db, $queries, $data, 0);
+        if (!empty($uniqueness_errors)) {
+            http_response_code(409);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $uniqueness_errors), 'code' => 'DUPLICATE_ERROR'));
+            return;
+        }
+        
+        $db->beginTransaction();
+        
+        // Vložení uživatele
+        $stmt = $db->prepare($queries['uzivatele_insert']);
+        $stmt->bindParam(':username', $data['username'], PDO::PARAM_STR);
+        $stmt->bindParam(':password_hash', $data['password_hash'], PDO::PARAM_STR);
+        $stmt->bindParam(':jmeno', $data['jmeno'], PDO::PARAM_STR);
+        $stmt->bindParam(':prijmeni', $data['prijmeni'], PDO::PARAM_STR);
+        $stmt->bindParam(':titul_pred', $data['titul_pred'], PDO::PARAM_STR);
+        $stmt->bindParam(':titul_za', $data['titul_za'], PDO::PARAM_STR);
+        $stmt->bindParam(':email', $data['email'], PDO::PARAM_STR);
+        $stmt->bindParam(':telefon', $data['telefon'], PDO::PARAM_STR);
+        $stmt->bindParam(':usek_id', $data['usek_id'], PDO::PARAM_INT);
+        $stmt->bindParam(':lokalita_id', $data['lokalita_id'], PDO::PARAM_INT);
+        $stmt->bindParam(':pozice_id', $data['pozice_id'], PDO::PARAM_INT);
+        $stmt->bindParam(':organizace_id', $data['organizace_id'], PDO::PARAM_INT);
+        $stmt->bindParam(':aktivni', $data['aktivni'], PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $user_id = $db->lastInsertId();
+        
+        // Správa rolí
+        if (isset($input['roles']) && is_array($input['roles'])) {
+            manageUserRoles($db, $queries, $user_id, $input['roles']);
+        }
+        
+        // Správa přímých práv
+        if (isset($input['direct_rights']) && is_array($input['direct_rights'])) {
+            manageUserDirectRights($db, $queries, $user_id, $input['direct_rights']);
+        }
+        
+        $db->commit();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'id' => (int)$user_id,
+                'username' => $data['username'],
+                'message' => 'Uživatel byl úspěšně vytvořen'
+            )
+        ));
+        
+    } catch (Exception $e) {
+        if (isset($db)) {
+            $db->rollBack();
+        }
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při vytváření uživatele: ' . $e->getMessage(), 'code' => 'SERVER_ERROR'));
+    }
+}
+
+function handle_users_update($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $user_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    if ($user_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné nebo chybějící ID uživatele', 'code' => 'MISSING_ID'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Kontrola existence uživatele
+        $stmt = $db->prepare($queries['uzivatele_detail']);
+        $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $existing_user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$existing_user) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Uživatel nenalezen', 'code' => 'NOT_FOUND'));
+            return;
+        }
+        
+        // Validace input dat
+        $validation = validateUserInput($input, true);
+        if (!$validation['valid']) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $validation['errors']), 'code' => 'VALIDATION_ERROR'));
+            return;
+        }
+        
+        $data = $validation['data'];
+        
+        // Validace vazeb
+        $relation_errors = validateUserRelations($db, $queries, $data);
+        if (!empty($relation_errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $relation_errors), 'code' => 'RELATION_ERROR'));
+            return;
+        }
+        
+        // DEBUG: Log before uniqueness check
+        error_log("DEBUG: About to check uniqueness - user_id: " . $user_id . ", data: " . json_encode($data));
+        
+        // Kontrola duplicit (vylučujeme současného uživatele)
+        $uniqueness_errors = validateUserUniqueness($db, $queries, $data, $user_id);
+        
+        // DEBUG: Log uniqueness result
+        error_log("DEBUG: Uniqueness check result - errors: " . json_encode($uniqueness_errors));
+        
+        if (!empty($uniqueness_errors)) {
+            http_response_code(409);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $uniqueness_errors), 'code' => 'DUPLICATE_ERROR'));
+            return;
+        }
+        
+        $db->beginTransaction();
+        
+        // Příprava dat pro update (pouze zadaná pole)
+        $update_fields = array();
+        $update_values = array(':id' => $user_id);
+        
+        $allowed_fields = array('username', 'jmeno', 'prijmeni', 'titul_pred', 'titul_za', 'email', 'telefon', 'usek_id', 'lokalita_id', 'pozice_id', 'organizace_id', 'aktivni');
+        
+        foreach ($allowed_fields as $field) {
+            if (isset($data[$field])) {
+                $update_fields[] = "$field = :$field";
+                $update_values[":$field"] = $data[$field];
+            }
+        }
+        
+        // Update hesla (pokud je zadáno)
+        if (isset($data['password_hash'])) {
+            $stmt = $db->prepare($queries['uzivatele_update_password']);
+            $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+            $stmt->bindParam(':password_hash', $data['password_hash'], PDO::PARAM_STR);
+            $stmt->execute();
+        }
+        
+        // Update ostatních dat (pokud jsou nějaká)
+        if (!empty($update_fields)) {
+            $sql = "UPDATE " . TABLE_UZIVATELE . " SET " . implode(', ', $update_fields) . ", dt_aktualizace = NOW() WHERE id = :id AND id > 0";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($update_values);
+        }
+        
+        // Správa rolí
+        if (isset($input['roles']) && is_array($input['roles'])) {
+            manageUserRoles($db, $queries, $user_id, $input['roles']);
+        }
+        
+        // Správa přímých práv
+        if (isset($input['direct_rights']) && is_array($input['direct_rights'])) {
+            manageUserDirectRights($db, $queries, $user_id, $input['direct_rights']);
+        }
+        
+        $db->commit();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'id' => (int)$user_id,
+                'username' => isset($data['username']) ? $data['username'] : $existing_user['username'],
+                'updated_fields' => array_keys($data),
+                'message' => 'Uživatel byl úspěšně aktualizován'
+            )
+        ));
+        
+    } catch (Exception $e) {
+        if (isset($db)) {
+            $db->rollBack();
+        }
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při aktualizaci uživatele: ' . $e->getMessage(), 'code' => 'SERVER_ERROR'));
+    }
+}
+
+function handle_users_partial_update($input, $config, $queries) {
+    // Stejná logika jako handle_users_update, protože update už podporuje částečné úpravy
+    handle_users_update($input, $config, $queries);
+}
+
+function handle_users_deactivate($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $user_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Username z tokenu neodpovídá username z požadavku', 'code' => 'UNAUTHORIZED'));
+        return;
+    }
+
+    if ($user_id <= 0) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatné nebo chybějící ID uživatele', 'code' => 'MISSING_ID'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Kontrola existence uživatele
+        $stmt = $db->prepare($queries['uzivatele_detail']);
+        $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $existing_user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$existing_user) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Uživatel nenalezen', 'code' => 'NOT_FOUND'));
+            return;
+        }
+        
+        // Deaktivace uživatele
+        $stmt = $db->prepare($queries['uzivatele_deactivate']);
+        $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'id' => (int)$user_id,
+                'username' => $existing_user['username'],
+                'deactivated' => true,
+                'message' => 'Uživatel byl úspěšně deaktivován'
+            )
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při deaktivaci uživatele: ' . $e->getMessage(), 'code' => 'SERVER_ERROR'));
+    }
+}
+
+?>
