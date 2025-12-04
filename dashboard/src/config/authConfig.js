@@ -1,16 +1,15 @@
-/**
- * Auth Configuration - Backend OAuth Flow
- * 
- * POZNÁMKA: Tato aplikace používá backend OAuth flow (confidential client).
- * Frontend NEpoužívá MSAL přímo - pouze volá backend API endpointy.
- * 
- * Tento soubor obsahuje pouze konfigurační konstanty pro referenci.
- */
+export const msalConfig = {
+  auth: {
+    clientId: import.meta.env.VITE_ENTRA_CLIENT_ID || "your_client_id_here",
+    authority: import.meta.env.VITE_ENTRA_AUTHORITY || "https://login.microsoftonline.com/common",
+    redirectUri: import.meta.env.VITE_REDIRECT_URI || "http://localhost:5173",
+  },
+  cache: {
+    cacheLocation: "sessionStorage",
+    storeAuthStateInCookie: false,
+  }
+};
 
-// Backend API URL (používá se v authService.js)
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-// Aplikační konfigurace
-export const appConfig = {
-  name: import.meta.env.VITE_APP_NAME || 'ERDMS',
+export const loginRequest = {
+  scopes: ["User.Read", "email", "openid", "profile"]
 };
