@@ -151,16 +151,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
   calculated.vypocitane.vybrany_uzivatel_telefon = '';
 
   if (selectedUserId) {
-      garant_uzivatel: !!apiData.garant_uzivatel,
-      garant_uzivatel_id: apiData.garant_uzivatel_id,
-      prikazce_uzivatel: !!apiData.prikazce_uzivatel,
-      prikazce_id: apiData.prikazce_id,
-      schvalovatel: !!apiData.schvalovatel,
-      schvalovatel_id: apiData.schvalovatel_id,
-      uzivatel: !!apiData.uzivatel,
-      uzivatel_id: apiData.uzivatel_id
-    });
-    
     // Najdi vybraného uživatele v datech objednávky
     let selectedUser = null;
     
@@ -199,27 +189,7 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
       calculated.vypocitane.vybrany_uzivatel_titul_za = selectedUser.titul_za || '';
       calculated.vypocitane.vybrany_uzivatel_email = selectedUser.email || '';
       calculated.vypocitane.vybrany_uzivatel_telefon = selectedUser.telefon || '';
-      
-        cele_jmeno: calculated.vypocitane.vybrany_uzivatel_cele_jmeno,
-        jmeno: calculated.vypocitane.vybrany_uzivatel_jmeno,
-        prijmeni: calculated.vypocitane.vybrany_uzivatel_prijmeni,
-        email: calculated.vypocitane.vybrany_uzivatel_email,
-        selectedUserId: selectedUserId
-      });
-    } else {
-        selectedUserId_type: typeof selectedUserId,
-        selectedUserId_value: selectedUserId,
-        garant_uzivatel_id: apiData.garant_uzivatel_id,
-        garant_uzivatel_id_type: typeof apiData.garant_uzivatel_id,
-        prikazce_id: apiData.prikazce_id,
-        prikazce_id_type: typeof apiData.prikazce_id,
-        schvalovatel_id: apiData.schvalovatel_id,
-        schvalovatel_id_type: typeof apiData.schvalovatel_id,
-        uzivatel_id: apiData.uzivatel_id,
-        uzivatel_id_type: typeof apiData.uzivatel_id
-      });
     }
-  } else {
   }
 
   // Placeholder pro uživatelsky vybraný text
@@ -363,29 +333,11 @@ export async function generateDocxDocument({
         apiData.vypocitane.vybrany_uzivatel_cele_jmeno = vybranyUzivatel.cele_jmeno;
         apiData.vypocitane.vybrany_uzivatel_role = vybranyUzivatel.role;
         apiData.vypocitane.vybrany_uzivatel_lokalita = vybranyUzivatel.lokalita_nazev;
-      } else {
       }
     }
 
-      polozky: apiData.polozky?.length || 0,
-      prilohy: apiData.prilohy?.length || 0,
-      garant_uzivatel: !!apiData.garant_uzivatel,
-      prikazce_uzivatel: !!apiData.prikazce_uzivatel,
-      schvalovatel: !!apiData.schvalovatel,
-      uzivatel: !!apiData.uzivatel,
-      odesilatel: !!apiData.odesilatel,
-      vypocitane: !!apiData.vypocitane,
-      dostupni_uzivatele_pro_podpis: apiData.dostupni_uzivatele_pro_podpis?.length || 0
-    });
-
     // ⚠️ POZNÁMKA: normalizeApiData() a addCalculatedVariables() už NENÍ POTŘEBA!
     // Backend endpoint vrací data JIŽ NORMALIZOVANÁ a S VYPOČÍTANÝMI HODNOTAMI
-    
-      ma_vypocitane: !!apiData.vypocitane,
-      celkova_cena_bez_dph: apiData.vypocitane?.celkova_cena_bez_dph,
-      celkova_cena_s_dph: apiData.vypocitane?.celkova_cena_s_dph,
-      vybrany_uzivatel_cele_jmeno: apiData.vypocitane?.vybrany_uzivatel_cele_jmeno
-    });
 
     // === KROK 5: DYNAMICKÉ MAPOVÁNÍ polí ===
 
