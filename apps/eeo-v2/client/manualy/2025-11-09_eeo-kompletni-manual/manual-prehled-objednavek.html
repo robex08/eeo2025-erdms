@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manuál - Přehled objednávek v systému EEO</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #06b6d4;
+            --light-bg: #f8fafc;
+            --border-color: #e2e8f0;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--light-bg);
+            padding: 20px 40px;
+            border-bottom: 2px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav h2 {
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .nav ul {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+
+        .nav ul li a {
+            display: block;
+            padding: 10px 15px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .nav ul li a:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        /* Content */
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 60px;
+        }
+
+        .section h2 {
+            color: var(--primary-color);
+            font-size: 2rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .section h3 {
+            color: var(--secondary-color);
+            font-size: 1.5rem;
+            margin: 30px 0 15px;
+        }
+
+        .section h4 {
+            color: var(--text-primary);
+            font-size: 1.2rem;
+            margin: 20px 0 10px;
+        }
+
+        .section p {
+            margin-bottom: 15px;
+            line-height: 1.8;
+        }
+
+        .section ul, .section ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+
+        .section li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        /* Info boxes */
+        .info-box {
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+
+        .info-box.tip {
+            background: #ecfdf5;
+            border-color: var(--success-color);
+        }
+
+        .info-box.warning {
+            background: #fef3c7;
+            border-color: var(--warning-color);
+        }
+
+        .info-box.important {
+            background: #fee2e2;
+            border-color: var(--danger-color);
+        }
+
+        .info-box.info {
+            background: #e0f2fe;
+            border-color: var(--info-color);
+        }
+
+        .info-box-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        /* Code blocks */
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        table thead {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        table th, table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        table tbody tr:hover {
+            background: var(--light-bg);
+        }
+
+        /* Screenshots */
+        .screenshot {
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .screenshot img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            border: 1px solid var(--border-color);
+        }
+
+        .screenshot-caption {
+            margin-top: 10px;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 25px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .feature-card h4 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 2px;
+        }
+
+        .status-badge.new { background: #dbeafe; color: #1e40af; }
+        .status-badge.pending { background: #fed7aa; color: #92400e; }
+        .status-badge.approved { background: #d1fae5; color: #065f46; }
+        .status-badge.waiting { background: #fef3c7; color: #78350f; }
+        .status-badge.completed { background: #e2e8f0; color: #475569; }
+        .status-badge.cancelled { background: #fee2e2; color: #991b1b; }
+
+        /* Footer */
+        .footer {
+            background: var(--light-bg);
+            padding: 30px 40px;
+            text-align: center;
+            border-top: 2px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+            }
+            .nav {
+                position: static;
+            }
+            .section {
+                page-break-inside: avoid;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            .content {
+                padding: 20px;
+            }
+            .nav {
+                padding: 15px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📋 Manuál - Přehled objednávek v systému EEO</h1>
+            <p>Kompletní průvodce pro efektivní práci s objednávkami</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav">
+            <h2>📖 Obsah</h2>
+            <ul>
+                <li><a href="#uvod">🎯 Úvod</a></li>
+                <li><a href="#globalni-vyhledavani">🔍 Globální vyhledávání</a></li>
+                <li><a href="#dashboard">📊 Dashboard</a></li>
+                <li><a href="#seznam">📝 Seznam objednávek</a></li>
+                <li><a href="#filtrovani">🔍 Filtrování</a></li>
+                <li><a href="#rozsirene-filtry">🔬 Rozšířené filtry</a></li>
+                <li><a href="#detail">📋 Detail objednávky</a></li>
+                <li><a href="#akce">⚙️ Akce s objednávkami</a></li>
+                <li><a href="#strankovani">📄 Stránkování a export</a></li>
+                <li><a href="#tipy">💡 Tipy a triky</a></li>
+            </ul>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Úvod -->
+            <section id="uvod" class="section">
+                <h2>🎯 Úvod</h2>
+                <p>Vítejte v uživatelském manuálu modulu <strong>Přehled objednávek</strong> systému EEO. Tento modul představuje centrální řídicí centrum, kde máte na jednom místě kompletní přehled o všech objednávkách vaší organizace.</p>
+                
+                <p>Ať už jste vedoucí oddělení, který potřebuje kontrolovat stav schvalování, garant zodpovědný za konkrétní objednávky, nebo běžný uživatel hledající informace o své objednávce - tento modul vám poskytne vše potřebné pro efektivní práci.</p>
+
+                <p>Systém byl navržen s důrazem na <strong>uživatelskou přívětivost</strong> a <strong>rychlost práce</strong>. Díky pokročilým nástrojům pro vyhledávání a filtrování najdete požadovanou informaci během několika vteřin. Moderní rozhraní s intuitivním ovládáním vám umožní soustředit se na svou práci, ne na to, jak aplikaci ovládat.</p>
+
+                <h3>Co vám tento modul nabízí?</h3>
+                <p>Modul Přehled objednávek není jen seznam záznamů - je to komplexní nástroj pro správu celého životního cyklu objednávek:</p>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>🔍 Globální vyhledávání</h4>
+                        <p>Vyhledávání napříč celou aplikací - objednávky, smlouvy, faktury, kontakty</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📊 Dashboard</h4>
+                        <p>Přehledové statistiky a analýza stavu objednávek</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔬 Pokročilé filtrování</h4>
+                        <p>Kombinace více kritérií pro přesné vyhledávání</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📝 Detailní zobrazení</h4>
+                        <p>Kompletní informace o každé objednávce</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📤 Export dat</h4>
+                        <p>Export do CSV formátu pro další analýzu</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🔐 Oprávnění</h4>
+                        <p>Různé úrovně přístupu podle role uživatele</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Globální vyhledávání -->
+            <section id="globalni-vyhledavani" class="section">
+                <h2>🔍 Globální vyhledávání</h2>
+                <p><strong>Globální vyhledávání</strong> je ten nejdůležitější nástroj, který v systému EEO máte k dispozici. Je to váš <em>švýcarský nůž</em> pro práci s daty - ať už potřebujete najít konkrétní objednávku, vyhledat smlouvu podle dodavatele, najít fakturu podle variabilního symbolu, nebo rychle dohledat kontakt na kolegu.</p>
+
+                <p>Představte si situaci: Volá vám dodavatel s dotazem na objednávku č. 2025/348. Místo zdlouhavého procházení seznamů a filtrování stačí zadat číslo do globálního vyhledávání a během okamžiku máte všechny potřebné informace na obrazovce. <strong>To je síla globálního vyhledávání!</strong></p>
+
+                <h3>📍 Kde najdu globální vyhledávání?</h3>
+                <p>Vyhledávací pole je strategicky umístěno <strong>v hlavičce aplikace</strong> - v modrém pruhu v horní části obrazovky. Je navrženo tak, aby bylo <strong>vždy viditelné</strong> bez ohledu na to, na které stránce systému se právě nacházíte. Ať jste v přehledu objednávek, v detailu faktury, nebo v nastavení profilu - vyhledávání máte stále na dosah.</p>
+                
+                <p>Vyhledávací pole poznáte podle <strong>ikony lupy</strong> 🔍 a semi-transparentního vzhledu, který krásně zapadá do modrého designu hlavičky. Je to místo, kam vaše oči automaticky zamíří, když něco hledáte.</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/vyhledavani-dropdown.png" alt="Globální vyhledávání">
+                    <div class="screenshot-caption">Globální vyhledávání v hlavičce aplikace</div>
+                </div>
+
+                <h3>🎯 Co můžu hledat?</h3>
+                
+                <h4>📋 Objednávky</h4>
+                <ul>
+                    <li>Číslo objednávky (např. "2025/123")</li>
+                    <li>Předmět objednávky</li>
+                    <li>Poznámky</li>
+                    <li>Jméno objednatele</li>
+                    <li>Jméno garanta</li>
+                </ul>
+
+                <h4>📄 Smlouvy</h4>
+                <ul>
+                    <li>Číslo smlouvy</li>
+                    <li>Název smlouvy</li>
+                    <li>Dodavatel</li>
+                </ul>
+
+                <h4>🧾 Faktury</h4>
+                <ul>
+                    <li>Číslo faktury</li>
+                    <li>Variabilní symbol</li>
+                    <li>Dodavatel</li>
+                </ul>
+
+                <h4>👥 Kontakty</h4>
+                <ul>
+                    <li>Jméno uživatele</li>
+                    <li>E-mail</li>
+                    <li>Telefon</li>
+                    <li>Organizace</li>
+                </ul>
+
+                <h4>🏢 Dodavatelé</h4>
+                <ul>
+                    <li>Název firmy</li>
+                    <li>IČO</li>
+                    <li>E-mail</li>
+                    <li>Telefon</li>
+                </ul>
+
+                <h3>⚡ Jak používat globální vyhledávání?</h3>
+                <p>Používání globálního vyhledávání je naprosto intuitivní. Systém je navržen tak, aby vám pomáhal najít to, co hledáte, s minimálním úsilím:</p>
+                
+                <ol>
+                    <li><strong>Klikněte</strong> do vyhledávacího pole v hlavičce - pole se aktivuje a zobrazí kurzor připravený pro psaní</li>
+                    <li><strong>Začněte psát</strong> hledaný výraz - stačí zadat aspoň 4 znaky, aby bylo vyhledávání dostatečně přesné</li>
+                    <li><strong>Počkejte chvíli</strong> - systém automaticky začne hledat po půl vteřině (500ms). To je záměrné zpoždění, které zajišťuje, že server nebude přetížen během psaní</li>
+                    <li><strong>Nebo stiskněte Enter</strong> pokud nechcete čekat - vyhledávání se spustí okamžitě</li>
+                    <li><strong>Prohlédněte si výsledky</strong> - pod vyhledávacím polem se zobrazí rozbalovací menu s nalezenými záznamy</li>
+                    <li><strong>Klikněte na požadovaný výsledek</strong> - systém vás okamžitě přesměruje na detail vybraného záznamu</li>
+                </ol>
+
+                <div class="info-box tip">
+                    <div class="info-box-title">💡 Rychlé vyhledávání pro pokročilé</div>
+                    <p>Pro okamžité vyhledání stiskněte <strong>Enter</strong>! Systém jinak čeká 500ms, aby neztěžoval server při každém stisku klávesy. Pokud už víte, co hledáte a nechcete čekat, Enter je vaším přítelem.</p>
+                    <p><strong>Profi tip:</strong> Můžete začít psát číslo objednávky ještě před tím, než stránka plně načte - systém si zapamatuje váš vstup a provede vyhledávání hned, jak bude připraven.</p>
+                </div>
+
+                <h3>📋 Výsledky vyhledávání</h3>
+                <p>Po zadání hledaného výrazu se zobrazí <strong>rozbalovací menu s výsledky</strong>:</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/vyhledavani-detail.png" alt="Detail výsledků vyhledávání">
+                    <div class="screenshot-caption">Výsledky globálního vyhledávání</div>
+                </div>
+
+                <h4>Struktura výsledků:</h4>
+                <p><strong>Každý typ záznamu má svou sekci:</strong></p>
+                <ul>
+                    <li>📋 <strong>Objednávky</strong> - zobrazuje číslo, předmět a objednatele</li>
+                    <li>📄 <strong>Smlouvy</strong> - číslo smlouvy, název, dodavatel</li>
+                    <li>🧾 <strong>Faktury</strong> - číslo faktury, VS, dodavatel</li>
+                    <li>👥 <strong>Uživatelé</strong> - jméno, e-mail, organizace</li>
+                    <li>🏢 <strong>Dodavatelé</strong> - název, IČO, kontakt</li>
+                </ul>
+
+                <div class="info-box important">
+                    <div class="info-box-title">⚠️ Důležité poznámky</div>
+                    <ul>
+                        <li>⚡ <strong>Minimální délka:</strong> Zadejte alespoň 4 znaky</li>
+                        <li>🔍 <strong>Hledání ignoruje diakritiku:</strong> můžete psát bez háčků a čárek</li>
+                        <li>🌐 <strong>Prohledává celý systém:</strong> nejenom aktuální stránku</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Dashboard -->
+            <section id="dashboard" class="section">
+                <h2>📊 Dashboard - Přehledové dlaždice</h2>
+                <p>Hned po vstupu do sekce <strong>Přehled objednávek</strong> vás uvítá přehledový dashboard - vaše velitelské centrum pro monitoring všech objednávek. Dashboard je jako palubní deska vašeho auta - na první pohled vidíte všechny důležité informace a můžete rychle reagovat na jakoukoliv situaci.</p>
+                
+                <p>Dlaždice dashboardu vám poskytují <strong>okamžitý přehled</strong> o stavu objednávek. Nemusíte procházet jednotlivé záznamy, abyste zjistili, kolik objednávek čeká na schválení nebo jaká je celková hodnota objednávek za měsíc. Všechno máte na dosah očí v přehledném a vizuálně atraktivním formátu.</p>
+
+                <p>Ale dashboard není jen pasivní zobrazení čísel. <strong>Je to interaktivní nástroj!</strong> Každá dlaždice je zároveň tlačítkem pro filtrování - kliknutím okamžitě zobrazíte pouze objednávky dané kategorie. To je neocenitelné, když potřebujete rychle zpracovat všechny objednávky v určitém stavu.</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/prehled_obj-dashboard.png" alt="Dashboard">
+                    <div class="screenshot-caption">Dashboard s přehledovými statistikami</div>
+                </div>
+
+                <h3>📈 Zobrazované statistiky:</h3>
+
+                <h4>🔢 Celkový počet objednávek</h4>
+                <p>Počet všech objednávek za vybrané období, barevně zvýrazněný pro lepší přehlednost.</p>
+
+                <h4>📋 Stavy objednávek</h4>
+                <p>Dashboard zobrazuje počty objednávek podle jejich stavu:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Stav</th>
+                            <th>Ikona</th>
+                            <th>Význam</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="status-badge new">Nová</span></td>
+                            <td>🆕</td>
+                            <td>Čeká na zpracování</td>
+                        </tr>
+                        <tr>
+                            <td><span class="status-badge pending">Ke schválení</span></td>
+                            <td>⏳</td>
+                            <td>Čeká na schválení</td>
+                        </tr>
+                        <tr>
+                            <td><span class="status-badge approved">Schválená</span></td>
+                            <td>✅</td>
+                            <td>Schválená objednávka</td>
+                        </tr>
+                        <tr>
+                            <td><span class="status-badge waiting">Čeká se</span></td>
+                            <td>⏰</td>
+                            <td>Čeká na nějakou akci</td>
+                        </tr>
+                        <tr>
+                            <td><span class="status-badge completed">Vyřízená</span></td>
+                            <td>🎯</td>
+                            <td>Dokončená objednávka</td>
+                        </tr>
+                        <tr>
+                            <td><span class="status-badge cancelled">Stornovaná</span></td>
+                            <td>❌</td>
+                            <td>Zrušená objednávka</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>🎛️ Ovládání dashboardu:</h3>
+
+                <h4>Klikací filtry</h4>
+                <p>Kliknutím na <strong>jakoukoliv dlaždici</strong> se seznam objednávek automaticky <strong>vyfiltruje</strong> podle vybraného kritéria.</p>
+
+                <div class="info-box tip">
+                    <div class="info-box-title">💡 Příklad použití</div>
+                    <p>Klikněte na dlaždici "Ke schválení" → zobrazí se pouze objednávky čekající na schválení</p>
+                </div>
+
+                <h4>Zrušení filtru</h4>
+                <ul>
+                    <li>Klikněte <strong>znovu na stejnou dlaždici</strong> pro zrušení filtru</li>
+                    <li>Nebo použijte tlačítko <strong>"Vymazat filtry"</strong> v panelu filtrů</li>
+                </ul>
+
+                <h4>Skrytí dashboardu</h4>
+                <p>Pro větší pracovní plochu můžete dashboard dočasně skrýt:</p>
+                <ol>
+                    <li>Klikněte na tlačítko <strong>"Dashboard"</strong> v ovládacím panelu</li>
+                    <li>Dashboard se skryje a zobrazí se více místa pro seznam</li>
+                    <li>Kliknutím znovu dashboard opět zobrazíte</li>
+                </ol>
+            </section>
+
+            <!-- Seznam objednávek -->
+            <section id="seznam" class="section">
+                <h2>📝 Seznam objednávek</h2>
+                <p>Hlavní tabulka zobrazuje seznam všech objednávek s možností rozšířeného zobrazení.</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/prehled_obj-seznam.png" alt="Seznam objednávek">
+                    <div class="screenshot-caption">Seznam objednávek s možností rozbalení detailu</div>
+                </div>
+
+                <h3>📋 Sloupce tabulky:</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sloupec</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>📅 Datum</strong></td>
+                            <td>Datum vytvoření objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🔢 Číslo</strong></td>
+                            <td>Evidenční číslo objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>📝 Předmět</strong></td>
+                            <td>Stručný popis objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>👤 Objednatel</strong></td>
+                            <td>Jméno osoby, která objednávku vytvořila</td>
+                        </tr>
+                        <tr>
+                            <td><strong>🎯 Stav</strong></td>
+                            <td>Aktuální stav objednávky (barevný badge)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>💰 Cena s DPH</strong></td>
+                            <td>Celková hodnota objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>👨‍💼 Garant</strong></td>
+                            <td>Osoba odpovědná za objednávku</td>
+                        </tr>
+                        <tr>
+                            <td><strong>✅ Schvalovatel</strong></td>
+                            <td>Osoba, která objednávku schválila</td>
+                        </tr>
+                        <tr>
+                            <td><strong>⚙️ Akce</strong></td>
+                            <td>Tlačítka pro editaci, náhled, smazání</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>🔽 Rozbalení detailu:</h3>
+                <p>Každý řádek v seznamu skrývá mnohem více informací, než se vejde do kompaktního zobrazení. Proto má každá objednávka možnost rozbalit detail pro zobrazení všech údajů.</p>
+                
+                <p>Vlevo od každé objednávky najdete <strong>symbol plus</strong> ➕ (u sbalených řádků) nebo <strong>symbol mínus</strong> ➖ (u rozbalených řádků). Kliknutím na tento symbol se řádek rozbalí a zobrazí <strong>kompletní detail objednávky</strong> s všemi informacemi, které potřebujete:</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/prehled_obj-detail.png" alt="Detail objednávky">
+                    <div class="screenshot-caption">Rozbalený detail objednávky</div>
+                </div>
+
+                <p>Rozbalený detail je jako rozkládací harmonika - po kliknutí se plynule vysune a zobrazí strukturovaný přehled obsahující:</p>
+                <ul>
+                    <li>✅ <strong>Kompletní informace o objednávce</strong> - evidenční číslo, předmět, poznámky a veškeré textové údaje</li>
+                    <li>💰 <strong>Podrobné cenové údaje</strong> - cena bez DPH, výše DPH, cena s DPH, rozpočtové položky</li>
+                    <li>📅 <strong>Všechny časové údaje</strong> - kdy byla objednávka vytvořena, kdy naposledy upravena, termín dodání, datum schválení</li>
+                    <li>👥 <strong>Všechny osoby spojené s objednávkou</strong> - objednatel s kompletními kontakty, garant, schvalovatel, osoba která záznam vytvořila</li>
+                    <li>📎 <strong>Seznam příloh</strong> - všechny připojené dokumenty s možností okamžitého stažení</li>
+                    <li>📦 <strong>Seznam položek objednávky</strong> - tabulka se všemi objednanými položkami včetně množství a cen</li>
+                </ul>
+                
+                <p>Detail je navržen tak, aby byl <strong>čitelný a přehledný</strong>. Informace jsou logicky seskupeny do sekcí a důležité údaje jsou vizuálně zvýrazněny. Můžete tak rychle naskenovat detail očima a najít přesně to, co potřebujete.</p>
+
+                <h3>⚡ Rychlé akce:</h3>
+
+                <h4>Řazení</h4>
+                <p>Klikněte na <strong>hlavičku sloupce</strong> pro seřazení:</p>
+                <ul>
+                    <li>První klik: <strong>vzestupně</strong> ▲</li>
+                    <li>Druhý klik: <strong>sestupně</strong> ▼</li>
+                </ul>
+
+                <h4>Rozbalit vše / Sbalit vše</h4>
+                <p>V ovládacím panelu najdete tlačítka pro:</p>
+                <ul>
+                    <li><strong>Rozbalit všechny řádky</strong> - zobrazí detaily všech objednávek najednou</li>
+                    <li><strong>Sbalit všechny řádky</strong> - vrátí kompaktní zobrazení</li>
+                </ul>
+            </section>
+
+            <!-- Filtrování -->
+            <section id="filtrovani" class="section">
+                <h2>🔍 Filtrování objednávek</h2>
+                <p>V moderním systému, kde můžete mít desítky nebo dokonce stovky objednávek měsíčně, je schopnost efektivně filtrovat data naprosto klíčová. Představte si, že hledáte jehlu v kupce sena - to je procházení nefiltovaného seznamu. Filtrování je jako magnet, který tu jehlu vytáhne přímo k vám.</p>
+                
+                <p>Systém EEO nabízí <strong>vícevrstvé filtrování</strong> - od základních rychlých filtrů, které použijete každý den, až po pokročilé kombinace pro specifické analytické úkoly. Každý filtr pracuje nezávisle, ale dohromady tvoří mocný nástroj, který vám umožní přesně zacílit na objednávky, které potřebujete vidět.</p>
+
+                <div class="screenshot">
+                    <img src="screenshots/prehled_obj-filtry.png" alt="Panel filtrů">
+                    <div class="screenshot-caption">Panel s filtry pro zúžení seznamu</div>
+                </div>
+
+                <h3>🎯 Základní filtry:</h3>
+
+                <h4>📅 Rok</h4>
+                <p>Časový rozsah je první věc, kterou budete chtít nastavit. Systém vám umožňuje vybrat konkrétní rok nebo zobrazit všechny roky najednou:</p>
+                <ul>
+                    <li><strong>Aktuální rok (výchozí)</strong> - Po přihlášení se automaticky zobrazí objednávky z běžného roku. To je nejčastější případ použití.</li>
+                    <li><strong>Předchozí roky</strong> - Můžete se podívat i do minulosti, třeba když potřebujete najít loňskou objednávku pro účetní kontrolu</li>
+                    <li><strong>"Všechny roky"</strong> - Zobrazí kompletní historii všech objednávek v systému. Pozor, toto může být hodně záznamů!</li>
+                </ul>
+                
+                <p><strong>Tip:</strong> Pokud hledáte konkrétní starší objednávku a nevíte přesně kdy byla vytvořena, nejrychlejší cesta je použít globální vyhledávání místo procházení jednotlivých let.</p>
+
+                <h4>📆 Měsíc</h4>
+                <p>Měsíční filtr je skvělý pro sledování objednávek v rámci konkrétního měsíce - třeba pro měsíční výkazy nebo kontrolu rozpočtu:</p>
+                <ul>
+                    <li><strong>Bez výběru</strong> - Pokud měsíc nevyberete, zobrazí se všechny objednávky z vybraného roku</li>
+                    <li><strong>Konkrétní měsíc</strong> - Vyberte leden až prosinec pro zobrazení objednávek pouze z tohoto měsíce</li>
+                    <li><strong>Kombinace rok + měsíc</strong> - To vám dá přesné období, například "únor 2025" - ideální pro měsíční reporty</li>
+                </ul>
+                
+                <p><strong>Praktický příklad:</strong> Jste vedoucí oddělení a potřebujete zkontrolovat všechny objednávky schválené v březnu 2025 pro čtvrtletní přehled. Nastavíte rok 2025, měsíc březen a máte přesně to, co potřebujete.</p>
+
+                <h4>🔍 Fulltextové vyhledávání</h4>
+                <p>Rychlé vyhledávání v aktuálním seznamu:</p>
+                <ul>
+                    <li>Prohledává číslo objednávky</li>
+                    <li>Prohledává předmět</li>
+                    <li>Prohledává objednatele</li>
+                    <li>Prohledává poznámky</li>
+                </ul>
+
+                <div class="info-box info">
+                    <div class="info-box-title">ℹ️ Důležité</div>
+                    <p>Toto vyhledávání je lokální - prohledává pouze aktuálně načtený seznam objednávek. Pro vyhledávání v celém systému použijte <strong>globální vyhledávání v hlavičce</strong>!</p>
+                </div>
+            </section>
+
+            <!-- Rozšířené filtry -->
+            <section id="rozsirene-filtry" class="section">
+                <h2>🔬 Rozšířené filtry</h2>
+                <p>Zatímco základní filtry jsou jako hrubé síto, rozšířené filtry jsou jako jemný filtr, který vám umožní vytříbit přesně ty objednávky, které splňují všechna vaše kritéria. Tady se dostáváme k opravdové síle systému EEO.</p>
+                
+                <p>Rozšířené filtry nejsou jen o nalezení konkrétní objednávky - jsou to analytické nástroje. Můžete s nimi odpovědět na otázky typu: "Kolik objednávek od garanta XY za poslední kvartál překročilo 50 000 Kč a ještě čeká na schválení?" Zkombinujete několik filtrů a máte odpověď během vteřiny.</p>
+
+                <p>Panel s rozšířenými filtry můžete zobrazit nebo skrýt podle potřeby tlačítkem <strong>"Filtr"</strong> v ovládací liště. Když filtry nepotřebujete, můžete je skrýt a získat tak více místa pro seznam objednávek.</p>
+
+                <h3>📊 Dostupné rozšířené filtry:</h3>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>👤 Filtr podle objednatele</h4>
+                        <p><strong>Kdo objednávku vytvořil?</strong> Tento filtr zobrazí pouze objednávky od vybraných osob. Dropdown obsahuje seznam všech uživatelů v systému. Nejlepší na tom je, že <strong>můžete vybrat více osob najednou</strong> - například všechny členy vašeho týmu. Ideální když kontrolujete objednávky svého oddělení.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>👨‍💼 Filtr podle garanta</h4>
+                        <p><strong>Kdo nese odpovědnost?</strong> Garant je osoba zodpovědná za konkrétní objednávku. Pokud jste garant, tento filtr rychle ukáže všechny vaše objednávky. Také podporuje <strong>vícenásobný výběr</strong>, takže můžete sledovat objednávky více garantů současně - užitečné pro vedoucí pracovníky.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>✅ Filtr podle schvalovatele</h4>
+                        <p><strong>Kdo dal zelenou?</strong> Každá objednávka musí být někým schválena. Tento filtr vám ukáže, kdo které objednávky schválil. Může být užitečný pro audit nebo když potřebujete vědět, které objednávky schválila konkrétní osoba - třeba před jejím odchodem na dovolenou.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🎯 Filtr podle stavu</h4>
+                        <p><strong>V jakém stádiu se objednávka nachází?</strong> Toto je pravděpodobně nejpoužívanější filtr. Můžete vybrat jeden nebo více stavů najednou: <em>Nová</em> (právě vytvořená), <em>Ke schválení</em> (čeká na váš podpis), <em>Schválená</em> (zelená pro nákup), <em>Čeká se</em> (něco blokuje postup), <em>Vyřízená</em> (hotovo), <em>Stornovaná</em> (zrušená). Zaškrtněte ty stavy, které vás zajímají.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📅 Datumový filtr</h4>
+                        <p><strong>Kdy to bylo?</strong> Chcete vidět objednávky z konkrétního časového úseku? Nastavte datum <em>od</em> a <em>do</em>. Formát je DD.MM.RRRR (například 01.03.2025). Můžete použít jen "od" pro všechny objednávky od určitého data dál, nebo jen "do" pro všechny objednávky do určitého data. Obojí dohromady vám dá přesné časové okno.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>💰 Cenový filtr</h4>
+                        <p><strong>Kolik to stojí?</strong> Hledáte objednávky podle hodnoty? Nastavte minimální částku (od) nebo maximální částku (do), nebo obojí pro přesné rozpětí. Částky jsou v <strong>Kč včetně DPH</strong>. Chcete vidět jen velké objednávky nad 100 000 Kč? Nastavte "od 100000". Nebo naopak jen drobnosti do 5 000 Kč? Nastavte "do 5000".</p>
+                    </div>
+                </div>
+
+                <h3>🎛️ Kombinování filtrů:</h3>
+                <div class="info-box tip">
+                    <div class="info-box-title">💡 Všechny filtry lze kombinovat!</div>
+                    <p><strong>Příklad:</strong> Zobrazit objednávky</p>
+                    <ul>
+                        <li>Od garanta "Jan Novák"</li>
+                        <li>Se stavem "Ke schválení"</li>
+                        <li>Za měsíc únor 2025</li>
+                        <li>V rozmezí 10 000 - 50 000 Kč</li>
+                    </ul>
+                </div>
+
+                <h3>🧹 Vymazání filtrů:</h3>
+                <p>Pro rychlé zrušení všech aktivních filtrů:</p>
+                <ol>
+                    <li>Klikněte na tlačítko <strong>"Vymazat filtry"</strong></li>
+                    <li>Všechny filtry se resetují na výchozí hodnoty</li>
+                    <li>Zobrazí se kompletní seznam objednávek</li>
+                </ol>
+            </section>
+
+            <!-- Detail objednávky -->
+            <section id="detail" class="section">
+                <h2>📋 Detail objednávky</h2>
+                <p>Když rozkliknete objednávku pomocí symbolu ➕, dostanete se k tomu nejdůležitějšímu - ke <strong>kompletnímu detailu objednávky</strong>. To je jako když otevřete šuplík a vidíte všechno, co je uvnitř, pěkně uspořádané a přehledné.</p>
+                
+                <p>Detail není jen suchý výpis dat. Je to <strong>strukturovaný pohled</strong> na objednávku, kde každá informace má své místo. Můžete si ho představit jako rozloženou kartotéční kartu, kde máte na jednom místě vše od základních údajů přes osoby, ceny, termíny až po přílohy a položky.</p>
+
+                <p>Proč je detail tak důležitý? Protože ve většině případů <strong>nepotřebujete editovat objednávku</strong> - stačí vám jen rychle zkontrolovat nějaký údaj. Kdo je garant? Jaký je termín dodání? Kolik to bude stát s DPH? Na všechny tyto otázky odpovíte během vteřin bez nutnosti otevírat celý formulář objednávky.</p>
+
+                <h3>📑 Sekce detailu:</h3>
+
+                <h4>📌 Základní informace</h4>
+                <div class="code-block">ID objednávky:        123
+Evidenční číslo:      2025/045
+Předmět:              Kancelářské potřeby pro Q1/2025
+Poznámka:             Urgentní dodání do konce měsíce</div>
+
+                <h4>👥 Osoby</h4>
+                <div class="code-block">Objednatel:           Ing. Jana Nováková
+                      (jana.novakova@example.cz, +420 123 456 789)
+
+Garant:               Mgr. Petr Svoboda
+                      (petr.svoboda@example.cz, +420 234 567 890)
+
+Schvalovatel:         Prof. Marie Dvořáková
+                      (marie.dvorakova@example.cz)
+
+Vytvořil:             Jana Nováková</div>
+
+                <h4>💰 Cenové údaje</h4>
+                <div class="code-block">Cena bez DPH:         42 000 Kč
+DPH (21%):            8 820 Kč
+─────────────────────────────
+Cena s DPH:           50 820 Kč</div>
+
+                <h4>📅 Časové údaje</h4>
+                <div class="code-block">Datum vytvoření:      15.01.2025 14:30
+Datum úpravy:         18.01.2025 09:15
+Termín dodání:        31.01.2025</div>
+
+                <h4>📦 Položky objednávky</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Položka</th>
+                            <th>Množství</th>
+                            <th>Jedn. cena</th>
+                            <th>Celkem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Papír A4</td>
+                            <td>50 bal.</td>
+                            <td>120 Kč</td>
+                            <td>6 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td>Toner černý</td>
+                            <td>5 ks</td>
+                            <td>1 200 Kč</td>
+                            <td>6 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td>Flash disk 32GB</td>
+                            <td>20 ks</td>
+                            <td>350 Kč</td>
+                            <td>7 000 Kč</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>📎 Přílohy</h4>
+                <p>Seznam připojených dokumentů:</p>
+                <ul>
+                    <li>📄 Nabídka_dodavatel.pdf (245 KB)</li>
+                    <li>📊 Specifikace_pozadavku.xlsx (18 KB)</li>
+                    <li>📋 Schvaleni_vedeni.pdf (156 KB)</li>
+                </ul>
+                <p>Každou přílohu lze <strong>stáhnout</strong> kliknutím na její název.</p>
+            </section>
+
+            <!-- Akce -->
+            <section id="akce" class="section">
+                <h2>⚙️ Akce s objednávkami</h2>
+                <p>Seznam objednávek není jen pro pasivní prohlížení - je to <strong>aktivní nástroj pro práci</strong>. V každém řádku najdete sadu tlačítek pro různé akce, které můžete s objednávkou provést. Tyto akce jsou vaším nástrojem pro každodenní práci s objednávkami.</p>
+                
+                <p>Důležité je, že <strong>systém kontroluje vaše oprávnění</strong>. Uvidíte a budete moci používat pouze ty akce, na které máte právo. To zajišťuje bezpečnost dat a zabraňuje nežádoucím změnám. Pokud nemáte oprávnění něco měnit, tlačítko pro editaci se buď nezobrazí, nebo bude neaktivní.</p>
+
+                <h3>🔨 Dostupné akce:</h3>
+
+                <h4>✏️ Editovat</h4>
+                <p>Otevře <strong>formulář objednávky</strong> v režimu editace. K dispozici pro:</p>
+                <ul>
+                    <li>✅ Vlastní objednávky (všichni uživatelé)</li>
+                    <li>✅ Všechny objednávky (uživatelé s oprávněním <code>ORDER_EDIT_ALL</code>)</li>
+                </ul>
+
+                <p><strong>Postup:</strong></p>
+                <ol>
+                    <li>Klikněte na ikonu <strong>tužky</strong> (✏️)</li>
+                    <li>Otevře se formulář objednávky</li>
+                    <li>Proveďte změny</li>
+                    <li>Uložte tlačítkem <strong>"Uložit"</strong></li>
+                </ol>
+
+                <div class="info-box warning">
+                    <div class="info-box-title">⚠️ Upozornění</div>
+                    <p>Systém kontroluje, zda není objednávka uzamčena jiným uživatelem!</p>
+                </div>
+
+                <h4>👁️ Náhled</h4>
+                <ul>
+                    <li>Zobrazí <strong>detail objednávky</strong> v režimu pouze pro čtení</li>
+                    <li>K dispozici pro všechny uživatele</li>
+                    <li>Vhodné pro rychlou kontrolu bez rizika změn</li>
+                </ul>
+
+                <h4>🗑️ Smazat</h4>
+                <ul>
+                    <li>Vymaže objednávku z databáze</li>
+                    <li>K dispozici pouze pro uživatele s oprávněním <code>ORDER_MANAGE</code></li>
+                    <li>Systém požádá o <strong>potvrzení</strong> před smazáním</li>
+                </ul>
+
+                <h3>🔐 Oprávnění:</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Oprávnění</th>
+                            <th>Co umožňuje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>ORDER_EDIT_OWN</code></td>
+                            <td>Editovat vlastní objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><code>ORDER_EDIT_ALL</code></td>
+                            <td>Editovat všechny objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><code>ORDER_MANAGE</code></td>
+                            <td>Mazat objednávky, pokročilá správa</td>
+                        </tr>
+                        <tr>
+                            <td><code>ORDER_VIEW</code></td>
+                            <td>Pouze prohlížet objednávky</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Stránkování a export -->
+            <section id="strankovani" class="section">
+                <h2>📄 Stránkování a export</h2>
+                <p>Když máte stovky objednávek, nemá smysl zobrazovat je všechny najednou - stránka by se načítala věčnost a vy byste se v tom ztratili. Proto systém používá <strong>inteligentní stránkování</strong>, které zobrazuje objednávky po menších dávkách.</p>
+                
+                <p>Ale co když potřebujete data mimo systém? Třeba je chcete poslat kolegovi emailem, zpracovat v Excelu, nebo vytisknout pro poradu? Na to je tu <strong>funkce exportu</strong>, která vám umožní stáhnout aktuálně zobrazený (filtrovaný) seznam jako CSV soubor kompatibilní s Excelem.</p>
+
+                <h3>📖 Stránkování:</h3>
+                <p><strong>Ovládání stránkování</strong> najdete <strong>pod seznamem</strong> objednávek:</p>
+
+                <div class="code-block">Zobrazeno: 1-25 z 348 záznamů
+
+[◀◀ První] [◀ Předchozí] [Stránka 1 z 14] [Následující ▶] [Poslední ▶▶]</div>
+
+                <h4>Změna počtu záznamů na stránku:</h4>
+                <ul>
+                    <li>📄 <strong>10</strong> záznamů (rychlý přehled)</li>
+                    <li>📄 <strong>25</strong> záznamů (výchozí)</li>
+                    <li>📄 <strong>50</strong> záznamů</li>
+                    <li>📄 <strong>100</strong> záznamů (detailní analýza)</li>
+                    <li>📄 <strong>250</strong> záznamů (pro export)</li>
+                </ul>
+
+                <div class="info-box tip">
+                    <div class="info-box-title">💡 Tip</div>
+                    <p>Pro práci s velkým množstvím dat zvolte 100 nebo 250 záznamů, pak použijte fulltextové vyhledávání (Ctrl+F v prohlížeči) pro rychlé nalezení konkrétního údaje.</p>
+                </div>
+
+                <h3>📤 Export do CSV:</h3>
+                <p>Export umožňuje stáhnout aktuálně filtrovaný seznam do souboru CSV (Excel).</p>
+
+                <p><strong>Postup exportu:</strong></p>
+                <ol>
+                    <li>Nastavte požadované <strong>filtry</strong> (rok, měsíc, stav, atd.)</li>
+                    <li>Klikněte na tlačítko <strong>"Export"</strong> ⬇️</li>
+                    <li>Systém vygeneruje CSV soubor</li>
+                    <li>Soubor se automaticky <strong>stáhne</strong> do vašeho počítače</li>
+                </ol>
+
+                <p><strong>Obsah exportu:</strong></p>
+                <ul>
+                    <li>✅ Všechny sloupce tabulky</li>
+                    <li>✅ Pouze <strong>filtrované</strong> záznamy</li>
+                    <li>✅ Formát kompatibilní s <strong>Microsoft Excel</strong></li>
+                    <li>✅ Kódování UTF-8 (správné zobrazení českých znaků)</li>
+                </ul>
+            </section>
+
+            <!-- Tipy a triky -->
+            <section id="tipy" class="section">
+                <h2>💡 Tipy a triky</h2>
+
+                <h3>⚡ Rychlé klávesové zkratky:</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Zkratka</th>
+                            <th>Funkce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>Ctrl + F</code></td>
+                            <td>Vyhledávání v aktuální stránce</td>
+                        </tr>
+                        <tr>
+                            <td><code>Enter</code></td>
+                            <td>Okamžité globální vyhledávání</td>
+                        </tr>
+                        <tr>
+                            <td><code>Esc</code></td>
+                            <td>Zavření dropdownu s výsledky</td>
+                        </tr>
+                        <tr>
+                            <td><code>Tab</code></td>
+                            <td>Přechod mezi filtry</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>🎯 Efektivní práce s filtry:</h3>
+
+                <h4>Oblíbené kombinace filtrů:</h4>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>1. Moje nedokončené objednávky</h4>
+                        <p><strong>Filtr:</strong> Objednatel = [můj účet]<br>
+                        <strong>Stav:</strong> Nová, Ke schválení, Čeká se</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>2. Urgentní objednávky k jednání</h4>
+                        <p><strong>Stav:</strong> Ke schválení<br>
+                        <strong>Datum do:</strong> [dnešní datum + 3 dny]</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>3. Velké objednávky za aktuální měsíc</h4>
+                        <p><strong>Rok:</strong> 2025<br>
+                        <strong>Měsíc:</strong> [aktuální měsíc]<br>
+                        <strong>Částka od:</strong> 100 000 Kč</p>
+                    </div>
+                </div>
+
+                <h3>🔍 Tipy pro vyhledávání:</h3>
+
+                <div class="info-box tip">
+                    <div class="info-box-title">🎯 Pravidlo</div>
+                    <ul>
+                        <li><strong>Hledáte konkrétní objednávku nebo kontakt?</strong> → Globální vyhledávání</li>
+                        <li><strong>Filtrujete v aktuálním seznamu?</strong> → Lokální fulltextové vyhledávání</li>
+                    </ul>
+                </div>
+
+                <h4>Globální vyhledávání:</h4>
+                <ul>
+                    <li>✅ <strong>Funguje bez diakritiky</strong> - můžete psát "Novak" místo "Novák"</li>
+                    <li>✅ <strong>Hledá ve všech polích</strong> - číslo, předmět, poznámky, osoby</li>
+                    <li>✅ <strong>Enter = rychlé vyhledání</strong> - nemusíte čekat na automatické hledání</li>
+                </ul>
+
+                <h3>📊 Práce s dashboardem:</h3>
+
+                <h4>Rychlá analýza:</h4>
+                <ol>
+                    <li>Nastavte <strong>období</strong> (rok + měsíc)</li>
+                    <li>Zkontrolujte <strong>dashboard</strong></li>
+                    <li>Identifikujte <strong>problémové oblasti</strong> (např. mnoho objednávek "Ke schválení")</li>
+                    <li>Klikněte na <strong>příslušnou dlaždici</strong></li>
+                    <li>Pracujte s <strong>vyfiltrovaným seznamem</strong></li>
+                </ol>
+
+                <h3>🎨 Vizuální pomůcky:</h3>
+                <p>Naučte se rychle rozpoznávat stavy podle barev:</p>
+                <ul>
+                    <li><span class="status-badge new">Modrá</span> = nová činnost</li>
+                    <li><span class="status-badge pending">Oranžová</span> = vyžaduje pozornost</li>
+                    <li><span class="status-badge approved">Zelená</span> = vše v pořádku</li>
+                    <li><span class="status-badge cancelled">Červená</span> = problém nebo zrušeno</li>
+                </ul>
+            </section>
+
+            <!-- Řešení problémů -->
+            <section id="problemy" class="section">
+                <h2>🆘 Časté problémy a řešení</h2>
+
+                <h3>❓ Nenacházím svou objednávku</h3>
+                <p><strong>Možné příčiny:</strong></p>
+                <ul>
+                    <li>Aktivní filtr - zkontrolujte nastavené filtry</li>
+                    <li>Špatné období - změňte rok nebo měsíc</li>
+                    <li>Objednávka archivována - zapněte zobrazení archivovaných</li>
+                </ul>
+                <p><strong>Řešení:</strong></p>
+                <ol>
+                    <li>Klikněte na <strong>"Vymazat filtry"</strong></li>
+                    <li>Nastavte <strong>"Všechny roky"</strong></li>
+                    <li>Použijte <strong>globální vyhledávání</strong> v hlavičce</li>
+                </ol>
+
+                <h3>❓ Nemůžu editovat objednávku</h3>
+                <p><strong>Možné příčiny:</strong></p>
+                <ul>
+                    <li>Chybí oprávnění - nemáte právo editovat tuto objednávku</li>
+                    <li>Uzamčená objednávka - edituje ji jiný uživatel</li>
+                    <li>Archivovaná objednávka - archivované nelze editovat</li>
+                </ul>
+                <p><strong>Řešení:</strong></p>
+                <ul>
+                    <li>Kontaktujte <strong>garanta</strong> nebo <strong>administrátora</strong></li>
+                    <li>Počkejte, až jiný uživatel dokončí editaci</li>
+                    <li>Objednejte <strong>odemčení</strong> od příslušné osoby</li>
+                </ul>
+            </section>
+
+            <!-- Podpora -->
+            <section id="podpora" class="section">
+                <h2>📞 Potřebujete pomoc?</h2>
+
+                <h3>🛠️ Technická podpora</h3>
+                <p>V případě technických problémů kontaktujte:</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>📧 E-mail</h4>
+                        <p>it.podpora@example.cz</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📞 Telefon</h4>
+                        <p>+420 123 456 789</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>💬 Chat</h4>
+                        <p>Dostupný v aplikaci EEO</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>⏰ Pracovní doba</h4>
+                        <p>Po - Pá: 8:00 - 16:00</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Závěr -->
+            <section id="zaver" class="section">
+                <h2>🎓 Závěr</h2>
+                <p>Gratulujeme! Prošli jste kompletním průvodcem modulem Přehled objednávek. Pokud jste dočetli až sem, máte nyní solidní znalosti o tom, jak systém EEO funguje a jak ho efektivně využívat.</p>
+                
+                <p>Ale pozor - <strong>čtení manuálu je jen začátek</strong>. Skutečnou dovednost získáte až praktickým používáním. Nebojte se experimentovat, zkoušet různé filtry, prozkoumat všechny funkce. Systém je navržen tak, aby byl bezpečný - všechny důležité akce vyžadují potvrzení, takže nic nerozbijete.</p>
+
+                <p>Nyní byste měli být schopni:</p>
+                <ul>
+                    <li>✅ Používat <strong>globální vyhledávání</strong> pro rychlé nalezení záznamů</li>
+                    <li>✅ Orientovat se v <strong>dashboardu</strong> a statistikách</li>
+                    <li>✅ <strong>Filtrovat objednávky</strong> podle různých kritérií</li>
+                    <li>✅ Zobrazit <strong>detail objednávky</strong> a pracovat s ním</li>
+                    <li>✅ Provádět <strong>základní akce</strong> s objednávkami</li>
+                    <li>✅ <strong>Exportovat data</strong> do CSV formátu</li>
+                </ul>
+
+                <div class="info-box tip">
+                    <div class="info-box-title">💡 Tip na závěr</div>
+                    <p>Čím více budete aplikaci používat, tím rychlejší a efektivnější budete. Nebojte se experimentovat - všechny důležité akce vyžadují potvrzení!</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>Verze manuálu:</strong> 1.0 | <strong>Datum vydání:</strong> 26. listopadu 2025 | <strong>Platnost pro verzi aplikace:</strong> EEO 3.x</p>
+            <p style="margin-top: 10px;">© 2025 EEO System - Elektronická evidence objednávek</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,485 @@
+/* ============================================================================
+   CONTEXTUAL HELPER - KONTEXTOVÝ POMOCNÍK (AVATAR MINCE)
+   ============================================================================ */
+
+/* Container - FIXNÍ pozice v levém spodním rohu */
+.contextual-helper-container {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 9999; /* Vyšší z-index pro portal */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  opacity: 0.4; /* Průhledný ve výchozím stavu */
+}
+
+/* Plná viditelnost při hover */
+.contextual-helper-container:hover {
+  opacity: 1;
+}
+
+/* Minimalizovaný stav */
+.contextual-helper-container.minimized {
+  bottom: 10px;
+  left: 10px;
+  opacity: 0.3;
+}
+
+.contextual-helper-container.minimized:hover {
+  opacity: 1;
+}
+
+.contextual-helper-container.minimized .helper-avatar {
+  width: 40px;
+  height: 40px;
+  opacity: 0.6;
+}
+
+.contextual-helper-container.minimized .helper-avatar:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* ============================================================================
+   AVATAR (BITCOIN SYMBOL)
+   ============================================================================ */
+
+.helper-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #FFD700, #FFA500, #FF8C00);
+  box-shadow: 
+    0 4px 12px rgba(255, 140, 0, 0.4),
+    0 2px 6px rgba(255, 140, 0, 0.3),
+    0 0 20px rgba(255, 215, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #FF8C00;
+  animation: float 3s ease-in-out infinite, glow-pulse 2s ease-in-out infinite;
+}
+
+/* Floating animace */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.02);
+  }
+}
+
+/* Pulzující glow */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 4px 12px rgba(255, 140, 0, 0.4),
+      0 2px 6px rgba(255, 140, 0, 0.3),
+      0 0 20px rgba(255, 215, 0, 0.3),
+      inset 0 1px 2px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow: 
+      0 6px 16px rgba(255, 140, 0, 0.6),
+      0 3px 8px rgba(255, 140, 0, 0.5),
+      0 0 30px rgba(255, 215, 0, 0.5),
+      inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  }
+}
+
+.helper-avatar:hover {
+  transform: translateY(-8px) scale(1.15) rotate(5deg);
+  box-shadow: 
+    0 8px 20px rgba(255, 140, 0, 0.6),
+    0 4px 10px rgba(255, 140, 0, 0.5),
+    0 0 40px rgba(255, 215, 0, 0.6),
+    inset 0 2px 4px rgba(255, 255, 255, 0.5);
+  border-color: #FFD700;
+  animation: float 3s ease-in-out infinite, glow-pulse 1s ease-in-out infinite, spin 10s linear infinite;
+}
+
+/* Rotace při hover */
+@keyframes spin {
+  from {
+    transform: translateY(-8px) scale(1.15) rotate(0deg);
+  }
+  to {
+    transform: translateY(-8px) scale(1.15) rotate(360deg);
+  }
+}
+
+.helper-avatar:active {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 
+    0 2px 8px rgba(255, 140, 0, 0.4),
+    0 0 15px rgba(255, 215, 0, 0.4),
+    inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.helper-avatar.active {
+  border-color: #FFD700;
+  box-shadow: 
+    0 0 0 4px rgba(255, 215, 0, 0.3),
+    0 8px 20px rgba(255, 140, 0, 0.5),
+    0 0 40px rgba(255, 215, 0, 0.6);
+  animation: float 3s ease-in-out infinite, active-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes active-glow {
+  0%, 100% {
+    box-shadow: 
+      0 0 0 4px rgba(255, 215, 0, 0.3),
+      0 8px 20px rgba(255, 140, 0, 0.5),
+      0 0 40px rgba(255, 215, 0, 0.6);
+  }
+  50% {
+    box-shadow: 
+      0 0 0 6px rgba(255, 215, 0, 0.5),
+      0 10px 25px rgba(255, 140, 0, 0.7),
+      0 0 50px rgba(255, 215, 0, 0.8);
+  }
+}
+
+.helper-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+  animation: subtle-rotate 6s ease-in-out infinite;
+}
+
+/* Jemná rotace symbolu */
+@keyframes subtle-rotate {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(3deg);
+  }
+  75% {
+    transform: rotate(-3deg);
+  }
+}
+
+/* Pulzující animace pro upozornění */
+.helper-pulse {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(135deg, #4CAF50, #00E676);
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 0 10px rgba(0, 230, 118, 0.5);
+  animation: pulse-grow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-grow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 
+      0 2px 6px rgba(0, 0, 0, 0.3),
+      0 0 10px rgba(0, 230, 118, 0.5);
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.7;
+    box-shadow: 
+      0 3px 8px rgba(0, 0, 0, 0.4),
+      0 0 20px rgba(0, 230, 118, 0.8);
+  }
+}
+
+/* Nápis "Pomoc" pod avatarem */
+.helper-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #FF8C00;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.contextual-helper-container:hover .helper-label {
+  opacity: 1;
+  color: #FFD700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+}
+
+/* ============================================================================
+   BUBLINA S NÁPOVĚDOU - DECENTNÍ TOOLTIP STYL
+   ============================================================================ */
+
+.helper-bubble {
+  position: absolute;
+  bottom: 95px;
+  left: 0;
+  min-width: 220px;
+  max-width: 280px;
+  background: rgba(40, 40, 40, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 30px rgba(255, 140, 0, 0.2);
+  overflow: hidden;
+  animation: tooltipSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: bottom left;
+  z-index: 10;
+}
+
+@keyframes tooltipSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Hlavička bubliny - minimalistická */
+.helper-bubble-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.9), rgba(255, 165, 0, 0.9));
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.helper-bubble-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.helper-bubble-controls {
+  display: flex;
+  gap: 2px;
+}
+
+/* Tlačítka v hlavičce - menší */
+.helper-bubble-minimize,
+.helper-bubble-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.helper-bubble-minimize:hover,
+.helper-bubble-close:hover {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(1.1);
+}
+
+.helper-bubble-close:hover {
+  background: rgba(244, 67, 54, 0.85);
+}
+
+/* Obsah bubliny - kompaktní */
+.helper-bubble-content {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e8e8e8;
+  background: rgba(30, 30, 30, 0.98);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-line;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.helper-bubble-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.helper-bubble-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.helper-bubble-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(255, 140, 0, 0.6), rgba(255, 165, 0, 0.6));
+  border-radius: 3px;
+}
+
+.helper-bubble-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, rgba(255, 140, 0, 0.8), rgba(255, 165, 0, 0.8));
+}
+
+/* Šipka směřující k avatarovi - menší */
+.helper-bubble-arrow {
+  position: absolute;
+  bottom: -6px;
+  left: 28px;
+  width: 12px;
+  height: 12px;
+  background: rgba(30, 30, 30, 0.98);
+  transform: rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: -1;
+}
+
+/* ============================================================================
+   RESPONSIVITA
+   ============================================================================ */
+
+/* Tablet a menší */
+@media (max-width: 768px) {
+  .contextual-helper-container {
+    bottom: 15px;
+    left: 15px;
+  }
+
+  .helper-avatar {
+    width: 60px;
+    height: 60px;
+  }
+
+  .helper-bubble {
+    width: 280px;
+    bottom: 80px;
+  }
+
+  .helper-bubble-content {
+    font-size: 13px;
+    padding: 14px;
+  }
+}
+
+/* Mobilní telefony */
+@media (max-width: 480px) {
+  .contextual-helper-container {
+    bottom: 10px;
+    left: 10px;
+  }
+
+  .helper-avatar {
+    width: 50px;
+    height: 50px;
+  }
+
+  .helper-bubble {
+    width: calc(100vw - 30px);
+    max-width: 260px;
+    bottom: 70px;
+  }
+
+  .helper-bubble-header {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .helper-bubble-content {
+    font-size: 12px;
+    padding: 12px;
+    max-height: 150px;
+  }
+
+  .helper-label {
+    font-size: 10px;
+  }
+
+  .helper-bubble-arrow {
+    left: 20px;
+  }
+}
+
+/* ============================================================================
+   ACCESSIBILITY (přístupnost)
+   ============================================================================ */
+
+.helper-avatar:focus {
+  outline: 2px solid #2196F3;
+  outline-offset: 3px;
+}
+
+.helper-bubble-minimize:focus,
+.helper-bubble-close:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 1px;
+}
+
+/* Redukce animací pro uživatele s preferencí */
+@media (prefers-reduced-motion: reduce) {
+  .helper-bubble,
+  .helper-avatar,
+  .helper-pulse {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ============================================================================
+   DARK MODE PODPORA (volitelné)
+   ============================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  .helper-bubble {
+    background: #2d2d2d;
+    box-shadow: 
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .helper-bubble-content {
+    background: #1e1e1e;
+    color: #e0e0e0;
+  }
+
+  .helper-bubble-arrow {
+    background: #1e1e1e;
+  }
+
+  .helper-label {
+    color: #b0b0b0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ============================================================================
+   PRINT (skrýt při tisku)
+   ============================================================================ */
+
+@media print {
+  .contextual-helper-container {
+    display: none !important;
+  }
+}

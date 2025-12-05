@@ -1,0 +1,373 @@
+{
+  "test_scenarios": {
+    "scenario_1_happy_path": {
+      "name": "✅ Šťastná cesta - Notebook",
+      "description": "Kompletní objednávka notebooku, všechna pole vyplněna, vše projde",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Notebook Lenovo ThinkPad T14 Gen 5",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123", "DEF456"],
+          "max_cena_s_dph": 45000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-001234",
+          "druh_objednavky_kod": "MATERIAL",
+          "poznamka_objednavky": "Náhrada za starý notebook po záruce"
+        },
+        "phase_2_items": {
+          "polozky_objednavky": [
+            {
+              "popis": "Lenovo ThinkPad T14 Gen 5 - AMD Ryzen 7 8840HS, 32GB RAM, 1TB SSD",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_bez_dph": 37190.08,
+              "sazba_dph": 21,
+              "cena_s_dph": 45000,
+              "usek_kod": "IT",
+              "budova_kod": "A",
+              "mistnost_kod": "201",
+              "poznamka": "Pro Jana Nováka - výměna staršího zařízení"
+            }
+          ]
+        },
+        "phase_3_supplier": {
+          "dodavatel_ico": "27082440",
+          "dodavatel_nazev": "ALZA.cz a.s.",
+          "dodavatel_adresa": "Jankovcova 1522/53, 170 00 Praha 7",
+          "dodavatel_dic": "CZ27082440",
+          "dodavatel_zastoupeny": "Mgr. Aleš Zavoral - jednatel",
+          "dodavatel_kontakt_jmeno": "Jana Dvořáková",
+          "dodavatel_kontakt_email": "dvorakova@alza.cz",
+          "dodavatel_kontakt_telefon": "+420 234 092 111",
+          "dt_predpokladany_termin_dodani": "2025-11-15",
+          "misto_dodani": "ZZS HKK, Sokolská 603, 500 02 Hradec Králové",
+          "zaruka": "24 měsíců zákonná záruka + 12 měsíců rozšířená záruka výrobce"
+        },
+        "phase_4_contact": {
+          "objednatel_jmeno": "Jan Novák",
+          "objednatel_email": "jan.novak@zzshk.cz",
+          "objednatel_telefon": "+420 495 755 111"
+        },
+        "phase_5_description": {
+          "popis_pozadavku": "Požadavek na nákup nového notebooku pro zaměstnance IT oddělení.\n\nDůvod pořízení:\n- Současný notebook (5 let starý) vykazuje častá hardwarová selhání\n- Nedostatečný výkon pro současné úkoly (virtualizace, správa serverů)\n- Opotřebená baterie (výdrž pouze 30 minut)\n\nSpecifikace:\n- Business notebook s vysokým výkonem\n- Min. 32GB RAM pro virtualizaci\n- Min. 1TB SSD\n- Dobrá výdrž na baterie (min. 8h)\n\nVýběr modelu:\n- ThinkPad T14 Gen 5 splňuje všechny požadavky\n- Osvědčená řada pro firemní prostředí\n- Dobrá dostupnost náhradních dílů a servisu",
+          "poznamky": "Urgentní pořízení - současný notebook je kriticky nestabilní"
+        },
+        "phase_7_vecna_spravnost": {
+          "vecna_spravnost_umisteni_majetku": "IT oddělení, budova A, místnost 201",
+          "vecna_spravnost_poznamka": "Majetek předán Janu Novákovi dne 15.11.2025, funkční, bez závad",
+          "potvrzeni_vecne_spravnosti": 1
+        }
+      },
+      "expected_workflow": [
+        "ROZPRACOVANA",
+        "ODESLANA_KE_SCHVALENI",
+        "SCHVALENA",
+        "ODESLANA",
+        "POTVRZENA",
+        "VECNA_SPRAVNOST_POTVRZENA",
+        "DOKONCENA"
+      ]
+    },
+    "scenario_2_over_limit": {
+      "name": "⚠️ Překročení limitu",
+      "description": "Test validace - součet položek překračuje maximální cenu",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Test překročení limitu",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123"],
+          "max_cena_s_dph": 10000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-TEST",
+          "druh_objednavky_kod": "MATERIAL"
+        },
+        "phase_2_items": {
+          "polozky_objednavky": [
+            {
+              "popis": "Položka 1",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_s_dph": 7000,
+              "sazba_dph": 21
+            },
+            {
+              "popis": "Položka 2",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_s_dph": 5000,
+              "sazba_dph": 21
+            }
+          ]
+        }
+      },
+      "expected_error": "Nelze uložit objednávku - překročen limit o 2 000 Kč!",
+      "expected_behavior": "Červený indikátor nadlimitu, scroll na sekci Detail objednávky"
+    },
+    "scenario_3_missing_required": {
+      "name": "❌ Chybějící povinná pole",
+      "description": "Test validace - pokus o uložení s prázdným předmětem",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "",
+          "garant_uzivatel_id": null,
+          "prikazce_id": null,
+          "strediska_kod": [],
+          "max_cena_s_dph": null
+        }
+      },
+      "expected_error": "Vyplňte prosím všechna povinná pole",
+      "expected_behavior": "Pole zvýrazněna červeně, scroll na první chybné pole"
+    },
+    "scenario_4_quick_approval": {
+      "name": "⚡ Rychlé schválení",
+      "description": "Okamžité schválení při vytvoření (SUPERADMIN)",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Test okamžité schválení",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123"],
+          "max_cena_s_dph": 5000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-QUICK",
+          "druh_objednavky_kod": "MATERIAL",
+          "stav_schvaleni": "schvaleno"
+        },
+        "phase_2_items": {
+          "polozky_objednavky": [
+            {
+              "popis": "Testovací položka",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_s_dph": 4500,
+              "sazba_dph": 21
+            }
+          ]
+        }
+      },
+      "expected_workflow": ["SCHVALENA"],
+      "note": "Přeskočí ODESLANA_KE_SCHVALENI, jde rovnou do SCHVALENA"
+    },
+    "scenario_5_registry": {
+      "name": "📋 S registrem smluv",
+      "description": "Objednávka vyžadující zveřejnění v registru smluv",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Veřejná zakázka - IT služby",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123"],
+          "max_cena_s_dph": 100000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-REGISTRY",
+          "druh_objednavky_kod": "SLUZBY",
+          "ma_byt_zverejnena": 1
+        },
+        "phase_11_registry": {
+          "registr_iddt": "REG-2025-0123",
+          "dt_zverejneni": "2025-11-05"
+        }
+      },
+      "expected_workflow": [
+        "ROZPRACOVANA",
+        "ODESLANA_KE_SCHVALENI",
+        "SCHVALENA",
+        "ODESLANA",
+        "POTVRZENA",
+        "REGISTROVANA",
+        "VECNA_SPRAVNOST_POTVRZENA",
+        "DOKONCENA"
+      ]
+    },
+    "scenario_6_multiple_items": {
+      "name": "📦 Více položek",
+      "description": "Objednávka s více položkami a různými sazbami DPH",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Kancelářské potřeby - Q4/2025",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123", "DEF456"],
+          "max_cena_s_dph": 15000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-OFFICE",
+          "druh_objednavky_kod": "MATERIAL"
+        },
+        "phase_2_items": {
+          "polozky_objednavky": [
+            {
+              "popis": "Kancelářský papír A4 - 5 balení",
+              "mnozstvi": "5",
+              "jednotka": "bal",
+              "cena_s_dph": 1210,
+              "sazba_dph": 21
+            },
+            {
+              "popis": "Tiskárna HP LaserJet Pro M404dn",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_s_dph": 8900,
+              "sazba_dph": 21,
+              "usek_kod": "ADMIN",
+              "budova_kod": "B",
+              "mistnost_kod": "105"
+            },
+            {
+              "popis": "Tonery HP 59A (CF259A) - 2 ks",
+              "mnozstvi": "2",
+              "jednotka": "ks",
+              "cena_s_dph": 4890,
+              "sazba_dph": 21
+            }
+          ]
+        }
+      },
+      "note": "Celková cena: 15 000 Kč (přesně na limitu)"
+    },
+    "scenario_7_rejected": {
+      "name": "🚫 Zamítnutá objednávka",
+      "description": "Test zamítnutí objednávky garantem",
+      "data": {
+        "phase_1_basic": {
+          "predmet": "Test zamítnutí",
+          "garant_uzivatel_id": 5,
+          "prikazce_id": 3,
+          "strediska_kod": ["ABC123"],
+          "max_cena_s_dph": 5000,
+          "zpusob_financovani": "LP",
+          "lp_kod": "LP-2025-REJECT",
+          "druh_objednavky_kod": "MATERIAL"
+        },
+        "phase_2_items": {
+          "polozky_objednavky": [
+            {
+              "popis": "Testovací položka",
+              "mnozstvi": "1",
+              "jednotka": "ks",
+              "cena_s_dph": 4000,
+              "sazba_dph": 21
+            }
+          ]
+        },
+        "approval_action": {
+          "action": "reject",
+          "stav_schvaleni": "zamitnuto",
+          "schvaleni_komentar": "Nedostatečně odůvodněný požadavek. Doplňte prosím podrobné zdůvodnění potřeby."
+        }
+      },
+      "expected_workflow": [
+        "ROZPRACOVANA",
+        "ODESLANA_KE_SCHVALENI",
+        "ZAMITNUTA"
+      ],
+      "expected_notification": "Vaše objednávka byla zamítnuta"
+    }
+  },
+  "test_users": {
+    "objednatel": {
+      "username": "jan.novak",
+      "email": "jan.novak@zzshk.cz",
+      "role": "USER",
+      "id": 10
+    },
+    "garant": {
+      "username": "petra.svobodova",
+      "email": "petra.svobodova@zzshk.cz",
+      "role": "GARANT",
+      "id": 5
+    },
+    "prikazce": {
+      "username": "marie.nova",
+      "email": "marie.nova@zzshk.cz",
+      "role": "PRIKAZCE",
+      "id": 3
+    },
+    "superadmin": {
+      "username": "admin",
+      "email": "admin@zzshk.cz",
+      "role": "SUPERADMIN",
+      "id": 1
+    }
+  },
+  "supplier_test_data": {
+    "alza": {
+      "ico": "27082440",
+      "nazev": "ALZA.cz a.s.",
+      "adresa": "Jankovcova 1522/53, 170 00 Praha 7",
+      "dic": "CZ27082440",
+      "kontakt_jmeno": "Jana Dvořáková",
+      "kontakt_email": "dvorakova@alza.cz",
+      "kontakt_telefon": "+420 234 092 111"
+    },
+    "czc": {
+      "ico": "27082440",
+      "nazev": "CZC.cz a.s.",
+      "adresa": "Horní Počernice, Jeronýmova 1768/18, 193 00 Praha 9",
+      "dic": "CZ27082440",
+      "kontakt_jmeno": "Petr Novák",
+      "kontakt_email": "novak@czc.cz",
+      "kontakt_telefon": "+420 222 010 111"
+    }
+  },
+  "strediska": [
+    {
+      "kod_stavu": "ABC123",
+      "nazev_stavu": "Středisko IT"
+    },
+    {
+      "kod_stavu": "DEF456",
+      "nazev_stavu": "Středisko Správa budov"
+    },
+    {
+      "kod_stavu": "GHI789",
+      "nazev_stavu": "Středisko Zdravotnictví"
+    }
+  ],
+  "financovani_options": [
+    {
+      "kod_stavu": "LP",
+      "nazev_stavu": "Limitovaný příkaz",
+      "requires": ["lp_kod"]
+    },
+    {
+      "kod_stavu": "SMLOUVA",
+      "nazev_stavu": "Smlouva",
+      "requires": ["cislo_smlouvy", "smlouva_poznamka"]
+    },
+    {
+      "kod_stavu": "INDIVIDUALNI",
+      "nazev_stavu": "Individuální schválení",
+      "requires": ["individualni_schvaleni", "individualni_poznamka"]
+    }
+  ],
+  "druh_objednavky": [
+    {
+      "kod_stavu": "MATERIAL",
+      "nazev_stavu": "Materiál"
+    },
+    {
+      "kod_stavu": "SLUZBY",
+      "nazev_stavu": "Služby"
+    },
+    {
+      "kod_stavu": "DHM",
+      "nazev_stavu": "Dlouhodobý majetek"
+    }
+  ],
+  "sql_queries": {
+    "check_order": "SELECT id, cislo_objednavky, predmet, stav_workflow_kod, stav_schvaleni, objednatel_id, garant_uzivatel_id FROM 25_objednavky WHERE id = ?;",
+    "check_items": "SELECT id, popis, mnozstvi, cena_s_dph FROM 25_polozky_objednavky WHERE objednavka_id = ?;",
+    "check_workflow": "SELECT stav_workflow_kod, dt_zmeny, uzivatel_id FROM 25_workflow_historie WHERE objednavka_id = ? ORDER BY dt_zmeny DESC;",
+    "check_notifications": "SELECT user_id, message, type, is_read, created_at FROM 25_notifications WHERE order_id = ? ORDER BY created_at DESC;",
+    "check_vecna_spravnost": "SELECT vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, potvrzeni_vecne_spravnosti, potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti FROM 25_objednavky WHERE id = ?;"
+  },
+  "console_commands": {
+    "check_phase": "console.log('Current Phase:', currentPhase)",
+    "check_workflow": "console.log('Workflow States:', formData.stav_workflow_kod)",
+    "check_saved": "console.log('Saved to DB:', isOrderSavedToDB, 'Order ID:', savedOrderId)",
+    "check_validation": "console.log('Validation Errors:', validationErrors)",
+    "check_nadlimit": "console.log('Nadlimit:', calculateNadlimit())"
+  }
+}

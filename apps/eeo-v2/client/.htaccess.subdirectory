@@ -1,0 +1,30 @@
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Set base URL for /eeov2 subdirectory
+RewriteBase /eeov2/
+
+# Don't rewrite files or directories that exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Rewrite everything else to /eeov2/index.html
+RewriteRule ^ /eeov2/index.html [L]
+
+# Security headers
+<IfModule mod_headers.c>
+  # HTML files - no cache (always fresh)
+  <FilesMatch "\.(html|htm)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
+
+  # Static assets - long cache (1 year)
+  <FilesMatch "\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|otf|webp|mp4|webm|ogg|ogv|json)$">
+    Header set Cache-Control "max-age=31536000, public"
+  </FilesMatch>
+</IfModule>
+
+# Fallback for 404 errors to index.html
+ErrorDocument 404 /eeov2/index.html

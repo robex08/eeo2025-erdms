@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>01 - Vytvoření objednávky | Návod EEO 2025</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .back-link {
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin: 1rem 0;
+        }
+        
+        .chapter-meta {
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+        
+        .content {
+            padding: 3rem;
+        }
+        
+        .intro-box {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+            margin-bottom: 2rem;
+        }
+        
+        .intro-box h2 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        
+        .screenshot {
+            margin: 2rem 0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .screenshot img {
+            width: 100%;
+            display: block;
+        }
+        
+        .screenshot-caption {
+            background: #f8f9fa;
+            padding: 1rem;
+            font-style: italic;
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        .section {
+            margin: 3rem 0;
+        }
+        
+        .section h2 {
+            color: #764ba2;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .section h3 {
+            color: #495057;
+            margin: 1.5rem 0 1rem 0;
+        }
+        
+        .field-list {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+        
+        .field-item {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .field-item:last-child {
+            border-bottom: none;
+        }
+        
+        .field-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .field-name {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        
+        .field-desc {
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+        
+        .badge.required {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .badge.optional {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .badge.auto {
+            background: #28a745;
+            color: white;
+        }
+        
+        .tip-box {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 1.5rem;
+            border-radius: 5px;
+            margin: 1.5rem 0;
+        }
+        
+        .tip-box strong {
+            color: #856404;
+        }
+        
+        .warning-box {
+            background: #f8d7da;
+            border-left: 5px solid #dc3545;
+            padding: 1.5rem;
+            border-radius: 5px;
+            margin: 1.5rem 0;
+        }
+        
+        .warning-box strong {
+            color: #721c24;
+        }
+        
+        .info-box {
+            background: #d1ecf1;
+            border-left: 5px solid #17a2b8;
+            padding: 1.5rem;
+            border-radius: 5px;
+            margin: 1.5rem 0;
+        }
+        
+        .info-box strong {
+            color: #0c5460;
+        }
+        
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            margin: 1.5rem 0;
+        }
+        
+        .step-list li {
+            counter-increment: step-counter;
+            padding: 1rem;
+            margin: 1rem 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            position: relative;
+            padding-left: 4rem;
+        }
+        
+        .step-list li:before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #667eea;
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 3px solid #e9ecef;
+        }
+        
+        .nav-button {
+            padding: 1rem 2rem;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            background: #764ba2;
+        }
+        
+        .nav-button.disabled {
+            background: #6c757d;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        footer {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            text-align: center;
+            color: #6c757d;
+            border-top: 3px solid #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div>
+                    <a href="index.html" class="back-link">← Zpět na obsah</a>
+                    <h1>01 - Vytvoření objednávky</h1>
+                    <div class="chapter-meta">Kapitola 1 z 9 | Úvodní fáze workflow</div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="content">
+            <div class="intro-box">
+                <h2>🎯 Co se naučíte v této kapitole</h2>
+                <p>První krok každé objednávky je její vytvoření. V této fázi vyplníte základní údaje, které jsou 
+                nezbytné pro zahájení schvalovacího procesu. Formulář automaticky předvyplní vaše údaje jako objednatele 
+                a pomůže vám s výběrem správného garanta a příkazce.</p>
+            </div>
+            
+            <div class="screenshot">
+                <img src="screenshot/1. objednatel_schaleni.png" alt="Screenshot sekce Objednatel">
+                <div class="screenshot-caption">
+                    Screenshot 1: Sekce Objednatel s základními údaji a schvalovacím procesem
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📋 Sekce: Objednatel</h2>
+                <p>Tato sekce obsahuje základní informace o objednávce a osobě, která ji vytváří. Většina údajů o 
+                objednateli se automaticky vyplní podle vašeho přihlášeného účtu.</p>
+                
+                <div class="field-list">
+                    <div class="field-item">
+                        <div class="field-name">
+                            📌 Evidenční číslo objednávky
+                            <span class="badge auto">Automatické</span>
+                        </div>
+                        <div class="field-desc">
+                            Číslo se generuje automaticky při prvním uložení objednávky do databáze. 
+                            Během vytváření konceptu vidíte text "Načítám..." nebo předpokládané číslo.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            👤 Jméno objednatele
+                            <span class="badge auto">Automatické</span>
+                        </div>
+                        <div class="field-desc">
+                            Automaticky vyplněno podle přihlášeného uživatele. Toto pole nelze měnit.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            📧 Email objednatele
+                            <span class="badge auto">Automatické</span>
+                        </div>
+                        <div class="field-desc">
+                            Email přihlášeného uživatele. Na tento email budou chodit notifikace o změnách stavu objednávky.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            📱 Telefon objednatele
+                            <span class="badge auto">Automatické</span>
+                        </div>
+                        <div class="field-desc">
+                            Telefonní číslo z vašeho profilu. Může být prázdné, pokud není v profilu vyplněno.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            📝 Předmět objednávky
+                            <span class="badge required">Povinné</span>
+                        </div>
+                        <div class="field-desc">
+                            <strong>Stručný a výstižný popis toho, co objednáváte.</strong> Např.: "Kancelářský nábytek", 
+                            "Servisní prohlídka vozidel", "Nákup IT techniky".
+                        </div>
+                        <div class="tip-box">
+                            <strong>💡 Tip:</strong> Pište předmět tak, aby bylo na první pohled jasné, o co se jedná. 
+                            Schvalovatel musí rychle poznat, co schvaluje.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            💰 Maximální cena s DPH
+                            <span class="badge required">Povinné</span>
+                        </div>
+                        <div class="field-desc">
+                            Předpokládaná nebo maximální cena objednávky včetně DPH v Kč. Zadávejte číslo bez mezer 
+                            a bez "Kč" (např. 15000).
+                        </div>
+                        <div class="warning-box">
+                            <strong>⚠️ Upozornění:</strong> Podle této částky se automaticky určuje, kdo bude 
+                            objednávku schvalovat (závislost na limitech schvalovatelů).
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            🏢 Nákladová střediska
+                            <span class="badge required">Povinné - min. 1</span>
+                        </div>
+                        <div class="field-desc">
+                            Vyberte jedno nebo více <strong>nákladových středisek</strong>, na která bude objednávka účtována. 
+                            Výběr probíhá pomocí rozbalovacího seznamu s checkboxy.
+                        </div>
+                        <div class="info-box">
+                            <strong>ℹ️ Info:</strong> Nákladová střediska představují organizační jednotky, na které se 
+                            rozpočtují náklady. Můžete vybrat více středisek, pokud se objednávka týká více útvarů.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            👔 Garant
+                            <span class="badge required">Povinné</span>
+                        </div>
+                        <div class="field-desc">
+                            Osoba zodpovědná za objednávku z věcného hlediska. Garant zodpovídá za to, že objednávka 
+                            je potřebná a správně specifikovaná.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            💼 Příkazce rozpočtu
+                            <span class="badge required">Povinné</span>
+                        </div>
+                        <div class="field-desc">
+                            Osoba s rozpočtovou odpovědností. <strong>Příkazce zároveň funguje jako schvalovatel objednávky.</strong> 
+                            Vyberte ze seznamu "Příkazci operací" - zaměstnanci určení v organizaci ke schvalování objednávek.
+                        </div>
+                        <div class="tip-box" style="margin-top: 0.5rem;">
+                            <strong>💡 Tip:</strong> Příkazce se volí podle předmětu objednávky a typu střediska. 
+                            Konzultujte s vaším nadřízeným, pokud si nejste jisti, kdo má být příkazcem.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            💰 Způsob financování
+                            <span class="badge required">Povinné</span>
+                        </div>
+                        <div class="field-desc">
+                            Určete, jakým způsobem bude objednávka financována. Výběr ze seznamu možností:
+                            <strong>Běžný rozpočet, Smlouva, Limitovaný příslib, Pojistná událost</strong> a další.
+                        </div>
+                        <div class="info-box" style="margin-top: 0.5rem;">
+                            <strong>ℹ️ Info:</strong> Způsob financování se zadává již v této fázi (před schválením), 
+                            aby schvalovatel věděl, z jakých zdrojů bude objednávka hrazena.
+                        </div>
+                    </div>
+                    
+                    <div class="field-item">
+                        <div class="field-name">
+                            💬 Poznámky
+                            <span class="badge optional">Volitelné</span>
+                        </div>
+                        <div class="field-desc">
+                            Volné textové pole pro jakékoliv poznámky k objednávce. Může obsahovat důvod objednávky, 
+                            speciální požadavky nebo odkazy na související dokumenty.
+                        </div>
+                        <div class="tip-box">
+                            <strong>💡 Tip:</strong> Můžete použít klávesovou zkratku <strong>CTRL+Space</strong> 
+                            pro aktivaci hlasového zadávání textu (pokud je zapnuto v nastaveních).
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📎 Přílohy k objednávce</h2>
+                <p>Ke každé objednávce můžete přiložit soubory (např. cenové nabídky, specifikace, obrázky produktů).</p>
+                
+                <div class="warning-box">
+                    <strong>⚠️ Důležité:</strong> Nahrávání příloh je možné <strong>až po prvním uložení objednávky do databáze</strong>. 
+                    To znamená, že přílohy můžete přidávat většinou ve fázi "Ke schválení" nebo později. 
+                    Během vytváření konceptu (před prvním kliknutím na "ULOŽIT") nelze přílohy nahrávat.
+                </div>
+                
+                <div class="screenshot">
+                    <img src="screenshot/dropzona_prilohykobjednavkce.png" alt="Dropzóna pro přílohy">
+                    <div class="screenshot-caption">
+                        Screenshot: Dropzóna pro nahrávání příloh k objednávce
+                    </div>
+                </div>
+                
+                <h3>Jak přidat přílohu:</h3>
+                <ol class="step-list">
+                    <li><strong>Uložte objednávku do databáze</strong> (první uložení kliknutím na "ULOŽIT")</li>
+                    <li>Po uložení se aktivuje <strong>tlačítko "Přidat přílohu"</strong> v sekci Přílohy</li>
+                    <li>Klikněte na tlačítko - otevře se <strong>dropzóna</strong> (oblast pro nahrávání souborů)</li>
+                    <li>Můžete buď:
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            <li>Kliknout do dropzóny a vybrat soubory z počítače</li>
+                            <li>Přetáhnout soubory myší přímo do dropzóny (drag & drop)</li>
+                        </ul>
+                    </li>
+                    <li>Po nahrání se soubor zobrazí v seznamu příloh s možností smazání</li>
+                </ol>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Podporované formáty:</strong> PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF a další běžné formáty.
+                </div>
+                
+                <div class="tip-box">
+                    <strong>💡 Tip:</strong> Pokud potřebujete přiložit důležité dokumenty (např. cenovou nabídku), 
+                    vytvořte nejdřív objednávku s minimálními údaji, uložte ji, přidejte přílohy a pak teprve 
+                    doplňte všechny detaily.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>✅ Postup vytvoření objednávky</h2>
+                
+                <ol class="step-list">
+                    <li><strong>Otevřete objednávkový formulář</strong> z hlavního menu aplikace EEO (Objednávky → Nová objednávka)</li>
+                    <li><strong>Vyplňte povinná pole:</strong> Předmět, Cena s DPH, Střediska, Garant, Příkazce</li>
+                    <li><strong>Volitelně přidejte poznámky</strong> a přílohy podle potřeby</li>
+                    <li><strong>Klikněte na tlačítko "ULOŽIT"</strong> v dolní části formuláře</li>
+                    <li>Objednávka se <strong>uloží do databáze</strong> a automaticky přejde ke schválení</li>
+                </ol>
+                
+                <div class="warning-box">
+                    <strong>⚠️ Důležité:</strong> Po kliknutí na "ULOŽIT" se objednávka odešle příslušnému schvalovateli 
+                    a už ji nelze jednoduše editovat. Před uložením zkontrolujte všechny údaje!
+                </div>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Automatické ukládání:</strong> Během vyplňování formuláře se data automaticky ukládají 
+                    jako <strong>koncept</strong> do vašeho prohlížeče. Pokud omylem zavřete stránku, koncept zůstane 
+                    zachován a můžete v práci pokračovat.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>❓ Často kladené otázky</h2>
+                
+                <h3>Q: Co když nevím, kdo má být garant nebo příkazce?</h3>
+                <p><strong>A:</strong> Obraťte se na svého nadřízeného nebo ekonomické oddělení. Garant a příkazce 
+                jsou klíčové role s jasnou odpovědností, proto je důležité je vyplnit správně.</p>
+                
+                <h3>Q: Mohu vytvořit více verzí objednávky?</h3>
+                <p><strong>A:</strong> Ne, každé kliknutí na "ULOŽIT" vytvoří novou objednávku s jedinečným evidenčním 
+                číslem. Pokud chcete provést změny, musíte počkat na zamítnutí nebo schválení a poté upravit.</p>
+                
+                <h3>Q: Kde najdu své rozpracované koncepty?</h3>
+                <p><strong>A:</strong> Koncepty se ukládají lokálně ve vašem prohlížeči. Při dalším otevření formuláře 
+                se automaticky načte poslední rozpracovaná objednávka.</p>
+                
+                <h3>Q: Můžu objednávku smazat?</h3>
+                <p><strong>A:</strong> Po uložení do databáze lze objednávku pouze stornovat nebo zamítnout při schvalování. 
+                Smazat objednávku může pouze administrátor systému.</p>
+            </div>
+            
+            <div class="navigation">
+                <a href="index.html" class="nav-button">← Obsah</a>
+                <a href="02-schvaleni-objednavky.html" class="nav-button">Další: Schválení objednávky →</a>
+            </div>
+        </div>
+        
+        <footer>
+            <p>📅 Aktualizováno: 16. listopadu 2025 | Kapitola 1/9</p>
+        </footer>
+    </div>
+</body>
+</html>

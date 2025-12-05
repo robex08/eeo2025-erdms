@@ -1,0 +1,833 @@
+/**
+ * Role Tab - Zobrazení rolí s právy (enriched)
+ * 
+ * Zobrazuje:
+ * - Globální práva (platí pro celou roli)
+ * - Personalizovaná práva (extra práva pro konkrétní uživatele)
+ * 
+ * @author Frontend Team
+ * @date 2025-10-24
+ * @version 2.0 - Enriched API integration
+ */
+
+import React, { useState, useEffect, useContext } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faSearch, faCheckCircle, faTimesCircle, faChevronDown, faChevronRight,
+  faUser, faUsers, faKey, faGlobe, faUserShield, faInfoCircle
+} from '@fortawesome/free-solid-svg-icons';
+import { Shield, Lock, Unlock, User, Mail } from 'lucide-react';
+import { AuthContext } from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
+import apiv2Dictionaries from '../../../services/apiv2Dictionaries';
+
+// =============================================================================
+// STYLED COMPONENTS
+// =============================================================================
+
+const TabContent = styled.div`
+  padding: 2rem;
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+`;
+
+const SearchBox = styled.div`
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+  
+  > svg {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    pointer-events: none;
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background: white;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const InfoBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 2px solid #bfdbfe;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+`;
+
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const Thead = styled.thead`
+  background: linear-gradient(135deg, #1f2a57 0%, #6b7280 70%, #4b5563 100%);
+`;
+
+const Th = styled.th`
+  padding: 1rem;
+  text-align: left;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const Tbody = styled.tbody`
+  tr {
+    border-bottom: 1px solid #e5e7eb;
+
+    &:nth-of-type(even) {
+      background: #f9fafb;
+    }
+  }
+`;
+
+const Td = styled.td`
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+`;
+
+const RoleBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e0e7ff;
+  color: #3730a3;
+
+  > svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6b7280;
+  
+  svg {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+  }
+  
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem;
+    color: #374151;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+`;
+
+const RoleCard = styled.div`
+  background: white;
+  border-radius: 12px;
+  border: 2px solid ${props => props.$inactive ? '#fca5a5' : '#e5e7eb'};
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  opacity: ${props => props.$inactive ? 0.7 : 1};
+`;
+
+const RoleHeader = styled.div`
+  padding: 1.5rem;
+  background: ${props => props.$inactive 
+    ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
+    : 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+  };
+  border-bottom: 2px solid ${props => props.$inactive ? '#fca5a5' : '#bfdbfe'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.$inactive 
+      ? 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)'
+      : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)'
+    };
+  }
+`;
+
+const RoleHeaderContent = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+`;
+
+const RoleHeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+`;
+
+const RoleIcon = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: ${props => props.$inactive ? '#fca5a5' : '#3b82f6'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+`;
+
+const RoleInfo = styled.div`
+  flex: 1;
+`;
+
+const RoleName = styled.h3`
+  margin: 0 0 0.25rem 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: ${props => props.$inactive ? '#991b1b' : '#1e40af'};
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const RoleDescription = styled.p`
+  margin: 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-style: ${props => props.$empty ? 'italic' : 'normal'};
+`;
+
+const RoleStats = styled.div`
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+`;
+
+const Stat = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+`;
+
+const StatValue = styled.div`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: ${props => props.$inactive ? '#991b1b' : '#3b82f6'};
+`;
+
+const StatLabel = styled.div`
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-align: center;
+  white-space: nowrap;
+`;
+
+const ExpandIcon = styled.div`
+  font-size: 1.25rem;
+  color: #6b7280;
+  transition: transform 0.2s ease;
+  transform: ${props => props.$expanded ? 'rotate(180deg)' : 'rotate(0deg)'};
+`;
+
+const RoleBody = styled.div`
+  display: ${props => props.$expanded ? 'block' : 'none'};
+`;
+
+const Section = styled.div`
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  
+  h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  svg {
+    color: #6b7280;
+  }
+`;
+
+const PermissionsTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  thead {
+    background: #f9fafb;
+    
+    th {
+      padding: 0.75rem;
+      text-align: left;
+      font-weight: 600;
+      color: #6b7280;
+      border-bottom: 2px solid #e5e7eb;
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid #f3f4f6;
+
+      &:hover {
+        background: #f9fafb;
+      }
+    }
+
+    td {
+      padding: 0.75rem;
+      color: #374151;
+    }
+  }
+`;
+
+const PermissionCode = styled.code`
+  background: #f3f4f6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: #1f2937;
+  font-weight: 600;
+`;
+
+const StatusBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: ${props => props.$active ? '#dcfce7' : '#fee2e2'};
+  color: ${props => props.$active ? '#166534' : '#991b1b'};
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
+const UserPermissions = styled.details`
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  summary {
+    padding: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: white;
+    transition: background 0.2s ease;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:hover {
+      background: #f9fafb;
+    }
+  }
+`;
+
+const UserSummary = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+`;
+
+const UserAvatar = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+`;
+
+const UserInfo = styled.div`
+  flex: 1;
+`;
+
+const UserName = styled.div`
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9375rem;
+`;
+
+const UserMeta = styled.div`
+  font-size: 0.8125rem;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.125rem;
+
+  > span {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+`;
+
+const CountBadge = styled.span`
+  padding: 0.375rem 0.75rem;
+  background: #3b82f6;
+  color: white;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+`;
+
+const UserDetailsContent = styled.div`
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+`;
+
+const EmptyPermissions = styled.div`
+  text-align: center;
+  padding: 2rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-style: italic;
+`;
+
+const FilterBar = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+`;
+
+const FilterButton = styled.button`
+  padding: 0.5rem 1rem;
+  border: 2px solid ${props => props.$active ? '#3b82f6' : '#e5e7eb'};
+  background: ${props => props.$active ? '#3b82f6' : 'white'};
+  color: ${props => props.$active ? 'white' : '#6b7280'};
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #3b82f6;
+    background: ${props => props.$active ? '#2563eb' : '#eff6ff'};
+    color: ${props => props.$active ? 'white' : '#3b82f6'};
+  }
+`;
+
+// =============================================================================
+// KOMPONENTA
+// =============================================================================
+
+const RoleTab = () => {
+  const { token, user: { username } = {}, userDetail } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+
+  // Helper functions for user-specific localStorage
+  const user_id = userDetail?.user_id;
+  const getUserKey = (baseKey) => {
+    const sid = user_id || 'anon';
+    return `${baseKey}_${sid}`;
+  };
+
+  const getUserStorage = (baseKey, defaultValue = null) => {
+    try {
+      const item = localStorage.getItem(getUserKey(baseKey));
+      return item !== null ? JSON.parse(item) : defaultValue;
+    } catch (error) {
+      return defaultValue;
+    }
+  };
+
+  const setUserStorage = (baseKey, value) => {
+    try {
+      localStorage.setItem(getUserKey(baseKey), JSON.stringify(value));
+    } catch (error) {
+      // Ignorovat chyby zápisu
+    }
+  };
+
+  const [data, setData] = useState([]);
+  const [searchText, setSearchText] = useState(() => {
+    return getUserStorage('role_searchText', '');
+  });
+  const [showInactive, setShowInactive] = useState(() => {
+    return getUserStorage('role_showInactive', false);
+  });
+  const [expandedRoles, setExpandedRoles] = useState(() => {
+    return getUserStorage('role_expandedRoles', []);
+  });
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const result = await apiv2Dictionaries.getRoleListEnriched({ 
+        token, 
+        username, 
+        show_inactive: showInactive 
+      });
+      setData(result || []);
+    } catch (error) {
+      console.error('Chyba při načítání rolí:', error);
+      showToast?.('Chyba při načítání rolí', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && username) {
+      fetchData();
+    }
+  }, [token, username, showInactive]);
+
+  // Save search to localStorage when it changes
+  useEffect(() => {
+    setUserStorage('role_searchText', searchText);
+  }, [searchText, user_id]);
+
+  useEffect(() => {
+    setUserStorage('role_showInactive', showInactive);
+  }, [showInactive, user_id]);
+
+  useEffect(() => {
+    setUserStorage('role_expandedRoles', expandedRoles);
+  }, [expandedRoles, user_id]);
+
+  const toggleRole = (roleId) => {
+    setExpandedRoles(prev => 
+      prev.includes(roleId)
+        ? prev.filter(id => id !== roleId)
+        : [...prev, roleId]
+    );
+  };
+
+  const filteredData = searchText
+    ? data.filter(role =>
+        String(role.nazev_role || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        String(role.popis || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        role.prava_globalni?.some(p => 
+          String(p.kod_prava || '').toLowerCase().includes(searchText.toLowerCase())
+        ) ||
+        role.prava_personalizovana?.some(user =>
+          String(user.jmeno || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          String(user.prijmeni || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          user.prava?.some(p => 
+            String(p.kod_prava || '').toLowerCase().includes(searchText.toLowerCase())
+          )
+        )
+      )
+    : data;
+
+  const getUserInitials = (jmeno, prijmeni) => {
+    const first = (jmeno || '').charAt(0).toUpperCase();
+    const last = (prijmeni || '').charAt(0).toUpperCase();
+    return first + last || '?';
+  };
+
+  return (
+    <TabContent>
+      <ActionBar>
+        <SearchBox>
+          <FontAwesomeIcon icon={faSearch} />
+          <SearchInput
+            placeholder="Hledat v rolích, právech nebo uživatelích..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </SearchBox>
+        <InfoBadge>
+          <Shield size={16} />
+          Zobrazeno: {filteredData.length} rolí
+        </InfoBadge>
+      </ActionBar>
+
+      <FilterBar>
+        <FilterButton 
+          $active={!showInactive}
+          onClick={() => setShowInactive(false)}
+        >
+          <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.5rem' }} />
+          Pouze aktivní
+        </FilterButton>
+        <FilterButton 
+          $active={showInactive}
+          onClick={() => setShowInactive(true)}
+        >
+          <FontAwesomeIcon icon={faInfoCircle} style={{ marginRight: '0.5rem' }} />
+          Včetně neaktivních
+        </FilterButton>
+      </FilterBar>
+
+      {loading ? (
+        <EmptyState><p>Načítám role a práva...</p></EmptyState>
+      ) : filteredData.length === 0 ? (
+        <EmptyState>
+          <Shield size={64} />
+          <h3>Žádné role</h3>
+          <p>{searchText ? 'Zkuste změnit vyhledávání' : 'Nejsou k dispozici žádné role'}</p>
+        </EmptyState>
+      ) : (
+        <>
+          {filteredData.map(role => {
+            const isExpanded = expandedRoles.includes(role.id);
+            const isInactive = !role.aktivni;
+            
+            return (
+              <RoleCard key={role.id} $inactive={isInactive}>
+                <RoleHeader 
+                  onClick={() => toggleRole(role.id)}
+                  $inactive={isInactive}
+                >
+                  <RoleHeaderContent>
+                    <RoleHeaderLeft>
+                      <RoleIcon $inactive={isInactive}>
+                        <Shield />
+                      </RoleIcon>
+                      <RoleInfo>
+                        <RoleName $inactive={isInactive}>
+                          {role.nazev_role}
+                          {isInactive && (
+                            <StatusBadge $active={false}>
+                              <FontAwesomeIcon icon={faTimesCircle} />
+                              Neaktivní
+                            </StatusBadge>
+                          )}
+                        </RoleName>
+                        <RoleDescription $empty={!role.popis}>
+                          {role.popis || 'Bez popisu'}
+                        </RoleDescription>
+                      </RoleInfo>
+                    </RoleHeaderLeft>
+                    
+                    <RoleStats>
+                      <Stat>
+                        <StatValue $inactive={isInactive}>
+                          {role.statistiky?.pocet_prav_globalnich || 0}
+                        </StatValue>
+                        <StatLabel>Globální práva</StatLabel>
+                      </Stat>
+                      <Stat>
+                        <StatValue $inactive={isInactive}>
+                          {role.statistiky?.pocet_uzivatelu_s_personalizaci || 0}
+                        </StatValue>
+                        <StatLabel>Uživatelé s extra právy</StatLabel>
+                      </Stat>
+                      <ExpandIcon $expanded={isExpanded}>
+                        <FontAwesomeIcon icon={faChevronDown} />
+                      </ExpandIcon>
+                    </RoleStats>
+                  </RoleHeaderContent>
+                </RoleHeader>
+
+                <RoleBody $expanded={isExpanded}>
+                  {/* Globální práva */}
+                  <Section>
+                    <SectionHeader>
+                      <FontAwesomeIcon icon={faGlobe} />
+                      <h4>Globální práva (platí pro všechny uživatele s rolí)</h4>
+                    </SectionHeader>
+                    
+                    {role.prava_globalni && role.prava_globalni.length > 0 ? (
+                      <PermissionsTable>
+                        <thead>
+                          <tr>
+                            <th style={{ width: '30%' }}>Kód práva</th>
+                            <th style={{ width: '50%' }}>Popis</th>
+                            <th style={{ width: '20%', textAlign: 'center' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {role.prava_globalni.map(pravo => {
+                            const isActive = pravo.vazba_aktivni && pravo.pravo_aktivni;
+                            return (
+                              <tr key={pravo.id}>
+                                <td>
+                                  <PermissionCode>{pravo.kod_prava}</PermissionCode>
+                                </td>
+                                <td>{pravo.popis || '-'}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <StatusBadge $active={isActive}>
+                                    <FontAwesomeIcon icon={isActive ? faCheckCircle : faTimesCircle} />
+                                    {isActive ? 'Aktivní' : 'Neaktivní'}
+                                  </StatusBadge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </PermissionsTable>
+                    ) : (
+                      <EmptyPermissions>
+                        Žádná globální práva nejsou přiřazena
+                      </EmptyPermissions>
+                    )}
+                  </Section>
+
+                  {/* Personalizovaná práva */}
+                  {role.prava_personalizovana && role.prava_personalizovana.length > 0 && (
+                    <Section>
+                      <SectionHeader>
+                        <FontAwesomeIcon icon={faUserShield} />
+                        <h4>Extra práva pro konkrétní uživatele</h4>
+                      </SectionHeader>
+
+                      {role.prava_personalizovana.map(userPrava => (
+                        <UserPermissions key={userPrava.user_id}>
+                          <summary>
+                            <UserSummary>
+                              <UserAvatar>
+                                {getUserInitials(userPrava.jmeno, userPrava.prijmeni)}
+                              </UserAvatar>
+                              <UserInfo>
+                                <UserName>
+                                  {userPrava.prijmeni} {userPrava.jmeno}
+                                </UserName>
+                                <UserMeta>
+                                  <span>
+                                    <FontAwesomeIcon icon={faUser} />
+                                    {userPrava.username || 'N/A'}
+                                  </span>
+                                  {userPrava.email && (
+                                    <span>
+                                      <Mail size={12} />
+                                      {userPrava.email}
+                                    </span>
+                                  )}
+                                </UserMeta>
+                              </UserInfo>
+                            </UserSummary>
+                            <CountBadge>
+                              {userPrava.prava?.length || 0} práv
+                            </CountBadge>
+                          </summary>
+
+                          <UserDetailsContent>
+                            {userPrava.prava && userPrava.prava.length > 0 ? (
+                              <PermissionsTable>
+                                <thead>
+                                  <tr>
+                                    <th style={{ width: '30%' }}>Kód práva</th>
+                                    <th style={{ width: '50%' }}>Popis</th>
+                                    <th style={{ width: '20%', textAlign: 'center' }}>Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {userPrava.prava.map(pravo => {
+                                    const isActive = pravo.vazba_aktivni && pravo.pravo_aktivni;
+                                    return (
+                                      <tr key={pravo.id}>
+                                        <td>
+                                          <PermissionCode>{pravo.kod_prava}</PermissionCode>
+                                        </td>
+                                        <td>{pravo.popis || '-'}</td>
+                                        <td style={{ textAlign: 'center' }}>
+                                          <StatusBadge $active={isActive}>
+                                            <FontAwesomeIcon icon={isActive ? faCheckCircle : faTimesCircle} />
+                                            {isActive ? 'Aktivní' : 'Neaktivní'}
+                                          </StatusBadge>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </PermissionsTable>
+                            ) : (
+                              <EmptyPermissions>
+                                Žádná extra práva
+                              </EmptyPermissions>
+                            )}
+                          </UserDetailsContent>
+                        </UserPermissions>
+                      ))}
+                    </Section>
+                  )}
+                </RoleBody>
+              </RoleCard>
+            );
+          })}
+        </>
+      )}
+    </TabContent>
+  );
+};
+
+export default RoleTab;

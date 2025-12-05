@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>02 - Schválení objednávky | Návod EEO 2025</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
+        .back-link { color: white; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border-radius: 5px; transition: background 0.3s ease; }
+        .back-link:hover { background: rgba(255,255,255,0.3); }
+        h1 { font-size: 2.5rem; margin: 1rem 0; }
+        .chapter-meta { opacity: 0.9; font-size: 0.9rem; }
+        .content { padding: 3rem; }
+        .intro-box { background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #667eea; margin-bottom: 2rem; }
+        .intro-box h2 { color: #667eea; margin-bottom: 1rem; }
+        .screenshot { margin: 2rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .screenshot img { width: 100%; display: block; }
+        .screenshot-caption { background: #f8f9fa; padding: 1rem; font-style: italic; color: #6c757d; text-align: center; }
+        .section { margin: 3rem 0; }
+        .section h2 { color: #764ba2; margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 3px solid #667eea; }
+        .section h3 { color: #495057; margin: 1.5rem 0 1rem 0; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem; margin-right: 0.5rem; }
+        .badge.approved { background: #28a745; color: white; }
+        .badge.rejected { background: #dc3545; color: white; }
+        .badge.waiting { background: #ffc107; color: #333; }
+        .tip-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .tip-box strong { color: #856404; }
+        .warning-box { background: #f8d7da; border-left: 5px solid #dc3545; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .warning-box strong { color: #721c24; }
+        .info-box { background: #d1ecf1; border-left: 5px solid #17a2b8; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .info-box strong { color: #0c5460; }
+        .success-box { background: #d4edda; border-left: 5px solid #28a745; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .success-box strong { color: #155724; }
+        .step-list { counter-reset: step-counter; list-style: none; margin: 1.5rem 0; }
+        .step-list li { counter-increment: step-counter; padding: 1rem; margin: 1rem 0; background: #f8f9fa; border-radius: 8px; position: relative; padding-left: 4rem; }
+        .step-list li:before { content: counter(step-counter); position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); background: #667eea; color: white; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .option-card { background: white; border: 2px solid #e9ecef; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; transition: all 0.3s ease; }
+        .option-card:hover { border-color: #667eea; box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2); }
+        .option-card h4 { color: #667eea; margin-bottom: 0.5rem; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #e9ecef; }
+        .nav-button { padding: 1rem 2rem; background: #667eea; color: white; text-decoration: none; border-radius: 8px; transition: background 0.3s ease; }
+        .nav-button:hover { background: #764ba2; }
+        footer { background: #f8f9fa; padding: 1.5rem; text-align: center; color: #6c757d; border-top: 3px solid #667eea; }
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        table th, table td { padding: 1rem; text-align: left; border-bottom: 1px solid #e9ecef; }
+        table th { background: #f8f9fa; color: #495057; font-weight: bold; }
+        table tr:hover { background: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div>
+                    <a href="index.html" class="back-link">← Zpět na obsah</a>
+                    <h1>02 - Schválení objednávky</h1>
+                    <div class="chapter-meta">Kapitola 2 z 9 | Schvalovací proces</div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="content">
+            <div class="intro-box">
+                <h2>🎯 Co se naučíte v této kapitole</h2>
+                <p>Po vytvoření objednávky následuje klíčový krok - schválení. Systém automaticky určí příslušného 
+                schvalovatele podle výše objednávky a typu střediska. Schvalovatel má tři možnosti: objednávku 
+                schválit, zamítnout nebo ji vrátit k doplnění informací.</p>
+            </div>
+            
+            <div class="screenshot">
+                <img src="screenshot/1. objednatel_schaleni.png" alt="Schvalovací sekce">
+                <div class="screenshot-caption">
+                    Screenshot: Sekce schválení objednávky (dolní část screenshotu 1)
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>👤 Kdo schvaluje objednávku?</h2>
+                <p><strong>Schvalovatelem je příkazce rozpočtu</strong>, kterého objednatel vybral při vytváření objednávky.</p>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Jak to funguje:</strong> Schvalování je kombinované s rolí příkazce. Objednatel vybírá 
+                    ze seznamu <strong>"Příkazci operací"</strong> - zaměstnanců, kteří jsou v organizaci určeni 
+                    ke schvalování objednávek. Tento příkazce má zároveň odpovědnost za schválení objednávky.
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aspekt</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Výběr příkazce/schvalovatele</strong></td>
+                            <td>Objednatel vybírá podle předmětu objednávky a nákladového střediska ze seznamu příkazců operací</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Odpovědnost</strong></td>
+                            <td>Příkazce má rozpočtovou odpovědnost a schvaluje/zamítá objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Notifikace</strong></td>
+                            <td>Po uložení objednávky obdrží vybraný příkazce e-mailovou notifikaci o nové objednávce ke schválení</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="tip-box">
+                    <strong>💡 Pro objednatele:</strong> Pokud si nejste jisti, kdo má být příkazcem/schvalovatelem 
+                    pro vaši konkrétní objednávku, konzultujte to s vaším nadřízeným nebo ekonomickým oddělením před vytvořením objednávky.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>✅ Tři možnosti schvalovatele</h2>
+                
+                <div class="option-card">
+                    <h4>1️⃣ Schválit objednávku <span class="badge approved">✔ SCHVÁLENO</span></h4>
+                    <p><strong>Co to znamená:</strong> Objednávka je schválena a může pokračovat dalšími fázemi workflow. 
+                    Po schválení se zobrazí rozšířené sekce pro doplnění detailů (dodavatel, financování atd.).</p>
+                    <p><strong>Co se stane:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Stav objednávky se změní na <strong>"SCHVÁLENA"</strong></li>
+                        <li>Objednatel obdrží e-mail s potvrzením schválení</li>
+                        <li>Objednávka se zobrazí v seznamu schválených objednávek</li>
+                        <li>Formulář se rozšíří o další sekce (Dodavatel, Financování atd.)</li>
+                    </ul>
+                </div>
+                
+                <div class="option-card">
+                    <h4>2️⃣ Zamítnout objednávku <span class="badge rejected">✖ ZAMÍTNUTO</span></h4>
+                    <p><strong>Co to znamená:</strong> Objednávka nesplňuje podmínky nebo není správně zadaná. 
+                    Schvalovatel musí uvést důvod zamítnutí v komentáři.</p>
+                    <p><strong>Co se stane:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Stav objednávky se změní na <strong>"ZAMÍTNUTA"</strong></li>
+                        <li>Objednatel obdrží e-mail s důvodem zamítnutí</li>
+                        <li>Objednávka je ukončena (nelze s ní dále pracovat)</li>
+                        <li>V případě potřeby je nutné vytvořit novou objednávku</li>
+                    </ul>
+                    <div class="warning-box">
+                        <strong>⚠️ Důležité:</strong> Zamítnuté objednávky zůstávají v systému pro archivní účely, 
+                        ale nelze je znovu aktivovat.
+                    </div>
+                </div>
+                
+                <div class="option-card">
+                    <h4>3️⃣ Čeká se / Doplnit informace <span class="badge waiting">⏳ ČEKÁ SE</span></h4>
+                    <p><strong>Co to znamená:</strong> Objednávka vyžaduje doplnění dalších informací nebo upřesnění 
+                    před konečným rozhodnutím. Schvalovatel v komentáři uvede, co je potřeba doplnit.</p>
+                    <p><strong>Co se stane:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Stav objednávky se změní na <strong>"ČEKÁ SE"</strong></li>
+                        <li>Objednatel obdrží e-mail s žádostí o doplnění</li>
+                        <li>Objednávka se vrátí objednateli k úpravě</li>
+                        <li>Po doplnění objednatel znovu odešle ke schválení</li>
+                    </ul>
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Tento stav je vhodný, když není jasný předmět objednávky, chybí 
+                        cenová nabídka nebo je potřeba konzultace s ekonomickým oddělením.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📝 Komentář schvalovatele</h2>
+                <p>Ke každému rozhodnutí může (a v případě zamítnutí <strong>musí</strong>) schvalovatel přidat 
+                textový komentář. Komentář slouží k:</p>
+                <ul style="margin-left: 2rem; margin-top: 1rem;">
+                    <li><strong>Vysvětlení důvodu zamítnutí</strong> - co bylo špatně, proč nelze schválit</li>
+                    <li><strong>Specifikaci chybějících informací</strong> - co je potřeba doplnit</li>
+                    <li><strong>Poznámkám ke schválení</strong> - upozornění na podmínky nebo důležité body</li>
+                </ul>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Viditelnost komentáře:</strong> Komentář schvalovatele je viditelný pro objednatele 
+                    i další osoby s přístupem k objednávce (garant, příkazce).
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🔄 Postup schválení (pro schvalovatele)</h2>
+                
+                <ol class="step-list">
+                    <li><strong>Otevřete objednávku</strong> z notifikačního e-mailu nebo ze seznamu objednávek čekajících na schválení</li>
+                    <li><strong>Zkontrolujte všechny údaje:</strong>
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            <li>Je předmět objednávky jasný a správný?</li>
+                            <li>Je cena přiměřená?</li>
+                            <li>Jsou správně vybraná nákladová střediska?</li>
+                            <li>Je garant a příkazce oprávněný?</li>
+                        </ul>
+                    </li>
+                    <li><strong>Rozhodněte se</strong> - vyberte jednu ze tří možností (Schválit / Zamítnout / Čeká se)</li>
+                    <li><strong>Vyplňte komentář</strong> (povinný u zamítnutí a čekání, volitelný u schválení)</li>
+                    <li><strong>Klikněte na "Uložit"</strong> - vaše rozhodnutí se zapíše a objednatel je notifikován</li>
+                </ol>
+                
+                <div class="success-box">
+                    <strong>✅ Po schválení:</strong> Objednávka postupuje do další fáze, kde objednatel doplní 
+                    detailní informace o dodavateli, financování a dalších náležitostech.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🔒 Co se děje po schválení?</h2>
+                <p>Po úspěšném schválení objednávky se aktivují následující sekce formuláře:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sekce</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Dodavatel</strong></td>
+                            <td>Kompletní údaje o dodavateli včetně IČO, adresy a kontaktu</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Kontaktní osoba</strong></td>
+                            <td>Kontakt na osobu u dodavatele, která objednávku vyřizuje</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Detaily objednávky</strong></td>
+                            <td>Cena bez DPH, sazba DPH, druh objednávky</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Dodací podmínky</strong></td>
+                            <td>Místo dodání, termín, záruka, způsob odeslání</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Postupné zobrazování:</strong> Tyto sekce se zobrazí až <strong>po schválení</strong> 
+                    objednávky. To zabraňuje zbytečnému vyplňování detailů u objednávek, které nemusí být schváleny.
+                </div>
+                
+                <div class="tip-box">
+                    <strong>💡 Poznámka k financování:</strong> Způsob financování byl již vyplněn v předchozí fázi 
+                    (při vytváření objednávky před schválením), aby schvalovatel věděl, z jakých zdrojů bude 
+                    objednávka hrazena.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>❓ Často kladené otázky</h2>
+                
+                <h3>Q: Můžu změnit své rozhodnutí po schválení/zamítnutí?</h3>
+                <p><strong>A:</strong> Ano, ale pouze okamžitě po rozhodnutí (před aktualizací stránky). Jakmile se 
+                stránka obnoví, je rozhodnutí finální. V případě omylu kontaktujte administrátora.</p>
+                
+                <h3>Q: Co když jsem schvalovatel a nejsem si jistý?</h3>
+                <p><strong>A:</strong> Použijte možnost "Čeká se" a v komentáři uveďte, co potřebujete vědět nebo 
+                s kým je potřeba konzultovat. Objednatel pak doplní informace.</p>
+                
+                <h3>Q: Kolik máme času na schválení?</h3>
+                <p><strong>A:</strong> Doporučený čas je <strong>2 pracovní dny</strong>. Objednatel vidí, jak dlouho 
+                objednávka čeká na schválení.</p>
+                
+                <h3>Q: Můžu schválit objednávku částečně?</h3>
+                <p><strong>A:</strong> Ne, objednávka se schvaluje jako celek. Pokud je problém jen s částí (např. příliš 
+                vysoká cena), zamítněte ji s komentářem nebo použijte "Čeká se" a požádejte o úpravu ceny.</p>
+            </div>
+            
+            <div class="navigation">
+                <a href="01-vytvoreni-objednavky.html" class="nav-button">← Předchozí: Vytvoření</a>
+                <a href="03-detail-objednavky.html" class="nav-button">Další: Detail objednávky →</a>
+            </div>
+        </div>
+        
+        <footer>
+            <p>📅 Aktualizováno: 16. listopadu 2025 | Kapitola 2/9</p>
+        </footer>
+    </div>
+</body>
+</html>

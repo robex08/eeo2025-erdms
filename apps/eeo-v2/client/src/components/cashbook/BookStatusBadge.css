@@ -1,0 +1,76 @@
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 2px solid transparent;
+}
+
+.status-badge .status-icon {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: bold;
+}
+
+.status-badge .status-label {
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+/* Aktivní - zelená */
+.status-active {
+  background-color: #d1fae5;
+  color: #065f46;
+  border-color: #10b981;
+}
+
+.status-active .status-icon {
+  color: #10b981;
+  font-size: 16px;
+}
+
+/* Uzavřena uživatelem - žlutá */
+.status-closed {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.status-closed .status-icon {
+  color: #ffc107;
+}
+
+/* Zamčena správcem - červená */
+.status-locked {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-locked .status-icon {
+  color: #dc3545;
+}
+
+/* Neznámý stav - šedá */
+.status-unknown {
+  background-color: #e2e3e5;
+  color: #383d41;
+  border: 1px solid #d6d8db;
+}
+
+.status-unknown .status-icon {
+  color: #6c757d;
+}
+
+/* Hover efekt */
+.status-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: help;
+}

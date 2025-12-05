@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokladní kniha - Uživatelský manuál</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header .subtitle {
+            font-size: 1.3em;
+            opacity: 0.95;
+            margin-bottom: 10px;
+        }
+        
+        .header .version {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+        
+        .content {
+            padding: 50px;
+        }
+        
+        .section {
+            margin-bottom: 60px;
+        }
+        
+        h2 {
+            color: #667eea;
+            font-size: 2.2em;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 4px solid #667eea;
+        }
+        
+        h3 {
+            color: #764ba2;
+            font-size: 1.6em;
+            margin: 30px 0 15px 0;
+        }
+        
+        h4 {
+            color: #555;
+            font-size: 1.3em;
+            margin: 20px 0 10px 0;
+        }
+        
+        .icon {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+            font-size: 1.05em;
+        }
+        
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            font-size: 1.05em;
+        }
+        
+        .screenshot {
+            width: 100%;
+            max-width: 100%;
+            margin: 30px 0;
+            display: block;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            border: 1px solid #e0e0e0;
+        }
+        
+        .screenshot-caption {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-top: -20px;
+            margin-bottom: 30px;
+            font-size: 1em;
+            font-weight: 500;
+        }
+        
+        .feature-box {
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            padding: 25px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }
+        
+        .feature-box h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        
+        .feature-box h4 {
+            color: #764ba2;
+            margin-top: 15px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        
+        .info-box strong {
+            color: #1976d2;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        
+        .warning-box h3 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .success-box {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        
+        .danger-box {
+            background: #f8d7da;
+            border-left: 5px solid #dc3545;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        
+        .danger-box h3 {
+            color: #721c24;
+            margin-top: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 1em;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-right: 8px;
+            margin-bottom: 5px;
+        }
+        
+        .badge-green {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-red {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-blue {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .badge-yellow {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .badge-purple {
+            background: #e2d9f3;
+            color: #5a3a7d;
+        }
+        
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 60px;
+            margin-bottom: 30px;
+        }
+        
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+        
+        .ui-element {
+            background: #fff;
+            border: 2px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        
+        .ui-element strong {
+            color: #667eea;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 40px;
+            text-align: center;
+            color: #666;
+        }
+        
+        .footer h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #d63384;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+            h2 {
+                font-size: 1.8em;
+            }
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <h1>📖 Pokladní kniha</h1>
+            <div class="subtitle">Uživatelský manuál</div>
+            <div class="version">Verze 1.0 | Listopad 2025 | ZZS EEO</div>
+        </div>
+        
+        <div class="content">
+            <!-- ÚVOD -->
+            <div class="section">
+                <h2><span class="icon">🎯</span>Co je Pokladní kniha?</h2>
+                <p>
+                    <strong>Pokladní kniha</strong> je nástroj pro evidenci peněžních příjmů a výdajů ve vaší pokladně. 
+                    Každý měsíc má vlastní knihu, která obsahuje všechny transakce s přehledným zobrazením průběžného zůstatku.
+                </p>
+                <p>
+                    Systém zajišťuje kompletní audit trail (každá změna je zaznamenána), automatické číslování dokladů 
+                    a dvoustupňové uzamykání knih pro zajištění bezpečnosti a neměnnosti účetních dat.
+                </p>
+            </div>
+
+            <!-- OBRAZOVKA 1: HLAVNÍ POHLED -->
+            <div class="section">
+                <h2><span class="icon">🖥️</span>Hlavní obrazovka - Otevřená kniha</h2>
+                
+                <img src="screenshots/screen1-hlavni-obrazovka.png" alt="Hlavní obrazovka pokladní knihy" class="screenshot">
+                <div class="screenshot-caption">Obrázek 1: Hlavní pohled na otevřenou pokladní knihu (září 2025)</div>
+                
+                <h3>📍 Popis sekcí obrazovky</h3>
+                
+                <div class="feature-box">
+                    <h4>🔵 Modrý záhlaví</h4>
+                    <p><strong>Pokladní kniha</strong> - Zobrazuje:</p>
+                    <ul>
+                        <li><strong>Jméno uživatele:</strong> Robert Holovský | Kladno</li>
+                        <li><strong>Číslo pokladny:</strong> č. 102</li>
+                        <li><strong>Číselné řady dokladů:</strong> VPD: 597 | PPD: 497</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h4>📅 Výběr období</h4>
+                    <p>Dropdown menu pro výběr měsíce a roku:</p>
+                    <ul>
+                        <li><strong>Období:</strong> Zvolte měsíc (Září) a rok (2025)</li>
+                        <li><strong>Info:</strong> "2 pokladny v tomto období" - ukazuje počet dostupných knih</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h4>🏦 Výběr pokladny</h4>
+                    <p>Klikací pole zobrazující aktuálně vybranou pokladnu:</p>
+                    <div class="ui-element">
+                        <strong>📋 Pokladna:</strong> č. 102 - Pokladna Robert Holovský (Robert Holovský, IT oddělení)
+                    </div>
+                    <p>Kliknutím otevřete seznam všech vašich pokladen.</p>
+                </div>
+
+                <div class="info-box">
+                    <h4>📊 Přehled pokladny</h4>
+                    <p><span class="badge badge-yellow">⚠️ Uzavřena uživatelem</span> - Aktuální stav knihy za září 2025</p>
+                    <table style="margin-top: 15px;">
+                        <tr>
+                            <td><strong>Převod z předchozího měsíce:</strong></td>
+                            <td style="text-align: right;">0 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Příjmy v měsíci:</strong></td>
+                            <td style="text-align: right; color: green; font-weight: bold;">0 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Výdaje v měsíci:</strong></td>
+                            <td style="text-align: right; color: red; font-weight: bold;">0 Kč</td>
+                        </tr>
+                        <tr style="background: #f0f0f0;">
+                            <td><strong>Koncový stav měsíce:</strong></td>
+                            <td style="text-align: right; font-weight: bold;">0 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Počet operací:</strong></td>
+                            <td style="text-align: right;">2</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="feature-box">
+                    <h4>📋 Tabulka záznamů</h4>
+                    <p>Hlavní tabulka s detaily všech transakcí:</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>DATUM</th>
+                                <th>DOKLAD Č.</th>
+                                <th>OBSAH ZÁPISU</th>
+                                <th>KOMU/OD KOHO</th>
+                                <th>PŘÍJMY (Kč)</th>
+                                <th>VÝDAJE (Kč)</th>
+                                <th>ZŮSTATEK (Kč)</th>
+                                <th>LP KÓD</th>
+                                <th>POZNÁMKA</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td>9. 11. 2025</td>
+                                <td>P001</td>
+                                <td>Dotace A</td>
+                                <td>-</td>
+                                <td style="color: green;">-</td>
+                                <td style="color: red;">-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>9. 11. 2025</td>
+                                <td>V001</td>
+                                <td>Výdaj</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="feature-box">
+                    <h4>🎬 Akční tlačítka</h4>
+                    <p>V pravém horním rohu karty přehledu:</p>
+                    <ul>
+                        <li><span class="badge badge-red">🔒 Zamknout</span> - Uzavřít knihu (jen vlastník)</li>
+                        <li><span class="badge badge-green">📅 Otevřít měsíc</span> - Znovu otevřít knihu</li>
+                    </ul>
+                    <p>V dolním pruhu:</p>
+                    <ul>
+                        <li><span class="badge badge-blue">📄 Export CSV</span> - Stáhnout jako tabulku</li>
+                        <li><span class="badge badge-blue">📑 Export PDF</span> - Stáhnout jako PDF</li>
+                        <li><span class="badge badge-blue">🖨️ Tisknout</span> - Vytisknout knihu</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- OBRAZOVKA 2: ZAMČENÁ KNIHA -->
+            <div class="section">
+                <h2><span class="icon">🔒</span>Zamčená kniha - Finální stav</h2>
+                
+                <img src="screenshots/screen2-zamcena-kniha.png" alt="Zamčená pokladní kniha" class="screenshot">
+                <div class="screenshot-caption">Obrázek 2: Kniha uzamčená správcem (říjen 2025) s červeným upozorněním</div>
+                
+                <h3>🚨 Červené upozornění</h3>
+                
+                <div class="danger-box">
+                    <h3>🔐 Pokladní kniha je FINÁLNĚ UZAMČENA správcem</h3>
+                    <p><strong>Tento měsíc byl zamčen administrátorem a je již zaúčtován.</strong></p>
+                    <p style="margin-top: 10px;">V tomto stavu <strong>nelze provádět žádné změny:</strong></p>
+                    <ul>
+                        <li>❌ Nelze přidávat nové záznamy</li>
+                        <li>❌ Nelze upravovat existující záznamy</li>
+                        <li>❌ Nelze mazat záznamy</li>
+                        <li>❌ Kniha je finálně uzavřena pro účetní operace</li>
+                    </ul>
+                    <div class="warning-box" style="margin-top: 15px;">
+                        <p><strong>⚠️ POTŘEBUJETE ODEMKNOUT KNIHU?</strong></p>
+                        <p>V případě potřeby změn kontaktujte <strong>správce pokladní knihy</strong>. Pouze administrátor s oprávněním může tuto knihu odemknout.</p>
+                    </div>
+                </div>
+
+                <h3>📊 Stav zamčené knihy</h3>
+                
+                <div class="info-box">
+                    <p><span class="badge badge-red">🔒 Zamčena správcem</span></p>
+                    <table style="margin-top: 15px;">
+                        <tr>
+                            <td><strong>Převod z předchozího měsíce:</strong></td>
+                            <td style="text-align: right;">1 700 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Příjmy v měsíci:</strong></td>
+                            <td style="text-align: right; color: green; font-weight: bold;">15 000 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Výdaje v měsíci:</strong></td>
+                            <td style="text-align: right; color: red; font-weight: bold;">3 750 Kč</td>
+                        </tr>
+                        <tr style="background: #f0f0f0;">
+                            <td><strong>Koncový stav měsíce:</strong></td>
+                            <td style="text-align: right; font-weight: bold;">12 950 Kč</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Počet operací:</strong></td>
+                            <td style="text-align: right;">3</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="feature-box">
+                    <h4>📋 Příklad záznamů v zamčené knize</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>DATUM</th>
+                                <th>DOKLAD Č.</th>
+                                <th>OBSAH ZÁPISU</th>
+                                <th>KOMU/OD KOHO</th>
+                                <th>PŘÍJMY (Kč)</th>
+                                <th>VÝDAJE (Kč)</th>
+                                <th>ZŮSTATEK (Kč)</th>
+                                <th>LP KÓD</th>
+                                <th>POZNÁMKA</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td>31. 10. 2025</td>
+                                <td>P003</td>
+                                <td>Dotace Kladno</td>
+                                <td>-</td>
+                                <td style="color: green; font-weight: bold;">10 000 Kč</td>
+                                <td>-</td>
+                                <td>11 700 Kč</td>
+                                <td>-</td>
+                                <td>Test na zamčení měsíce</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>31. 10. 2025</td>
+                                <td>V003</td>
+                                <td>Nákup tonerů</td>
+                                <td>RH</td>
+                                <td>-</td>
+                                <td style="color: red; font-weight: bold;">3 750 Kč</td>
+                                <td>7 950 Kč</td>
+                                <td>LPTT1</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td>31. 10. 2025</td>
+                                <td>P004</td>
+                                <td>Test</td>
+                                <td>-</td>
+                                <td style="color: green; font-weight: bold;">5 000 Kč</td>
+                                <td>-</td>
+                                <td>12 950 Kč</td>
+                                <td>-</td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="success-box">
+                    <h4>✅ Pouze administrátor může:</h4>
+                    <ul>
+                        <li>Odemknout finálně uzamčenou knihu</li>
+                        <li>Provádět změny v již zamčené knize (v případě nutnosti opravy)</li>
+                        <li>Znovu zamknout knihu po úpravách</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- OBRAZOVKA 3: VÝBĚR POKLADNY -->
+            <div class="section">
+                <h2><span class="icon">🏦</span>Výběr pokladny - Přepínání mezi pokladnami</h2>
+                
+                <img src="screenshots/screen3-vyber-pokladny.png" alt="Výběr pokladny" class="screenshot">
+                <div class="screenshot-caption">Obrázek 3: Rozbalovací pole pro výběr pokladny (ukázka přehledu)</div>
+                
+                <h3>👥 Více pokladen na jednoho uživatele</h3>
+                
+                <p>
+                    Systém podporuje přiřazení více pokladen jednomu uživateli. To je užitečné například při:
+                </p>
+                <ul>
+                    <li>Zastupování kolegy během dovolené</li>
+                    <li>Správě více pokladen různých oddělení</li>
+                    <li>Přechodu na novou pokladnu (obě aktivní během přechodného období)</li>
+                </ul>
+
+                <div class="feature-box">
+                    <h4>📋 Výběr pokladny</h4>
+                    <p>Kliknutím na pole "Pokladna" se zobrazí dropdown menu s informacemi:</p>
+                    <div class="ui-element">
+                        <strong>⭐ č. 100 - Sdílená pokladna IT (Super ADMIN, Oddělení informačních technologií)</strong>
+                        <p style="margin: 5px 0 0 0; font-size: 0.95em; color: #666;">
+                            Hvězdička (⭐) označuje <strong>hlavní pokladnu</strong>
+                        </p>
+                    </div>
+                    <p style="margin-top: 15px;">Informace v záznamu:</p>
+                    <ul>
+                        <li><strong>Číslo pokladny:</strong> č. 100, č. 102 atd.</li>
+                        <li><strong>Název pokladny:</strong> Sdílená pokladna IT, Pokladna Robert Holovský</li>
+                        <li><strong>Příslušnost:</strong> Jméno uživatele a oddělení</li>
+                        <li><strong>Označení hlavní:</strong> Hvězdička u prioritní pokladny</li>
+                    </ul>
+                </div>
+
+                <div class="info-box">
+                    <h4>🔄 Jak přepínat mezi pokladnami?</h4>
+                    <ol>
+                        <li>Klikněte na pole "Pokladna" v horní části stránky</li>
+                        <li>Vyberte pokladnu ze seznamu kliknutím</li>
+                        <li>Kniha se automaticky přenačte pro vybranou pokladnu</li>
+                    </ol>
+                </div>
+
+                <div class="warning-box">
+                    <p><strong>💡 TIP:</strong> Pokud vidíte jen jednu pokladnu, nemáte přiřazeny další. 
+                    Pro přidání nové pokladny kontaktujte správce systému.</p>
+                </div>
+            </div>
+
+            <!-- JAK POUŽÍVAT -->
+            <div class="section">
+                <h2><span class="icon">💡</span>Jak používat pokladní knihu?</h2>
+                
+                <h3>🚀 Základní pracovní postup</h3>
+                
+                <ol class="steps">
+                    <li>
+                        <strong>Vyberte pokladnu</strong><br>
+                        Pokud máte více pokladen, klikněte na pole "Pokladna" a zvolte tu správnou.
+                    </li>
+                    <li>
+                        <strong>Vyberte měsíc/rok</strong><br>
+                        V dropdownu "Období" zvolte měsíc a rok. Pokud kniha pro dané období neexistuje, vytvoří se automaticky.
+                    </li>
+                    <li>
+                        <strong>Přidávejte záznamy</strong><br>
+                        Klikněte na <span class="badge badge-green">+ Přidat záznam</span> a vyplňte formulář (datum, typ, částka, osoba, popis).
+                    </li>
+                    <li>
+                        <strong>Sledujte zůstatek</strong><br>
+                        V tabulce vidíte průběžný zůstatek po každé operaci. V přehledu pokladny je souhrn za celý měsíc.
+                    </li>
+                    <li>
+                        <strong>Uzavřete knihu na konci měsíce</strong><br>
+                        Klikněte na <span class="badge badge-red">🔒 Zamknout</span>. Po uzavření nelze přidávat ani upravovat záznamy.
+                    </li>
+                </ol>
+
+                <div class="warning-box">
+                    <h3>⚠️ Důležité pravidla</h3>
+                    <ul>
+                        <li><strong>Nelze upravovat uzavřené knihy</strong> - pouze správce může knihu znovu otevřít</li>
+                        <li><strong>Doklady se číslují za celý rok</strong> - ne pouze za měsíc (P001, P002... až P999)</li>
+                        <li><strong>Audit trail</strong> - každá změna je zaznamenána (kdo, kdy, co změnil)</li>
+                        <li><strong>Bezpečnost dat</strong> - pravidelné zálohování, nic se nemazá definitivně</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- OPRÁVNĚNÍ -->
+            <div class="section">
+                <h2><span class="icon">🔐</span>Oprávnění a role</h2>
+                
+                <p>Co můžete v pokladní knize dělat závisí na vašich právech. Existuje několik úrovní oprávnění:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Oprávnění</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="badge badge-blue">READ</span></td>
+                            <td>Prohlížet záznamy v pokladní knize</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-green">EDIT</span></td>
+                            <td>Přidávat a upravovat záznamy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-red">DELETE</span></td>
+                            <td>Mazat záznamy z knihy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">EXPORT</span></td>
+                            <td>Exportovat knihu do CSV nebo PDF</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">MANAGE</span></td>
+                            <td>Kompletní správa včetně zamykání knih (pouze správce)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>👤 Rozsah oprávnění</h3>
+                <p>Každé oprávnění může být přiřazeno ve dvou variantách:</p>
+                <ul>
+                    <li><code>_OWN</code> - pouze <strong>vaše vlastní</strong> pokladní knihy</li>
+                    <li><code>_ALL</code> - <strong>všechny</strong> pokladní knihy v systému</li>
+                </ul>
+
+                <div class="info-box">
+                    <p><strong>Příklad:</strong></p>
+                    <ul>
+                        <li><code>CASH_BOOK_EDIT_OWN</code> - můžete editovat jen své knihy</li>
+                        <li><code>CASH_BOOK_EDIT_ALL</code> - můžete editovat všechny knihy v systému</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- STAVY KNIHY -->
+            <div class="section">
+                <h2><span class="icon">🔄</span>Stavy pokladní knihy</h2>
+                
+                <p>Pokladní kniha může být v následujících stavech:</p>
+
+                <div class="feature-box">
+                    <h3>✅ Otevřená (Aktivní)</h3>
+                    <p><span class="badge badge-green">Otevřena</span></p>
+                    <ul>
+                        <li>Můžete přidávat nové záznamy</li>
+                        <li>Můžete upravovat existující záznamy</li>
+                        <li>Můžete mazat záznamy</li>
+                        <li>Zůstatek se přepočítává automaticky</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h3>⚠️ Uzavřena uživatelem</h3>
+                    <p><span class="badge badge-yellow">Uzavřena uživatelem</span></p>
+                    <ul>
+                        <li>Knihu uzavřel vlastník na konci měsíce</li>
+                        <li>Nelze přidávat ani upravovat záznamy</li>
+                        <li>Správce může knihu znovu otevřít</li>
+                        <li>Čeká na finální zamčení správcem</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h3>🔒 Zamčena správcem</h3>
+                    <p><span class="badge badge-red">Zamčena správcem</span></p>
+                    <ul>
+                        <li>Kniha je finálně uzamčena pro účetní operace</li>
+                        <li>Nelze provádět žádné změny (kromě správce)</li>
+                        <li>Data jsou považována za definitivní</li>
+                        <li>Pouze administrátor s právem MANAGE může odemknout</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- EXPORT A TISK -->
+            <div class="section">
+                <h2><span class="icon">📤</span>Export a tisk</h2>
+                
+                <h3>📄 Dostupné formáty exportu</h3>
+
+                <div class="feature-box">
+                    <h4>📊 Export CSV</h4>
+                    <p>Stažení dat do tabulky (Excel, LibreOffice):</p>
+                    <ul>
+                        <li>Vhodné pro další zpracování dat</li>
+                        <li>Obsahuje všechny sloupce tabulky</li>
+                        <li>Možnost importu do účetních systémů</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h4>📑 Export PDF</h4>
+                    <p>Stažení knihy jako PDF dokument:</p>
+                    <ul>
+                        <li>Vhodné pro archivaci</li>
+                        <li>Profesionální vzhled pro předání auditorům</li>
+                        <li>Obsahuje sumarizaci a metadata</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h4>🖨️ Tisk</h4>
+                    <p>Přímý tisk pokladní knihy:</p>
+                    <ul>
+                        <li>Optimalizovaný layout pro tisk</li>
+                        <li>Automatické stránkování</li>
+                        <li>Možnost nastavení tiskárny</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div class="section">
+                <h2><span class="icon">🆘</span>Časté otázky (FAQ)</h2>
+                
+                <div class="info-box">
+                    <strong>Q: Jak změním existující záznam?</strong>
+                    <p>A: Klikněte přímo na řádek v tabulce, upravte hodnoty a potvrďte Shift+Enter. Funguje pouze u otevřených knih.</p>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Q: Co když udělám chybu?</strong>
+                    <p>A: Pokud je kniha stále otevřená, můžete záznam upravit nebo smazat. U uzavřených knih musí knihu znovu otevřít správce.</p>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Q: Kde najdu knihy z předchozích měsíců?</strong>
+                    <p>A: V dropdown menu "Období" vyberte požadovaný měsíc a rok. Všechny knihy jsou trvale archivované.</p>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Q: Jak funguje automatický zůstatek?</strong>
+                    <p>A: Po každém příjmu se zůstatek zvýší (+), po každém výdaji sníží (-). Systém počítá průběžně pro každý řádek.</p>
+                </div>
+                
+                <div class="info-box">
+                    <strong>Q: Mohu mít přiřazeno více pokladen?</strong>
+                    <p>A: Ano, správce vám může přiřadit více pokladen. Mezi nimi pak přepínáte kliknutím na pole "Pokladna".</p>
+                </div>
+
+                <div class="info-box">
+                    <strong>Q: Co znamená číslo dokladu (např. P001, V597-001)?</strong>
+                    <p>A: P = příjmový doklad, V = výdajový doklad. Číslo je automaticky generované a unikátní pro celý rok.</p>
+                </div>
+
+                <div class="info-box">
+                    <strong>Q: Může mi někdo smazat záznamy?</strong>
+                    <p>A: Ne, pokud knihu uzavřete. Po uzavření jsou data chráněna a pouze správce s oprávněním MANAGE může provádět změny.</p>
+                </div>
+
+                <div class="info-box">
+                    <strong>Q: Jak často se data zálohují?</strong>
+                    <p>A: Data jsou zálohována automaticky podle nastavení serveru. Doporučujeme pravidelné exporty do PDF pro lokální archiv.</p>
+                </div>
+            </div>
+
+            <!-- KONTAKT -->
+            <div class="section">
+                <div class="info-box">
+                    <h3>📞 Potřebujete pomoc?</h3>
+                    <p>V případě problémů nebo dotazů kontaktujte:</p>
+                    <ul>
+                        <li><strong>IT podporu</strong> - technické problémy s aplikací</li>
+                        <li><strong>Správce pokladní knihy</strong> - odemknutí knih, přidělení oprávnění</li>
+                        <li><strong>Vedoucího oddělení</strong> - organizační záležitosti</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <h3>🎉 Děkujeme, že používáte Pokladní knihu!</h3>
+            <p>Jednoduchý nástroj pro přehlednou evidenci pokladny</p>
+            <div style="margin-top: 20px; font-size: 0.95em; color: #999;">
+                <strong>ZZS EEO - Evidence smluv</strong><br>
+                Verze 1.0 | Listopad 2025<br>
+                © Systém správy a workflow objednávek
+            </div>
+        </div>
+    </div>
+</body>
+</html>

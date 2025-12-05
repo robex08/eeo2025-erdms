@@ -1,0 +1,428 @@
+/**
+ * Lokality Tab - Správa lokalit
+ * 
+ * @author Frontend Team
+ * @date 2025-10-19
+ */
+
+import React, { useState, useEffect, useContext } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPlus, faSearch } from '@fortawesome/free-solid-svg-icons';
+import { Building } from 'lucide-react';
+import { AuthContext } from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
+import {
+  getLokalityList,
+  createLokalita,
+  updateLokalita,
+  deleteLokalita,
+} from '../../../services/apiv2Dictionaries';
+import UniversalDictionaryDialog from '../UniversalDictionaryDialog';
+import DictionaryContextMenu from '../DictionaryContextMenu';
+import DictionaryConfirmDialog from '../DictionaryConfirmDialog';
+
+// =============================================================================
+// STYLED COMPONENTS
+// =============================================================================
+
+const TabContent = styled.div`
+  padding: 2rem;
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+`;
+
+const SearchBox = styled.div`
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+  
+  > svg {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    pointer-events: none;
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background: white;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const ActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #3b82f6;
+  color: white;
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  }
+`;
+
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const Thead = styled.thead`
+  background: linear-gradient(135deg, #1f2a57 0%, #2563eb 70%, #1d4ed8 100%);
+`;
+
+const Th = styled.th`
+  padding: 1rem;
+  text-align: left;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+`;
+
+const Tbody = styled.tbody`
+  tr {
+    border-bottom: 1px solid #e5e7eb;
+    transition: background 0.15s;
+    cursor: context-menu;
+
+    &:nth-of-type(even) {
+      background: #f9fafb;
+    }
+
+    &:hover {
+      background: #eff6ff;
+    }
+  }
+`;
+
+const Td = styled.td`
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+`;
+
+const Badge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: ${props => props.$active ? '#dcfce7' : '#fee2e2'};
+  color: ${props => props.$active ? '#166534' : '#991b1b'};
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6b7280;
+  
+  svg {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+  }
+  
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem;
+    color: #374151;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+`;
+
+// =============================================================================
+// KOMPONENTA
+// =============================================================================
+
+const LokalityTab = () => {
+  const { token, username } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+
+  const [data, setData] = useState([]);
+  const [searchText, setSearchText] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Dialog states
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  
+  // Context menu
+  const [contextMenu, setContextMenu] = useState(null);
+  
+  // Confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, item: null });
+
+  // Načti data
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const result = await getLokalityList({ token, username });
+      setData(result || []);
+    } catch (error) {
+      showToast?.('Chyba při načítání lokalit', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [token, username]);
+
+  // Filtrování
+  const filteredData = searchText
+    ? data.filter(item =>
+        String(item.nazev || '').toLowerCase().includes(searchText.toLowerCase()) ||
+        String(item.typ || '').toLowerCase().includes(searchText.toLowerCase())
+      )
+    : data;
+
+  // CREATE / UPDATE
+  const handleSave = async (formData) => {
+    try {
+      if (editItem) {
+        await updateLokalita({ token, username, id: editItem.id, ...formData });
+        showToast?.('Lokalita byla upravena', { type: 'success' });
+      } else {
+        await createLokalita({ token, username, ...formData });
+        showToast?.('Lokalita byla vytvořena', { type: 'success' });
+      }
+      await fetchData();
+      setDialogOpen(false);
+      setEditItem(null);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // DELETE
+  const handleDelete = async (item) => {
+    try {
+      await deleteLokalita({ token, username, id: item.id });
+      showToast?.('Lokalita byla smazána', { type: 'success' });
+      await fetchData();
+    } catch (error) {
+      showToast?.('Chyba při mazání lokality', { type: 'error' });
+    }
+  };
+
+  // TOGGLE ACTIVE
+  const handleToggleActive = async (item) => {
+    try {
+      await updateLokalita({ token, username, id: item.id, aktivni: item.aktivni ? 0 : 1 });
+      showToast?.(`Lokalita ${item.aktivni ? 'deaktivována' : 'aktivována'}`, { type: 'success' });
+      await fetchData();
+    } catch (error) {
+      showToast?.('Chyba při změně stavu', { type: 'error' });
+    }
+  };
+
+  // Context menu
+  const handleContextMenu = (e, item) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, item });
+  };
+
+  // Formát pole pro dialog
+  const dialogFields = [
+    {
+      name: 'nazev',
+      label: 'Název',
+      type: 'text',
+      required: true,
+      placeholder: 'Zadejte název lokality',
+      errorMessage: 'Název je povinný',
+    },
+    {
+      name: 'typ',
+      label: 'Typ',
+      type: 'text',
+      required: true,
+      placeholder: 'Zadejte typ',
+      errorMessage: 'Typ je povinný',
+    },
+    {
+      name: 'parent_id',
+      label: 'Nadřazená lokalita',
+      type: 'select',
+      required: false,
+      placeholder: 'Vyberte nadřazenou lokalitu',
+    },
+    {
+      name: 'aktivni',
+      label: 'Aktivní',
+      type: 'checkbox',
+      checkboxLabel: 'Lokalita je aktivní',
+      default: true,
+    },
+  ];
+
+  // Připrav parent options (bez aktuálně editované)
+  const parentOptions = [
+    { value: null, label: '-- Žádná --' },
+    ...data
+      .filter(item => !editItem || item.id !== editItem.id)
+      .map(item => ({ value: item.id, label: item.nazev }))
+  ];
+
+  return (
+    <TabContent>
+      {/* Action Bar */}
+      <ActionBar>
+        <SearchBox>
+          <FontAwesomeIcon icon={faSearch} />
+          <SearchInput
+            placeholder="Hledat v lokalitách..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </SearchBox>
+        <ActionButton onClick={() => { setEditItem(null); setDialogOpen(true); }}>
+          <FontAwesomeIcon icon={faPlus} />
+          Přidat lokalitu
+        </ActionButton>
+      </ActionBar>
+
+      {/* Tabulka */}
+      {loading ? (
+        <EmptyState>
+          <p>Načítám...</p>
+        </EmptyState>
+      ) : filteredData.length === 0 ? (
+        <EmptyState>
+          <Building size={64} />
+          <h3>Žádné lokality</h3>
+          <p>{searchText ? 'Zkuste změnit vyhledávání' : 'Začněte přidáním nové lokality'}</p>
+        </EmptyState>
+      ) : (
+        <Table>
+          <Thead>
+            <tr>
+              <Th>ID</Th>
+              <Th>Název</Th>
+              <Th>Typ</Th>
+              <Th>Nadřazená</Th>
+              <Th>Aktivní</Th>
+              <Th>Vytvořeno</Th>
+            </tr>
+          </Thead>
+          <Tbody>
+            {filteredData.map(item => (
+              <tr
+                key={item.id}
+                onContextMenu={(e) => handleContextMenu(e, item)}
+              >
+                <Td>{item.id}</Td>
+                <Td><strong>{item.nazev}</strong></Td>
+                <Td>{item.typ}</Td>
+                <Td>
+                  {item.parent_id 
+                    ? data.find(l => l.id === item.parent_id)?.nazev || item.parent_id
+                    : '-'
+                  }
+                </Td>
+                <Td>
+                  <Badge $active={item.aktivni}>
+                    {item.aktivni ? 'Ano' : 'Ne'}
+                  </Badge>
+                </Td>
+                <Td>{new Date(item.dt_vytvoreni).toLocaleDateString('cs-CZ')}</Td>
+              </tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+
+      {/* Dialog pro CREATE/EDIT */}
+      <UniversalDictionaryDialog
+        isOpen={dialogOpen}
+        onClose={() => { setDialogOpen(false); setEditItem(null); }}
+        onSave={handleSave}
+        editData={editItem}
+        title={editItem ? 'Upravit lokalitu' : 'Nová lokalita'}
+        icon={Building}
+        fields={dialogFields}
+        selectOptions={{ parent_id: parentOptions }}
+      />
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <DictionaryContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          item={contextMenu.item}
+          onClose={() => setContextMenu(null)}
+          onEdit={(item) => { setEditItem(item); setDialogOpen(true); }}
+          onDelete={(item) => setConfirmDialog({ open: true, item })}
+          onToggleActive={handleToggleActive}
+        />
+      )}
+
+      {/* Confirm Dialog */}
+      <DictionaryConfirmDialog
+        isOpen={confirmDialog.open}
+        onClose={() => setConfirmDialog({ open: false, item: null })}
+        onConfirm={() => handleDelete(confirmDialog.item)}
+        title="Smazat lokalitu"
+        message={`Opravdu chcete smazat lokalitu "${confirmDialog.item?.nazev}"?`}
+        confirmText="Smazat"
+      />
+    </TabContent>
+  );
+};
+
+export default LokalityTab;

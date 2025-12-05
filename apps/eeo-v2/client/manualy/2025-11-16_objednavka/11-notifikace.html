@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>11 - Notifikační systém | Návod EEO 2025</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .back-link { color: white; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border-radius: 5px; }
+        h1 { font-size: 2.5rem; margin: 1rem 0; }
+        .content { padding: 3rem; }
+        .intro-box { background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #667eea; margin-bottom: 2rem; }
+        .intro-box h2 { color: #667eea; margin-bottom: 1rem; }
+        .screenshot { margin: 2rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .screenshot img { width: 100%; }
+        .screenshot-caption { background: #f8f9fa; padding: 1rem; text-align: center; color: #6c757d; font-style: italic; }
+        .section { margin: 3rem 0; }
+        .section h2 { color: #764ba2; margin-bottom: 1.5rem; border-bottom: 3px solid #667eea; padding-bottom: 0.5rem; }
+        .section h3 { color: #495057; margin: 1.5rem 0 1rem; }
+        .notification-card { background: white; border: 2px solid #e9ecef; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; border-left: 5px solid #17a2b8; }
+        .notification-card h4 { color: #17a2b8; margin-bottom: 0.5rem; }
+        .notification-type { background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%); padding: 1.5rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #17a2b8; }
+        .notification-type h4 { color: #0c5460; margin-bottom: 0.5rem; }
+        .info-box { background: #d1ecf1; border-left: 5px solid #17a2b8; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .info-box strong { color: #0c5460; }
+        .tip-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .tip-box strong { color: #856404; }
+        .success-box { background: #d4edda; border-left: 5px solid #28a745; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .success-box strong { color: #155724; }
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        table th, table td { padding: 1rem; text-align: left; border-bottom: 1px solid #e9ecef; }
+        table th { background: #f8f9fa; color: #495057; font-weight: bold; }
+        table tr:hover { background: #f8f9fa; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #e9ecef; }
+        .nav-button { padding: 1rem 2rem; background: #667eea; color: white; text-decoration: none; border-radius: 8px; transition: background 0.3s; }
+        .nav-button:hover { background: #764ba2; }
+        footer { background: #f8f9fa; padding: 1.5rem; text-align: center; color: #6c757d; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.85rem; margin: 0 0.25rem; }
+        .badge.info { background: #17a2b8; color: white; }
+        .badge.success { background: #28a745; color: white; }
+        .badge.warning { background: #ffc107; color: #333; }
+        .badge.danger { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Zpět na obsah</a>
+            <h1>11 - Notifikační systém EEO</h1>
+        </header>
+        <div class="content">
+            <div class="intro-box">
+                <h2>🔔 Průvodce notifikačním systémem</h2>
+                <p>Aplikace EEO disponuje pokročilým notifikačním systémem, který vás informuje o všech důležitých 
+                událostech souvisejících s vašimi objednávkami. Budete vždy vědět, co se děje, a nezmeškáte žádnou 
+                důležitou akci.</p>
+            </div>
+            
+            <div class="screenshot">
+                <img src="screenshot/notifikace-1.png" alt="Notifikační centrum">
+                <div class="screenshot-caption">Screenshot 1: Notifikační centrum aplikace EEO</div>
+            </div>
+            
+            <div class="section">
+                <h2>📬 Kde najdete notifikace?</h2>
+                
+                <div class="notification-card">
+                    <h4>🔔 Ikona zvonečku v hlavním menu</h4>
+                    <p>V pravém horním rohu aplikace najdete ikonu zvonečku. Pokud máte nepřečtené notifikace, 
+                    zobrazí se na ikoně <strong>červená tečka s číslem</strong> udávajícím počet nových notifikací.</p>
+                    <ul style="margin: 1rem 0 0 2rem; line-height: 1.8;">
+                        <li>Kliknutím na zvoněček se otevře <strong>dropdown menu</strong> s posledními notifikacemi</li>
+                        <li>Zde vidíte rychlý náhled posledních 5-10 notifikací</li>
+                        <li>Kliknutím na konkrétní notifikaci se otevře detail nebo související objednávka</li>
+                    </ul>
+                </div>
+                
+                <div class="notification-card">
+                    <h4>📊 Přehled notifikací</h4>
+                    <p>Pro kompletní přehled všech notifikací klikněte na <strong>"Zobrazit všechny notifikace"</strong> 
+                    v dolní části dropdown menu. Otevře se samostatná stránka s přehledem.</p>
+                </div>
+                
+                <div class="screenshot">
+                    <img src="screenshot/notifikace-2-prehled.png" alt="Přehled notifikací">
+                    <div class="screenshot-caption">Screenshot 2: Přehled všech notifikací</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📋 Typy notifikací</h2>
+                <p>Aplikace EEO rozlišuje několik typů notifikací podle důležitosti a typu události:</p>
+                
+                <div class="notification-type">
+                    <h4>1️⃣ Objednávka odeslána ke schválení <span class="badge info">INFO</span></h4>
+                    <p><strong>Pro koho:</strong> Příkazce/Schvalovatel</p>
+                    <p><strong>Kdy:</strong> Když objednatel vytvoří a odešle novou objednávku ke schválení</p>
+                    <p><strong>Akce:</strong> Kliknutím na notifikaci se otevře objednávka ke schválení</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>2️⃣ Objednávka schválena <span class="badge success">ÚSPĚCH</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel, Garant</p>
+                    <p><strong>Kdy:</strong> Když příkazce schválí objednávku</p>
+                    <p><strong>Akce:</strong> Můžete pokračovat vyplňováním detailů objednávky</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>3️⃣ Objednávka zamítnuta <span class="badge danger">DŮLEŽITÉ</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel, Garant</p>
+                    <p><strong>Kdy:</strong> Když příkazce zamítne objednávku</p>
+                    <p><strong>Obsah:</strong> Notifikace obsahuje důvod zamítnutí z komentáře schvalovatele</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>4️⃣ Požadavek na doplnění informací <span class="badge warning">VYŽADUJE AKCI</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel</p>
+                    <p><strong>Kdy:</strong> Když schvalovatel zvolí "Čeká se" a vyžaduje doplnění údajů</p>
+                    <p><strong>Akce:</strong> Doplňte požadované informace a znovu odešlete ke schválení</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>5️⃣ Objednávka potvrzena dodavatelem <span class="badge success">ÚSPĚCH</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel, Garant, Příkazce</p>
+                    <p><strong>Kdy:</strong> Když někdo zaznamená potvrzení objednávky dodavatelem</p>
+                    <p><strong>Akce:</strong> Můžete pokračovat dalšími kroky workflow</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>6️⃣ Přidána faktura <span class="badge info">INFO</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel, Garant, Příkazce</p>
+                    <p><strong>Kdy:</strong> Když někdo přidá novou fakturu k objednávce</p>
+                    <p><strong>Obsah:</strong> Číslo faktury, částka</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>7️⃣ Faktura uhrazena <span class="badge success">ÚSPĚCH</span></h4>
+                    <p><strong>Pro koho:</strong> Objednatel, Garant, Ekonomické oddělení</p>
+                    <p><strong>Kdy:</strong> Když je faktura označena jako uhrazená</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>8️⃣ Potvrzena věcná správnost <span class="badge success">ÚSPĚCH</span></h4>
+                    <p><strong>Pro koho:</strong> Všichni účastníci objednávky</p>
+                    <p><strong>Kdy:</strong> Když je potvrzena věcná správnost plnění</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>9️⃣ Objednávka dokončena <span class="badge success">ÚSPĚCH</span></h4>
+                    <p><strong>Pro koho:</strong> Všichni účastníci objednávky</p>
+                    <p><strong>Kdy:</strong> Když je objednávka úspěšně dokončena</p>
+                    <p><strong>Význam:</strong> Objednávka je uzavřena a archivována</p>
+                </div>
+                
+                <div class="notification-type">
+                    <h4>🔔 Připomenutí TODO alarmu <span class="badge warning">PŘIPOMÍNKA</span></h4>
+                    <p><strong>Pro koho:</strong> Uživatel, který vytvořil TODO úkol</p>
+                    <p><strong>Kdy:</strong> V nastavený čas alarmu</p>
+                    <p><strong>Akce:</strong> Zobrazí se připomenutí úkolu k vyřízení</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>⚙️ Správa notifikací</h2>
+                
+                <h3>Označení jako přečtené</h3>
+                <p>Každou notifikaci můžete označit jako přečtenou:</p>
+                <ul style="margin: 1rem 0 1rem 2rem; line-height: 1.8;">
+                    <li>Kliknutím na notifikaci se automaticky označí jako přečtená</li>
+                    <li>Nebo použijte tlačítko <strong>"Označit jako přečtené"</strong> v dropdown menu</li>
+                    <li>Tlačítko <strong>"Označit vše jako přečtené"</strong> označí všechny notifikace najednou</li>
+                </ul>
+                
+                <h3>Filtrov ání notifikací</h3>
+                <p>V přehledu notifikací můžete filtrovat podle:</p>
+                <ul style="margin: 1rem 0 1rem 2rem; line-height: 1.8;">
+                    <li><strong>Typ</strong> - Objednávky, TODO, Systémové zprávy</li>
+                    <li><strong>Stav</strong> - Nepřečtené / Přečtené / Všechny</li>
+                    <li><strong>Datum</strong> - Dnes, Tento týden, Tento měsíc, Vlastní rozsah</li>
+                </ul>
+                
+                <h3>Smazání notifikací</h3>
+                <div class="info-box">
+                    <strong>ℹ️ Info:</strong> Staré notifikace (starší než 3 měsíce) se automaticky archivují. 
+                    Můžete je ručně smazat kliknutím na ikonu koše u konkrétní notifikace.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📧 E-mailové notifikace</h2>
+                <p>Kromě notifikací v aplikaci můžete dostávat také <strong>e-mailové notifikace</strong> na váš 
+                registrovaný e-mail.</p>
+                
+                <h3>Které události generují e-mail:</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Událost</th>
+                            <th>E-mail pro</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Nová objednávka ke schválení</td>
+                            <td>Příkazce/Schvalovatel</td>
+                        </tr>
+                        <tr>
+                            <td>Objednávka schválena</td>
+                            <td>Objednatel</td>
+                        </tr>
+                        <tr>
+                            <td>Objednávka zamítnuta</td>
+                            <td>Objednatel</td>
+                        </tr>
+                        <tr>
+                            <td>Požadavek na doplnění</td>
+                            <td>Objednatel</td>
+                        </tr>
+                        <tr>
+                            <td>Objednávka dokončena</td>
+                            <td>Všichni účastníci</td>
+                        </tr>
+                        <tr>
+                            <td>TODO alarm</td>
+                            <td>Tvůrce úkolu</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="tip-box">
+                    <strong>💡 Nastavení e-mailů:</strong> E-mailové notifikace můžete vypnout nebo zapnout 
+                    v <strong>Nastavení → Profil → Notifikace</strong>. Můžete si vybrat, které typy událostí 
+                    chcete dostávat emailem.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🎯 Nejčastější otázky</h2>
+                
+                <h3>Q: Proč mi nepřišla notifikace?</h3>
+                <p><strong>A:</strong> Zkontrolujte:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>Máte zapnuté notifikace v nastavení profilu</li>
+                    <li>Jste správně přihlášeni</li>
+                    <li>E-mail není v SPAM složce (u e-mailových notifikací)</li>
+                    <li>Máte aktuální verzi aplikace (vyčistěte cache prohlížeče)</li>
+                </ul>
+                
+                <h3>Q: Mohu si nastavit, kdo všechno dostane notifikace?</h3>
+                <p><strong>A:</strong> Ne, notifikace se odesílají automaticky podle rolí v objednávce. Například:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>Objednatel dostává notifikace o své objednávce</li>
+                    <li>Příkazce dostává notifikace o objednávkách ke schválení</li>
+                    <li>Garant dostává notifikace o objednávkách, kde je garant</li>
+                </ul>
+                
+                <h3>Q: Jak dlouho se notifikace uchovávají?</h3>
+                <p><strong>A:</strong> Notifikace jsou dostupné <strong>3 měsíce</strong>. Poté se automaticky archivují. 
+                Důležité informace si raději uložte jinam (např. do Notes).</p>
+                
+                <h3>Q: Dostanu notifikaci, když někdo upraví mou objednávku?</h3>
+                <p><strong>A:</strong> Ano, pokud někdo upraví objednávku, kde jste objednatel nebo účastník, dostanete 
+                notifikaci s popisem změny.</p>
+            </div>
+            
+            <div class="success-box">
+                <strong>✅ Tip pro efektivní práci:</strong> Pravidelně kontrolujte notifikace (alespoň 1× denně). 
+                Včasná reakce na notifikace urychlí průchod objednávek workflow a minimalizuje zdržení.
+            </div>
+            
+            <div class="navigation">
+                <a href="10-nastroje.html" class="nav-button">← Předchozí: Nástroje</a>
+                <a href="index.html" class="nav-button">🏠 Zpět na obsah</a>
+            </div>
+        </div>
+        <footer>
+            <p>📅 Aktualizováno: 16. listopadu 2025 | Kapitola 11/11</p>
+            <p style="margin-top: 0.5rem; font-size: 0.9rem;">🎉 <strong>Gratulujeme!</strong> Prošli jste celým návodem k aplikaci EEO!</p>
+        </footer>
+    </div>
+</body>
+</html>
