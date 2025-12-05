@@ -648,7 +648,7 @@ function Dashboard() {
                         {emp.jobTitle && (
                           <div className="employee-title">{emp.jobTitle}</div>
                         )}
-                        {(emp.createdDateTime || emp.employeeHireDate || emp.signInActivity?.lastSignInDateTime) && (
+                        {(emp.createdDateTime || emp.employeeHireDate) && (
                           <div className="employee-dates">
                             {emp.createdDateTime && (
                               <span className="date-badge" title="Datum vytvoření účtu">
@@ -658,11 +658,6 @@ function Dashboard() {
                             {emp.employeeHireDate && (
                               <span className="date-badge" title="Datum nástupu">
                                 💼 Nástup: {new Date(emp.employeeHireDate).toLocaleDateString('cs-CZ')}
-                              </span>
-                            )}
-                            {emp.signInActivity?.lastSignInDateTime && (
-                              <span className="date-badge" title="Poslední přihlášení">
-                                🔐 Poslední: {new Date(emp.signInActivity.lastSignInDateTime).toLocaleDateString('cs-CZ')}
                               </span>
                             )}
                           </div>
