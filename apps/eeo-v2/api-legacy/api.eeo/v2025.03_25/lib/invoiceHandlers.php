@@ -928,6 +928,11 @@ function handle_invoices25_list($input, $config, $queries) {
         // 2. Root level: objednavka_id (FE kompatibilita)
         $filters = isset($input['filters']) && is_array($input['filters']) ? $input['filters'] : array();
         
+        // DEBUG: Log raw input to see what we receive
+        error_log("Invoices25 LIST: Raw input keys: " . implode(', ', array_keys($input)));
+        error_log("Invoices25 LIST: castka_min in input? " . (isset($input['castka_min']) ? 'YES (' . $input['castka_min'] . ')' : 'NO'));
+        error_log("Invoices25 LIST: castka_max in input? " . (isset($input['castka_max']) ? 'YES (' . $input['castka_max'] . ')' : 'NO'));
+        
         // Merge root level parametrů do filters (pro FE kompatibilitu)
         // FE může poslat přímo: { token, username, year, objednavka_id, fa_dorucena, usek_id, filter_status, ... }
         $filter_keys = array(
@@ -935,13 +940,19 @@ function handle_invoices25_list($input, $config, $queries) {
             'stredisko', 'organizace_id', 'usek_id', 'filter_status',
             // Nové filtry pro globální vyhledávání a sloupcové filtry
             'search_term', 'cislo_objednavky', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
-            'filter_stav', 'filter_vytvoril_uzivatel'
+            'filter_stav', 'filter_vytvoril_uzivatel',
+            // Filtry pro částku a přílohy
+            'castka_min', 'castka_max', 'filter_ma_prilohy'
         );
         foreach ($filter_keys as $key) {
             if (isset($input[$key]) && !isset($filters[$key])) {
                 $filters[$key] = $input[$key];
+                error_log("Invoices25 LIST: Merged from root: $key = " . json_encode($input[$key]));
             }
         }
+        
+        // DEBUG: Log merged filters
+        error_log("Invoices25 LIST: Final filters array: " . json_encode($filters));
         
         $where_conditions = array('f.aktivni = 1');
         $params = array();
@@ -1119,6 +1130,35 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . $search_user . '%';
             $params[] = '%' . $search_user . '%';
             $params[] = '%' . $search_user . '%';
+        }
+        
+        // Filtr: castka_min (minimální částka faktury)
+        error_log("Invoices25 LIST: DEBUG castka_min - isset: " . (isset($filters['castka_min']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_min'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_min']) && is_numeric($filters['castka_min']) ? 'YES' : 'NO'));
+        if (isset($filters['castka_min']) && $filters['castka_min'] !== '' && is_numeric($filters['castka_min'])) {
+            $where_conditions[] = 'f.fa_castka >= ?';
+            $params[] = (float)$filters['castka_min'];
+            error_log("Invoices25 LIST: ✅ Applying castka_min filter = " . (float)$filters['castka_min']);
+        }
+        
+        // Filtr: castka_max (maximální částka faktury)
+        error_log("Invoices25 LIST: DEBUG castka_max - isset: " . (isset($filters['castka_max']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_max'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_max']) && is_numeric($filters['castka_max']) ? 'YES' : 'NO'));
+        if (isset($filters['castka_max']) && $filters['castka_max'] !== '' && is_numeric($filters['castka_max'])) {
+            $where_conditions[] = 'f.fa_castka <= ?';
+            $params[] = (float)$filters['castka_max'];
+            error_log("Invoices25 LIST: ✅ Applying castka_max filter = " . (float)$filters['castka_max']);
+        }
+        
+        // Filtr: filter_ma_prilohy (filtrace podle přítomnosti příloh)
+        if (isset($filters['filter_ma_prilohy']) && $filters['filter_ma_prilohy'] !== '') {
+            if ((int)$filters['filter_ma_prilohy'] === 1) {
+                // Pouze s přílohami
+                $where_conditions[] = 'pocet_priloh > 0';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 1 (s přílohami)");
+            } else if ((int)$filters['filter_ma_prilohy'] === 0) {
+                // Pouze bez příloh
+                $where_conditions[] = '(pocet_priloh = 0 OR pocet_priloh IS NULL)';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 0 (bez příloh)");
+            }
         }
         
         // Filtr: filter_status (dashboard stav faktury - zaplaceno, nezaplaceno, po splatnosti, atd.)
@@ -1496,6 +1536,11 @@ function handle_invoices25_list($input, $config, $queries) {
                 'total_pages' => $total_pages
             ),
             'statistiky' => $statistiky,
+            '_debug' => array(
+                'filters_received' => $filters,
+                'castka_min_applied' => isset($filters['castka_min']) ? 'YES (' . $filters['castka_min'] . ')' : 'NO',
+                'castka_max_applied' => isset($filters['castka_max']) ? 'YES (' . $filters['castka_max'] . ')' : 'NO'
+            ),
             'user_info' => array(
                 'user_id' => $user_id,
                 'is_admin' => $is_admin,
