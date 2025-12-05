@@ -25,6 +25,27 @@ class AuthService {
   }
 
   /**
+   * Najde uživatele podle ID
+   */
+  async findUserById(userId) {
+    try {
+      const [rows] = await db.query(
+        `SELECT id, username, entra_id, upn, auth_source, email, 
+                jmeno, prijmeni, titul_pred, titul_za, telefon,
+                pozice_id, lokalita_id, organizace_id, usek_id, role,
+                aktivni, dt_vytvoreni
+         FROM erdms_users 
+         WHERE id = ? AND aktivni = 1`,
+        [userId]
+      );
+      return rows[0] || null;
+    } catch (err) {
+      console.error('🔴 findUserById ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
    * Najde uživatele podle emailu
    * Používá pool.query() - automatické connection management
    */

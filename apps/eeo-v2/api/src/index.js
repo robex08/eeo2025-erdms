@@ -103,8 +103,8 @@ if (process.env.NODE_ENV === 'development') {
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
 
-app.use('/auth', authRoutes);
-app.use('/api/entra', entraRoutes);
+app.use('/api/eeo/auth', authRoutes);
+app.use('/api/eeo/entra', entraRoutes);
 
 // 404 handler
 app.use((req, res) => {
