@@ -7,15 +7,23 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('apps');
   const [employees, setEmployees] = useState([]);
+  const [totalEmployees, setTotalEmployees] = useState(0);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [expandedEmployee, setExpandedEmployee] = useState(null);
   const [employeeDetails, setEmployeeDetails] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [filterNonZachranka, setFilterNonZachranka] = useState(false);
+  const [filterWithEmail, setFilterWithEmail] = useState(false);
+  const [filterLicense, setFilterLicense] = useState('all');
+  const [filterAccountStatus, setFilterAccountStatus] = useState('all');
+  const [availableLicenses, setAvailableLicenses] = useState([]);
   
-  // Kontrola zda je admin (u03924 jinak)
+  // Kontrola zda je admin (u03924 nebo u09721)
   const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
-                  user?.upn?.toLowerCase().startsWith('u03924@');
+                  user?.upn?.toLowerCase().startsWith('u03924@') ||
+                  user?.username?.toLowerCase() === 'u09721' || 
+                  user?.upn?.toLowerCase().startsWith('u09721@');
   
   useEffect(() => {
     loadUser();
@@ -40,7 +48,7 @@ function Dashboard() {
       setLoadingEmployees(true);
       console.log('📥 Načítám zaměstnance...');
       
-      const response = await fetch('/api/entra/users?limit=2000', {
+      const response = await fetch('/api/entra/users?limit=1500', {
         credentials: 'include',
         headers: {
           'Accept': 'application/json'
@@ -55,7 +63,11 @@ function Dashboard() {
         
         if (result.success && result.data) {
           setEmployees(result.data);
-          console.log('👥 Počet zaměstnanců:', result.data.length);
+          setTotalEmployees(result.totalCount || result.data.length);
+          console.log('👥 Počet zaměstnanců:', result.data.length, 'z celkem', result.totalCount || result.data.length);
+          
+          // Načti skupiny pro všechny zaměstnance (postupně pro získání licencí)
+          loadAllEmployeeGroups(result.data);
         }
       } else {
         const error = await response.text();
@@ -68,7 +80,124 @@ function Dashboard() {
     }
   };
 
-  const handleSearch = async (query) => {
+  const loadAllEmployeeGroups = async (employeeList) => {
+    console.log('📋 Načítám skupiny pro VŠECHNY zaměstnance (může trvat déle)...');
+    const licenseSet = new Set();
+    const batchSize = 50;
+    
+    // Načti skupiny pro VŠECHNY zaměstnance v dávkách
+    for (let i = 0; i < employeeList.length; i += batchSize) {
+      const batch = employeeList.slice(i, i + batchSize);
+      console.log(`📦 Načítám dávku ${i + 1}-${Math.min(i + batchSize, employeeList.length)} z ${employeeList.length}...`);
+      
+      const promises = batch.map(async (emp) => {
+        try {
+          const response = await fetch(`/api/entra/user/${emp.id}/groups`, {
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              // Ulož skupiny pro filtrování
+              setEmployeeDetails(prev => ({
+                ...prev,
+                [emp.id]: { groups: data.data }
+              }));
+              
+              // Extrahuj M365-License skupiny
+              data.data.forEach(group => {
+                if (group.displayName && group.displayName.startsWith('M365-License')) {
+                  licenseSet.add(group.displayName);
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to load groups for ${emp.displayName}:`, err);
+        }
+      });
+      
+      await Promise.all(promises);
+      
+      // Aktualizuj seznam licencí po každé dávce
+      const licenses = Array.from(licenseSet).sort();
+      setAvailableLicenses(licenses);
+    }
+    
+    console.log('✅ Skupiny načteny pro všechny zaměstnance');
+    console.log('📜 Celkem nalezeno licencí:', Array.from(licenseSet).length);
+  };
+
+  const getFilteredEmployees = () => {
+    let filtered = searchQuery.length >= 3 ? searchResults : employees;
+    const startCount = filtered.length;
+    
+    // Filtr pro status účtu
+    if (filterAccountStatus === 'active') {
+      filtered = filtered.filter(emp => emp.accountEnabled === true);
+      console.log(`🔍 Filtr aktivní: ${filtered.length} z ${startCount}`);
+    } else if (filterAccountStatus === 'inactive') {
+      filtered = filtered.filter(emp => emp.accountEnabled === false);
+      console.log(`🔍 Filtr neaktivní: ${filtered.length} z ${startCount}`);
+    }
+    
+    // Filtr pro vyplněný email (AND s non-zachranka)
+    if (filterWithEmail) {
+      const beforeEmail = filtered.length;
+      filtered = filtered.filter(emp => {
+        const email = (emp.mail || '').trim();
+        return email.length > 0;
+      });
+      console.log(`🔍 Filtr s emailem: ${filtered.length} z ${beforeEmail}`);
+    }
+    
+    // Filtr pro non-zachranka emailové domény (AND s filterWithEmail)
+    if (filterNonZachranka) {
+      const beforeDomain = filtered.length;
+      filtered = filtered.filter(emp => {
+        const email = (emp.mail || emp.userPrincipalName || '').toLowerCase();
+        return !email.endsWith('@zachranka.cz');
+      });
+      console.log(`🔍 Filtr non-zachranka: ${filtered.length} z ${beforeDomain}`);
+    }
+    
+    // Filtr pro licence (založený na skupinách)
+    if (filterLicense !== 'all') {
+      const beforeLicense = filtered.length;
+      const employeesWithGroups = filtered.filter(emp => employeeDetails[emp.id]?.groups);
+      console.log(`📋 Zaměstnanců s načtenými skupinami: ${employeesWithGroups.length} z ${filtered.length}`);
+      
+      filtered = filtered.filter(emp => {
+        const details = employeeDetails[emp.id];
+        if (!details || !details.groups) {
+          console.log(`⚠️ ${emp.displayName} nemá načtené skupiny`);
+          return false;
+        }
+        
+        if (filterLicense === 'any-license') {
+          // Jakákoliv M365-License* skupina
+          const hasLicense = details.groups.some(g => g.displayName && g.displayName.startsWith('M365-License'));
+          if (hasLicense) {
+            console.log(`✓ ${emp.displayName} má licenci:`, details.groups.filter(g => g.displayName?.startsWith('M365-License')).map(g => g.displayName));
+          }
+          return hasLicense;
+        } else {
+          // Konkrétní licence
+          const hasSpecificLicense = details.groups.some(g => g.displayName === filterLicense);
+          if (hasSpecificLicense) {
+            console.log(`✓ ${emp.displayName} má licenci ${filterLicense}`);
+          }
+          return hasSpecificLicense;
+        }
+      });
+      console.log(`🔍 Filtr licence "${filterLicense}": ${filtered.length} z ${beforeLicense}`);
+    }
+    
+    return filtered;
+  };
+
+  const handleSearch = (query) => {
     setSearchQuery(query);
     
     if (query.trim().length < 3) {
@@ -76,28 +205,28 @@ function Dashboard() {
       return;
     }
     
-    try {
-      console.log('🔍 Hledám:', query);
+    // Vyhledávání lokálně v již načtených zaměstnancích (1500)
+    const searchTerm = query.toLowerCase().trim();
+    console.log('🔍 Lokální hledání:', searchTerm, 'v', employees.length, 'zaměstnancích');
+    
+    const filtered = employees.filter(emp => {
+      const displayName = (emp.displayName || '').toLowerCase();
+      const givenName = (emp.givenName || '').toLowerCase();
+      const surname = (emp.surname || '').toLowerCase();
+      const email = (emp.mail || emp.userPrincipalName || '').toLowerCase();
+      const jobTitle = (emp.jobTitle || '').toLowerCase();
+      const department = (emp.department || '').toLowerCase();
       
-      const response = await fetch(`/api/entra/users/search?q=${encodeURIComponent(query)}&limit=50`, {
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('🔍 Výsledky hledání:', result);
-        
-        if (result.success && result.data) {
-          setSearchResults(result.data);
-          console.log('📊 Nalezeno:', result.data.length);
-        }
-      }
-    } catch (err) {
-      console.error('❌ Search error:', err);
-    }
+      return displayName.includes(searchTerm) ||
+             givenName.includes(searchTerm) ||
+             surname.includes(searchTerm) ||
+             email.includes(searchTerm) ||
+             jobTitle.includes(searchTerm) ||
+             department.includes(searchTerm);
+    });
+    
+    console.log('📊 Nalezeno:', filtered.length, 'zaměstnanců');
+    setSearchResults(filtered);
   };
 
   const toggleEmployeeDetail = async (employee) => {
@@ -354,18 +483,119 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Tab: Zaměstnanci (jen pro u03924) */}
+        {/* Tab: Zaměstnanci (jen pro u03924 a u09721) */}
         {activeTab === 'employees' && isAdmin && (
           <div className="employees-section">
             <div className="employees-header">
-              <h2>Přehled zaměstnanců</h2>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Hledat zaměstnance..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-              />
+              <div>
+                <h2>Přehled zaměstnanců</h2>
+                {totalEmployees > 0 && (
+                  <p className="employees-count">
+                    {searchQuery.length >= 3 
+                      ? `Zobrazeno ${getFilteredEmployees().length} z celkem ${totalEmployees} zaměstnanců dle vyhledávání` 
+                      : `Zobrazeno ${getFilteredEmployees().length} z celkem ${totalEmployees} zaměstnanců`
+                    }
+                  </p>
+                )}
+              </div>
+              <div className="search-controls">
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Hledat zaměstnance..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                />
+                
+                <div className="filters-section">
+                  <div className="filter-group">
+                    <span className="filter-label">Status účtu:</span>
+                    <div className="radio-group">
+                      <label className="radio-option">
+                        <input
+                          type="radio"
+                          name="accountStatus"
+                          value="all"
+                          checked={filterAccountStatus === 'all'}
+                          onChange={(e) => setFilterAccountStatus(e.target.value)}
+                        />
+                        <span className="radio-custom"></span>
+                        <span>Všichni</span>
+                      </label>
+                      <label className="radio-option">
+                        <input
+                          type="radio"
+                          name="accountStatus"
+                          value="active"
+                          checked={filterAccountStatus === 'active'}
+                          onChange={(e) => setFilterAccountStatus(e.target.value)}
+                        />
+                        <span className="radio-custom"></span>
+                        <span>Jen aktivní</span>
+                      </label>
+                      <label className="radio-option">
+                        <input
+                          type="radio"
+                          name="accountStatus"
+                          value="inactive"
+                          checked={filterAccountStatus === 'inactive'}
+                          onChange={(e) => setFilterAccountStatus(e.target.value)}
+                        />
+                        <span className="radio-custom"></span>
+                        <span>Jen neaktivní</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="filter-group">
+                    <span className="filter-label">Email:</span>
+                    <div className="checkbox-group">
+                      <label className="checkbox-option">
+                        <input
+                          type="checkbox"
+                          checked={filterWithEmail}
+                          onChange={(e) => setFilterWithEmail(e.target.checked)}
+                        />
+                        <span className="checkbox-custom">
+                          <svg className="checkbox-icon" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                          </svg>
+                        </span>
+                        <span>Pouze s vyplněným emailem</span>
+                      </label>
+                      <label className="checkbox-option">
+                        <input
+                          type="checkbox"
+                          checked={filterNonZachranka}
+                          onChange={(e) => setFilterNonZachranka(e.target.checked)}
+                        />
+                        <span className="checkbox-custom">
+                          <svg className="checkbox-icon" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                          </svg>
+                        </span>
+                        <span>Pouze jiné domény než @zachranka.cz</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="filter-group">
+                    <label htmlFor="license-filter" className="filter-label">Licence:</label>
+                    <select
+                      id="license-filter"
+                      className="license-select"
+                      value={filterLicense}
+                      onChange={(e) => setFilterLicense(e.target.value)}
+                    >
+                      <option value="all">Všichni (bez filtru)</option>
+                      <option value="any-license">Všichni s licencí (M365-License*)</option>
+                      {availableLicenses.map(license => (
+                        <option key={license} value={license}>{license}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {loadingEmployees && (
@@ -380,7 +610,7 @@ function Dashboard() {
             )}
 
             <div className="employees-grid">
-              {(searchQuery.length >= 3 ? searchResults : employees).map((emp) => {
+              {getFilteredEmployees().map((emp) => {
                 const isExpanded = expandedEmployee === emp.id;
                 const details = employeeDetails[emp.id];
 
@@ -389,6 +619,9 @@ function Dashboard() {
                     key={emp.id}
                     className={`employee-card ${isExpanded ? 'expanded' : ''}`}
                   >
+                    <div className={`employee-status-indicator ${emp.accountEnabled ? 'active' : 'inactive'}`} 
+                         title={emp.accountEnabled ? 'Aktivní účet' : 'Neaktivní účet'}>
+                    </div>
                     <div className="employee-header" onClick={() => toggleEmployeeDetail(emp)}>
                       <div className="employee-avatar">
                         {emp.givenName?.[0]}{emp.surname?.[0]}

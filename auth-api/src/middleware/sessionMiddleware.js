@@ -3,7 +3,7 @@
  */
 
 /**
- * Middleware pro ověření, že uživatel má platnou session
+ * Middleware pro ověření, že uživatel má platnou session (IN-MEMORY)
  */
 const authenticateSession = async (req, res, next) => {
   try {
@@ -17,26 +17,28 @@ const authenticateSession = async (req, res, next) => {
       });
     }
 
-    // Najdi session v databázi
+    // Najdi session v paměti (NE v DB!)
     const authService = require('../services/authService');
     const session = await authService.findSession(sessionId);
     
-    if (!session || !session.user_id) {
+    if (!session || !session.userId) {
       return res.status(401).json({
         success: false,
         error: 'Unauthorized - Session not found or expired'
       });
     }
 
-    // Najdi uživatele
-    const user = await authService.findUserById(session.user_id);
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Unauthorized - User not found'
-      });
-    }
+    // User data jsou přímo v session (z Entra ID)
+    const user = {
+      id: session.userId,
+      username: session.username,
+      email: session.email,
+      name: session.name,
+      upn: session.upn,
+      entra_id: session.entra_id,
+      auth_source: session.auth_source,
+      entra_access_token: session.entra_access_token
+    };
 
     // Přidej uživatele a session do request
     req.user = user;

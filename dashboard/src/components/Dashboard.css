@@ -616,7 +616,8 @@
 .employees-header {
   margin-bottom: 1.5rem;
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
 }
 
@@ -628,9 +629,22 @@
   letter-spacing: -0.025em;
 }
 
+.employees-count {
+  margin: 0.5rem 0 0 0;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.search-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+}
+
 .search-input {
   width: 100%;
-  max-width: 600px;
   padding: 1rem 3rem 1rem 1.5rem;
   background: white;
   border: 2px solid #e2e8f0;
@@ -639,6 +653,187 @@
   color: #1e293b;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.filters-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 1.25rem;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.filter-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Radio buttons - modernější design */
+.radio-group {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding: 0.5rem 0;
+}
+
+.radio-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.radio-custom {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #cbd5e1;
+  border-radius: 50%;
+  position: relative;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.radio-option:hover .radio-custom {
+  border-color: #3b82f6;
+}
+
+.radio-option input[type="radio"]:checked + .radio-custom {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.radio-option input[type="radio"]:checked + .radio-custom::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+}
+
+.radio-option span:last-child {
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.radio-option:hover span:last-child {
+  color: #1e293b;
+}
+
+/* Checkboxy - modernější design */
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding: 0.5rem 0;
+}
+
+.checkbox-option input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #cbd5e1;
+  border-radius: 6px;
+  position: relative;
+  transition: all 0.2s ease;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox-icon {
+  width: 14px;
+  height: 14px;
+  color: white;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.2s ease;
+}
+
+.checkbox-option:hover .checkbox-custom {
+  border-color: #3b82f6;
+}
+
+.checkbox-option input[type="checkbox"]:checked + .checkbox-custom {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.checkbox-option input[type="checkbox"]:checked + .checkbox-custom .checkbox-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.checkbox-option span:last-child {
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.checkbox-option:hover span:last-child {
+  color: #1e293b;
+}
+
+.license-select {
+  padding: 0.5rem 2.5rem 0.5rem 1rem;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 250px;
+}
+
+.license-select:hover {
+  border-color: #3b82f6;
+}
+
+.license-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .search-input::placeholder {
@@ -717,12 +912,34 @@
   padding: 0;
   transition: all 0.3s ease;
   overflow: hidden;
+  position: relative;
 }
 
 .employee-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
   border-color: #3b82f6;
+}
+
+.employee-status-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.employee-status-indicator.active {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.employee-status-indicator.inactive {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
 }
 
 .employee-card.expanded {

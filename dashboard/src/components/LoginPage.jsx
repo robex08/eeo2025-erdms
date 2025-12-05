@@ -79,7 +79,7 @@ function LoginPage() {
                 <rect y="12" width="11" height="11" fill="#00a4ef"/>
                 <rect x="12" y="12" width="11" height="11" fill="#ffb900"/>
               </svg>
-              <span>Přihlásit se přes Microsoft</span>
+              <span>Přihlásit se přes Microsoft 365</span>
             </button>
 
             <div className="security-note">
@@ -88,17 +88,6 @@ function LoginPage() {
               </svg>
               <span>Zabezpečené přihlášení Microsoft Entra ID</span>
             </div>
-
-            <a 
-              href="/MICROSOFT_ENTRA_SETUP.md" 
-              download 
-              className="download-doc-link"
-            >
-              <svg className="download-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-              </svg>
-              <span>Stáhnout dokumentaci - Microsoft Entra ID Setup</span>
-            </a>
           </div>
         </div>
 

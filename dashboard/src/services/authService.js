@@ -41,12 +41,39 @@ class AuthService {
         credentials: 'include',
       });
 
-      const data = await response.json();
-      
-      // Přesměruj na Microsoft logout
-      if (data.logoutUrl) {
-        window.location.href = data.logoutUrl;
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Microsoft Entra vyžaduje POST request pro logout
+        // Vytvoříme hidden form a submitneme ho
+        if (data.logoutUrl) {
+          // Extrahuj endpoint a parametry
+          const url = new URL(data.logoutUrl);
+          const postLogoutRedirect = url.searchParams.get('post_logout_redirect_uri');
+          
+          // Vytvoř hidden form
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = data.logoutUrl.split('?')[0]; // URL bez parametrů
+          form.style.display = 'none';
+          
+          // Přidej parametr jako hidden input
+          if (postLogoutRedirect) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'post_logout_redirect_uri';
+            input.value = postLogoutRedirect;
+            form.appendChild(input);
+          }
+          
+          // Přidej do DOM a submitni
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          window.location.href = '/';
+        }
       } else {
+        // Fallback - redirect na homepage
         window.location.href = '/';
       }
     } catch (error) {
