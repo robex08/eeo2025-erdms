@@ -44,7 +44,7 @@ return [
         ],
         
         // URL prefix pro přístup k souborům (pokud budou přístupné přes web)
-        'web_url_prefix' => 'https://erdms.zachranka.cz/prilohy/',
+        'web_url_prefix' => 'https://erdms.zachranka.cz/eeo-v2/prilohy/',
         
         // Bezpečnostní nastavení
         'security' => [
