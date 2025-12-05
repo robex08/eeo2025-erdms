@@ -509,7 +509,12 @@ function Dashboard() {
                 
                 <div className="filters-section">
                   <div className="filter-group">
-                    <span className="filter-label">Status účtu:</span>
+                    <span className="filter-label">
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/>
+                      </svg>
+                      Status účtu
+                    </span>
                     <div className="radio-group">
                       <label className="radio-option">
                         <input
@@ -548,7 +553,13 @@ function Dashboard() {
                   </div>
 
                   <div className="filter-group">
-                    <span className="filter-label">Email:</span>
+                    <span className="filter-label">
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+                      </svg>
+                      Email
+                    </span>
                     <div className="checkbox-group">
                       <label className="checkbox-option">
                         <input
@@ -580,7 +591,13 @@ function Dashboard() {
                   </div>
 
                   <div className="filter-group">
-                    <label htmlFor="license-filter" className="filter-label">Licence:</label>
+                    <label htmlFor="license-filter" className="filter-label">
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd"/>
+                        <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z"/>
+                      </svg>
+                      Licence M365
+                    </label>
                     <select
                       id="license-filter"
                       className="license-select"
