@@ -5083,7 +5083,7 @@ function OrderForm25() {
       // KRITICKÉ: Nastavit formData s načtenými daty
 
       // 🔍 DEBUG: RAW CELÉ OBJEDNÁVKY z backendu
-      console.log('🔍 RAW CELÁ OBJEDNÁVKA z DB:', loadedData);
+      // console.log('🔍 RAW CELÁ OBJEDNÁVKA z DB:', loadedData);
 
       // 🛡️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
       // ✅ FIX: Kontroluj současný editOrderId, ne jen flag
@@ -9110,8 +9110,25 @@ function OrderForm25() {
       }
 
       // Akceptace a zveřejnění
-      if (formData.dt_akceptace) orderData.dt_akceptace = formData.dt_akceptace;
-      if (formData.dt_zverejneni) orderData.dt_zverejneni = formData.dt_zverejneni;
+      // ✅ OPRAVA: Konvertovat datetime hodnoty do MySQL formátu (odstranit timezone a ms)
+      if (formData.dt_akceptace) {
+        // Pokud obsahuje 'T' (ISO format), extrahovat jen datum nebo datum+čas bez timezone
+        const akceptaceValue = String(formData.dt_akceptace);
+        if (akceptaceValue.includes('T')) {
+          // ISO format: 2025-12-05T16:57:42.491Z -> 2025-12-05 nebo 2025-12-05 16:57:42
+          orderData.dt_akceptace = akceptaceValue.split('.')[0].replace('T', ' ').replace('Z', '');
+        } else {
+          orderData.dt_akceptace = akceptaceValue;
+        }
+      }
+      if (formData.dt_zverejneni) {
+        const zverejneniValue = String(formData.dt_zverejneni);
+        if (zverejneniValue.includes('T')) {
+          orderData.dt_zverejneni = zverejneniValue.split('.')[0].replace('T', ' ').replace('Z', '');
+        } else {
+          orderData.dt_zverejneni = zverejneniValue;
+        }
+      }
       if (formData.registr_iddt) orderData.registr_iddt = formData.registr_iddt;
 
       // ❌ SMAZÁNO: dt_splatnosti patří k FAKTUŘE, ne k objednávce!
@@ -14991,7 +15008,8 @@ function OrderForm25() {
         phase2: { visible: currentPhase >= 2, locked: shouldLockPhase2Sections },
         financovani: { visible: financovaniState.visible, locked: !financovaniState.enabled }, // Samostatná sekce pro financování
         phase3: { visible: currentPhase >= 3, locked: shouldLockPhase3Sections },
-        phase4to6: { visible: currentPhase >= 4, locked: shouldLockPhase4to6Sections }
+        phase4to6: { visible: currentPhase >= 4, locked: shouldLockPhase4to6Sections },
+        registr_smluv_vyplneni: { visible: registrVyplneniState.visible, locked: isRegistrVyplneniLocked } // FÁZE 5: Zveřejnění
       };
 
       // ✅ FIX: Merge errors místo přepsání - jinak ztratíme FÁZE 5 validaci!
@@ -15082,54 +15100,22 @@ function OrderForm25() {
       // POZNÁMKA: IČO, Název, Adresa dodavatele patří do bloku "Dodavatel" ve FÁZI 3
       // Validují se přes validateWorkflowData(), ne zde!
 
-      // VALIDACE ZVEŘEJNĚNÍ REGISTRU - povinná pole když má být zveřejněno
-      // Pokud je checkbox "Má být zveřejněna" zaškrtnutý (true/1), pak jsou POVINNÁ:
-      // - dt_zverejneni (Datum zveřejnění VZ)
-      // - registr_iddt (Identifikátor IDDT)
-      // POZNÁMKA: zverejnil_id se nastavuje automaticky z localStorage.user_id
-      // ✅ VALIDOVAT POUZE VE FÁZI 5 (UVEREJNIT - Vyplnění registru smluv) - pokud už jsme ve fázi 6+, je to uložené
-      // ✅ VALIDOVAT POUZE pokud má uživatel právo ORDER_PUBLISH_REGISTRY (sekce musí být viditelná)
-      if ((formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1) && 
-          currentPhase === 5 && 
-          sectionStates.phase4to6?.visible && 
-          !sectionStates.phase4to6?.locked) {
-        if (!formData.dt_zverejneni?.trim()) {
-          errors.dt_zverejneni = 'Datum zveřejnění je povinné když má být objednávka zveřejněna';
-        }
-        if (!formData.registr_iddt?.trim()) {
-          errors.registr_iddt = 'Identifikátor IDDT je povinný když má být objednávka zveřejněna';
-        }
-      }
+      // ✅ VALIDACE ZVEŘEJNĚNÍ: Přesunuto do workflowUtils.js (validateWorkflowData)
+      // Validace dt_zverejneni a registr_iddt se provádí automaticky přes workflow manager
+      // když je zaškrtnuto ma_byt_zverejnena a sekce registr_smluv_vyplneni je viditelná a odemčená
 
       // 🆕 VALIDACE ÚSEK, BUDOVA, MÍSTNOST U POLOŽEK: Pouze u majetkových objednávek
       // ✅ VALIDOVAT POUZE VE FÁZI 3+ (lokalizační pole jsou dostupná až od fáze 3)
       const isMaterialOrder = formData.druh_objednavky_kod && 
         formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
       
-      console.log('🏢 VALIDACE LOKALIZACE MAJETKU:', {
-        currentPhase,
-        isMaterialOrder,
-        druh_objednavky_kod: formData.druh_objednavky_kod,
-        pocet_polozek: formData.polozky_objednavky?.length || 0,
-        validaceProbehne: currentPhase >= 3 && isMaterialOrder && formData.polozky_objednavky?.length > 0
-      });
-      
       if (currentPhase >= 3 && isMaterialOrder && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         formData.polozky_objednavky.forEach((polozka, index) => {
-          console.log(`🏢 Položka ${index + 1} lokalizace:`, {
-            usek_kod: polozka.usek_kod,
-            budova_kod: polozka.budova_kod,
-            mistnost_kod: polozka.mistnost_kod,
-            polozka_nazev: polozka.nazev
-          });
-          
           if (!polozka.usek_kod || !polozka.usek_kod.trim()) {
             errors[`polozka_${index}_usek_kod`] = `Položka ${index + 1}: Úsek je povinný u majetkových objednávek`;
-            console.log(`❌ Položka ${index + 1}: Chybí úsek`);
           }
           if (!polozka.budova_kod || !polozka.budova_kod.trim()) {
             errors[`polozka_${index}_budova_kod`] = `Položka ${index + 1}: Budova je povinná u majetkových objednávek`;
-            console.log(`❌ Položka ${index + 1}: Chybí budova`);
           }
           if (!polozka.mistnost_kod || !polozka.mistnost_kod.trim()) {
             errors[`polozka_${index}_mistnost_kod`] = `Položka ${index + 1}: Místnost je povinná u majetkových objednávek`;
@@ -18643,6 +18629,7 @@ function OrderForm25() {
                             </div>
                           )}
                         </div>
+
                     {/* Čeká se */}
                     <label style={{
                       display: 'flex',
@@ -18652,18 +18639,17 @@ function OrderForm25() {
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px',
                       backgroundColor: formData.stav_schvaleni === 'ceka_se' ? '#fef3c7' : '#f9fafb',
-                      cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
+                      cursor: shouldLockSchvaleniCheckboxes ? 'not-allowed' : 'pointer',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
                       marginBottom: '1rem',
                       fontSize: '1rem',
                       fontWeight: '500',
-                      color: formData.stav_schvaleni === 'ceka_se' ? '#f59e0b' : '#374151'
+                      color: formData.stav_schvaleni === 'ceka_se' ? '#f59e0b' : '#374151',
+                      pointerEvents: shouldLockSchvaleniCheckboxes ? 'none' : 'auto'
                     }}
                     onClick={(e) => {
-                      if (!shouldLockSchvaleniCheckboxes) {
-                        e.preventDefault();
-                        handleRadioClick('ceka_se');
-                      }
+                      e.preventDefault();
+                      handleRadioClick('ceka_se');
                     }}
                     >
                       <input
@@ -18704,18 +18690,17 @@ function OrderForm25() {
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px',
                       backgroundColor: formData.stav_schvaleni === 'neschvaleno' ? '#fef2f2' : '#f9fafb',
-                      cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
+                      cursor: shouldLockSchvaleniCheckboxes ? 'not-allowed' : 'pointer',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
                       marginBottom: '1rem',
                       fontSize: '1rem',
                       fontWeight: '500',
-                      color: formData.stav_schvaleni === 'neschvaleno' ? '#dc2626' : '#374151'
+                      color: formData.stav_schvaleni === 'neschvaleno' ? '#dc2626' : '#374151',
+                      pointerEvents: shouldLockSchvaleniCheckboxes ? 'none' : 'auto'
                     }}
                     onClick={(e) => {
-                      if (!shouldLockSchvaleniCheckboxes) {
-                        e.preventDefault();
-                        handleRadioClick('neschvaleno');
-                      }
+                      e.preventDefault();
+                      handleRadioClick('neschvaleno');
                     }}
                     >
                       <input
@@ -18756,17 +18741,16 @@ function OrderForm25() {
                       border: '1px solid #e5e7eb',
                       borderRadius: '8px',
                       backgroundColor: formData.stav_schvaleni === 'schvaleno' ? '#f0fdf4' : '#f9fafb',
-                      cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
+                      cursor: shouldLockSchvaleniCheckboxes ? 'not-allowed' : 'pointer',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
                       fontSize: '1rem',
                       fontWeight: '500',
-                      color: formData.stav_schvaleni === 'schvaleno' ? '#15803d' : '#374151'
+                      color: formData.stav_schvaleni === 'schvaleno' ? '#15803d' : '#374151',
+                      pointerEvents: shouldLockSchvaleniCheckboxes ? 'none' : 'auto'
                     }}
                     onClick={(e) => {
-                      if (!shouldLockSchvaleniCheckboxes) {
-                        e.preventDefault();
-                        handleRadioClick('schvaleno');
-                      }
+                      e.preventDefault();
+                      handleRadioClick('schvaleno');
                     }}
                     >
                       <input
@@ -19974,7 +19958,8 @@ function OrderForm25() {
                     border: '1px solid #e5e7eb',
                     borderRadius: '8px',
                     backgroundColor: formData.stav_odeslano ? '#f0fdf4' : '#f9fafb',
-                    marginBottom: '1rem'
+                    marginBottom: '1rem',
+                    opacity: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? 0.6 : 1
                   }}>
                     <label style={{
                       display: 'flex',
@@ -19982,7 +19967,7 @@ function OrderForm25() {
                       gap: '0.75rem',
                       fontSize: '1rem',
                       fontWeight: '500',
-                      cursor: 'pointer',
+                      cursor: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? 'not-allowed' : 'pointer',
                       color: formData.stav_odeslano ? '#15803d' : '#374151'
                     }}>
                       <input
@@ -20026,7 +20011,7 @@ function OrderForm25() {
                     </label>
 
                     {/* Datum odeslání vedle checkboxu */}
-                    {formData.stav_odeslano && (
+                    {(formData.stav_odeslano || formData.dt_odeslani) && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -20057,7 +20042,8 @@ function OrderForm25() {
                     padding: '1rem',
                     border: '1px solid #e5e7eb',
                     borderRadius: '8px',
-                    backgroundColor: formData.stav_stornovano ? '#fef2f2' : '#f9fafb'
+                    backgroundColor: formData.stav_stornovano ? '#fef2f2' : '#f9fafb',
+                    opacity: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? 0.6 : 1
                   }}>
                     <label style={{
                       display: 'flex',
@@ -20065,7 +20051,7 @@ function OrderForm25() {
                       gap: '0.75rem',
                       fontSize: '1rem',
                       fontWeight: '500',
-                      cursor: 'pointer',
+                      cursor: (shouldLockPhase3Sections || showSaveProgress || isSaving) ? 'not-allowed' : 'pointer',
                       color: formData.stav_stornovano ? '#dc2626' : '#374151'
                     }}>
                       <input
@@ -20106,7 +20092,7 @@ function OrderForm25() {
                     </label>
 
                     {/* Datum storna vedle checkboxu */}
-                    {formData.stav_stornovano && (
+                    {(formData.stav_stornovano || formData.datum_storna) && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -20120,6 +20106,7 @@ function OrderForm25() {
                             value={formData.datum_storna}
                             onChange={(value) => handleInputChange('datum_storna', value)}
                             onBlur={(value) => handleFieldBlur('datum_storna', value)}
+                            disabled={shouldLockPhase3Sections}
                             hasError={!!validationErrors.datum_storna}
                             placeholder="Vyberte datum..."
                           />
@@ -20990,6 +20977,9 @@ function OrderForm25() {
                         hasError={!!validationErrors.dt_zverejneni}
                         placeholder="Vyberte datum..."
                       />
+                      {validationErrors.dt_zverejneni && (
+                        <ErrorText style={{ marginTop: '0.5rem' }}>{validationErrors.dt_zverejneni}</ErrorText>
+                      )}
                     </div>
 
                     {/* 3. IDENTIFIKÁTOR */}
@@ -21016,6 +21006,9 @@ function OrderForm25() {
                           placeholder="Zadejte identifikátor..."
                         />
                       </InputWithIcon>
+                      {validationErrors.registr_iddt && (
+                        <ErrorText style={{ marginTop: '0.5rem' }}>{validationErrors.registr_iddt}</ErrorText>
+                      )}
                     </div>
                   </div>
 

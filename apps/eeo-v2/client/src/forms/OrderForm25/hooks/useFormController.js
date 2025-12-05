@@ -123,7 +123,7 @@ export const useFormController = ({
    * 🔄 NAVIGATION FIX: Re-initialize when editOrderId changes
    */
   useEffect(() => {
-    console.log('🔍🔍🔍 [useFormController] useEffect SE SPOUŠTÍ! token:', !!token, 'username:', !!username, 'editOrderId:', editOrderId);
+    // console.log('🔍🔍🔍 [useFormController] useEffect SE SPOUŠTÍ! token:', !!token, 'username:', !!username, 'editOrderId:', editOrderId);
     const instanceId = instanceIdRef.current;
     isMountedRef.current = true;
 
@@ -159,11 +159,11 @@ export const useFormController = ({
     }
 
     if (token && username) {
-      console.log('🔍 [useFormController] Mám token a username, VOLÁM init()');
+      // console.log('🔍 [useFormController] Mám token a username, VOLÁM init()');
       hasInitializedRef.current = true; // ✅ Označit že inicializace začala
       // 🔧 Call initializeForm directly to avoid dependency loop - use refs
       const init = async () => {
-        console.log('🔍 [useFormController] init() FUNKCE SE SPOUŠTÍ!');
+        // console.log('🔍 [useFormController] init() FUNKCE SE SPOUŠTÍ!');
         const instanceId = instanceIdRef.current;
 
         // 🔒 DOUBLE CHECK LOCK - prevence race conditions
@@ -222,7 +222,7 @@ export const useFormController = ({
 
           if (editOrderId) {
             // EDIT MODE
-            console.log('🔍 [useFormController] EDIT MODE - editOrderId:', editOrderId, 'archivovano:', archivovanoParam);
+            // console.log('🔍 [useFormController] EDIT MODE - editOrderId:', editOrderId, 'archivovano:', archivovanoParam);
             if (process.env.NODE_ENV === 'development') {
             }
             currentLifecycle.startDataLoad();
@@ -231,7 +231,7 @@ export const useFormController = ({
               orderId: editOrderId,
               archivovano: archivovanoParam === '1' ? 1 : 0
             });
-            console.log('🔍 [useFormController] loadedData po loadOrderForEdit:', loadedData);
+            // console.log('🔍 [useFormController] loadedData po loadOrderForEdit:', loadedData);
 
             if (process.env.NODE_ENV === 'development') {
             }

@@ -34,8 +34,9 @@ function get_orders25_upload_path($config, $objednavka_id, $user_id) {
     } else if (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // Fallback - použij hardcoded cestu pro tento projekt
-        $basePath = '/var/www/eeo2025/doc/prilohy/';
+        // ✅ Fallback - použij správnou cestu z dbconfig.php
+        // Cesta: /var/www/erdms-data/eeo-v2/prilohy/
+        $basePath = '/var/www/erdms-data/eeo-v2/prilohy/';
     }
     
     // Přidání lomítka na konec pokud chybí
@@ -118,23 +119,42 @@ function handle_orders25_upload_attachment($config, $queries) {
         // Vyčisti možné whitespace znaky
         $systemovy_nazev = trim($systemovy_nazev);
         
-        // Ověření/generování systemového názvu s prefixem data (podporuje velká i malá písmena)
+        // Ověření/generování systemového názvu s prefixem (obj-/fa-) a datem
+        // Podporované formáty:
+        // 1. GUID samotný (bude doplněn prefix a datum)
+        // 2. obj-YYYY-MM-DD_GUID nebo fa-YYYY-MM-DD_GUID (s prefixem)
+        // 3. YYYY-MM-DD_GUID (bez prefixu - bude doplněn)
+        // 4. obj-YYYY-MM-DD_xxxxxxxxxx nebo fa-YYYY-MM-DD_xxxxxxxxxx (alt formát)
         $is_guid = preg_match('/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/', $systemovy_nazev);
+        $is_prefixed_guid = preg_match('/^(obj-|fa-)[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/', $systemovy_nazev);
         $is_date_guid = preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/', $systemovy_nazev);
-        $is_alt_format = preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9A-Fa-f]{10,}(\.[a-zA-Z0-9]+)?$/', $systemovy_nazev); // Flexibilnější hex délka + volitelná přípona
+        $is_alt_format = preg_match('/^(obj-|fa-)?[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9A-Fa-f]{10,}(\.[a-zA-Z0-9]+)?$/', $systemovy_nazev);
         
         // Pokud obsahuje příponu, odstraň ji pro další zpracování
         if ($is_alt_format && strpos($systemovy_nazev, '.') !== false) {
             $systemovy_nazev = substr($systemovy_nazev, 0, strrpos($systemovy_nazev, '.'));
         }
         
-        // Automaticky přidej datum pokud má klasický GUID formát
+        // Automaticky přidej datum a prefix obj- pokud chybí
+        // Formát: obj-YYYY-MM-DD_GUID (prefix obj- pro objednávky, fa- pro faktury)
         if ($is_guid) {
-            $systemovy_nazev = TimezoneHelper::getCzechDateTime('Y-m-d') . '_' . $systemovy_nazev;
+            // Čistý GUID → přidej prefix a datum
+            $systemovy_nazev = 'obj-' . TimezoneHelper::getCzechDateTime('Y-m-d') . '_' . $systemovy_nazev;
+        } else if ($is_date_guid) {
+            // Má datum ale chybí prefix → přidej obj-
+            if (strpos($systemovy_nazev, 'obj-') !== 0 && strpos($systemovy_nazev, 'fa-') !== 0) {
+                $systemovy_nazev = 'obj-' . $systemovy_nazev;
+            }
+        } else if ($is_alt_format) {
+            // Alt formát - zkontroluj prefix
+            if (strpos($systemovy_nazev, 'obj-') !== 0 && strpos($systemovy_nazev, 'fa-') !== 0) {
+                $systemovy_nazev = 'obj-' . $systemovy_nazev;
+            }
         }
+        // $is_prefixed_guid už má správný formát, necháme ho být
         
-        if (!$is_guid && !$is_date_guid && !$is_alt_format) {
-            api_error(400, 'Neplatný formát systemového názvu - očekáván GUID, YYYY-MM-DD_GUID nebo YYYY-MM-DD_xxxxxxxxxx(.ext) formát');
+        if (!$is_guid && !$is_date_guid && !$is_alt_format && !$is_prefixed_guid) {
+            api_error(400, 'Neplatný formát systemového názvu - očekáván GUID, obj-YYYY-MM-DD_GUID nebo fa-YYYY-MM-DD_GUID formát');
         }
         
         // Kontrola existence objednávky v tabulce 25a_objednavky
@@ -205,8 +225,9 @@ function handle_orders25_upload_attachment($config, $queries) {
         }
 
         // Vygenerování GUID pro záznam v DB - extrahování z systemového názvu
-        if (preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i', $systemovy_nazev, $matches)) {
-            $guid = strtoupper($matches[1]); // Extrahuj GUID část
+        // Podporuje formáty: obj-YYYY-MM-DD_GUID, fa-YYYY-MM-DD_GUID, YYYY-MM-DD_GUID
+        if (preg_match('/^(obj-|fa-)?[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i', $systemovy_nazev, $matches)) {
+            $guid = strtoupper($matches[2]); // Extrahuj GUID část (druhá skupina)
         } else {
             $guid = strtoupper($systemovy_nazev); // Fallback pro starý formát
         }

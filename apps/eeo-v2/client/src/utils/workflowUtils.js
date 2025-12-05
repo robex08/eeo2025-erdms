@@ -37,7 +37,10 @@ const FIELD_LABELS = {
   odeslani_storno_duvod: 'Důvod stornování',
   dodavatel_zpusob_potvrzeni: 'Způsob potvrzení',
   zpusob_platby: 'Způsob platby',
-  dt_akceptace: 'Datum akceptace'
+  dt_akceptace: 'Datum akceptace',
+  dt_zverejneni: 'Datum zveřejnění (VZ)',
+  registr_iddt: 'Identifikátor IDDT',
+  ma_byt_zverejnena: 'Zveřejnění'
 };
 
 /**
@@ -333,6 +336,25 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
   if (formData.stav_stornovano) {
     if (!formData.odeslani_storno_duvod?.trim()) {
       errors.odeslani_storno_duvod = `${FIELD_LABELS.odeslani_storno_duvod} je povinný - uveďte, proč objednávku stornujete`;
+    }
+  }
+
+  // ✅ VALIDACE ZVEŘEJNĚNÍ V REGISTRU SMLUV
+  // Pokud je checkbox "Má být zveřejněna" zaškrtnutý, pak jsou POVINNÁ:
+  // - dt_zverejneni (Datum zveřejnění VZ)
+  // - registr_iddt (Identifikátor IDDT)
+  if (formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1) {
+    // Zkontroluj, zda je sekce registr_smluv_vyplneni viditelná a odemčená
+    const registrSection = sectionStates?.registr_smluv_vyplneni;
+    const shouldValidateRegistr = !registrSection || (registrSection.visible && !registrSection.locked);
+    
+    if (shouldValidateRegistr) {
+      if (!formData.dt_zverejneni || !String(formData.dt_zverejneni).trim()) {
+        errors.dt_zverejneni = 'Datum zveřejnění je povinné když má být objednávka zveřejněna';
+      }
+      if (!formData.registr_iddt || !String(formData.registr_iddt).trim()) {
+        errors.registr_iddt = 'Identifikátor IDDT je povinný když má být objednávka zveřejněna';
+      }
     }
   }
 
