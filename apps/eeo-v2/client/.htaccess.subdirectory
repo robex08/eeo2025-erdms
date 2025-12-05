@@ -1,15 +1,15 @@
 # Enable Rewrite Engine
 RewriteEngine On
 
-# Set base URL for /eeov2 subdirectory
-RewriteBase /eeov2/
+# Set base URL for /eeo-v2 subdirectory
+RewriteBase /eeo-v2/
 
 # Don't rewrite files or directories that exist
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 
-# Rewrite everything else to /eeov2/index.html
-RewriteRule ^ /eeov2/index.html [L]
+# Rewrite everything else to /eeo-v2/index.html
+RewriteRule ^ /eeo-v2/index.html [L]
 
 # Security headers
 <IfModule mod_headers.c>
@@ -27,4 +27,4 @@ RewriteRule ^ /eeov2/index.html [L]
 </IfModule>
 
 # Fallback for 404 errors to index.html
-ErrorDocument 404 /eeov2/index.html
+ErrorDocument 404 /eeo-v2/index.html
