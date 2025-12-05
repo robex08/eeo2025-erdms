@@ -196,15 +196,21 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
     $skutecne_cerpano = $fakturovano + $cerpano_pokladna;
     
     // KROK 6: Vypočítat zůstatky a procenta pro každý typ
-    $celkovy_limit = (float)$meta['celkovy_limit'];
+    // 🔧 FIX: Zajistit že všechny hodnoty jsou validní floats (ne NULL)
+    $celkovy_limit = (float)($meta['celkovy_limit'] ?? 0);
+    $rezervovano = (float)($rezervovano ?? 0);
+    $predpokladane_cerpani = (float)($predpokladane_cerpani ?? 0);
+    $skutecne_cerpano = (float)($skutecne_cerpano ?? 0);
+    $cerpano_pokladna = (float)($cerpano_pokladna ?? 0);
     
     $zbyva_rezervace = $celkovy_limit - $rezervovano;
     $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
     $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
     
-    $procento_rezervace = $celkovy_limit > 0 ? round(($rezervovano / $celkovy_limit) * 100, 2) : 0;
-    $procento_predpoklad = $celkovy_limit > 0 ? round(($predpokladane_cerpani / $celkovy_limit) * 100, 2) : 0;
-    $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano / $celkovy_limit) * 100, 2) : 0;
+    // 🔧 FIX: Omezit procenta na max 999.99 (DECIMAL(5,2) rozsah) a zajistit platnou hodnotu
+    $procento_rezervace = $celkovy_limit > 0 ? min(999.99, round(($rezervovano / $celkovy_limit) * 100, 2)) : 0.00;
+    $procento_predpoklad = $celkovy_limit > 0 ? min(999.99, round(($predpokladane_cerpani / $celkovy_limit) * 100, 2)) : 0.00;
+    $procento_skutecne = $celkovy_limit > 0 ? min(999.99, round(($skutecne_cerpano / $celkovy_limit) * 100, 2)) : 0.00;
     
     // KROK 7: Upsert do agregační tabulky 25_limitovane_prisliby_cerpani
     $sql_upsert = "

@@ -34,8 +34,8 @@ fi
 echo "Building for production..."
 npm run build
 
-if [ -d "dist" ]; then
-    echo -e "${GREEN}✅ Dashboard build complete: dist/${NC}"
+if [ -d "build" ]; then
+    echo -e "${GREEN}✅ Dashboard build complete: build/${NC}"
 else
     echo -e "${RED}❌ Dashboard build failed!${NC}"
     exit 1
@@ -80,7 +80,7 @@ echo "✅ All builds completed successfully!"
 echo "==================================${NC}"
 echo ""
 echo "Build outputs:"
-echo "  Dashboard:  $BASE_DIR/dashboard/dist/"
+echo "  Dashboard:  $BASE_DIR/dashboard/build/"
 echo "  EEO2025:    $BASE_DIR/apps/eeo-v2/client/build/"
 echo ""
 echo "Next steps:"

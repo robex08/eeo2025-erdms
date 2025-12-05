@@ -186,11 +186,15 @@ export async function getOrdersList25({ token, username, filters = {} }) {
         }
 
         if (enriched.garant_uzivatel) {
-          order.garant_display = `${enriched.garant_uzivatel.jmeno} ${enriched.garant_uzivatel.prijmeni}`.trim();
+          const jmeno = enriched.garant_uzivatel.jmeno || '';
+          const prijmeni = enriched.garant_uzivatel.prijmeni || '';
+          order.garant_display = `${jmeno} ${prijmeni}`.trim();
         }
 
         if (enriched.schvalovatel) {
-          order.schvalovatel_display = `${enriched.schvalovatel.jmeno} ${enriched.schvalovatel.prijmeni}`.trim();
+          const jmeno = enriched.schvalovatel.jmeno || '';
+          const prijmeni = enriched.schvalovatel.prijmeni || '';
+          order.schvalovatel_display = `${jmeno} ${prijmeni}`.trim();
         }
 
         // Status display with color

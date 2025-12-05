@@ -6,11 +6,7 @@ ini_set('log_errors', 1);
 ini_set('error_log', '/tmp/php_errors.log');
 error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
 
-// CORS headers - allow frontend apps to call this API
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin, x-auth-token, X-Endpoint, x-endpoint");
-header("Access-Control-Allow-Credentials: false");
+// CORS headers are handled by Apache - do not send them from PHP to avoid duplication
 header("Content-Type: application/json; charset=utf-8");
 
 // Preflight request handling: respond OK to OPTIONS early

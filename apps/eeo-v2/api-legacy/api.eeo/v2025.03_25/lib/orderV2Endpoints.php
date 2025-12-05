@@ -1276,67 +1276,71 @@ function handle_order_v2_update($input, $config, $queries) {
             
             $db->commit();
             
-            // Přepočítat LP kódy PO COMMITU (s novým mysqli spojením)
-            if (!empty($lp_codes)) {
-                $mysqli_conn = new mysqli(
-                    $config['host'],
-                    $config['username'],
-                    $config['password'],
-                    $config['dbname']
-                );
-                
-                if (!$mysqli_conn->connect_error) {
-                    $mysqli_conn->set_charset('utf8');
-                    
-                    foreach ($lp_codes as $lp_id) {
-                        prepocetCerpaniPodleIdLP($mysqli_conn, $lp_id);
-                    }
-                    
-                    $mysqli_conn->close();
-                }
+        } catch (Exception $e) {
+            // Rollback pouze pokud je transakce aktivní
+            if ($db->inTransaction()) {
+                $db->rollback();
             }
+            throw $e; // Re-throw pro vnější catch
+        }
+        
+        // === PO COMMITU: Přepočty a načtení dat ===
+        // Tyto operace jsou už mimo transakci, takže případná chyba nezpůsobí rollback
+        
+        // Přepočítat LP kódy (s novým mysqli spojením)
+        if (!empty($lp_codes)) {
+            $mysqli_conn = new mysqli(
+                $config['host'],
+                $config['username'],
+                $config['password'],
+                $config['database']
+            );
             
-            // === PŘEPOČET ČERPÁNÍ SMLOUVY (pokud je smlouva A došlo ke změně) ===
-            // Přepočet pouze pokud se změnil status na ODESLANA/SCHVALENA/DOKONCENA nebo se aktualizovaly položky
-            // STEJNÁ LOGIKA JAKO U LP - zabraňuje zbytečným přepočtům
-            $should_recalculate_smlouvy = $items_updated || (isset($dbData['stav_workflow_kod']) && 
-                in_array($dbData['stav_workflow_kod'], array('["ODESLANA"]', '["SCHVALENA"]', '["DOKONCENA"]')));
-            
-            if ($should_recalculate_smlouvy) {
-                // financovani je JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}
-                if (isset($dbData['financovani']) && !empty($dbData['financovani'])) {
-                    $fin_data = json_decode($dbData['financovani'], true);
+            if (!$mysqli_conn->connect_error) {
+                $mysqli_conn->set_charset('utf8');
+                
+                foreach ($lp_codes as $lp_id) {
+                    prepocetCerpaniPodleIdLP($mysqli_conn, $lp_id);
+                }
+                
+                $mysqli_conn->close();
+            }
+        }
+        
+        // === PŘEPOČET ČERPÁNÍ SMLOUVY (pokud je smlouva A došlo ke změně) ===
+        $should_recalculate_smlouvy = $items_updated || (isset($dbData['stav_workflow_kod']) && 
+            in_array($dbData['stav_workflow_kod'], array('["ODESLANA"]', '["SCHVALENA"]', '["DOKONCENA"]')));
+        
+        if ($should_recalculate_smlouvy) {
+            // financovani je JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}
+            if (isset($dbData['financovani']) && !empty($dbData['financovani'])) {
+                $fin_data = json_decode($dbData['financovani'], true);
+                if ($fin_data && isset($fin_data['typ']) && $fin_data['typ'] === 'SMLOUVA' && isset($fin_data['cislo_smlouvy'])) {
+                    prepocetCerpaniSmlouvyAuto($fin_data['cislo_smlouvy']);
+                }
+            } else {
+                // Zkontrolovat existující financování (pokud nebylo aktualizováno)
+                $sql_check_fin = "SELECT financovani FROM 25a_objednavky WHERE id = :order_id";
+                $stmt_check = $db->prepare($sql_check_fin);
+                $stmt_check->bindValue(':order_id', $order_id);
+                $stmt_check->execute();
+                $existing = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                if ($existing && !empty($existing['financovani'])) {
+                    $fin_data = json_decode($existing['financovani'], true);
                     if ($fin_data && isset($fin_data['typ']) && $fin_data['typ'] === 'SMLOUVA' && isset($fin_data['cislo_smlouvy'])) {
                         prepocetCerpaniSmlouvyAuto($fin_data['cislo_smlouvy']);
                     }
-                } else {
-                    // Zkontrolovat existující financování (pokud nebylo aktualizováno)
-                    $sql_check_fin = "SELECT financovani FROM 25a_objednavky WHERE id = :order_id";
-                    $stmt_check = $db->prepare($sql_check_fin);
-                    $stmt_check->bindValue(':order_id', $order_id);
-                    $stmt_check->execute();
-                    $existing = $stmt_check->fetch(PDO::FETCH_ASSOC);
-                    if ($existing && !empty($existing['financovani'])) {
-                        $fin_data = json_decode($existing['financovani'], true);
-                        if ($fin_data && isset($fin_data['typ']) && $fin_data['typ'] === 'SMLOUVA' && isset($fin_data['cislo_smlouvy'])) {
-                            prepocetCerpaniSmlouvyAuto($fin_data['cislo_smlouvy']);
-                        }
-                    }
                 }
             }
-            
-            // Načtení aktualizované objednávky ve standardizovaném formátu
-            $updatedOrder = $handler->getOrderById($order_id, $current_user_id);
-            
-            // Obohacení dat stejně jako u POST (položky včetně LP dat, faktury, číselníky)
-            enrichOrderWithItems($db, $updatedOrder);
-            enrichOrderWithInvoices($db, $updatedOrder);
-            enrichOrderWithCodebooks($db, $updatedOrder);
-            
-        } catch (Exception $e) {
-            $db->rollback();
-            throw $e; // Re-throw pro vnější catch
         }
+        
+        // Načtení aktualizované objednávky ve standardizovaném formátu
+        $updatedOrder = $handler->getOrderById($order_id, $current_user_id);
+        
+        // Obohacení dat stejně jako u POST (položky včetně LP dat, faktury, číselníky)
+        enrichOrderWithItems($db, $updatedOrder);
+        enrichOrderWithInvoices($db, $updatedOrder);
+        enrichOrderWithCodebooks($db, $updatedOrder);
         
         // Sestavení zprávy o úspěšné aktualizaci
         $message_parts = array('Objednávka byla úspěšně aktualizována');
