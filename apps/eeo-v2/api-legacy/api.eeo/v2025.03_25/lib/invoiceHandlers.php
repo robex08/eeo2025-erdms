@@ -130,13 +130,14 @@ function handle_invoices25_create($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $objednavka_id = isset($input['objednavka_id']) ? (int)$input['objednavka_id'] : 0;
+    $objednavka_id = isset($input['objednavka_id']) && !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
     $fa_castka = isset($input['fa_castka']) ? $input['fa_castka'] : null;
     $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema']) : '';
 
-    if ($objednavka_id <= 0 || !$fa_castka || empty($fa_cislo_vema)) {
+    // ✅ objednavka_id je nyní NEPOVINNÉ (může být NULL)
+    if (!$fa_castka || empty($fa_cislo_vema)) {
         http_response_code(400);
-        echo json_encode(['err' => 'Chybí povinná pole: objednavka_id, fa_castka, fa_cislo_vema']);
+        echo json_encode(['err' => 'Chybí povinná pole: fa_castka, fa_cislo_vema']);
         return;
     }
 
@@ -629,14 +630,15 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
     // Pro multipart/form-data používáme $_POST místo $input
     $token = isset($_POST['token']) ? $_POST['token'] : '';
     $request_username = isset($_POST['username']) ? $_POST['username'] : '';
-    $objednavka_id = isset($_POST['objednavka_id']) ? (int)$_POST['objednavka_id'] : 0;
+    $objednavka_id = isset($_POST['objednavka_id']) && !empty($_POST['objednavka_id']) ? (int)$_POST['objednavka_id'] : null;
     $fa_castka = isset($_POST['fa_castka']) ? $_POST['fa_castka'] : null;
     $fa_cislo_vema = isset($_POST['fa_cislo_vema']) ? trim($_POST['fa_cislo_vema']) : '';
     $typ_prilohy = isset($_POST['typ_prilohy']) ? $_POST['typ_prilohy'] : 'ISDOC';
     
-    if (!$token || !$request_username || $objednavka_id <= 0 || !$fa_castka || empty($fa_cislo_vema)) {
+    // ✅ objednavka_id je nyní NEPOVINNÉ (může být NULL)
+    if (!$token || !$request_username || !$fa_castka || empty($fa_cislo_vema)) {
         http_response_code(400);
-        echo json_encode(['err' => 'Chybí povinné parametry']);
+        echo json_encode(['err' => 'Chybí povinné parametry: token, username, fa_castka, fa_cislo_vema']);
         return;
     }
 

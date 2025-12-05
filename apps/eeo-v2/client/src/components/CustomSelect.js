@@ -35,11 +35,12 @@ const SelectWithIcon = styled.div`
 
 const CustomSelectButton = styled.div`
   width: 100%;
+  height: 44px;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '0.75rem 1.75rem 0.75rem 2.5rem' : '0.75rem 1.75rem 0.75rem 0.75rem'};
-  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e5e7eb'};
+  padding: ${props => props.hasIcon ? '0 1.75rem 0 2.5rem' : '0 1.75rem 0 0.875rem'};
+  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e2e8f0'};
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   background: ${props => props.hasError ? '#fee2e2' : (props.disabled ? '#f9fafb' : '#ffffff')};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   color: ${props => {
@@ -48,7 +49,7 @@ const CustomSelectButton = styled.div`
     return '#1f2937';
   }};
 
-  font-weight: ${props => props.disabled ? '400' : (props.value && props.value !== '' && props.placeholder !== "true" ? '600' : '400')};
+  font-weight: ${props => props.disabled ? '400' : (props.value && props.value !== '' && props.placeholder !== "true" ? '500' : '400')};
 
   /* CSS třída pro disabled stav - nejsilnější možný override */
   &.custom-select-disabled {

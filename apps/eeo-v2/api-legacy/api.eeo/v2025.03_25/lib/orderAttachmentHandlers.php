@@ -22,6 +22,7 @@ if (!function_exists('api_error')) {
 
 /**
  * Get upload path for orders25 attachments
+ * ✅ UPDATED: objednavka_id může být NULL pro faktury bez objednávky
  */
 function get_orders25_upload_path($config, $objednavka_id, $user_id) {
     // Načtení upload konfigurace
@@ -53,7 +54,12 @@ function get_orders25_upload_path($config, $objednavka_id, $user_id) {
     }
     
     if (isset($dirStructure['by_order']) && $dirStructure['by_order']) {
-        $subPath .= 'order_' . $objednavka_id . '/';
+        // ✅ Pokud není objednávka, použij "invoices_standalone" složku
+        if ($objednavka_id && $objednavka_id > 0) {
+            $subPath .= 'order_' . $objednavka_id . '/';
+        } else {
+            $subPath .= 'invoices_standalone/';
+        }
     }
     
     if (isset($dirStructure['by_user']) && $dirStructure['by_user']) {

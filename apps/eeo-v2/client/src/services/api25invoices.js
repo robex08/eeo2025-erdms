@@ -1103,9 +1103,7 @@ export async function createInvoiceWithAttachmentV2({
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
   }
 
-  if (!order_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ✅ order_id je nyní NEPOVINNÉ - faktura může být bez objednávky
 
   if (!file || !(file instanceof File)) {
     throw new Error('Chybí soubor k nahrání.');
@@ -1172,12 +1170,21 @@ export async function createInvoiceWithAttachmentV2({
       formData.append('vecna_spravnost_poznamka', String(vecna_spravnost_poznamka));
     }
 
+    // Objednávka (může být null)
+    if (order_id) {
+      formData.append('objednavka_id', String(order_id));
+    }
+
     // Soubor
     formData.append('file', file);
 
+    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    const endpoint = order_id 
+      ? `order-v2/${order_id}/invoices/create-with-attachment`
+      : 'invoices25/create-with-attachment';
 
     const response = await api25invoices.post(
-      `order-v2/${order_id}/invoices/create-with-attachment`,
+      endpoint,
       formData,
       {
         timeout: 60000,
@@ -1263,9 +1270,7 @@ export async function createInvoiceV2({
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
   }
 
-  if (!order_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ✅ order_id je nyní NEPOVINNÉ - faktura může být bez objednávky
 
   // Validace povinných polí
   if (!fa_cislo_vema) {
@@ -1325,8 +1330,18 @@ export async function createInvoiceV2({
     }
 
 
+    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    const endpoint = order_id 
+      ? `order-v2/${order_id}/invoices/create`
+      : 'invoices25/create';
+    
+    // Přidat objednavka_id do payload (může být null)
+    if (order_id) {
+      payload.objednavka_id = Number(order_id);
+    }
+
     const response = await api25invoices.post(
-      `order-v2/${order_id}/invoices/create`,
+      endpoint,
       payload,
       { timeout: 10000 }
     );
