@@ -12564,7 +12564,7 @@ function OrderForm25() {
 
     // Pro archivované/importované přílohy - stáhnout přímo ze staré URL
     if (attachment.typ_prilohy === 'IMPORT' && attachment.originalni_nazev_souboru) {
-      const oldAttachmentsUrl = process.env.REACT_APP_OLD_ATTACHMENTS_URL || 'https://eeo.zachranka.cz/prilohy/';
+      const oldAttachmentsUrl = process.env.REACT_APP_OLD_ATTACHMENTS_URL || 'https://erdms.zachranka.cz/prilohy/';
       const oldUrl = `${oldAttachmentsUrl}${attachment.originalni_nazev_souboru}`;
 
       addDebugLog('info', 'ATTACHMENTS', 'download-import',
