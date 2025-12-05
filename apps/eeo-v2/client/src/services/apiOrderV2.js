@@ -1669,23 +1669,8 @@ export async function downloadInvoiceAttachment(invoiceId, attachmentId, usernam
       { responseType: 'blob' }
     );
 
-    // Extract filename from Content-Disposition header
-    const contentDisposition = response.headers['content-disposition'];
-    const filename = contentDisposition
-      ? contentDisposition.split('filename="')[1]?.replace('"', '')
-      : 'faktura.pdf';
-
-    // Trigger download
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-
-    return { success: true, filename };
+    // Return blob directly - caller handles download
+    return response.data;
   } catch (err) {
     throw new Error(normalizeError(err));
   }

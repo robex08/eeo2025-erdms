@@ -496,8 +496,10 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         return;
     }
     
+    // Konverze order_id na číslo
+    $numeric_order_id = intval($order_id);
     
-    if ($order_id <= 0 || $attachment_id <= 0) {
+    if ($numeric_order_id <= 0 || $attachment_id <= 0) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatné ID objednávky nebo přílohy'));
         return;
@@ -506,15 +508,6 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        // Update last activity for the authenticated user
-        try {
-            $stmtUpd = $db->prepare($queries['uzivatele_update_last_activity']);
-            $stmtUpd->bindParam(':id', $token_data['id']);
-            $stmtUpd->execute();
-        } catch (Exception $e) {
-            // non-fatal: continue even if update fails
-        }
-        
         // Načtení přílohy s kontrolou příslušnosti k objednávce
         $sql = "SELECT originalni_nazev_souboru, systemova_cesta, velikost_souboru_b, typ_prilohy
                 FROM " . get_order_attachments_table_name() . " 
@@ -522,12 +515,6 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':attachment_id', $attachment_id, PDO::PARAM_INT);
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-        return;
-    }
         $stmt->bindValue(':objednavka_id', $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
@@ -539,21 +526,10 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
             return;
         }
         
-        // ✅ OPRAVA: Sestavení plné cesty ze systemova_cesta
-        $fullPath = $attachment['systemova_cesta'];
-        if (strpos($fullPath, '/') !== 0) {
-            // Není to absolutní cesta -> je to pouze název souboru -> přidej base path
-            $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-            $basePath = '';
-            if (isset($uploadConfig['root_path']) && !empty($uploadConfig['root_path'])) {
-                $basePath = $uploadConfig['root_path'];
-            } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
-                $basePath = $uploadConfig['relative_path'];
-            } else {
-                $basePath = '/var/www/eeo2025/doc/prilohy/';
-            }
-            $fullPath = safe_path_join($basePath, $fullPath);
-        }
+        // ✅ Sestavení plné cesty - systemova_cesta je jen název souboru
+        $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : '/var/www/erdms-data/eeo-v2/prilohy/';
+        $fullPath = $basePath . $attachment['systemova_cesta'];
         
         // Kontrola existence souboru
         if (!file_exists($fullPath)) {

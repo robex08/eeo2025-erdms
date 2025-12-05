@@ -216,6 +216,18 @@ if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
 // DEBUG: zobrazíme, co se rozpoznává
 error_log("URI: $request_uri, Endpoint: $endpoint, Method: $request_method, X-Endpoint: " . (isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : 'not set'));
 
+// 🔍 CRITICAL DEBUG pro order attachments download
+if (strpos($endpoint, 'attachments') !== false && strpos($endpoint, 'download') !== false) {
+    header('X-Debug-Endpoint: ' . $endpoint);
+    header('X-Debug-Method: ' . $request_method);
+    header('X-Debug-Raw-Input-Length: ' . strlen($raw_input));
+    error_log("🔍 ATTACHMENT DOWNLOAD REQUEST DETECTED:");
+    error_log("  Raw endpoint: [$endpoint]");
+    error_log("  Length: " . strlen($endpoint));
+    error_log("  Request method: $request_method");
+    error_log("  Raw input length: " . strlen($raw_input));
+}
+
 // 🔥 SPECIAL DEBUG ENDPOINT - pro testování routingu
 if ($endpoint === 'debug-routing') {
     echo json_encode(array(
@@ -2638,9 +2650,30 @@ switch ($endpoint) {
         
         // POST /api.eeo/order-v2/{id}/attachments/{att_id}/download - download prilohy (explicit endpoint)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/attachments\/(\d+)\/download$/', $endpoint, $matches)) {
+            // 🔍 DEBUG - endpoint SE MATCHUJE!
+            error_log("🎯 MATCH! order-v2 download endpoint");
+            error_log("  matches[1] = " . $matches[1]);
+            error_log("  matches[2] = " . $matches[2]);
+            error_log("  input before merge: " . json_encode($input));
+            
             // Support both numeric and string IDs for order
+            // ⚠️ FIX: Pokud $input je prázdné, použij $raw_input (už načtený na začátku)
+            if (empty($input) || (!isset($input['token']) && !isset($input['username']))) {
+                error_log("  input is empty or missing token/username, trying to parse raw_input");
+                if (!empty($raw_input)) {
+                    $parsed = json_decode($raw_input, true);
+                    if (is_array($parsed)) {
+                        $input = $parsed;
+                        error_log("  Parsed from raw_input: " . json_encode($input));
+                    }
+                }
+            }
+            
+            // Přidat parametry z URL
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             $input['attachment_id'] = (int)$matches[2];
+            
+            error_log("  Final input: " . json_encode($input));
             
             if ($request_method === 'POST' || $request_method === 'GET') {
                 handle_order_v2_download_attachment($input, $config, $queries);

@@ -1612,6 +1612,8 @@ export default function InvoiceEvidencePage() {
               orderData={orderData}
               onCollapseChange={setHasAnySectionCollapsed}
               onEditInvoice={handleEditInvoice}
+              token={token}
+              username={username}
             />
           )}
 
