@@ -1,0 +1,195 @@
+{
+  "status": "ok",
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "jmeno": "Administrátor",
+      "prijmeni": "Systému",
+      "titul_pred": null,
+      "titul_za": null,
+      "email": "admin@example.com",
+      "telefon": "+420 123 456 789",
+      "aktivni": 1,
+      "usek_id": 1,
+      "usek_nazev": "IT oddělení",
+      "usek_zkratka": "IT",
+      "lokalita_id": 1,
+      "lokalita_nazev": "Praha - Hlavní budova",
+      "lokalita_adresa": "Václavské náměstí 1, Praha",
+      "pozice_id": 1,
+      "pozice_nazev": "Systémový administrátor",
+      "pozice_popis": "Správa IT infrastruktury",
+      "organizace_id": 1,
+      "organizace_nazev": "Hlavní organizace s.r.o.",
+      "organizace_ico": "12345678",
+      "dt_vytvoreni": "2025-01-15 08:00:00",
+      "dt_aktualizace": "2025-01-15 14:30:15",
+      "roles": [
+        {
+          "id": 1,
+          "nazev": "Administrátor",
+          "popis": "Plná správa systému",
+          "aktivni": 1
+        },
+        {
+          "id": 2,
+          "nazev": "Superuser",
+          "popis": "Rozšířená práva",
+          "aktivni": 1
+        }
+      ],
+      "direct_rights": [
+        {
+          "id": 1,
+          "nazev": "USER_CREATE",
+          "popis": "Vytváření uživatelů",
+          "kategorie": "USER_MANAGEMENT"
+        },
+        {
+          "id": 2,
+          "nazev": "USER_EDIT",
+          "popis": "Editace uživatelů",
+          "kategorie": "USER_MANAGEMENT"
+        },
+        {
+          "id": 3,
+          "nazev": "USER_DELETE",
+          "popis": "Mazání uživatelů",
+          "kategorie": "USER_MANAGEMENT"
+        },
+        {
+          "id": 10,
+          "nazev": "ORDER_CREATE",
+          "popis": "Vytváření objednávek",
+          "kategorie": "ORDER_MANAGEMENT"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "username": "novak.jan",
+      "jmeno": "Jan",
+      "prijmeni": "Novák",
+      "titul_pred": "Ing.",
+      "titul_za": "Ph.D.",
+      "email": "jan.novak@example.com",
+      "telefon": "+420 987 654 321",
+      "aktivni": 1,
+      "usek_id": 2,
+      "usek_nazev": "Právní oddělení",
+      "usek_zkratka": "PRAVNI",
+      "lokalita_id": 2,
+      "lokalita_nazev": "Brno - Pobočka",
+      "lokalita_adresa": "Masarykova 50, Brno",
+      "pozice_id": 5,
+      "pozice_nazev": "Právník",
+      "pozice_popis": "Zpracování smluv a právních dokumentů",
+      "organizace_id": 1,
+      "organizace_nazev": "Hlavní organizace s.r.o.",
+      "organizace_ico": "12345678",
+      "dt_vytvoreni": "2025-01-10 09:15:30",
+      "dt_aktualizace": "2025-01-15 11:45:22",
+      "roles": [
+        {
+          "id": 3,
+          "nazev": "Editor",
+          "popis": "Editace obsahu",
+          "aktivni": 1
+        },
+        {
+          "id": 5,
+          "nazev": "Právník",
+          "popis": "Práce s právními dokumenty",
+          "aktivni": 1
+        }
+      ],
+      "direct_rights": [
+        {
+          "id": 15,
+          "nazev": "CONTRACT_CREATE",
+          "popis": "Vytváření smluv",
+          "kategorie": "CONTRACT_MANAGEMENT"
+        },
+        {
+          "id": 16,
+          "nazev": "CONTRACT_EDIT",
+          "popis": "Editace smluv",
+          "kategorie": "CONTRACT_MANAGEMENT"
+        },
+        {
+          "id": 25,
+          "nazev": "LEGAL_REVIEW",
+          "popis": "Právní revize dokumentů",
+          "kategorie": "LEGAL"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "username": "svoboda.marie",
+      "jmeno": "Marie",
+      "prijmeni": "Svobodová",
+      "titul_pred": "Mgr.",
+      "titul_za": null,
+      "email": "marie.svoboda@example.com",
+      "telefon": null,
+      "aktivni": 1,
+      "usek_id": 3,
+      "usek_nazev": "Finanční oddělení",
+      "usek_zkratka": "FIN",
+      "lokalita_id": 1,
+      "lokalita_nazev": "Praha - Hlavní budova",
+      "lokalita_adresa": "Václavské náměstí 1, Praha",
+      "pozice_id": 8,
+      "pozice_nazev": "Finanční analytik",
+      "pozice_popis": "Analýza finančních dat a reportů",
+      "organizace_id": 1,
+      "organizace_nazev": "Hlavní organizace s.r.o.",
+      "organizace_ico": "12345678",
+      "dt_vytvoreni": "2025-01-12 14:20:45",
+      "dt_aktualizace": "2025-01-14 16:10:12",
+      "roles": [
+        {
+          "id": 4,
+          "nazev": "Finančník",
+          "popis": "Práce s finančními daty",
+          "aktivni": 1
+        }
+      ],
+      "direct_rights": [
+        {
+          "id": 30,
+          "nazev": "FINANCE_VIEW",
+          "popis": "Zobrazení finančních dat",
+          "kategorie": "FINANCE"
+        },
+        {
+          "id": 31,
+          "nazev": "BUDGET_EDIT",
+          "popis": "Editace rozpočtů",
+          "kategorie": "FINANCE"
+        },
+        {
+          "id": 12,
+          "nazev": "ORDER_VIEW",
+          "popis": "Zobrazení objednávek",
+          "kategorie": "ORDER_MANAGEMENT"
+        }
+      ]
+    }
+  ],
+  "total": 3,
+  "limit": 50,
+  "offset": 0,
+  "filters_applied": {
+    "search": null,
+    "usek_id": null,
+    "aktivni": 1
+  },
+  "metadata": {
+    "request_time": "2025-01-15 15:30:45",
+    "execution_time_ms": 45,
+    "api_version": "v2025.03_25"
+  }
+}

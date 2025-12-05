@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Návrh: Evidence faktur + Věcná správnost - Split View</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            background: #f3f4f6;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .nav-tab {
+            flex: 1;
+            padding: 1rem;
+            text-align: center;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .nav-tab:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+        }
+        
+        .nav-tab.active {
+            color: #3b82f6;
+            background: white;
+        }
+        
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #3b82f6;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 2rem;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        .section-title {
+            font-size: 1.75rem;
+            color: #1e40af;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .section-title .icon {
+            font-size: 1.5rem;
+        }
+        
+        .subsection {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f9fafb;
+            border-radius: 12px;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .subsection h3 {
+            font-size: 1.3rem;
+            color: #374151;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .flow-diagram {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 2rem 0;
+        }
+        
+        .flow-box {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            flex: 1;
+            min-width: 250px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .flow-arrow {
+            font-size: 2rem;
+            color: #3b82f6;
+        }
+        
+        .split-preview {
+            display: grid;
+            grid-template-columns: 40% 60%;
+            gap: 1rem;
+            background: #1f2937;
+            padding: 1rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+        }
+        
+        .split-left, .split-right {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            min-height: 500px;
+        }
+        
+        .split-left {
+            border: 3px solid #10b981;
+        }
+        
+        .split-right {
+            border: 3px solid #6366f1;
+        }
+        
+        .split-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .form-field {
+            margin-bottom: 1rem;
+        }
+        
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: #f0f9ff;
+            border-radius: 8px;
+            border: 2px solid #bfdbfe;
+        }
+        
+        .button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+        
+        .button-primary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+        
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
+        }
+        
+        .button-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .button-secondary:hover {
+            background: #e5e7eb;
+        }
+        
+        .info-box {
+            background: #eff6ff;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .info-box h4 {
+            color: #1e40af;
+            margin-bottom: 0.5rem;
+        }
+        
+        .warning-box {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .warning-box h4 {
+            color: #92400e;
+            margin-bottom: 0.5rem;
+        }
+        
+        .success-box {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .success-box h4 {
+            color: #065f46;
+            margin-bottom: 0.5rem;
+        }
+        
+        .code-block {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            margin: 1rem 0;
+        }
+        
+        .code-block code {
+            color: #60a5fa;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        .table th {
+            background: #3b82f6;
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .table tr:hover {
+            background: #f9fafb;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge-new {
+            background: #10b981;
+            color: white;
+        }
+        
+        .badge-change {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .badge-db {
+            background: #6366f1;
+            color: white;
+        }
+        
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #3b82f6;
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin-bottom: 2rem;
+        }
+        
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -1.5rem;
+            top: 0.25rem;
+            width: 1rem;
+            height: 1rem;
+            background: #3b82f6;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 0 0 3px #3b82f6;
+        }
+        
+        .timeline-content {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .question-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .question-list li {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            background: #f9fafb;
+            border-left: 4px solid #3b82f6;
+            border-radius: 4px;
+        }
+        
+        .question-list li::before {
+            content: '❓ ';
+            font-size: 1.2rem;
+            margin-right: 0.5rem;
+        }
+        
+        @media (max-width: 1024px) {
+            .split-preview {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 1.75rem;
+            }
+            
+            .nav-tabs {
+                flex-direction: column;
+            }
+            
+            .flow-diagram {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📄 Návrh: Evidence faktur + Věcná správnost</h1>
+            <p>Komplexní řešení pro evidování faktur se split-view přehledem objednávky a věcnou správností per faktura</p>
+        </div>
+        
+        <!-- Navigation Tabs -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('prehled')">📋 Přehled</button>
+            <button class="nav-tab" onclick="showTab('vstupy')">🚪 Vstupy</button>
+            <button class="nav-tab" onclick="showTab('modal')">🖼️ Modal (Split View)</button>
+            <button class="nav-tab" onclick="showTab('db')">💾 Databáze</button>
+            <button class="nav-tab" onclick="showTab('implementace')">🔧 Implementace</button>
+            <button class="nav-tab" onclick="showTab('otazky')">❓ Otázky</button>
+        </div>
+        
+        <!-- Tab: Přehled -->
+        <div id="tab-prehled" class="tab-content active">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🎯</span>
+                    Cíle řešení
+                </h2>
+                
+                <div class="subsection">
+                    <h3>✅ Co chceme dosáhnout:</h3>
+                    <ul style="list-style-position: inside; padding-left: 1rem;">
+                        <li style="margin-bottom: 0.5rem;">
+                            <strong>Evidovat faktury MIMO OrderForm25</strong> - ale zobrazovat je ve fázi fakturace
+                        </li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <strong>Věcná správnost PER FAKTURA</strong> - ne pouze na úrovni objednávky
+                        </li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <strong>Bez nového modulu</strong> - využít existující Invoices25List
+                        </li>
+                        <li style="margin-bottom: 0.5rem;">
+                            <strong>Split režim</strong> - evidovat fakturu + vidět související objednávku
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="success-box">
+                    <h4>💡 Klíčová inovace: Split-Screen Modal</h4>
+                    <p>Při evidování faktury uživatel vidí <strong>vedle sebe</strong> formulář faktury (vlevo) a detail příslušné objednávky (vpravo) v readonly režimu. To eliminuje potřebu přepínání mezi stránkami a snižuje chybovost.</p>
+                </div>
+                
+                <div class="flow-diagram">
+                    <div class="flow-box">
+                        🏠 Invoices25List<br>
+                        nebo<br>
+                        📋 Orders25List
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">
+                        🖼️ Split Modal<br>
+                        Formulář | Preview
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">
+                        💾 Uložení<br>
+                        + Věcná správnost
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-box">
+                        ✅ Zobrazení<br>
+                        v OrderForm25
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Vstupy -->
+        <div id="tab-vstupy" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🚪</span>
+                    Dva hlavní vstupy pro evidování faktur
+                </h2>
+                
+                <div class="subsection">
+                    <h3>1️⃣ <span class="badge badge-new">HLAVNÍ</span> Invoices25List - Přehled faktur</h3>
+                    <p><strong>Umístění:</strong> Stránka /invoices25-list</p>
+                    <p><strong>Tlačítko:</strong> "Nová faktura" v ActionBar (stejně jako "Nová objednávka" v Orders25List)</p>
+                    
+                    <div class="info-box">
+                        <h4>📍 Kde přidat tlačítko:</h4>
+                        <p>V souboru <code>Invoices25List.js</code> řádek ~900 v ActionBar</p>
+                    </div>
+                    
+                    <div class="code-block">
+&lt;ActionBar&gt;
+  &lt;SmartTooltip text="Evidovat novou fakturu"&gt;
+    &lt;ActionButton
+      onClick={handleCreateNewInvoice}
+      style={{
+        background: '#166534',
+        color: 'white'
+      }}
+    &gt;
+      &lt;FontAwesomeIcon icon={faPlus} /&gt;
+      Nová faktura
+    &lt;/ActionButton&gt;
+  &lt;/SmartTooltip&gt;
+  
+  {/* Existující tlačítka: Dashboard, Filtr, Export */}
+&lt;/ActionBar&gt;
+                    </div>
+                    
+                    <p style="margin-top: 1rem;"><strong>Chování:</strong> Otevře modal s prázdným formulářem. Uživatel si vybere objednávku z dropdown menu.</p>
+                </div>
+                
+                <div class="subsection">
+                    <h3>2️⃣ <span class="badge badge-change">ALTERNATIVA</span> Orders25List - Akce v řádku objednávky</h3>
+                    <p><strong>Umístění:</strong> Action menu u každé objednávky</p>
+                    <p><strong>Tlačítko:</strong> Ikona faktury v action menu (vedle Edit, Copy, Export...)</p>
+                    
+                    <div class="info-box">
+                        <h4>📍 Kde přidat tlačítko:</h4>
+                        <p>V souboru <code>Orders25List.js</code> řádek ~4785 v ActionMenu</p>
+                    </div>
+                    
+                    <div class="code-block">
+&lt;ActionMenuButton
+  className="invoice"
+  onClick={() => handleAddInvoiceToOrder(row.original)}
+  title="Evidovat fakturu k této objednávce"
+&gt;
+  &lt;FontAwesomeIcon icon={faFileInvoice} /&gt;
+&lt;/ActionMenuButton&gt;
+                    </div>
+                    
+                    <p style="margin-top: 1rem;"><strong>Chování:</strong> Otevře modal s již předvybranou objednávkou. Pravá strana automaticky zobrazí detail této objednávky.</p>
+                </div>
+                
+                <div class="warning-box">
+                    <h4>⚠️ Důležité:</h4>
+                    <p>Oba vstupy otevírají <strong>stejný modal</strong> (InvoiceEvidenceModal.js), jen s jiným předvyplněním. To zajistí konzistentní UX a sníží duplicitu kódu.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Modal Split View -->
+        <div id="tab-modal" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🖼️</span>
+                    Split-Screen Modal - Vizualizace
+                </h2>
+                
+                <div class="info-box">
+                    <h4>📐 Layout:</h4>
+                    <p><strong>Levá strana (40%):</strong> Formulář pro evidování faktury + upload přílohy + věcná správnost</p>
+                    <p><strong>Pravá strana (60%):</strong> OrderForm25 v readonly režimu (kompaktní view)</p>
+                </div>
+                
+                <div class="split-preview">
+                    <div class="split-left">
+                        <div class="split-title" style="color: #10b981;">
+                            📝 Formulář faktury (Editovatelný)
+                        </div>
+                        
+                        <div class="form-field">
+                            <label class="form-label">Objednávka *</label>
+                            <select class="form-input">
+                                <option>EV-2025-001234 - Notebook Lenovo</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-field">
+                            <label class="form-label">Variabilní symbol *</label>
+                            <input type="text" class="form-input" placeholder="FA-2025-001234" value="FA-2025-001234">
+                        </div>
+                        
+                        <div class="form-field">
+                            <label class="form-label">Částka vč. DPH *</label>
+                            <input type="text" class="form-input" placeholder="25 000 Kč" value="25 000 Kč">
+                        </div>
+                        
+                        <div class="form-field">
+                            <label class="form-label">Datum doručení *</label>
+                            <input type="date" class="form-input" value="2025-11-30">
+                        </div>
+                        
+                        <div class="form-field">
+                            <label class="form-label">Příloha faktury</label>
+                            <button class="button button-secondary" style="width: 100%;">
+                                📎 Nahrát PDF / ISDOC
+                            </button>
+                        </div>
+                        
+                        <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border: 2px solid #3b82f6; margin-top: 1.5rem;">
+                            <h4 style="color: #1e40af; margin-bottom: 1rem;">✅ Věcná správnost faktury</h4>
+                            
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="vs-check" checked>
+                                <label for="vs-check" style="font-weight: 600;">Potvrzuji věcnou správnost této faktury</label>
+                            </div>
+                            
+                            <div class="form-field" style="margin-top: 1rem;">
+                                <label class="form-label">Umístění majetku</label>
+                                <textarea class="form-input" rows="2" placeholder="Kde je majetek umístěn...">Kancelář 2.14, PC č. 5</textarea>
+                            </div>
+                            
+                            <div class="form-field">
+                                <label class="form-label">Poznámka</label>
+                                <textarea class="form-input" rows="2" placeholder="Poznámka k věcné správnosti...">Vše v pořádku, notebook funkční</textarea>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                            <button class="button button-primary" style="flex: 1;">
+                                💾 Uložit fakturu
+                            </button>
+                            <button class="button button-secondary">
+                                ❌ Zrušit
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="split-right">
+                        <div class="split-title" style="color: #6366f1;">
+                            📋 Detail objednávky (Pouze pro čtení)
+                        </div>
+                        
+                        <div style="font-size: 0.875rem; color: #6b7280;">
+                            <p style="margin-bottom: 0.75rem;"><strong>Číslo:</strong> EV-2025-001234</p>
+                            <p style="margin-bottom: 0.75rem;"><strong>Předmět:</strong> Notebook Lenovo ThinkPad X1 Carbon</p>
+                            <p style="margin-bottom: 0.75rem;"><strong>Dodavatel:</strong> ALZA.cz a.s.</p>
+                            <p style="margin-bottom: 0.75rem;"><strong>Max. cena s DPH:</strong> 35 000 Kč</p>
+                            <p style="margin-bottom: 0.75rem;"><strong>Střediska:</strong> 1100 - Informační technologie</p>
+                            
+                            <div style="border-top: 2px solid #e5e7eb; margin: 1rem 0; padding-top: 1rem;">
+                                <p style="font-weight: 600; margin-bottom: 0.5rem;">📦 Položky objednávky:</p>
+                                <table style="width: 100%; font-size: 0.8rem;">
+                                    <tr style="background: #f3f4f6;">
+                                        <th style="padding: 0.5rem; text-align: left;">Položka</th>
+                                        <th style="padding: 0.5rem; text-align: right;">Cena s DPH</th>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 0.5rem;">Notebook Lenovo X1 Carbon</td>
+                                        <td style="padding: 0.5rem; text-align: right;">25 000 Kč</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 0.5rem;">Myš Logitech MX Master</td>
+                                        <td style="padding: 0.5rem; text-align: right;">2 500 Kč</td>
+                                    </tr>
+                                    <tr style="background: #f3f4f6; font-weight: 600;">
+                                        <td style="padding: 0.5rem;">CELKEM:</td>
+                                        <td style="padding: 0.5rem; text-align: right;">27 500 Kč</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <div style="border-top: 2px solid #e5e7eb; margin: 1rem 0; padding-top: 1rem;">
+                                <p style="font-weight: 600; margin-bottom: 0.5rem;">📎 Přílohy objednávky:</p>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <span style="background: #e0e7ff; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem;">
+                                        📄 nabidka.pdf
+                                    </span>
+                                    <span style="background: #e0e7ff; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem;">
+                                        📄 technicky_list.pdf
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #d1fae5; padding: 0.75rem; border-radius: 6px; margin-top: 1rem; border: 1px solid #10b981;">
+                                <p style="font-size: 0.75rem; color: #065f46;">
+                                    💡 <strong>Tip:</strong> Porovnejte částku na faktuře s celkovou cenou položek výše. Rozdíly mohou indikovat slevy nebo chyby.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="subsection">
+                    <h3>📱 Responsivní chování:</h3>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Zařízení</th>
+                                <th>Layout</th>
+                                <th>Popis</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Desktop</strong> (>1200px)</td>
+                                <td>Split 40/60</td>
+                                <td>Formulář vlevo, preview vpravo vedle sebe</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tablet</strong> (768-1200px)</td>
+                                <td>Split 50/50</td>
+                                <td>Rovnoměrné rozdělení prostoru</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Mobile</strong> (<768px)</td>
+                                <td>Tabs</td>
+                                <td>Přepínání mezi "Formulář" a "Detail objednávky" pomocí záložek</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Databáze -->
+        <div id="tab-db" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">💾</span>
+                    Databázové změny
+                </h2>
+                
+                <div class="subsection">
+                    <h3><span class="badge badge-db">DB</span> Tabulka: 25a_faktury_objednavek</h3>
+                    <p>Přidat <strong>5 nových sloupců</strong> pro věcnou správnost per faktura:</p>
+                    
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Sloupec</th>
+                                <th>Typ</th>
+                                <th>Popis</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>potvrzeni_vecne_spravnosti</code></td>
+                                <td>TINYINT(1)</td>
+                                <td>Flag: Je VS potvrzena? (0/1)</td>
+                            </tr>
+                            <tr>
+                                <td><code>vecna_spravnost_umisteni_majetku</code></td>
+                                <td>TEXT</td>
+                                <td>Kde je majetek umístěn</td>
+                            </tr>
+                            <tr>
+                                <td><code>vecna_spravnost_poznamka</code></td>
+                                <td>TEXT</td>
+                                <td>Poznámka k VS</td>
+                            </tr>
+                            <tr>
+                                <td><code>potvrdil_vecnou_spravnost_id</code></td>
+                                <td>INT(10)</td>
+                                <td>Kdo potvrdil VS (FK → 25_uzivatele)</td>
+                            </tr>
+                            <tr>
+                                <td><code>dt_potvrzeni_vecne_spravnosti</code></td>
+                                <td>DATETIME</td>
+                                <td>Kdy byla VS potvrzena</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="code-block">
+<code>-- SQL Migrace: Přidání věcné správnosti k fakturám
+
+ALTER TABLE `25a_faktury_objednavek`
+  ADD COLUMN `potvrzeni_vecne_spravnosti` TINYINT(1) DEFAULT 0 
+    COMMENT 'Potvrzení věcné správnosti faktury (0/1)',
+  ADD COLUMN `vecna_spravnost_umisteni_majetku` TEXT NULL 
+    COMMENT 'Umístění majetku pro tuto fakturu',
+  ADD COLUMN `vecna_spravnost_poznamka` TEXT NULL 
+    COMMENT 'Poznámka k věcné správnosti faktury',
+  ADD COLUMN `potvrdil_vecnou_spravnost_id` INT(10) NULL 
+    COMMENT 'ID uživatele, který potvrdil VS faktury',
+  ADD COLUMN `dt_potvrzeni_vecne_spravnosti` DATETIME NULL 
+    COMMENT 'Kdy byla potvrzena VS faktury';
+
+-- FK constraint
+ALTER TABLE `25a_faktury_objednavek`
+  ADD CONSTRAINT `fk_faktury_vecna_spravnost_uzivatel`
+    FOREIGN KEY (`potvrdil_vecnou_spravnost_id`)
+    REFERENCES `25_uzivatele` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE;
+
+-- Index pro rychlé dotazy
+CREATE INDEX `idx_faktura_vecna_spravnost` 
+  ON `25a_faktury_objednavek` (`potvrzeni_vecne_spravnosti`);</code>
+                </div>
+                
+                <div class="warning-box">
+                    <h4>⚠️ Zpětná kompatibilita:</h4>
+                    <p><strong>Věcná správnost na úrovni OBJEDNÁVKY</strong> zůstává zachována!</p>
+                    <p>Tabulka <code>25a_objednavky</code> má stejné sloupce. Návrh:</p>
+                    <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
+                        <li>VS objednávky = automaticky ANO, pokud <strong>VŠECHNY faktury</strong> mají VS potvrzenou</li>
+                        <li>VS objednávky = automaticky NE, pokud <strong>alespoň jedna faktura</strong> nemá VS</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Implementace -->
+        <div id="tab-implementace" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🔧</span>
+                    Implementační plán
+                </h2>
+                
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-content">
+                            <h3>FÁZE 1: Databáze (2 hodiny)</h3>
+                            <ul style="padding-left: 1.5rem; margin-top: 0.5rem;">
+                                <li>Spustit SQL migraci (přidat 5 sloupců)</li>
+                                <li>Vytvořit FK constraint</li>
+                                <li>Přidat indexy pro rychlé dotazy</li>
+                                <li>Testovat SELECT/UPDATE/INSERT dotazy</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-content">
+                            <h3>FÁZE 2: Backend API (4 hodiny)</h3>
+                            <ul style="padding-left: 1.5rem; margin-top: 0.5rem;">
+                                <li>Upravit <code>createInvoiceWithAttachmentV2()</code> - přidat parametry VS</li>
+                                <li>Upravit <code>updateInvoiceV2()</code> - umožnit update VS</li>
+                                <li>Upravit <code>listInvoices25()</code> - vracet VS data</li>
+                                <li>Testovat endpointy přes Postman/curl</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-content">
+                            <h3>FÁZE 3: Frontend - Komponenty (6 hodin)</h3>
+                            <ul style="padding-left: 1.5rem; margin-top: 0.5rem;">
+                                <li><strong>Vytvořit:</strong> <code>InvoiceEvidenceModal.js</code> (split view modal)</li>
+                                <li><strong>Upravit:</strong> <code>Invoices25List.js</code> - přidat tlačítko "Nová faktura"</li>
+                                <li><strong>Upravit:</strong> <code>Orders25List.js</code> - přidat akci v menu</li>
+                                <li><strong>Upravit:</strong> <code>OrderForm25.js</code> - zobrazit VS per faktura</li>
+                                <li><strong>Stylování:</strong> Responsive design pro split view</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-content">
+                            <h3>FÁZE 4: Testování (2 hodiny)</h3>
+                            <ul style="padding-left: 1.5rem; margin-top: 0.5rem;">
+                                <li>Test vytvoření faktury z Invoices25List</li>
+                                <li>Test vytvoření faktury z Orders25List</li>
+                                <li>Test věcné správnosti per faktura</li>
+                                <li>Test auto-sync VS objednávky</li>
+                                <li>Test responsivity (desktop, tablet, mobile)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="success-box">
+                    <h4>⏱️ Celková časová náročnost: <strong>14 hodin</strong></h4>
+                    <p>Při práci dvou vývojářů (FE + BE paralelně): <strong>~8 hodin</strong></p>
+                </div>
+                
+                <div class="subsection">
+                    <h3>📦 Nové soubory k vytvoření:</h3>
+                    <div class="code-block">
+<code>src/components/invoices/InvoiceEvidenceModal.js      # Split-screen modal
+src/components/invoices/VecnaSpravnostSection.js      # VS sekce (reusable)
+src/components/invoices/OrderPreviewCompact.js        # Kompaktní preview objednávky
+
+docs/SQL_MIGRATION_VECNA_SPRAVNOST_FAKTURY.sql        # SQL migrace
+docs/NAVRH-EVIDENCE-FAKTUR-SPLIT-VIEW.html            # Tento dokument 😊</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Otázky -->
+        <div id="tab-otazky" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">❓</span>
+                    Otevřené otázky k diskusi
+                </h2>
+                
+                <ul class="question-list">
+                    <li>
+                        <strong>Věcná správnost objednávky:</strong><br>
+                        Co dělat s VS na úrovni objednávky? Zachovat / zrušit / auto-sync z faktur?<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> Auto-sync: VS objednávky = ANO, pokud všechny faktury mají VS
+                    </li>
+                    
+                    <li>
+                        <strong>Oprávnění:</strong><br>
+                        Kdo může evidovat faktury? Kdokoliv / Jen garant+příkazce / Admin role?<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> Role INVOICE_MANAGE + garant objednávky + příkazce
+                    </li>
+                    
+                    <li>
+                        <strong>Notifikace:</strong><br>
+                        Notifikovat při evidování faktury? Koho? (garant, příkazce, objednatel)<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> ANO - notifikovat garanta a příkazce
+                    </li>
+                    
+                    <li>
+                        <strong>Workflow:</strong><br>
+                        Může být objednávka dokončená, pokud faktury nemají VS?<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> NE - VS všech faktur je podmínkou pro dokončení objednávky
+                    </li>
+                    
+                    <li>
+                        <strong>Validace:</strong><br>
+                        Kontrolovat, že částka faktury nepřesahuje max. cenu objednávky?<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> Warning (ne error) - umožnit přepis s poznámkou
+                    </li>
+                    
+                    <li>
+                        <strong>Mobile UX:</strong><br>
+                        Split view → Tabs na mobilu? Nebo scrollovací single-column?<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> Tabs - přepínání mezi "Formulář" a "Detail"
+                    </li>
+                    
+                    <li>
+                        <strong>Více faktur:</strong><br>
+                        Může být k jedné objednávce více faktur? (např. záloha + doplatek)<br>
+                        <span class="badge badge-change">DOPORUČENÍ</span> ANO - už podporováno v DB i FE
+                    </li>
+                </ul>
+                
+                <div class="warning-box" style="margin-top: 2rem;">
+                    <h4>🗳️ Hlasování v týmu:</h4>
+                    <p>Doporučuji každou otázku prohlasovat na týmové schůzce. Výsledky zaznamenat do projektové dokumentace.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabName) {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Remove active from all nav tabs
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab
+            const selectedTab = document.getElementById('tab-' + tabName);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+            
+            // Add active to clicked nav tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

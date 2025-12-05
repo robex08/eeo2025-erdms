@@ -1,0 +1,482 @@
+/**
+ * API služby pro číselníky - OPRAVENO podle skutečné DB struktury
+ * 
+ * ⚠️ DŮLEŽITÉ ZMĚNY:
+ * - GET/POST/DELETE metody místo POST všude
+ * - ❌ ŽÁDNÉ aktivni, dt_vytvoreni, dt_aktualizace
+ * - ⚠️ DELETE = HARD DELETE (skutečně maže z DB)
+ * - Správné názvy polí: nazev_pozice, zkr (ne usek_zkr)
+ * 
+ * @author Frontend Team
+ * @date 2025-10-20
+ * @version 2.0
+ */
+
+import axios from 'axios';
+
+// Base URL pro číselníky API
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+
+// Axios instance
+const api = axios.create({
+  baseURL: `${API_BASE_URL}api.php`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// =============================================================================
+// ERROR HANDLING
+// =============================================================================
+
+const handleApiError = (error, defaultMessage = 'Chyba serveru') => {
+  if (error.response) {
+    const { status, data } = error.response;
+    const errorMessage = data?.message || data?.error || defaultMessage;
+    
+    switch (status) {
+      case 401:
+        throw new Error('Neplatný token. Přihlaste se znovu.');
+      case 403:
+        throw new Error('Nemáte oprávnění k této akci.');
+      case 404:
+        throw new Error('Záznam nebyl nalezen.');
+      case 400:
+        throw new Error(errorMessage);
+      default:
+        throw new Error(errorMessage);
+    }
+  } else if (error.request) {
+    throw new Error('Server neodpovídá. Zkontrolujte připojení.');
+  } else {
+    throw new Error(error.message || defaultMessage);
+  }
+};
+
+// =============================================================================
+// 1. LOKALITY
+// =============================================================================
+
+/**
+ * DB struktura: id, nazev, typ, parent_id
+ * ❌ NEMÁ: aktivni, dt_vytvoreni
+ */
+
+export async function getLokalityList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'lokality/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání lokalit');
+    throw error;
+  }
+}
+
+export async function getLokalitaDetail({ token, id }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'lokality/detail', id },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu lokality');
+    throw error;
+  }
+}
+
+export async function createLokalita({ token, nazev, typ, parent_id }) {
+  try {
+    const response = await api.post('', 
+      { token, nazev, typ, parent_id },
+      { 
+        params: { endpoint: 'lokality/create' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření lokality');
+    throw error;
+  }
+}
+
+export async function updateLokalita({ token, id, nazev, typ, parent_id }) {
+  try {
+    const payload = { token, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (typ !== undefined) payload.typ = typ;
+    if (parent_id !== undefined) payload.parent_id = parent_id;
+    
+    const response = await api.post('', 
+      payload,
+      { 
+        params: { endpoint: 'lokality/update' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci lokality');
+    throw error;
+  }
+}
+
+export async function deleteLokalita({ token, id }) {
+  try {
+    const response = await api.delete('', {
+      params: { endpoint: 'lokality/delete' },
+      headers: { 'Authorization': `Bearer ${token}` },
+      data: { token, id }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání lokality');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 2. POZICE
+// =============================================================================
+
+/**
+ * DB struktura: id, nazev_pozice, parent_id, usek_id
+ * ⚠️ POZOR: nazev_pozice (ne jen "nazev")!
+ * ❌ NEMÁ: aktivni, dt_vytvoreni
+ */
+
+export async function getPoziceList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'pozice/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      // Mapování nazev_pozice -> nazev pro UI konzistenci
+      return response.data.data.map(item => ({
+        ...item,
+        nazev: item.nazev_pozice || item.nazev
+      }));
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání pozic');
+    throw error;
+  }
+}
+
+export async function getPoziceDetail({ token, id }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'pozice/detail', id },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && response.data?.data) {
+      const item = response.data.data;
+      return {
+        ...item,
+        nazev: item.nazev_pozice || item.nazev
+      };
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu pozice');
+    throw error;
+  }
+}
+
+export async function createPozice({ token, nazev, parent_id, usek_id }) {
+  try {
+    const response = await api.post('', 
+      { 
+        token, 
+        nazev_pozice: nazev,  // Mapping nazev -> nazev_pozice pro backend
+        parent_id, 
+        usek_id 
+      },
+      { 
+        params: { endpoint: 'pozice/create' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření pozice');
+    throw error;
+  }
+}
+
+export async function updatePozice({ token, id, nazev, parent_id, usek_id }) {
+  try {
+    const payload = { token, id };
+    if (nazev !== undefined) payload.nazev_pozice = nazev;
+    if (parent_id !== undefined) payload.parent_id = parent_id;
+    if (usek_id !== undefined) payload.usek_id = usek_id;
+    
+    const response = await api.post('', 
+      payload,
+      { 
+        params: { endpoint: 'pozice/update' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci pozice');
+    throw error;
+  }
+}
+
+export async function deletePozice({ token, id }) {
+  try {
+    const response = await api.delete('', {
+      params: { endpoint: 'pozice/delete' },
+      headers: { 'Authorization': `Bearer ${token}` },
+      data: { token, id }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání pozice');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 3. ÚSEKY
+// =============================================================================
+
+/**
+ * DB struktura: id, nazev, zkr
+ * ⚠️ POZOR: nazev a zkr (NE usek_nazev, usek_zkr)!
+ * ❌ NEMÁ: parent_id, aktivni, dt_vytvoreni
+ */
+
+export async function getUsekyList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'useky/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání úseků');
+    throw error;
+  }
+}
+
+export async function getUsekDetail({ token, id }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'useky/detail', id },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu úseku');
+    throw error;
+  }
+}
+
+export async function createUsek({ token, nazev, zkr }) {
+  try {
+    const response = await api.post('', 
+      { token, nazev, zkr },  // Správné názvy polí!
+      { 
+        params: { endpoint: 'useky/create' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření úseku');
+    throw error;
+  }
+}
+
+export async function updateUsek({ token, id, nazev, zkr }) {
+  try {
+    const payload = { token, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (zkr !== undefined) payload.zkr = zkr;
+    
+    const response = await api.post('', 
+      payload,
+      { 
+        params: { endpoint: 'useky/update' },
+        headers: { 'Authorization': `Bearer ${token}` }
+      }
+    );
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci úseku');
+    throw error;
+  }
+}
+
+export async function deleteUsek({ token, id }) {
+  try {
+    const response = await api.delete('', {
+      params: { endpoint: 'useky/delete' },
+      headers: { 'Authorization': `Bearer ${token}` },
+      data: { token, id }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání úseku');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 4. STAVY (Read-only většinou)
+// =============================================================================
+
+export async function getStavyList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'stavy/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání stavů');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 5. ROLE (Read-only většinou)
+// =============================================================================
+
+export async function getRoleList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'role/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání rolí');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 6. PRÁVA (Read-only většinou)
+// =============================================================================
+
+export async function getPravaList({ token }) {
+  try {
+    const response = await api.get('', {
+      params: { endpoint: 'prava/list' },
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání práv');
+    throw error;
+  }
+}
+
+// Export all
+export default {
+  // Lokality
+  getLokalityList,
+  getLokalitaDetail,
+  createLokalita,
+  updateLokalita,
+  deleteLokalita,
+  
+  // Pozice
+  getPoziceList,
+  getPoziceDetail,
+  createPozice,
+  updatePozice,
+  deletePozice,
+  
+  // Úseky
+  getUsekyList,
+  getUsekDetail,
+  createUsek,
+  updateUsek,
+  deleteUsek,
+  
+  // Stavy
+  getStavyList,
+  
+  // Role
+  getRoleList,
+  
+  // Práva
+  getPravaList,
+};

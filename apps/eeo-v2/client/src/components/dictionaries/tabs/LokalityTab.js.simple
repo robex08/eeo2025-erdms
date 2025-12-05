@@ -1,0 +1,83 @@
+/**
+ * Lokality Tab - Správa lokalit
+ * Opraveno podle skutečné DB struktury
+ * 
+ * @date 2025-10-20
+ */
+
+import React, { useState, useEffect, useContext } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPlus, faSearch, faEdit, faTrash, faSyncAlt, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
+import { AuthContext } from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
+import {
+  getLokalityList,
+  createLokalita,
+  updateLokalita,
+  deleteLokalita,
+} from '../../../services/apiv2Dictionaries';
+
+const Container = styled.div`
+  padding: 2rem;
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+`;
+
+const Button = styled.button`
+  padding: 0.75rem 1.5rem;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  
+  &:hover {
+    background: #2563eb;
+  }
+`;
+
+const LokalityTab = () => {
+  const { token, user } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const result = await getLokalityList({ token, username: user?.username });
+      setData(result || []);
+    } catch (error) {
+      showToast?.('Chyba při načítání lokalit', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && user?.username) {
+      fetchData();
+    }
+  }, [token, user?.username]);
+
+  return (
+    <Container>
+      <ActionBar>
+        <h2><FontAwesomeIcon icon={faMapMarkerAlt} /> Lokality</h2>
+        <Button onClick={fetchData} disabled={loading}>
+          <FontAwesomeIcon icon={faSyncAlt} spin={loading} /> Obnovit
+        </Button>
+      </ActionBar>
+      <p>Načteno {data.length} lokalit</p>
+      <pre>{JSON.stringify(data, null, 2)}</pre>
+    </Container>
+  );
+};
+
+export default LokalityTab;

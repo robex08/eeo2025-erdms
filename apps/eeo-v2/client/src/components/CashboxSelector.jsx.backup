@@ -1,0 +1,452 @@
+/**
+ * 🏦 CASHBOX SELECTOR - Výběr pokladny s podporou rolí a oprávnění
+ * 
+ * Jednoduchý selector pro přepínání mezi pokladnami.
+ * 
+ * @author FE Team
+ * @date 9. listopadu 2025
+ */
+
+import React, { useMemo } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faCalculator,
+  faCheckCircle,
+  faExclamationTriangle,
+} from '@fortawesome/free-solid-svg-icons';
+
+// =============================================================================
+// STYLED COMPONENTS
+// =============================================================================
+
+const Container = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+`;
+
+const Label = styled.label`
+  font-weight: 600;
+  color: #495057;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const Select = styled.select`
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 1rem;
+  background: white;
+  cursor: pointer;
+  
+  &:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+  
+  &:disabled {
+    background: #e9ecef;
+    cursor: not-allowed;
+  }
+`;
+
+const Info = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+  
+  svg {
+    color: ${props => props.$warning ? '#ffc107' : '#28a745'};
+  }
+`;
+
+/**
+ * Hlavní komponenta pro výběr pokladny
+ * 
+ * @param {Object} permissions - Objekt s oprávněními uživatele
+ * @param {boolean} permissions.canReadAll - CASH_BOOK_READ_ALL
+ * @param {boolean} permissions.canReadOwn - CASH_BOOK_READ_OWN
+ * @param {boolean} permissions.canEditAll - CASH_BOOK_EDIT_ALL
+ * @param {boolean} permissions.canEditOwn - CASH_BOOK_EDIT_OWN
+ * @param {boolean} permissions.canManage - CASH_BOOK_MANAGE
+ */
+const CashboxSelector = ({ 
+  currentCashbox,
+  userCashboxes,
+  allCashboxes,
+  permissions = {},
+  onCashboxChange,
+  onAddCashbox,
+  onManageCashbox
+}) => {
+  // Vyhodnocení oprávnění
+  const canReadAll = permissions.canReadAll || permissions.canManage;
+  const canEditAll = permissions.canEditAll || permissions.canManage;
+  const canManage = permissions.canManage;
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const open = Boolean(anchorEl);
+
+  // Kategorizace pokladen uživatele
+  const categorizedCashboxes = useMemo(() => {
+    // Pokud má READ_ALL nebo MANAGE, vidí všechny pokladny
+    if (canReadAll) {
+      return {
+        all: allCashboxes || [],
+        main: [],
+        substitute: [],
+        expired: []
+      };
+    }
+
+    const today = new Date();
+    const main = [];
+    const substitute = [];
+    const expired = [];
+
+    (userCashboxes || []).forEach(cb => {
+      const validFrom = cb.platne_od ? new Date(cb.platne_od) : null;
+      const validTo = cb.platne_do ? new Date(cb.platne_do) : null;
+
+      // Zkontrolovat platnost
+      const isActive = (!validFrom || validFrom <= today) && 
+                       (!validTo || validTo >= today);
+
+      if (!isActive) {
+        expired.push(cb);
+      } else if (cb.je_hlavni) {
+        main.push(cb);
+      } else {
+        substitute.push(cb);
+      }
+    });
+
+    return { main, substitute, expired, all: [] };
+  }, [userCashboxes, allCashboxes, canReadAll]);
+
+  // Filtrování podle search query
+  const filteredCashboxes = useMemo(() => {
+    if (!searchQuery) return categorizedCashboxes;
+
+    const query = searchQuery.toLowerCase();
+    const filter = (list) => list.filter(cb => 
+      cb.nazev?.toLowerCase().includes(query) ||
+      cb.cislo_pokladny?.toString().includes(query) ||
+      cb.kod_pracoviste?.toLowerCase().includes(query) ||
+      cb.nazev_pracoviste?.toLowerCase().includes(query)
+    );
+
+    return {
+      main: filter(categorizedCashboxes.main),
+      substitute: filter(categorizedCashboxes.substitute),
+      expired: filter(categorizedCashboxes.expired),
+      all: filter(categorizedCashboxes.all)
+    };
+  }, [categorizedCashboxes, searchQuery]);
+
+  // Warning pro brzy končící platnost
+  const getExpiryWarning = (validTo) => {
+    if (!validTo) return null;
+    
+    const today = new Date();
+    const expiryDate = new Date(validTo);
+    const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+
+    if (daysLeft < 0) return { type: 'expired', days: Math.abs(daysLeft) };
+    if (daysLeft <= 7) return { type: 'critical', days: daysLeft };
+    if (daysLeft <= 30) return { type: 'warning', days: daysLeft };
+    
+    return null;
+  };
+
+  const handleOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+    setSearchQuery('');
+  };
+
+  const handleSelect = (cashbox) => {
+    onCashboxChange(cashbox);
+    handleClose();
+  };
+
+  // Renderování jedné položky pokladny
+  const renderCashboxItem = (cashbox, isActive = false) => {
+    const warning = getExpiryWarning(cashbox.platne_do);
+    
+    return (
+      <ListItem 
+        key={cashbox.id} 
+        disablePadding
+        sx={{ 
+          backgroundColor: isActive ? 'action.selected' : 'transparent',
+          borderRadius: 1,
+          mb: 0.5
+        }}
+      >
+        <ListItemButton onClick={() => handleSelect(cashbox)}>
+          <ListItemIcon>
+            {isActive ? (
+              <Badge badgeContent={<ActiveIcon sx={{ fontSize: 14 }} />} color="success">
+                <CashboxIcon />
+              </Badge>
+            ) : (
+              <CashboxIcon />
+            )}
+          </ListItemIcon>
+          
+          <ListItemText
+            primary={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body1" fontWeight={isActive ? 600 : 400}>
+                  {cashbox.cislo_pokladny} - {cashbox.nazev_pracoviste || 'Bez názvu'}
+                </Typography>
+                
+                {cashbox.je_hlavni && (
+                  <Chip 
+                    label="Hlavní" 
+                    size="small" 
+                    color="primary" 
+                    icon={<PersonIcon />}
+                  />
+                )}
+                
+                {warning && (
+                  <Chip
+                    label={
+                      warning.type === 'expired' 
+                        ? `Vypršelo před ${warning.days}d`
+                        : `Vyprší za ${warning.days}d`
+                    }
+                    size="small"
+                    color={warning.type === 'expired' ? 'error' : warning.type === 'critical' ? 'error' : 'warning'}
+                    icon={warning.type === 'expired' ? <InactiveIcon /> : <WarningIcon />}
+                  />
+                )}
+              </Box>
+            }
+            secondary={
+              <Box>
+                <Typography variant="caption" display="block">
+                  {cashbox.kod_pracoviste && `📍 ${cashbox.kod_pracoviste}`}
+                  {cashbox.uzivatel_cele_jmeno && ` | 👤 ${cashbox.uzivatel_cele_jmeno}`}
+                </Typography>
+                {cashbox.platne_od && (
+                  <Typography variant="caption" color="text.secondary">
+                    📅 {new Date(cashbox.platne_od).toLocaleDateString('cs-CZ')}
+                    {cashbox.platne_do && ` - ${new Date(cashbox.platne_do).toLocaleDateString('cs-CZ')}`}
+                    {!cashbox.platne_do && ' - Trvale'}
+                  </Typography>
+                )}
+              </Box>
+            }
+          />
+          
+          {onManageCashbox && (
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onManageCashbox(cashbox);
+              }}
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          )}
+        </ListItemButton>
+      </ListItem>
+    );
+  };
+
+  return (
+    <Box>
+      {/* Aktivní pokladna - zobrazení */}
+      <Card elevation={2} sx={{ mb: 2 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CashboxIcon color="primary" />
+              Aktivní pokladna
+            </Typography>
+            {currentCashbox && onManageCashbox && (
+              <IconButton size="small" onClick={() => onManageCashbox(currentCashbox)}>
+                <SettingsIcon />
+              </IconButton>
+            )}
+          </Box>
+
+          {currentCashbox ? (
+            <Box>
+              <Typography variant="h5" gutterBottom>
+                🏛️ Pokladna {currentCashbox.cislo_pokladny} - {currentCashbox.nazev_pracoviste}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                📅 {new Date().toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' })}
+              </Typography>
+              {currentCashbox.koncovy_stav !== undefined && (
+                <Typography variant="h6" color="primary" sx={{ mt: 1 }}>
+                  💰 Stav: {parseFloat(currentCashbox.koncovy_stav).toLocaleString('cs-CZ')} Kč
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Není vybrána žádná pokladna
+            </Typography>
+          )}
+
+          <Button
+            fullWidth
+            variant="outlined"
+            endIcon={<ArrowDownIcon />}
+            onClick={handleOpen}
+            sx={{ mt: 2 }}
+          >
+            {currentCashbox ? 'Přepnout pokladnu' : 'Vybrat pokladnu'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Dropdown menu s pokladnami */}
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        PaperProps={{
+          sx: {
+            width: 500,
+            maxHeight: 600,
+            overflow: 'auto'
+          }
+        }}
+      >
+        {/* Vyhledávání */}
+        <Box sx={{ p: 2, pb: 1 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Vyhledat pokladnu..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              )
+            }}
+          />
+        </Box>
+
+        {/* READ_ALL VIEW - všechny pokladny */}
+        {canReadAll && (
+          <Box sx={{ p: 2, pt: 1 }}>
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <GroupIcon fontSize="small" />
+              Všechny pokladny ({filteredCashboxes.all.length})
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+            <List dense>
+              {filteredCashboxes.all.map(cb => 
+                renderCashboxItem(cb, cb.id === currentCashbox?.id)
+              )}
+            </List>
+            
+            {onAddCashbox && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={onAddCashbox}
+                >
+                  Přidat novou pokladnu
+                </Button>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* READ_OWN VIEW - kategorizované pokladny */}
+        {!canReadAll && (
+          <Box sx={{ p: 2, pt: 1 }}>
+            {/* Hlavní pokladna */}
+            {filteredCashboxes.main.length > 0 && (
+              <>
+                <Typography variant="overline" color="primary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PersonIcon fontSize="small" />
+                  Moje hlavní pokladna
+                </Typography>
+                <Divider sx={{ my: 1 }} />
+                <List dense>
+                  {filteredCashboxes.main.map(cb => 
+                    renderCashboxItem(cb, cb.id === currentCashbox?.id)
+                  )}
+                </List>
+              </>
+            )}
+
+            {/* Zástupní pokladny */}
+            {filteredCashboxes.substitute.length > 0 && (
+              <>
+                <Typography variant="overline" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                  <GroupIcon fontSize="small" />
+                  Zástupní pokladny ({filteredCashboxes.substitute.length})
+                </Typography>
+                <Divider sx={{ my: 1 }} />
+                <List dense>
+                  {filteredCashboxes.substitute.map(cb => 
+                    renderCashboxItem(cb, cb.id === currentCashbox?.id)
+                  )}
+                </List>
+              </>
+            )}
+
+            {/* Neaktivní pokladny */}
+            {filteredCashboxes.expired.length > 0 && (
+              <>
+                <Typography variant="overline" color="error" sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                  <InactiveIcon fontSize="small" />
+                  Neaktivní pokladny ({filteredCashboxes.expired.length})
+                </Typography>
+                <Divider sx={{ my: 1 }} />
+                <List dense>
+                  {filteredCashboxes.expired.map(cb => 
+                    renderCashboxItem(cb, false)
+                  )}
+                </List>
+              </>
+            )}
+
+            {/* Žádné pokladny */}
+            {filteredCashboxes.main.length === 0 && 
+             filteredCashboxes.substitute.length === 0 && 
+             filteredCashboxes.expired.length === 0 && (
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                {searchQuery ? 'Žádná pokladna nevyhovuje vyhledávání' : 'Nemáte přiřazenu žádnou pokladnu'}
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Menu>
+    </Box>
+  );
+};
+
+export default CashboxSelector;

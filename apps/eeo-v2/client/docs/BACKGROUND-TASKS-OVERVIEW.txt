@@ -1,0 +1,197 @@
+```
+🚀 BACKGROUND TASKS SYSTEM - PŘEHLED
+=====================================
+
+📁 VYTVOŘENÉ SOUBORY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ src/services/backgroundTaskService.js  (420 řádků)
+   └─ Core singleton service pro správu úloh
+
+✅ src/hooks/useBackgroundTasks.js  (230 řádků)
+   └─ React hooks pro komponenty
+
+✅ src/services/backgroundTasks.js  (220 řádků)
+   └─ Předpřipravené task definice
+
+✅ src/examples/BackgroundTasksExample.js  (240 řádků)
+   └─ Ukázková komponenta s UI
+
+✅ src/types/backgroundTasks.d.js  (60 řádků)
+   └─ JSDoc type definitions
+
+✅ docs/BACKGROUND-TASKS-SYSTEM.md  (350 řádků)
+   └─ Kompletní API dokumentace
+
+✅ docs/BACKGROUND-TASKS-README.md  (250 řádků)
+   └─ Přehled a quick start
+
+✅ docs/BACKGROUND-TASKS-INTEGRATION.js  (280 řádků)
+   └─ Integration guide s code snippety
+
+✅ BACKGROUND-TASKS-SUMMARY.md  (250 řádků)
+   └─ Implementační souhrn
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CELKEM: 2,300+ řádků kódu a dokumentace
+
+
+🎯 PŘEDPŘIPRAVENÉ ÚLOHY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 🔔 checkNotifications
+   ├─ Interval: 60 sekund
+   ├─ Účel: Kontrola nových notifikací
+   └─ Podmínka: Uživatel přihlášen
+
+2. 💬 checkChatMessages
+   ├─ Interval: 90 sekund
+   ├─ Účel: Kontrola nových zpráv
+   └─ Podmínka: Uživatel přihlášen
+
+3. 🔄 autoRefreshOrders
+   ├─ Interval: 10 minut
+   ├─ Účel: Auto-refresh seznamu objednávek
+   └─ Podmínka: Přihlášen + na správné stránce
+
+4. ✨ postOrderCreation
+   ├─ Interval: Event-driven (manuální trigger)
+   ├─ Účel: Refresh po vytvoření objednávky
+   └─ Spouští: Refresh objednávek + notifikace
+
+
+⚡ QUICK START:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useBackgroundTasks } from './hooks/useBackgroundTasks';
+import { createStandardTasks } from './services/backgroundTasks';
+
+function App() {
+  const bgTasks = useBackgroundTasks();
+
+  useEffect(() => {
+    const tasks = createStandardTasks({
+      onNewNotifications: (data) => { /* handler */ },
+      onNewMessages: (data) => { /* handler */ },
+      onOrdersRefreshed: (data) => { /* handler */ }
+    });
+    
+    tasks.forEach(task => bgTasks.register(task));
+  }, []);
+
+  // Okamžité spuštění po akci:
+  const handleOrderCreated = () => {
+    bgTasks.runNow('postOrderCreation');
+  };
+
+  return <YourApp />;
+}
+
+
+🎨 FEATURES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Intervalové spouštění (min. 1s)
+✅ Okamžité manuální spuštění
+✅ Podmíněné spouštění
+✅ Prevence paralelního běhu
+✅ Auto cleanup při unmount
+✅ Error handling
+✅ Event listeners
+✅ Enable/disable tasků
+✅ State tracking
+✅ Debug logging
+✅ JSDoc types
+
+
+📝 TODO (co zbývá dodělat):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+□ Implementovat API volání v backgroundTasks.js
+□ Integrovat do App.js (viz integration guide)
+□ Napojit callbacky na stavy aplikace
+□ Přidat toast notifikace
+□ Otestovat v produkci
+
+
+🧪 TESTOVÁNÍ:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Spusť demo komponentu:
+   import BackgroundTasksExample from './examples/BackgroundTasksExample';
+
+2. Otevři Console (F12)
+   → Měly by běžet logy každých 60s, 90s, 10min
+
+3. Klikej na tlačítka "Check Now"
+   → Sleduj okamžité spuštění
+
+
+📚 DOKUMENTACE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📘 docs/BACKGROUND-TASKS-README.md
+   → Základní přehled systému
+
+📘 docs/BACKGROUND-TASKS-SYSTEM.md
+   → Kompletní API reference
+
+📘 docs/BACKGROUND-TASKS-INTEGRATION.js
+   → Kopírovatelné code snippety
+
+📘 BACKGROUND-TASKS-SUMMARY.md
+   → Implementační souhrn (tento soubor)
+
+
+💡 PŘÍKLAD POUŽITÍ:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Jednoduchý vlastní task:
+bgTasks.register({
+  name: 'myTask',
+  interval: 120000, // 2 minuty
+  callback: async () => {
+    const data = await api.fetchSomething();
+    console.log('Data:', data);
+  },
+  immediate: true,
+  condition: () => !!sessionStorage.getItem('authToken')
+});
+
+// Okamžité spuštění:
+bgTasks.runNow('myTask');
+
+// Enable/disable:
+bgTasks.setEnabled('myTask', false);
+
+
+🎯 STATUS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Core systém: HOTOVO
+✅ React hooks: HOTOVO
+✅ Task definitions: HOTOVO (API placeholders)
+✅ Demo komponenta: HOTOVO
+✅ Dokumentace: HOTOVO
+⏳ API integrace: TODO
+⏳ App.js integrace: TODO
+
+→ Systém je připraven k použití!
+
+
+🔗 DALŠÍ KROKY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Otevři: docs/BACKGROUND-TASKS-INTEGRATION.js
+2. Zkopíruj kód do App.js
+3. Implementuj API volání v backgroundTasks.js
+4. Otestuj s demo komponentou
+5. Nasaď do produkce
+
+→ Detailní kroky v BACKGROUND-TASKS-SUMMARY.md
+
+
+═══════════════════════════════════════════════════════
+  🎉 Vše připraveno! Stačí napojit API a můžeš začít.
+═══════════════════════════════════════════════════════
+```

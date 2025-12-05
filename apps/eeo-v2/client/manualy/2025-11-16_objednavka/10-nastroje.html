@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>10 - Nástroje | Návod EEO 2025</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .back-link { color: white; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border-radius: 5px; }
+        h1 { font-size: 2.5rem; margin: 1rem 0; }
+        .content { padding: 3rem; }
+        .intro-box { background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #667eea; margin-bottom: 2rem; }
+        .intro-box h2 { color: #667eea; margin-bottom: 1rem; }
+        .screenshot { margin: 2rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .screenshot img { width: 100%; }
+        .screenshot-caption { background: #f8f9fa; padding: 1rem; text-align: center; color: #6c757d; font-style: italic; }
+        .section { margin: 3rem 0; }
+        .section h2 { color: #764ba2; margin-bottom: 1.5rem; border-bottom: 3px solid #667eea; padding-bottom: 0.5rem; }
+        .section h3 { color: #495057; margin: 1.5rem 0 1rem; }
+        .tool-card { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 2rem; border-radius: 10px; margin: 1.5rem 0; border-left: 5px solid #667eea; }
+        .tool-card h3 { color: #667eea; margin-bottom: 1rem; }
+        .feature-list { margin: 1rem 0; padding-left: 2rem; }
+        .feature-list li { margin: 0.5rem 0; line-height: 1.8; }
+        .tip-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .tip-box strong { color: #856404; }
+        .info-box { background: #d1ecf1; border-left: 5px solid #17a2b8; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .info-box strong { color: #0c5460; }
+        .step-list { counter-reset: step; list-style: none; margin: 1.5rem 0; }
+        .step-list li { counter-increment: step; padding: 1rem; margin: 1rem 0; background: #f8f9fa; border-radius: 8px; padding-left: 4rem; position: relative; }
+        .step-list li:before { content: counter(step); position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); background: #667eea; color: white; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #e9ecef; }
+        .nav-button { padding: 1rem 2rem; background: #667eea; color: white; text-decoration: none; border-radius: 8px; transition: background 0.3s; }
+        .nav-button:hover { background: #764ba2; }
+        footer { background: #f8f9fa; padding: 1.5rem; text-align: center; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Zpět na obsah</a>
+            <h1>10 - Nástroje</h1>
+        </header>
+        <div class="content">
+            <div class="intro-box">
+                <h2>🛠️ Pomocné nástroje v aplikaci EEO</h2>
+                <p>Aplikace EEO obsahuje sadu užitečných nástrojů, které vám pomáhají s organizací práce, plánováním 
+                a rychlými výpočty. Všechny nástroje jsou dostupné přímo z hlavního menu aplikace.</p>
+            </div>
+            
+            <div class="screenshot">
+                <img src="screenshot/nahled_nastroju.png" alt="Náhled všech nástrojů">
+                <div class="screenshot-caption">Screenshot: Přehled všech nástrojů v aplikaci EEO</div>
+            </div>
+            
+            <div class="section">
+                <h2>📝 NOTES - Poznámky k ruce</h2>
+                
+                <div class="screenshot">
+                    <img src="screenshot/notes.png" alt="Nástroj Notes">
+                    <div class="screenshot-caption">Screenshot: Notes - systém poznámek</div>
+                </div>
+                
+                <div class="tool-card">
+                    <h3>Co to je?</h3>
+                    <p>Notes je jednoduchý nástroj pro rychlé vytváření a správu poznámek. Ideální pro zaznamenávání 
+                    důležitých informací, nápadů nebo dočasných poznámek během práce s objednávkami.</p>
+                    
+                    <h4 style="margin-top: 1.5rem;">Hlavní funkce:</h4>
+                    <ul class="feature-list">
+                        <li>📌 <strong>Rychlé vytvoření poznámky</strong> - jeden klik a můžete psát</li>
+                        <li>✏️ <strong>Editace poznámek</strong> - kdykoli můžete poznámku upravit</li>
+                        <li>🗑️ <strong>Smazání</strong> - již nepotřebné poznámky lze smazat</li>
+                        <li>📅 <strong>Časová značka</strong> - každá poznámka má datum vytvoření</li>
+                        <li>💾 <strong>Automatické ukládání</strong> - poznámky se ukládají průběžně</li>
+                        <li>🔍 <strong>Vyhledávání</strong> - rychlé hledání v poznámkách</li>
+                    </ul>
+                </div>
+                
+                <h3>Jak používat Notes:</h3>
+                <ol class="step-list">
+                    <li>Otevřete <strong>Notes</strong> z hlavního menu nebo ze sekce Nástroje</li>
+                    <li>Klikněte na <strong>"+ Nová poznámka"</strong></li>
+                    <li>Napište nadpis a text poznámky</li>
+                    <li>Poznámka se automaticky uloží</li>
+                    <li>Pro editaci klikněte na poznámku v seznamu</li>
+                </ol>
+                
+                <div class="tip-box">
+                    <strong>💡 Tip pro použití:</strong> Notes je ideální pro:
+                    <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                        <li>Zaznamenávání telefonických rozhovorů s dodavateli</li>
+                        <li>Dočasné poznámky k probíhajícím objednávkám</li>
+                        <li>Seznam věcí k vyřízení</li>
+                        <li>Důležité kontakty nebo informace</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>✅ TODO - Správa úkolů s alarmy</h2>
+                
+                <div class="screenshot">
+                    <img src="screenshot/todo.png" alt="Nástroj TODO">
+                    <div class="screenshot-caption">Screenshot: TODO - systém úkolů</div>
+                </div>
+                
+                <div class="tool-card">
+                    <h3>Co to je?</h3>
+                    <p>TODO je pokročilý nástroj pro správu úkolů s možností nastavení alarmů a připomínek. 
+                    Pomáhá vám organizovat práci a nezapomenout na důležité termíny.</p>
+                    
+                    <h4 style="margin-top: 1.5rem;">Hlavní funkce:</h4>
+                    <ul class="feature-list">
+                        <li>✅ <strong>Vytvoření úkolu</strong> - nadpis, popis, priorita</li>
+                        <li>⏰ <strong>Nastavení alarmu</strong> - datum a čas připomínky</li>
+                        <li>🔔 <strong>Notifikace</strong> - upozornění v nastavený čas</li>
+                        <li>📋 <strong>Stav úkolu</strong> - Nedokončeno / Dokončeno / Zrušeno</li>
+                        <li>🎨 <strong>Barevné značení</strong> - podle priority nebo kategorie</li>
+                        <li>📊 <strong>Filtrování</strong> - zobrazení jen aktivních, dokončených atd.</li>
+                        <li>📅 <strong>Termín splnění</strong> - deadline pro úkol</li>
+                    </ul>
+                </div>
+                
+                <h3>Jak vytvořit úkol s alarmem:</h3>
+                <ol class="step-list">
+                    <li>Otevřete <strong>TODO</strong> z hlavního menu</li>
+                    <li>Klikněte na <strong>"+ Nový úkol"</strong></li>
+                    <li>Vyplňte:
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            <li><strong>Název úkolu</strong> (např. "Zavolat dodavateli")</li>
+                            <li><strong>Popis</strong> - detaily k úkolu</li>
+                            <li><strong>Priorita</strong> - Nízká / Střední / Vysoká</li>
+                            <li><strong>Termín</strong> - do kdy má být hotovo</li>
+                            <li><strong>⏰ Alarm</strong> - kdy vás má systém upozornit</li>
+                        </ul>
+                    </li>
+                    <li>Klikněte na <strong>"Uložit"</strong></li>
+                    <li>V nastavený čas obdržíte <strong>notifikaci</strong></li>
+                </ol>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Jak fungují alarmy:</strong> Když nadejde nastavený čas, aplikace vám zobrazí 
+                    notifikaci (pokud jste přihlášeni). Notifikace se zobrazí i jako zvýraznění v seznamu úkolů. 
+                    Můžete nastavit více alarmů pro jeden úkol (např. upozornění 1 den předem a 1 hodinu předem).
+                </div>
+                
+                <div class="tip-box">
+                    <strong>💡 Příklady použití TODO:</strong>
+                    <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                        <li>Připomenutí kontroly dodání objednávky</li>
+                        <li>Termín pro schválení faktury</li>
+                        <li>Upozornění na splatnost faktury</li>
+                        <li>Termín pro potvrzení věcné správnosti</li>
+                        <li>Deadline pro zveřejnění v registru smluv</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🧮 Finanční kalkulačka</h2>
+                
+                <div class="screenshot">
+                    <img src="screenshot/kalkulacka.png" alt="Finanční kalkulačka">
+                    <div class="screenshot-caption">Screenshot: Finanční kalkulačka pro rychlé výpočty</div>
+                </div>
+                
+                <div class="tool-card">
+                    <h3>Co to je?</h3>
+                    <p>Specializovaná kalkulačka pro rychlé finanční výpočty související s objednávkami. 
+                    Umožňuje výpočet DPH, převody měn, procentuální výpočty a další užitečné operace.</p>
+                    
+                    <h4 style="margin-top: 1.5rem;">Hlavní funkce:</h4>
+                    <ul class="feature-list">
+                        <li>💰 <strong>Výpočet DPH</strong> - z částky bez DPH na částku s DPH a naopak</li>
+                        <li>📊 <strong>Sazby DPH</strong> - 21%, 15%, 12%, 10% (snížené sazby)</li>
+                        <li>💵 <strong>Převod měn</strong> - rychlý přepočet CZK/EUR/USD</li>
+                        <li>📈 <strong>Procenta</strong> - výpočet % z částky, přirážka, sleva</li>
+                        <li>🔢 <strong>Základní operace</strong> - sčítání, odčítání, násobení, dělení</li>
+                        <li>📋 <strong>Historie výpočtů</strong> - zobrazení předchozích výpočtů</li>
+                        <li>📤 <strong>Export výsledku</strong> - zkopírování do schránky</li>
+                    </ul>
+                </div>
+                
+                <h3>Příklady použití:</h3>
+                
+                <h4 style="margin-top: 1.5rem;">1. Výpočet ceny s DPH:</h4>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
+                    <p><strong>Zadání:</strong> Cena bez DPH: 10 000 Kč, sazba DPH: 21%</p>
+                    <p><strong>Výpočet:</strong> 10 000 + (10 000 × 0,21) = 12 100 Kč</p>
+                    <p style="color: #28a745; font-weight: bold;">Výsledek: 12 100 Kč s DPH</p>
+                </div>
+                
+                <h4 style="margin-top: 1.5rem;">2. Výpočet ceny bez DPH (zpětný výpočet):</h4>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
+                    <p><strong>Zadání:</strong> Cena s DPH: 12 100 Kč, sazba DPH: 21%</p>
+                    <p><strong>Výpočet:</strong> 12 100 / 1,21 = 10 000 Kč</p>
+                    <p style="color: #28a745; font-weight: bold;">Výsledek: 10 000 Kč bez DPH</p>
+                </div>
+                
+                <h4 style="margin-top: 1.5rem;">3. Výpočet slevy:</h4>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; margin: 1rem 0;">
+                    <p><strong>Zadání:</strong> Původní cena: 15 000 Kč, sleva: 10%</p>
+                    <p><strong>Výpočet:</strong> 15 000 - (15 000 × 0,10) = 13 500 Kč</p>
+                    <p style="color: #28a745; font-weight: bold;">Výsledek: 13 500 Kč po slevě</p>
+                </div>
+                
+                <div class="tip-box">
+                    <strong>💡 Rychlý přístup:</strong> Kalkulačku můžete otevřít kdykoli pomocí klávesové zkratky 
+                    <strong>CTRL + K</strong> nebo z hlavního menu. Je dostupná i při vyplňování objednávkového formuláře.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🎯 Kdy použít které nástroje?</h2>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 2rem 0;">
+                    <thead>
+                        <tr style="background: #667eea; color: white;">
+                            <th style="padding: 1rem; text-align: left;">Situace</th>
+                            <th style="padding: 1rem; text-align: left;">Doporučený nástroj</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #e9ecef;">
+                            <td style="padding: 1rem;">Potřebuji si poznamenat důležitou informaci z telefonu</td>
+                            <td style="padding: 1rem;"><strong>📝 NOTES</strong></td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #e9ecef;">
+                            <td style="padding: 1rem;">Musím nezapomenout zkontrolovat dodání za týden</td>
+                            <td style="padding: 1rem;"><strong>✅ TODO + alarm</strong></td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #e9ecef;">
+                            <td style="padding: 1rem;">Potřebuji rychle spočítat cenu s DPH</td>
+                            <td style="padding: 1rem;"><strong>🧮 Kalkulačka</strong></td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #e9ecef;">
+                            <td style="padding: 1rem;">Chci si vést seznam otevřených úkolů k objednávkám</td>
+                            <td style="padding: 1rem;"><strong>✅ TODO</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 1rem;">Potřebuji rychle přepočítat EUR na CZK</td>
+                            <td style="padding: 1rem;"><strong>🧮 Kalkulačka</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="navigation">
+                <a href="09-doplnkove-funkce.html" class="nav-button">← Předchozí: Doplňkové funkce</a>
+                <a href="11-notifikace.html" class="nav-button">Další: Notifikace →</a>
+            </div>
+        </div>
+        <footer>
+            <p>📅 Aktualizováno: 16. listopadu 2025 | Kapitola 10/11</p>
+        </footer>
+    </div>
+</body>
+</html>

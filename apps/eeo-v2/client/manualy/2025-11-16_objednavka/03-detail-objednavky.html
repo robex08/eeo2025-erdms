@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>03 - Detail objednávky | Návod EEO 2025</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .back-link { color: white; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border-radius: 5px; }
+        h1 { font-size: 2.5rem; margin: 1rem 0; }
+        .content { padding: 3rem; }
+        .intro-box { background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #667eea; margin-bottom: 2rem; }
+        .screenshot { margin: 2rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .screenshot img { width: 100%; display: block; }
+        .screenshot-caption { background: #f8f9fa; padding: 1rem; text-align: center; color: #6c757d; }
+        .section { margin: 3rem 0; }
+        .section h2 { color: #764ba2; margin-bottom: 1.5rem; border-bottom: 3px solid #667eea; padding-bottom: 0.5rem; }
+        .section h3 { color: #495057; margin: 1.5rem 0 1rem 0; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #e9ecef; }
+        .nav-button { padding: 1rem 2rem; background: #667eea; color: white; text-decoration: none; border-radius: 8px; }
+        .nav-button:hover { background: #764ba2; }
+        footer { background: #f8f9fa; padding: 1.5rem; text-align: center; color: #6c757d; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem; margin-right: 0.5rem; }
+        .badge.approved { background: #28a745; color: white; }
+        .badge.waiting { background: #ffc107; color: #333; }
+        .tip-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .tip-box strong { color: #856404; }
+        .warning-box { background: #f8d7da; border-left: 5px solid #dc3545; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .warning-box strong { color: #721c24; }
+        .info-box { background: #d1ecf1; border-left: 5px solid #17a2b8; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .info-box strong { color: #0c5460; }
+        .success-box { background: #d4edda; border-left: 5px solid #28a745; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .success-box strong { color: #155724; }
+        .option-card { background: white; border: 2px solid #e9ecef; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; transition: all 0.3s ease; }
+        .option-card:hover { border-color: #667eea; box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2); }
+        .option-card h4 { color: #667eea; margin-bottom: 0.5rem; }
+        .step-list { counter-reset: step-counter; list-style: none; margin: 1.5rem 0; }
+        .step-list li { counter-increment: step-counter; padding: 1rem; margin: 1rem 0; background: #f8f9fa; border-radius: 8px; position: relative; padding-left: 4rem; }
+        .step-list li:before { content: counter(step-counter); position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); background: #667eea; color: white; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        table th, table td { padding: 1rem; text-align: left; border-bottom: 1px solid #e9ecef; }
+        table th { background: #f8f9fa; color: #495057; font-weight: bold; }
+        table tr:hover { background: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Zpět na obsah</a>
+            <h1>03 - Detail objednávky</h1>
+        </header>
+        <div class="content">
+            <div class="intro-box">
+                <h2>🎯 Doplnění detailních údajů</h2>
+                <p>Po schválení objednávky se zobrazí rozšířené sekce pro vyplnění detailních informací o dodavateli a dodacích podmínkách. 
+                Tato fáze je klíčová pro kompletaci všech údajů potřebných k odeslání objednávky dodavateli.</p>
+            </div>
+            <div class="screenshot">
+                <img src="screenshot/2a. obj_detail_1.png" alt="Detail objednávky část 1">
+                <div class="screenshot-caption">Screenshot 2a: Detail objednávky - část 1</div>
+            </div>
+            <div class="screenshot">
+                <img src="screenshot/2b. obj_detail_2.png" alt="Detail objednávky část 2">
+                <div class="screenshot-caption">Screenshot 2b: Detail objednávky - část 2</div>
+            </div>
+                        <div class="info-box">
+                <strong>ℹ️ Poznámka k financování:</strong> Způsob financování byl již vyplněn v předchozí fázi (Fáze 2 - před schválením příkazcem operace) 
+                při vytváření objednávky, aby schvalovatel věděl, z jakých zdrojů bude objednávka hrazena. 
+                V této fázi se již financování nevyplňuje.
+            </div>
+            
+            <div class="section">
+                <h2>🏢 Sekce Dodavatel</h2>
+                <p>V této sekci vyplníte kompletní identifikační údaje dodavatele. Systém nabízí několik způsobů, jak údaje získat:</p>
+                
+                <div class="option-card">
+                    <h4>1️⃣ Výběr z lokálního adresáře (osobní kontakty)</h4>
+                    <p><strong>Pokud máte dodavatele uloženého:</strong> Systém umožňuje vybrat dodavatele ze své osobní databáze kontaktů. 
+                    Všechny údaje se automaticky vyplní.</p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Klikněte na ikonu vyhledávání nebo začněte psát název firmy</li>
+                        <li>Vyberte dodavatele ze seznamu</li>
+                        <li>Údaje se automaticky doplní do formuláře</li>
+                    </ul>
+                </div>
+                
+                <div class="option-card">
+                    <h4>2️⃣ Vyhledání v registru ARES</h4>
+                    <p><strong>Pro nové dodavatele:</strong> Systém umí vyhledat dodavatele přímo v českém obchodním registru ARES podle IČO nebo názvu firmy.</p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Zadejte IČO (např. 12345678) do pole <strong>"IČO"</strong></li>
+                        <li>Klikněte na ikonu lupy vedle pole IČO</li>
+                        <li>Systém automaticky vyhledá a vyplní: název, adresu, DIČ</li>
+                        <li>Můžete vyhledat i podle názvu firmy</li>
+                        <li>Po vyplnění z ARESu máte možnost dodavatele uložit do osobních kontaktů pro příští použití</li>
+                    </ul>
+                    <div class="tip-box">
+                        <strong>💡 Tip:</strong> Pokud dodavatele budete používat častěji, použijte možnost "Přidat do osobních kontaktů" - 
+                        příště ho najdete rychleji v lokálním adresáři.
+                    </div>
+                </div>
+                
+                <div class="option-card">
+                    <h4>3️⃣ Ruční vyplnění</h4>
+                    <p><strong>Pro zahraniční nebo neregistrované dodavatele:</strong> Všechny údaje můžete zadat i ručně.</p>
+                </div>
+                
+                <h3 style="margin-top: 2rem; color: #495057;">📋 Pole sekce Dodavatel</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Pole</th>
+                            <th style="width: 15%;">Povinnost</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Název dodavatele</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Úplný obchodní název dodavatele tak, jak je zapsán v obchodním rejstříku. 
+                            Např.: <em>"ALZA.CZ a.s."</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sídlo / Adresa</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Úplná adresa sídla dodavatele včetně čísla popisného, PSČ a města. 
+                            Např.: <em>"Jankovcova 1522/53, 170 00 Praha 7"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>IČO</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Identifikační číslo organizace - 8 číslic. 
+                            Např.: <em>"27082440"</em>. Při zadání IČO můžete kliknout na ikonu lupy pro automatické vyhledání v ARES.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DIČ</strong></td>
+                            <td><span class="badge waiting">Volitelné</span></td>
+                            <td>Daňové identifikační číslo. Pro české firmy obvykle ve formátu CZ + IČO. 
+                            Např.: <em>"CZ27082440"</em>. Automaticky se doplní z ARESu.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="section">
+                <h2>👤 Kontaktní osoba u dodavatele</h2>
+                <p>Zadejte kontakt na konkrétní osobu u dodavatele, která bude vyřizovat vaši objednávku. 
+                Tyto údaje jsou důležité pro komunikaci ohledně dodání, fakturace a případných dotazů.</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Pole</th>
+                            <th style="width: 15%;">Povinnost</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Jméno a příjmení</strong></td>
+                            <td><span class="badge waiting">Doporučené</span></td>
+                            <td>Celé jméno kontaktní osoby u dodavatele. 
+                            Např.: <em>"Jan Novák"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>E-mail</strong></td>
+                            <td><span class="badge waiting">Doporučené</span></td>
+                            <td>E-mailová adresa kontaktní osoby. Na tento e-mail může být odeslána objednávka. 
+                            Např.: <em>"jan.novak@firma.cz"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Telefon</strong></td>
+                            <td><span class="badge waiting">Doporučené</span></td>
+                            <td>Telefonní číslo včetně předvolby. 
+                            Např.: <em>"+420 123 456 789"</em></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Poznámka:</strong> I když tato pole nejsou striktně povinná, jejich vyplnění výrazně usnadní komunikaci 
+                    s dodavatelem a urychlí vyřízení objednávky.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>� Položky objednávky</h2>
+                <p>Zde zadáváte konkrétní položky, které objednáváte. Můžete přidat jednu nebo více položek podle potřeby. 
+                Každá položka obsahuje popis zboží/služby a cenové údaje. Systém automaticky počítá celkovou cenu objednávky.</p>
+                
+                <h3 style="margin-top: 2rem; color: #495057;">➕ Přidání položky</h3>
+                <p>Kliknutím na tlačítko <strong>"+ Přidat položku"</strong> vytvoříte nový řádek pro zadání položky. 
+                Můžete přidat libovolný počet položek.</p>
+                
+                <div class="tip-box">
+                    <strong>💡 Tip:</strong> Pro přehlednost zadávejte každou odlišnou položku na samostatný řádek. 
+                    Např. pokud objednáváte 3 notebooky a 2 tiskárny, vytvořte dvě položky.
+                </div>
+                
+                <h3 style="margin-top: 2rem; color: #495057;">📋 Pole položky objednávky</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Pole</th>
+                            <th style="width: 15%;">Povinnost</th>
+                            <th>Popis a příklad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Popis položky</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Detailní popis objednávané položky včetně specifikace, typu, modelu apod. 
+                            Např.: <em>"Notebook Lenovo ThinkPad L15, 15.6", i5-1135G7, 8GB RAM, 256GB SSD"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Množství</strong></td>
+                            <td><span class="badge waiting">Volitelné</span></td>
+                            <td>Počet kusů dané položky. Např.: <em>"2"</em>, <em>"5"</em>, <em>"10"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Jednotka</strong></td>
+                            <td><span class="badge waiting">Volitelné</span></td>
+                            <td>Měrná jednotka (ks, balení, hodina, m², atd.). Např.: <em>"ks"</em>, <em>"balení"</em>, <em>"hod"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cena bez DPH</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Cena jedné položky (nebo celková za uvedené množství) bez daně v Kč. 
+                            Např.: <em>"8264.46"</em> pro cenu 10 000 Kč s DPH 21%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sazba DPH</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Výběr ze seznamu sazeb DPH:
+                                <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                    <li><strong>21%</strong> - standardní sazba (většina zboží a služeb)</li>
+                                    <li><strong>12%</strong> - snížená sazba (potraviny, léky, knihy)</li>
+                                    <li><strong>0%</strong> - osvobozené od DPH</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cena s DPH</strong></td>
+                            <td><em>Automatický výpočet</em></td>
+                            <td>Systém automaticky vypočítá cenu včetně DPH na základě ceny bez DPH a zvolené sazby DPH. 
+                            Můžete také zadat cenu s DPH a systém dopočítá cenu bez DPH.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3 style="margin-top: 2rem; color: #495057;">🧮 Automatické výpočty</h3>
+                <p>Systém provádí následující automatické výpočty v reálném čase:</p>
+                
+                <div class="option-card">
+                    <h4>1️⃣ Výpočet ceny s DPH z ceny bez DPH</h4>
+                    <p>Když zadáte <strong>cenu bez DPH</strong> a <strong>sazbu DPH</strong>, systém automaticky vypočítá cenu s DPH:</p>
+                    <p style="background: #f8f9fa; padding: 1rem; border-radius: 5px; font-family: monospace; margin: 0.5rem 0;">
+                        Cena s DPH = Cena bez DPH × (1 + Sazba DPH / 100)
+                    </p>
+                    <p><strong>Příklad:</strong> Cena bez DPH: 8 264,46 Kč, DPH: 21% → Cena s DPH: 10 000 Kč</p>
+                </div>
+                
+                <div class="option-card">
+                    <h4>2️⃣ Výpočet ceny bez DPH z ceny s DPH</h4>
+                    <p>Když zadáte <strong>cenu s DPH</strong> a <strong>sazbu DPH</strong>, systém automaticky vypočítá cenu bez DPH:</p>
+                    <p style="background: #f8f9fa; padding: 1rem; border-radius: 5px; font-family: monospace; margin: 0.5rem 0;">
+                        Cena bez DPH = Cena s DPH / (1 + Sazba DPH / 100)
+                    </p>
+                    <p><strong>Příklad:</strong> Cena s DPH: 10 000 Kč, DPH: 21% → Cena bez DPH: 8 264,46 Kč</p>
+                </div>
+                
+                <div class="option-card">
+                    <h4>3️⃣ Součet všech položek</h4>
+                    <p>Systém automaticky sčítá všechny položky a zobrazuje:</p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li><strong>Celková cena bez DPH</strong> - součet cen bez DPH všech položek</li>
+                        <li><strong>Celková výše DPH</strong> - součet DPH ze všech položek</li>
+                        <li><strong>Celková cena s DPH</strong> - konečná cena objednávky</li>
+                    </ul>
+                </div>
+                
+                <div class="warning-box">
+                    <strong>⚠️ Kontrola maximální ceny:</strong> Systém průběžně kontroluje, zda součet položek nepřekračuje 
+                    <strong>maximální cenu s DPH</strong> zadanou na začátku objednávky (Fáze 1). Pokud dojde k překročení, 
+                    zobrazí se výrazné upozornění červenou barvou.
+                </div>
+                
+                <h3 style="margin-top: 2rem; color: #495057;">🗑️ Úprava a mazání položek</h3>
+                <ul style="margin: 1rem 0 1rem 2rem; line-height: 2;">
+                    <li><strong>Úprava položky:</strong> Klikněte do libovolného pole položky a upravte údaje. Výpočty se aktualizují automaticky.</li>
+                    <li><strong>Smazání položky:</strong> Klikněte na ikonu koše (🗑️) na konci řádku položky. Minimálně jedna položka musí zůstat.</li>
+                    <li><strong>Změna pořadí:</strong> Položky se zobrazují v pořadí, v jakém byly přidány.</li>
+                </ul>
+                
+                <div class="success-box">
+                    <strong>✅ Doporučený postup:</strong>
+                    <ol style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Přidejte všechny položky, které objednáváte</li>
+                        <li>U každé položky vyplňte popis a cenu (buď s DPH nebo bez DPH)</li>
+                        <li>Zkontrolujte, že celková suma odpovídá cenové nabídce</li>
+                        <li>Ověřte, že nepřekračujete maximální cenu z Fáze 1</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>� Druh objednávky</h2>
+                <p>Klasifikace objednávky podle typu objednávaného zboží nebo služby:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Pole</th>
+                            <th style="width: 15%;">Povinnost</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Druh objednávky</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Výběr typu objednávky ze seznamu: 
+                                <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                    <li><strong>Materiál</strong> - hmotné věci, vybavení, spotřební materiál</li>
+                                    <li><strong>Služby</strong> - servis, poradenství, školení, údržba</li>
+                                    <li><strong>Opravy</strong> - opravy a údržba stávajícího majetku</li>
+                                    <li><strong>Software</strong> - licences programů, aplikace</li>
+                                    <li><strong>Ostatní</strong> - jiné typy objednávek</li>
+                                </ul>
+                                Slouží pro správnou kategorizaci a evidenci objednávek.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="info-box">
+                    <strong>ℹ️ Poznámka k ceně:</strong> Celková cena objednávky je automaticky vypočítána jako součet 
+                    všech položek (viz sekce Položky objednávky výše). Systém zobrazuje jak celkovou cenu bez DPH, 
+                    tak celkovou cenu včetně DPH.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📦 Dodací podmínky</h2>
+                <p>Specifikujte podmínky dodání zboží nebo poskytnutí služby. Tyto údaje jsou důležité pro kontrolu plnění objednávky.</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Pole</th>
+                            <th style="width: 15%;">Povinnost</th>
+                            <th>Popis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Místo dodání</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Přesná adresa nebo označení místa, kam má být zboží dodáno. 
+                            Např.: <em>"Sklad ZZS - Budova A, Hlavní 123, Praha 6"</em> nebo <em>"Stanice Kladno"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Termín dodání</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Datum, do kdy má být objednávka splněna. Vyberte z kalendáře nebo zadejte ručně ve formátu DD.MM.RRRR.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Záruční doba</strong></td>
+                            <td><span class="badge waiting">Volitelné</span></td>
+                            <td>Délka záruky v měsících nebo popis záruční doby. 
+                            Např.: <em>"24 měsíců"</em> nebo <em>"Dle zákonné záruky"</em></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Způsob odeslání objednávky</strong></td>
+                            <td><span class="badge approved">Povinné</span></td>
+                            <td>Jak bude objednávka doručena dodavateli. Výběr ze seznamu:
+                                <ul style="margin: 0.5rem 0 0 1.5rem;">
+                                    <li><strong>E-mail</strong> - odeslání e-mailem přímo z systému</li>
+                                    <li><strong>Ručně</strong> - osobní předání nebo vlastní způsob odeslání</li>
+                                    <li><strong>Pošta</strong> - zaslání poštou (doporučený dopis)</li>
+                                    <li><strong>Datová schránka</strong> - oficiální elektronická cesta</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="tip-box">
+                    <strong>💡 Tip k termínu dodání:</strong> Vždy si ověřte dodací lhůtu u dodavatele před zadáním termínu. 
+                    Nereálně krátký termín může způsobit zbytečné komplikace.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>✅ Kontrola před uložením</h2>
+                <p>Před uložením detailů objednávky zkontrolujte:</p>
+                
+                <ol class="step-list">
+                    <li><strong>Dodavatel</strong> - Jsou všechny identifikační údaje správné? (název, IČO, adresa)</li>
+                    <li><strong>Kontakty</strong> - Je zadán správný kontakt na osobu u dodavatele?</li>
+                    <li><strong>Cena</strong> - Odpovídá cena bez DPH cenové nabídce? Je správně vybrána sazba DPH?</li>
+                    <li><strong>Dodání</strong> - Je místo dodání přesně specifikováno? Je termín dodání reálný?</li>
+                    <li><strong>Způsob odeslání</strong> - Je zvolen správný způsob komunikace s dodavatelem?</li>
+                </ol>
+                
+                <div class="success-box">
+                    <strong>✅ Po uložení:</strong> Objednávka postoupí do další fáze workflow, kde může být odeslána dodavateli 
+                    ke schválení a následnému plnění.
+                </div>
+            </div>
+            <div class="section">
+                <h2>�� Sekce Dodavatel</h2>
+                <p>Vyplňte kompletní údaje dodavatele včetně IČO, názvu, adresy. Systém může automaticky doplnit údaje z registru ARES.</p>
+            </div>
+            <div class="section">
+                <h2>👤 Kontaktní osoba</h2>
+                <p>Jméno, email a telefon kontaktní osoby u dodavatele.</p>
+            </div>
+            <div class="section">
+                <h2>📦 Dodací podmínky</h2>
+                <p>Místo dodání, termín, záruka, způsob odeslání objednávky dodavateli.</p>
+            </div>
+            <div class="navigation">
+                <a href="02-schvaleni-objednavky.html" class="nav-button">← Předchozí</a>
+                <a href="04-potvrzeni-dodavatelem.html" class="nav-button">Další →</a>
+            </div>
+        </div>
+        <footer>📅 Aktualizováno: 17. listopadu 2025 | Kapitola 3/9</footer>
+    </div>
+</body>
+</html>

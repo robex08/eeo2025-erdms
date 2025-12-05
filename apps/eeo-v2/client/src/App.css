@@ -1,29 +1,160 @@
+/* Resetování stylů */
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
+/* Zrušení všech focus outlines pro input elementy */
+input,
+input:focus,
+input:active,
+input:hover,
+input[type="text"],
+input[type="text"]:focus,
+input[type="text"]:active,
+input[type="text"]:hover,
+textarea,
+textarea:focus,
+textarea:active,
+textarea:hover,
+select,
+select:focus,
+select:active,
+select:hover {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #d6d6d6 !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  -webkit-box-shadow: none !important;
+  -moz-box-shadow: none !important;
+}
+
+/* Speciálně pro vyhledávací pole v tabulce */
+table input,
+table input:focus,
+table input:active,
+table input:hover,
+thead input,
+thead input:focus,
+thead input:active,
+thead input:hover {
+  outline: 0 !important;
+  outline-width: 0 !important;
+  outline-style: none !important;
+  outline-color: transparent !important;
+  box-shadow: 0 0 0 0 transparent !important;
+  border: 1px solid #d6d6d6 !important;
+  background: #fff !important;
+}
+
+/* MUI override - zrušení focus efektů */
+.MuiInputBase-root,
+.MuiInputBase-root:focus,
+.MuiInputBase-root:hover,
+.MuiInput-root,
+.MuiInput-root:focus,
+.MuiInput-root:hover,
+.MuiOutlinedInput-root,
+.MuiOutlinedInput-root:focus,
+.MuiOutlinedInput-root:hover,
+.MuiTextField-root input,
+.MuiTextField-root input:focus,
+.MuiTextField-root input:hover {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #d6d6d6 !important;
+}
+
+/* Brutální override pro všechno */
+* {
+  outline: none !important;
+}
+
+*:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Základní typografie */
 body {
+  font-family: var(--app-font-family, Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Inter', 'Helvetica Neue', Arial, sans-serif);
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+body, html {
+  height: 100%; /* Zajištění, že stránka zabírá celou výšku */
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* overflow: hidden; */
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
 
-#root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  min-width: 100%;
-}
-
+/* Globální layout styly */
 .App {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  width: 100%;
 }
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: var(--app-primary);
+  color: white;
+}
+
+.user-info {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.logout-button {
+  background-color: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background-color: #e60000;
+}
+
+/* Extra silná pravidla pro všechny možné vyhledávací pole */
+input[placeholder*="hledat" i],
+input[placeholder*="search" i],
+input[class*="search" i],
+input[id*="search" i],
+div[class*="search" i] input,
+div[class*="SearchBox" i] input,
+.search-input,
+.filter-input {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 1px solid #d1d5db !important;
+  -webkit-box-shadow: none !important;
+  -moz-box-shadow: none !important;
+}
+
+input[placeholder*="hledat" i]:focus,
+input[placeholder*="search" i]:focus,
+input[class*="search" i]:focus,
+input[id*="search" i]:focus,
+div[class*="search" i] input:focus,
+div[class*="SearchBox" i] input:focus,
+.search-input:focus,
+.filter-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 1px solid #d1d5db !important;
+  -webkit-box-shadow: none !important;
+  -moz-box-shadow: none !important;
+}
+
+

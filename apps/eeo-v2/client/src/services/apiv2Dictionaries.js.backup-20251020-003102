@@ -1,0 +1,786 @@
+/**
+ * API služby pro číselníky a šablony
+ * Kompletní CRUD operace pro všechny číselníky systému
+ * 
+ * @author Frontend Team
+ * @date 2025-10-19
+ * @version 1.0
+ */
+
+import axios from 'axios';
+
+// Base URL pro číselníky API - načtení z .env
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+
+// Axios instance pro číselníky (POST with token in body)
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Axios instance pro DOCX API (GET/POST/PUT/DELETE with query params)
+const docxApi = axios.create({
+  baseURL: `${API_BASE_URL}api.php`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// =============================================================================
+// ERROR HANDLING
+// =============================================================================
+
+const handleApiError = (error, defaultMessage = 'Chyba serveru. Zkuste to prosím později.') => {
+  if (error.response) {
+    const { status, data } = error.response;
+    
+    // Číselníky používají "message", DOCX používá "error"
+    const errorMessage = data?.message || data?.error || defaultMessage;
+    
+    switch (status) {
+      case 401:
+        throw new Error('Neplatný nebo chybějící token. Prosím přihlaste se znovu.');
+      case 403:
+        throw new Error('Nemáte oprávnění k této akci.');
+      case 404:
+        throw new Error('Záznam nebyl nalezen.');
+      case 400:
+        throw new Error(errorMessage);
+      default:
+        throw new Error(errorMessage);
+    }
+  } else if (error.request) {
+    throw new Error('Server neodpovídá. Zkontrolujte připojení.');
+  } else {
+    throw new Error(error.message || defaultMessage);
+  }
+};
+
+// =============================================================================
+// 1. LOKALITY (Pobočky)
+// =============================================================================
+
+export async function getLokalityList({ token, username }) {
+  try {
+    const response = await api.post('/lokality/list', { token, username });
+    console.log('getLokalityList response:', response.data);
+    
+    // Flexibilní parsing odpovědi
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    console.error('getLokalityList error:', error.response?.data || error.message);
+    handleApiError(error, 'Chyba při načítání lokalit');
+    throw error;
+  }
+}
+
+export async function getLokalitaDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/lokality/detail', { token, username, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu lokality');
+    throw error;
+  }
+}
+
+export async function createLokalita({ token, username, nazev, typ, parent_id, aktivni = 1 }) {
+  try {
+    const response = await api.post('/lokality/create', {
+      token,
+      username,
+      nazev,
+      typ,
+      parent_id,
+      aktivni,
+    });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření lokality');
+  }
+}
+
+export async function updateLokalita({ token, username, id, nazev, typ, parent_id, aktivni }) {
+  try {
+    const payload = { token, username, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (typ !== undefined) payload.typ = typ;
+    if (parent_id !== undefined) payload.parent_id = parent_id;
+    if (aktivni !== undefined) payload.aktivni = aktivni;
+    
+    const response = await api.post('/lokality/update', payload);
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci lokality');
+    throw error;
+  }
+}
+
+export async function deleteLokalita({ token, username, id }) {
+  try {
+    const response = await api.post('/lokality/delete', { token, username, id });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání lokality');
+    throw error;
+  }
+}
+
+// =============================================================================
+// 2. POZICE (Pracovní pozice)
+// =============================================================================
+
+export async function getPoziceList({ token, username }) {
+  try {
+    const response = await api.post('/pozice/list', { token, username });
+    let items = [];
+    
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      items = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      items = response.data;
+    } else {
+      throw new Error('Invalid response format');
+    }
+    
+    // Mapování nazev_pozice -> nazev pro konzistenci s UI
+    return items.map(item => ({
+      ...item,
+      nazev: item.nazev_pozice || item.nazev
+    }));
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání pozic');
+    throw error;
+  }
+}
+
+export async function getPoziceDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/pozice/detail', { token, username, id });
+    let item = null;
+    
+    if (response.data?.status === 'ok' && response.data?.data) {
+      item = response.data.data;
+    } else {
+      throw new Error('Invalid response format');
+    }
+    
+    // Mapování nazev_pozice -> nazev
+    return {
+      ...item,
+      nazev: item.nazev_pozice || item.nazev
+    };
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu pozice');
+    throw error;
+  }
+}
+
+export async function createPozice({ token, username, nazev, parent_id, aktivni = 1 }) {
+  try {
+    const response = await api.post('/pozice/create', {
+      token,
+      username,
+      nazev_pozice: nazev, // Mapování nazev -> nazev_pozice pro backend
+      parent_id,
+      aktivni,
+    });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření pozice');
+    throw error;
+  }
+}
+
+export async function updatePozice({ token, username, id, nazev, parent_id, aktivni }) {
+  try {
+    const payload = { token, username, id };
+    if (nazev !== undefined) payload.nazev_pozice = nazev; // Mapování nazev -> nazev_pozice
+    if (parent_id !== undefined) payload.parent_id = parent_id;
+    if (aktivni !== undefined) payload.aktivni = aktivni;
+    
+    const response = await api.post('/pozice/update', payload);
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci pozice');
+  }
+}
+
+export async function deletePozice({ token, username, id }) {
+  try {
+    const response = await api.post('/pozice/delete', { token, username, id });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání pozice');
+  }
+}
+
+// =============================================================================
+// 3. ÚSEKY (Organizační útvary)
+// =============================================================================
+
+export async function getUsekyList({ token, username }) {
+  try {
+    const response = await api.post('/useky/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání úseků');
+  }
+}
+
+export async function getUsekyHierarchy({ token, username }) {
+  try {
+    const response = await api.post('/useky/list_hierarchy', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání hierarchie úseků');
+  }
+}
+
+export async function getUsekDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/useky/detail', { token, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu úseku');
+  }
+}
+
+export async function createUsek({ token, username, nazev, zkratka, parent_id, aktivni = 1 }) {
+  try {
+    const response = await api.post('/useky/create', {
+      token,
+      nazev,
+      zkratka,
+      parent_id,
+      aktivni,
+    });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření úseku');
+  }
+}
+
+export async function updateUsek({ token, username, id, nazev, zkratka, parent_id, aktivni }) {
+  try {
+    const payload = { token, username, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (zkratka !== undefined) payload.zkratka = zkratka;
+    if (parent_id !== undefined) payload.parent_id = parent_id;
+    if (aktivni !== undefined) payload.aktivni = aktivni;
+    
+    const response = await api.post('/useky/update', payload);
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci úseku');
+  }
+}
+
+export async function deleteUsek({ token, username, id }) {
+  try {
+    const response = await api.post('/useky/delete', { token, id });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání úseku');
+  }
+}
+
+// =============================================================================
+// 4. ORGANIZACE (Vizitka organizace)
+// =============================================================================
+
+export async function getOrganizaceList({ token, username }) {
+  try {
+    const response = await api.post('/organizace/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání organizací');
+  }
+}
+
+export async function getOrganizaceDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/organizace/detail', { token, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu organizace');
+  }
+}
+
+export async function createOrganizace({ token, username, nazev, ico, dic, ulice, mesto, psc, telefon, email, web }) {
+  try {
+    const response = await api.post('/organizace/create', {
+      token,
+      nazev,
+      ico,
+      dic,
+      ulice,
+      mesto,
+      psc,
+      telefon,
+      email,
+      web,
+    });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření organizace');
+  }
+}
+
+export async function updateOrganizace({ token, username, id, nazev, ico, dic, ulice, mesto, psc, telefon, email, web }) {
+  try {
+    const payload = { token, username, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (ico !== undefined) payload.ico = ico;
+    if (dic !== undefined) payload.dic = dic;
+    if (ulice !== undefined) payload.ulice = ulice;
+    if (mesto !== undefined) payload.mesto = mesto;
+    if (psc !== undefined) payload.psc = psc;
+    if (telefon !== undefined) payload.telefon = telefon;
+    if (email !== undefined) payload.email = email;
+    if (web !== undefined) payload.web = web;
+    
+    const response = await api.post('/organizace/update', payload);
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci organizace');
+  }
+}
+
+export async function deleteOrganizace({ token, username, id }) {
+  try {
+    const response = await api.post('/organizace/delete', { token, id });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání organizace');
+  }
+}
+
+// =============================================================================
+// 5. DODAVATELÉ
+// =============================================================================
+
+export async function getDodavateleList({ token, username }) {
+  try {
+    const response = await api.post('/dodavatele/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání dodavatelů');
+  }
+}
+
+export async function getDodavatelDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/dodavatele/detail', { token, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu dodavatele');
+  }
+}
+
+export async function createDodavatel({ token, username, nazev, ico, dic, adresa, kontakt_osoba, kontakt_email, kontakt_telefon }) {
+  try {
+    const response = await api.post('/dodavatele/create', {
+      token,
+      nazev,
+      ico,
+      dic,
+      adresa,
+      kontakt_osoba,
+      kontakt_email,
+      kontakt_telefon,
+    });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření dodavatele');
+  }
+}
+
+export async function updateDodavatel({ token, username, id, nazev, ico, dic, adresa, kontakt_osoba, kontakt_email, kontakt_telefon }) {
+  try {
+    const payload = { token, username, id };
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (ico !== undefined) payload.ico = ico;
+    if (dic !== undefined) payload.dic = dic;
+    if (adresa !== undefined) payload.adresa = adresa;
+    if (kontakt_osoba !== undefined) payload.kontakt_osoba = kontakt_osoba;
+    if (kontakt_email !== undefined) payload.kontakt_email = kontakt_email;
+    if (kontakt_telefon !== undefined) payload.kontakt_telefon = kontakt_telefon;
+    
+    const response = await api.post('/dodavatele/update', payload);
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci dodavatele');
+  }
+}
+
+export async function deleteDodavatel({ token, username, id }) {
+  try {
+    const response = await api.post('/dodavatele/delete', { token, id });
+    if (response.data?.status === 'ok') {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání dodavatele');
+  }
+}
+
+// =============================================================================
+// 6. STAVY (Read-only)
+// =============================================================================
+
+export async function getStavyList({ token, username }) {
+  try {
+    const response = await api.post('/stavy/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání stavů');
+  }
+}
+
+// =============================================================================
+// 7. ROLE (Read-only)
+// =============================================================================
+
+export async function getRoleList({ token, username }) {
+  try {
+    const response = await api.post('/role/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání rolí');
+  }
+}
+
+export async function getRoleDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/role/detail', { token, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu role');
+  }
+}
+
+// =============================================================================
+// 8. PRÁVA (Read-only)
+// =============================================================================
+
+export async function getPravaList({ token, username }) {
+  try {
+    const response = await api.post('/prava/list', { token, username });
+    if (response.data?.status === 'ok' && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání práv');
+  }
+}
+
+export async function getPravoDetail({ token, username, id }) {
+  try {
+    const response = await api.post('/prava/detail', { token, id });
+    if (response.data?.status === 'ok' && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu práva');
+  }
+}
+
+// =============================================================================
+// 9. DOCX ŠABLONY
+// =============================================================================
+
+export async function getDocxSablonyList({ aktivni, typ_dokumentu, pouze_platne, search } = {}) {
+  try {
+    const params = new URLSearchParams({ action: 'sablona_docx_list' });
+    if (aktivni !== undefined) params.append('aktivni', aktivni);
+    if (typ_dokumentu) params.append('typ_dokumentu', typ_dokumentu);
+    if (pouze_platne !== undefined) params.append('pouze_platne', pouze_platne);
+    if (search) params.append('search', search);
+    
+    const response = await docxApi.get(`?${params.toString()}`);
+    if (response.data?.success && Array.isArray(response.data?.data)) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání DOCX šablon');
+  }
+}
+
+export async function getDocxSablonaDetail({ id }) {
+  try {
+    const response = await docxApi.get('', {
+      params: { action: 'sablona_docx_by_id', id }
+    });
+    if (response.data?.success && response.data?.data) {
+      return response.data.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při načítání detailu DOCX šablony');
+  }
+}
+
+export async function createDocxSablona({ file, nazev, popis, typ_dokumentu, mapovani_json, platnost_od, platnost_do, aktivni, usek_omezeni, verze, poznamka }) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nazev', nazev);
+    
+    if (popis) formData.append('popis', popis);
+    if (typ_dokumentu) formData.append('typ_dokumentu', typ_dokumentu);
+    if (mapovani_json) formData.append('mapovani_json', JSON.stringify(mapovani_json));
+    if (usek_omezeni) formData.append('usek_omezeni', JSON.stringify(usek_omezeni));
+    if (platnost_od) formData.append('platnost_od', platnost_od);
+    if (platnost_do) formData.append('platnost_do', platnost_do);
+    if (verze) formData.append('verze', verze);
+    if (poznamka) formData.append('poznamka', poznamka);
+    if (aktivni !== undefined) formData.append('aktivni', String(aktivni));
+    
+    const response = await docxApi.post('?action=sablona_docx_create', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    
+    if (response.data?.success) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při vytváření DOCX šablony');
+  }
+}
+
+export async function updateDocxSablona({ id, nazev, popis, typ_dokumentu, mapovani_json, platnost_od, platnost_do, aktivni, usek_omezeni, verze, poznamka }) {
+  try {
+    const payload = {};
+    if (nazev !== undefined) payload.nazev = nazev;
+    if (popis !== undefined) payload.popis = popis;
+    if (typ_dokumentu !== undefined) payload.typ_dokumentu = typ_dokumentu;
+    if (mapovani_json !== undefined) payload.mapovani_json = mapovani_json;
+    if (platnost_od !== undefined) payload.platnost_od = platnost_od;
+    if (platnost_do !== undefined) payload.platnost_do = platnost_do;
+    if (aktivni !== undefined) payload.aktivni = aktivni;
+    if (usek_omezeni !== undefined) payload.usek_omezeni = usek_omezeni;
+    if (verze !== undefined) payload.verze = verze;
+    if (poznamka !== undefined) payload.poznamka = poznamka;
+    
+    const response = await docxApi.put(`?action=sablona_docx_update&id=${id}`, payload);
+    if (response.data?.success) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při aktualizaci DOCX šablony');
+  }
+}
+
+export async function patchDocxSablona({ id, ...data }) {
+  try {
+    const response = await docxApi.patch(`?action=sablona_docx_update_partial&id=${id}`, data);
+    if (response.data?.success) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při částečné aktualizaci DOCX šablony');
+  }
+}
+
+export async function deleteDocxSablona({ id }) {
+  try {
+    const response = await docxApi.delete(`?action=sablona_docx_delete&id=${id}`);
+    if (response.data?.success) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při mazání DOCX šablony');
+  }
+}
+
+export async function deactivateDocxSablona({ id }) {
+  try {
+    const response = await docxApi.post(`?action=sablona_docx_deactivate&id=${id}`);
+    if (response.data?.success) {
+      return response.data;
+    }
+    throw new Error('Invalid response format');
+  } catch (error) {
+    handleApiError(error, 'Chyba při deaktivaci DOCX šablony');
+  }
+}
+
+export async function downloadDocxSablona({ id, nazev_souboru }) {
+  try {
+    const url = `${API_BASE_URL}/api.php?action=sablona_docx_download&id=${id}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error('Chyba při stahování souboru');
+    }
+    
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = nazev_souboru || `sablona_${id}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+    
+    return { success: true };
+  } catch (error) {
+    handleApiError(error, 'Chyba při stahování DOCX šablony');
+  }
+}
+
+// =============================================================================
+// EXPORT ALL
+// =============================================================================
+
+export default {
+  // Lokality
+  getLokalityList,
+  getLokalitaDetail,
+  createLokalita,
+  updateLokalita,
+  deleteLokalita,
+  
+  // Pozice
+  getPoziceList,
+  getPoziceDetail,
+  createPozice,
+  updatePozice,
+  deletePozice,
+  
+  // Úseky
+  getUsekyList,
+  getUsekyHierarchy,
+  getUsekDetail,
+  createUsek,
+  updateUsek,
+  deleteUsek,
+  
+  // Organizace
+  getOrganizaceList,
+  getOrganizaceDetail,
+  createOrganizace,
+  updateOrganizace,
+  deleteOrganizace,
+  
+  // Dodavatelé
+  getDodavateleList,
+  getDodavatelDetail,
+  createDodavatel,
+  updateDodavatel,
+  deleteDodavatel,
+  
+  // Stavy (read-only)
+  getStavyList,
+  
+  // Role (read-only)
+  getRoleList,
+  getRoleDetail,
+  
+  // Práva (read-only)
+  getPravaList,
+  getPravoDetail,
+  
+  // DOCX Šablony
+  getDocxSablonyList,
+  getDocxSablonaDetail,
+  createDocxSablona,
+  updateDocxSablona,
+  patchDocxSablona,
+  deleteDocxSablona,
+  deactivateDocxSablona,
+  downloadDocxSablona,
+};

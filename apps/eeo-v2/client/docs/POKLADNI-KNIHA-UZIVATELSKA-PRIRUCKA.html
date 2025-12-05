@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokladní kniha - Uživatelská příručka</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        h2 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        h3 {
+            color: #764ba2;
+            font-size: 1.4em;
+            margin: 20px 0 10px 0;
+        }
+        
+        .icon {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+        
+        ul {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        .feature-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .feature-box h3 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .steps {
+            counter-reset: step-counter;
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 50px;
+            margin-bottom: 25px;
+        }
+        
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .warning-box h3 {
+            color: #856404;
+            margin-top: 0;
+        }
+        
+        .faq {
+            background: #e3f2fd;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .faq strong {
+            color: #1976d2;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            color: #666;
+            font-size: 1.2em;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-right: 5px;
+        }
+        
+        .badge-green {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-red {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-blue {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .badge-purple {
+            background: #e2d9f3;
+            color: #5a3a7d;
+        }
+        
+        .screenshot {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid #e0e0e0;
+        }
+        
+        .screenshot-placeholder {
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            border: 2px dashed #999;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #666;
+            margin: 20px 0;
+            font-size: 1.1em;
+        }
+        
+        .screenshot-placeholder::before {
+            content: "📷";
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .screenshot-caption {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-top: 10px;
+            font-size: 0.95em;
+        }
+        
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📖 Pokladní kniha</h1>
+            <div class="subtitle">Uživatelská příručka</div>
+        </div>
+        
+        <div class="content">
+            <!-- Úvod -->
+            <div class="section">
+                <h2><span class="icon">🎯</span>Co to je?</h2>
+                <p>
+                    <strong>Pokladní kniha</strong> je nástroj pro evidenci peněžních příjmů a výdajů ve vaší pokladně. 
+                    Každý měsíc má vlastní knihu, která obsahuje všechny transakce s přehledným zobrazením zůstatku.
+                </p>
+            </div>
+
+            <!-- Základní funkce -->
+            <div class="section">
+                <h2><span class="icon">📋</span>Základní funkce</h2>
+                
+                <!-- Screenshot placeholder 1 - Hlavní obrazovka -->
+                <div class="screenshot-placeholder">
+                    Zde bude screenshot hlavní obrazovky pokladní knihy
+                    <small style="margin-top: 10px; opacity: 0.7;">
+                        Nahraďte tímto kódem: &lt;img src="screenshots/hlavni-obrazovka.png" class="screenshot" alt="Hlavní obrazovka"&gt;
+                    </small>
+                </div>
+                <div class="screenshot-caption">Obrázek 1: Hlavní obrazovka pokladní knihy s přehledem záznamů</div>
+                
+                <div class="feature-box">
+                    <h3>✏️ Záznamy</h3>
+                    <ul>
+                        <li><strong>Přidat příjem/výdaj</strong> - zadáte datum, částku, osobu a účel</li>
+                        <li><strong>Automatické číslování dokladů</strong> - systém sám přiřadí číslo (např. V001, P001)</li>
+                        <li><strong>Průběžný zůstatek</strong> - po každé operaci vidíte aktuální stav</li>
+                        <li><strong>LP kódy</strong> - možnost přiřadit limitované přísliby</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h3>📅 Měsíční knihy</h3>
+                    <ul>
+                        <li>Každý měsíc = 1 kniha</li>
+                        <li><strong>Převod z minulého období</strong> - konečný zůstatek se automaticky přenese</li>
+                        <li><strong>Přehled všech knih</strong> - rychlý výběr měsíce/roku</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h3>🔒 Uzavírání</h3>
+                    <p>Dvoustupňový proces:</p>
+                    <ol>
+                        <li><strong>Vy uzavřete</strong> knihu na konci měsíce → nelze už editovat</li>
+                        <li><strong>Správce zamkne</strong> finálně → garantuje neměnnost</li>
+                    </ol>
+                    <p style="margin-top: 10px;"><em>Správce může knihu v případě potřeby znovu otevřít.</em></p>
+                </div>
+
+                <div class="feature-box">
+                    <h3>📤 Export</h3>
+                    <ul>
+                        <li><strong>PDF</strong> - pro tisk nebo archiv</li>
+                        <li><strong>Excel</strong> - pro další zpracování</li>
+                        <li>Obsahuje všechny záznamy + sumarizaci</li>
+                    </ul>
+                </div>
+
+                <div class="feature-box">
+                    <h3>👥 Více pokladen</h3>
+                    <ul>
+                        <li>Můžete mít přiřazeno <strong>více pokladen</strong> (např. pokladna 100, 101)</li>
+                        <li>Snadné <strong>přepínání mezi nimi</strong> v horním menu</li>
+                        <li>Podpora <strong>zástupů</strong> - kolega vidí vaši pokladnu, když vás zastupuje</li>
+                    </ul>
+                </div>
+                
+                <!-- Screenshot placeholder 2 - Výběr pokladny -->
+                <div class="screenshot-placeholder">
+                    Zde bude screenshot výběru pokladny v menu
+                    <small style="margin-top: 10px; opacity: 0.7;">
+                        Nahraďte tímto kódem: &lt;img src="screenshots/vyber-pokladny.png" class="screenshot" alt="Výběr pokladny"&gt;
+                    </small>
+                </div>
+                <div class="screenshot-caption">Obrázek 2: Dropdown menu pro výběr pokladny</div>
+            </div>
+
+            <!-- Oprávnění -->
+            <div class="section">
+                <h2><span class="icon">🔐</span>Oprávnění</h2>
+                <p>Co můžete dělat závisí na vašich právech:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Oprávnění</th>
+                            <th>Co můžete</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="badge badge-blue">READ</span></td>
+                            <td>Prohlížet záznamy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-green">EDIT</span></td>
+                            <td>Přidávat/upravovat záznamy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-red">DELETE</span></td>
+                            <td>Mazat záznamy</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">EXPORT</span></td>
+                            <td>Exportovat do PDF/Excel</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-purple">MANAGE</span></td>
+                            <td>Vše + zamykat knihy (správce)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <p style="margin-top: 15px;">Každé právo existuje pro:</p>
+                <ul>
+                    <li><code>_OWN</code> - pouze <strong>vaše</strong> knihy</li>
+                    <li><code>_ALL</code> - <strong>všechny</strong> knihy v systému</li>
+                </ul>
+            </div>
+
+            <!-- Návod k použití -->
+            <div class="section">
+                <h2><span class="icon">💡</span>Jak to používat?</h2>
+                <ol class="steps">
+                    <li><strong>Vyberte pokladnu</strong> (pokud máte více) v horním menu</li>
+                    <li><strong>Vyberte měsíc/rok</strong> - vytvoří se automaticky nová kniha</li>
+                    <li><strong>Přidávejte záznamy</strong> - příjmy zelené, výdaje červené</li>
+                    <li><strong>Sledujte zůstatek</strong> - vždy vidíte aktuální stav</li>
+                    <li><strong>Na konci měsíce uzavřete</strong> - tlačítko "Uzavřít knihu"</li>
+                </ol>
+                
+                <!-- Screenshot placeholder 3 - Přidání záznamu -->
+                <div class="screenshot-placeholder">
+                    Zde bude screenshot formuláře pro přidání záznamu
+                    <small style="margin-top: 10px; opacity: 0.7;">
+                        Nahraďte tímto kódem: &lt;img src="screenshots/pridani-zaznamu.png" class="screenshot" alt="Přidání záznamu"&gt;
+                    </small>
+                </div>
+                <div class="screenshot-caption">Obrázek 3: Formulář pro přidání nového příjmu nebo výdaje</div>
+                
+                <!-- Screenshot placeholder 4 - Uzavřená kniha -->
+                <div class="screenshot-placeholder">
+                    Zde bude screenshot uzavřené knihy se statusem
+                    <small style="margin-top: 10px; opacity: 0.7;">
+                        Nahraďte tímto kódem: &lt;img src="screenshots/uzavrena-kniha.png" class="screenshot" alt="Uzavřená kniha"&gt;
+                    </small>
+                </div>
+                <div class="screenshot-caption">Obrázek 4: Uzavřená pokladní kniha s barevným statusem</div>
+            </div>
+
+            <!-- Důležité -->
+            <div class="section">
+                <div class="warning-box">
+                    <h3>⚠️ Důležité</h3>
+                    <ul>
+                        <li><strong>Nelze upravovat uzavřené knihy</strong> - jen správce může znovu otevřít</li>
+                        <li><strong>Doklady se číslují za celý rok</strong> - ne jen za měsíc</li>
+                        <li><strong>Audit trail</strong> - každá změna je zaznamenána (kdo, kdy, co)</li>
+                        <li><strong>Bezpečnost dat</strong> - pravidelné zálohování, nic se nemazá</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div class="section">
+                <h2><span class="icon">🆘</span>Časté otázky</h2>
+                
+                <div class="faq">
+                    <strong>Q: Jak změním záznam?</strong>
+                    <p>A: Klikněte na řádek a upravte pole, Shift+Enter potvrdí.</p>
+                </div>
+                
+                <div class="faq">
+                    <strong>Q: Co když udělám chybu?</strong>
+                    <p>A: Pokud je kniha otevřená, můžete záznam upravit nebo smazat.</p>
+                </div>
+                
+                <div class="faq">
+                    <strong>Q: Kde vidím předchozí měsíce?</strong>
+                    <p>A: V menu výběru měsíce/roku - všechny knihy jsou archivované.</p>
+                </div>
+                
+                <div class="faq">
+                    <strong>Q: Jak se mění zůstatek?</strong>
+                    <p>A: Automaticky po každém příjmu (+) nebo výdaji (-).</p>
+                </div>
+                
+                <div class="faq">
+                    <strong>Q: Mohu mít více pokladen?</strong>
+                    <p>A: Ano, správce vám je přiřadí a můžete mezi nimi přepínat.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            🎉 Jednoduchý nástroj pro přehlednou evidenci pokladny
+            <div style="margin-top: 10px; font-size: 0.9em; color: #999;">
+                ZZS EEO - Evidence smluv | Verze 1.0 | Listopad 2025
+            </div>
+        </div>
+    </div>
+</body>
+</html>

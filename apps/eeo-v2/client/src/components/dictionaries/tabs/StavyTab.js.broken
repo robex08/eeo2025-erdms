@@ -1,0 +1,801 @@
+/**
+ * Stavy Tab - Zobrazení stavů objednávek (read-only)
+ * Implementováno podle design guidelines pro číselníky
+ * 
+ * @author Frontend Team
+ * @date 2025-10-23
+ */
+
+import React, { useState, useEffect, useContext, useMemo } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faSearch, faCircle, faCheckCircle, faTimesCircle,
+  faChevronUp, faChevronDown, faTimes, faEraser
+} from '@fortawesome/free-solid-svg-icons';
+import { AuthContext } from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
+import { getStavyList } from '../../../services/apiv2Dictionaries';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  flexRender,
+} from '@tanstack/react-table';
+
+// =============================================================================
+// STYLED COMPONENTS - podle design guidelines
+// =============================================================================
+
+const Container = styled.div`
+  padding: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #e5e7eb;
+`;
+
+const SearchBox = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 400px;
+  
+  input {
+    width: 100%;
+    padding: 0.625rem 0.75rem 0.625rem 2.5rem;
+    border: 2px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    &::placeholder {
+      color: #9ca3af;
+    }
+  }
+  
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: #6b7280;
+    pointer-events: none;
+    font-size: 0.875rem;
+  }
+`;
+
+const InfoBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 2px solid #93c5fd;
+  border-radius: 8px;
+  color: #1e40af;
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
+`;
+
+const ClearFiltersButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: white;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #f3f4f6;
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  svg {
+    font-size: 1rem;
+  }
+`;
+
+const TableContainer = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+`;
+
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+`;
+
+const TableHeaderRow = styled.tr`
+  background: linear-gradient(135deg, #1f2a57 0%, #6b7280 70%, #4b5563 100%);
+`;
+
+const TableHeaderCell = styled.th`
+  padding: 0.75rem 1rem;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-align: ${props => props.$align || 'left'};
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+`;
+
+const HeaderContent = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    opacity: 0.9;
+  }
+
+  svg {
+    font-size: 0.75rem;
+  }
+`;
+
+const FilterRow = styled.tr`
+  background: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+`;
+
+const FilterCell = styled.th`
+  padding: 0.5rem 1rem;
+  font-weight: normal;
+`;
+
+const ColumnFilterWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  
+  svg.search-icon {
+    position: absolute;
+    left: 0.5rem;
+    color: #9ca3af;
+    font-size: 0.75rem;
+    pointer-events: none;
+  }
+`;
+
+const ColumnFilterInput = styled.input`
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 2rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  background: white;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: white;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+    font-size: 0.75rem;
+  }
+`;
+
+const ColumnClearButton = styled.button`
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+
+  &:hover {
+    color: #ef4444;
+  }
+  
+  svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+`;
+
+const IconFilterButton = styled.button`
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: scale(1.15);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+const TableRow = styled.tr`
+  background: ${props => props.$isEven ? '#f8fafc' : 'white'};
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f1f5f9;
+  }
+`;
+
+const TableCell = styled.td`
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.875rem;
+  color: #374151;
+  vertical-align: middle;
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  
+  svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+  }
+  
+  h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    color: #374151;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+`;
+
+const LoadingState = styled.div`
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+`;
+
+// =============================================================================
+// HELPER FUNKCE
+// =============================================================================
+
+const getStorageKey = (username, key) => `ciselniky_stavy_${username}_${key}`;
+
+const loadFiltersFromStorage = (username) => {
+  try {
+    const saved = localStorage.getItem(getStorageKey(username, 'filters'));
+    return saved ? JSON.parse(saved) : {};
+  } catch (error) {
+    console.error('Chyba při načítání filtrů:', error);
+    return {};
+  }
+};
+
+const saveFiltersToStorage = (username, filters) => {
+  try {
+    localStorage.setItem(getStorageKey(username, 'filters'), JSON.stringify(filters));
+  } catch (error) {
+    console.error('Chyba při ukládání filtrů:', error);
+  }
+};
+
+// =============================================================================
+// KOMPONENTA
+// =============================================================================
+
+const StavyTab = () => {
+  const { token, username } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnFilters, setColumnFilters] = useState(() => loadFiltersFromStorage(username));
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const result = await getStavyList({ 
+        token, 
+        username,
+        zobrazit_neaktivni: false,
+        zobrazit_prosle: false,
+        typ_objektu: 'OBJEDNAVKA'
+      });
+      setData(result || []);
+    } catch (error) {
+      console.error('Chyba při načítání stavů:', error);
+      showToast?.('Chyba při načítání stavů', { type: 'error' });
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && username) {
+      fetchData();
+    }
+  }, [token, username]);
+
+  useEffect(() => {
+    if (username) {
+      saveFiltersToStorage(username, columnFilters);
+    }
+  }, [columnFilters, username]);
+
+  const handleClearFilters = () => {
+    setColumnFilters({});
+    setGlobalFilter('');
+  };
+
+  const hasActiveFilters = globalFilter || Object.keys(columnFilters).length > 0;
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: 'nazev_stavu',
+      header: () => <div style={{ textAlign: 'left' }}>Název stavu</div>,
+      cell: ({ getValue, row }) => (
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ fontWeight: '600' }}>
+            {getValue()}
+            {row.original.id && (
+              <sup style={{ 
+                fontSize: '0.65em', 
+                opacity: 0.6,
+                marginLeft: '0.25rem',
+                color: '#6b7280'
+              }}>
+                {row.original.id}
+              </sup>
+            )}
+          </div>
+        </div>
+      )
+    },
+    {
+      accessorKey: 'kod_stavu',
+      header: () => <div style={{ textAlign: 'center' }}>Kód</div>,
+      cell: ({ getValue }) => (
+        <div style={{ textAlign: 'center' }}>
+          <span style={{ 
+            fontFamily: 'monospace',
+            background: '#f3f4f6',
+            padding: '0.25rem 0.5rem',
+            borderRadius: '4px',
+            fontSize: '0.875rem',
+            fontWeight: '600'
+          }}>
+            {getValue() || '—'}
+          </span>
+        </div>
+      )
+    },
+    {
+      accessorKey: 'nadrazeny_kod_stavu',
+      header: () => <div style={{ textAlign: 'center' }}>Nadřazený</div>,
+      cell: ({ getValue }) => {
+        const value = getValue();
+        return (
+          <div style={{ textAlign: 'center' }}>
+            {value ? (
+              <span style={{ 
+                fontFamily: 'monospace',
+                background: '#e0e7ff',
+                color: '#4338ca',
+                padding: '0.25rem 0.5rem',
+                borderRadius: '4px',
+                fontSize: '0.875rem'
+              }}>
+                {value}
+              </span>
+            ) : (
+              <span style={{ color: '#9ca3af' }}>—</span>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      accessorKey: 'typ_objektu',
+      header: () => <div style={{ textAlign: 'center' }}>Typ objektu</div>,
+      cell: ({ getValue }) => (
+        <div style={{ textAlign: 'center' }}>
+          <span style={{ 
+            background: '#fef3c7',
+            color: '#92400e',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '12px',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            textTransform: 'uppercase'
+          }}>
+            {getValue() || 'N/A'}
+          </span>
+        </div>
+      )
+    },
+    {
+      accessorKey: 'popis',
+      header: () => <div style={{ textAlign: 'left' }}>Popis</div>,
+      cell: ({ getValue }) => (
+        <div style={{ 
+          textAlign: 'left',
+          fontSize: '0.875rem',
+          color: '#6b7280',
+          fontStyle: getValue() ? 'normal' : 'italic'
+        }}>
+          {getValue() || 'Bez popisu'}
+        </div>
+      )
+    },
+    {
+      accessorKey: 'platnost_do',
+      header: () => <div style={{ textAlign: 'center' }}>Platnost do</div>,
+      cell: ({ getValue }) => {
+        const value = getValue();
+        if (!value) return <div style={{ textAlign: 'center', color: '#9ca3af' }}>—</div>;
+        
+        try {
+          const date = new Date(value);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          const isValid = date > new Date();
+          
+          return (
+            <div style={{ 
+              textAlign: 'center',
+              fontSize: '0.875rem',
+              color: isValid ? '#059669' : '#dc2626',
+              fontWeight: isValid ? '600' : 'normal'
+            }}>
+              {`${day}.${month}.${year}`}
+            </div>
+          );
+        } catch (error) {
+          return <div style={{ textAlign: 'center', color: '#9ca3af' }}>—</div>;
+        }
+      }
+    },
+    {
+      accessorKey: 'aktivni',
+      header: () => <div style={{ textAlign: 'center' }}>Aktivní</div>,
+      cell: ({ getValue }) => (
+        <div style={{ 
+          textAlign: 'center',
+          display: 'flex',
+          justifyContent: 'center',
+          fontSize: '18px'
+        }}>
+          <FontAwesomeIcon 
+            icon={getValue() ? faCheckCircle : faTimesCircle} 
+            style={{ color: getValue() ? '#16a34a' : '#dc2626' }}
+            title={getValue() ? 'Aktivní' : 'Neaktivní'}
+          />
+        </div>
+      )
+    }
+  ], []);
+
+  const textColumnFilter = (row, columnId, filterValue) => {
+    if (!filterValue) return true;
+    const value = row.getValue(columnId);
+    return String(value || '').toLowerCase().includes(filterValue.toLowerCase());
+  };
+
+  const iconColumnFilter = (row, columnId, filterValue) => {
+    if (filterValue === 'all') return true;
+    const value = row.getValue(columnId);
+    if (filterValue === 'active') return Boolean(value);
+    if (filterValue === 'inactive') return !value;
+    return true;
+  };
+
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      globalFilter,
+      columnFilters: Object.entries(columnFilters).map(([id, value]) => ({ id, value }))
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: (updater) => {
+      const newFilters = typeof updater === 'function' 
+        ? updater(Object.entries(columnFilters).map(([id, value]) => ({ id, value })))
+        : updater;
+      
+      const filtersObj = {};
+      newFilters.forEach(filter => {
+        filtersObj[filter.id] = filter.value;
+      });
+      setColumnFilters(filtersObj);
+    },
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: 'includesString',
+    filterFns: {
+      text: textColumnFilter,
+      icon: iconColumnFilter
+    }
+  });
+
+  const handleColumnFilterChange = (columnId, value) => {
+    setColumnFilters(prev => {
+      if (!value) {
+        const newFilters = { ...prev };
+        delete newFilters[columnId];
+        return newFilters;
+      }
+      return { ...prev, [columnId]: value };
+    });
+  };
+
+  const handleIconFilterToggle = (columnId) => {
+    setColumnFilters(prev => {
+      const current = prev[columnId] || 'all';
+      let next;
+      
+      if (current === 'all') next = 'active';
+      else if (current === 'active') next = 'inactive';
+      else next = 'all';
+      
+      if (next === 'all') {
+        const newFilters = { ...prev };
+        delete newFilters[columnId];
+        return newFilters;
+      }
+      
+      return { ...prev, [columnId]: next };
+    });
+  };
+
+  const renderIconFilter = (columnId) => {
+    const filterValue = columnFilters[columnId] || 'all';
+    
+    if (filterValue === 'all') {
+      return (
+        <IconFilterButton
+          onClick={() => handleIconFilterToggle(columnId)}
+          title="Vše (klikněte pro filtr aktivních)"
+        >
+          <svg width="24" height="24" viewBox="0 0 512 512" style={{ display: 'block' }}>
+            <defs>
+              <clipPath id="clip-left-aktivni-stavy">
+                <rect x="0" y="0" width="256" height="512"/>
+              </clipPath>
+              <clipPath id="clip-right-aktivni-stavy">
+                <rect x="256" y="0" width="256" height="512"/>
+              </clipPath>
+            </defs>
+            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z" 
+                  fill="#16a34a" 
+                  clipPath="url(#clip-left-aktivni-stavy)" />
+            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z" 
+                  fill="#dc2626" 
+                  clipPath="url(#clip-right-aktivni-stavy)" />
+          </svg>
+        </IconFilterButton>
+      );
+    }
+    
+    if (filterValue === 'active') {
+      return (
+        <IconFilterButton
+          onClick={() => handleIconFilterToggle(columnId)}
+          title="Pouze aktivní (klikněte pro neaktivní)"
+        >
+          <FontAwesomeIcon icon={faCircle} style={{ color: '#16a34a' }} />
+        </IconFilterButton>
+      );
+    }
+    
+    return (
+      <IconFilterButton
+        onClick={() => handleIconFilterToggle(columnId)}
+        title="Pouze neaktivní (klikněte pro vše)"
+      >
+        <FontAwesomeIcon icon={faCircle} style={{ color: '#dc2626' }} />
+      </IconFilterButton>
+    );
+  };
+
+  return (
+    <Container>
+      <ActionBar>
+        <SearchBox>
+          <FontAwesomeIcon icon={faSearch} className="search-icon" />
+          <input
+            type="text"
+            placeholder="Hledat ve stavech..."
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+          />
+        </SearchBox>
+
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <ClearFiltersButton
+            onClick={handleClearFilters}
+            disabled={!hasActiveFilters}
+            title="Vymazat všechny filtry"
+          >
+            <FontAwesomeIcon icon={faEraser} />
+            Smazat filtry
+          </ClearFiltersButton>
+
+          <InfoBadge>
+            <FontAwesomeIcon icon={faCircle} style={{ fontSize: '0.75rem' }} />
+            Pouze pro čtení
+          </InfoBadge>
+        </div>
+      </ActionBar>
+
+      {loading ? (
+        <LoadingState>Načítání stavů...</LoadingState>
+      ) : data.length === 0 ? (
+        <EmptyState>
+          <FontAwesomeIcon icon={faCircle} />
+          <h3>Žádné stavy</h3>
+          <p>Nejsou k dispozici žádné stavy objednávek</p>
+        </EmptyState>
+      ) : (
+        <TableContainer>
+          <Table>
+            <thead>
+              {table.getHeaderGroups().map(headerGroup => (
+                <TableHeaderRow key={headerGroup.id}>
+                  {headerGroup.headers.map(header => (
+                    <TableHeaderCell 
+                      key={header.id}
+                      $align={
+                        header.column.id === 'nazev_stavu' || header.column.id === 'popis' 
+                          ? 'left' 
+                          : 'center'
+                      }
+                    >
+                      {header.isPlaceholder ? null : (
+                        <HeaderContent
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          <span>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </span>
+                          {header.column.getIsSorted() && (
+                            <FontAwesomeIcon 
+                              icon={header.column.getIsSorted() === 'asc' ? faChevronUp : faChevronDown}
+                            />
+                          )}
+                        </HeaderContent>
+                      )}
+                    </TableHeaderCell>
+                  ))}
+                </TableHeaderRow>
+              ))}
+              
+              <FilterRow>
+                {table.getAllColumns().map(column => {
+                  if (column.id === 'aktivni') {
+                    return (
+                      <FilterCell key={column.id}>
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                          {renderIconFilter('aktivni')}
+                        </div>
+                      </FilterCell>
+                    );
+                  }
+                  
+                  return (
+                    <FilterCell key={column.id}>
+                      <ColumnFilterWrapper>
+                        <FontAwesomeIcon icon={faSearch} className="search-icon" />
+                        <ColumnFilterInput
+                          type="text"
+                          placeholder={`Filtr...`}
+                          value={columnFilters[column.id] || ''}
+                          onChange={(e) => handleColumnFilterChange(column.id, e.target.value)}
+                        />
+                        {columnFilters[column.id] && (
+                          <ColumnClearButton
+                            onClick={() => handleColumnFilterChange(column.id, '')}
+                            title="Vymazat filtr"
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                          </ColumnClearButton>
+                        )}
+                      </ColumnFilterWrapper>
+                    </FilterCell>
+                  );
+                })}
+              </FilterRow>
+            </thead>
+            
+            <tbody>
+              {table.getRowModel().rows.length === 0 ? (
+                <tr>
+                  <TableCell colSpan={columns.length} style={{ textAlign: 'center', padding: '2rem' }}>
+                    <div style={{ color: '#6b7280' }}>
+                      <FontAwesomeIcon icon={faSearch} style={{ fontSize: '2rem', opacity: 0.3, marginBottom: '0.5rem' }} />
+                      <p style={{ margin: 0 }}>Žádné výsledky pro aktuální filtry</p>
+                    </div>
+                  </TableCell>
+                </tr>
+              ) : (
+                table.getRowModel().rows.map((row, index) => (
+                  <TableRow key={row.id} $isEven={index % 2 === 0}>
+                    {row.getVisibleCells().map(cell => (
+                      <TableCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </TableContainer>
+      )}
+    </Container>
+  );
+};
+
+export default StavyTab;

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>09 - Doplňkové funkce | Návod EEO 2025</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; }
+        .back-link { color: white; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.2); border-radius: 5px; }
+        h1 { font-size: 2.5rem; margin: 1rem 0; }
+        .content { padding: 3rem; }
+        .intro-box { background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #667eea; margin-bottom: 2rem; }
+        .screenshot { margin: 2rem 0; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .screenshot img { width: 100%; }
+        .screenshot-caption { background: #f8f9fa; padding: 1rem; text-align: center; color: #6c757d; }
+        .section { margin: 3rem 0; }
+        .section h2 { color: #764ba2; margin-bottom: 1.5rem; border-bottom: 3px solid #667eea; padding-bottom: 0.5rem; }
+        .tip-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5rem; border-radius: 5px; margin: 1.5rem 0; }
+        .feature-card { background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #667eea; }
+        .navigation { display: flex; justify-content: space-between; margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #e9ecef; }
+        .nav-button { padding: 1rem 2rem; background: #667eea; color: white; text-decoration: none; border-radius: 8px; }
+        footer { background: #f8f9fa; padding: 1.5rem; text-align: center; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← Zpět na obsah</a>
+            <h1>09 - Doplňkové funkce</h1>
+        </header>
+        <div class="content">
+            <div class="intro-box">
+                <h2>🎯 Pomocné nástroje a funkce</h2>
+                <p>Objednávkový formulář obsahuje řadu užitečných funkcí, které vám usnadní práci. Tato kapitola popisuje navigační menu, dropzónu pro přílohy a další pomocné nástroje.</p>
+            </div>
+            
+            <div class="section">
+                <h2>🧭 Navigační menu (Quick Navigation)</h2>
+                <div class="screenshot">
+                    <img src="screenshot/navimenubar.png" alt="Navigační menu">
+                    <div class="screenshot-caption">Screenshot: Navigační menu pro rychlý přesun mezi sekcemi</div>
+                </div>
+                <div class="feature-card">
+                    <h3>Co to je?</h3>
+                    <p>Rychlý navigátor umístěný v horní části formuláře, který vám umožňuje okamžitě přeskočit na konkrétní sekci objednávky bez nutnosti scrollování.</p>
+                    <h4 style="margin-top: 1rem;">Jak používat:</h4>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Klikněte na název sekce v navigačním menu</li>
+                        <li>Stránka automaticky přejde na danou sekci</li>
+                        <li>Aktivní sekce je zvýrazněna</li>
+                    </ol>
+                </div>
+                <div class="tip-box">
+                    <strong>💡 Tip:</strong> Navigační menu je obzvláště užitečné u dlouhých objednávek s mnoha sekcemi. Ušetříte čas při hledání konkrétní sekce.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📁 Dropzóna pro přílohy</h2>
+                <div class="screenshot">
+                    <img src="screenshot/dropzona_prilohykobjednavkce.png" alt="Dropzóna">
+                    <div class="screenshot-caption">Screenshot: Dropzóna pro nahrávání příloh</div>
+                </div>
+                <div class="feature-card">
+                    <h3>Kde se používá?</h3>
+                    <ul style="margin-left: 1.5rem; line-height: 1.8;">
+                        <li><strong>Přílohy k objednávce</strong> - cenové nabídky, specifikace, obrázky</li>
+                        <li><strong>Přílohy k faktuře</strong> - PDF faktury, doklady o úhradě</li>
+                    </ul>
+                    <h4 style="margin-top: 1rem;">Důležité:</h4>
+                    <p style="background: #fff3cd; padding: 1rem; border-radius: 5px; margin-top: 0.5rem;">
+                        ⚠️ Nahrávání příloh je možné <strong>až po prvním uložení objednávky do databáze</strong> (většinou ve fázi "Ke schválení" nebo později).
+                    </p>
+                    <h4 style="margin-top: 1rem;">Dva způsoby nahrání:</h4>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li><strong>Kliknutím:</strong> Klikněte do dropzóny a vyberte soubory z počítače</li>
+                        <li><strong>Drag & Drop:</strong> Přetáhněte soubory z průzkumníka přímo do dropzóny</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>💾 Automatické ukládání konceptů</h2>
+                <div class="feature-card">
+                    <h3>Jak to funguje?</h3>
+                    <p>Během vyplňování formuláře se data <strong>automaticky ukládají jako koncept</strong> do vašeho prohlížeče (localStorage).</p>
+                    <h4 style="margin-top: 1rem;">Výhody:</h4>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>✅ Nepřijdete o data při náhodném zavření stránky</li>
+                        <li>✅ Můžete rozpracovanou objednávku dokončit později</li>
+                        <li>✅ Funguje i bez připojení k internetu (ukládání lokální)</li>
+                    </ul>
+                    <h4 style="margin-top: 1rem;">⚠️ Upozornění:</h4>
+                    <p style="margin-top: 0.5rem;">Koncept je uložen pouze v <strong>tomto prohlížeči na tomto počítači</strong>. Pokud otevřete formulář na jiném počítači nebo v jiném prohlížeči, koncept tam nebude dostupný.</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📄 Generování DOCX</h2>
+                <div class="feature-card">
+                    <h3>Export objednávky do Wordu</h3>
+                    <p>Po uložení objednávky můžete vygenerovat <strong>Word dokument (.docx)</strong> s kompletními údaji objednávky.</p>
+                    <h4 style="margin-top: 1rem;">Kdy je k dispozici:</h4>
+                    <p style="margin-top: 0.5rem;">Od fáze <strong>ROZPRACOVANÁ</strong> až po <strong>DOKONČENÁ</strong> (fáze 3-8).</p>
+                    <h4 style="margin-top: 1rem;">Použití:</h4>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Klikněte na tlačítko "Generovat DOCX" v horní části formuláře</li>
+                        <li>Systém vytvoří Word dokument s aktuálními údaji</li>
+                        <li>Dokument se automaticky stáhne do vašeho počítače</li>
+                    </ol>
+                    <div class="tip-box" style="margin-top: 1rem;">
+                        <strong>💡 Použití:</strong> Vhodné pro tisk, archivaci nebo odeslání objednávky emailem mimo systém.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🎤 Hlasové zadávání</h2>
+                <div class="feature-card">
+                    <h3>Diktování textu do poznámek</h3>
+                    <p>Místo psaní můžete poznámky namluvit pomocí hlasového rozpoznávání.</p>
+                    <h4 style="margin-top: 1rem;">Jak aktivovat:</h4>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Klikněte do textového pole poznámky</li>
+                        <li>Stiskněte klávesovou zkratku <strong>CTRL + Space</strong></li>
+                        <li>Začněte mluvit - text se automaticky doplní do pole</li>
+                    </ol>
+                    <p style="background: #d1ecf1; padding: 1rem; border-radius: 5px; margin-top: 1rem;">
+                        ℹ️ <strong>Poznámka:</strong> Hlasové rozpoznávání je implementováno globálně a funguje ve většině textových polí v aplikaci.
+                    </p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🔓 Odemknutí sekcí (Admin)</h2>
+                <div class="feature-card">
+                    <h3>Pro administrátory</h3>
+                    <p>Administrátoři mohou odemknout již zamčené sekce objednávky, pokud je potřeba provést opravu dat v předchozích fázích.</p>
+                    <h4 style="margin-top: 1rem;">Postup:</h4>
+                    <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Otevřete objednávku</li>
+                        <li>V zamčené sekci klikněte na ikonu zámku nebo tlačítko "Odemknout"</li>
+                        <li>Sekce se dočasně odemkne pro editaci</li>
+                        <li>Po uložení změn se sekce opět zamkne</li>
+                    </ol>
+                    <p style="background: #f8d7da; padding: 1rem; border-radius: 5px; margin-top: 1rem;">
+                        ⚠️ <strong>Upozornění:</strong> Tato funkce je dostupná pouze pro uživatele s administrátorskými právy.
+                    </p>
+                </div>
+            </div>
+            
+            <div class="navigation">
+                <a href="08-dokonceni-objednavky.html" class="nav-button">← Předchozí: Dokončení</a>
+                <a href="10-nastroje.html" class="nav-button">Další: Nástroje →</a>
+            </div>
+        </div>
+        <footer>
+            <p>📅 Aktualizováno: 16. listopadu 2025 | Kapitola 9/11</p>
+        </footer>
+    </div>
+</body>
+</html>

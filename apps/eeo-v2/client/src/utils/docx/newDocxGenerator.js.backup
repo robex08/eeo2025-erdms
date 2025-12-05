@@ -1,0 +1,423 @@
+/**
+ * NOVÝ DOCX GENERÁTOR - Kompletní řešení pro generování DOCX dokumentů
+ * 
+ * POSTUP:
+     // === KROK 4: Načtení dat z POST /api.eeo/sablona_docx/order-data ===
+    console.log('🔌 KROK 4: Načítám data z POST /api.eeo/sablona_docx/order-data...');
+    let orderApiData;
+    
+    try {
+      const apiResponse = await getDocxOrderData({
+        token,
+        username,
+        objednavka_id: orderId
+      });
+      
+      if (!apiResponse || !apiResponse.data) {
+        throw new Error('API nevrátilo data');
+      }
+      
+      orderApiData = apiResponse.data;
+      
+      console.log('✅ POST /api.eeo/sablona_docx/order-data úspěšné');
+      
+      // 🔍 DEBUG - Surová data z databáze
+      console.log('🔍 DEBUG - Surová data z databáze:', {
+        endpoint: 'POST /api.eeo/sablona_docx/order-data',
+        responseStatus: apiResponse.status,
+        dataKeys: Object.keys(orderApiData),
+        osnovniPole: {
+          cislo_objednavky: orderApiData.cislo_objednavky,
+          nazev_objednavky: orderApiData.nazev_objednavky,
+          predmet: orderApiData.predmet,
+          datum_objednavky: orderApiData.datum_objednavky,
+          celkova_cena_s_dph: orderApiData.celkova_cena_s_dph
+        },
+        vnoreneObjekty: {
+          objednatel: orderApiData.objednatel ? {
+            jmeno: orderApiData.objednatel.jmeno,
+            prijmeni: orderApiData.objednatel.prijmeni,
+            plne_jmeno: orderApiData.objednatel.plne_jmeno,
+            email: orderApiData.objednatel.email
+          } : 'NEEXISTUJE',
+          dodavatel: orderApiData.dodavatel ? {
+            nazev: orderApiData.dodavatel.nazev,
+            adresa: orderApiData.dodavatel.adresa,
+            ico: orderApiData.dodavatel.ico
+          } : 'NEEXISTUJE',
+          stav: orderApiData.stav ? {
+            nazev: orderApiData.stav.nazev,
+            popis: orderApiData.stav.popis
+          } : 'NEEXISTUJE'
+        },
+        polozkyArilogy: {
+          polozky_count: orderApiData.polozky?.length || 0,
+          prilohy_count: orderApiData.prilohy?.length || 0,
+          prvni_polozka: orderApiData.polozky?.[0] || 'ŽÁDNÉ',
+          prvni_priloha: orderApiData.prilohy?.[0] || 'ŽÁDNÉ'
+        }
+      });
+      
+    } catch (apiError) {
+      console.error('❌ POST /api.eeo/sablona_docx/order-data selhalo:', apiError);
+      throw new Error(`Nepodařilo se načíst data z API: ${apiError.message}`);
+    }šablony ze serveru
+ * 2. Rozbalení ZIP struktury
+ * 3. Použití JSON mapování uloženého u šablony
+ * 4. Naplnění XML pomocí algoritmů z náhledu
+ * 5. Načtení dat z POST /api.eeo/sablona_docx/order-data
+ * 6. Zabalení upraveného XML a stažení DOCX
+ * 
+ * @date 2025-10-22
+ */
+
+import JSZip from 'jszip';
+import { getDocxOrderData } from '../../services/apiDocxOrders';
+import { downloadDocxSablonaAsFile, getDocxSablonaDetail } from '../../services/apiv2Dictionaries';
+import { getOrder25 } from '../../services/api25orders'; // Pro fallback
+
+/**
+ * Hlavní funkce pro generování DOCX dokumentu podle nového postupu
+ * @param {Object} params - Parametry generování
+ * @param {string} params.templateId - ID šablony
+ * @param {string} params.orderId - ID objednávky
+ * @param {string} params.token - Autentizační token
+ * @param {string} params.username - Username uživatele
+ * @param {Object} params.template - Objekt šablony s JSON mapováním
+ * @returns {Promise<Blob>} - Vygenerovaný DOCX soubor
+ */
+export async function generateDocxDocument({
+  templateId,
+  orderId,
+  token,
+  username,
+  template
+}) {
+  try {
+    console.log('🚀 NOVÝ DOCX GENERÁTOR - Začátek procesu:', {
+      templateId,
+      orderId,
+      templateName: template?.nazev
+    });
+
+    // === KROK 0 📊 NAČTENÍ DETAILU ŠABLONY Z DATABÁZE ===
+    console.log('%c[KROK 0 📊] NAČÍTÁNÍ DETAILU ŠABLONY Z DATABÁZE', 'background: #fef3c7; color: #d97706; font-weight: bold; padding: 4px 8px;');
+    
+    const templateDetail = await getDocxSablonaDetail({
+      token,
+      username,
+      id: templateId
+    });
+    
+    if (!templateDetail || !templateDetail.data) {
+      throw new Error('Nepodařilo se načíst detail šablony z databáze');
+    }
+    
+    const templateData = templateDetail.data;
+    console.log('🔍 DEBUG - Detail šablony z DB:', {
+      id: templateData.id,
+      nazev: templateData.nazev,
+      hasMapovanJson: !!templateData.mapovan_json,
+      mapovanJsonLength: templateData.mapovan_json?.length || 0,
+      mapovanJsonPreview: templateData.mapovan_json?.substring(0, 100) + '...' || 'žádné'
+    });
+    
+    console.log('✅ KROK 0 dokončen - detail šablony načten');
+
+    // === KROK 1 📁 NAČTENÍ DOCX ŠABLONY ZE SERVERU ===
+    console.log('%c[KROK 1 📁] NAČÍTÁNÍ DOCX ŠABLONY ZE SERVERU', 'background: #dbeafe; color: #1d4ed8; font-weight: bold; padding: 4px 8px;');
+    const templateFile = await downloadDocxSablonaAsFile({
+      token,
+      username,
+      id: templateId,
+      fileName: template.nazev || 'template.docx'
+    });
+    
+    console.log('✅ Šablona načtena:', {
+      fileName: templateFile.name,
+      size: templateFile.size
+    });
+
+    // === KROK 2: Rozbalení ZIP struktury ===
+    console.log('📦 KROK 2: Rozbaluji ZIP strukturu DOCX...');
+    const zip = new JSZip();
+    const loadedZip = await zip.loadAsync(templateFile);
+    
+    // Načti document.xml
+    const documentXml = await loadedZip.file('word/document.xml')?.async('text');
+    if (!documentXml) {
+      throw new Error('Neplatná DOCX šablona - chybí document.xml');
+    }
+    
+    console.log('✅ ZIP struktura rozbalena:', {
+      documentXmlLength: documentXml.length,
+      filesInZip: Object.keys(loadedZip.files).length
+    });
+
+    // === KROK 3 🗂️ NAČTENÍ DYNAMICKÉHO MAPOVÁNÍ Z DATABÁZE ===
+    console.log('%c[KROK 3 🗂️] NAČÍTÁNÍ DYNAMICKÉHO MAPOVÁNÍ Z DATABÁZE', 'background: #f3e8ff; color: #7c3aed; font-weight: bold; padding: 4px 8px;');
+    
+    let templateMapping = {};
+    
+    if (templateData.mapovan_json) {
+      try {
+        templateMapping = typeof templateData.mapovan_json === 'string' 
+          ? JSON.parse(templateData.mapovan_json) 
+          : templateData.mapovan_json;
+        
+        console.log('🔍 DEBUG - Mapování načteno z DB (mapovan_json):', {
+          raw: templateData.mapovan_json,
+          parsed: templateMapping,
+          fieldsCount: Object.keys(templateMapping).length,
+          sampleMapping: Object.entries(templateMapping).slice(0, 3).map(([docxField, dbField]) => `${docxField} ← ${dbField}`)
+        });
+        
+        console.log('✅ KROK 3 dokončen - dynamické mapování z DB načteno:', Object.keys(templateMapping).length, 'polí');
+      } catch (error) {
+        console.error('❌ Chyba při parsování mapovan_json:', error);
+        throw new Error(`Neplatné JSON mapování v šabloně: ${error.message}`);
+      }
+    } else {
+      console.warn('⚠️ POZOR: Šablona nemá definované mapován_json!');
+      throw new Error('Šablona nemá definované mapování polí (mapovan_json). Nejdříve upravte šablonu a definujte mapování.');
+    }
+
+    // === KROK 4: Načtení dat z API ===
+    console.log('🔌 KROK 4: Načítám data z POST /api.eeo/sablona_docx/order-data...');
+    const orderApiData = await getDocxOrderData({
+      token,
+      username,
+      objednavka_id: orderId  // Použij správný parametr
+    });
+    
+    if (!orderApiData || !orderApiData.data) {
+      throw new Error('Nepodařilo se načíst data objednávky z API');
+    }
+    
+    console.log('✅ API data načtena:', {
+      cislo_objednavky: orderApiData.data?.cislo_objednavky,
+      objednatel: !!orderApiData.data?.objednatel,
+      dodavatel: !!orderApiData.data?.dodavatel,
+      polozkyCount: orderApiData.data?.polozky?.length || 0
+    });
+
+    // === KROK 5: Mapování podle DOCX šablon (stejně jako HTML) ===
+    console.log('🔄 KROK 5: Mapuji data podle DOCX šablony - stejně jako pro HTML...');
+    const mappedFieldValues = createFieldMappingForDocx(orderApiData, templateMapping);
+    
+    console.log('🔍 DEBUG - Mapování dokončeno:', {
+      pocetPolí: Object.keys(mappedFieldValues).length,
+      vzorkaMapovaní: Object.entries(mappedFieldValues).slice(0, 15).reduce((acc, [key, value]) => {
+        acc[key] = value;
+        return acc;
+      }, {}),
+      legacyPole: {
+        'EVIDENCNI_CISLO': mappedFieldValues['EVIDENCNI_CISLO'],
+        'predmet': mappedFieldValues['predmet'],
+        'DNAZEV': mappedFieldValues['DNAZEV'],
+        'OJMENO': mappedFieldValues['OJMENO'],
+        'CENA': mappedFieldValues['CENA']
+      }
+    });
+
+    // === KROK 6: Naplnění XML pomocí algoritmů z náhledu ===
+    console.log('📝 KROK 6: Naplňuji XML pomocí algoritmů z náhledu...');
+    const filledXml = fillXmlWithFieldData(documentXml, mappedFieldValues);
+    
+    console.log('✅ XML naplněno daty:', {
+      originalLength: documentXml.length,
+      filledLength: filledXml.length,
+      sizeDifference: filledXml.length - documentXml.length
+    });
+
+    // === KROK 7: Zabalení upraveného XML a příprava ke stažení ===
+    console.log('📦 KROK 7: Zabaluji upravené XML zpět do DOCX...');
+    loadedZip.file('word/document.xml', filledXml);
+    const generatedDocx = await loadedZip.generateAsync({ type: 'blob' });
+    
+    console.log('✅ DOCX dokument vygenerován:', {
+      originalSize: templateFile.size,
+      generatedSize: generatedDocx.size,
+      fileName: `objednavka_${orderApiData.data?.cislo_objednavky}_${template.nazev}.docx`
+    });
+
+    return generatedDocx;
+
+  } catch (error) {
+    console.error('❌ Chyba při generování DOCX dokumentu:', error);
+    throw error;
+  }
+}
+
+/**
+ * DYNAMICKÉ MAPOVÁNÍ POLÍ - podle JSON definice ze šablony (mapovan_json)
+ * ŽÁDNÉ HARDCODED MAPOVÁNÍ! Vše se mapuje podle definice v databázi
+ * @param {Object} apiData - Data z POST /api.eeo/sablona_docx/order-data
+ * @param {Object} templateMapping - JSON mapování ze šablony (mapovan_json)
+ * @returns {Object} - Namapovaná pole pro DOCX
+ */
+function createFieldMappingForDocx(apiData, templateMapping) {
+  console.log('🔍 DEBUG - Začínám DYNAMICKÉ mapování podle šablony:');
+  console.log('🔍 DEBUG - Template mapping:', templateMapping);
+  console.log('🔍 DEBUG - API data klíče:', Object.keys(apiData));
+  
+  const mappedData = {};
+  
+  // PROCHÁZÍME MAPOVÁNÍ ZE ŠABLONY - každé pole mapujeme podle definice
+  Object.entries(templateMapping).forEach(([docxField, dbPath]) => {
+  mappedData['cislo_objednavky'] = apiData.cislo_objednavky || '';
+  mappedData['datum_objednavky'] = apiData.datum_objednavky || '';
+  mappedData['nazev_objednavky'] = apiData.nazev_objednavky || '';
+  mappedData['predmet'] = apiData.predmet || '';
+  mappedData['popis'] = apiData.popis || '';
+  mappedData['poznamka'] = apiData.poznamka || '';
+  mappedData['max_cena_s_dph'] = apiData.max_cena_s_dph || '';
+  mappedData['misto_dodani'] = apiData.misto_dodani || '';
+  mappedData['celkova_cena_s_dph'] = apiData.celkova_cena_s_dph || '';
+  
+  // === OBJEDNATEL (vnořený objekt) ===
+  if (apiData.objednatel) {
+    const objednatel = apiData.objednatel;
+    mappedData['objednatel.jmeno'] = objednatel.jmeno || '';
+    mappedData['objednatel.prijmeni'] = objednatel.prijmeni || '';
+    mappedData['objednatel.email'] = objednatel.email || '';
+    mappedData['objednatel.telefon'] = objednatel.telefon || '';
+    mappedData['objednatel.plne_jmeno'] = objednatel.plne_jmeno || `${objednatel.jmeno || ''} ${objednatel.prijmeni || ''}`.trim();
+    
+    console.log('🔍 DEBUG - Objednatel mapován:', {
+      'objednatel.jmeno': mappedData['objednatel.jmeno'],
+      'objednatel.prijmeni': mappedData['objednatel.prijmeni'], 
+      'objednatel.plne_jmeno': mappedData['objednatel.plne_jmeno']
+    });
+  }
+  
+  // === DODAVATEL (vnořený objekt) ===
+  if (apiData.dodavatel) {
+    const dodavatel = apiData.dodavatel;
+    mappedData['dodavatel.nazev'] = dodavatel.nazev || '';
+    mappedData['dodavatel.adresa'] = dodavatel.adresa || '';
+    mappedData['dodavatel.ico'] = dodavatel.ico || '';
+    mappedData['dodavatel.dic'] = dodavatel.dic || '';
+    
+    console.log('🔍 DEBUG - Dodavatel mapován:', {
+      'dodavatel.nazev': mappedData['dodavatel.nazev'],
+      'dodavatel.adresa': mappedData['dodavatel.adresa'],
+      'dodavatel.ico': mappedData['dodavatel.ico']
+    });
+  }
+  
+  // === STAV ===
+  if (apiData.stav) {
+    mappedData['stav.nazev'] = apiData.stav.nazev || '';
+    mappedData['stav.popis'] = apiData.stav.popis || '';
+  }
+  
+  // === LEGACY MAPOVÁNÍ PRO STARŠÍ ŠABLONY (UPPERCASE názvy) ===
+  // STEJNÉ JAKO V docxProcessor.js - mapOrderToDocxFields
+  
+  // EVIDENCNI_CISLO - číslo objednávky
+  mappedData['EVIDENCNI_CISLO'] = mappedData['cislo_objednavky'];
+  
+  // Dodavatel - D* prefix
+  mappedData['DNAZEV'] = mappedData['dodavatel.nazev'];
+  mappedData['DADRESA'] = mappedData['dodavatel.adresa'];
+  mappedData['DICO'] = mappedData['dodavatel.ico'];
+  mappedData['DDIC'] = mappedData['dodavatel.dic'];
+  
+  // Objednatel - O* prefix  
+  mappedData['OJMENO'] = mappedData['objednatel.plne_jmeno'];
+  mappedData['OEMAIL'] = mappedData['objednatel.email'];
+  mappedData['OTELEFON'] = mappedData['objednatel.telefon'];
+  
+  // Ceny
+  mappedData['CENA'] = mappedData['max_cena_s_dph'] || mappedData['celkova_cena_s_dph'];
+  mappedData['DATUM'] = mappedData['datum_objednavky'];
+  
+  console.log('� DEBUG - Legacy pole namapována:', {
+    'EVIDENCNI_CISLO': mappedData['EVIDENCNI_CISLO'],
+    'DNAZEV': mappedData['DNAZEV'],
+    'OJMENO': mappedData['OJMENO'],
+    'CENA': mappedData['CENA'],
+    'predmet': mappedData['predmet']
+  });
+  
+  return mappedData;
+}
+
+/**
+ * Naplní XML data pomocí algoritmů z náhledu (stejný princip jako v previewDocxFields)
+ * @param {string} xmlContent - Původní XML obsah
+ * @param {Object} fieldValues - Mapované hodnoty polí
+ * @returns {string} - XML s vyplněnými daty
+ */
+function fillXmlWithFieldData(xmlContent, fieldValues) {
+  let filledXml = xmlContent;
+  let replacementCount = 0;
+  
+  console.log('🔍 Začínám naplňování XML polí...');
+  console.log('📋 Dostupná pole:', Object.keys(fieldValues).slice(0, 10));
+  
+  // === ALGORITMUS 1: Nahrazení {FIELD_NAME} vzorů ===
+  Object.entries(fieldValues).forEach(([fieldName, value]) => {
+    const placeholder = `{${fieldName.toUpperCase()}}`;
+    const regex = new RegExp(escapeRegExp(placeholder), 'g');
+    const beforeLength = filledXml.length;
+    filledXml = filledXml.replace(regex, String(value || ''));
+    
+    if (filledXml.length !== beforeLength) {
+      replacementCount++;
+      console.log(`✅ Nahrazeno ${placeholder} → "${value}"`);
+    }
+  });
+  
+  // === ALGORITMUS 2: Nahrazení DOCVARIABLE vzorů ===
+  Object.entries(fieldValues).forEach(([fieldName, value]) => {
+    // Pattern pro DOCVARIABLE (používá se v šablonách)
+    const patterns = [
+      `DOCVARIABLE\\s+${escapeRegExp(fieldName)}`,
+      `\\{\\s*DOCVARIABLE\\s+${escapeRegExp(fieldName)}\\s*\\}`,
+      `\\|DOCX\\.${escapeRegExp(fieldName)}`
+    ];
+    
+    patterns.forEach(pattern => {
+      const regex = new RegExp(pattern, 'gi');
+      const beforeLength = filledXml.length;
+      filledXml = filledXml.replace(regex, String(value || ''));
+      
+      if (filledXml.length !== beforeLength) {
+        replacementCount++;
+        console.log(`✅ Nahrazeno DOCVARIABLE ${fieldName} → "${value}"`);
+      }
+    });
+  });
+  
+  console.log(`✅ XML naplnění dokončeno - ${replacementCount} nahrazení`);
+  return filledXml;
+}
+
+/**
+ * Escape speciálních znaků pro regex
+ * @param {string} string - Řetězec k escape
+ * @returns {string} - Escapovaný řetězec
+ */
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Stáhne vygenerovaný DOCX soubor
+ * @param {Blob} docxBlob - DOCX blob
+ * @param {string} fileName - Název souboru
+ */
+export function downloadGeneratedDocx(docxBlob, fileName) {
+  const url = URL.createObjectURL(docxBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  
+  console.log('📥 DOCX soubor stažen:', fileName);
+}

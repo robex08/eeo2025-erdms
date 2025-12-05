@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Návod - Objednávkový formulář EEO 2025</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 3rem;
+        }
+        
+        .intro {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 3rem;
+            border-left: 5px solid #667eea;
+        }
+        
+        .intro h2 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        
+        .workflow-overview {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 3rem;
+            border: 2px solid #e9ecef;
+        }
+        
+        .workflow-overview h2 {
+            color: #764ba2;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        
+        .workflow-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .workflow-step {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1.5rem;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .workflow-step:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .workflow-step .number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .workflow-step h3 {
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        
+        .workflow-step p {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        .chapters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .chapter-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 2px solid #e9ecef;
+        }
+        
+        .chapter-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(102, 126, 234, 0.3);
+        }
+        
+        .chapter-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .chapter-number {
+            font-size: 3rem;
+            font-weight: bold;
+            opacity: 0.3;
+            line-height: 1;
+        }
+        
+        .chapter-title {
+            font-size: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .chapter-body {
+            padding: 2rem;
+        }
+        
+        .chapter-body ul {
+            list-style: none;
+            margin: 1rem 0;
+        }
+        
+        .chapter-body li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        
+        .chapter-body li:before {
+            content: "▶";
+            position: absolute;
+            left: 0;
+            color: #667eea;
+        }
+        
+        .chapter-link {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 25px;
+            text-decoration: none;
+            transition: background 0.3s ease;
+            margin-top: 1rem;
+        }
+        
+        .chapter-link:hover {
+            background: #764ba2;
+        }
+        
+        footer {
+            background: #f8f9fa;
+            padding: 2rem;
+            text-align: center;
+            color: #6c757d;
+            border-top: 3px solid #667eea;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        
+        .badge.important {
+            background: #dc3545;
+        }
+        
+        .badge.optional {
+            background: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📋 Objednávkový formulář EEO 2025</h1>
+            <p>Kompletní průvodce vytvořením a správou objednávek</p>
+        </header>
+        
+        <div class="content">
+            <div class="intro">
+                <h2>🎯 Vítejte v návodu k objednávkovému systému</h2>
+                <p>Tento návod vás provede celým procesem vytvoření, schválení a zpracování objednávky v systému EEO. 
+                Objednávkový formulář je navržen s ohledem na workflow, které automaticky provádí uživatele jednotlivými 
+                fázemi od vytvoření až po dokončení objednávky.</p>
+                <p style="margin-top: 1rem;">
+                    <strong>💡 Tip:</strong> Každá sekce formuláře se zobrazuje postupně podle toho, v jaké fázi se 
+                    objednávka nachází. To zajišťuje, že nevyplníte zbytečné informace předčasně a proces bude 
+                    přehledný a logický.
+                </p>
+            </div>
+            
+            <div class="workflow-overview">
+                <h2>🔄 Přehled workflow objednávky</h2>
+                <div class="workflow-steps">
+                    <div class="workflow-step">
+                        <span class="number">1</span>
+                        <h3>Vytvoření</h3>
+                        <p>Vyplnění základních údajů objednatele a předmětu objednávky</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">2</span>
+                        <h3>Schválení</h3>
+                        <p>Schvalování objednávky příslušným schvalovatelem</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">3</span>
+                        <h3>Detail objednávky</h3>
+                        <p>Doplnění detailních informací o dodavateli, financování a podmínkách</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">4</span>
+                        <h3>Potvrzení dodavatelem</h3>
+                        <p>Zaznamenání potvrzení přijetí objednávky dodavatelem</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">5</span>
+                        <h3>Registr smluv</h3>
+                        <p>Rozhodnutí o zveřejnění a evidenci v registru smluv</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">6</span>
+                        <h3>Fakturace</h3>
+                        <p>Přidání a správa faktur souvisejících s objednávkou</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">7</span>
+                        <h3>Věcná správnost</h3>
+                        <p>Kontrola a potvrzení věcné správnosti plnění</p>
+                    </div>
+                    <div class="workflow-step">
+                        <span class="number">8</span>
+                        <h3>Dokončení</h3>
+                        <p>Finální uzavření objednávky s poznámkou</p>
+                    </div>
+                </div>
+            </div>
+            
+            <h2 style="text-align: center; color: #764ba2; margin-bottom: 2rem;">📚 Kapitoly návodu</h2>
+            
+            <div class="chapters">
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">01</div>
+                        <div class="chapter-title">Vytvoření objednávky</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Naučíte se vytvořit novou objednávku, vyplnit základní údaje a odeslat ke schválení.</p>
+                        <ul>
+                            <li>Vyplnění základních údajů</li>
+                            <li>Výběr schvalovatele</li>
+                            <li>Odeslání ke schválení</li>
+                        </ul>
+                        <a href="01-vytvoreni-objednavky.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">02</div>
+                        <div class="chapter-title">Schválení objednávky</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Proces schvalování objednávek příkazcem operací.</p>
+                        <ul>
+                            <li>Schválení objednávky</li>
+                            <li>Zamítnutí s komentářem</li>
+                            <li>Požadavek na doplnění</li>
+                        </ul>
+                        <a href="02-schvaleni-objednavky.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">03</div>
+                        <div class="chapter-title">Detail objednávky</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Vyplnění detailních údajů o objednávce po schválení.</p>
+                        <ul>
+                            <li>Údaje o dodavateli</li>
+                            <li>Kontaktní osoba</li>
+                            <li>Dodací podmínky</li>
+                        </ul>
+                        <a href="03-detail-objednavky.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">04</div>
+                        <div class="chapter-title">Potvrzení dodavatelem</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Evidence potvrzení objednávky od dodavatele.</p>
+                        <ul>
+                            <li>Datum potvrzení</li>
+                            <li>Číslo objednávky u dodavatele</li>
+                            <li>Nahrání potvrzení</li>
+                        </ul>
+                        <a href="04-potvrzeni-dodavatelem.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">05</div>
+                        <div class="chapter-title">Registr smluv</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Zařazení objednávky do registru smluv.</p>
+                        <ul>
+                            <li>Rozhodnutí o zveřejnění</li>
+                            <li>Číslo smlouvy</li>
+                            <li>Datum uzavření</li>
+                        </ul>
+                        <a href="05-registr-smluv.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">06</div>
+                        <div class="chapter-title">Fakturace</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Evidence přijatých faktur k objednávce.</p>
+                        <ul>
+                            <li>Přidání faktury</li>
+                            <li>Úhrada faktury</li>
+                            <li>Přílohy k fakturám</li>
+                        </ul>
+                        <a href="06-fakturace.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">07</div>
+                        <div class="chapter-title">Věcná správnost</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Potvrzení věcné správnosti plnění.</p>
+                        <ul>
+                            <li>Kontrola plnění</li>
+                            <li>Potvrzení správnosti</li>
+                            <li>Datum ověření</li>
+                        </ul>
+                        <a href="07-vecna-spravnost.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">08</div>
+                        <div class="chapter-title">Dokončení objednávky</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Uzavření a archivace dokončené objednávky.</p>
+                        <ul>
+                            <li>Finální kontrola</li>
+                            <li>Poznámka k dokončení</li>
+                            <li>Archivace</li>
+                        </ul>
+                        <a href="08-dokonceni-objednavky.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">09</div>
+                        <div class="chapter-title">Doplňkové funkce</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Další užitečné funkce aplikace - kopírování, export, historie změn.</p>
+                        <ul>
+                            <li>Navigační menu</li>
+                            <li>Přílohy</li>
+                            <li>Export a tisk</li>
+                        </ul>
+                        <a href="09-doplnkove-funkce.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">10</div>
+                        <div class="chapter-title">Nástroje</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Poznámky, TODO úkoly s alarmy a finanční kalkulačka pro každodenní práci.</p>
+                        <ul>
+                            <li>Notes - Poznámky</li>
+                            <li>TODO s alarmy</li>
+                            <li>Finanční kalkulačka</li>
+                        </ul>
+                        <a href="10-nastroje.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+                
+                <div class="chapter-card">
+                    <div class="chapter-header">
+                        <div class="chapter-number">11</div>
+                        <div class="chapter-title">Notifikační systém</div>
+                    </div>
+                    <div class="chapter-body">
+                        <p>Vše o notifikacích - typy, správa, e-mailové upozornění a nastavení.</p>
+                        <ul>
+                            <li>Typy notifikací</li>
+                            <li>Správa a filtrování</li>
+                            <li>E-mailová upozornění</li>
+                        </ul>
+                        <a href="11-notifikace.html" class="chapter-link">Přejít na kapitolu →</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p><strong>📅 Aktualizováno:</strong> 16. listopadu 2025</p>
+            <p style="margin-top: 0.5rem;">© 2025 EEO - Elektronická evidence objednávek</p>
+        </footer>
+    </div>
+</body>
+</html>

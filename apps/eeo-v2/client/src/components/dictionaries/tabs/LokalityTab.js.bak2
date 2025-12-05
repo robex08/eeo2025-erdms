@@ -1,0 +1,558 @@
+/**
+ * Lokality Tab - Správa lokalit s TanStack Table
+ * DB: id, nazev, typ, parent_id (BEZ aktivni, dt_vytvoreni)
+ * @date 2025-10-20
+ */
+
+import React, { useState, useEffect, useContext, useMemo } from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPlus, faSearch, faEdit, faTrash, faSyncAlt, faMapMarkerAlt } from '@fortawesome/free-solid-svg-icons';
+import { AuthContext } from '../../../context/AuthContext';
+import { ToastContext } from '../../../context/ToastContext';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  flexRender,
+} from '@tanstack/react-table';
+import {
+  getLokalityList,
+  createLokalita,
+  updateLokalita,
+  deleteLokalita,
+} from '../../../services/apiv2Dictionaries';
+import UniversalDictionaryDialog from '../UniversalDictionaryDialog';
+import DictionaryConfirmDialog from '../DictionaryConfirmDialog';
+
+// =============================================================================
+// STYLED COMPONENTS - podle vzoru Users.js
+// =============================================================================
+
+const Container = styled.div`
+  padding: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+`;
+
+const TitlePanel = styled.div`
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+`;
+
+const PageTitle = styled.h1`
+  margin: 0;
+  font-size: calc(1.5rem + 3px);
+  font-weight: 700;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+`;
+
+const ActionBar = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #e5e7eb;
+`;
+
+const ActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  background: ${props => props.$primary ? '#3b82f6' : 'white'};
+  color: ${props => props.$primary ? 'white' : '#3b82f6'};
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.$primary ? '#2563eb' : '#eff6ff'};
+    border-color: ${props => props.$primary ? '#2563eb' : '#2563eb'};
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+`;
+
+const SearchBox = styled.div`
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+  
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.75rem 2.5rem 0.75rem 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    &::placeholder {
+      color: #9ca3af;
+    }
+  }
+  
+  svg {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+  }
+`;
+
+const TableContainer = styled.div`
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+`;
+
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+`;
+
+const TableHead = styled.thead`
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+`;
+
+const TableRow = styled.tr`
+  background: ${props => props.$isEven ? '#f8fafc' : 'white'};
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  }
+`;
+
+const TableHeader = styled.th`
+  padding: 1rem 0.75rem;
+  text-align: center;
+  font-weight: 600;
+  color: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: ${props => props.$sortable ? 'pointer' : 'default'};
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+
+  &:hover {
+    background: ${props => props.$sortable ? 'rgba(255, 255, 255, 0.1)' : 'transparent'};
+  }
+`;
+
+const TableCell = styled.td`
+  padding: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  font-size: 0.875rem;
+  text-align: center;
+`;
+
+const ActionCell = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+`;
+
+const IconButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 1px solid ${props => props.$variant === 'danger' ? '#ef4444' : '#3b82f6'};
+  color: ${props => props.$variant === 'danger' ? '#ef4444' : '#3b82f6'};
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  
+  &:hover {
+    background: ${props => props.$variant === 'danger' ? '#ef4444' : '#3b82f6'};
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px ${props => props.$variant === 'danger' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(59, 130, 246, 0.25)'};
+  }
+`;
+
+const Pagination = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+`;
+
+const PageInfo = styled.span`
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 500;
+`;
+
+const PaginationButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`;
+
+const TypeBadge = styled.span`
+  padding: 0.25rem 0.75rem;
+  background: ${props => props.$type === 'vnitrni' ? '#dbeafe' : props.$type === 'vnejsi' ? '#fef3c7' : '#e5e7eb'};
+  color: ${props => props.$type === 'vnitrni' ? '#1e40af' : props.$type === 'vnejsi' ? '#92400e' : '#374151'};
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+`;
+
+const EmptyState = styled.div`
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #6b7280;
+`;
+
+const LokalityTab = () => {
+  const { token, user } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+  
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [sorting, setSorting] = useState([]);
+  
+  const [editDialog, setEditDialog] = useState({ open: false, item: null });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null });
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const result = await getLokalityList({ token, username: user?.username });
+      setData(result || []);
+      showToast?.('Data načtena', { type: 'success' });
+    } catch (error) {
+      showToast?.(error.message || 'Chyba při načítání lokalit', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && user?.username) {
+      fetchData();
+    }
+  }, [token, user?.username]);
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: 'id',
+      header: 'ID',
+      size: 80,
+      enableSorting: true,
+    },
+    {
+      accessorKey: 'nazev',
+      header: 'Název',
+      enableSorting: true,
+      cell: ({ getValue }) => <strong>{getValue()}</strong>,
+    },
+    {
+      accessorKey: 'typ',
+      header: 'Typ',
+      enableSorting: true,
+      cell: ({ getValue }) => {
+        const typ = getValue();
+        return <TypeBadge $type={typ}>{typ || 'Neznámý'}</TypeBadge>;
+      },
+    },
+    {
+      accessorKey: 'parent_id',
+      header: 'Nadřazená',
+      enableSorting: true,
+      cell: ({ getValue }) => {
+        const parentId = getValue();
+        if (!parentId) return <span style={{ color: '#9ca3af' }}>—</span>;
+        const parent = data.find(item => item.id === parentId);
+        return parent ? parent.nazev : `ID: ${parentId}`;
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Akce',
+      size: 120,
+      cell: ({ row }) => (
+        <ActionCell>
+          <IconButton
+            onClick={() => setEditDialog({ open: true, item: row.original })}
+            title="Upravit"
+          >
+            <FontAwesomeIcon icon={faEdit} />
+          </IconButton>
+          <IconButton
+            $variant="danger"
+            onClick={() => setDeleteDialog({ open: true, item: row.original })}
+            title="Smazat"
+          >
+            <FontAwesomeIcon icon={faTrash} />
+          </IconButton>
+        </ActionCell>
+      ),
+    },
+  ], [data]);
+
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      globalFilter,
+      sorting,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      pagination: {
+        pageSize: 25,
+      },
+    },
+  });
+
+  const handleCreate = async (formData) => {
+    try {
+      await createLokalita({
+        token,
+        username: user?.username,
+        ...formData,
+      });
+      showToast?.('Lokalita vytvořena', { type: 'success' });
+      fetchData();
+      setEditDialog({ open: false, item: null });
+    } catch (error) {
+      showToast?.(error.message || 'Chyba při vytváření', { type: 'error' });
+      throw error;
+    }
+  };
+
+  const handleUpdate = async (formData) => {
+    try {
+      await updateLokalita({
+        token,
+        username: user?.username,
+        id: editDialog.item.id,
+        ...formData,
+      });
+      showToast?.('Lokalita aktualizována', { type: 'success' });
+      fetchData();
+      setEditDialog({ open: false, item: null });
+    } catch (error) {
+      showToast?.(error.message || 'Chyba při aktualizaci', { type: 'error' });
+      throw error;
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteLokalita({
+        token,
+        username: user?.username,
+        id: deleteDialog.item.id,
+      });
+      showToast?.('Lokalita smazána', { type: 'success' });
+      fetchData();
+      setDeleteDialog({ open: false, item: null });
+    } catch (error) {
+      showToast?.(error.message || 'Chyba při mazání', { type: 'error' });
+      throw error;
+    }
+  };
+
+  const dialogFields = [
+    {
+      name: 'nazev',
+      label: 'Název',
+      type: 'text',
+      required: true,
+      placeholder: 'Název lokality',
+    },
+    {
+      name: 'typ',
+      label: 'Typ',
+      type: 'select',
+      required: true,
+      options: [
+        { value: 'vnitrni', label: 'Vnitřní' },
+        { value: 'vnejsi', label: 'Vnější' },
+      ],
+    },
+    {
+      name: 'parent_id',
+      label: 'Nadřazená lokalita',
+      type: 'select',
+      options: [
+        { value: null, label: 'Žádná (kořen)' },
+        ...data.map(item => ({ value: item.id, label: item.nazev })),
+      ],
+    },
+  ];
+
+  return (
+    <Container>
+      <ActionBar>
+        <SearchBox>
+          <input
+            type="text"
+            placeholder="Hledat..."
+            value={globalFilter ?? ''}
+            onChange={e => setGlobalFilter(e.target.value)}
+          />
+          <FontAwesomeIcon icon={faSearch} />
+        </SearchBox>
+        
+        <ButtonGroup>
+          <Button onClick={fetchData} disabled={loading}>
+            <FontAwesomeIcon icon={faSyncAlt} spin={loading} />
+            Obnovit
+          </Button>
+          <Button
+            $variant="primary"
+            onClick={() => setEditDialog({ open: true, item: null })}
+          >
+            <FontAwesomeIcon icon={faPlus} />
+            Nová lokalita
+          </Button>
+        </ButtonGroup>
+      </ActionBar>
+
+      <TableWrapper>
+        <Table>
+          <Thead>
+            {table.getHeaderGroups().map(headerGroup => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map(header => (
+                  <Th
+                    key={header.id}
+                    $sortable={header.column.getCanSort()}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() && (
+                      <span>{header.column.getIsSorted() === 'asc' ? ' 🔼' : ' ��'}</span>
+                    )}
+                  </Th>
+                ))}
+              </tr>
+            ))}
+          </Thead>
+          <Tbody>
+            {table.getRowModel().rows.length === 0 ? (
+              <tr>
+                <Td colSpan={columns.length}>
+                  <EmptyState>
+                    <FontAwesomeIcon icon={faMapMarkerAlt} size="3x" style={{ marginBottom: '1rem', color: '#d1d5db' }} />
+                    <p>Žádné lokality k zobrazení</p>
+                  </EmptyState>
+                </Td>
+              </tr>
+            ) : (
+              table.getRowModel().rows.map(row => (
+                <tr key={row.id}>
+                  {row.getVisibleCells().map(cell => (
+                    <Td key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </Td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </Tbody>
+        </Table>
+
+        <Pagination>
+          <PageInfo>
+            Zobrazeno {table.getRowModel().rows.length} z {data.length} záznamů
+          </PageInfo>
+          <PaginationButtons>
+            <Button
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              Předchozí
+            </Button>
+            <Button
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Další
+            </Button>
+          </PaginationButtons>
+        </Pagination>
+      </TableWrapper>
+
+      {editDialog.open && (
+        <UniversalDictionaryDialog
+          title={editDialog.item ? 'Upravit lokalitu' : 'Nová lokalita'}
+          fields={dialogFields}
+          initialData={editDialog.item}
+          onSave={editDialog.item ? handleUpdate : handleCreate}
+          onClose={() => setEditDialog({ open: false, item: null })}
+        />
+      )}
+
+      {deleteDialog.open && (
+        <DictionaryConfirmDialog
+          title="Smazat lokalitu"
+          message={
+            <>
+              <p>Opravdu chcete smazat lokalitu <strong>{deleteDialog.item?.nazev}</strong>?</p>
+              <p style={{ color: '#ef4444', fontWeight: 600 }}>⚠️ POZOR: Záznam bude trvale odstraněn z databáze!</p>
+            </>
+          }
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteDialog({ open: false, item: null })}
+          confirmText="Smazat"
+          cancelText="Zrušit"
+        />
+      )}
+    </Container>
+  );
+};
+
+export default LokalityTab;
