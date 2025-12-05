@@ -320,7 +320,7 @@ const NotificationTestPanel = () => {
         return;
       }
 
-      const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
 
       // Načti seznam objednávek (poslední první)
       const response = await fetch(`${baseURL}order-v2/list`, {
@@ -365,7 +365,7 @@ const NotificationTestPanel = () => {
 
   const createNotification = async (type) => {
     addLog(`Creating notification: ${type}`, 'info');
-    const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+    const baseURL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
 
     // Zobraz info o příjemci
     let recipientInfo = '';

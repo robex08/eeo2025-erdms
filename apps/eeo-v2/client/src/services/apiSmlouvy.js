@@ -16,7 +16,7 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}`,

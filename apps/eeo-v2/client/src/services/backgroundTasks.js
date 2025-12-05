@@ -401,7 +401,7 @@ export const createExchangeRatesTask = (onRatesUpdated) => ({
       // 🪙 Crypto API - načtení krypto kurzů přes backend proxy (řeší CORS problém)
       try {
         // ✅ OPRAVENO: Použít backend proxy místo přímého volání CoinGecko API
-        const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://eeo2025.zachranka.cz';
+        const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://erdms.zachranka.cz';
         const cryptoApiUrl = `${API_BASE_URL}/api.eeo/crypto-rates-proxy.php`;
 
         // Získat token pro autentizaci (pokud je vyžadován)

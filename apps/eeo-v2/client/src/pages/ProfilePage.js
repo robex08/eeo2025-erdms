@@ -2117,7 +2117,7 @@ const ProfilePage = () => {
       }
 
       try {
-        const apiUrl = `${process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/'}user/profile`;
+        const apiUrl = `${process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/'}user/profile`;
 
         const response = await fetch(apiUrl, {
           method: 'POST',
