@@ -387,14 +387,6 @@ function createFieldMappingForDocx(apiData, templateMapping) {
     mappedData[docxField] = String(value || '');
   });
 
-    templateFieldsCount: Object.keys(templateMapping).length,
-    mappedFieldsCount: Object.keys(mappedData).length,
-    missingFieldsCount: missingFields.length
-  });
-
-  if (missingFields.length > 0) {
-  }
-
   return mappedData;
 }
 
