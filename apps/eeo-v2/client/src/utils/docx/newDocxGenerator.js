@@ -224,12 +224,6 @@ export async function generateDocxDocument({
   // orderData parametr už NENÍ POTŘEBA - používáme enriched endpoint!
 }) {
   try {
-      templateId,
-      orderId,
-      templateName: template?.nazev,
-      selectedUserId: selectedUserId
-    });
-
     let sablonaData = null;
 
     // === KROK 0: Načtení detailu šablony z databáze ===
@@ -246,10 +240,6 @@ export async function generateDocxDocument({
       }
 
       sablonaData = templateDetail.data;
-        id: sablonaData.id,
-        nazev: sablonaData.nazev,
-        hasMapping: !!(sablonaData.docx_mapping || sablonaData.mapovani_json)
-      });
     } catch (error) {
       console.error('❌ Chyba při načítání detailu šablony:', error);
       throw new Error(`Nepodařilo se načíst šablonu ID ${templateId}: ${error.message}`);
@@ -264,10 +254,6 @@ export async function generateDocxDocument({
       fileName: sablonaData.nazev || 'template.docx'
     });
 
-      fileName: templateFile.name,
-      size: templateFile.size
-    });
-
     // === KROK 2: Rozbalení ZIP struktury ===
 
     const docxZip = await JSZip.loadAsync(templateFile);
@@ -276,10 +262,6 @@ export async function generateDocxDocument({
     if (!documentXml) {
       throw new Error('Neplatná DOCX šablona - chybí document.xml');
     }
-
-      documentXmlLength: documentXml.length,
-      filesInZip: Object.keys(docxZip.files).length
-    });
 
     // === KROK 3: Načtení DYNAMICKÉHO MAPOVÁNÍ z databáze ===
 
@@ -314,12 +296,6 @@ export async function generateDocxDocument({
     if (!apiData) {
       throw new Error('Nepodařilo se získat enriched data z backendu');
     }
-    
-      ma_garant_uzivatel: !!apiData.garant_uzivatel,
-      ma_prikazce_uzivatel: !!apiData.prikazce_uzivatel,
-      ma_vypocitane: !!apiData.vypocitane,
-      dostupni_uzivatele: apiData.dostupni_uzivatele_pro_podpis?.length || 0
-    });
     
     // === KROK 4b: Vybraný uživatel pro podpis ===
     if (selectedUserId && apiData.vypocitane) {
