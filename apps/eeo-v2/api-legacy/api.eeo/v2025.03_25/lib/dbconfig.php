@@ -8,14 +8,14 @@ return [
         'database' => 'eeo2025' // Nová databáze
     ],
     'upload' => [
-        // Root cesta pro nahrávání příloh - build varianta
-        'root_path' => '/var/www/erdms-builds/current/apps/eeo-v2/prilohy/',
+        // Root cesta pro nahrávání příloh - jednotná pro dev i produkci
+        'root_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
         
-        // Alternativní relativní cesta (pro development)
-        'relative_path' => '/var/www/erdms-builds/current/apps/eeo-v2/prilohy/',
+        // Alternativní relativní cesta (stejná jako root_path)
+        'relative_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
         
         // Cesta pro DOCX šablony
-        'docx_templates_path' => '/var/www/erdms-builds/current/apps/eeo-v2/sablony/',
+        'docx_templates_path' => '/var/www/erdms-data/eeo-v2/sablony/',
         
         // Maximální velikost souboru v bajtech (20MB)
         'max_file_size' => 20 * 1024 * 1024,
