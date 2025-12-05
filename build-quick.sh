@@ -24,7 +24,7 @@ mkdir -p ${BUILD_DIR}/apps/eeo-v2/api
 echo "🏠 Building Dashboard..."
 cd /var/www/erdms-dev/dashboard
 npm run build
-cp -r dist ${BUILD_DIR}/dashboard/
+cp -r build ${BUILD_DIR}/dashboard/
 
 # Copy Auth API
 echo "🔐 Copying Auth API..."
@@ -37,7 +37,7 @@ npm ci --production
 echo "📱 Building EEO Client..."
 cd /var/www/erdms-dev/apps/eeo-v2/client
 npm run build
-cp -r dist ${BUILD_DIR}/apps/eeo-v2/client/
+cp -r build ${BUILD_DIR}/apps/eeo-v2/client/
 
 # Copy EEO API
 echo "📋 Copying EEO API..."
