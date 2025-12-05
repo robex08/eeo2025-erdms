@@ -95,7 +95,6 @@ function formatCurrency(value) {
  * Ponecháno pouze pro referenci nebo fallback
  */
 function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
-  console.log('🧮 Začínám výpočet dodatečných proměnných');
 
   const calculated = { ...apiData };
 
@@ -106,7 +105,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
 
   // 🧮 VÝPOČTY Z POLOŽEK OBJEDNÁVKY
   if (apiData.polozky && Array.isArray(apiData.polozky)) {
-    console.log(`  📊 Zpracovávám ${apiData.polozky.length} položek objednávky`);
 
     let celkovaCenaBezDph = 0;
     let celkovaCenaSdph = 0;
@@ -119,7 +117,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
       celkovaCenaBezDph += cena;
       celkovaCenaSdph += cenaSdph;
 
-      console.log(`    • Položka ${index + 1}: ${cena.toFixed(2)} Kč bez DPH, ${cenaSdph.toFixed(2)} Kč s DPH`);
     });
 
     const vypocteneDph = celkovaCenaSdph - celkovaCenaBezDph;
@@ -134,12 +131,7 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
     calculated.vypocitane.celkova_cena_s_dph_kc = `${formatCurrency(celkovaCenaSdph)} Kč`;
     calculated.vypocitane.vypoctene_dph_kc = `${formatCurrency(vypocteneDph)} Kč`;
 
-    console.log('  ✅ Součty položek:');
-    console.log(`    💰 Celková cena bez DPH: ${calculated.vypocitane.celkova_cena_bez_dph} Kč`);
-    console.log(`    💰 Celková cena s DPH: ${calculated.vypocitane.celkova_cena_s_dph} Kč`);
-    console.log(`    💰 Vypočtené DPH: ${calculated.vypocitane.vypoctene_dph} Kč`);
   } else {
-    console.log('  ⚠️ Žádné položky k výpočtu');
     calculated.vypocitane.celkova_cena_bez_dph = '0.00';
     calculated.vypocitane.celkova_cena_s_dph = '0.00';
     calculated.vypocitane.vypoctene_dph = '0.00';
@@ -159,8 +151,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
   calculated.vypocitane.vybrany_uzivatel_telefon = '';
 
   if (selectedUserId) {
-    console.log('  🔍 Hledám vybraného uživatele s ID:', selectedUserId);
-    console.log('  📋 Dostupné uživatelské objekty v apiData:', {
       garant_uzivatel: !!apiData.garant_uzivatel,
       garant_uzivatel_id: apiData.garant_uzivatel_id,
       prikazce_uzivatel: !!apiData.prikazce_uzivatel,
@@ -180,35 +170,25 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
     
     if (apiData.garant_uzivatel_id === selectedUserId && apiData.garant_uzivatel) {
       selectedUser = apiData.garant_uzivatel;
-      console.log('  ✅ Nalezen jako garant_uzivatel');
     } else if (apiData.prikazce_id === selectedUserId && apiData.prikazce_uzivatel) {
       selectedUser = apiData.prikazce_uzivatel;
-      console.log('  ✅ Nalezen jako prikazce_uzivatel');
     } else if (apiData.schvalovatel_id === selectedUserId && apiData.schvalovatel) {
       selectedUser = apiData.schvalovatel;
-      console.log('  ✅ Nalezen jako schvalovatel');
     } else if (apiData.uzivatel_id === selectedUserId && apiData.uzivatel) {
       selectedUser = apiData.uzivatel;
-      console.log('  ✅ Nalezen jako uzivatel (objednatel)');
     } else if (apiData.dodavatel_potvrdil_id === selectedUserId && apiData.dodavatel_potvrdil) {
       selectedUser = apiData.dodavatel_potvrdil;
-      console.log('  ✅ Nalezen jako dodavatel_potvrdil');
     } else if (apiData.odesilatel_id === selectedUserId && apiData.odesilatel) {
       selectedUser = apiData.odesilatel;
-      console.log('  ✅ Nalezen jako odesilatel');
     } else if (apiData.fakturant_id === selectedUserId && apiData.fakturant) {
       selectedUser = apiData.fakturant;
-      console.log('  ✅ Nalezen jako fakturant');
     } else if (apiData.potvrdil_vecnou_spravnost_id === selectedUserId && apiData.potvrdil_vecnou_spravnost) {
       selectedUser = apiData.potvrdil_vecnou_spravnost;
-      console.log('  ✅ Nalezen jako potvrdil_vecnou_spravnost');
     } else if (apiData.dokoncil_id === selectedUserId && apiData.dokoncil) {
       selectedUser = apiData.dokoncil;
-      console.log('  ✅ Nalezen jako dokoncil');
     }
 
     if (selectedUser) {
-      console.log('  🔍 Nalezený uživatel - raw data:', selectedUser);
       
       // ✅ OPRAVA: API vrací 'cele_jmeno' ne 'plne_jmeno'
       calculated.vypocitane.vybrany_uzivatel_cele_jmeno = selectedUser.cele_jmeno || 
@@ -220,7 +200,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
       calculated.vypocitane.vybrany_uzivatel_email = selectedUser.email || '';
       calculated.vypocitane.vybrany_uzivatel_telefon = selectedUser.telefon || '';
       
-      console.log(`  👤 Vybraný uživatel NASTAVENO:`, {
         cele_jmeno: calculated.vypocitane.vybrany_uzivatel_cele_jmeno,
         jmeno: calculated.vypocitane.vybrany_uzivatel_jmeno,
         prijmeni: calculated.vypocitane.vybrany_uzivatel_prijmeni,
@@ -228,8 +207,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
         selectedUserId: selectedUserId
       });
     } else {
-      console.warn(`  ⚠️ Vybraný uživatel s ID ${selectedUserId} nebyl nalezen v datech objednávky`);
-      console.warn(`  🔍 Debug - dostupná ID (TYPE):`, {
         selectedUserId_type: typeof selectedUserId,
         selectedUserId_value: selectedUserId,
         garant_uzivatel_id: apiData.garant_uzivatel_id,
@@ -243,7 +220,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
       });
     }
   } else {
-    console.log('  ⚠️ selectedUserId je null/undefined - nebyl vybrán žádný uživatel');
   }
 
   // Placeholder pro uživatelsky vybraný text
@@ -259,10 +235,6 @@ function addCalculatedVariables_DEPRECATED(apiData, selectedUserId = null) {
   calculated.vypocitane.cas_generovani = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   calculated.vypocitane.datum_cas_generovani = `${formatDateForDocx(now)} ${calculated.vypocitane.cas_generovani}`;
 
-  console.log('  ✅ Speciální proměnné přidány');
-  console.log(`    📊 Počet položek: ${calculated.vypocitane.pocet_polozek}`);
-  console.log(`    📎 Počet příloh: ${calculated.vypocitane.pocet_priloh}`);
-  console.log(`    📅 Datum generování: ${calculated.vypocitane.datum_generovani}`);
 
   return calculated;
 }
@@ -282,7 +254,6 @@ export async function generateDocxDocument({
   // orderData parametr už NENÍ POTŘEBA - používáme enriched endpoint!
 }) {
   try {
-    console.log('🚀 NOVÝ DOCX GENERÁTOR - Enriched Endpoint:', {
       templateId,
       orderId,
       templateName: template?.nazev,
@@ -292,7 +263,6 @@ export async function generateDocxDocument({
     let sablonaData = null;
 
     // === KROK 0: Načtení detailu šablony z databáze ===
-    console.log('📋 KROK 0: Načítání detailu šablony z databáze');
 
     try {
       const templateDetail = await getDocxSablonaDetail({
@@ -306,7 +276,6 @@ export async function generateDocxDocument({
       }
 
       sablonaData = templateDetail.data;
-      console.log('✅ Detail šablony načten:', {
         id: sablonaData.id,
         nazev: sablonaData.nazev,
         hasMapping: !!(sablonaData.docx_mapping || sablonaData.mapovani_json)
@@ -317,7 +286,6 @@ export async function generateDocxDocument({
     }
 
     // === KROK 1: Načtení DOCX šablony ze serveru ===
-    console.log('📁 KROK 1: Načítání DOCX šablony ze serveru');
 
     const templateFile = await downloadDocxSablonaAsFile({
       token,
@@ -326,13 +294,11 @@ export async function generateDocxDocument({
       fileName: sablonaData.nazev || 'template.docx'
     });
 
-    console.log('✅ KROK 1 dokončen - šablona načtena:', {
       fileName: templateFile.name,
       size: templateFile.size
     });
 
     // === KROK 2: Rozbalení ZIP struktury ===
-    console.log('📦 KROK 2: Rozbalení ZIP struktury');
 
     const docxZip = await JSZip.loadAsync(templateFile);
 
@@ -341,22 +307,15 @@ export async function generateDocxDocument({
       throw new Error('Neplatná DOCX šablona - chybí document.xml');
     }
 
-    console.log('✅ KROK 2 dokončen - ZIP rozbalený:', {
       documentXmlLength: documentXml.length,
       filesInZip: Object.keys(docxZip.files).length
     });
 
     // === KROK 3: Načtení DYNAMICKÉHO MAPOVÁNÍ z databáze ===
-    console.log('🗂️ KROK 3: Načítání DYNAMICKÉHO MAPOVÁNÍ z databáze');
-    console.log('🔍 DEBUG: sablonaData z DB:', sablonaData);
-    console.log('🔍 DEBUG: sablonaData.docx_mapping:', sablonaData.docx_mapping);
-    console.log('🔍 DEBUG: sablonaData.mapovani_json:', sablonaData.mapovani_json);
 
     let templateMapping = {};
 
     const mappingSource = sablonaData.docx_mapping || sablonaData.mapovani_json;
-    console.log('🔍 DEBUG: mappingSource (raw):', mappingSource);
-    console.log('🔍 DEBUG: mappingSource type:', typeof mappingSource);
 
     if (mappingSource) {
       try {
@@ -364,8 +323,6 @@ export async function generateDocxDocument({
           ? JSON.parse(mappingSource)
           : mappingSource;
 
-        console.log('🔍 DEBUG: templateMapping PO parsování:', templateMapping);
-        console.log('✅ KROK 3 dokončen - dynamické mapování z DB načteno:', Object.keys(templateMapping).length, 'polí');
       } catch (error) {
         console.error('❌ Chyba při parsování mapovani_json:', error);
         throw new Error(`Neplatné JSON mapování v šabloně: ${error.message}`);
@@ -375,7 +332,6 @@ export async function generateDocxDocument({
     }
 
     // === KROK 4: Načtení ENRICHED DAT z nového endpointu ===
-    console.log('📊 KROK 4: Načítání ENRICHED dat z backendu (nový endpoint)');
     
     // ✅ NOVÝ ENDPOINT: sablona_docx/order-enriched-data
     // Vrací KOMPLETNÍ data včetně enriched uživatelů a vypočítaných hodnot
@@ -389,7 +345,6 @@ export async function generateDocxDocument({
       throw new Error('Nepodařilo se získat enriched data z backendu');
     }
     
-    console.log('✅ Enriched data načtena z backendu:', {
       ma_garant_uzivatel: !!apiData.garant_uzivatel,
       ma_prikazce_uzivatel: !!apiData.prikazce_uzivatel,
       ma_vypocitane: !!apiData.vypocitane,
@@ -403,18 +358,15 @@ export async function generateDocxDocument({
       );
       
       if (vybranyUzivatel) {
-        console.log(`✅ Vybraný uživatel nalezen: ${vybranyUzivatel.cele_jmeno} (${vybranyUzivatel.role})`);
         
         // Přidej do vypočítaných hodnot
         apiData.vypocitane.vybrany_uzivatel_cele_jmeno = vybranyUzivatel.cele_jmeno;
         apiData.vypocitane.vybrany_uzivatel_role = vybranyUzivatel.role;
         apiData.vypocitane.vybrany_uzivatel_lokalita = vybranyUzivatel.lokalita_nazev;
       } else {
-        console.warn(`⚠️ Vybraný uživatel s ID ${selectedUserId} nebyl nalezen`);
       }
     }
 
-    console.log('🔍 DEBUG Enriched API DATA:', {
       polozky: apiData.polozky?.length || 0,
       prilohy: apiData.prilohy?.length || 0,
       garant_uzivatel: !!apiData.garant_uzivatel,
@@ -429,7 +381,6 @@ export async function generateDocxDocument({
     // ⚠️ POZNÁMKA: normalizeApiData() a addCalculatedVariables() už NENÍ POTŘEBA!
     // Backend endpoint vrací data JIŽ NORMALIZOVANÁ a S VYPOČÍTANÝMI HODNOTAMI
     
-    console.log('🔍 DEBUG: Backend enriched data obsahují:', {
       ma_vypocitane: !!apiData.vypocitane,
       celkova_cena_bez_dph: apiData.vypocitane?.celkova_cena_bez_dph,
       celkova_cena_s_dph: apiData.vypocitane?.celkova_cena_s_dph,
@@ -437,19 +388,14 @@ export async function generateDocxDocument({
     });
 
     // === KROK 5: DYNAMICKÉ MAPOVÁNÍ polí ===
-    console.log('🔗 KROK 5: DYNAMICKÉ mapování polí podle šablony');
 
     const fieldMapping = createFieldMappingForDocx(apiData, templateMapping);
-    console.log('✅ KROK 5 dokončen - pole namapována:', Object.keys(fieldMapping).length, 'polí');
 
     // === KROK 6: Vyplnění XML dat ===
-    console.log('✏️ KROK 6: Vyplnění XML dat');
 
     let filledXml = fillXmlWithFieldData(documentXml, fieldMapping);
-    console.log('✅ KROK 6 dokončen - XML vyplněno');
 
     // === KROK 7: Zabalení zpět do ZIP ===
-    console.log('📦 KROK 7: Zabalení zpět do ZIP');
 
     docxZip.file('word/document.xml', filledXml);
 
@@ -458,8 +404,6 @@ export async function generateDocxDocument({
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     });
 
-    console.log('✅ KROK 7 dokončen - DOCX zabalený');
-    console.log('🎉 DOCX generování úspěšně dokončeno');
 
     return outputBlob;
 
@@ -476,9 +420,6 @@ export async function generateDocxDocument({
  * @returns {Object} - Namapovaná pole pro DOCX
  */
 function createFieldMappingForDocx(apiData, templateMapping) {
-  console.log('🔍 Začínám DYNAMICKÉ mapování podle šablony');
-  console.log('📦 Dostupná data z API (TOP LEVEL KEYS):', Object.keys(apiData));
-  console.log('📋 Mapování ze šablony (JSON):', templateMapping);
 
   const mappedData = {};
   const missingFields = [];
@@ -499,37 +440,31 @@ function createFieldMappingForDocx(apiData, templateMapping) {
         }).filter(v => v);
         value = values.join(' ');
 
-        console.log(`  ➕ Sloučení: ${docxField} ← [${parts.join(' + ')}] → "${value}"`);
       } else {
         // Standardní mapování pomocí tečkové notace
         value = getValueFromPath(apiData, dbPath);
 
         if (value === undefined || value === null) {
           missingFields.push({ docxField, dbPath });
-          console.warn(`  ❌ CHYBÍ: ${docxField} ← ${dbPath} (hodnota neexistuje v API data)`);
           value = '';
         } else {
           // Formátuj datum pokud to vypadá jako datum
           value = formatDateForDocx(value);
-          console.log(`  ✅ OK: ${docxField} ← ${dbPath} → "${String(value).substring(0, 50)}${String(value).length > 50 ? '...' : ''}"`);
         }
       }
     } catch (error) {
-      console.warn(`  ⚠️ Chyba při mapování ${docxField}:`, error);
       value = '';
     }
 
     mappedData[docxField] = String(value || '');
   });
 
-  console.log('📋 DYNAMICKÉ mapování dokončeno:', {
     templateFieldsCount: Object.keys(templateMapping).length,
     mappedFieldsCount: Object.keys(mappedData).length,
     missingFieldsCount: missingFields.length
   });
 
   if (missingFields.length > 0) {
-    console.warn('⚠️ CHYBĚJÍCÍ POLE V API DATA:', missingFields);
   }
 
   return mappedData;
@@ -544,7 +479,6 @@ function createFieldMappingForDocx(apiData, templateMapping) {
 function normalizeApiData_DEPRECATED(data) {
   if (!data || typeof data !== 'object') return data;
 
-  console.log('🔄 Normalizuji API data - expandování JSON stringů');
 
   const normalized = Array.isArray(data) ? [] : {};
 
@@ -556,7 +490,6 @@ function normalizeApiData_DEPRECATED(data) {
         // Pokud je to objekt nebo array, použijeme parsovanou hodnotu a rekurzivně normalizujeme
         if (typeof parsed === 'object' && parsed !== null) {
           normalized[key] = normalizeApiData_DEPRECATED(parsed);
-          console.log(`  ✅ Expandován JSON string: ${key}`);
         } else {
           // Primitiva necháme jako string
           normalized[key] = value;
@@ -611,7 +544,6 @@ function getValueFromPath(obj, path) {
       return current[key];
     }, obj);
   } catch (error) {
-    console.warn(`Chyba při čtení cesty ${path}:`, error);
     return undefined;
   }
 }
@@ -622,7 +554,6 @@ function getValueFromPath(obj, path) {
  * NEMAPOVANÁ POLE SE ODSTRANÍ Z DOKUMENTU
  */
 function fillXmlWithFieldData(xmlContent, fieldValues) {
-  console.log('🔧 Začínám vyplňování XML polí (DOM-based algoritmus)...');
 
   try {
     const parser = new window.DOMParser();
@@ -695,7 +626,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
           // KONTROLA: Pokud pole NENÍ v mapování, ODSTRANÍME ho
           if (!(fieldName in fieldValues)) {
-            console.log(`🗑️  ODSTRAŇUJI nemapované pole: ${fieldName}`);
 
             // Smaž všechny runs včetně begin a end
             for (let del = endIdx; del >= beginIdx; del--) {
@@ -711,7 +641,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
           // Pokud máme hodnotu (i když je prázdná), vyplníme ji
           if (val !== undefined && val !== null) {
-            console.log(`✅ Nahrazuji pole: ${fieldName} → "${val}"`);
 
             // Nahraď první run hodnotou
             const firstR = runs[beginIdx];
@@ -744,13 +673,10 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
     processNode(xmlDoc.documentElement);
 
-    console.log(`🎉 Celkem nahrazeno ${replacementCount} polí`);
-    console.log(`🗑️  Celkem odstraněno ${removedCount} nemapovaných polí`);
     return serializer.serializeToString(xmlDoc);
 
   } catch (error) {
     console.error('❌ Chyba při DOM parsování XML:', error);
-    console.warn('⚠️ Fallback na string replace...');
 
     // Fallback - jednoduchý string replace pro {FIELD_NAME}
     let filledXml = xmlContent;
@@ -758,7 +684,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
       const pattern = `{${fieldName}}`;
       if (filledXml.includes(pattern)) {
         filledXml = filledXml.replace(new RegExp(escapeRegExp(pattern), 'g'), String(value || ''));
-        console.log(`✅ Fallback nahrazení: {${fieldName}} → "${value}"`);
       }
     });
 

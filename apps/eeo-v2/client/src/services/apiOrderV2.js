@@ -399,9 +399,9 @@ export async function getOrderV2(orderId, token, username, enriched = true) {
       : `/order-v2/${orderId}`;
 
     // 🔍 DEBUG: Celý URL endpoint
-    const fullUrl = `${process.env.REACT_APP_API2_BASE_URL}${endpoint}`;
-    console.log('🔍 VOLÁM ENDPOINT:', fullUrl);
-    console.log('🔍 PAYLOAD:', { token: '***', username, archivovano: 0, enriched });
+    // const fullUrl = `${process.env.REACT_APP_API2_BASE_URL}${endpoint}`;
+    // console.log('🔍 VOLÁM ENDPOINT:', fullUrl);
+    // console.log('🔍 PAYLOAD:', { token: '***', username, archivovano: 0, enriched });
 
     const response = await apiOrderV2.post(endpoint, {
       token,

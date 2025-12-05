@@ -37,10 +37,12 @@ return [
         ],
         
         // Struktura adresářů - jak organizovat soubory
+        // ✅ PLOCHÁ STRUKTURA - všechny soubory přímo v /var/www/erdms-data/eeo-v2/prilohy/
+        // Rozlišení: faktury = fa-*, objednávky = obj-* v názvu souboru
         'directory_structure' => [
-            'by_date' => true,        // Rozdělit podle data (YYYY/MM/)
-            'by_order' => false,      // Rozdělit podle ID objednávky
-            'by_user' => false        // Rozdělit podle ID uživatele
+            'by_date' => false,       // ❌ Nerozdělit podle data - plochá struktura
+            'by_order' => false,      // ❌ Nerozdělit podle ID objednávky
+            'by_user' => false        // ❌ Nerozdělit podle ID uživatele
         ],
         
         // URL prefix pro přístup k souborům (pokud budou přístupné přes web)

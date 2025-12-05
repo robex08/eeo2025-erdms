@@ -78,8 +78,9 @@ function get_order_v2_upload_path($config, $objednavka_id, $user_id) {
     } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // Fallback - použij hardcoded cestu pro tento projekt
-        $basePath = '/var/www/eeo2025/doc/prilohy/';
+        // ✅ Fallback - použij správnou cestu z dbconfig.php
+        // Cesta: /var/www/erdms-data/eeo-v2/prilohy/
+        $basePath = '/var/www/erdms-data/eeo-v2/prilohy/';
     }
     
     // Přidání lomítka na konec pokud chybí
@@ -87,8 +88,9 @@ function get_order_v2_upload_path($config, $objednavka_id, $user_id) {
         $basePath .= '/';
     }
     
-    // BEZ adresářového členění - všechny soubory v root
-    // Prefix a datum/guid v názvu souboru zajistí unikátnost
+    // ✅ PLOCHÁ STRUKTURA - všechny soubory přímo v root
+    // Prefix (obj-/fa-) a datum/guid v názvu souboru zajistí unikátnost
+    // Formát: obj-YYYY-MM-DD_GUID.ext nebo fa-YYYY-MM-DD_GUID.ext
     return $basePath;
 }
 

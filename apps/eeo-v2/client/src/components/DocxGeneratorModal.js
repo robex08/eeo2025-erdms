@@ -694,13 +694,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
     const selectedUser = availableUsers[selectedUserIndex];
     const selectedUserId = selectedUser.id;
 
-    console.log('🔍 DEBUG MODAL: Vybraný uživatel z dialogu:', {
-      selectedUserIndex,
-      selectedUser,
-      selectedUserId,
-      userName: selectedUser.name,
-      userRole: selectedUser.role
-    });
 
     try {
       setGenerating(true);
@@ -713,16 +706,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
       }
 
       // ✅ POUŽIJEME order Z MODALU - už má enriched uživatele (garant_uzivatel, prikazce_uzivatel atd.)
-      console.log('📋 Používám order objekt z modalu (má enriched data):', {
-        hasGarantUzivatel: !!order.garant_uzivatel,
-        hasGarantUzivatelId: !!order.garant_uzivatel_id,
-        hasPrikazceUzivatel: !!order.prikazce_uzivatel,
-        hasPrikazceId: !!order.prikazce_id,
-        hasSchvalovatel: !!order.schvalovatel,
-        hasSchvalovatelId: !!order.schvalovatel_id,
-        hasUzivatel: !!order.uzivatel,
-        hasUzivatelId: !!order.uzivatel_id
-      });
 
       // === NOVÝ SYSTÉM - DOCX generátor: enriched endpoint ===
       // ✅ orderData parametr už NENÍ POTŘEBA - používáme enriched endpoint!
