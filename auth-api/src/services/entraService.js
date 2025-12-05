@@ -247,8 +247,13 @@ class EntraService {
       
       console.log(`✅ Načítání dokončeno: ${allUsers.length} uživatelů z ${totalCount} celkem`);
       
-      // Ořízni na požadovaný limit
-      return allUsers.slice(0, limit);
+      // Ořízni na požadovaný limit a vrať objekt s totalCount
+      const finalUsers = allUsers.slice(0, limit);
+      return {
+        users: finalUsers,
+        totalCount: totalCount,
+        loadedCount: finalUsers.length
+      };
     } catch (err) {
       console.error('🔴 getUsers ERROR:', err.message);
       throw err;

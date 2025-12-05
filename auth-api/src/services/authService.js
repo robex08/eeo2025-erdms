@@ -1,6 +1,9 @@
 const db = require('../db/connection');
 const { v4: uuidv4 } = require('uuid');
 
+// In-memory session storage (pro produkci použít Redis)
+const sessions = new Map();
+
 class AuthService {
   /**
    * Najde uživatele podle EntraID
@@ -134,73 +137,95 @@ class AuthService {
   }
 
   /**
-   * Vytvoří session v databázi
+   * Vytvoří session (IN-MEMORY - bez DB)
    */
-  async createSession(userId, tokens, ipAddress, userAgent) {
+  async createSession(user, tokens, ipAddress, userAgent) {
     const sessionId = uuidv4();
     const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
 
-    await db.query(
-      `INSERT INTO erdms_sessions 
-       (id, user_id, entra_access_token, entra_refresh_token, entra_id_token, 
-        token_expires_at, ip_address, user_agent, created_at, last_activity)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        sessionId,
-        userId,
-        tokens.accessToken,
-        tokens.refreshToken || null,
-        tokens.idToken || null,
-        expiresAt,
-        ipAddress,
-        userAgent
-      ]
-    );
+    // Ulož session do paměti s kompletními user daty
+    sessions.set(sessionId, {
+      id: sessionId,
+      userId: user.id,
+      // User data z Entra
+      username: user.username,
+      email: user.email,
+      upn: user.upn,
+      name: user.name,
+      entra_id: user.entra_id,
+      auth_source: user.auth_source,
+      tenantId: user.tenantId,
+      // Tokens
+      entra_access_token: tokens.accessToken,
+      entra_id_token: tokens.idToken,
+      entra_refresh_token: tokens.refreshToken || null,
+      expiresAt: expiresAt,
+      // Metadata
+      ipAddress: ipAddress,
+      userAgent: userAgent,
+      createdAt: new Date(),
+      lastActivity: new Date()
+    });
+
+    console.log('🟢 Session stored in memory:', sessionId);
+    console.log('🟢 Active sessions count:', sessions.size);
 
     return sessionId;
   }
 
   /**
-   * Najde session podle ID
+   * Najde session podle ID (IN-MEMORY)
    */
   async findSession(sessionId) {
-    const [rows] = await db.query(
-      `SELECT s.*, u.* 
-       FROM erdms_sessions s
-       JOIN erdms_users u ON s.user_id = u.id
-       WHERE s.id = ? AND u.aktivni = 1`,
-      [sessionId]
-    );
-    return rows[0] || null;
+    const session = sessions.get(sessionId);
+    
+    if (!session) {
+      return null;
+    }
+
+    // Zkontroluj jestli session nevypršela
+    if (session.expiresAt < new Date()) {
+      sessions.delete(sessionId);
+      return null;
+    }
+
+    return session;
   }
 
   /**
-   * Aktualizuje session aktivitu
+   * Aktualizuje session aktivitu (IN-MEMORY)
    */
   async updateSessionActivity(sessionId) {
-    await db.query(
-      'UPDATE erdms_sessions SET last_activity = NOW() WHERE id = ?',
-      [sessionId]
-    );
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.lastActivity = new Date();
+    }
   }
 
   /**
-   * Smaže session
+   * Smaže session (IN-MEMORY)
    */
   async deleteSession(sessionId) {
-    await db.query('DELETE FROM erdms_sessions WHERE id = ?', [sessionId]);
+    sessions.delete(sessionId);
+    console.log('🟢 Session deleted:', sessionId);
+    console.log('🟢 Remaining sessions:', sessions.size);
   }
 
   /**
-   * Loguje autentizační událost
+   * Loguje autentizační událost (DO KONZOLE - bez DB)
    */
   async logAuthEvent(userId, username, eventType, authMethod, ipAddress, userAgent, errorMessage = null) {
-    await db.query(
-      `INSERT INTO erdms_auth_log 
-       (user_id, username, event_type, auth_method, ip_address, user_agent, error_message, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [userId, username, eventType, authMethod, ipAddress, userAgent, errorMessage]
-    );
+    // Log do konzole místo DB
+    console.log('🔐 AUTH EVENT:', {
+      userId,
+      username,
+      eventType,
+      authMethod,
+      ipAddress,
+      userAgent: userAgent?.substring(0, 50),
+      errorMessage,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

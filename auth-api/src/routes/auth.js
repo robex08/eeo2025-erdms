@@ -117,61 +117,32 @@ router.get('/callback', async (req, res) => {
       ? account.username.split('@')[0] 
       : account.username;
     
-    // TEST: Rychlý DB test před hlavní query
-    console.log('🟣 SERVER: Testing DB connection...');
-    try {
-      const testResult = await db.query('SELECT 1 as test');
-      console.log('🟣 SERVER: ✅ DB connection OK, test result:', testResult[0][0]);
-    } catch (testErr) {
-      console.error('🔴 SERVER: ❌ DB test FAILED:', testErr.message);
-    }
+    console.log('🟣 SERVER: Přihlášen MS uživatel:', account.username);
+    console.log('🟣 SERVER: Username:', msUsername);
+    console.log('🟣 SERVER: EntraID:', account.homeAccountId);
     
-    // Najdi nebo synchronizuj uživatele
-    // NEJDŘÍV podle username (rychlé), pak teprve podle EntraID
-    console.log('🟣 SERVER: Looking for user by username:', msUsername);
-    let user = await authService.findUserByUsername(msUsername);
+    // DOČASNĚ: Neověřujeme existenci uživatele v DB
+    // Vytvoříme user objekt s daty z Entra ID
+    const user = {
+      id: account.homeAccountId, // Použijeme EntraID jako user ID
+      username: msUsername,
+      entra_id: account.homeAccountId,
+      upn: account.username,
+      email: account.username,
+      name: account.name || msUsername,
+      auth_source: 'entra_id',
+      // Další data z account
+      localAccountId: account.localAccountId,
+      environment: account.environment,
+      tenantId: account.tenantId
+    };
     
-    if (!user) {
-      // Zkus ještě podle EntraID (pro případ že už byl synchronizován)
-      console.log('🟣 SERVER: User not found by username, trying EntraID:', account.homeAccountId);
-      user = await authService.findUserByEntraId(account.homeAccountId);
-    }
-    
-    if (user) {
-      console.log('🟣 SERVER: ✅ User found:', user.username, 'ID:', user.id);
-      
-      // Pokud uživatel nemá EntraID nebo je jiné, synchronizuj
-      if (!user.entra_id || user.entra_id !== account.homeAccountId) {
-        console.log('🟣 SERVER: Syncing with EntraID...');
-        await authService.syncUserWithEntra(user.id, {
-          id: account.homeAccountId,
-          userPrincipalName: account.username
-        });
-        console.log('🟣 SERVER: ✅ EntraID sync completed');
-      } else {
-        console.log('🟣 SERVER: EntraID already synced');
-      }
-    } else {
-      console.error('🔴 SERVER: ❌ User NOT found in database!');
-      console.error('🔴 SERVER: Tried username:', msUsername);
-      console.error('🔴 SERVER: Tried EntraID:', account.homeAccountId);
-      // Uživatel neexistuje v databázi
-      await authService.logAuthEvent(
-        null,
-        account.username,
-        'login_failed',
-        'entra_id',
-        req.ip,
-        req.get('user-agent'),
-        'User not found in database'
-      );
-      return res.redirect(`${process.env.CLIENT_URL}/login?error=user_not_found`);
-    }
+    console.log('🟣 SERVER: ✅ User created from Entra data');
 
-    // Vytvoř session
+    // Vytvoř session s uživatelskými daty
     console.log('🟣 SERVER: Creating session for user:', user.username);
     const sessionId = await authService.createSession(
-      user.id,
+      user,
       {
         accessToken,
         idToken,
@@ -182,10 +153,10 @@ router.get('/callback', async (req, res) => {
     );
     console.log('🟣 SERVER: ✅ Session created:', sessionId);
 
-    // Log úspěšného přihlášení
+    // Log úspěšného přihlášení (bez user_id, protože není v DB)
     await authService.logAuthEvent(
-      user.id,
-      user.username,
+      null, // user_id je null, protože neověřujeme DB
+      account.username,
       'login_success',
       'entra_id',
       req.ip,
@@ -242,10 +213,11 @@ router.post('/logout', async (req, res) => {
     // Smaž cookie
     res.clearCookie('erdms_session');
 
-    // Microsoft logout URL
+    // Microsoft Entra logout URL
+    // Použijeme GET s parametrem post_logout_redirect_uri
     const logoutUrl = `${msalConfig.auth.authority}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(POST_LOGOUT_REDIRECT_URI)}`;
     
-    res.json({ logoutUrl });
+    res.json({ success: true, logoutUrl });
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Logout failed' });
@@ -274,24 +246,21 @@ router.get('/me', async (req, res) => {
     // Aktualizuj aktivitu
     await authService.updateSessionActivity(sessionId);
 
-    // Základní data z DB
+    // Základní data ze session (Entra ID)
     const userData = {
-      id: session.id,
+      id: session.userId,
       username: session.username,
       email: session.email,
-      jmeno: session.jmeno,
-      prijmeni: session.prijmeni,
-      titul_pred: session.titul_pred,
-      titul_za: session.titul_za,
-      telefon: session.telefon,
-      role: session.role,
-      auth_source: session.auth_source,
+      name: session.name,
       upn: session.upn,
-      entra_id: session.entra_id  // DŮLEŽITÉ: Přidat entra_id!
+      entra_id: session.entra_id,
+      auth_source: session.auth_source,
+      tenantId: session.tenantId
     };
 
     // Pokud je přihlášen přes EntraID, stáhni aktuální data z Graph API
-    if (session.auth_source === 'entra' && session.entra_access_token) {
+    if (session.auth_source === 'entra_id' && session.entra_access_token) {
+      console.log('📊 Fetching Graph API data for user:', session.username);
       try {
         // Základní profil
         const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
@@ -300,9 +269,20 @@ router.get('/me', async (req, res) => {
           },
         });
 
+        console.log('📊 Graph API response status:', graphResponse.status);
+
         if (graphResponse.ok) {
           const graphData = await graphResponse.json();
+          console.log('✅ Graph API data loaded:', Object.keys(graphData));
           userData.entraData = graphData;
+          
+          // Mapuj Graph API data na běžná pole pro kompatibilitu
+          userData.jmeno = graphData.givenName || '';
+          userData.prijmeni = graphData.surname || '';
+          userData.displayName = graphData.displayName || '';
+          userData.jobTitle = graphData.jobTitle || '';
+          userData.telefon = graphData.mobilePhone || graphData.businessPhones?.[0] || '';
+          userData.officeLocation = graphData.officeLocation || '';
 
           // Pokus o získání skupin
           try {
@@ -331,13 +311,18 @@ router.get('/me', async (req, res) => {
               userData.entraData.manager = managerData;
             }
           } catch (e) {
-            console.log('Manager not available');
+            console.log('Manager not available:', e.message);
           }
+        } else {
+          const errorText = await graphResponse.text();
+          console.error('❌ Graph API error:', graphResponse.status, errorText);
         }
       } catch (graphError) {
-        console.error('Failed to fetch Graph API data:', graphError);
+        console.error('❌ Failed to fetch Graph API data:', graphError);
         // Pokračuj bez EntraID dat
       }
+    } else {
+      console.log('⚠️ No Entra token available. auth_source:', session.auth_source, 'has_token:', !!session.entra_access_token);
     }
 
     res.json(userData);

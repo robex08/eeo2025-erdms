@@ -193,8 +193,15 @@ router.get('/users', authenticateSession, async (req, res) => {
       limit = 2000;
     }
     
-    const users = await entraService.getUsers(limit);
-    res.json({ success: true, data: users, count: users.length });
+    const result = await entraService.getUsers(limit);
+    const responseData = { 
+      success: true, 
+      data: result.users, 
+      count: result.users.length,
+      totalCount: result.totalCount 
+    };
+    console.log(`📤 Odesílám odpověď: ${result.users.length} users, totalCount: ${result.totalCount}`);
+    res.json(responseData);
   } catch (err) {
     console.error('🔴 GET /api/entra/users ERROR:', err.message);
     res.status(err.statusCode || 500).json({
