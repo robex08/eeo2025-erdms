@@ -9,30 +9,22 @@ class AuthService {
    * Přesměruje na backend login endpoint (zahájí OAuth flow)
    */
   async login() {
-    console.log('🟢 AuthService.login() START');
-    console.log('🟢 API_URL:', API_URL);
-    
     try {
       const loginUrl = `${API_URL}/auth/login`;
-      console.log('🟢 Fetching auth URL from:', loginUrl);
+      console.log('Fetching:', loginUrl);
       
       const response = await fetch(loginUrl, {
         credentials: 'include'
       });
-      console.log('🟢 Response status:', response.status);
       
       if (!response.ok) {
         throw new Error('Failed to get auth URL');
       }
       
       const data = await response.json();
-      console.log('🟢 Received authUrl:', data.authUrl);
-      console.log('🟢 Provádím window.location.href redirect na Microsoft...');
       
       // Redirect na Microsoft
       window.location.href = data.authUrl;
-      
-      console.log('🟢 Redirect proveden');
     } catch (error) {
       console.error('🔴 Login error:', error);
       alert('Chyba při přihlašování: ' + error.message);
@@ -67,26 +59,21 @@ class AuthService {
    * Získá informace o přihlášeném uživateli
    */
   async getCurrentUser() {
-    console.log('🟡 AuthService.getCurrentUser() START');
     try {
       const url = `${API_URL}/auth/me`;
-      console.log('🟡 Fetching:', url);
+      console.log('Fetching:', url);
       const response = await fetch(url, {
         credentials: 'include',
       });
-      console.log('🟡 Response status:', response.status);
-      console.log('🟡 Response ok:', response.ok);
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.log('🟡 Status 401 - nepřihlášen');
           return null;
         }
         throw new Error('Failed to fetch user');
       }
 
       const data = await response.json();
-      console.log('🟡 User data:', data);
       return data;
     } catch (error) {
       console.error('🔴 Get user error:', error);

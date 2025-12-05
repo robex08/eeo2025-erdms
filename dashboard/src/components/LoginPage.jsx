@@ -28,11 +28,7 @@ function LoginPage() {
   }, [searchParams]);
 
   const handleLogin = async () => {
-    console.log('🔵 LoginPage: handleLogin() zavolán');
-    console.log('🔵 API_URL:', import.meta.env.VITE_API_URL);
-    console.log('🔵 Volám authService.login()...');
     await authService.login();
-    console.log('🔵 authService.login() dokončen (tenhle log by se neměl zobrazit, protože redirect by měl přejít na MS)');
   };
 
   return (
