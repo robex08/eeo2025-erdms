@@ -44,9 +44,9 @@ fi
 echo ""
 
 # ============================================
-# 2. BUILD EEO2025 (/eeov2/ subdirectory)
+# 2. BUILD EEO2025 (/eeo-v2/ subdirectory)
 # ============================================
-echo -e "${YELLOW}📦 Building EEO2025 (/eeov2/)...${NC}"
+echo -e "${YELLOW}📦 Building EEO2025 (/eeo-v2/)...${NC}"
 cd "$BASE_DIR/apps/eeo-v2/client"
 
 if [ ! -d "node_modules" ]; then
@@ -55,8 +55,8 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # CRITICAL: Set PUBLIC_URL for subdirectory routing
-echo "Building with PUBLIC_URL=/eeov2..."
-PUBLIC_URL=/eeov2 npm run build
+echo "Building with PUBLIC_URL=/eeo-v2..."
+PUBLIC_URL=/eeo-v2 npm run build
 
 if [ -d "build" ]; then
     echo -e "${GREEN}✅ EEO2025 build complete: build/${NC}"
