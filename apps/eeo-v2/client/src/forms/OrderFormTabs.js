@@ -226,9 +226,9 @@ const OrderFormTabs = ({ orderId, onClose }) => {
   }, []);
 
   const getAttachmentUrl = useCallback((filename) => {
-    const baseUrl = process.env.REACT_APP_API_BASE_URL.replace(/\/api\/?$/, '');
-    const subdir = process.env.REACT_APP_SUBDIR || '/prilohy/';
-    return `${baseUrl}${subdir}${filename}`;
+    // Pro staré objednávky před 2026 používáme původní eeo.zachranka.cz URL
+    const baseUrl = process.env.REACT_APP_LEGACY_ATTACHMENTS_BASE_URL || 'https://eeo.zachranka.cz/prilohy/';
+    return `${baseUrl}${filename}`;
   }, []);
 
   const updateAttachmentSizes = useCallback(async () => {
