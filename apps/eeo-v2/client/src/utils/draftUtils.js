@@ -88,12 +88,12 @@ export const isValidConcept = (draftData) => {
   // Kontrola polí z Fáze 1 - Info a Schválení PO
   // Validní koncept = uživatel vyplnil jakékoliv pole z Fáze 1 a došlo k auto save
   // IGNORUJE systémová pole: jmeno, telefon, email, uzivatel_id, objednatel_id
-  const hasContent = formData.predmet?.trim() ||
-                    formData.garant_uzivatel_id?.trim() ||
-                    formData.prikazce_id?.trim() ||
+  const hasContent = (formData.predmet && String(formData.predmet).trim()) ||
+                    formData.garant_uzivatel_id ||
+                    formData.prikazce_id ||
                     (formData.strediska_kod && Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0) ||
                     (formData.max_cena_s_dph && parseFloat(formData.max_cena_s_dph) > 0) ||
-                    formData.popis_pozadavku?.trim();
+                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim());
 
   // Debug log odstraněn - způsoboval opakovaný výpis
   return hasContent;
@@ -115,12 +115,12 @@ export const hasDraftChanges = (draftData) => {
 
   // Kontrola zda má nějaký obsah (stejná logika jako isValidConcept)
   // IGNORUJE systémová pole: jmeno, telefon, email, uzivatel_id, objednatel_id
-  const hasContent = formData.predmet?.trim() ||
-                    formData.garant_uzivatel_id?.trim() ||
-                    formData.prikazce_id?.trim() ||
+  const hasContent = (formData.predmet && String(formData.predmet).trim()) ||
+                    formData.garant_uzivatel_id ||
+                    formData.prikazce_id ||
                     (formData.strediska_kod && Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0) ||
                     (formData.max_cena_s_dph && parseFloat(formData.max_cena_s_dph) > 0) ||
-                    formData.popis_pozadavku?.trim();
+                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim());
   return hasContent;
 };
 

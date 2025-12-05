@@ -5247,7 +5247,7 @@ function OrderForm25() {
             const lpDetails = await Promise.all(
               finalData.lp_kod.map(async (lpId) => {
                 try {
-                  const lpDetail = await fetchLPDetail({ token, username, lp_id: lpId });
+                  const lpDetail = await fetchLPDetail({ token, username, cislo_lp: lpId });
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
@@ -8501,6 +8501,7 @@ function OrderForm25() {
       }
 
       // Druh objednávky - transformovat na objekt s kod_stavu a nazev_stavu
+      // Pole je vyplňováno až ve FÁZI 3, proto ve fázi 1-2 může být NULL
       if (formData.druh_objednavky_kod) {
         const druhObj = druhyObjednavkyOptions.find(opt =>
           (opt.kod_stavu && opt.kod_stavu === formData.druh_objednavky_kod) ||
@@ -8515,6 +8516,10 @@ function OrderForm25() {
 
         orderData.druh_objednavky_kod = JSON.stringify(druhObjednavkyObj);
         addDebugLog('info', 'SAVE', 'druh-transform', `Transformace druhu objednávky: ${formData.druh_objednavky_kod} -> ${orderData.druh_objednavky_kod}`);
+      } else {
+        // Pokud není vyplněno (fáze 1-2), poslat null (po ALTER TABLE na DB)
+        orderData.druh_objednavky_kod = null;
+        addDebugLog('info', 'SAVE', 'druh-empty', 'Druh objednávky není vyplněn (fáze 1-2) - posílám NULL');
       }
 
       // Položky objednávky - ukládají se při UPDATE (existující objednávka) nebo od FÁZE 3+
@@ -8575,7 +8580,9 @@ function OrderForm25() {
       // Checkbox a metadata používat z updatedFormData (obsahuje nově nastavené ID a timestamp)
       orderData.vecna_spravnost_umisteni_majetku = formData.vecna_spravnost_umisteni_majetku || '';
       orderData.vecna_spravnost_poznamka = formData.vecna_spravnost_poznamka || '';
-      orderData.potvrzeni_vecne_spravnosti = updatedFormData.potvrzeni_vecne_spravnosti !== undefined ? updatedFormData.potvrzeni_vecne_spravnosti : 0;
+      // 🔧 FIX: Konvertovat prázdný string na 0, aby MySQL nepřijal nevalidní hodnotu
+      const vecnaSpravnostValue = updatedFormData.potvrzeni_vecne_spravnosti;
+      orderData.potvrzeni_vecne_spravnosti = (vecnaSpravnostValue === 1 || vecnaSpravnostValue === true) ? 1 : 0;
 
       // 🔍 DEBUG: Věcná správnost - automatické ID a timestamp (posílat VŽDY, i null)
       orderData.potvrdil_vecnou_spravnost_id = updatedFormData.potvrdil_vecnou_spravnost_id || null;
@@ -8988,7 +8995,9 @@ function OrderForm25() {
       orderData.dokoncil_id = formData.dokoncil_id !== undefined ? formData.dokoncil_id : null;
       orderData.dt_dokonceni = formData.dt_dokonceni || null;
       orderData.dokonceni_poznamka = formData.dokonceni_poznamka !== undefined ? formData.dokonceni_poznamka : '';
-      orderData.potvrzeni_dokonceni_objednavky = formData.potvrzeni_dokonceni_objednavky !== undefined ? formData.potvrzeni_dokonceni_objednavky : 0;
+      // 🔧 FIX: Konvertovat prázdný string na 0, aby MySQL nepřijal nevalidní hodnotu
+      const dokonceniValue = formData.potvrzeni_dokonceni_objednavky;
+      orderData.potvrzeni_dokonceni_objednavky = (dokonceniValue === 1 || dokonceniValue === true) ? 1 : 0;
 
       addDebugLog('info', 'SAVE', 'tracking-fields', `Workflow tracking pole: dodavatel_potvrdil=${orderData.dodavatel_potvrdil_id}, zverejnil=${orderData.zverejnil_id}, vecna_spravnost=${orderData.potvrdil_vecnou_spravnost_id}, fakturant=${orderData.fakturant_id}, dokoncil=${orderData.dokoncil_id}`);
 
@@ -11343,12 +11352,12 @@ function OrderForm25() {
                                   !formData.email;
 
     // Kontrola: Má formulář nějaký obsah (uživatel začal vyplňovat)?
-    const hasUserInput = formData.predmet?.trim() ||
-                        formData.garant_uzivatel_id?.trim() ||
-                        formData.prikazce_id?.trim() ||
+    const hasUserInput = (formData.predmet && String(formData.predmet).trim()) ||
+                        formData.garant_uzivatel_id ||
+                        formData.prikazce_id ||
                         (formData.strediska_kod && Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0) ||
                         (formData.max_cena_s_dph && parseFloat(formData.max_cena_s_dph) > 0) ||
-                        formData.popis_pozadavku?.trim();
+                        (formData.popis_pozadavku && String(formData.popis_pozadavku).trim());
 
     if (shouldFillOrdererData && hasUserInput) {
 
@@ -18635,7 +18644,7 @@ function OrderForm25() {
                           )}
                         </div>
                     {/* Čeká se */}
-                    <div style={{
+                    <label style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '1rem',
@@ -18645,50 +18654,49 @@ function OrderForm25() {
                       backgroundColor: formData.stav_schvaleni === 'ceka_se' ? '#fef3c7' : '#f9fafb',
                       cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
-                      marginBottom: '1rem'
+                      marginBottom: '1rem',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      color: formData.stav_schvaleni === 'ceka_se' ? '#f59e0b' : '#374151'
                     }}
-                    onClick={() => !shouldLockSchvaleniCheckboxes && handleRadioClick('ceka_se')}
+                    onClick={(e) => {
+                      if (!shouldLockSchvaleniCheckboxes) {
+                        e.preventDefault();
+                        handleRadioClick('ceka_se');
+                      }
+                    }}
                     >
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        fontSize: '1rem',
-                        fontWeight: '500',
-                        cursor: 'inherit',
-                        color: formData.stav_schvaleni === 'ceka_se' ? '#f59e0b' : '#374151',
-                        flex: 1
-                      }}>
-                        <input
-                          type="radio"
-                          name="stav_schvaleni"
-                          value="ceka_se"
-                          checked={formData.stav_schvaleni === 'ceka_se'}
-                          onChange={() => {}}
-                          disabled={shouldLockSchvaleniCheckboxes}
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            accentColor: '#f59e0b'
-                          }}
-                        />
-                        <FontAwesomeIcon icon={faClock} size="lg" />
-                        Čeká se
-                        {formData.stav_schvaleni === 'ceka_se' && (
-                          <span style={{
-                            marginLeft: '0.5rem',
-                            fontSize: '0.875rem',
-                            color: '#f59e0b',
-                            fontWeight: '600'
-                          }}>
-                            ⏳
-                          </span>
-                        )}
-                      </label>
-                    </div>
+                      <input
+                        type="radio"
+                        name="stav_schvaleni"
+                        value="ceka_se"
+                        checked={formData.stav_schvaleni === 'ceka_se'}
+                        onChange={() => {}}
+                        disabled={shouldLockSchvaleniCheckboxes}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          accentColor: '#f59e0b',
+                          margin: 0,
+                          flexShrink: 0
+                        }}
+                      />
+                      <FontAwesomeIcon icon={faClock} size="lg" />
+                      Čeká se
+                      {formData.stav_schvaleni === 'ceka_se' && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          fontSize: '0.875rem',
+                          color: '#f59e0b',
+                          fontWeight: '600'
+                        }}>
+                          ⏳
+                        </span>
+                      )}
+                    </label>
 
                     {/* Neschváleno */}
-                    <div style={{
+                    <label style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '1rem',
@@ -18698,50 +18706,49 @@ function OrderForm25() {
                       backgroundColor: formData.stav_schvaleni === 'neschvaleno' ? '#fef2f2' : '#f9fafb',
                       cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
-                      marginBottom: '1rem'
+                      marginBottom: '1rem',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      color: formData.stav_schvaleni === 'neschvaleno' ? '#dc2626' : '#374151'
                     }}
-                    onClick={() => !shouldLockSchvaleniCheckboxes && handleRadioClick('neschvaleno')}
+                    onClick={(e) => {
+                      if (!shouldLockSchvaleniCheckboxes) {
+                        e.preventDefault();
+                        handleRadioClick('neschvaleno');
+                      }
+                    }}
                     >
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        fontSize: '1rem',
-                        fontWeight: '500',
-                        cursor: 'inherit',
-                        color: formData.stav_schvaleni === 'neschvaleno' ? '#dc2626' : '#374151',
-                        flex: 1
-                      }}>
-                        <input
-                          type="radio"
-                          name="stav_schvaleni"
-                          value="neschvaleno"
-                          checked={formData.stav_schvaleni === 'neschvaleno'}
-                          onChange={() => {}}
-                          disabled={shouldLockSchvaleniCheckboxes}
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            accentColor: '#dc2626'
-                          }}
-                        />
-                        <FontAwesomeIcon icon={faTimes} size="lg" />
-                        Neschváleno
-                        {formData.stav_schvaleni === 'neschvaleno' && (
-                          <span style={{
-                            marginLeft: '0.5rem',
-                            fontSize: '0.875rem',
-                            color: '#dc2626',
-                            fontWeight: '600'
-                          }}>
-                            ✗
-                          </span>
-                        )}
-                      </label>
-                    </div>
+                      <input
+                        type="radio"
+                        name="stav_schvaleni"
+                        value="neschvaleno"
+                        checked={formData.stav_schvaleni === 'neschvaleno'}
+                        onChange={() => {}}
+                        disabled={shouldLockSchvaleniCheckboxes}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          accentColor: '#dc2626',
+                          margin: 0,
+                          flexShrink: 0
+                        }}
+                      />
+                      <FontAwesomeIcon icon={faTimes} size="lg" />
+                      Neschváleno
+                      {formData.stav_schvaleni === 'neschvaleno' && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          fontSize: '0.875rem',
+                          color: '#dc2626',
+                          fontWeight: '600'
+                        }}>
+                          ✗
+                        </span>
+                      )}
+                    </label>
 
                     {/* Schváleno */}
-                    <div style={{
+                    <label style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '1rem',
@@ -18750,47 +18757,46 @@ function OrderForm25() {
                       borderRadius: '8px',
                       backgroundColor: formData.stav_schvaleni === 'schvaleno' ? '#f0fdf4' : '#f9fafb',
                       cursor: !shouldLockSchvaleniCheckboxes ? 'pointer' : 'not-allowed',
-                      opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1
+                      opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      color: formData.stav_schvaleni === 'schvaleno' ? '#15803d' : '#374151'
                     }}
-                    onClick={() => !shouldLockSchvaleniCheckboxes && handleRadioClick('schvaleno')}
+                    onClick={(e) => {
+                      if (!shouldLockSchvaleniCheckboxes) {
+                        e.preventDefault();
+                        handleRadioClick('schvaleno');
+                      }
+                    }}
                     >
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        fontSize: '1rem',
-                        fontWeight: '500',
-                        cursor: 'inherit',
-                        color: formData.stav_schvaleni === 'schvaleno' ? '#15803d' : '#374151',
-                        flex: 1
-                      }}>
-                        <input
-                          type="radio"
-                          name="stav_schvaleni"
-                          value="schvaleno"
-                          checked={formData.stav_schvaleni === 'schvaleno'}
-                          onChange={() => {}}
-                          disabled={shouldLockSchvaleniCheckboxes}
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            accentColor: '#16a34a'
-                          }}
-                        />
-                        <FontAwesomeIcon icon={faCheck} size="lg" />
-                        Schváleno
-                        {formData.stav_schvaleni === 'schvaleno' && (
-                          <span style={{
-                            marginLeft: '0.5rem',
-                            fontSize: '0.875rem',
-                            color: '#15803d',
-                            fontWeight: '600'
-                          }}>
-                            ✓
-                          </span>
-                        )}
-                      </label>
-                    </div>
+                      <input
+                        type="radio"
+                        name="stav_schvaleni"
+                        value="schvaleno"
+                        checked={formData.stav_schvaleni === 'schvaleno'}
+                        onChange={() => {}}
+                        disabled={shouldLockSchvaleniCheckboxes}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          accentColor: '#16a34a',
+                          margin: 0,
+                          flexShrink: 0
+                        }}
+                      />
+                      <FontAwesomeIcon icon={faCheck} size="lg" />
+                      Schváleno
+                      {formData.stav_schvaleni === 'schvaleno' && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          fontSize: '0.875rem',
+                          color: '#15803d',
+                          fontWeight: '600'
+                        }}>
+                          ✓
+                        </span>
+                      )}
+                    </label>
 
                     {/* Důvod na stejném řádku */}
                     {(formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') && (
