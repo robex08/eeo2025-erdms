@@ -295,8 +295,57 @@ function Dashboard() {
                   )}
                   {user.entraData.department && (
                     <div className="profile-item">
-                      <span className="label">Oddělení:</span>
+                      <span className="label">Oddělení/Úsek:</span>
                       <span className="value">{user.entraData.department}</span>
+                    </div>
+                  )}
+                  {user.entraData.companyName && (
+                    <div className="profile-item">
+                      <span className="label">Společnost:</span>
+                      <span className="value">{user.entraData.companyName}</span>
+                    </div>
+                  )}
+                  {user.entraData.officeLocation && (
+                    <div className="profile-item">
+                      <span className="label">Lokalita/Pracoviště:</span>
+                      <span className="value">{user.entraData.officeLocation}</span>
+                    </div>
+                  )}
+                  {user.entraData.city && (
+                    <div className="profile-item">
+                      <span className="label">Město:</span>
+                      <span className="value">{user.entraData.city}</span>
+                    </div>
+                  )}
+                  {user.entraData.manager && (
+                    <div className="profile-item profile-item-manager">
+                      <span className="label">Nadřízený:</span>
+                      <span className="value">
+                        <strong>{user.entraData.manager.displayName}</strong>
+                        {user.entraData.manager.jobTitle && (
+                          <span className="manager-title"> • {user.entraData.manager.jobTitle}</span>
+                        )}
+                        {user.entraData.manager.mail && (
+                          <a href={`mailto:${user.entraData.manager.mail}`} className="manager-email">
+                            📧 {user.entraData.manager.mail}
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {user.entraData.memberOf && user.entraData.memberOf.length > 0 && (
+                    <div className="profile-item profile-item-groups">
+                      <span className="label">Skupiny ({user.entraData.memberOf.length}):</span>
+                      <span className="value">
+                        <div className="groups-list-compact">
+                          {user.entraData.memberOf.slice(0, 5).map((group, idx) => (
+                            <span key={idx} className="group-badge">{group.displayName}</span>
+                          ))}
+                          {user.entraData.memberOf.length > 5 && (
+                            <span className="group-badge-more">+{user.entraData.memberOf.length - 5} dalších</span>
+                          )}
+                        </div>
+                      </span>
                     </div>
                   )}
                 </>
