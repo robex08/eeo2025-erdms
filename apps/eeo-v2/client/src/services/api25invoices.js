@@ -1551,7 +1551,10 @@ export async function listInvoices25({
   filter_datum_vystaveni,  // 📋 Sloupcový filtr - datum vystavení
   filter_datum_splatnosti,  // 📋 Sloupcový filtr - datum splatnosti
   filter_stav,  // 📋 Sloupcový filtr - stav faktury
-  filter_vytvoril_uzivatel  // 📋 Sloupcový filtr - uživatel
+  filter_vytvoril_uzivatel,  // 📋 Sloupcový filtr - uživatel
+  castka_min,  // 💰 Sloupcový filtr - minimální částka
+  castka_max,  // 💰 Sloupcový filtr - maximální částka
+  filter_ma_prilohy  // 📎 Sloupcový filtr - přílohy
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
@@ -1587,6 +1590,13 @@ export async function listInvoices25({
     if (filter_datum_splatnosti !== undefined && filter_datum_splatnosti !== '') payload.filter_datum_splatnosti = filter_datum_splatnosti;
     if (filter_stav !== undefined && filter_stav !== '') payload.filter_stav = filter_stav;
     if (filter_vytvoril_uzivatel !== undefined && filter_vytvoril_uzivatel !== '') payload.filter_vytvoril_uzivatel = filter_vytvoril_uzivatel;
+    
+    // 💰 Filtry pro částku
+    if (castka_min !== undefined && castka_min !== '') payload.castka_min = castka_min;
+    if (castka_max !== undefined && castka_max !== '') payload.castka_max = castka_max;
+    
+    // 📎 Filtr pro přílohy
+    if (filter_ma_prilohy !== undefined && filter_ma_prilohy !== '') payload.filter_ma_prilohy = filter_ma_prilohy;
 
     const response = await api25invoices.post('invoices25/list', payload, {
       timeout: 30000

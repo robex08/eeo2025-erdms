@@ -37,13 +37,13 @@ const DateInputButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem;
-  padding-right: ${props => props.hasValue ? '2.5rem' : '0.75rem'};
+  padding: 0.375rem 0.625rem;
+  padding-right: ${props => props.hasValue ? '2.5rem' : '0.625rem'};
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#d1d5db'};
-  border-radius: 8px;
+  border-radius: 6px;
   background: ${props => props.disabled ? '#f3f4f6' : 'white'};
   color: ${props => props.disabled ? '#9ca3af' : props.hasValue ? '#111827' : '#9ca3af'};
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;
   text-align: left;
@@ -361,20 +361,6 @@ function DatePicker({
         >
           {formatDisplayDate(value)}
         </DateInputButton>
-
-        {/* Tlačítko pro dnešní datum */}
-        {!disabled && (
-          <DateTodayButton
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToday();
-            }}
-            title="Nastavit dnešní datum"
-          >
-            📅
-          </DateTodayButton>
-        )}
       </InputWithIcon>
 
       {isOpen && !disabled && createPortal(

@@ -568,6 +568,7 @@ const TableHeader = styled.th`
   user-select: none;
   width: auto;
   min-width: 100px;
+  position: relative;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -582,6 +583,36 @@ const TableHeader = styled.th`
   /* Širší sloupce pro čísla */
   &.wide-column {
     min-width: 140px;
+  }
+  
+  /* Úzký sloupec pro částku */
+  &.amount-column {
+    min-width: 80px;
+    max-width: 100px;
+  }
+  
+  /* Sorting indicator */
+  &.sortable {
+    padding-right: 1.5rem;
+    
+    .sort-icon {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.75rem;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    
+    &:hover .sort-icon {
+      opacity: 1;
+    }
+    
+    &.active .sort-icon {
+      opacity: 1;
+      color: #fbbf24;
+    }
   }
 `;
 
@@ -919,6 +950,11 @@ const Invoices25List = () => {
   
   // 🔍 Globální vyhledávání (nový state)
   const [globalSearchTerm, setGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
+  
+  // 📊 Sorting state (client-side)
+  const [sortField, setSortField] = useState(savedState?.sortField || null);
+  const [sortDirection, setSortDirection] = useState(savedState?.sortDirection || 'asc'); // 'asc' nebo 'desc'
+  
   // Dashboard statistiky (z BE - celkové součty podle filtru, NE jen aktuální stránka!)
   const [stats, setStats] = useState({
     total: 0,           // Celkový počet faktur (všechny stránky)
@@ -1031,7 +1067,9 @@ const Invoices25List = () => {
       globalSearchTerm,
       showDashboard,
       currentPage,
-      itemsPerPage
+      itemsPerPage,
+      sortField,
+      sortDirection
     };
     saveToLS(stateToSave);
   }, [selectedYear, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, saveToLS]);
@@ -1103,9 +1141,28 @@ const Invoices25List = () => {
       if (columnFilters.vytvoril_uzivatel && columnFilters.vytvoril_uzivatel.trim()) {
         apiParams.filter_vytvoril_uzivatel = columnFilters.vytvoril_uzivatel.trim();
       }
+      
+      // Částka - rozsahový filtr (min/max)
+      if (columnFilters.castka_min) {
+        apiParams.castka_min = parseFloat(columnFilters.castka_min);
+        console.log('📤 API: castka_min =', apiParams.castka_min);
+      }
+      if (columnFilters.castka_max) {
+        apiParams.castka_max = parseFloat(columnFilters.castka_max);
+        console.log('📤 API: castka_max =', apiParams.castka_max);
+      }
+      
+      // Přílohy - filtr podle existence příloh
+      if (columnFilters.ma_prilohy === 'with') {
+        apiParams.filter_ma_prilohy = 1; // Pouze s přílohami
+      } else if (columnFilters.ma_prilohy === 'without') {
+        apiParams.filter_ma_prilohy = 0; // Pouze bez příloh
+      }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
+      console.log('📤 Sending API params:', apiParams);
       const response = await listInvoices25(apiParams);
+      console.log('📥 Received invoices:', response.faktury?.length, 'Total:', response.pagination?.total);
 
       // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
@@ -1292,6 +1349,47 @@ const Invoices25List = () => {
       default: return faFileInvoice;
     }
   };
+
+  // Handler pro třídění tabulky
+  const handleSort = useCallback((field) => {
+    if (sortField === field) {
+      // Toggle směr třídění
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Nové pole -> výchozí směr ASC
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  }, [sortField]);
+
+  // Třídění faktur (client-side)
+  const sortedInvoices = useMemo(() => {
+    if (!sortField) return invoices;
+
+    return [...invoices].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      // Speciální handling pro různé typy dat
+      if (sortField === 'castka') {
+        aVal = parseFloat(aVal) || 0;
+        bVal = parseFloat(bVal) || 0;
+      } else if (sortField.includes('datum')) {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
+      } else if (sortField === 'pocet_priloh') {
+        aVal = parseInt(aVal) || 0;
+        bVal = parseInt(bVal) || 0;
+      } else if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal || '').toLowerCase();
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [invoices, sortField, sortDirection]);
 
   // ⚠️ Filtrování a pagination dělá BE - invoices už jsou filtrované a stránkované!
   
@@ -1591,17 +1689,115 @@ const Invoices25List = () => {
               <TableHead>
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
-                  <TableHeader className="date-column">Doručení</TableHeader>
-                  <TableHeader className="date-column">Vystavení</TableHeader>
-                  <TableHeader>Typ</TableHeader>
-                  <TableHeader className="wide-column">Číslo faktury</TableHeader>
-                  <TableHeader className="wide-column">Objednávka</TableHeader>
-                  <TableHeader>Částka</TableHeader>
-                  <TableHeader className="date-column">Splatnost</TableHeader>
-                  <TableHeader>Stav</TableHeader>
-                  <TableHeader>Zaevidoval</TableHeader>
-                  <TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_doruceni')}
+                  >
+                    Doručení
+                    {sortField === 'datum_doruceni' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_vystaveni' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_vystaveni')}
+                  >
+                    Vystavení
+                    {sortField === 'datum_vystaveni' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_typ')}
+                  >
+                    Typ
+                    {sortField === 'fa_typ' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_faktury')}
+                  >
+                    Číslo faktury
+                    {sortField === 'cislo_faktury' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_objednavky')}
+                  >
+                    Objednávka
+                    {sortField === 'cislo_objednavky' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
+                    onClick={() => handleSort('castka')}
+                  >
+                    Částka
+                    {sortField === 'castka' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_splatnosti')}
+                  >
+                    Splatnost
+                    {sortField === 'datum_splatnosti' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'status' ? 'active' : ''}`}
+                    onClick={() => handleSort('status')}
+                  >
+                    Stav
+                    {sortField === 'status' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
+                    onClick={() => handleSort('vytvoril_uzivatel')}
+                  >
+                    Zaevidoval
+                    {sortField === 'vytvoril_uzivatel' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'pocet_priloh' ? 'active' : ''}`}
+                    onClick={() => handleSort('pocet_priloh')}
+                  >
                     <FontAwesomeIcon icon={faPaperclip} style={{ color: '#64748b' }} />
+                    {sortField === 'pocet_priloh' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
                   </TableHeader>
                   <TableHeader>
                     <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#fbbf24' }} />
@@ -1616,7 +1812,7 @@ const Invoices25List = () => {
                         fieldName="filter_datum_doruceni"
                         value={columnFilters.datum_doruceni || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
-                        placeholder="Doručeno..."
+                        placeholder="Datum"
                       />
                     </div>
                   </TableHeader>
@@ -1627,7 +1823,7 @@ const Invoices25List = () => {
                         fieldName="filter_datum_vystaveni"
                         value={columnFilters.datum_vystaveni || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
-                        placeholder="Datum..."
+                        placeholder="Datum"
                       />
                     </div>
                   </TableHeader>
@@ -1638,10 +1834,10 @@ const Invoices25List = () => {
                       onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
                       style={{
                         width: '100%',
-                        padding: '0.5rem',
+                        padding: '0.375rem 0.625rem',
                         border: '1px solid #cbd5e1',
-                        borderRadius: '4px',
-                        fontSize: '0.875rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
                         backgroundColor: 'white',
                         cursor: 'pointer'
                       }}
@@ -1686,8 +1882,78 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
-                  {/* Částka - bez filtru */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }} />
+                  {/* Částka - rozsahový filtr */}
+                  <TableHeader className="amount-column" style={{ padding: '0.5rem 0.25rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Min"
+                        value={columnFilters.castka_min || ''}
+                        onChange={(e) => {
+                          const newVal = e.target.value.replace(/[^0-9]/g, '');
+                          console.log('🔍 Castka MIN changed:', newVal);
+                          setColumnFilters({...columnFilters, castka_min: newVal});
+                        }}
+                        style={{
+                          width: '45px',
+                          padding: '0.35rem 0.25rem',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          background: 'white',
+                          textAlign: 'center'
+                        }}
+                      />
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>-</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Max"
+                        value={columnFilters.castka_max || ''}
+                        onChange={(e) => {
+                          const newVal = e.target.value.replace(/[^0-9]/g, '');
+                          console.log('🔍 Castka MAX changed:', newVal);
+                          setColumnFilters({...columnFilters, castka_max: newVal});
+                        }}
+                        style={{
+                          width: '45px',
+                          padding: '0.35rem 0.25rem',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          background: 'white',
+                          textAlign: 'center'
+                        }}
+                      />
+                      {(columnFilters.castka_min || columnFilters.castka_max) && (
+                        <button
+                          onClick={() => setColumnFilters({...columnFilters, castka_min: '', castka_max: ''})}
+                          style={{
+                            position: 'absolute',
+                            right: '-0.25rem',
+                            top: '-0.25rem',
+                            background: '#dc2626',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '16px',
+                            height: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'white',
+                            fontSize: '0.6rem',
+                            padding: 0
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
                   {/* Splatnost - datum filtr */}
                   <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <div style={{ position: 'relative' }}>
@@ -1695,7 +1961,7 @@ const Invoices25List = () => {
                         fieldName="filter_datum_splatnosti"
                         value={columnFilters.datum_splatnosti || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
-                        placeholder="Splatnost..."
+                        placeholder="Datum"
                       />
                     </div>
                   </TableHeader>
@@ -1706,9 +1972,9 @@ const Invoices25List = () => {
                       onChange={(e) => setColumnFilters({...columnFilters, stav: e.target.value})}
                       style={{
                         width: '100%',
-                        padding: '0.35rem',
+                        padding: '0.375rem 0.625rem',
                         border: '1px solid #cbd5e1',
-                        borderRadius: '4px',
+                        borderRadius: '6px',
                         fontSize: '0.75rem',
                         backgroundColor: 'white'
                       }}
@@ -1736,8 +2002,24 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
-                  {/* Přílohy - prázdná buňka pro ikonu */}
+                  {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <select
+                      value={columnFilters.ma_prilohy || ''}
+                      onChange={(e) => setColumnFilters({...columnFilters, ma_prilohy: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '0.375rem 0.625rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="">Vše</option>
+                      <option value="with">S přílohami</option>
+                      <option value="without">Bez příloh</option>
+                    </select>
                   </TableHeader>
                   {/* Akce - tlačítko pro vymazání filtrů */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -1795,7 +2077,7 @@ const Invoices25List = () => {
                 )}
                 
                 {/* Data rows */}
-                {!error && invoices.map(invoice => (
+                {!error && sortedInvoices.map(invoice => (
                   <TableRow key={invoice.id}>
                     <TableCell className="center">
                       {invoice.datum_doruceni ? (
