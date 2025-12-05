@@ -2,6 +2,7 @@ import React, { useState, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import { AuthContext } from '../context/AuthContext';
 import './ContextualHelper.css';
+import { ASSETS } from '../config/assets';
 
 /**
  * ContextualHelper - Kontextový pomocník (Bitcoin avatar)
@@ -126,7 +127,7 @@ const ContextualHelper = ({ pageContext = 'default', customTip = null, autoShow 
         }}
       >
         <img
-          src="/assets/bitcoin-coin.svg"
+          src={ASSETS.BITCOIN_COIN}
           alt="Bitcoin pomocník"
           className="helper-avatar-image"
         />

@@ -205,7 +205,7 @@ function Dashboard() {
         {/* Tab: Aplikace */}
         {activeTab === 'apps' && (
           <div className="apps-grid">
-            <a href="https://eeo.zachranka.cz" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+            <a href="https://erdms.zachranka.cz/eeo-v2/" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
               <div className="app-card-header">
                 <div className="app-icon-wrapper">
                   <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -215,7 +215,7 @@ function Dashboard() {
                 <span className="app-badge">Aktivní</span>
               </div>
               <h3 className="app-title">EEO v2</h3>
-              <p className="app-description">Evidence ekonomických operací - správa smluv, objednávek a faktur</p>
+              <p className="app-description">Elektronická správa a workflow objednávek a změn</p>
               <div className="app-footer">
                 <span className="app-link-text">Otevřít aplikaci</span>
                 <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
