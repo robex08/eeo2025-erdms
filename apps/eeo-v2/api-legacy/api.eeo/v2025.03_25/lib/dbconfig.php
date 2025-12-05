@@ -8,14 +8,14 @@ return [
         'database' => 'eeo2025' // Nová databáze
     ],
     'upload' => [
-        // Root cesta pro nahrávání příloh - ZMĚŇ PODLE SERVERU  
-        'root_path' => '/var/www/eeo2025/doc/prilohy/',
+        // Root cesta pro nahrávání příloh - build varianta
+        'root_path' => '/var/www/erdms-builds/current/apps/eeo-v2/prilohy/',
         
         // Alternativní relativní cesta (pro development)
-        'relative_path' => '/var/www/eeo2025/doc/prilohy/',
+        'relative_path' => '/var/www/erdms-builds/current/apps/eeo-v2/prilohy/',
         
         // Cesta pro DOCX šablony
-        'docx_templates_path' => '/var/www/eeo2025/doc/sablony/',
+        'docx_templates_path' => '/var/www/erdms-builds/current/apps/eeo-v2/sablony/',
         
         // Maximální velikost souboru v bajtech (20MB)
         'max_file_size' => 20 * 1024 * 1024,
@@ -44,7 +44,7 @@ return [
         ],
         
         // URL prefix pro přístup k souborům (pokud budou přístupné přes web)
-        'web_url_prefix' => 'https://erdms.zachranka.cz/uploads/',
+        'web_url_prefix' => 'https://erdms.zachranka.cz/prilohy/',
         
         // Bezpečnostní nastavení
         'security' => [
