@@ -52,7 +52,7 @@
 import axios from 'axios';
 
 // Base URL pro číselníky API - nové finální API včetně api.eeo prefixu
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
 
 // Axios instance - VŠE přes POST s prefixem ciselniky/
 const api = axios.create({

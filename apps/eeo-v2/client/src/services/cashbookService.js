@@ -14,7 +14,7 @@ import { loadAuthData } from '../utils/authStorage';
 
 // 🌐 Použít stejný base URL jako Order V2 API
 // Ujistíme se že končí lomítkem pro správné sestavení URL
-const API_BASE_RAW = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+const API_BASE_RAW = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
 const API_BASE = API_BASE_RAW.endsWith('/') ? API_BASE_RAW.slice(0, -1) : API_BASE_RAW;
 
 /**

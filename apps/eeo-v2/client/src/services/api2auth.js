@@ -4,7 +4,7 @@ import MD5 from 'crypto-js/md5';
 
 // Axios instance for API2
 const api2 = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/',
+  baseURL: process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -2717,7 +2717,7 @@ export async function fetchLPDetail({ token, username, cislo_lp }) {
   }
 
   try {
-    const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+    const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
     const endpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
     
     const payload = {
