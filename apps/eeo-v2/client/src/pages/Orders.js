@@ -2264,7 +2264,8 @@ const Orders = () => {
     }
   };
 
-  const attachmentBaseUrl = `${process.env.REACT_APP_API_BASE_URL.replace(/\/api\/?$/, '')}${process.env.REACT_APP_SUBDIR || '/prilohy/'}`;
+  // Pro staré objednávky před 2026 používáme původní eeo.zachranka.cz URL
+  const attachmentBaseUrl = process.env.REACT_APP_LEGACY_ATTACHMENTS_BASE_URL || 'https://eeo.zachranka.cz/prilohy/';
 
   const handleOrderUpdated = () => {
     // Force reload z aktuální databáze po update objednávky
