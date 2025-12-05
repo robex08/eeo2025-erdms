@@ -188,9 +188,9 @@ router.get('/users', authenticateSession, async (req, res) => {
     if (isNaN(limit) || limit < 1) {
       limit = 50;
     }
-    // SECURITY: Max 100 uživatelů aby se nepřetížil server
-    if (limit > 100) {
-      limit = 100;
+    // SECURITY: Max 2000 uživatelů aby se nepřetížil server
+    if (limit > 2000) {
+      limit = 2000;
     }
     
     const users = await entraService.getUsers(limit);

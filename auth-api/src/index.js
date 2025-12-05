@@ -50,7 +50,7 @@ app.use(cors({
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
 
-app.use('/auth', authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/entra', entraRoutes);
 
 // Health check

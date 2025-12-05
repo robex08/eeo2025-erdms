@@ -207,17 +207,48 @@ class EntraService {
    * Získat seznam uživatelů (max 50)
    * @param {number} limit - Maximální počet uživatelů (default 50)
    */
-  async getUsers(limit = 50) {
+  async getUsers(limit = 2000) {
     await this.ensureInitialized();
     try {
-      const response = await this.client
+      let allUsers = [];
+      let pageCount = 0;
+      const maxPages = Math.ceil(limit / 999); // Graph API max je 999 per page
+      
+      console.log(`📊 Načítám uživatele, max ${limit}, očekávám ${maxPages} stránek...`);
+      
+      // První stránka s $count pro zjištění celkového počtu
+      let response = await this.client
         .api('/users')
         .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled')
-        .top(limit)
+        .top(999)
         .orderby('displayName')
+        .header('ConsistencyLevel', 'eventual')
+        .count(true)
         .get();
       
-      return response.value || [];
+      const totalCount = response['@odata.count'];
+      console.log(`📊 Celkový počet uživatelů v Entra: ${totalCount}`);
+      
+      allUsers = response.value || [];
+      pageCount++;
+      console.log(`📄 Stránka ${pageCount}: načteno ${allUsers.length} uživatelů`);
+      
+      // Načti další stránky přes @odata.nextLink
+      while (response['@odata.nextLink'] && allUsers.length < limit && pageCount < maxPages) {
+        response = await this.client
+          .api(response['@odata.nextLink'])
+          .get();
+        
+        const newUsers = response.value || [];
+        allUsers = allUsers.concat(newUsers);
+        pageCount++;
+        console.log(`📄 Stránka ${pageCount}: načteno ${newUsers.length} uživatelů, celkem ${allUsers.length}`);
+      }
+      
+      console.log(`✅ Načítání dokončeno: ${allUsers.length} uživatelů z ${totalCount} celkem`);
+      
+      // Ořízni na požadovaný limit
+      return allUsers.slice(0, limit);
     } catch (err) {
       console.error('🔴 getUsers ERROR:', err.message);
       throw err;

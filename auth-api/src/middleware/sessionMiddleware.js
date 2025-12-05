@@ -5,29 +5,50 @@
 /**
  * Middleware pro ověření, že uživatel má platnou session
  */
-const authenticateSession = (req, res, next) => {
-  // Pro development mode - zatím vracíme mock uživatele
-  if (process.env.NODE_ENV === 'development') {
-    req.user = {
-      id: 'dev-user-123',
-      email: 'dev@zachranka.cz',
-      name: 'Development User'
-    };
-    return next();
-  }
+const authenticateSession = async (req, res, next) => {
+  try {
+    // Získej session ID z cookie
+    const sessionId = req.cookies.erdms_session;
+    
+    if (!sessionId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized - No valid session'
+      });
+    }
 
-  // TODO: Implementovat skutečné ověření session
-  // Pro production bude třeba zkontrolovat JWT token nebo session cookie
-  
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({
+    // Najdi session v databázi
+    const authService = require('../services/authService');
+    const session = await authService.findSession(sessionId);
+    
+    if (!session || !session.user_id) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized - Session not found or expired'
+      });
+    }
+
+    // Najdi uživatele
+    const user = await authService.findUserById(session.user_id);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized - User not found'
+      });
+    }
+
+    // Přidej uživatele a session do request
+    req.user = user;
+    req.session = session;
+    next();
+  } catch (error) {
+    console.error('🔴 Session middleware error:', error);
+    return res.status(500).json({
       success: false,
-      error: 'Unauthorized - No valid session'
+      error: 'Internal server error'
     });
   }
-
-  req.user = req.session.user;
-  next();
 };
 
 module.exports = {

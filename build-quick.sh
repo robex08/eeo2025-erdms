@@ -51,6 +51,19 @@ echo "⚙️ Copying production configs..."
 cp /var/www/erdms-dev/auth-api/.env.production ${BUILD_DIR}/auth-api/.env 2>/dev/null || \
    cp /var/www/erdms-dev/auth-api/.env ${BUILD_DIR}/auth-api/.env
 
+# Aktualizace production .env pro produkční porty a URL
+sed -i 's/NODE_ENV=development/NODE_ENV=production/' ${BUILD_DIR}/auth-api/.env
+sed -i 's/PORT=3000/PORT=4000/' ${BUILD_DIR}/auth-api/.env
+sed -i 's|http://localhost:3000|https://erdms.zachranka.cz|g' ${BUILD_DIR}/auth-api/.env
+sed -i 's|http://localhost:5173|https://erdms.zachranka.cz|g' ${BUILD_DIR}/auth-api/.env
+
+# EEO API .env
+cp /var/www/erdms-dev/apps/eeo-v2/api/.env.production ${BUILD_DIR}/apps/eeo-v2/api/.env 2>/dev/null || \
+   cp /var/www/erdms-dev/auth-api/.env ${BUILD_DIR}/apps/eeo-v2/api/.env
+sed -i 's/NODE_ENV=development/NODE_ENV=production/' ${BUILD_DIR}/apps/eeo-v2/api/.env
+sed -i 's/PORT=5000/PORT=4001/' ${BUILD_DIR}/apps/eeo-v2/api/.env
+sed -i 's|http://localhost|https://erdms.zachranka.cz|g' ${BUILD_DIR}/apps/eeo-v2/api/.env
+
 # Aktualizace symlinku
 echo "🔗 Updating symlink..."
 ln -sfn ${BUILD_DIR} /var/www/erdms-builds/current

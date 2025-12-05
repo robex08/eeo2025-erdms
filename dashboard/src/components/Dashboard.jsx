@@ -40,7 +40,7 @@ function Dashboard() {
       setLoadingEmployees(true);
       console.log('📥 Načítám zaměstnance...');
       
-      const response = await fetch('/api/entra/users?limit=100', {
+      const response = await fetch('/api/entra/users?limit=2000', {
         credentials: 'include',
         headers: {
           'Accept': 'application/json'
@@ -319,7 +319,16 @@ function Dashboard() {
               />
             </div>
 
-            {loadingEmployees && <div className="loading-message">Načítám zaměstnance...</div>}
+            {loadingEmployees && (
+              <div className="employees-loading">
+                <div className="loading-spinner">
+                  <div className="spinner-ring"></div>
+                  <div className="spinner-ring"></div>
+                  <div className="spinner-ring"></div>
+                </div>
+                <p className="loading-text">Načítám zaměstnance...</p>
+              </div>
+            )}
 
             <div className="employees-grid">
               {(searchQuery.length >= 3 ? searchResults : employees).map((emp) => {
