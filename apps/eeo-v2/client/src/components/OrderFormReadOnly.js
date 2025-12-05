@@ -11,9 +11,11 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser, faBuilding, faFileAlt, faMoneyBillWave, faCalendar,
   faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronUp,
-  faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit
+  faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit,
+  faPaperclip, faFile, faDownload
 } from '@fortawesome/free-solid-svg-icons';
 import { formatDateOnly } from '../utils/format';
+import { downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2';
 
 // ===================================================================
 // STYLED COMPONENTS - Zkopírované z OrderForm25
@@ -369,7 +371,7 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice }, ref) => {
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1228,7 +1230,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <FontAwesomeIcon icon={faMoneyBillWave} style={{ color: '#3b82f6' }} />
-                    FAKTURA {index + 1}
+                    FAKTURA Č. {index + 1}
                   </div>
                   {onEditInvoice && (
                     <EditInvoiceButton onClick={(e) => {
@@ -1298,30 +1300,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       })()}
                     </ValueText>
                   </KeyValuePair>
-                  
-                  <KeyValuePair>
-                    <KeyLabel>Věcná správnost</KeyLabel>
-                    <ValueText>
-                      {faktura.potvrzeni_vecne_spravnosti === 'ANO' ? (
-                        <Badge $bg="#d1fae5" $color="#065f46">
-                          ✓ Potvrzeno
-                        </Badge>
-                      ) : faktura.potvrzeni_vecne_spravnosti === 'NE' ? (
-                        <Badge $bg="#fee2e2" $color="#991b1b">
-                          ✗ Nepotvrzeno
-                        </Badge>
-                      ) : (
-                        <span style={{color: '#9ca3af'}}>Neověřeno</span>
-                      )}
-                    </ValueText>
-                  </KeyValuePair>
-
-                  {faktura.vecna_spravnost_umisteni_majetku && (
-                    <KeyValuePair>
-                      <KeyLabel>Umístění majetku</KeyLabel>
-                      <ValueText>{faktura.vecna_spravnost_umisteni_majetku}</ValueText>
-                    </KeyValuePair>
-                  )}
 
                   {faktura.fa_strediska_kod && (
                     <KeyValuePair style={{ gridColumn: '1 / -1' }}>
@@ -1357,11 +1335,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     <ValueText>{faktura.fa_poznamka || <span style={{color: '#9ca3af'}}>---</span>}</ValueText>
                   </KeyValuePair>
 
-                  <KeyValuePair style={{ gridColumn: '1 / -1' }}>
-                    <KeyLabel>Poznámka k věcné správnosti</KeyLabel>
-                    <ValueText>{faktura.vecna_spravnost_poznamka || <span style={{color: '#9ca3af'}}>---</span>}</ValueText>
-                  </KeyValuePair>
-
                   {faktura._isdoc_dodavatel && (
                     <KeyValuePair style={{ gridColumn: '1 / -1' }}>
                       <KeyLabel>ISDOC Dodavatel</KeyLabel>
@@ -1372,17 +1345,218 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     </KeyValuePair>
                   )}
 
-                  {faktura.attachments && faktura.attachments.length > 0 && (
-                    <KeyValuePair>
-                      <KeyLabel>Přílohy</KeyLabel>
+                </DataGrid>
+
+                {/* PŘÍLOHY FAKTURY */}
+                {faktura.prilohy && faktura.prilohy.length > 0 && (
+                  <div style={{
+                    margin: '1.5rem 0 1rem 0',
+                    borderTop: '2px solid #e5e7eb',
+                    paddingTop: '1rem'
+                  }}>
+                    <div style={{
+                      fontWeight: '600',
+                      color: '#1e40af',
+                      fontSize: '0.9rem',
+                      marginBottom: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <FontAwesomeIcon icon={faPaperclip} style={{ color: '#3b82f6' }} />
+                      PŘÍLOHY FAKTURY Č. {index + 1} ({faktura.prilohy.length})
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {faktura.prilohy.map((priloha, idx) => {
+                        const formatFileSize = (bytes) => {
+                          if (!bytes || bytes === 0) return '0 B';
+                          const k = 1024;
+                          const sizes = ['B', 'KB', 'MB', 'GB'];
+                          const i = Math.floor(Math.log(bytes) / Math.log(k));
+                          return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+                        };
+
+                        const getTypeBadge = (typ) => {
+                          const typeMap = {
+                            'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
+                            'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
+                            'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
+                            'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
+                            'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
+                            'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
+                            'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
+                          };
+                          const config = typeMap[typ] || typeMap['JINA'];
+                          return (
+                            <Badge $bg={config.bg} $color={config.color}>
+                              {config.label}
+                            </Badge>
+                          );
+                        };
+
+                        const handleDownload = async () => {
+                          try {
+                            const blob = await downloadInvoiceAttachment(faktura.id, priloha.id, username, token);
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = priloha.originalni_nazev_souboru || 'attachment';
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                          } catch (error) {
+                            console.error('Error downloading invoice attachment:', error);
+                          }
+                        };
+
+                        return (
+                          <div key={priloha.id || idx} onClick={handleDownload} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.5rem 0.75rem',
+                            background: '#f9fafb',
+                            borderRadius: '6px',
+                            border: '1px solid #e5e7eb',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#f3f4f6';
+                            e.currentTarget.style.borderColor = '#3b82f6';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#f9fafb';
+                            e.currentTarget.style.borderColor = '#e5e7eb';
+                          }}
+                          title="Klikněte pro stažení">
+                            <FontAwesomeIcon icon={faFile} style={{ color: '#6b7280', fontSize: '1rem' }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                fontSize: '0.875rem',
+                                color: '#374151',
+                                fontWeight: '500',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {priloha.originalni_nazev_souboru || 'Nepojmenovaný soubor'}
+                              </div>
+                              <div style={{
+                                fontSize: '0.75rem',
+                                color: '#9ca3af',
+                                marginTop: '2px'
+                              }}>
+                                {formatFileSize(priloha.velikost_souboru_b)}
+                              </div>
+                            </div>
+                            {getTypeBadge(priloha.typ_prilohy)}
+                            <FontAwesomeIcon icon={faDownload} style={{ color: '#3b82f6', fontSize: '0.875rem', marginLeft: '0.5rem' }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* DĚLÍCÍ ČÁRA - VĚCNÁ KONTROLA FAKTURY */}
+                <div style={{
+                  margin: '1.5rem 0 1rem 0',
+                  borderTop: '2px solid #e5e7eb',
+                  paddingTop: '1rem'
+                }}>
+                  <div style={{
+                    fontWeight: '600',
+                    color: '#6b21a8',
+                    fontSize: '0.9rem',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <FontAwesomeIcon icon={faClipboardCheck} style={{ color: '#a855f7' }} />
+                    VĚCNÁ KONTROLA FAKTURY {index + 1}
+                  </div>
+
+                  <DataGrid $columns="1fr 1fr">
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Stav věcné kontroly</KeyLabel>
                       <ValueText>
-                        <Badge $bg="#e0e7ff" $color="#4338ca">
-                          {faktura.attachments.length} {faktura.attachments.length === 1 ? 'příloha' : 'příloh'}
-                        </Badge>
+                        {faktura.vecna_spravnost_potvrzeno === 1 || faktura.vecna_spravnost_potvrzeno === '1' ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            background: '#dcfce7',
+                            border: '2px solid #16a34a',
+                            borderRadius: '8px',
+                            color: '#166534',
+                            fontWeight: '600'
+                          }}>
+                            <FontAwesomeIcon icon={faCheckCircle} />
+                            Potvrzeno
+                          </div>
+                        ) : (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            background: '#fee2e2',
+                            border: '2px solid #ef4444',
+                            borderRadius: '8px',
+                            color: '#991b1b',
+                            fontWeight: '600'
+                          }}>
+                            <FontAwesomeIcon icon={faTimesCircle} />
+                            Nepotvrzeno
+                          </div>
+                        )}
                       </ValueText>
                     </KeyValuePair>
-                  )}
-                </DataGrid>
+
+                    <KeyValuePair>
+                      <KeyLabel>Datum potvrzení</KeyLabel>
+                      <ValueText>
+                        {faktura.dt_potvrzeni_vecne_spravnosti 
+                          ? formatDateOnly(faktura.dt_potvrzeni_vecne_spravnosti) 
+                          : <span style={{color: '#9ca3af'}}>Nepotvrzeno</span>}
+                      </ValueText>
+                    </KeyValuePair>
+                    
+                    <KeyValuePair>
+                      <KeyLabel>Potvrdil</KeyLabel>
+                      <ValueText>
+                        {(() => {
+                          const enriched = faktura._enriched?.potvrdil_vecnou_spravnost;
+                          if (enriched) {
+                            const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
+                            const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
+                            return `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                          }
+                          return <span style={{color: '#9ca3af'}}>—</span>;
+                        })()}
+                      </ValueText>
+                    </KeyValuePair>
+
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Umístění majetku</KeyLabel>
+                      <ValueText>
+                        {faktura.vecna_spravnost_umisteni_majetku || <span style={{color: '#9ca3af'}}>---</span>}
+                      </ValueText>
+                    </KeyValuePair>
+
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Poznámka k věcné kontrole</KeyLabel>
+                      <ValueText>
+                        {faktura.vecna_spravnost_poznamka || <span style={{color: '#9ca3af'}}>---</span>}
+                      </ValueText>
+                    </KeyValuePair>
+                  </DataGrid>
+                </div>
               </div>
             ))}
           </SectionContent>
@@ -1408,131 +1582,6 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
           </SectionContent>
         </Section>
       )}
-
-      {/* SEKCE 9: VĚCNÁ SPRÁVNOST */}
-      {/* Zobraz sekci pokud workflow obsahuje VECNA_SPRAVNOST nebo existují data věcné správnosti */}
-      {(() => {
-        const hasVecnaSpravnostWorkflow = orderData.stav_workflow_kod?.includes('VECNA_SPRAVNOST') || 
-                                          (typeof orderData.stav_workflow_kod === 'string' && orderData.stav_workflow_kod.includes('VECNA_SPRAVNOST'));
-        
-        // Kontrola věcné správnosti
-        // 1. Nová věcná správnost na fakturách
-        const hasNewVecnaSpravnost = orderData.vecna_spravnost_potvrzena || orderData.vecna_spravnost_garant_id || orderData.vecna_spravnost_datum;
-        
-        // 2. Věcná správnost objednávky (hlavní)
-        const isValidOrderDate = orderData.dt_potvrzeni_vecne_spravnosti && 
-                                 orderData.dt_potvrzeni_vecne_spravnosti !== '0000-00-00' && 
-                                 orderData.dt_potvrzeni_vecne_spravnosti !== '0000-00-00 00:00:00' &&
-                                 !orderData.dt_potvrzeni_vecne_spravnosti.startsWith('0000');
-        const hasOrderVecnaSpravnost = isValidOrderDate || orderData.potvrdil_vecnou_spravnost_id;
-        
-        // 3. Stará věcná správnost (deprecated pole datum_vecne_spravnosti)
-        const isValidOldDate = orderData.datum_vecne_spravnosti && 
-                               orderData.datum_vecne_spravnosti !== '0000-00-00' && 
-                               orderData.datum_vecne_spravnosti !== '0000-00-00 00:00:00' &&
-                               !orderData.datum_vecne_spravnosti.startsWith('0000');
-        const hasOldVecnaSpravnost = isValidOldDate;
-        
-        const vecnaSpravnostExists = hasNewVecnaSpravnost || hasOrderVecnaSpravnost || hasOldVecnaSpravnost;
-        
-        return (hasVecnaSpravnostWorkflow || vecnaSpravnostExists) ? (
-          <Section>
-            <SectionHeader $theme="purple" $isActive={!collapsed.vecna_spravnost} onClick={() => toggleSection('vecna_spravnost')}>
-              <SectionTitle $theme="purple">
-                <FontAwesomeIcon icon={faCheckCircle} />
-                Věcná správnost objednávky
-              </SectionTitle>
-              <CollapseIcon $collapsed={collapsed.vecna_spravnost}>
-                <FontAwesomeIcon icon={faChevronUp} />
-              </CollapseIcon>
-            </SectionHeader>
-            <SectionContent $collapsed={collapsed.vecna_spravnost} $theme="purple">
-              <InfoCard>
-                <DataGrid $columns="1fr 1fr">
-                  <KeyValuePair style={{ gridColumn: '1 / -1' }}>
-                    <KeyLabel>Stav věcné správnosti</KeyLabel>
-                    <div style={{ 
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 1rem',
-                      background: vecnaSpravnostExists ? '#dcfce7' : '#fef3c7',
-                      border: `2px solid ${vecnaSpravnostExists ? '#16a34a' : '#f59e0b'}`,
-                      borderRadius: '8px',
-                      color: vecnaSpravnostExists ? '#166534' : '#92400e',
-                      fontWeight: '600',
-                      marginTop: '0.5rem'
-                    }}>
-                      <FontAwesomeIcon icon={vecnaSpravnostExists ? faCheckCircle : faClock} />
-                      {vecnaSpravnostExists ? 'ZKONTROLOVÁNA A POTVRZENA' : 'ČEKÁ NA KONTROLU'}
-                    </div>
-                  </KeyValuePair>
-
-                  {/* Věcná správnost objednávky (hlavní) */}
-                  {orderData.dt_potvrzeni_vecne_spravnosti && isValidOrderDate && (
-                    <KeyValuePair>
-                      <KeyLabel>Datum kontroly</KeyLabel>
-                      <ValueText>{formatDateOnly(orderData.dt_potvrzeni_vecne_spravnosti)}</ValueText>
-                    </KeyValuePair>
-                  )}
-
-                  {(orderData._enriched?.potvrdil_vecnou_spravnost || orderData.potvrdil_vecnou_spravnost_jmeno || orderData.potvrdil_vecnou_spravnost_id) && (
-                    <KeyValuePair>
-                      <KeyLabel>Zkontroloval</KeyLabel>
-                      <ValueText>
-                        {(() => {
-                          const enriched = orderData._enriched?.potvrdil_vecnou_spravnost;
-                          if (enriched) {
-                            const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
-                            const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
-                            return `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
-                          }
-                          return orderData.potvrdil_vecnou_spravnost_jmeno || `Uživatel ID: ${orderData.potvrdil_vecnou_spravnost_id}`;
-                        })()}
-                      </ValueText>
-                    </KeyValuePair>
-                  )}
-
-                  {/* Nová věcná správnost (na fakturách) */}
-                  {orderData.vecna_spravnost_garant_jmeno && (
-                    <KeyValuePair>
-                      <KeyLabel>Kontroloval (faktury)</KeyLabel>
-                      <ValueText>{orderData.vecna_spravnost_garant_jmeno}</ValueText>
-                    </KeyValuePair>
-                  )}
-
-                  {orderData.vecna_spravnost_datum && (
-                    <KeyValuePair>
-                      <KeyLabel>Datum kontroly (faktury)</KeyLabel>
-                      <ValueText>{formatDateOnly(orderData.vecna_spravnost_datum)}</ValueText>
-                    </KeyValuePair>
-                  )}
-
-                  {/* Stará věcná správnost (deprecated) */}
-                  {orderData.datum_vecne_spravnosti && isValidOldDate && (
-                    <KeyValuePair>
-                      <KeyLabel>Datum věcné správnosti (starý systém)</KeyLabel>
-                      <ValueText>{formatDateOnly(orderData.datum_vecne_spravnosti)}</ValueText>
-                    </KeyValuePair>
-                  )}
-
-                  {/* Umístění majetku */}
-                  <KeyValuePair>
-                    <KeyLabel>Umístění majetku</KeyLabel>
-                    <ValueText>{orderData.vecna_spravnost_umisteni_majetku || <span style={{color: '#9ca3af'}}>---</span>}</ValueText>
-                  </KeyValuePair>
-
-                  {/* Poznámka k věcné správnosti objednávky */}
-                  <KeyValuePair>
-                    <KeyLabel>Poznámka k věcné správnosti</KeyLabel>
-                    <ValueText>{orderData.vecna_spravnost_poznamka || <span style={{color: '#9ca3af'}}>---</span>}</ValueText>
-                  </KeyValuePair>
-                </DataGrid>
-              </InfoCard>
-            </SectionContent>
-          </Section>
-        ) : null;
-      })()}
 
       {/* SEKCE 9: DOKONČENÍ */}
       {orderData.stav_workflow_kod && orderData.stav_workflow_kod.includes('DOKONCENA') && (
@@ -1800,9 +1849,104 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.prilohy} $theme="red">
-            <FieldValue>
-              Počet příloh: <strong>{orderData.prilohy_count}</strong>
-            </FieldValue>
+            {orderData.prilohy && orderData.prilohy.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {orderData.prilohy.map((priloha, idx) => {
+                  const formatFileSize = (bytes) => {
+                    if (!bytes || bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+                  };
+
+                  const getTypeBadge = (typ) => {
+                    const typeMap = {
+                      'FAKTURA': { bg: '#dbeafe', color: '#1e40af', label: 'Faktura' },
+                      'ISDOC': { bg: '#e0e7ff', color: '#4338ca', label: 'ISDOC' },
+                      'PRILOHA': { bg: '#f3e8ff', color: '#6b21a8', label: 'Příloha' },
+                      'SMLOUVA': { bg: '#fef3c7', color: '#92400e', label: 'Smlouva' },
+                      'OBJEDNAVKA': { bg: '#d1fae5', color: '#065f46', label: 'Objednávka' },
+                      'IMPORT': { bg: '#fce7f3', color: '#9f1239', label: 'Import' },
+                      'JINE': { bg: '#f1f5f9', color: '#475569', label: 'Jiné' },
+                      'JINA': { bg: '#f1f5f9', color: '#475569', label: 'Jiná' }
+                    };
+                    const config = typeMap[typ] || typeMap['JINA'];
+                    return (
+                      <Badge $bg={config.bg} $color={config.color}>
+                        {config.label}
+                      </Badge>
+                    );
+                  };
+
+                  const handleDownload = async () => {
+                    try {
+                      const blob = await downloadOrderAttachment(orderData.id, priloha.id, username, token);
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = priloha.originalni_nazev_souboru || priloha.nazev_souboru || 'attachment';
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (error) {
+                      console.error('Error downloading order attachment:', error);
+                    }
+                  };
+
+                  return (
+                    <div key={priloha.id || idx} onClick={handleDownload} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      background: '#f9fafb',
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f3f4f6';
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#f9fafb';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                    }}
+                    title="Klikněte pro stažení">
+                      <FontAwesomeIcon icon={faFile} style={{ color: '#6b7280', fontSize: '1.25rem' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: '0.9rem',
+                          color: '#374151',
+                          fontWeight: '500',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {priloha.originalni_nazev_souboru || priloha.nazev_souboru || 'Nepojmenovaný soubor'}
+                        </div>
+                        <div style={{
+                          fontSize: '0.8rem',
+                          color: '#9ca3af',
+                          marginTop: '2px'
+                        }}>
+                          {formatFileSize(priloha.velikost_souboru_b || priloha.velikost)}
+                        </div>
+                      </div>
+                      {getTypeBadge(priloha.typ_prilohy || priloha.typ)}
+                      <FontAwesomeIcon icon={faDownload} style={{ color: '#3b82f6', fontSize: '1rem', marginLeft: '0.5rem' }} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <FieldValue>
+                Počet příloh: <strong>{orderData.prilohy_count}</strong>
+              </FieldValue>
+            )}
           </SectionContent>
         </Section>
       )}
