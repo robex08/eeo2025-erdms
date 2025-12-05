@@ -5,8 +5,10 @@ import './ModernHelper.css';
 import { getHelperTextsForPage, getGeneralTips, getPageMetadata } from '../data/helperTexts';
 import { getToolsVisibility } from '../utils/toolsVisibility';
 
+import { ASSETS } from '../config/assets';
+
 // Cesta k PNG avatarovi v public složce
-const avatarImage = '/assets/helper-avatar.png';
+const avatarImage = ASSETS.HELPER_AVATAR;
 
 /**
  * ModernHelper - Moderní kontextový pomocník

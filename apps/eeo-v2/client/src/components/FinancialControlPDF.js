@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import '../utils/pdfFonts'; // 🔥 Automatická registrace Roboto fontů
+import { ASSETS } from '../config/assets';
 
 // Styly pro PDF dokument
 const styles = StyleSheet.create({
@@ -659,7 +660,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
             <Image
-              src="/logo_zzs_main.png"
+              src={ASSETS.LOGO_ZZS_MAIN}
               style={styles.logo}
             />
           </View>

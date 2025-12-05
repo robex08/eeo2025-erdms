@@ -28,6 +28,7 @@ import { useTodoAlarms } from '../hooks/useTodoAlarms';
 import { FloatingAlarmManager } from './FloatingAlarmPopup';
 import { translateToCz } from '../utils/translate';
 import { useDebugPanel } from '../hooks/useDebugPanel';
+import { ASSETS } from '../config/assets';
 import FinancialCalculator from './FinancialCalculator';
 import CurrencyTicker from './CurrencyTicker';
 import { ToastContext } from '../context/ToastContext';
@@ -2344,7 +2345,7 @@ const Layout = ({ children }) => {
       `} />
   <Header data-mode={mode} data-auth={isLoggedIn ? '1':'0'}>
         <HeaderLeft>
-          <HeaderLogo src="/logo_zzs_main.png" alt="ZZS Středočeského kraje" />
+          <HeaderLogo src={ASSETS.LOGO_ZZS_MAIN} alt="ZZS Středočeského kraje" />
           <div>
             <HeaderTitle>
               Systém správy a workflow objednávek

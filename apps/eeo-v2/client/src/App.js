@@ -368,7 +368,7 @@ function App() {
 
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
-      <Router>
+      <Router basename={process.env.PUBLIC_URL || ''}>
         <AppShell>
           <Layout>
             {/* Logout redirect listener */}
