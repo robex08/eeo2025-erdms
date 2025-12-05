@@ -11,7 +11,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser, faBuilding, faFileAlt, faMoneyBillWave, faCalendar,
   faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronUp,
-  faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle
+  faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit
 } from '@fortawesome/free-solid-svg-icons';
 import { formatDateOnly } from '../utils/format';
 
@@ -343,7 +343,33 @@ const ExpandCollapseButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange }, ref) => {
+const EditInvoiceButton = styled.button`
+  padding: 0.5rem 1rem;
+  background: #f97316;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+  
+  &:hover {
+    background: #ea580c;
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1084,7 +1110,93 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange }, ref) => {
         </SectionContent>
       </Section>
 
-      {/* SEKCE 6: FAKTURY */}
+      {/* SEKCE 6: UVEŘEJNĚNÍ V REGISTRU SMLUV */}
+      {('zverejnit' in orderData) && (
+        <Section>
+          <SectionHeader $theme="blue" $isActive={!collapsed.registr} onClick={() => toggleSection('registr')}>
+            <SectionTitle $theme="blue">
+              <FontAwesomeIcon icon={faFileAlt} />
+              Rozhodnutí o zveřejnění v registru smluv
+            </SectionTitle>
+            <CollapseIcon $collapsed={collapsed.registr}>
+              <FontAwesomeIcon icon={faChevronUp} />
+            </CollapseIcon>
+          </SectionHeader>
+          <SectionContent $collapsed={collapsed.registr} $theme="blue">
+            {(() => {
+              // Robustní kontrola - převedeme na string a porovnáme
+              const jeZverejnit = String(orderData.zverejnit) === '1';
+              
+              return (
+                <InfoCard>
+                  <DataGrid $columns="1fr 1fr">
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Má být zveřejněna v registru smluv</KeyLabel>
+                      <div style={{ 
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.5rem 1rem',
+                        background: jeZverejnit ? '#dcfce7' : '#fee2e2',
+                        border: `2px solid ${jeZverejnit ? '#16a34a' : '#ef4444'}`,
+                        borderRadius: '8px',
+                        color: jeZverejnit ? '#166534' : '#991b1b',
+                        fontWeight: '600',
+                        marginTop: '0.5rem'
+                      }}>
+                        <FontAwesomeIcon icon={jeZverejnit ? faCheckCircle : faTimesCircle} />
+                        {jeZverejnit ? 'ANO' : 'NE'}
+                      </div>
+                    </KeyValuePair>
+
+                    {/* Pokud NE (0), zobraz info že nebyla zveřejněna */}
+                    {!jeZverejnit && (
+                      <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                        <ValueText style={{ color: '#6b7280', fontStyle: 'italic' }}>
+                          Objednávka nebyla zveřejněna v registru smluv.
+                        </ValueText>
+                      </KeyValuePair>
+                    )}
+
+                    {/* Datum a ID se zobrazí POUZE pokud má být zveřejněna */}
+                    {jeZverejnit && orderData.dt_zverejneni && (
+                      <>
+                        <KeyValuePair>
+                          <KeyLabel>Datum zveřejnění</KeyLabel>
+                          <ValueText>{formatDateOnly(orderData.dt_zverejneni)}</ValueText>
+                        </KeyValuePair>
+                        <KeyValuePair>
+                          <KeyLabel>Zveřejnil</KeyLabel>
+                          <ValueText>
+                            {(() => {
+                              const enriched = orderData._enriched?.zverejnil;
+                              if (enriched) {
+                                const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
+                                const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
+                                return `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                              }
+                              return orderData.zverejnil_jmeno || '—';
+                            })()}
+                          </ValueText>
+                        </KeyValuePair>
+                      </>
+                    )}
+
+                    {jeZverejnit && orderData.registr_iddt && (
+                      <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                        <KeyLabel>ID smlouvy v registru</KeyLabel>
+                        <ValueText>{orderData.registr_iddt}</ValueText>
+                      </KeyValuePair>
+                    )}
+                  </DataGrid>
+                </InfoCard>
+              );
+            })()}
+          </SectionContent>
+        </Section>
+      )}
+
+      {/* SEKCE 7: FAKTURY */}
       {orderData.faktury && orderData.faktury.length > 0 && (
         <Section>
           <SectionHeader $theme="blue" $isActive={!collapsed.fakturace} onClick={() => toggleSection('fakturace')}>
@@ -1111,10 +1223,22 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange }, ref) => {
                   marginBottom: '1rem',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.5rem'
+                  justifyContent: 'space-between',
+                  gap: '1rem'
                 }}>
-                  <FontAwesomeIcon icon={faMoneyBillWave} style={{ color: '#3b82f6' }} />
-                  FAKTURA {index + 1}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <FontAwesomeIcon icon={faMoneyBillWave} style={{ color: '#3b82f6' }} />
+                    FAKTURA {index + 1}
+                  </div>
+                  {onEditInvoice && (
+                    <EditInvoiceButton onClick={(e) => {
+                      e.stopPropagation();
+                      onEditInvoice(faktura);
+                    }}>
+                      <FontAwesomeIcon icon={faEdit} />
+                      Upravit
+                    </EditInvoiceButton>
+                  )}
                 </div>
 
                 <DataGrid $columns="1fr 1fr">
@@ -1265,7 +1389,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange }, ref) => {
         </Section>
       )}
 
-      {/* SEKCE 7: POZNÁMKY */}
+      {/* SEKCE 8: POZNÁMKY */}
       {orderData.poznamka && (
         <Section>
           <SectionHeader $theme="orange" $isActive={!collapsed.poznamky} onClick={() => toggleSection('poznamky')}>
@@ -1285,93 +1409,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange }, ref) => {
         </Section>
       )}
 
-      {/* SEKCE 6: UVEŘEJNĚNÍ V REGISTRU SMLUV */}
-      {('zverejnit' in orderData) && (
-        <Section>
-          <SectionHeader $theme="blue" $isActive={!collapsed.registr} onClick={() => toggleSection('registr')}>
-            <SectionTitle $theme="blue">
-              <FontAwesomeIcon icon={faFileAlt} />
-              Rozhodnutí o zveřejnění v registru smluv
-            </SectionTitle>
-            <CollapseIcon $collapsed={collapsed.registr}>
-              <FontAwesomeIcon icon={faChevronUp} />
-            </CollapseIcon>
-          </SectionHeader>
-          <SectionContent $collapsed={collapsed.registr} $theme="blue">
-            {(() => {
-              // Robustní kontrola - převedeme na string a porovnáme
-              const jeZverejnit = String(orderData.zverejnit) === '1';
-              
-              return (
-                <InfoCard>
-                  <DataGrid $columns="1fr 1fr">
-                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
-                      <KeyLabel>Má být zveřejněna v registru smluv</KeyLabel>
-                      <div style={{ 
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.5rem 1rem',
-                        background: jeZverejnit ? '#dcfce7' : '#fee2e2',
-                        border: `2px solid ${jeZverejnit ? '#16a34a' : '#ef4444'}`,
-                        borderRadius: '8px',
-                        color: jeZverejnit ? '#166534' : '#991b1b',
-                        fontWeight: '600',
-                        marginTop: '0.5rem'
-                      }}>
-                        <FontAwesomeIcon icon={jeZverejnit ? faCheckCircle : faTimesCircle} />
-                        {jeZverejnit ? 'ANO' : 'NE'}
-                      </div>
-                    </KeyValuePair>
-
-                    {/* Pokud NE (0), zobraz info že nebyla zveřejněna */}
-                    {!jeZverejnit && (
-                      <KeyValuePair style={{ gridColumn: '1 / -1' }}>
-                        <ValueText style={{ color: '#6b7280', fontStyle: 'italic' }}>
-                          Objednávka nebyla zveřejněna v registru smluv.
-                        </ValueText>
-                      </KeyValuePair>
-                    )}
-
-                    {/* Datum a ID se zobrazí POUZE pokud má být zveřejněna */}
-                    {jeZverejnit && orderData.dt_zverejneni && (
-                      <>
-                        <KeyValuePair>
-                          <KeyLabel>Datum zveřejnění</KeyLabel>
-                          <ValueText>{formatDateOnly(orderData.dt_zverejneni)}</ValueText>
-                        </KeyValuePair>
-                        <KeyValuePair>
-                          <KeyLabel>Zveřejnil</KeyLabel>
-                          <ValueText>
-                            {(() => {
-                              const enriched = orderData._enriched?.zverejnil;
-                              if (enriched) {
-                                const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
-                                const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
-                                return `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
-                              }
-                              return orderData.zverejnil_jmeno || '—';
-                            })()}
-                          </ValueText>
-                        </KeyValuePair>
-                      </>
-                    )}
-
-                    {jeZverejnit && orderData.registr_iddt && (
-                      <KeyValuePair style={{ gridColumn: '1 / -1' }}>
-                        <KeyLabel>ID smlouvy v registru</KeyLabel>
-                        <ValueText>{orderData.registr_iddt}</ValueText>
-                      </KeyValuePair>
-                    )}
-                  </DataGrid>
-                </InfoCard>
-              );
-            })()}
-          </SectionContent>
-        </Section>
-      )}
-
-      {/* SEKCE 7: VĚCNÁ SPRÁVNOST */}
+      {/* SEKCE 9: VĚCNÁ SPRÁVNOST */}
       {/* Zobraz sekci pokud workflow obsahuje VECNA_SPRAVNOST nebo existují data věcné správnosti */}
       {(() => {
         const hasVecnaSpravnostWorkflow = orderData.stav_workflow_kod?.includes('VECNA_SPRAVNOST') || 

@@ -141,9 +141,7 @@ function getSqlSearchOrders2025() {
                 COALESCE(u_prikazce.prijmeni, '')
             ) as prikazce,
             (SELECT COUNT(*) FROM 25a_objednavky_prilohy WHERE objednavka_id = o.id) as pocet_priloh_obj,
-            (SELECT COUNT(*) FROM 25a_faktury_prilohy fp 
-             INNER JOIN 25a_objednavky_faktury f ON fp.faktura_id = f.id 
-             WHERE f.objednavka_id = o.id) as pocet_priloh_fa,
+            (SELECT COUNT(*) FROM 25a_objednavky_faktury WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
             DATE(o.dt_objednavky) as datum_objednavky,
             DATE(o.dt_schvaleni) as datum_schvaleni,
             DATE(o.dt_odeslani) as datum_odeslani,

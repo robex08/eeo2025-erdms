@@ -1,18 +1,309 @@
 /**
  * DatePicker Component
  * Vlastní date picker s kalendářním rozhraním
- * Převzato z OrderForm25.js pro opakované použití
+ * Převzato z OrderForm25.js - funkční verze
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
+import { Calendar } from 'lucide-react';
 
-// DatePicker styled components
+function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [openUpwards, setOpenUpwards] = useState(false);
+  const wrapperRef = useRef(null);
+  const calendarRef = useRef(null);
+
+  // Parse value to Date
+  const selectedDate = value ? new Date(value) : null;
+
+  // Update currentMonth when value changes to show correct month
+  useEffect(() => {
+    if (value) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        setCurrentMonth(date);
+      }
+    }
+  }, [value]);
+
+  // Close calendar when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Detekce směru otevření kalendáře (nahoru/dolů) podle dostupného místa
+  useEffect(() => {
+    if (isOpen && wrapperRef.current) {
+      const checkPosition = () => {
+        if (!wrapperRef.current) return;
+
+        const buttonRect = wrapperRef.current.getBoundingClientRect();
+        const calendarHeight = 380;
+        const footerHeight = 54;
+        const buffer = 20;
+
+        const spaceBelow = window.innerHeight - buttonRect.bottom - footerHeight - buffer;
+        const spaceAbove = buttonRect.top - buffer;
+
+        const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
+
+        setOpenUpwards(shouldOpenUpward);
+      };
+
+      checkPosition();
+
+      const scrollContainer = document.querySelector('[class*="ScrollableContent"]');
+      if (scrollContainer) {
+        scrollContainer.addEventListener('scroll', checkPosition);
+        return () => scrollContainer.removeEventListener('scroll', checkPosition);
+      }
+    }
+  }, [isOpen]);
+
+  // Format date for display
+  const formatDisplayDate = (date) => {
+    if (!date) return '';
+    try {
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch (err) {
+      return '';
+    }
+  };
+
+  // Format date for input (YYYY-MM-DD)
+  const formatInputDate = (date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Get calendar days for current month
+  const getCalendarDays = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+    const days = [];
+
+    // Previous month days
+    for (let i = startDay - 1; i >= 0; i--) {
+      const date = new Date(year, month, -i);
+      days.push({ date, isOtherMonth: true });
+    }
+
+    // Current month days
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      const date = new Date(year, month, i);
+      days.push({ date, isOtherMonth: false });
+    }
+
+    // Next month days
+    const remainingDays = 42 - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      const date = new Date(year, month + 1, i);
+      days.push({ date, isOtherMonth: true });
+    }
+
+    return days;
+  };
+
+  const handleDateSelect = (date) => {
+    const formattedDate = formatInputDate(date);
+    onChange(formattedDate);
+    if (onBlur) {
+      onBlur(formattedDate);
+    }
+    setIsOpen(false);
+  };
+
+  const handleToday = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    handleDateSelect(new Date());
+  };
+
+  const handleClear = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    onChange('');
+    if (onBlur) {
+      onBlur('');
+    }
+    setIsOpen(false);
+  };
+
+  const prevMonth = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  const today = new Date();
+  const calendarDays = getCalendarDays();
+
+  const displayText = value ? formatDisplayDate(value) : placeholder;
+
+  return (
+    <DatePickerWrapper ref={wrapperRef} data-field={fieldName}>
+      <InputWithIcon hasIcon>
+        <Calendar />
+        <DateInputButton
+          type="button"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          disabled={disabled}
+          hasError={hasError}
+          hasValue={!!value}
+          data-datepicker={fieldName}
+        >
+          {displayText}
+        </DateInputButton>
+
+        {value && !disabled && (
+          <DateClearButton
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClear(e);
+            }}
+            title="Smazat datum"
+          >
+            ✕
+          </DateClearButton>
+        )}
+
+        {!disabled && (
+          <DateTodayButton
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleToday(e);
+            }}
+            title="Nastavit dnešní datum"
+          >
+            📅
+          </DateTodayButton>
+        )}
+      </InputWithIcon>
+
+      {isOpen && !disabled && (
+        <DateCalendarPopup ref={calendarRef} openUpwards={openUpwards}>
+          <CalendarHeader>
+            <CalendarNav onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              prevMonth(e);
+            }}>◀</CalendarNav>
+            <CalendarTitle>
+              <span>{currentMonth.toLocaleDateString('cs-CZ', { month: 'long' })}</span>
+              <span>{currentMonth.getFullYear()}</span>
+            </CalendarTitle>
+            <CalendarNav onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              nextMonth(e);
+            }}>▶</CalendarNav>
+          </CalendarHeader>
+
+          <CalendarGrid>
+            <CalendarDay>Po</CalendarDay>
+            <CalendarDay>Út</CalendarDay>
+            <CalendarDay>St</CalendarDay>
+            <CalendarDay>Čt</CalendarDay>
+            <CalendarDay>Pá</CalendarDay>
+            <CalendarDay>So</CalendarDay>
+            <CalendarDay>Ne</CalendarDay>
+
+            {calendarDays.map((day, index) => {
+              const isToday = day.date.toDateString() === today.toDateString();
+              const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
+
+              return (
+                <CalendarDate
+                  key={index}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDateSelect(day.date);
+                  }}
+                  isToday={isToday}
+                  isSelected={isSelected}
+                  isOtherMonth={day.isOtherMonth}
+                >
+                  {day.date.getDate()}
+                </CalendarDate>
+              );
+            })}
+          </CalendarGrid>
+
+          <CalendarFooter>
+            <CalendarButton
+              className="today"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDateSelect(new Date());
+              }}
+            >
+              Dnes
+            </CalendarButton>
+            <CalendarButton
+              className="clear"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onChange('');
+                if (onBlur) {
+                  onBlur('');
+                }
+                setIsOpen(false);
+              }}
+            >
+              Smazat
+            </CalendarButton>
+          </CalendarFooter>
+        </DateCalendarPopup>
+      )}
+    </DatePickerWrapper>
+  );
+}
+
+// Styled Components
 const DatePickerWrapper = styled.div`
   position: relative;
   width: 100%;
-  overflow: visible;
 `;
 
 const InputWithIcon = styled.div`
@@ -26,27 +317,32 @@ const InputWithIcon = styled.div`
     transform: translateY(-50%);
     width: 18px;
     height: 18px;
-    color: #9ca3af;
-    z-index: 1;
+    color: #6b7280;
     pointer-events: none;
+    z-index: 1;
   }
 `;
 
 const DateInputButton = styled.button`
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.375rem 0.625rem;
-  padding-right: ${props => props.hasValue ? '2.5rem' : '0.625rem'};
-  border: 1px solid ${props => props.hasError ? '#ef4444' : '#d1d5db'};
-  border-radius: 6px;
-  background: ${props => props.disabled ? '#f3f4f6' : 'white'};
-  color: ${props => props.disabled ? '#9ca3af' : props.hasValue ? '#111827' : '#9ca3af'};
-  font-size: 0.75rem;
+  display: block;
+  height: 44px;
+  padding: 0 2.75rem 0 2.75rem;
+  padding-right: ${props => props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem'};
+  border: 2px solid ${props => props.hasError ? '#ef4444' : '#e5e7eb'};
+  border-radius: 8px;
+  background: ${props => props.disabled ? '#f9fafb' : 'white'};
+  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1f2937' : '#9ca3af'};
+  font-size: 0.875rem;
+  font-weight: ${props => props.hasValue && !props.disabled ? '600' : '400'};
+  line-height: 1;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
 
   &:hover:not(:disabled) {
     border-color: #3b82f6;
@@ -60,12 +356,12 @@ const DateInputButton = styled.button`
   }
 `;
 
-const DateTodayButton = styled.button`
+const DateClearButton = styled.button`
   position: absolute;
-  right: 8px;
+  right: 36px;
   top: 50%;
   transform: translateY(-50%);
-  background: #10b981;
+  background: #ef4444;
   color: white;
   border: none;
   border-radius: 4px;
@@ -75,26 +371,61 @@ const DateTodayButton = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: bold;
   transition: all 0.2s ease;
   z-index: 1;
 
   &:hover {
-    background: #059669;
+    background: #dc2626;
     transform: translateY(-50%) scale(1.1);
   }
 `;
 
+const DateTodayButton = styled.button`
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: #3b82f6;
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  z-index: 1;
+
+  &:hover {
+    background: transparent;
+    color: #2563eb;
+    transform: translateY(-50%) scale(1.15);
+  }
+`;
+
 const DateCalendarPopup = styled.div`
-  position: fixed;
+  position: absolute;
+  ${props => props.openUpwards ? `
+    bottom: calc(100% + 4px);
+    top: auto;
+  ` : `
+    top: calc(100% + 4px);
+    bottom: auto;
+  `}
+  left: 0;
+  right: 0;
   z-index: 10001;
   background: white;
   border: 2px solid #3b82f6;
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   padding: 0.5rem;
-  min-width: 280px;
 `;
 
 const CalendarHeader = styled.div`
@@ -162,290 +493,53 @@ const CalendarDate = styled.button`
   border: none;
   border-radius: 4px;
   background: ${props => props.isToday ? '#dbeafe' : props.isSelected ? '#3b82f6' : 'transparent'};
-  color: ${props => props.isSelected ? 'white' : props.isOtherMonth ? '#d1d5db' : '#374151'};
+  color: ${props => props.isSelected ? 'white' : props.isOtherMonth ? '#9ca3af' : '#374151'};
   font-weight: ${props => props.isToday || props.isSelected ? '600' : '400'};
-  cursor: ${props => props.isOtherMonth ? 'default' : 'pointer'};
+  cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background: ${props => props.isSelected ? '#2563eb' : props.isOtherMonth ? 'transparent' : '#f3f4f6'};
-    transform: ${props => props.isOtherMonth ? 'none' : 'scale(1.1)'};
+    background: ${props => props.isSelected ? '#2563eb' : '#f3f4f6'};
+    transform: scale(1.1);
+    color: ${props => props.isSelected ? 'white' : '#111827'};
   }
 `;
 
-/**
- * DatePicker Component
- *
- * @param {Object} props
- * @param {string} props.value - Hodnota data ve formátu YYYY-MM-DD
- * @param {function} props.onChange - Callback pro změnu hodnoty: (newValue) => void
- * @param {boolean} props.disabled - Zda je picker disabled
- * @param {boolean} props.hasError - Zda má picker chybový stav
- * @param {string} props.placeholder - Placeholder text
- * @param {number} props.limitToMonth - Omezit výběr jen na tento měsíc (1-12)
- * @param {number} props.limitToYear - Omezit výběr jen na tento rok
- */
-function DatePicker({
-  value,
-  onChange,
-  disabled = false,
-  hasError = false,
-  placeholder = 'Vyberte datum',
-  limitToMonth = null,
-  limitToYear = null
-}) {
-  // Inicializuj currentMonth na základě limitToMonth/limitToYear nebo value nebo dnešní datum
-  const getInitialMonth = () => {
-    if (limitToMonth && limitToYear) {
-      return new Date(limitToYear, limitToMonth - 1, 1);
+const CalendarFooter = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid #e5e7eb;
+`;
+
+const CalendarButton = styled.button`
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &.today {
+    background: #dbeafe;
+    color: #1e40af;
+
+    &:hover {
+      background: #bfdbfe;
     }
-    if (value) {
-      return new Date(value);
+  }
+
+  &.clear {
+    background: #fee2e2;
+    color: #991b1b;
+
+    &:hover {
+      background: #fecaca;
     }
-    return new Date();
-  };
-
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(getInitialMonth);
-  const wrapperRef = useRef(null);
-  const popupRef = useRef(null);
-
-  // Parse value to Date
-  const selectedDate = value ? new Date(value) : null;
-
-  // Při změně limitToMonth/limitToYear nastav správný měsíc
-  useEffect(() => {
-    if (limitToMonth && limitToYear) {
-      setCurrentMonth(new Date(limitToYear, limitToMonth - 1, 1));
-    }
-  }, [limitToMonth, limitToYear]);
-
-  // Format date for display
-  const formatDisplayDate = (date) => {
-    if (!date) return placeholder;
-    try {
-      const d = new Date(date);
-      if (isNaN(d.getTime())) return placeholder; // Invalid date check
-      return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch (err) {
-      return placeholder;
-    }
-  };
-
-  // Format date for input (YYYY-MM-DD)
-  const formatInputDate = (date) => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // Get calendar days for current month
-  const getCalendarDays = () => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Monday = 0
-    const days = [];
-
-    // Previous month days
-    for (let i = startDay - 1; i >= 0; i--) {
-      const date = new Date(year, month, -i);
-      days.push({ date, isOtherMonth: true });
-    }
-
-    // Current month days
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      const date = new Date(year, month, i);
-      days.push({ date, isOtherMonth: false });
-    }
-
-    // Next month days
-    const remainingDays = 42 - days.length; // 6 rows * 7 days
-    for (let i = 1; i <= remainingDays; i++) {
-      const date = new Date(year, month + 1, i);
-      days.push({ date, isOtherMonth: true });
-    }
-
-    return days;
-  };
-
-  const handleDateSelect = (date) => {
-    const formattedDate = formatInputDate(date);
-    onChange(formattedDate);
-    setIsOpen(false);
-  };
-
-  const handleToday = () => {
-    handleDateSelect(new Date());
-  };
-
-  const prevMonth = () => {
-    // Zakázat změnu měsíce pokud je limitToMonth nastaveno
-    if (limitToMonth && limitToYear) return;
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const nextMonth = () => {
-    // Zakázat změnu měsíce pokud je limitToMonth nastaveno
-    if (limitToMonth && limitToYear) return;
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const today = new Date();
-  const calendarDays = getCalendarDays();
-
-  // Vypočítat pozici pro portal
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, width: 0 });
-
-  useEffect(() => {
-    if (isOpen && wrapperRef.current) {
-      const rect = wrapperRef.current.getBoundingClientRect();
-      setPopupPosition({
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width
-      });
-    }
-  }, [isOpen]);
-
-  // Zavřít při kliknutí mimo nebo při scrollování
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (e) => {
-      // Klik je mimo pokud není na wrapperu ANI na popup elementu
-      const clickedWrapper = wrapperRef.current && wrapperRef.current.contains(e.target);
-      const clickedPopup = popupRef.current && popupRef.current.contains(e.target);
-
-      if (!clickedWrapper && !clickedPopup) {
-        setIsOpen(false);
-      }
-    };
-
-    const handleScroll = () => {
-      if (wrapperRef.current) {
-        const rect = wrapperRef.current.getBoundingClientRect();
-        setPopupPosition({
-          top: rect.bottom + 4,
-          left: rect.left,
-          width: rect.width
-        });
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', handleScroll, true); // true = capture phase pro všechny scroll eventy
-    window.addEventListener('resize', handleScroll);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleScroll);
-    };
-  }, [isOpen]);
-
-  return (
-    <DatePickerWrapper ref={wrapperRef}>
-      <InputWithIcon>
-        <DateInputButton
-          type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          disabled={disabled}
-          hasError={hasError}
-          hasValue={!!value}
-        >
-          {formatDisplayDate(value)}
-        </DateInputButton>
-      </InputWithIcon>
-
-      {isOpen && !disabled && createPortal(
-        <DateCalendarPopup
-          ref={popupRef}
-          data-datepicker-popup
-          style={{
-            top: `${popupPosition.top}px`,
-            left: `${popupPosition.left}px`,
-            width: `${popupPosition.width}px`
-          }}
-        >
-          <CalendarHeader>
-            <CalendarNav
-              onClick={prevMonth}
-              disabled={limitToMonth && limitToYear}
-              style={{
-                opacity: (limitToMonth && limitToYear) ? 0.3 : 1,
-                cursor: (limitToMonth && limitToYear) ? 'not-allowed' : 'pointer'
-              }}
-            >
-              ◀
-            </CalendarNav>
-            <CalendarTitle>
-              <span>{currentMonth.toLocaleDateString('cs-CZ', { month: 'long' })}</span>
-              <span>{currentMonth.getFullYear()}</span>
-            </CalendarTitle>
-            <CalendarNav
-              onClick={nextMonth}
-              disabled={limitToMonth && limitToYear}
-              style={{
-                opacity: (limitToMonth && limitToYear) ? 0.3 : 1,
-                cursor: (limitToMonth && limitToYear) ? 'not-allowed' : 'pointer'
-              }}
-            >
-              ▶
-            </CalendarNav>
-          </CalendarHeader>
-
-          <CalendarGrid>
-            <CalendarDay>Po</CalendarDay>
-            <CalendarDay>Út</CalendarDay>
-            <CalendarDay>St</CalendarDay>
-            <CalendarDay>Čt</CalendarDay>
-            <CalendarDay>Pá</CalendarDay>
-            <CalendarDay>So</CalendarDay>
-            <CalendarDay>Ne</CalendarDay>
-
-            {calendarDays.map((day, index) => {
-              const isToday = day.date.toDateString() === today.toDateString();
-              const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
-
-              // Když je limitToMonth nastaven, povolit kliknutí POUZE na dny daného měsíce
-              let isClickable;
-              if (limitToMonth && limitToYear) {
-                const dayMonth = day.date.getMonth() + 1;
-                const dayYear = day.date.getFullYear();
-                isClickable = dayMonth === limitToMonth && dayYear === limitToYear;
-              } else {
-                // Když není limit, zakázat kliknutí na dny jiných měsíců
-                isClickable = !day.isOtherMonth;
-              }
-
-              return (
-                <CalendarDate
-                  key={index}
-                  onClick={() => isClickable && handleDateSelect(day.date)}
-                  isToday={isToday}
-                  isSelected={isSelected}
-                  isOtherMonth={day.isOtherMonth || !isClickable}
-                  style={{
-                    cursor: isClickable ? 'pointer' : 'not-allowed',
-                    opacity: isClickable ? 1 : 0.3
-                  }}
-                >
-                  {day.date.getDate()}
-                </CalendarDate>
-              );
-            })}
-          </CalendarGrid>
-        </DateCalendarPopup>,
-        document.body
-      )}
-    </DatePickerWrapper>
-  );
-}
+  }
+`;
 
 export default DatePicker;

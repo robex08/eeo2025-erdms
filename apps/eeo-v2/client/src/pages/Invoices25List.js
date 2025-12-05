@@ -1145,11 +1145,9 @@ const Invoices25List = () => {
       // Částka - rozsahový filtr (min/max)
       if (columnFilters.castka_min) {
         apiParams.castka_min = parseFloat(columnFilters.castka_min);
-        console.log('📤 API: castka_min =', apiParams.castka_min);
       }
       if (columnFilters.castka_max) {
         apiParams.castka_max = parseFloat(columnFilters.castka_max);
-        console.log('📤 API: castka_max =', apiParams.castka_max);
       }
       
       // Přílohy - filtr podle existence příloh
@@ -1160,9 +1158,7 @@ const Invoices25List = () => {
       }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
-      console.log('📤 Sending API params:', apiParams);
       const response = await listInvoices25(apiParams);
-      console.log('📥 Received invoices:', response.faktury?.length, 'Total:', response.pagination?.total);
 
       // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
@@ -1893,7 +1889,6 @@ const Invoices25List = () => {
                         value={columnFilters.castka_min || ''}
                         onChange={(e) => {
                           const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          console.log('🔍 Castka MIN changed:', newVal);
                           setColumnFilters({...columnFilters, castka_min: newVal});
                         }}
                         style={{
@@ -1915,7 +1910,6 @@ const Invoices25List = () => {
                         value={columnFilters.castka_max || ''}
                         onChange={(e) => {
                           const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          console.log('🔍 Castka MAX changed:', newVal);
                           setColumnFilters({...columnFilters, castka_max: newVal});
                         }}
                         style={{
