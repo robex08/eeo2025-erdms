@@ -22026,6 +22026,162 @@ function OrderForm25() {
                                 </FormGroup>
                               </FormRow>
 
+                              {/* ✅ NOVÉ: Per-invoice VĚCNÁ SPRÁVNOST (FÁZE 7/8) */}
+                              {currentPhase >= 7 && (
+                                <div style={{
+                                  marginTop: '1.5rem',
+                                  padding: '1rem',
+                                  background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                                  border: '2px solid #22c55e',
+                                  borderRadius: '8px'
+                                }}>
+                                  <div style={{ 
+                                    fontWeight: '700', 
+                                    fontSize: '0.95rem', 
+                                    color: '#166534', 
+                                    marginBottom: '1rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                  }}>
+                                    <FontAwesomeIcon icon={faCheckCircle} />
+                                    Věcná správnost faktury #{index + 1}
+                                  </div>
+
+                                  <FormRow>
+                                    <FormGroup>
+                                      <Label>Umístění majetku</Label>
+                                      <Input
+                                        value={isEditing ? (currentData.vecna_spravnost_umisteni_majetku || '') : (faktura.vecna_spravnost_umisteni_majetku || '')}
+                                        disabled={shouldLockFaktury}
+                                        onChange={(e) => {
+                                          if (!isEditing) {
+                                            handleEditFaktura(faktura);
+                                          }
+                                          setFakturaFormData(prev => ({
+                                            ...prev,
+                                            vecna_spravnost_umisteni_majetku: e.target.value
+                                          }));
+
+                                          // Okamžitá aktualizace
+                                          const updatedFaktury = formData.faktury.map(f =>
+                                            f.id === faktura.id
+                                              ? { ...f, vecna_spravnost_umisteni_majetku: e.target.value }
+                                              : f
+                                          );
+                                          updateFaktury(updatedFaktury);
+                                        }}
+                                        onBlur={() => {
+                                          if (isEditing && !faktura._isNew) {
+                                            handleUpdateFaktura();
+                                          }
+                                        }}
+                                        placeholder="Např. Kladno, budova K2, místnost 203"
+                                      />
+                                    </FormGroup>
+
+                                    <FormGroup style={{gridColumn: '1 / -1'}}>
+                                      <Label>Poznámka k věcné správnosti</Label>
+                                      <TextArea
+                                        value={isEditing ? (currentData.vecna_spravnost_poznamka || '') : (faktura.vecna_spravnost_poznamka || '')}
+                                        disabled={shouldLockFaktury}
+                                        onChange={(e) => {
+                                          if (!isEditing) {
+                                            handleEditFaktura(faktura);
+                                          }
+                                          setFakturaFormData(prev => ({
+                                            ...prev,
+                                            vecna_spravnost_poznamka: e.target.value
+                                          }));
+
+                                          // Okamžitá aktualizace
+                                          const updatedFaktury = formData.faktury.map(f =>
+                                            f.id === faktura.id
+                                              ? { ...f, vecna_spravnost_poznamka: e.target.value }
+                                              : f
+                                          );
+                                          updateFaktury(updatedFaktury);
+                                        }}
+                                        onBlur={() => {
+                                          if (isEditing && !faktura._isNew) {
+                                            handleUpdateFaktura();
+                                          }
+                                        }}
+                                        placeholder="Volitelná poznámka k věcné správnosti..."
+                                        rows={2}
+                                      />
+                                    </FormGroup>
+                                  </FormRow>
+
+                                  {/* Checkbox potvrzení věcné správnosti */}
+                                  <div style={{
+                                    marginTop: '1rem',
+                                    padding: '0.75rem',
+                                    background: '#ffffff',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px'
+                                  }}>
+                                    <label style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.75rem',
+                                      cursor: shouldLockFaktury ? 'not-allowed' : 'pointer',
+                                      fontSize: '0.9rem',
+                                      fontWeight: '600',
+                                      color: '#374151'
+                                    }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)}
+                                        disabled={shouldLockFaktury}
+                                        onChange={(e) => {
+                                          const newValue = e.target.checked ? 1 : 0;
+                                          
+                                          if (!isEditing) {
+                                            handleEditFaktura(faktura);
+                                          }
+                                          setFakturaFormData(prev => ({
+                                            ...prev,
+                                            potvrzeni_vecne_spravnosti: newValue
+                                          }));
+
+                                          // Okamžitá aktualizace
+                                          const updatedFaktury = formData.faktury.map(f =>
+                                            f.id === faktura.id
+                                              ? { ...f, potvrzeni_vecne_spravnosti: newValue }
+                                              : f
+                                          );
+                                          updateFaktury(updatedFaktury);
+                                          
+                                          // Trigger autosave
+                                          setTimeout(() => triggerAutosave(true), 100);
+                                        }}
+                                        style={{
+                                          width: '18px',
+                                          height: '18px',
+                                          cursor: shouldLockFaktury ? 'not-allowed' : 'pointer'
+                                        }}
+                                      />
+                                      <span style={{ flex: 1 }}>
+                                        Potvrzuji věcnou správnost faktury #{index + 1}
+                                      </span>
+                                      {(isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)) && (
+                                        <span style={{
+                                          fontSize: '0.75rem',
+                                          color: '#16a34a',
+                                          background: '#dcfce7',
+                                          padding: '0.25rem 0.5rem',
+                                          borderRadius: '4px',
+                                          fontWeight: '600'
+                                        }}>
+                                          ✓ ZKONTROLOVÁNO
+                                        </span>
+                                      )}
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+
                               {/* 📎 PŘÍLOHY FAKTURY - Kompaktní komponenta s API validací */}
                               <InvoiceAttachmentsCompact
                                 key={`invoice-attachments-${index}-${formData.id}`}
