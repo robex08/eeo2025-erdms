@@ -7711,7 +7711,21 @@ const Orders25List = () => {
       return true;
     });
 
-    return filtered;
+    // 📌 SORTING: Koncepty (drafty) vždy jako první
+    // Objednávky co nejsou ještě uložené v DB (isDraft nebo je_koncept) zobrazit jako první řádky
+    const sortedFiltered = filtered.sort((a, b) => {
+      const aIsDraft = a.isDraft || a.je_koncept || false;
+      const bIsDraft = b.isDraft || b.je_koncept || false;
+      
+      // Pokud jedna je draft a druhá ne, draft je první
+      if (aIsDraft && !bIsDraft) return -1;
+      if (!aIsDraft && bIsDraft) return 1;
+      
+      // Jinak zachovat původní pořadí
+      return 0;
+    });
+
+    return sortedFiltered;
   }, [
     orders,
     columnFilters,

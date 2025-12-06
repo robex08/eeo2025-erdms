@@ -5485,6 +5485,13 @@ function OrderForm25() {
     }
   }, [formData.polozky_objednavky?.length, formData.druh_objednavky_kod]); // Přidán druh_objednavky_kod
 
+  // Synchronizace smlouvaSearchTerm s formData.cislo_smlouvy při načtení dat
+  useEffect(() => {
+    if (formData.cislo_smlouvy && formData.cislo_smlouvy !== smlouvaSearchTerm) {
+      setSmlouvaSearchTerm(formData.cislo_smlouvy);
+    }
+  }, [formData.cislo_smlouvy, smlouvaSearchTerm]);
+
   // JEDNODUCHÉ WORKFLOW - přímo z DB stavu bez mapování
   const [isConceptSaved, setIsConceptSaved] = useState(false); // Pouze localStorage koncept
   // ❌ REMOVED: savedOrderId - přesunut výš (před isNewOrder)
@@ -15230,10 +15237,20 @@ function OrderForm25() {
             }
           }
 
-          // Smlouva - Číslo smlouvy je POVINNÉ
+          // Smlouva - Číslo smlouvy je POVINNÉ a musí existovat v seznamu aktivních smluv
           if (nazev.includes('Smlouva')) {
             if (!formData.cislo_smlouvy?.trim()) {
               errors.cislo_smlouvy = 'Číslo smlouvy je povinné při financování ze Smlouvy';
+            } else {
+              // 🔒 PŘÍSNÁ VALIDACE: Ověřit, že číslo smlouvy existuje v seznamu aktivních smluv
+              const existujeSmlouva = smlouvyList.some(s => 
+                (s.aktivni !== 0 && s.aktivni !== false) &&
+                (s.cislo_smlouvy === formData.cislo_smlouvy || s.evidencni_cislo === formData.cislo_smlouvy)
+              );
+              
+              if (!existujeSmlouva) {
+                errors.cislo_smlouvy = 'Zadané číslo smlouvy neexistuje v seznamu aktivních smluv. Vyberte prosím platnou smlouvu.';
+              }
             }
           }
 
@@ -15492,10 +15509,20 @@ function OrderForm25() {
             }
           }
 
-          // Smlouva - Číslo smlouvy je POVINNÉ
+          // Smlouva - Číslo smlouvy je POVINNÉ a musí existovat v seznamu aktivních smluv
           if (nazev.includes('Smlouva')) {
             if (!formData.cislo_smlouvy?.trim()) {
               errors.cislo_smlouvy = 'Číslo smlouvy je povinné';
+            } else {
+              // 🔒 PŘÍSNÁ VALIDACE: Ověřit, že číslo smlouvy existuje v seznamu aktivních smluv
+              const existujeSmlouva = smlouvyList.some(s => 
+                (s.aktivni !== 0 && s.aktivni !== false) &&
+                (s.cislo_smlouvy === formData.cislo_smlouvy || s.evidencni_cislo === formData.cislo_smlouvy)
+              );
+              
+              if (!existujeSmlouva) {
+                errors.cislo_smlouvy = 'Zadané číslo smlouvy není platné';
+              }
             }
           }
 
@@ -18474,13 +18501,17 @@ function OrderForm25() {
                             type="text"
                             name="cislo_smlouvy"
                             placeholder="Začněte psát číslo smlouvy..."
-                            value={formData.cislo_smlouvy || ''}
+                            value={smlouvaSearchTerm}
                             onChange={(e) => {
                               const value = e.target.value;
-                              handleInputChange('cislo_smlouvy', value);
                               setSmlouvaSearchTerm(value);
                               setShowSmlouvySuggestions(value.length > 0);
                               setSelectedSmlouvaSuggestionIndex(-1);
+                              
+                              // Pokud uživatel maže text, vyčistit i formData
+                              if (!value) {
+                                handleInputChange('cislo_smlouvy', '');
+                              }
                             }}
                             onKeyDown={(e) => {
                               if (!showSmlouvySuggestions) return;
@@ -18516,6 +18547,7 @@ function OrderForm25() {
                                 if (selected) {
                                   const cislo = selected.cislo_smlouvy || selected.evidencni_cislo;
                                   handleInputChange('cislo_smlouvy', cislo);
+                                  setSmlouvaSearchTerm(cislo);
                                   setShowSmlouvySuggestions(false);
                                   setSelectedSmlouvaSuggestionIndex(-1);
                                 }
@@ -18525,15 +18557,37 @@ function OrderForm25() {
                               }
                             }}
                             onFocus={() => {
-                              if (formData.cislo_smlouvy && formData.cislo_smlouvy.length > 0) {
+                              // Zobrazit suggestions při focusu, pokud už má nějaký search term
+                              if (smlouvaSearchTerm && smlouvaSearchTerm.length > 0) {
                                 setShowSmlouvySuggestions(true);
                               }
                             }}
-                            onBlur={() => {
+                            onBlur={(e) => {
                               // Delay hiding to allow click on suggestion
                               setTimeout(() => {
                                 setShowSmlouvySuggestions(false);
                                 setSelectedSmlouvaSuggestionIndex(-1);
+                                
+                                // 🔒 VALIDACE: Pokud search term neodpovídá žádné aktivní smlouvě, vyčistit pole
+                                const searchValue = smlouvaSearchTerm.trim();
+                                if (searchValue) {
+                                  const existsInList = smlouvyList.some(s => 
+                                    (s.aktivni !== 0 && s.aktivni !== false) &&
+                                    (s.cislo_smlouvy === searchValue || s.evidencni_cislo === searchValue)
+                                  );
+                                  
+                                  if (existsInList) {
+                                    // Je platná smlouva - zajistit, že je uložená do formData
+                                    if (formData.cislo_smlouvy !== searchValue) {
+                                      handleInputChange('cislo_smlouvy', searchValue);
+                                    }
+                                  } else {
+                                    // Nevybral žádnou platnou smlouvu - vyčistit
+                                    handleInputChange('cislo_smlouvy', '');
+                                    setSmlouvaSearchTerm('');
+                                    showToast('Vyberte prosím smlouvu ze seznamu', 'warning');
+                                  }
+                                }
                               }, 200);
                             }}
                             disabled={shouldLockFinancovaniSection}
@@ -18589,9 +18643,12 @@ function OrderForm25() {
                                 return (
                                   <SmlouvaSuggestionItem
                                     key={smlouva.id}
-                                    onClick={() => {
+                                    onMouseDown={(e) => {
+                                      // onMouseDown se spustí PŘED onBlur inputu, takže hodnota se nastaví včas
+                                      e.preventDefault(); // Zabrání blur eventu
                                       const cislo = smlouva.cislo_smlouvy || smlouva.evidencni_cislo;
                                       handleInputChange('cislo_smlouvy', cislo);
+                                      setSmlouvaSearchTerm(cislo);
                                       setShowSmlouvySuggestions(false);
                                       setSelectedSmlouvaSuggestionIndex(-1);
                                     }}
@@ -21549,21 +21606,46 @@ function OrderForm25() {
 
                             return (
                             <div key={faktura.id} style={{
-                              border: '1px solid #e5e7eb',
-                              borderRadius: '8px',
-                              padding: '1rem',
-                              marginBottom: '1rem',
-                              background: isEditing ? '#f0f9ff' : (isVecnaPotvrzena ? '#f0fdf4' : '#f9fafb')
+                              border: '2px solid #3b82f6',
+                              borderRadius: '12px',
+                              padding: '0',
+                              marginBottom: '1.5rem',
+                              background: isEditing ? '#f0f9ff' : (isVecnaPotvrzena ? '#f0fdf4' : '#ffffff'),
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                              overflow: 'hidden'
                             }}>
+                              {/* Záhlaví faktury - výrazné */}
                               <div style={{
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                color: 'white',
+                                padding: '1rem 1.25rem',
+                                fontWeight: '700',
+                                fontSize: '1.1rem',
                                 display: 'flex',
-                                justifyContent: 'space-between',
                                 alignItems: 'center',
-                                marginBottom: '1rem'
+                                justifyContent: 'space-between',
+                                gap: '1rem',
+                                borderBottom: '3px solid #1e40af',
+                                letterSpacing: '0.5px',
+                                textTransform: 'uppercase'
                               }}>
-                                <span style={{fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                                  <FontAwesomeIcon icon={faCreditCard} style={{ color: '#3b82f6' }} />
-                                  FAKTURA {index + 1} {index === 0 && <span style={{color: '#ef4444'}}>*</span>}
+                                <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
+                                  <FontAwesomeIcon icon={faCreditCard} style={{ fontSize: '1.2rem' }} />
+                                  Faktura #{index + 1}
+                                  {index === 0 && <span style={{color: '#fef3c7', fontSize: '1.3rem'}}>*</span>}
+                                  {faktura.fa_cislo_vema && (
+                                    <span style={{ 
+                                      fontWeight: '600',
+                                      fontSize: '0.9rem',
+                                      background: 'rgba(255, 255, 255, 0.2)',
+                                      padding: '0.25rem 0.75rem',
+                                      borderRadius: '6px',
+                                      letterSpacing: 'normal',
+                                      textTransform: 'none'
+                                    }}>
+                                      {faktura.fa_cislo_vema}
+                                    </span>
+                                  )}
 
                                   {/* 🆕 Info tooltip s detaily faktury */}
                                   <FakturaInfoIconWrapper>
@@ -21758,7 +21840,7 @@ function OrderForm25() {
                                       </FakturaTooltipRow>
                                     </FakturaTooltipBubble>
                                   </FakturaInfoIconWrapper>
-                                </span>
+                                </div>
                                 <div style={{display: 'flex', gap: '0.5rem'}}>
                                   {/* Tlačítko přidat další fakturu */}
                                   <button
@@ -21814,9 +21896,9 @@ function OrderForm25() {
                                     }}
                                     title="Přidat další fakturu"
                                     style={{
-                                      background: shouldLockFaktury ? '#d1d5db' : '#10b981',
+                                      background: shouldLockFaktury ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.2)',
                                       color: 'white',
-                                      border: 'none',
+                                      border: '1px solid rgba(255,255,255,0.5)',
                                       borderRadius: '6px',
                                       padding: '0.4rem',
                                       fontSize: '0.875rem',
@@ -21827,7 +21909,8 @@ function OrderForm25() {
                                       justifyContent: 'center',
                                       width: '32px',
                                       height: '32px',
-                                      opacity: shouldLockFaktury ? 0.6 : 1
+                                      opacity: shouldLockFaktury ? 0.6 : 1,
+                                      transition: 'all 0.2s ease'
                                     }}
                                   >
                                     <Plus size={16} />
@@ -21864,9 +21947,9 @@ function OrderForm25() {
                                     }}
                                     title="Smazat fakturu"
                                     style={{
-                                      background: shouldLockFaktury ? '#f9fafb' : '#fef2f2',
-                                      color: shouldLockFaktury ? '#9ca3af' : '#dc2626',
-                                      border: shouldLockFaktury ? '1px solid #d1d5db' : '1px solid #dc2626',
+                                      background: shouldLockFaktury ? 'rgba(255,255,255,0.3)' : 'rgba(220, 38, 38, 0.9)',
+                                      color: 'white',
+                                      border: '1px solid rgba(255,255,255,0.5)',
                                       borderRadius: '6px',
                                       padding: '0.4rem',
                                       cursor: shouldLockFaktury ? 'not-allowed' : 'pointer',
@@ -21875,13 +21958,17 @@ function OrderForm25() {
                                       justifyContent: 'center',
                                       width: '32px',
                                       height: '32px',
-                                      opacity: shouldLockFaktury ? 0.6 : 1
+                                      opacity: shouldLockFaktury ? 0.6 : 1,
+                                      transition: 'all 0.2s ease'
                                     }}
                                   >
                                     <Trash size={16} />
                                   </button>
                                 </div>
                               </div>
+
+                              {/* Content wrapper pro fakturu */}
+                              <div style={{ padding: '1.25rem' }}>
 
                               {/* INLINE EDITOVATELNÁ POLE - 3 sloupce: datum fixní, zbytek proporcionálně */}
                               <FormRow style={{gridTemplateColumns: '280px 1fr 1fr'}}>
@@ -22511,6 +22598,10 @@ function OrderForm25() {
                                   </div>
                                 </div>
                               )}
+
+                              </div>
+                              {/* Konec content wrapper */}
+
                             </div>
                           )}))}
                         </div>

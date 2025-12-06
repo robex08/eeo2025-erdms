@@ -39,6 +39,7 @@ import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { Search } from 'lucide-react';
 import draftManager from '../services/DraftManager';
+import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -1387,6 +1388,61 @@ export default function InvoiceEvidencePage() {
     }));
   };
 
+  // 🔔 Funkce pro odeslání notifikací při změně stavu objednávky na věcnou kontrolu
+  const sendInvoiceNotifications = async (orderId, orderData) => {
+    try {
+      // Získej příjemce notifikací z dat objednávky
+      const recipientUserIds = new Set();
+
+      // 1. Objednatel (uzivatel_id nebo objednatel_id)
+      if (orderData.uzivatel_id) {
+        recipientUserIds.add(parseInt(orderData.uzivatel_id, 10));
+      } else if (orderData.objednatel_id) {
+        recipientUserIds.add(parseInt(orderData.objednatel_id, 10));
+      }
+
+      // 2. Garant
+      if (orderData.garant_uzivatel_id) {
+        recipientUserIds.add(parseInt(orderData.garant_uzivatel_id, 10));
+      }
+
+      // 3. Schvalovatel (příkazce)
+      if (orderData.prikazce_id) {
+        recipientUserIds.add(parseInt(orderData.prikazce_id, 10));
+      }
+
+      // Filtr: Odstranit nevalidní ID
+      const validRecipients = Array.from(recipientUserIds).filter(id => {
+        return id && !isNaN(id) && id > 0;
+      });
+
+      // Pokud nejsou žádní příjemci, skonči
+      if (validRecipients.length === 0) {
+        console.warn('⚠️ Žádní příjemci notifikací pro objednávku:', orderId);
+        return;
+      }
+
+      // Odeslat notifikaci o změně stavu na věcnou kontrolu
+      await notificationService.create({
+        token,
+        username,
+        type: NOTIFICATION_TYPES.ORDER_STATUS_KONTROLA_CEKA, // 'order_status_kontrola_ceka'
+        order_id: orderId,
+        action_user_id: user_id,
+        recipients: validRecipients
+      });
+
+      console.log('✅ Notifikace o věcné kontrole odeslány:', {
+        orderId,
+        recipients: validRecipients,
+        type: NOTIFICATION_TYPES.ORDER_STATUS_KONTROLA_CEKA
+      });
+    } catch (error) {
+      console.error('❌ Chyba při odesílání notifikací:', error);
+      // Neblokujeme workflow kvůli chybě notifikace
+    }
+  };
+
   // Handler: submit formuláře
   const handleSubmit = async () => {
     setError(null);
@@ -1532,6 +1588,9 @@ export default function InvoiceEvidencePage() {
               newStates: stavKody,
               newStatusText: 'Věcná správnost'
             });
+
+            // 🔔 NOTIFIKACE: Odeslat notifikace objednateli, garantovi a schvalovateli
+            await sendInvoiceNotifications(formData.order_id, orderData);
 
             // ✅ Reload objednávky aby se zobrazil nový stav
             await loadOrderData(formData.order_id);
