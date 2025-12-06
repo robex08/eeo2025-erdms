@@ -7051,7 +7051,11 @@ function OrderForm25() {
         fa_dorucena: 1,
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
-        rozsirujici_data: fakturaFormData.rozsirujici_data || null
+        rozsirujici_data: fakturaFormData.rozsirujici_data || null,
+        // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+        vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
+        vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
+        potvrzeni_vecne_spravnosti: fakturaFormData.potvrzeni_vecne_spravnosti || 0
       };
 
       // Volej API update
@@ -22058,6 +22062,52 @@ function OrderForm25() {
                                     <FontAwesomeIcon icon={faCheckCircle} />
                                     Věcná správnost faktury #{index + 1}
                                   </div>
+
+                                  {/* Porovnání MAX CENA vs FAKTURA */}
+                                  {(() => {
+                                    const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+                                    const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                    const rozdil = fakturaCastka - maxCena;
+                                    const prekroceno = rozdil > 0;
+
+                                    return (
+                                      <div style={{
+                                        background: prekroceno ? '#fef2f2' : '#f0fdf4',
+                                        border: `1px solid ${prekroceno ? '#ef4444' : '#22c55e'}`,
+                                        borderRadius: '6px',
+                                        padding: '0.75rem',
+                                        marginBottom: '1rem',
+                                        fontSize: '0.85rem'
+                                      }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                          <span style={{ color: '#6b7280' }}>Max. cena objednávky s DPH:</span>
+                                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                                            {maxCena.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                          <span style={{ color: '#6b7280' }}>Částka faktury s DPH:</span>
+                                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                                            {fakturaCastka.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                          </span>
+                                        </div>
+                                        <div style={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between', 
+                                          paddingTop: '0.5rem', 
+                                          borderTop: '1px solid #e5e7eb',
+                                          fontWeight: '700'
+                                        }}>
+                                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                                            {prekroceno ? '⚠️ Překročení:' : '✅ Rozdíl:'}
+                                          </span>
+                                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                                            {prekroceno ? '+' : ''}{rozdil.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
 
                                   <FormRow>
                                     <FormGroup>
