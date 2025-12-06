@@ -5879,6 +5879,9 @@ function OrderForm25() {
   // 🔒 GLOBÁLNÍ ZÁMEK: Po dokončení objednávky zamknout VŠECHNY sekce
   const isOrderCompleted = hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA');
   const shouldLockAllSections = isOrderCompleted && !workflowManager.isSectionUnlocked('dokonceni');
+  
+  // ✅ VĚCNÁ SPRÁVNOST: Pole věcné správnosti jsou editovatelná ve FÁZI 7+, i když zbytek faktury je zamčený
+  const shouldLockVecnaSpravnost = currentPhase < 7 || shouldLockAllSections || isArchived;
 
   // Helper proměnné pro workflow stavy (používají se v jiných částech kódu)
   const isOrderSent = hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA');
@@ -9231,7 +9234,7 @@ function OrderForm25() {
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
             vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
             vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-            potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0
+            potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0,
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
@@ -22090,7 +22093,7 @@ function OrderForm25() {
                                       <Label>Poznámka k věcné správnosti</Label>
                                       <TextArea
                                         value={isEditing ? (currentData.vecna_spravnost_poznamka || '') : (faktura.vecna_spravnost_poznamka || '')}
-                                        disabled={shouldLockFaktury}
+                                        disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           if (!isEditing) {
                                             handleEditFaktura(faktura);
@@ -22131,7 +22134,7 @@ function OrderForm25() {
                                       display: 'flex',
                                       alignItems: 'center',
                                       gap: '0.75rem',
-                                      cursor: shouldLockFaktury ? 'not-allowed' : 'pointer',
+                                      cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
                                       fontSize: '0.9rem',
                                       fontWeight: '600',
                                       color: '#374151'
@@ -22139,7 +22142,7 @@ function OrderForm25() {
                                       <input
                                         type="checkbox"
                                         checked={isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)}
-                                        disabled={shouldLockFaktury}
+                                        disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           const newValue = e.target.checked ? 1 : 0;
                                           
