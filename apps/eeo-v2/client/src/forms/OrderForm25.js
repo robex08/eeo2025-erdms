@@ -8894,10 +8894,10 @@ function OrderForm25() {
 
       // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
       // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
-      const allFakturyVecneSprávny = (formData.faktury || []).length > 0 && 
+      const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
         (formData.faktury || []).every(f => f.potvrzeni_vecne_spravnosti === 1 || f.potvrzeni_vecne_spravnosti === true);
       
-      if (allFakturyVecneSprávny && !formData.stav_stornovano) {
+      if (allFakturyVecneSpravny && !formData.stav_stornovano) {
         if (!workflowStates.includes('ZKONTROLOVANA')) {
           workflowStates.push('ZKONTROLOVANA');
           addDebugLog('info', 'SAVE', 'workflow-update', `✅ VŠECHNY faktury (${formData.faktury.length}x) mají potvrzenou věcnou správnost → přidán stav ZKONTROLOVANA → FÁZE 8/8`);
