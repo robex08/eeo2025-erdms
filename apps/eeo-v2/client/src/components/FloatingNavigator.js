@@ -393,14 +393,23 @@ const ValidationBadge = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: ${props => props.$hasErrors ? '#ef4444' : '#10b981'};
+  background: ${props => {
+    if (props.$hasErrors) return '#ef4444'; // Červená pro chyby
+    if (props.$hasMissingFields) return '#f59e0b'; // Oranžová tečka pro nevyplněná pole
+    return '#10b981'; // Zelená pro OK (nepoužívá se)
+  }};
   color: white;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 20px;
+  padding: ${props => props.$hasMissingFields && !props.$hasErrors ? '5px' : '2px 6px'};
+  border-radius: 50%;
+  width: ${props => props.$hasMissingFields && !props.$hasErrors ? '8px' : '20px'};
+  height: ${props => props.$hasMissingFields && !props.$hasErrors ? '8px' : '20px'};
+  min-width: ${props => props.$hasMissingFields && !props.$hasErrors ? '8px' : '20px'};
+  min-height: ${props => props.$hasMissingFields && !props.$hasErrors ? '8px' : '20px'};
+  margin-left: auto;
   flex-shrink: 0;
+  line-height: 1;
 `;
 
 const DropzoneContainer = styled.div`
@@ -948,24 +957,166 @@ const FloatingNavigator = ({
     }
   }, [onSectionClick]);
 
-  // Count fields for section - počítá VŠECHNY chyby validace v sekci
+  // 🎯 Mapování validačních klíčů na sekce navigátoru
+  const FIELD_TO_SECTION = {
+    // Sekce: Objednatel (informace o objednateli)
+    jmeno: 'objednatel',
+    prijmeni: 'objednatel',
+    email: 'objednatel',
+    telefon: 'objednatel',
+    
+    // Sekce: Schválení nákupu PO
+    schvalovatel_id: 'schvaleni',
+    prikazce_id: 'schvaleni',
+    garant_uzivatel_id: 'schvaleni',
+    strediska_kod: 'schvaleni',
+    zpusob_financovani: 'schvaleni',
+    lp_kod: 'schvaleni',
+    cislo_smlouvy: 'schvaleni',
+    smlouva_poznamka: 'schvaleni',
+    individualni_schvaleni: 'schvaleni',
+    individualni_poznamka: 'schvaleni',
+    pojistna_udalost_cislo: 'schvaleni',
+    pojistna_udalost_poznamka: 'schvaleni',
+    schvaleni_komentar: 'schvaleni',
+    
+    // Sekce: Dodavatel
+    dodavatel_ico: 'dodavatel',
+    dodavatel_nazev: 'dodavatel',
+    dodavatel_adresa: 'dodavatel',
+    dodavatel_kontakt: 'dodavatel',
+    ico: 'dodavatel',
+    nazev: 'dodavatel',
+    ulice: 'dodavatel',
+    psc: 'dodavatel',
+    obec: 'dodavatel',
+    
+    // Sekce: Detaily objednávky
+    predmet: 'detaily',
+    nazev_objednavky: 'detaily',
+    max_cena_s_dph: 'detaily',
+    celkova_cena: 'detaily',
+    druh_objednavky_kod: 'detaily',
+    polozky_objednavky: 'detaily',
+    // Položky objednávky (pattern match)
+    // polozka_N_popis, polozka_N_cena_bez_dph, polozka_N_cena_s_dph atd.
+    
+    // Sekce: Dodací a záruční podmínky
+    dodaci_termin: 'dodaci_podminky',
+    misto_dodani: 'dodaci_podminky',
+    zarucni_doba: 'dodaci_podminky',
+    zaruka_poznamka: 'dodaci_podminky',
+    
+    // Sekce: Přílohy k objednávce
+    // (nemá validační pole, jen vizuální zobrazení)
+    
+    // Sekce: Stav odeslání objednávky
+    datum_odeslani: 'stav_odeslani',
+    odeslani_storno_duvod: 'stav_odeslani',
+    
+    // Sekce: Potvrzení objednávky
+    dodavatel_zpusob_potvrzeni: 'potvrzeni_objednavky',
+    zpusob_platby: 'potvrzeni_objednavky',
+    dt_akceptace: 'potvrzeni_objednavky',
+    
+    // Sekce: Registr smluv
+    ma_byt_zverejnena: 'registr_smluv',
+    
+    // Sekce: Potvrzení zveřejnění (registr_smluv_vyplneni)
+    dt_zverejneni: 'registr_smluv_vyplneni',
+    registr_iddt: 'registr_smluv_vyplneni',
+    
+    // Sekce: Fakturace
+    // faktura_N_cislo, faktura_N_castka, faktura_N_dorucena, faktura_N_splatnost atd.
+    
+    // Sekce: Věcná správnost
+    // faktura_N_vecna_spravnost, faktura_N_poznamka_vs atd.
+  };
+
+  // Count fields for section - počítá chyby validace + nevyplněná povinná pole
   const getSectionValidationInfo = useCallback((section) => {
     // Najdi všechny validační chyby pro tuto sekci
-    // Validační chyby mají klíče ve formátu "nazev_pole" nebo obsahují section.id
     const sectionErrors = Object.keys(validationErrors).filter(key => {
-      // Hledáme chyby které patří k této sekci
-      // Může být buď přímý match, nebo prefix
-      return key.includes(section.id) || validationErrors[key]?.section === section.id;
+      // 1. Přímé mapování pole → sekce
+      if (FIELD_TO_SECTION[key] === section.id) {
+        return true;
+      }
+      
+      // 2. Pattern matching pro dynamická pole
+      // Položky objednávky: polozka_N_... → detaily
+      if (section.id === 'detaily' && key.match(/^polozka_\d+_/)) {
+        return true;
+      }
+      
+      // Faktury: faktura_N_... → fakturace nebo vecna_spravnost
+      if (key.match(/^faktura_\d+_/)) {
+        // Věcná správnost: faktura_N_vecna_spravnost, faktura_N_poznamka_vs
+        if (section.id === 'vecna_spravnost' && (key.includes('_vecna_spravnost') || key.includes('_poznamka_vs'))) {
+          return true;
+        }
+        // Fakturace: ostatní fakturační pole (cislo, castka, dorucena, splatnost atd.)
+        if (section.id === 'fakturace' && !key.includes('_vecna_spravnost') && !key.includes('_poznamka_vs')) {
+          return true;
+        }
+      }
+      
+      // 3. Fallback: Pokud klíč obsahuje ID sekce
+      if (key.includes(section.id)) {
+        return true;
+      }
+      
+      // 4. Pokud chyba má explicitní section property
+      if (validationErrors[key]?.section === section.id) {
+        return true;
+      }
+      
+      return false;
     });
 
     const errorCount = sectionErrors.length;
 
+    // 🆕 Spočítat nevyplněná povinná pole (jen pokud NEJSOU validační chyby)
+    // Toto slouží k zobrazení "oranžové tečky" před pokusem o uložení
+    let missingCount = 0;
+    
+    // Speciální logika pro sekci věcné správnosti - kontrola checkboxů u faktur
+    if (errorCount === 0 && section.id === 'vecna_spravnost' && formData.faktury && formData.faktury.length > 0) {
+      // Zkontroluj každou fakturu, zda má potvrzenou věcnou správnost
+      formData.faktury.forEach((faktura) => {
+        if (faktura.potvrzeni_vecne_spravnosti !== 1 && faktura.potvrzeni_vecne_spravnosti !== true) {
+          missingCount++;
+        }
+        
+        // Pokud faktura překračuje max cenu, kontroluj i poznámku
+        const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+        const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+        if (fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
+          missingCount++;
+        }
+      });
+    }
+    // Běžná logika pro ostatní sekce
+    else if (errorCount === 0 && section.required && section.required.length > 0) {
+      section.required.forEach(fieldName => {
+        const value = formData[fieldName];
+        
+        // Kontrola, zda je pole prázdné
+        const isEmpty = !value || 
+          (typeof value === 'string' && value.trim() === '') ||
+          (Array.isArray(value) && value.length === 0);
+        
+        if (isEmpty) {
+          missingCount++;
+        }
+      });
+    }
+
     return {
-      missingCount: 0, // Nepoužíváme - zobrazujeme jen chyby
+      missingCount: missingCount,
       errorCount: errorCount,
-      totalRequired: errorCount // Pro zobrazení použijeme počet chyb
+      totalRequired: section.required?.length || 0
     };
-  }, [validationErrors]);
+  }, [validationErrors, formData]);
 
   // ✅ Kontrola viditelnosti a enabled stavu podle WorkflowManager
   const isSectionVisibleAndEnabled = useCallback((sectionId) => {
@@ -1139,7 +1290,14 @@ const FloatingNavigator = ({
             const isDisabled = !enabled; // ✅ Disabled podle WorkflowManager
             const isActive = isSectionActive ? isSectionActive(section.id) : false;
             const validationInfo = getSectionValidationInfo(section);
-            const showBadge = validationInfo.errorCount > 0; // ✅ Zobrazit jen pokud jsou chyby
+            
+            // 🎯 Zobrazení badge podle stavu:
+            // 1. Červené kolečko s číslem = jsou chyby po validaci
+            // 2. Oranžová tečka = jsou nevyplněná povinná pole (jen když není aktivní validace)
+            // 3. Žádný badge = vše OK
+            const hasErrors = validationInfo.errorCount > 0;
+            const hasMissingFields = !hasErrors && validationInfo.missingCount > 0;
+            const showBadge = hasErrors || hasMissingFields;
 
             return (
               <SectionItem
@@ -1162,8 +1320,11 @@ const FloatingNavigator = ({
                       <SectionName $isDisabled={isDisabled}>
                         {section.name}
                         {showBadge && (
-                          <ValidationBadge $hasErrors={true}>
-                            {validationInfo.errorCount}
+                          <ValidationBadge 
+                            $hasErrors={hasErrors}
+                            $hasMissingFields={hasMissingFields}
+                          >
+                            {hasErrors ? validationInfo.errorCount : ''}
                           </ValidationBadge>
                         )}
                       </SectionName>
@@ -1261,7 +1422,11 @@ const FloatingNavigator = ({
         const isDisabled = sectionState ? !sectionState.enabled : isWorkflowCompleted;
         const isActive = isSectionActive ? isSectionActive(section.id) : false;
         const validationInfo = getSectionValidationInfo(section);
-        const showBadge = validationInfo.errorCount > 0;
+        
+        // 🎯 Zobrazení badge podle stavu
+        const hasErrors = validationInfo.errorCount > 0;
+        const hasMissingFields = !hasErrors && validationInfo.missingCount > 0;
+        const showBadge = hasErrors || hasMissingFields;
 
         return (
           <NavigatorContent $isMinimized={isMinimized}>
@@ -1284,8 +1449,11 @@ const FloatingNavigator = ({
                     <SectionName $isDisabled={isDisabled}>
                       {section.name}
                       {showBadge && (
-                        <ValidationBadge $hasErrors={true}>
-                          {validationInfo.errorCount}
+                        <ValidationBadge 
+                          $hasErrors={hasErrors}
+                          $hasMissingFields={hasMissingFields}
+                        >
+                          {hasErrors ? validationInfo.errorCount : ''}
                         </ValidationBadge>
                       )}
                     </SectionName>

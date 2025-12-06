@@ -5769,7 +5769,12 @@ function OrderForm25() {
   }, [currentPhase, formData.id, isArchived, formData.stav_workflow_kod, formData.potvrzeni_dokonceni_objednavky, workflowManager]); // ✅ Kompletní dependencies pro refresh
 
   // 🐛 FIX: Memoize formData for FloatingNavigator to prevent re-renders
-  const navigatorFormData = useMemo(() => ({ id: formData.id }), [formData.id]);
+  // 🎯 Include faktury for věcná správnost validation badge
+  const navigatorFormData = useMemo(() => ({ 
+    id: formData.id,
+    faktury: formData.faktury,
+    max_cena_s_dph: formData.max_cena_s_dph
+  }), [formData.id, formData.faktury, formData.max_cena_s_dph]);
 
   // 🎯 Rozšířené section states pro navigator - zahrnuje inline podmínky viditelnosti
   const extendedSectionStates = useMemo(() => {
