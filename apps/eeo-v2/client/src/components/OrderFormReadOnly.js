@@ -1416,6 +1416,8 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                             document.body.removeChild(a);
                           } catch (error) {
                             console.error('Error downloading invoice attachment:', error);
+                            // Error už byl zpracován v API vrstvě, stačí zobrazit error.message
+                            alert(error.message || 'Nepodařilo se stáhnout přílohu faktury');
                           }
                         };
 
@@ -1900,6 +1902,8 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       document.body.removeChild(a);
                     } catch (error) {
                       console.error('Error downloading order attachment:', error);
+                      // Error už byl zpracován v API vrstvě, stačí zobrazit error.message
+                      alert(error.message || 'Nepodařilo se stáhnout přílohu objednávky');
                     }
                   };
 

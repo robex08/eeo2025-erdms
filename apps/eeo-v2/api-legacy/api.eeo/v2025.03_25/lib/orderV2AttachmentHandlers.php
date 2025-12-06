@@ -513,6 +513,9 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
                 FROM " . get_order_attachments_table_name() . " 
                 WHERE id = :attachment_id AND objednavka_id = :objednavka_id";
         
+        error_log("🔍 DOWNLOAD ATTACHMENT SQL: $sql");
+        error_log("🔍 DOWNLOAD ATTACHMENT PARAMS: attachment_id=$attachment_id, objednavka_id=$numeric_order_id");
+        
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':attachment_id', $attachment_id, PDO::PARAM_INT);
         $stmt->bindValue(':objednavka_id', $numeric_order_id, PDO::PARAM_INT);
@@ -521,10 +524,16 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         $attachment = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$attachment) {
+            error_log("🔍 ATTACHMENT NOT FOUND: attachment_id=$attachment_id, order_id=$numeric_order_id");
             http_response_code(404);
-            echo json_encode(array('status' => 'error', 'message' => 'Příloha nebyla nalezena'));
+            $errorMsg = 'Přílohu nelze stáhnout - záznam přílohy nebyl nalezen v databázi. ';
+            $errorMsg .= 'Příloha mohla být odstraněna nebo neexistuje. ';
+            $errorMsg .= 'Kontaktujte prosím administrátora.';
+            echo json_encode(array('status' => 'error', 'message' => $errorMsg));
             return;
         }
+        
+        error_log("🔍 ATTACHMENT FOUND: " . $attachment['originalni_nazev_souboru']);
         
         // ✅ Sestavení plné cesty - systemova_cesta je jen název souboru
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
@@ -533,8 +542,22 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         
         // Kontrola existence souboru
         if (!file_exists($fullPath)) {
+            // ✅ Uživatelsky přívětivá chybová zpráva
+            $errorMsg = 'Nepodařilo se stáhnout přílohu "' . $attachment['originalni_nazev_souboru'] . '". ';
+            $errorMsg .= 'Soubor nebyl nalezen na serveru (chybí fyzický soubor). ';
+            $errorMsg .= 'Příloha mohla být odstraněna, přesunuta nebo se nepodařilo její nahrání. ';
+            $errorMsg .= 'Pro obnovení přílohy kontaktujte prosím administrátora.';
+            
+            // Log pro administrátora s plnou cestou
+            error_log('PŘÍLOHA NENALEZENA: ' . $fullPath . ' (attachment_id: ' . $attachment_id . ', order_id: ' . $numeric_order_id . ', original: ' . $attachment['originalni_nazev_souboru'] . ')');
+            
             http_response_code(404);
-            echo json_encode(array('status' => 'error', 'message' => 'Soubor nebyl nalezen na disku: ' . basename($fullPath)));
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => $errorMsg,
+                'original_filename' => $attachment['originalni_nazev_souboru'],
+                'missing_file' => basename($fullPath)
+            ));
             return;
         }
         

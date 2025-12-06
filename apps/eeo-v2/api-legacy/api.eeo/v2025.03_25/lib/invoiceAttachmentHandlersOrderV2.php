@@ -563,10 +563,21 @@ function handle_order_v2_download_invoice_attachment($input, $config, $queries) 
         
         // Kontrola existence souboru
         if (!file_exists($file_path)) {
+            // ✅ Uživatelsky přívětivá chybová zpráva
+            $errorMsg = 'Nepodařilo se stáhnout přílohu faktury "' . $attachment['originalni_nazev_souboru'] . '". ';
+            $errorMsg .= 'Soubor nebyl nalezen na serveru (chybí fyzický soubor). ';
+            $errorMsg .= 'Příloha mohla být odstraněna, přesunuta nebo se nepodařilo její nahrání. ';
+            $errorMsg .= 'Pro obnovení přílohy kontaktujte prosím administrátora.';
+            
+            // Log pro administrátora s plnou cestou
+            error_log('PŘÍLOHA FAKTURY NENALEZENA (Order V2): ' . $file_path . ' (attachment_id: ' . $attachment_id . ', invoice_id: ' . $invoice_id . ', original: ' . $attachment['originalni_nazev_souboru'] . ')');
+            
             http_response_code(404);
             echo json_encode(array(
                 'success' => false,
-                'error' => 'Soubor nenalezen na serveru'
+                'error' => $errorMsg,
+                'original_filename' => $attachment['originalni_nazev_souboru'],
+                'missing_file' => basename($file_path)
             ));
             return;
         }

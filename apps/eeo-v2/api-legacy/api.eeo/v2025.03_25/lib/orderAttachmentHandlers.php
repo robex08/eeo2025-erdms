@@ -424,6 +424,7 @@ function handle_orders25_download_attachment($config, $queries) {
 
         // Kontrola existence souboru
         $filePath = $attachment['systemova_cesta'];
+        $originalName = $attachment['originalni_nazev_souboru'];
         
         // Kontrola, zda je systemova_cesta URL (začíná http:// nebo https://)
         $isUrl = (stripos($filePath, 'http://') === 0 || stripos($filePath, 'https://') === 0);
@@ -446,12 +447,20 @@ function handle_orders25_download_attachment($config, $queries) {
                 api_error(400, 'Nepodporovaný typ přílohy - URL u běžných příloh');
             }
             if (!file_exists($filePath)) {
-                api_error(404, 'Soubor nenalezen na disku');
+                // ✅ Uživatelsky přívětivá chybová zpráva
+                $errorMsg = 'Nepodařilo se stáhnout přílohu "' . $originalName . '". ';
+                $errorMsg .= 'Soubor nebyl nalezen na serveru. ';
+                $errorMsg .= 'Příloha mohla být odstraněna nebo přesunuta. ';
+                $errorMsg .= 'Pro obnovení přílohy kontaktujte prosím administrátora.';
+                
+                // Log pro administrátora s plnou cestou
+                error_log('PŘÍLOHA NENALEZENA: ' . $filePath . ' (attachment_id: ' . $attachment['id'] . ', original: ' . $originalName . ')');
+                
+                api_error(404, $errorMsg);
             }
         }
 
         // Příprava pro stažení
-        $originalName = $attachment['originalni_nazev_souboru'];
         $fileSize = filesize($filePath);
         
         // Nastavení headers pro download

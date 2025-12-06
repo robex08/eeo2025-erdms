@@ -1461,6 +1461,16 @@ export async function downloadOrderAttachment(orderId, attachmentId, username, t
     return response.data;
 
   } catch (err) {
+    // Blob error response - parsuj JSON a extrahuj message
+    if (err.response?.data instanceof Blob) {
+      const text = await err.response.data.text();
+      try {
+        const data = JSON.parse(text);
+        throw new Error(data.message || data.error || data.err || text);
+      } catch (e) {
+        throw new Error(text || 'Nepodařilo se stáhnout přílohu');
+      }
+    }
     throw new Error(normalizeError(err));
   }
 }
@@ -1672,6 +1682,20 @@ export async function downloadInvoiceAttachment(invoiceId, attachmentId, usernam
     // Return blob directly - caller handles download
     return response.data;
   } catch (err) {
+    // Blob error response - parsuj JSON a extrahuj message
+    if (err.response?.data instanceof Blob) {
+      const text = await err.response.data.text();
+      
+      let errorMessage = text;
+      try {
+        const data = JSON.parse(text);
+        errorMessage = data.message || data.err || data.error || text;
+      } catch (parseError) {
+        // Pokud JSON parse selže, použij raw text
+      }
+      
+      throw new Error(errorMessage || 'Nepodařilo se stáhnout přílohu faktury');
+    }
     throw new Error(normalizeError(err));
   }
 }

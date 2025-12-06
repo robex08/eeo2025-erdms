@@ -10,7 +10,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ModernHelper from '../components/ModernHelper';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { createDownloadLink25, lockOrder25, unlockOrder25, getDruhyObjednavky25, getStrediska25 } from '../services/api25orders';
-import { getOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
+import { getOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
 import { fetchAllUsers, fetchApprovers, fetchCiselniky, fetchLimitovanePrisliby } from '../services/api2auth';
 import { getDocxSablonyList } from '../services/apiv2Dictionaries';
 import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
@@ -9954,19 +9954,29 @@ const Orders25List = () => {
     }
 
     try {
-      showToast?.('Načítám přílohu...', { type: 'info' });
-
-      // ✅ V2 API: downloadOrderAttachment - správně se všemi parametry
-      const blob = await downloadOrderAttachment(orderId, attachment.id, username, token);
+      let blob;
+      
+      // ✅ Rozlišení podle typu přílohy - faktury vs objednávky
+      if (attachment.typ_prilohy && attachment.typ_prilohy.startsWith('FAKTURA')) {
+        // Příloha faktury - použij invoice attachment endpoint
+        // Potřebuji faktura_id - může být v attachment.faktura_id
+        const fakturaId = attachment.faktura_id || attachment.invoice_id;
+        if (!fakturaId) {
+          showToast?.('Nelze stáhnout přílohu faktury - chybí ID faktury', { type: 'error' });
+          return;
+        }
+        blob = await downloadInvoiceAttachment(fakturaId, attachment.id, username, token);
+      } else {
+        // Příloha objednávky
+        blob = await downloadOrderAttachment(orderId, attachment.id, username, token);
+      }
 
       // Přímo stáhnout soubor bez dialogů
       createDownloadLink25(blob, fileName);
-      showToast?.(`Příloha "${fileName}" byla stažena`, { type: 'success' });
+      showToast?.(`Příloha stažena`, { type: 'success' });
 
     } catch (error) {
-      // Error downloading attachment
-      const errorMsg = translateErrorMessageShort(error.response?.data?.message || error.message || 'Neznámá chyba');
-      showToast?.(`❌ Chyba při stahování: ${errorMsg}`, { type: 'error' });
+      showToast?.(error.message || 'Přílohu nelze stáhnout', { type: 'error' });
     }
   };
 
@@ -11683,7 +11693,11 @@ const Orders25List = () => {
                         const fakturaPrilohy = faktura.prilohy || [];
                         if (!fakturaPrilohy.length) return null;
 
-                        return fakturaPrilohy.map((priloha, pIndex) => (
+                        return fakturaPrilohy.map((priloha, pIndex) => {
+                          // ✅ Přidej faktura_id do přílohy pro správný download
+                          const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
+                          
+                          return (
                           <AttachmentItem key={`${fIndex}-${pIndex}`}>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <AttachmentName style={{ fontWeight: 500 }}>
@@ -11711,10 +11725,11 @@ const Orders25List = () => {
                                 marginLeft: '8px'
                               }}
                               title="Stáhnout přílohu"
-                              onClick={() => handleDownloadAttachment(priloha, order.id)}
+                              onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
                             />
                           </AttachmentItem>
-                        ));
+                          );
+                        });
                       })}
                     </div>
                   </div>
