@@ -38,6 +38,7 @@ import DatePicker from '../components/DatePicker';
 import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { Search } from 'lucide-react';
+import draftManager from '../services/DraftManager';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -655,6 +656,32 @@ const AutocompleteInput = styled(Input)`
   padding-right: 2.5rem;
 `;
 
+const ClearButton = styled.button`
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: #6b7280;
+    background: #f3f4f6;
+  }
+
+  &:active {
+    transform: translateY(-50%) scale(0.95);
+  }
+`;
+
 const AutocompleteDropdown = styled.div`
   position: absolute;
   top: calc(100% + 4px);
@@ -1070,34 +1097,11 @@ export default function InvoiceEvidencePage() {
       return;
     }
 
-    // 🚨 KONTROLA: Je tatáž objednávka otevřená na formuláři?
-    if (window.__activeOrderFormId && parseInt(window.__activeOrderFormId) === parseInt(orderIdToLoad)) {
-      const evCislo = window.__activeOrderFormEvCislo || `#${orderIdToLoad}`;
-      
-      // Zobraz custom confirm dialog
-      const shouldClose = await new Promise((resolve) => {
-        setConfirmDialog({
-          isOpen: true,
-          title: '⚠️ Objednávka je otevřená na formuláři',
-          message: `Objednávka ${evCislo} je právě otevřená v editačním formuláři. Pro zobrazení evidence faktury je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false)
-        });
-      });
-
-      if (!shouldClose) {
-        return; // Uživatel zrušil načtení
-      }
-
-      // Zavři formulář - redirect na dashboard nebo zavři tab
-      window.location.href = '/dashboard';
-      return;
-    }
-
     setOrderLoading(true);
     setError(null);
 
     try {
+      // ✅ Načti plná data objednávky s enriched daty (faktury, položky, atd.)
       const orderData = await getOrderV2(orderIdToLoad, token, username, true);
 
       if (orderData && orderData.id) {
@@ -1253,14 +1257,83 @@ export default function InvoiceEvidencePage() {
     }
   };
 
+  // Handler: vymazání hledání objednávky
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    setOrderSuggestions([]);
+    setShowSuggestions(false);
+    setFormData(prev => ({ ...prev, order_id: '' }));
+    setOrderData(null);
+  };
+
   // Handler: výběr objednávky z autocomplete
-  const handleSelectOrder = (order) => {
+  const handleSelectOrder = async (order) => {
+    const evCislo = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
+    
+    // 🚨 KONTROLA 1: Je tatáž objednávka otevřená na formuláři? (draft v localStorage)
+    draftManager.setCurrentUser(user_id);
+    const existingDraft = await draftManager.loadDraft();
+
+    if (existingDraft && existingDraft.formData && parseInt(existingDraft.formData.id) === parseInt(order.id)) {
+      const draftEvCislo = existingDraft.formData.cislo_objednavky || existingDraft.formData.evidencni_cislo || `#${order.id}`;
+      
+      // Zobraz custom confirm dialog
+      const shouldClose = await new Promise((resolve) => {
+        setConfirmDialog({
+          isOpen: true,
+          title: '⚠️ Objednávka je otevřená na formuláři',
+          message: `Objednávka ${draftEvCislo} je právě otevřená v editačním formuláři. Pro zobrazení evidence faktury je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false)
+        });
+      });
+
+      if (!shouldClose) {
+        return; // Uživatel zrušil načtení
+      }
+
+      // Zavři formulář - redirect na dashboard nebo zavři tab
+      window.location.href = '/dashboard';
+      return;
+    }
+
+    // 🚨 KONTROLA 2: Je objednávka zamčená jiným uživatelem?
+    // Načti základní info o objednávce (lightweight check)
+    setOrderLoading(true);
+    try {
+      const orderCheck = await getOrderV2(order.id, token, username, false); // false = bez enriched dat
+      
+      if (orderCheck?.lock_info?.locked === true) {
+        const lockInfo = orderCheck.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        // Zobraz custom confirm dialog
+        const shouldContinue = await new Promise((resolve) => {
+          setConfirmDialog({
+            isOpen: true,
+            title: '🔒 Objednávka je zamčená',
+            message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\nChcete přesto zobrazit náhled objednávky? (pouze pro čtení)`,
+            onConfirm: () => resolve(true),
+            onCancel: () => resolve(false)
+          });
+        });
+
+        if (!shouldContinue) {
+          setOrderLoading(false);
+          return; // Uživatel zrušil zobrazení
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Nepodařilo se zkontrolovat lock status:', err);
+    } finally {
+      setOrderLoading(false);
+    }
+
+    // ✅ VŠE OK - pokračuj s načtením
     setFormData(prev => ({
       ...prev,
       order_id: order.id
     }));
-    // ✏️ Zobraz jen evidenční číslo bez předmětu
-    const evCislo = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
     setSearchTerm(evCislo);
     setShowSuggestions(false);
     
@@ -1786,6 +1859,15 @@ export default function InvoiceEvidencePage() {
                     placeholder="Začněte psát evidenční číslo (min. 3 znaky)..."
                     style={{ width: '100%' }}
                   />
+                  {searchTerm && !orderId && (
+                    <ClearButton
+                      type="button"
+                      onClick={handleClearSearch}
+                      title="Vymazat hledání"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </ClearButton>
+                  )}
                   {showSuggestions && searchTerm && (
                     <AutocompleteDropdown>
                       {isSearching ? (
