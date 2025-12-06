@@ -4561,7 +4561,7 @@ function OrderForm25() {
     // ❌ Věcná správnost - FÁZE 7 ODSTRANĚNA - refaktorováno na per-invoice
     // vecna_spravnost_umisteni_majetku: '', 
     // vecna_spravnost_poznamka: '',
-    // potvrzeni_vecne_spravnosti: 0,
+    // vecna_spravnost_potvrzeno: 0,
 
     // Dokončení objednávky - FÁZE 8
     potvrzeni_dokonceni_objednavky: 0, // ANO/NE checkbox (0/1) - finální potvrzení
@@ -6114,9 +6114,9 @@ function OrderForm25() {
               stav_stornovano: isZrusena,
               // 🔧 FÁZE 7: Explicitní parsování věcné správnosti z DB
               // ❌ ODSTRANĚNO: Věcná správnost global fields - refaktorováno na per-invoice
-              // potvrzeni_vecne_spravnosti: 0,
+              // vecna_spravnost_potvrzeno: 0,
               // potvrdil_vecnou_spravnost_id: null,
-              // dt_potvrzeni_vecne_spravnosti: null,
+              // dt_vecna_spravnost_potvrzeno: null,
               // vecna_spravnost_umisteni_majetku: '',
               // vecna_spravnost_poznamka: '',
               // 🔧 FÁZE 8: Explicitní parsování dokončení z DB
@@ -6971,10 +6971,10 @@ function OrderForm25() {
       fa_datum_splatnosti: fakturaFormData.fa_splatnost || '', // fa_splatnost obsahuje datum splatnosti!
       // 📎 PŘÍLOHY FAKTURY - ukládají se do konceptu stejně jako prilohy_dokumenty
       attachments: [], // Pole příloh faktury (formát stejný jako u objednávek)
-      // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+      // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 s DB
       vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
       vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
-      potvrzeni_vecne_spravnosti: fakturaFormData.potvrzeni_vecne_spravnosti || 0
+      vecna_spravnost_potvrzeno: fakturaFormData.vecna_spravnost_potvrzeno || 0
     };
 
     // Přidat do formData.faktury
@@ -6995,7 +6995,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost
       vecna_spravnost_umisteni_majetku: '',
       vecna_spravnost_poznamka: '',
-      potvrzeni_vecne_spravnosti: 0
+      vecna_spravnost_potvrzeno: 0
     });
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
@@ -7062,10 +7062,10 @@ function OrderForm25() {
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
         rozsirujici_data: fakturaFormData.rozsirujici_data || null,
-        // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+        // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 s DB
         vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
         vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
-        potvrzeni_vecne_spravnosti: fakturaFormData.potvrzeni_vecne_spravnosti || 0
+        vecna_spravnost_potvrzeno: fakturaFormData.vecna_spravnost_potvrzeno || 0
       };
 
       // Volej API update
@@ -7108,7 +7108,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
-        potvrzeni_vecne_spravnosti: 0
+        vecna_spravnost_potvrzeno: 0
       });
       setEditingFaktura(null);
       setShowAddFakturaForm(false);
@@ -7215,7 +7215,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost (prázdné při ISDOC importu)
       vecna_spravnost_umisteni_majetku: '',
       vecna_spravnost_poznamka: '',
-      potvrzeni_vecne_spravnosti: 0
+      vecna_spravnost_potvrzeno: 0
     };
 
     // 🔧 KRITICKÁ OPRAVA: Najdi a odstraň všechny temp faktury, pak přidej reálnou
@@ -7406,7 +7406,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost
       vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
       vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-      potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0
+      vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno || 0
     });
     setShowAddFakturaForm(true);
   };
@@ -7426,7 +7426,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost
       vecna_spravnost_umisteni_majetku: '',
       vecna_spravnost_poznamka: '',
-      potvrzeni_vecne_spravnosti: 0
+      vecna_spravnost_potvrzeno: 0
     });
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
@@ -7686,7 +7686,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
-        potvrzeni_vecne_spravnosti: 0
+        vecna_spravnost_potvrzeno: 0
       });
       setShowAddFakturaForm(true);
     }
@@ -7735,7 +7735,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
-        potvrzeni_vecne_spravnosti: 0
+        vecna_spravnost_potvrzeno: 0
       };
 
       // Přidat první fakturu do state
@@ -7752,7 +7752,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
-        potvrzeni_vecne_spravnosti: 0
+        vecna_spravnost_potvrzeno: 0
       });
     }
   }, [(formData.id || savedOrderId), formData.faktury?.length, shouldLockFaktury, currentPhase]);
@@ -8912,7 +8912,7 @@ function OrderForm25() {
       // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
       // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
       const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
-        (formData.faktury || []).every(f => f.potvrzeni_vecne_spravnosti === 1 || f.potvrzeni_vecne_spravnosti === true);
+        (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
       
       if (allFakturyVecneSpravny && !formData.stav_stornovano) {
         if (!workflowStates.includes('ZKONTROLOVANA')) {
@@ -8925,7 +8925,7 @@ function OrderForm25() {
         const hadZkontrolovana = workflowStates.includes('ZKONTROLOVANA');
         workflowStates = workflowStates.filter(s => s !== 'ZKONTROLOVANA');
         if (hadZkontrolovana) {
-          const nepotvrzeneFaktury = (formData.faktury || []).filter(f => !(f.potvrzeni_vecne_spravnosti === 1 || f.potvrzeni_vecne_spravnosti === true)).length;
+          const nepotvrzeneFaktury = (formData.faktury || []).filter(f => !(f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true)).length;
           addDebugLog('info', 'SAVE', 'workflow-update', `🔓 NEJSOU potvrzeny všechny faktury (${nepotvrzeneFaktury}x chybí) → odebrán stav ZKONTROLOVANA → návrat na FÁZI 7/8`);
         }
       }
@@ -9248,9 +9248,9 @@ function OrderForm25() {
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
             vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
             vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-            vecna_spravnost_potvrzeno: faktura.potvrzeni_vecne_spravnosti || 0,
+            vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno || 0,
             potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id || null,
-            dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti || null,
+            dt_vecna_spravnost_potvrzeno: faktura.dt_potvrzeni_vecne_spravnosti || null,
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
@@ -15302,7 +15302,7 @@ function OrderForm25() {
         
         formData.faktury.forEach((faktura, index) => {
           // Potvrzení věcné správnosti je POVINNÉ ve FÁZI 7+
-          if (faktura.potvrzeni_vecne_spravnosti !== 1 && faktura.potvrzeni_vecne_spravnosti !== true) {
+          if (faktura.vecna_spravnost_potvrzeno !== 1 && faktura.vecna_spravnost_potvrzeno !== true) {
             errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Musíte potvrdit věcnou správnost`;
           }
           
@@ -21618,7 +21618,7 @@ function OrderForm25() {
                                       <FakturaTooltipRow>
                                         <FakturaTooltipLabel>Věcná správnost:</FakturaTooltipLabel>
                                         <FakturaTooltipValue>
-                                          {faktura.potvrzeni_vecne_spravnosti === 'ANO' && (
+                                          {faktura.vecna_spravnost_potvrzeno === 'ANO' && (
                                             <span style={{ 
                                               display: 'inline-flex', 
                                               alignItems: 'center', 
@@ -21634,7 +21634,7 @@ function OrderForm25() {
                                               ANO
                                             </span>
                                           )}
-                                          {faktura.potvrzeni_vecne_spravnosti === 'NE' && (
+                                          {faktura.vecna_spravnost_potvrzeno === 'NE' && (
                                             <span style={{ 
                                               display: 'inline-flex', 
                                               alignItems: 'center', 
@@ -21650,7 +21650,7 @@ function OrderForm25() {
                                               NE
                                             </span>
                                           )}
-                                          {!faktura.potvrzeni_vecne_spravnosti && (
+                                          {!faktura.vecna_spravnost_potvrzeno && (
                                             <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>
                                               Neověřeno
                                             </span>
@@ -21743,7 +21743,7 @@ function OrderForm25() {
                                         // ✅ NOVÉ: Per-invoice věcná správnost
                                         vecna_spravnost_umisteni_majetku: '',
                                         vecna_spravnost_poznamka: '',
-                                        potvrzeni_vecne_spravnosti: 0
+                                        vecna_spravnost_potvrzeno: 0
                                       };
 
                                       const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
@@ -21760,7 +21760,7 @@ function OrderForm25() {
                                         // ✅ NOVÉ: Per-invoice věcná správnost
                                         vecna_spravnost_umisteni_majetku: '',
                                         vecna_spravnost_poznamka: '',
-                                        potvrzeni_vecne_spravnosti: 0
+                                        vecna_spravnost_potvrzeno: 0
                                       });
                                     }}
                                     title="Přidat další fakturu"
@@ -22301,7 +22301,7 @@ function OrderForm25() {
                                           }}>
                                             <input
                                               type="checkbox"
-                                              checked={isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)}
+                                              checked={isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1)}
                                               disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           const newValue = e.target.checked ? 1 : 0;
@@ -22311,7 +22311,7 @@ function OrderForm25() {
                                           }
 
                                           // 🆕 Při zaškrtnutí nastavit ID uživatele a timestamp
-                                          let updatedFields = { potvrzeni_vecne_spravnosti: newValue };
+                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue };
                                           if (newValue === 1 && user_id && !faktura.potvrdil_vecnou_spravnost_id) {
                                             const now = new Date();
                                             const year = now.getFullYear();
@@ -22350,7 +22350,7 @@ function OrderForm25() {
                                       <span style={{ flex: 1 }}>
                                         Potvrzuji věcnou správnost faktury #{index + 1}
                                       </span>
-                                      {(isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)) && (
+                                      {((isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1))) && (
                                         <span style={{
                                           fontSize: '0.75rem',
                                           color: '#16a34a',
@@ -22369,6 +22369,23 @@ function OrderForm25() {
                                         </span>
                                       )}
                                     </label>
+                                    
+                                    {/* Info řádek - kdo a kdy potvrdil */}
+                                    {((isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1))) && faktura.dt_potvrzeni_vecne_spravnosti && (
+                                      <div style={{
+                                        marginTop: '0.5rem',
+                                        padding: '0.5rem 0.75rem',
+                                        background: '#f0fdf4',
+                                        border: '1px solid #86efac',
+                                        borderRadius: '4px',
+                                        fontSize: '0.8rem',
+                                        color: '#15803d'
+                                      }}>
+                                        <strong>Potvrdil:</strong> {faktura.potvrdil_vecnou_spravnost_jmeno ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}` : 'Neznámý uživatel'}
+                                        {' '}<strong>•</strong>{' '}
+                                        <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                      </div>
+                                    )}
                                   </div>
                                   {hasError && (
                                     <ErrorText style={{ marginTop: '0.5rem' }}>
@@ -24985,7 +25002,7 @@ function OrderForm25() {
         setFormData(prev => ({
           ...prev,
           potvrzeni_dokonceni_objednavky: 0,
-          potvrzeni_vecne_spravnosti: 1,
+          vecna_spravnost_potvrzeno: 1,
           stav_workflow_kod: workflowArray
         }));
 

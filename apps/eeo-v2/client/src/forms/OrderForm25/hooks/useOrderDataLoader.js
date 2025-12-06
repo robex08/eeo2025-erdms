@@ -330,6 +330,9 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
           fa_datum_doruceni: faktura.fa_datum_doruceni,
           fa_datum_splatnosti: faktura.fa_datum_splatnosti,
           fa_datum_vystaveni: faktura.fa_datum_vystaveni
+          // ✅ VĚCNÁ SPRÁVNOST: 1:1 mapování - žádné přejmenovávání polí!
+          // vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
+          // potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti - vše 1:1 z DB
         }));
       })(),
 
