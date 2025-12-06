@@ -22110,7 +22110,7 @@ function OrderForm25() {
                                   })()}
 
                                   <FormRow>
-                                    <FormGroup>
+                                    <FormGroup style={{gridColumn: '1 / -1'}}>
                                       <Label>Umístění majetku</Label>
                                       <Input
                                         value={isEditing ? (currentData.vecna_spravnost_umisteni_majetku || '') : (faktura.vecna_spravnost_umisteni_majetku || '')}
