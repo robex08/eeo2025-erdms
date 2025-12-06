@@ -15219,7 +15219,6 @@ function OrderForm25() {
         });
       }
     }
-    }
 
     const hasErrors = Object.keys(errors).length > 0;
     
