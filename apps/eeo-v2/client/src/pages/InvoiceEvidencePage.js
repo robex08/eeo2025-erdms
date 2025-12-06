@@ -2345,19 +2345,84 @@ export default function InvoiceEvidencePage() {
                 )}
               </SectionTitle>
               {orderData && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                  <div style={{
-                    fontSize: '0.95rem',
-                    fontWeight: 700,
-                    color: '#059669',
-                    background: '#d1fae5',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    border: '2px solid #10b981',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
-                  }}>
-                    📋 AKTUÁLNÍ STAV: {orderData.stav_objednavky || getCurrentWorkflowState(orderData)?.replace(/_/g, ' ') || 'N/A'}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      color: '#059669',
+                      background: '#d1fae5',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '6px',
+                      border: '2px solid #10b981',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      📋 STAV: {orderData.stav_objednavky || getCurrentWorkflowState(orderData)?.replace(/_/g, ' ') || 'N/A'}
+                    </div>
+
+                    {/* Součet položek objednávky */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '0.5rem 1rem',
+                      background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: '#1e40af',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 500 }}>
+                          OBJ POLOŽKY
+                        </div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                          {(() => {
+                            const total = orderData.polozky_objednavky?.reduce((sum, polozka) => {
+                              // cena_s_dph je celková cena položky (jednotková * množství)
+                              const cena = parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
+                              return sum + cena;
+                            }, 0) || 0;
+                            return total.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Součet faktur */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '0.5rem 1rem',
+                      background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                      border: '2px solid #10b981',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: '#15803d',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 500 }}>
+                          FAKTURY
+                        </div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                          {(() => {
+                            const total = orderData.faktury?.reduce((sum, faktura) => {
+                              const castka = parseFloat(faktura.fa_castka || 0);
+                              return sum + castka;
+                            }, 0) || 0;
+                            return total.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+                          })()}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <ToggleButton
                     onClick={() => {
