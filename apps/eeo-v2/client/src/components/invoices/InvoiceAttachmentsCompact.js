@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
-import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, X, Info } from 'lucide-react';
+import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, FileX, X, Info } from 'lucide-react';
 import {
   uploadInvoiceAttachment25,
   listInvoiceAttachments25,
@@ -1553,12 +1553,21 @@ const InvoiceAttachmentsCompact = ({
                 flexShrink: 0,
                 position: 'relative'
               }}>
-                <FileText
-                  size={24}
-                  style={{
-                    color: file.status === 'uploaded' ? '#10b981' : '#dc2626'
-                  }}
-                />
+                {file.file_exists === false ? (
+                  <FileX
+                    size={24}
+                    style={{
+                      color: '#dc2626'
+                    }}
+                  />
+                ) : (
+                  <FileText
+                    size={24}
+                    style={{
+                      color: file.status === 'uploaded' ? '#10b981' : '#dc2626'
+                    }}
+                  />
+                )}
                 {file.status === 'uploaded' && (
                   <div style={{
                     position: 'absolute',
@@ -1622,6 +1631,21 @@ const InvoiceAttachmentsCompact = ({
                         </span>
                       )}
                     </span>
+
+                    {/* Warning pro soubory, které neexistují na disku */}
+                    {file.file_exists === false && (
+                      <span style={{
+                        color: '#dc2626',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        backgroundColor: '#fee2e2',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        flexShrink: 0
+                      }}>
+                        ⚠ SOUBOR NENALEZEN
+                      </span>
+                    )}
 
                     {/* Velikost souboru */}
                     <span style={{

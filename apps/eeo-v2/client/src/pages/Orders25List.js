@@ -5285,52 +5285,13 @@ const Orders25List = () => {
 
       let ordersData;
 
-      // Získej měsíční filtr
-      const mesicFilter = getMonthFilterForAPI();
+      // Získej datum_od a datum_do pro API
+      const dateRange = calculateDateRange();
 
-      // � OPTIMALIZACE: Použij ref pro aktuální permissions místo přímé dependency
-      // Toto odstraní circular dependency: loadData mění -> useEffect volá loadData -> permissions se mění -> loadData se mění...
+      // OPTIMALIZACE: Použij ref pro aktuální permissions místo přímé dependency
       const currentPermissions = permissionsRef.current;
       const canViewAllOrders = currentPermissions.canViewAll;
       const hasOnlyOwnPermissions = currentPermissions.hasOnlyOwn;
-
-      // � Převod roku a měsíce na datum_od/datum_do pro Order V2 API
-      const getDateRange = () => {
-        // Pokud je vybrán konkrétní rok
-        if (selectedYear !== 'all') {
-          const year = parseInt(selectedYear);
-
-          // Pokud je vybrán měsíc
-          if (mesicFilter) {
-            // Parsuj měsíc (může být "1", "1-3", "10-12")
-            const monthMatch = mesicFilter.match(/^(\d+)(?:-(\d+))?$/);
-            if (monthMatch) {
-              const startMonth = parseInt(monthMatch[1]);
-              const endMonth = monthMatch[2] ? parseInt(monthMatch[2]) : startMonth;
-
-              // Datum od: první den prvního měsíce
-              const datum_od = `${year}-${String(startMonth).padStart(2, '0')}-01`;
-
-              // Datum do: poslední den posledního měsíce
-              const lastDay = new Date(year, endMonth, 0).getDate();
-              const datum_do = `${year}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-              return { datum_od, datum_do };
-            }
-          } else {
-            // Celý rok
-            const datum_od = `${year}-01-01`;
-            const datum_do = `${year}-12-31`;
-
-            return { datum_od, datum_do };
-          }
-        }
-
-        // Pokud je "Všechny roky" - neomezujeme datum
-        return {};
-      };
-
-      const dateRange = getDateRange();
 
       // �🚀 MIGRACE: Fetch funkce pro V2 API
       const fetchFunction = async () => {
@@ -9144,31 +9105,104 @@ const Orders25List = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMonthDropdownOpen]);
 
-  // Helper funkce pro získání měsíčního filtru pro API
-  const getMonthFilterForAPI = () => {
-    const currentMonth = new Date().getMonth() + 1; // 1-12
+  // Helper funkce pro získání datum_od a datum_do pro API
+  const calculateDateRange = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
+    const currentDay = today.getDate();
+    const year = selectedYear !== 'all' ? parseInt(selectedYear) : currentYear;
 
     switch (selectedMonth) {
       case 'all':
-        return undefined; // Žádný filtr měsíce
+        // Žádný měsíční filtr
+        if (selectedYear !== 'all') {
+          // Konkrétní rok - celý rok
+          return {
+            datum_od: `${year}-01-01`,
+            datum_do: `${year}-12-31`
+          };
+        }
+        // Všechny roky - žádný datumový filtr
+        return {};
 
-      case 'last-month':
-        // Poslední měsíc od současnosti
-        return currentMonth.toString();
+      case 'current-month':
+        // Aktuální měsíc: od 1. do dnes (1.12 - 6.12)
+        return {
+          datum_od: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`,
+          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+        };
 
-      case 'last-quarter':
-        // Poslední 3 měsíce (kvartál)
-        const quarterStart = Math.max(1, currentMonth - 2);
-        return `${quarterStart}-${currentMonth}`;
+      case 'last-month': {
+        // Poslední měsíc: celý předchozí měsíc + aktuální dny (1.11 - 6.12)
+        const prevMonth = currentMonth - 1;
+        const prevMonthYear = prevMonth < 0 ? currentYear - 1 : currentYear;
+        const prevMonthNum = prevMonth < 0 ? 11 : prevMonth;
+        
+        return {
+          datum_od: `${prevMonthYear}-${String(prevMonthNum + 1).padStart(2, '0')}-01`,
+          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+        };
+      }
 
-      case 'last-half':
+      case 'last-quarter': {
+        // Poslední kvartál: 3 předchozí měsíce + aktuální měsíc do dnes
+        const startMonth = currentMonth - 3;
+        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
+        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        
+        return {
+          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
+          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+        };
+      }
+
+      case 'last-half': {
         // Posledních 6 měsíců
-        const halfStart = Math.max(1, currentMonth - 5);
-        return `${halfStart}-${currentMonth}`;
+        const startMonth = currentMonth - 6;
+        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
+        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        
+        return {
+          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
+          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+        };
+      }
 
-      default:
-        // Jinak vrátíme přímo hodnotu (např. "1-3", "10-12")
-        return selectedMonth;
+      case 'last-year': {
+        // Poslední rok: 12 předchozích měsíců + aktuální měsíc do dnes
+        const startMonth = currentMonth - 12;
+        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
+        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
+        
+        return {
+          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
+          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+        };
+      }
+
+      default: {
+        // Konkrétní měsíc nebo rozsah (např. "1", "1-3", "10-12")
+        if (selectedYear === 'all') {
+          // Pokud není vybrán rok, nefiltrujeme
+          return {};
+        }
+
+        const monthMatch = selectedMonth.match(/^(\d+)(?:-(\d+))?$/);
+        if (monthMatch) {
+          const startMonth = parseInt(monthMatch[1]);
+          const endMonth = monthMatch[2] ? parseInt(monthMatch[2]) : startMonth;
+
+          const lastDay = new Date(year, endMonth, 0).getDate();
+          
+          return {
+            datum_od: `${year}-${String(startMonth).padStart(2, '0')}-01`,
+            datum_do: `${year}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+          };
+        }
+        
+        return {};
+      }
     }
   };
 
@@ -9176,9 +9210,11 @@ const Orders25List = () => {
   const getMonthLabel = (value) => {
     const labels = {
       'all': 'Všechny měsíce',
+      'current-month': 'Aktuální měsíc',
       'last-month': 'Poslední měsíc',
       'last-quarter': 'Poslední kvartál',
       'last-half': 'Poslední půlrok',
+      'last-year': 'Poslední rok',
       '1': 'Leden',
       '2': 'Únor',
       '3': 'Březen',
@@ -11698,7 +11734,7 @@ const Orders25List = () => {
                           const prilohaWithFakturaId = { ...priloha, faktura_id: faktura.id };
                           
                           return (
-                          <AttachmentItem key={`${fIndex}-${pIndex}`}>
+                            <AttachmentItem key={`${fIndex}-${pIndex}`}>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <AttachmentName style={{ fontWeight: 500 }}>
                                 {highlightSearchText(priloha.originalni_nazev_souboru || priloha.nazev_souboru || priloha.nazev || 'Dokument', globalFilter)}
@@ -11727,7 +11763,7 @@ const Orders25List = () => {
                               title="Stáhnout přílohu"
                               onClick={() => handleDownloadAttachment(prilohaWithFakturaId, order.id)}
                             />
-                          </AttachmentItem>
+                            </AttachmentItem>
                           );
                         });
                       })}
@@ -11876,6 +11912,9 @@ const Orders25List = () => {
                 <MonthDropdownItem onClick={() => handleMonthChange('all')}>
                   Všechny měsíce
                 </MonthDropdownItem>
+                <MonthDropdownItem onClick={() => handleMonthChange('current-month')}>
+                  Aktuální měsíc
+                </MonthDropdownItem>
                 <MonthDropdownItem onClick={() => handleMonthChange('last-month')}>
                   Poslední měsíc
                 </MonthDropdownItem>
@@ -11884,6 +11923,9 @@ const Orders25List = () => {
                 </MonthDropdownItem>
                 <MonthDropdownItem onClick={() => handleMonthChange('last-half')}>
                   Poslední půlrok
+                </MonthDropdownItem>
+                <MonthDropdownItem onClick={() => handleMonthChange('last-year')}>
+                  Poslední rok
                 </MonthDropdownItem>
 
                 {!showExpandedMonths ? (

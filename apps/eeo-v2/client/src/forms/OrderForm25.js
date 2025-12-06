@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown } from 'lucide-react';
 import { CustomSelect, SelectWithIcon } from '../components/CustomSelect';
 import { InvoiceAttachmentsCompact } from '../components/invoices';
@@ -24090,9 +24090,9 @@ function OrderForm25() {
                               position: 'relative'
                             }}>
                               <FontAwesomeIcon
-                                icon={faFileAlt}
+                                icon={file.file_exists === false ? faFileCircleXmark : faFileAlt}
                                 style={{
-                                  color: file.status === 'uploaded' ? '#10b981' : '#dc2626',
+                                  color: file.file_exists === false ? '#dc2626' : (file.status === 'uploaded' ? '#10b981' : '#dc2626'),
                                   fontSize: '24px'
                                 }}
                               />
@@ -24159,6 +24159,21 @@ function OrderForm25() {
                                       </span>
                                     )}
                                   </span>
+
+                                  {/* Warning pro soubory, které neexistují na disku */}
+                                  {file.file_exists === false && (
+                                    <span style={{
+                                      color: '#dc2626',
+                                      fontSize: '0.7rem',
+                                      fontWeight: 'bold',
+                                      backgroundColor: '#fee2e2',
+                                      padding: '1px 4px',
+                                      borderRadius: '3px',
+                                      flexShrink: 0
+                                    }}>
+                                      ⚠ SOUBOR NENALEZEN
+                                    </span>
+                                  )}
 
                                   {/* Warning pro duplicity */}
                                   {file.isDuplicate && (

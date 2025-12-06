@@ -8,6 +8,7 @@ import {
   File,
   FileText,
   FileImage,
+  FileX,
   AlertTriangle,
   Check,
   X,
@@ -375,7 +376,12 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const getFileIconAndColor = (filename) => {
+const getFileIconAndColor = (filename, fileExists = true) => {
+  // If file doesn't exist on disk, show broken file indicator
+  if (fileExists === false) {
+    return { icon: FileX, bgColor: '#fef2f2', color: '#dc2626' };
+  }
+
   const ext = getFileExtension(filename);
 
   switch (ext) {
@@ -737,7 +743,8 @@ const AttachmentManager = ({ orderId, readonly = false, onChange }) => {
             {attachments.map((attachment) => {
               // Support both API v2 (original_name) and old API (originalni_nazev)
               const fileName = attachment.original_name || attachment.originalni_nazev || 'Neznámý soubor';
-              const { icon: IconComponent, bgColor, color } = getFileIconAndColor(fileName);
+              const fileExists = attachment.file_exists !== false; // Default to true if not specified
+              const { icon: IconComponent, bgColor, color } = getFileIconAndColor(fileName, fileExists);
               const hasTypeError = validationErrors[`attachment_${attachment.id}_type`];
 
               return (
@@ -747,8 +754,20 @@ const AttachmentManager = ({ orderId, readonly = false, onChange }) => {
                   </FileIcon>
 
                   <FileInfo>
-                    <div className="file-name">
+                    <div className="file-name" style={{
+                      color: !fileExists ? '#dc2626' : 'inherit'
+                    }}>
                       {fileName}
+                      {!fileExists && (
+                        <span style={{
+                          marginLeft: '8px',
+                          fontSize: '0.75rem',
+                          color: '#dc2626',
+                          fontWeight: 600
+                        }}>
+                          ⚠ Soubor nenalezen na disku
+                        </span>
+                      )}
                     </div>
                     <div className="file-meta">
                       <span className="file-size">
