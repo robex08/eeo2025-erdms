@@ -22259,8 +22259,7 @@ function OrderForm25() {
                                       {validationErrors[`faktura_${index + 1}_vecna_spravnost`]}
                                     </ErrorText>
                                   )}
-                                </div>
-                              </>
+                                </>
                                     );
                                   })()}
                                 </div>
