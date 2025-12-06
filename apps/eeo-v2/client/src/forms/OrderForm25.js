@@ -22509,17 +22509,6 @@ function OrderForm25() {
                                       const hasTimestamp = faktura.dt_potvrzeni_vecne_spravnosti;
                                       const isZkontrolovanaPhase = currentPhase >= 8; // Fáze ZKONTROLOVANA a výše
                                       
-                                      // Debug
-                                      console.log('[VECNA-INFO-BOX]', {
-                                        fakturaId: faktura.id,
-                                        isChecked,
-                                        hasRealId,
-                                        hasTimestamp,
-                                        currentPhase,
-                                        isZkontrolovanaPhase,
-                                        shouldShow: isChecked && hasRealId && hasTimestamp && isZkontrolovanaPhase
-                                      });
-                                      
                                       if (!isChecked || !hasRealId || !hasTimestamp || !isZkontrolovanaPhase) return null;
                                       
                                       // Určit jméno potvrzujícího
