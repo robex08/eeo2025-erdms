@@ -556,7 +556,10 @@ function handle_invoices25_attachments_download($input, $config, $queries) {
 
         if (!$priloha) {
             http_response_code(404);
-            echo json_encode(['err' => 'Příloha nenalezena']);
+            $errorMsg = 'Přílohu faktury nelze stáhnout - záznam přílohy nebyl nalezen v databázi. ';
+            $errorMsg .= 'Příloha mohla být odstraněna nebo neexistuje. ';
+            $errorMsg .= 'Kontaktujte prosím administrátora.';
+            echo json_encode(['err' => $errorMsg]);
             return;
         }
 
@@ -565,8 +568,21 @@ function handle_invoices25_attachments_download($input, $config, $queries) {
 
         // Kontrola existence souboru
         if (!file_exists($full_path)) {
+            // ✅ Uživatelsky přívětivá chybová zpráva
+            $errorMsg = 'Nepodařilo se stáhnout přílohu faktury "' . $priloha['originalni_nazev_souboru'] . '". ';
+            $errorMsg .= 'Soubor nebyl nalezen na serveru (chybí fyzický soubor). ';
+            $errorMsg .= 'Příloha mohla být odstraněna, přesunuta nebo se nepodařilo její nahrání. ';
+            $errorMsg .= 'Pro obnovení přílohy kontaktujte prosím administrátora.';
+            
+            // Log pro administrátora s plnou cestou
+            error_log('PŘÍLOHA FAKTURY NENALEZENA: ' . $full_path . ' (priloha_id: ' . $priloha_id . ', faktura_id: ' . $priloha['faktura_id'] . ', original: ' . $priloha['originalni_nazev_souboru'] . ')');
+            
             http_response_code(404);
-            echo json_encode(['err' => 'Soubor nenalezen na disku']);
+            echo json_encode([
+                'err' => $errorMsg,
+                'original_filename' => $priloha['originalni_nazev_souboru'],
+                'missing_file' => basename($full_path)
+            ]);
             return;
         }
 

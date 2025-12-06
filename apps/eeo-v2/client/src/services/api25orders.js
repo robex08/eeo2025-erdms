@@ -1779,6 +1779,22 @@ export async function downloadAttachment25({ token, username, objednavka_id, att
     return response.data;
 
   } catch (error) {
+    // Blob error response - parsuj JSON a extrahuj message
+    if (error.response?.data instanceof Blob) {
+      const text = await error.response.data.text();
+      
+      let errorMessage = text;
+      try {
+        const data = JSON.parse(text);
+        errorMessage = data.message || data.error || data.err || text;
+      } catch (parseError) {
+        // Pokud JSON parse selže, použij raw text
+      }
+      
+      logDebug('error', `order-v2/${objednavka_id}/attachments/${attachment_id}`, null, errorMessage);
+      throw new Error(errorMessage || 'Nepodařilo se stáhnout přílohu');
+    }
+    
     logDebug('error', `order-v2/${objednavka_id}/attachments/${attachment_id}`, null, error.message);
     throw new Error(normalizeApi25OrdersError(error));
   }

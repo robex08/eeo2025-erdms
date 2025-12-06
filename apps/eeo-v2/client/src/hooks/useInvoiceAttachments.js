@@ -113,28 +113,38 @@ export const useInvoiceAttachments = (token, username) => {
     orderId,
     filename
   ) => {
-    const blob = await apiCall(
-      downloadInvoiceAttachment25,
-      {
-        token,
-        username,
-        faktura_id: invoiceId,
-        priloha_id: attachmentId,
-        objednavka_id: orderId
-      }
-    );
+    try {
+      const blob = await apiCall(
+        downloadInvoiceAttachment25,
+        {
+          token,
+          username,
+          faktura_id: invoiceId,
+          priloha_id: attachmentId,
+          objednavka_id: orderId
+        }
+      );
 
-    // Automatické stažení souboru
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      // Automatické stažení souboru
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-    return true;
+      return true;
+    } catch (error) {
+      // Vyhoď chybu dál s user-friendly message z BE
+      const errorMessage = error.response?.data?.err || 
+                          error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Nepodařilo se stáhnout přílohu faktury';
+      throw new Error(errorMessage);
+    }
   }, [token, username]);
 
   /**

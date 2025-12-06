@@ -12646,13 +12646,13 @@ function OrderForm25() {
       // showToast(`⬇️ Download OK: ${attachment.name}\n${downloadInfo}`, 'success');
 
     } catch (error) {
-
+      // Error už byl zpracován v API vrstvě, stačí zobrazit error.message
+      const errorMessage = error.message || 'Nepodařilo se stáhnout přílohu';
+      
+      showToast(errorMessage, 'error');
+      
       addDebugLog('error', 'ATTACHMENTS', 'download-error',
-        `Chyba při stahování ${attachment.name}: ${error.message}`);
-
-      // Toast s detaily chyby downloadu
-      const errorDetails = error.response?.data || error.message;
-      showToast(`⬇️ Download Failed: ${attachment.name}\nBE Error: ${JSON.stringify(errorDetails)}`, 'error');
+        `Chyba při stahování ${attachment.name}: ${errorMessage}`);
     }
   };
 

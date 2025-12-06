@@ -450,6 +450,21 @@ export async function downloadInvoiceAttachment25({ token, username, faktura_id,
     return response.data;
 
   } catch (error) {
+    // Blob error response - parsuj JSON a extrahuj message
+    if (error.response?.data instanceof Blob) {
+      const text = await error.response.data.text();
+      
+      let errorMessage = text;
+      try {
+        const data = JSON.parse(text);
+        errorMessage = data.message || data.err || data.error || text;
+      } catch (parseError) {
+        // Pokud JSON parse selže, použij raw text
+      }
+      
+      throw new Error(errorMessage || 'Nepodařilo se stáhnout přílohu faktury');
+    }
+    
     throw new Error(normalizeApi25InvoicesError(error));
   }
 }
