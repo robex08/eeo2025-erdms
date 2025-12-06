@@ -1223,36 +1223,74 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
               return (
               <div key={faktura.id || index} style={{
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                padding: '1rem',
-                marginBottom: index < orderData.faktury.length - 1 ? '1rem' : 0,
-                background: isVecnaPotvrzena ? '#f0fdf4' : '#f9fafb'
+                border: '2px solid #3b82f6',
+                borderRadius: '12px',
+                padding: '0',
+                marginBottom: index < orderData.faktury.length - 1 ? '1.5rem' : 0,
+                background: isVecnaPotvrzena ? '#f0fdf4' : '#ffffff',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden'
               }}>
+                {/* Záhlaví faktury - výrazné */}
                 <div style={{
-                  fontWeight: '600',
-                  color: '#374151',
-                  marginBottom: '1rem',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  color: 'white',
+                  padding: '1rem 1.25rem',
+                  fontWeight: '700',
+                  fontSize: '1.1rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '1rem'
+                  gap: '1rem',
+                  borderBottom: '3px solid #1e40af',
+                  letterSpacing: '0.5px',
+                  textTransform: 'uppercase'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FontAwesomeIcon icon={faMoneyBillWave} style={{ color: '#3b82f6' }} />
-                    FAKTURA Č. {index + 1}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <FontAwesomeIcon icon={faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
+                    Faktura #{index + 1}
+                    {faktura.fa_cislo_vema && (
+                      <span style={{ 
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        background: 'rgba(255, 255, 255, 0.2)',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '6px',
+                        letterSpacing: 'normal',
+                        textTransform: 'none'
+                      }}>
+                        {faktura.fa_cislo_vema}
+                      </span>
+                    )}
                   </div>
                   {onEditInvoice && canEditInvoice && (
-                    <EditInvoiceButton onClick={(e) => {
-                      e.stopPropagation();
-                      onEditInvoice(faktura);
-                    }}>
+                    <EditInvoiceButton 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditInvoice(faktura);
+                      }}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.25)',
+                        color: 'white',
+                        border: '1px solid rgba(255, 255, 255, 0.4)',
+                        padding: '0.5rem 1rem',
+                        fontWeight: '600'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.35)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                      }}
+                    >
                       <FontAwesomeIcon icon={faEdit} />
                       Upravit
                     </EditInvoiceButton>
                   )}
                 </div>
 
+                {/* Obsah faktury */}
+                <div style={{ padding: '1.25rem' }}>
                 <DataGrid $columns="1fr 1fr">
                   <KeyValuePair>
                     <KeyLabel>Číslo faktury</KeyLabel>
@@ -1578,6 +1616,8 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     </KeyValuePair>
                   </DataGrid>
                 </div>
+                </div>
+                {/* Konec obsahu faktury */}
               </div>
             );
             })}
