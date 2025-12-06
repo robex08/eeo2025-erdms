@@ -4763,6 +4763,9 @@ function OrderForm25() {
   const [dataSource, setDataSource] = useState(null); // 'concept', 'database', null
   const [isDraftLoaded, setIsDraftLoaded] = useState(false); // sleduje zda už proběhlo načtení draftu
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
+  
+  // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
+  const isClosingRef = useRef(false);
 
   // 🎯 CENTRALIZOVANÝ AUTOSAVE s debounce logikou (3 sekundy neaktivity)
   const autosaveCallbackRef = useRef(null);
@@ -5886,7 +5889,9 @@ function OrderForm25() {
   const shouldLockAllSections = isOrderCompleted && !workflowManager.isSectionUnlocked('dokonceni');
   
   // ✅ VĚCNÁ SPRÁVNOST: Pole věcné správnosti jsou editovatelná ve FÁZI 7+, i když zbytek faktury je zamčený
-  const shouldLockVecnaSpravnost = currentPhase < 7 || shouldLockAllSections || isArchived;
+  // ⚠️ VE FÁZI ZKONTROLOVANA (8) je věcná správnost ZAKÁZÁNA
+  const isZkontrolovana = hasWorkflowState(formData.stav_workflow_kod, 'ZKONTROLOVANA');
+  const shouldLockVecnaSpravnost = currentPhase < 7 || currentPhase >= 8 || isZkontrolovana || shouldLockAllSections || isArchived;
 
   // Helper proměnné pro workflow stavy (používají se v jiných částech kódu)
   const isOrderSent = hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA');
@@ -9243,7 +9248,9 @@ function OrderForm25() {
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
             vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
             vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-            potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0,
+            vecna_spravnost_potvrzeno: faktura.potvrzeni_vecne_spravnosti || 0,
+            potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id || null,
+            dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti || null,
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
@@ -10519,6 +10526,7 @@ function OrderForm25() {
         addDebugLog('success', 'SAVE', 'broadcast', `Broadcast orderDraftChange odeslán (hasDraft: false, isEditMode: ${isEdit}, shouldStayOnForm: ${shouldStayOnForm})`);
         */
       } catch (e) {
+        // Ignorovat chybu broadcastu
       }
     }
   };
@@ -10684,6 +10692,12 @@ function OrderForm25() {
   };
 
   const saveDraft = async (isAutoSave = false, isAfterDbSave = false, customFormData = null) => {
+    // 🚨 KRITICKÁ KONTROLA: Pokud se formulář zavírá, ZABLOKOVAT save
+    if (isClosingRef.current) {
+      console.log('🚫 saveDraft BLOCKED - formulář se zavírá');
+      return { success: false, reason: 'form_closing' };
+    }
+    
     // 📦 Použít custom data nebo aktuální formData ze state
     const dataToSave = customFormData || formData;
 
@@ -14664,8 +14678,30 @@ function OrderForm25() {
     // (už je uložená v DB, není co ztratit)
     if (isOrderCompleted) {
       try {
-        // Zablokovat autosave
+        // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
+        
+        // 0. GLOBÁLNÍ FLAG - zablokuje saveDraft na úrovni funkce (první linie obrany)
+        isClosingRef.current = true;
+        
+        // 1. Zablokovat autosave v DraftManager
         draftManager.setAutosaveEnabled(false, 'Closing completed order');
+        
+        // 2. Zablokovat autosave přes ref (okamžitá kontrola)
+        disableAutosaveRef.current = true;
+        
+        // 3. Zablokovat autosave přes state (pro useEffect)
+        setDisableAutosave(true);
+        
+        // 4. Zrušit useAutosave hook timer
+        if (cancelAutosave) {
+          cancelAutosave();
+        }
+        
+        // 5. Zrušit všechny setTimeout pro autosave
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
 
         // Vyčistit draft data
         if (user_id) {
@@ -14757,13 +14793,37 @@ function OrderForm25() {
     }
 
     try {
-      // 🚨 KRITICKÉ: OKAMŽITĚ zablokovat autosave PŘED jakýmkoli dalším krokem
+      // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
+      
+      // 0. GLOBÁLNÍ FLAG - zablokuje saveDraft na úrovni funkce (první linie obrany)
+      isClosingRef.current = true;
+      
+      // 1. Zablokovat autosave v DraftManager
       draftManager.setAutosaveEnabled(false, 'Form closing - prevent save during cleanup');
+      
+      // 2. Zablokovat autosave přes ref (okamžitá kontrola)
+      disableAutosaveRef.current = true;
+      
+      // 3. Zablokovat autosave přes state (pro useEffect)
+      setDisableAutosave(true);
+      
+      // 4. Zrušit useAutosave hook timer
+      if (cancelAutosave) {
+        cancelAutosave();
+      }
+      
+      // 5. Zrušit všechny setTimeout pro autosave
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
 
       // 🚨 OKAMŽITĚ resetovat všechny saving stavy
       setIsSaving(false);
       setShowSaveProgress(false);
       setSaveProgressText('');
+      setSaveProgress(0);
+      setIsConceptSaved(false);
 
       // 🚨 Zrušit aktivní progress (pokud běží)
       if (window._activeProgressControl) {
@@ -22177,11 +22237,6 @@ function OrderForm25() {
                                           );
                                           updateFaktury(updatedFaktury);
                                         }}
-                                        onBlur={() => {
-                                          if (isEditing && !faktura._isNew) {
-                                            handleUpdateFaktura();
-                                          }
-                                        }}
                                         placeholder="Např. Kladno, budova K2, místnost 203"
                                       />
                                     </FormGroup>
@@ -22214,11 +22269,6 @@ function OrderForm25() {
                                           );
                                           updateFaktury(updatedFaktury);
                                         }}
-                                        onBlur={() => {
-                                          if (isEditing && !faktura._isNew) {
-                                            handleUpdateFaktura();
-                                          }
-                                        }}
                                         placeholder="Volitelná poznámka k věcné správnosti..."
                                         rows={2}
                                       />
@@ -22246,8 +22296,8 @@ function OrderForm25() {
                                             gap: '0.75rem',
                                             cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
                                             fontSize: '0.9rem',
-                                            fontWeight: '600',
-                                            color: hasError ? '#dc2626' : '#374151'
+                                            fontWeight: shouldLockVecnaSpravnost ? '400' : '600',
+                                            color: hasError ? '#dc2626' : (shouldLockVecnaSpravnost ? '#9ca3af' : '#374151')
                                           }}>
                                             <input
                                               type="checkbox"
@@ -22259,26 +22309,42 @@ function OrderForm25() {
                                           if (!isEditing) {
                                             handleEditFaktura(faktura);
                                           }
+
+                                          // 🆕 Při zaškrtnutí nastavit ID uživatele a timestamp
+                                          let updatedFields = { potvrzeni_vecne_spravnosti: newValue };
+                                          if (newValue === 1 && user_id && !faktura.potvrdil_vecnou_spravnost_id) {
+                                            const now = new Date();
+                                            const year = now.getFullYear();
+                                            const month = String(now.getMonth() + 1).padStart(2, '0');
+                                            const day = String(now.getDate()).padStart(2, '0');
+                                            const hours = String(now.getHours()).padStart(2, '0');
+                                            const minutes = String(now.getMinutes()).padStart(2, '0');
+                                            const seconds = String(now.getSeconds()).padStart(2, '0');
+                                            const localTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                                            
+                                            updatedFields.potvrdil_vecnou_spravnost_id = user_id;
+                                            updatedFields.dt_potvrzeni_vecne_spravnosti = localTimestamp;
+                                            addDebugLog('info', 'VECNA-FAKTURA', 'metadata-set', `Faktura #${faktura.id}: Nastaveno ID=${user_id}, dt=${localTimestamp}`);
+                                          }
+
                                           setFakturaFormData(prev => ({
                                             ...prev,
-                                            potvrzeni_vecne_spravnosti: newValue
+                                            ...updatedFields
                                           }));
 
                                           // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
-                                              ? { ...f, potvrzeni_vecne_spravnosti: newValue }
+                                              ? { ...f, ...updatedFields }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
-                                          
-                                          // Trigger autosave
-                                          setTimeout(() => triggerAutosave(true), 100);
                                         }}
                                         style={{
                                           width: '18px',
                                           height: '18px',
-                                          cursor: shouldLockFaktury ? 'not-allowed' : 'pointer'
+                                          cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
+                                          accentColor: shouldLockVecnaSpravnost ? '#9ca3af' : '#16a34a'
                                         }}
                                       />
                                       <span style={{ flex: 1 }}>
@@ -22294,6 +22360,12 @@ function OrderForm25() {
                                           fontWeight: '600'
                                         }}>
                                           ✓ ZKONTROLOVÁNO
+                                          {faktura.dt_potvrzeni_vecne_spravnosti && (
+                                            <span style={{ fontWeight: '400', marginLeft: '0.5rem', color: '#15803d' }}>
+                                              ({prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                              {faktura.potvrdil_vecnou_spravnost_jmeno && ` • ${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`})
+                                            </span>
+                                          )}
                                         </span>
                                       )}
                                     </label>
