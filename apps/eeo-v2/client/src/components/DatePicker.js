@@ -5,15 +5,20 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { Calendar } from 'lucide-react';
 
-function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum' }) {
+function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [openUpwards, setOpenUpwards] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [isPositioned, setIsPositioned] = useState(false);
   const wrapperRef = useRef(null);
   const calendarRef = useRef(null);
+  
+  const isCompact = variant === 'compact';
 
   // Parse value to Date
   const selectedDate = value ? new Date(value) : null;
@@ -42,34 +47,65 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Detekce směru otevření kalendáře (nahoru/dolů) podle dostupného místa
+  // Detekce směru otevření kalendáře a výpočet pozice pro portal
   useEffect(() => {
-    if (isOpen && wrapperRef.current) {
-      const checkPosition = () => {
-        if (!wrapperRef.current) return;
-
-        const buttonRect = wrapperRef.current.getBoundingClientRect();
-        const calendarHeight = 380;
-        const footerHeight = 54;
-        const buffer = 20;
-
-        const spaceBelow = window.innerHeight - buttonRect.bottom - footerHeight - buffer;
-        const spaceAbove = buttonRect.top - buffer;
-
-        const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
-
-        setOpenUpwards(shouldOpenUpward);
-      };
-
-      checkPosition();
-
-      const scrollContainer = document.querySelector('[class*="ScrollableContent"]');
-      if (scrollContainer) {
-        scrollContainer.addEventListener('scroll', checkPosition);
-        return () => scrollContainer.removeEventListener('scroll', checkPosition);
-      }
+    if (!isOpen) {
+      setIsPositioned(false);
+      return;
     }
-  }, [isOpen]);
+
+    if (!wrapperRef.current) return;
+
+    const checkPosition = () => {
+      if (!wrapperRef.current) return;
+
+      const buttonRect = wrapperRef.current.getBoundingClientRect();
+      const calendarHeight = 380;
+      const footerHeight = 54;
+      const buffer = 20;
+
+      const spaceBelow = window.innerHeight - buttonRect.bottom - footerHeight - buffer;
+      const spaceAbove = buttonRect.top - buffer;
+
+      const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
+
+      setOpenUpwards(shouldOpenUpward);
+      setPosition({
+        top: shouldOpenUpward ? buttonRect.top - calendarHeight : buttonRect.bottom + 4,
+        left: buttonRect.left,
+        width: Math.max(buttonRect.width, 300)
+      });
+
+      // Po prvním výpočtu označit jako positioned
+      if (!isPositioned) {
+        setIsPositioned(true);
+      }
+    };
+
+    // První výpočet okamžitě
+    checkPosition();
+
+    // Při scrollu aktualizovat pozici okamžitě bez throttlingu
+    const handleScroll = () => {
+      checkPosition();
+    };
+
+    const scrollContainer = document.querySelector('[class*="ScrollableContent"]');
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+    window.addEventListener('resize', checkPosition, { passive: true });
+    
+    return () => {
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', handleScroll);
+      }
+      window.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', checkPosition);
+    };
+  }, [isOpen, isPositioned]);
 
   // Format date for display
   const formatDisplayDate = (date) => {
@@ -173,12 +209,12 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   const today = new Date();
   const calendarDays = getCalendarDays();
 
-  const displayText = value ? formatDisplayDate(value) : placeholder;
+  const displayText = value ? formatDisplayDate(value) : '';
 
   return (
     <DatePickerWrapper ref={wrapperRef} data-field={fieldName}>
-      <InputWithIcon hasIcon>
-        <Calendar />
+      <InputWithIcon hasIcon={!isCompact}>
+        {!isCompact && <Calendar />}
         <DateInputButton
           type="button"
           onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -186,9 +222,29 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           hasError={hasError}
           hasValue={!!value}
           data-datepicker={fieldName}
+          $variant={variant}
         >
           {displayText}
         </DateInputButton>
+
+        {!isCompact && !disabled && (
+          <DateTodayButton
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const today = new Date();
+              const formattedDate = today.toISOString().split('T')[0];
+              onChange(formattedDate);
+              if (onBlur) {
+                onBlur(formattedDate);
+              }
+            }}
+            title="Dnešní datum"
+          >
+            📅
+          </DateTodayButton>
+        )}
 
         {value && !disabled && (
           <DateClearButton
@@ -203,24 +259,10 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
             ✕
           </DateClearButton>
         )}
-
-        {!disabled && (
-          <DateTodayButton
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleToday(e);
-            }}
-            title="Nastavit dnešní datum"
-          >
-            📅
-          </DateTodayButton>
-        )}
       </InputWithIcon>
 
-      {isOpen && !disabled && (
-        <DateCalendarPopup ref={calendarRef} openUpwards={openUpwards}>
+      {isOpen && !disabled && createPortal(
+        <DateCalendarPopup ref={calendarRef} openUpwards={openUpwards} $isPositioned={isPositioned} style={{ top: `${position.top}px`, left: `${position.left}px`, width: `${position.width}px` }}>
           <CalendarHeader>
             <CalendarNav onClick={(e) => {
               e.preventDefault();
@@ -294,7 +336,8 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
               Smazat
             </CalendarButton>
           </CalendarFooter>
-        </DateCalendarPopup>
+        </DateCalendarPopup>,
+        document.body
       )}
     </DatePickerWrapper>
   );
@@ -326,11 +369,12 @@ const InputWithIcon = styled.div`
 const DateInputButton = styled.button`
   width: 100%;
   display: block;
-  height: 48px;
-  padding: 1px 2.75rem 1px 2.75rem;
+  height: ${props => props.$variant === 'compact' ? '32px' : '48px'};
+  padding: ${props => props.$variant === 'compact' ? '0.375rem' : '0.5rem 2.75rem'};
+  padding-left: ${props => props.$variant === 'compact' ? '0.75rem' : '2.75rem'};
   padding-right: ${props => props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem'};
-  border: 2px solid ${props => props.hasError ? '#ef4444' : '#e2e8f0'};
-  border-radius: 8px;
+  border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
+  border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
   color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1f2937' : '#94a3af'};
   font-size: 0.95rem;
@@ -410,21 +454,15 @@ const DateTodayButton = styled.button`
 `;
 
 const DateCalendarPopup = styled.div`
-  position: absolute;
-  ${props => props.openUpwards ? `
-    bottom: calc(100% + 4px);
-    top: auto;
-  ` : `
-    top: calc(100% + 4px);
-    bottom: auto;
-  `}
-  left: 0;
-  right: 0;
-  z-index: 10001;
+  position: fixed;
+  z-index: 999999;
   background: white;
   border: 2px solid #3b82f6;
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  opacity: ${props => props.$isPositioned ? 1 : 0};
+  pointer-events: ${props => props.$isPositioned ? 'auto' : 'none'};
+  transition: opacity 0.15s ease;
   padding: 0.5rem;
 `;
 

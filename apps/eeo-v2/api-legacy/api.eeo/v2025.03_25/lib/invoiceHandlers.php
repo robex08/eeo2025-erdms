@@ -181,7 +181,13 @@ function handle_invoices25_create($input, $config, $queries) {
         // Připrav hodnoty
         $fa_dorucena = isset($input['fa_dorucena']) ? (int)$input['fa_dorucena'] : 0;
         $fa_zaplacena = isset($input['fa_zaplacena']) ? (int)$input['fa_zaplacena'] : 0;
+        
+        // 🔍 DEBUG: fa_typ
+        error_log("🔍 PHP API fa_typ INPUT: " . json_encode(['isset' => isset($input['fa_typ']), 'value' => $input['fa_typ'] ?? 'NOT_SET', 'input_keys' => array_keys($input)]));
+        
         $fa_typ = isset($input['fa_typ']) ? $input['fa_typ'] : 'BEZNA';
+        
+        error_log("🔍 PHP API fa_typ FINAL: " . $fa_typ);
         $fa_datum_vystaveni = isset($input['fa_datum_vystaveni']) ? $input['fa_datum_vystaveni'] : null;
         $fa_datum_splatnosti = isset($input['fa_datum_splatnosti']) ? $input['fa_datum_splatnosti'] : null;
         $fa_datum_doruceni = isset($input['fa_datum_doruceni']) ? $input['fa_datum_doruceni'] : null;
@@ -1127,7 +1133,7 @@ function handle_invoices25_list($input, $config, $queries) {
         // Filtr: filter_vytvoril_uzivatel (uživatel který fakturu vytvořil - hledá v celém jméně)
         if (isset($filters['filter_vytvoril_uzivatel']) && trim($filters['filter_vytvoril_uzivatel']) !== '') {
             $search_user = strtolower(trim($filters['filter_vytvoril_uzivatel']));
-            $where_conditions[] = '(LOWER(u.jmeno) LIKE ? OR LOWER(u.prijmeni) LIKE ? OR LOWER(CONCAT(u.jmeno, " ", u.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u.titul_pred, u.jmeno, u.prijmeni, u.titul_za)) LIKE ?)';
+            $where_conditions[] = '(LOWER(u_vytvoril.jmeno) LIKE ? OR LOWER(u_vytvoril.prijmeni) LIKE ? OR LOWER(CONCAT(u_vytvoril.jmeno, " ", u_vytvoril.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u_vytvoril.titul_pred, u_vytvoril.jmeno, u_vytvoril.prijmeni, u_vytvoril.titul_za)) LIKE ?)';
             $params[] = '%' . $search_user . '%';
             $params[] = '%' . $search_user . '%';
             $params[] = '%' . $search_user . '%';
