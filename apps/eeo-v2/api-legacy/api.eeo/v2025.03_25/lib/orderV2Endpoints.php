@@ -1145,10 +1145,15 @@ function handle_order_v2_update($input, $config, $queries) {
                             fa_strediska_kod,
                             fa_poznamka,
                             rozsirujici_data,
+                            vecna_spravnost_umisteni_majetku,
+                            vecna_spravnost_poznamka,
+                            vecna_spravnost_potvrzeno,
+                            potvrdil_vecnou_spravnost_id,
+                            dt_potvrzeni_vecne_spravnosti,
                             vytvoril_uzivatel_id,
                             dt_vytvoreni,
                             aktivni
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
                         
                         $stmt_insert = $db->prepare($sql_insert);
                         $stmt_insert->execute(array(
@@ -1162,6 +1167,11 @@ function handle_order_v2_update($input, $config, $queries) {
                             $fa_strediska_value,
                             isset($faktura['fa_poznamka']) ? $faktura['fa_poznamka'] : null,
                             $rozsirujici_value,
+                            isset($faktura['vecna_spravnost_umisteni_majetku']) ? $faktura['vecna_spravnost_umisteni_majetku'] : null,
+                            isset($faktura['vecna_spravnost_poznamka']) ? $faktura['vecna_spravnost_poznamka'] : null,
+                            isset($faktura['vecna_spravnost_potvrzeno']) ? (int)$faktura['vecna_spravnost_potvrzeno'] : 0,
+                            isset($faktura['potvrdil_vecnou_spravnost_id']) ? (int)$faktura['potvrdil_vecnou_spravnost_id'] : null,
+                            isset($faktura['dt_potvrzeni_vecne_spravnosti']) ? $faktura['dt_potvrzeni_vecne_spravnosti'] : null,
                             $current_user_id
                         ));
                         
@@ -1223,6 +1233,28 @@ function handle_order_v2_update($input, $config, $queries) {
                         if (isset($faktura['fa_poznamka'])) {
                             $update_fields[] = 'fa_poznamka = ?';
                             $update_values[] = $faktura['fa_poznamka'];
+                        }
+                        
+                        // ✅ VĚCNÁ SPRÁVNOST - 5 polí (1:1 DB mapping)
+                        if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
+                            $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
+                            $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
+                        }
+                        if (isset($faktura['vecna_spravnost_poznamka'])) {
+                            $update_fields[] = 'vecna_spravnost_poznamka = ?';
+                            $update_values[] = $faktura['vecna_spravnost_poznamka'];
+                        }
+                        if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                            $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
+                            $update_values[] = (int)$faktura['vecna_spravnost_potvrzeno'];
+                        }
+                        if (isset($faktura['potvrdil_vecnou_spravnost_id'])) {
+                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+                            $update_values[] = !empty($faktura['potvrdil_vecnou_spravnost_id']) ? (int)$faktura['potvrdil_vecnou_spravnost_id'] : null;
+                        }
+                        if (isset($faktura['dt_potvrzeni_vecne_spravnosti'])) {
+                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+                            $update_values[] = $faktura['dt_potvrzeni_vecne_spravnosti'];
                         }
                         
                         // Pokud jsou nějaká pole k aktualizaci

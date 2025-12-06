@@ -1219,13 +1219,15 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.fakturace} $theme="blue">
-            {orderData.faktury.map((faktura, index) => (
+            {orderData.faktury.map((faktura, index) => {
+              const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
+              return (
               <div key={faktura.id || index} style={{
                 border: '1px solid #e5e7eb',
                 borderRadius: '8px',
                 padding: '1rem',
                 marginBottom: index < orderData.faktury.length - 1 ? '1rem' : 0,
-                background: '#fafafa'
+                background: isVecnaPotvrzena ? '#f0fdf4' : '#f9fafb'
               }}>
                 <div style={{
                   fontWeight: '600',
@@ -1532,7 +1534,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       <KeyLabel>Datum potvrzení</KeyLabel>
                       <ValueText>
                         {faktura.dt_potvrzeni_vecne_spravnosti 
-                          ? formatDateOnly(faktura.dt_potvrzeni_vecne_spravnosti) 
+                          ? <span style={{fontWeight: '600', color: '#059669'}}>{formatDateOnly(faktura.dt_potvrzeni_vecne_spravnosti)}</span>
                           : <span style={{color: '#9ca3af'}}>Nepotvrzeno</span>}
                       </ValueText>
                     </KeyValuePair>
@@ -1541,11 +1543,20 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       <KeyLabel>Potvrdil</KeyLabel>
                       <ValueText>
                         {(() => {
+                          // Primárně použij jméno z DB (JOIN) včetně titulů
+                          if (faktura.potvrdil_vecnou_spravnost_jmeno) {
+                            const titul_pred = faktura.potvrdil_vecnou_spravnost_titul_pred ? `${faktura.potvrdil_vecnou_spravnost_titul_pred} ` : '';
+                            const titul_za = faktura.potvrdil_vecnou_spravnost_titul_za ? `, ${faktura.potvrdil_vecnou_spravnost_titul_za}` : '';
+                            const fullName = `${titul_pred}${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}${titul_za}`.trim();
+                            return <span style={{fontWeight: '600', color: '#059669'}}>{fullName}</span>;
+                          }
+                          // Fallback na enriched data
                           const enriched = faktura._enriched?.potvrdil_vecnou_spravnost;
                           if (enriched) {
                             const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
                             const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
-                            return `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                            const fullName = `${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                            return <span style={{fontWeight: '600', color: '#059669'}}>{fullName}</span>;
                           }
                           return <span style={{color: '#9ca3af'}}>—</span>;
                         })()}
@@ -1568,7 +1579,8 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                   </DataGrid>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </SectionContent>
         </Section>
       )}
