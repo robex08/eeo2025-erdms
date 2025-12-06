@@ -14514,7 +14514,9 @@ function OrderForm25() {
 
   // 🧭 Handler pro kliknutí na sekci v FloatingNavigator
   const handleNavigatorSectionClick = useCallback((sectionId) => {
-    scrollToSection(sectionId, 'smooth');
+    // ✅ VĚCNÁ SPRÁVNOST: Scrolluj na FAKTURACE (věcná správnost je per-invoice v rámci faktur)
+    const targetSection = sectionId === 'vecna_spravnost' ? 'fakturace' : sectionId;
+    scrollToSection(targetSection, 'smooth');
   }, [scrollToSection]);
 
   // 📎 Handler pro drop souborů z FloatingNavigator
