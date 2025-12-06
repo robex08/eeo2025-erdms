@@ -1108,6 +1108,10 @@ export default function InvoiceEvidencePage() {
       if (orderData && orderData.id) {
         setOrderData(orderData);
         console.log('✅ Objednávka načtena:', orderData);
+        console.log('📦 RAW orderData.polozky_objednavky:', JSON.stringify(orderData.polozky_objednavky, null, 2));
+        console.log('📦 RAW orderData.faktury:', JSON.stringify(orderData.faktury, null, 2));
+        console.log('💰 Počet položek:', orderData.polozky_objednavky?.length || 0);
+        console.log('💰 Počet faktur:', orderData.faktury?.length || 0);
         // Aktualizuj searchTerm aby zobrazoval pouze ev. číslo
         const evCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
         setSearchTerm(evCislo);
