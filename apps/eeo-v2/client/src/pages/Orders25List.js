@@ -9934,9 +9934,16 @@ const Orders25List = () => {
       const oldAttachmentsUrl = process.env.REACT_APP_OLD_ATTACHMENTS_URL || 'https://erdms.zachranka.cz/prilohy/';
       const oldUrl = `${oldAttachmentsUrl}${attachment.originalni_nazev_souboru}`;
 
-      // Otevřít v novém okně/tabu pro náhled nebo stažení
-      window.open(oldUrl, '_blank');
-      showToast?.(`Příloha "${attachment.originalni_nazev_souboru}" se otevírá ze starého systému`, { type: 'info' });
+      // Stáhnout přímo bez dialogu
+      const link = document.createElement('a');
+      link.href = oldUrl;
+      link.download = attachment.originalni_nazev_souboru;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast?.(`Příloha "${attachment.originalni_nazev_souboru}" se stahuje ze starého systému`, { type: 'info' });
       return;
     }
 
@@ -9952,30 +9959,7 @@ const Orders25List = () => {
       // ✅ V2 API: downloadOrderAttachment - správně se všemi parametry
       const blob = await downloadOrderAttachment(orderId, attachment.id, username, token);
 
-      // Importovat utility funkce
-      const { isPreviewableInBrowser, openInBrowser25 } = await import('../services/api25orders');
-
-      // Zkontrolovat, zda lze soubor zobrazit v prohlížeči
-      if (isPreviewableInBrowser(fileName)) {
-        const opened = openInBrowser25(blob, fileName);
-        
-        if (opened) {
-          showToast?.(`Příloha "${fileName}" byla otevřena v novém okně`, { type: 'success' });
-          
-          // Nabídnout možnost stažení
-          const shouldDownload = window.confirm(
-            `Příloha "${fileName}" byla otevřena v novém okně.\n\nChcete ji také stáhnout?`
-          );
-          
-          if (shouldDownload) {
-            createDownloadLink25(blob, fileName);
-            showToast?.(`Příloha "${fileName}" byla stažena`, { type: 'success' });
-          }
-          return;
-        }
-      }
-
-      // Pokud nelze zobrazit v prohlížeči, přímo stáhnout
+      // Přímo stáhnout soubor bez dialogů
       createDownloadLink25(blob, fileName);
       showToast?.(`Příloha "${fileName}" byla stažena`, { type: 'success' });
 

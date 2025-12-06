@@ -326,14 +326,14 @@ const InputWithIcon = styled.div`
 const DateInputButton = styled.button`
   width: 100%;
   display: block;
-  height: 44px;
-  padding: 0 2.75rem 0 2.75rem;
+  height: 48px;
+  padding: 1px 2.75rem 1px 2.75rem;
   padding-right: ${props => props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem'};
-  border: 2px solid ${props => props.hasError ? '#ef4444' : '#e5e7eb'};
+  border: 2px solid ${props => props.hasError ? '#ef4444' : '#e2e8f0'};
   border-radius: 8px;
-  background: ${props => props.disabled ? '#f9fafb' : 'white'};
-  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1f2937' : '#9ca3af'};
-  font-size: 0.875rem;
+  background: ${props => props.disabled ? '#f1f5f9' : 'white'};
+  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1f2937' : '#94a3af'};
+  font-size: 0.95rem;
   font-weight: ${props => props.hasValue && !props.disabled ? '600' : '400'};
   line-height: 1;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};

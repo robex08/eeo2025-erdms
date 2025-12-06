@@ -31,10 +31,12 @@ import { ProgressContext } from '../context/ProgressContext';
 import { createInvoiceWithAttachmentV2, createInvoiceV2 } from '../services/api25invoices';
 import { getOrderV2 } from '../services/apiOrderV2';
 import { universalSearch } from '../services/apiUniversalSearch';
+import { getStrediska25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
 import DatePicker from '../components/DatePicker';
 import { CustomSelect } from '../components/CustomSelect';
+import { Search } from 'lucide-react';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -318,8 +320,8 @@ const CurrencySymbol = styled.span`
 
 const Input = styled.input`
   width: 100%;
-  height: 44px;
-  padding: 0 0.875rem;
+  height: 48px;
+  padding: 1px 0.875rem;
   border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
@@ -363,8 +365,8 @@ const Textarea = styled.textarea`
 
 const Select = styled.select`
   width: 100%;
-  height: 44px;
-  padding: 0 2.5rem 0 0.875rem;
+  height: 48px;
+  padding: 1px 2.5rem 1px 0.875rem;
   border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
@@ -719,6 +721,184 @@ const SearchingSpinner = styled.div`
   color: #6b7280;
 `;
 
+// Multi-select komponenta pro střediska
+const MultiSelectWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  z-index: ${props => props.isOpen ? 10000 : 1};
+`;
+
+const MultiSelectButton = styled.div`
+  width: 100%;
+  box-sizing: border-box;
+  height: 48px;
+  padding: 1px 2.5rem 1px 0.875rem;
+  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e2e8f0'};
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: ${props => props.disabled ? '#f1f5f9' : '#ffffff'};
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  color: ${props => {
+    if (props.disabled) return '#6b7280';
+    if (props.placeholder || !props.value || props.value === '') return '#94a3af';
+    return '#1f2937';
+  }};
+  font-weight: ${props => props.disabled ? '400' : (props.value && props.value !== '' && props.placeholder !== "true" ? '600' : '400')};
+  display: flex;
+  align-items: center;
+  position: relative;
+  transition: all 0.2s ease;
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  background-image: ${props => {
+    if (props.disabled) {
+      return props.isOpen
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+    } else if (props.hasError) {
+      return props.isOpen
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+    } else {
+      return props.isOpen
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+    }
+  }};
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 12px 12px;
+
+  &:hover {
+    border-color: ${props => props.disabled ? '#e2e8f0' : (props.hasError ? '#dc2626' : '#cbd5e1')};
+  }
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.hasError ? '#dc2626' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.hasError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+`;
+
+const SelectedValue = styled.span`
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: ${props => props.isEmpty ? '#9ca3af' : '#1f2937'};
+  font-weight: ${props => props.isEmpty ? '400' : '600'};
+`;
+
+const MultiSelectDropdown = styled.div`
+  position: fixed;
+  z-index: 40;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+  min-width: 200px;
+  user-select: none;
+  scroll-behavior: auto;
+  contain: layout style paint;
+  will-change: scroll-position;
+  transform: translateZ(0);
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f9fafb;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f9fafb;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+  }
+`;
+
+const SearchBox = styled.div`
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: white;
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const SearchIcon = styled.div`
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  pointer-events: none;
+`;
+
+const MultiSelectOption = styled.div`
+  padding: ${props => props.level === 0 ? '0.75rem' : '0.5rem 0.75rem 0.5rem 2rem'};
+  cursor: pointer;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: ${props => props.level === 0 ? '#f9fafb' : '#ffffff'};
+  border-bottom: ${props => props.level === 0 ? '2px solid #e5e7eb' : '1px solid #f3f4f6'};
+  font-weight: ${props => props.level === 0 ? '600' : '400'};
+  color: ${props => props.level === 0 ? '#111827' : '#4b5563'};
+  position: relative;
+  will-change: transform;
+  backface-visibility: hidden;
+  outline: none;
+
+  &:hover {
+    background: ${props => props.level === 0 ? '#f3f4f6' : '#f8fafc'};
+  }
+
+  &:focus {
+    background: #dbeafe;
+    box-shadow: inset 0 0 0 2px #3b82f6;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  input[type="checkbox"] {
+    margin: 0;
+    pointer-events: none;
+  }
+
+  span {
+    padding-left: ${props => (props.level || 0) * 20}px;
+    font-weight: ${props => (props.level || 0) === 0 ? '600' : '400'};
+  }
+`;
+
 // ===================================================================
 // MAIN COMPONENT
 // ===================================================================
@@ -771,6 +951,7 @@ export default function InvoiceEvidencePage() {
     fa_datum_splatnosti: '',
     fa_castka: '',
     fa_poznamka: '',
+    fa_strediska_kod: [], // Střediska - array kódů
     // Příloha
     file: null
   });
@@ -779,6 +960,39 @@ export default function InvoiceEvidencePage() {
   const [selectStates, setSelectStates] = useState({});
   const [searchStates, setSearchStates] = useState({});
   const [touchedSelectFields, setTouchedSelectFields] = useState(new Set());
+
+  // Střediska options
+  const [strediskaOptions, setStrediskaOptions] = useState([]);
+  const [strediskaLoading, setStrediskaLoading] = useState(false);
+
+  // Načtení středisek při mount (pouze pokud existuje token)
+  useEffect(() => {
+    const loadStrediska = async () => {
+      if (!token || !username) {
+        console.log('⏳ Token nebo username ještě není k dispozici, čekám...');
+        return;
+      }
+      
+      setStrediskaLoading(true);
+      try {
+        const data = await getStrediska25({ token, username });
+        if (data && Array.isArray(data)) {
+          // API vrací přímo objekty s value a label, není potřeba nic mapovat
+          setStrediskaOptions(data);
+          console.log('✅ Střediska načtena:', data.length);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání středisek:', err);
+      } finally {
+        setStrediskaLoading(false);
+      }
+    };
+
+    // Spustit pouze pokud máme token a username
+    if (token && username) {
+      loadStrediska();
+    }
+  }, [token, username]);
 
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
@@ -1095,6 +1309,177 @@ export default function InvoiceEvidencePage() {
     setIsFullscreen(prev => !prev);
   };
 
+  // Helper: Toggle select dropdown
+  const toggleSelect = (fieldName) => {
+    setSelectStates(prev => ({
+      ...prev,
+      [fieldName]: !prev[fieldName]
+    }));
+  };
+
+  // Helper: Filter options
+  const filterOptions = (options, searchTerm) => {
+    if (!searchTerm) return options;
+    const lowerSearch = searchTerm.toLowerCase();
+    return options.filter(opt => 
+      (opt.label || opt).toLowerCase().includes(lowerSearch)
+    );
+  };
+
+  // Helper: Get option label
+  const getOptionLabel = (option) => {
+    return option?.label || option?.value || option;
+  };
+
+  // MultiSelect komponenta
+  const MultiSelect = ({
+    values = [],
+    onChange,
+    options = [],
+    placeholder,
+    disabled = false
+  }) => {
+    const safeValues = Array.isArray(values) ? values : [];
+    const isOpen = selectStates.strediska;
+    const searchTerm = searchStates.strediska || '';
+    const dropdownRef = useRef(null);
+    const buttonRef = useRef(null);
+    const searchInputRef = useRef(null);
+
+    const filteredOptions = filterOptions(options, searchTerm);
+
+    // Zavřít dropdown při kliku mimo
+    useEffect(() => {
+      if (!isOpen) return;
+
+      const handleClickOutside = (event) => {
+        if (
+          dropdownRef.current && 
+          buttonRef.current &&
+          !dropdownRef.current.contains(event.target) &&
+          !buttonRef.current.contains(event.target)
+        ) {
+          setSelectStates(prev => ({ ...prev, strediska: false }));
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }, [isOpen]);
+
+    // Pozicování pro fixed dropdown
+    useEffect(() => {
+      if (isOpen && buttonRef.current && dropdownRef.current) {
+        const updatePosition = () => {
+          if (!buttonRef.current || !dropdownRef.current) return;
+          const buttonRect = buttonRef.current.getBoundingClientRect();
+          const dropdown = dropdownRef.current;
+
+          dropdown.style.left = buttonRect.left + 'px';
+          dropdown.style.width = buttonRect.width + 'px';
+          dropdown.style.top = (buttonRect.bottom + 2) + 'px';
+        };
+
+        updatePosition();
+        window.addEventListener('scroll', updatePosition, { passive: true, capture: true });
+        window.addEventListener('resize', updatePosition, { passive: true });
+
+        return () => {
+          window.removeEventListener('scroll', updatePosition, { capture: true });
+          window.removeEventListener('resize', updatePosition);
+        };
+      }
+    }, [isOpen]);
+
+    // Auto-focus search
+    useEffect(() => {
+      if (isOpen && searchInputRef.current) {
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 100);
+      }
+    }, [isOpen]);
+
+    const displayValue = safeValues.length > 0
+      ? safeValues.map(val => {
+          const option = options.find(opt => opt.value === val || opt === val);
+          return option ? getOptionLabel(option) : val;
+        }).join(', ')
+      : placeholder;
+
+    const handleToggleOption = (option) => {
+      const optionValue = option.value || option;
+      const newValues = safeValues.includes(optionValue)
+        ? safeValues.filter(v => v !== optionValue)
+        : [...safeValues, optionValue];
+
+      onChange({ target: { value: newValues } });
+    };
+
+    return (
+      <MultiSelectWrapper isOpen={isOpen}>
+        <MultiSelectButton
+          ref={buttonRef}
+          onClick={() => !disabled && toggleSelect('strediska')}
+          disabled={disabled}
+          placeholder={safeValues.length === 0 ? "true" : "false"}
+          value={safeValues.length > 0 ? 'selected' : ''}
+          isOpen={isOpen}
+        >
+          <SelectedValue isEmpty={safeValues.length === 0}>{displayValue}</SelectedValue>
+        </MultiSelectButton>
+
+        {isOpen && !disabled && (
+          <MultiSelectDropdown ref={dropdownRef}>
+            <SearchBox>
+              <SearchIcon>
+                <Search size={16} />
+              </SearchIcon>
+              <SearchInput
+                ref={searchInputRef}
+                type="text"
+                placeholder="Vyhledat středisko..."
+                value={searchTerm}
+                onChange={(e) => setSearchStates(prev => ({
+                  ...prev,
+                  strediska: e.target.value
+                }))}
+              />
+            </SearchBox>
+
+            {filteredOptions.map((option, index) => {
+              const optionValue = option.value || option;
+              const isChecked = safeValues.includes(optionValue);
+
+              return (
+                <MultiSelectOption
+                  key={option.value || index}
+                  level={option.level || 0}
+                  onClick={() => handleToggleOption(option)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    readOnly
+                  />
+                  <span>{getOptionLabel(option)}</span>
+                </MultiSelectOption>
+              );
+            })}
+
+            {filteredOptions.length === 0 && (
+              <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>
+                Žádné středisko nenalezeno
+              </div>
+            )}
+          </MultiSelectDropdown>
+        )}
+      </MultiSelectWrapper>
+    );
+  };
+
   // Content komponenta (sdílená pro normal i fullscreen režim)
   const PageContent = (
     <>
@@ -1319,8 +1704,8 @@ export default function InvoiceEvidencePage() {
               <FieldGroup>
                 <FieldLabel>Předmět</FieldLabel>
                 <div style={{ 
-                  height: '44px',
-                  padding: '0 0.875rem', 
+                  height: '48px',
+                  padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
                   background: orderData ? '#f0f9ff' : '#f9fafb', 
@@ -1339,8 +1724,8 @@ export default function InvoiceEvidencePage() {
               <FieldGroup>
                 <FieldLabel>💰 Celková cena</FieldLabel>
                 <div style={{ 
-                  height: '44px',
-                  padding: '0 0.875rem', 
+                  height: '48px',
+                  padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-end',
@@ -1488,7 +1873,24 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
             </FieldRow>
 
-            {/* GRID 1x - ŘÁDEK 5: Poznámka (celá šířka) */}
+            {/* GRID 1x - ŘÁDEK 5: Střediska (celá šířka) */}
+            <FieldRow $columns="1fr">
+              <FieldGroup>
+                <FieldLabel>
+                  <FontAwesomeIcon icon={faBuilding} />
+                  Střediska
+                </FieldLabel>
+                <MultiSelect
+                  values={formData.fa_strediska_kod}
+                  onChange={(e) => setFormData(prev => ({ ...prev, fa_strediska_kod: e.target.value }))}
+                  options={strediskaOptions}
+                  placeholder={strediskaLoading ? "Načítám střediska..." : "Vyberte střediska..."}
+                  disabled={strediskaLoading}
+                />
+              </FieldGroup>
+            </FieldRow>
+
+            {/* GRID 1x - ŘÁDEK 6: Poznámka (celá šířka) */}
             <FieldRow $columns="1fr">
               <FieldGroup>
                 <FieldLabel>

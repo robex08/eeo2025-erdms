@@ -260,7 +260,7 @@ const About = () => {
           <Subtitle>
             Systém správy a workflow objednávek
             <span style={{ marginLeft: '0.5rem', fontSize: '0.85em', opacity: 0.9 }}>
-              verze {process.env.REACT_APP_BUILD_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || 'N/A'}
+              verze {process.env.REACT_APP_VERSION || 'N/A'}
             </span>
           </Subtitle>
         </Header>

@@ -35,9 +35,9 @@ const SelectWithIcon = styled.div`
 
 const CustomSelectButton = styled.div`
   width: 100%;
-  height: 44px;
+  height: 48px;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '0 1.75rem 0 2.5rem' : '0 1.75rem 0 0.875rem'};
+  padding: ${props => props.hasIcon ? '1px 1.75rem 1px 2.5rem' : '1px 1.75rem 1px 0.875rem'};
   border: 2px solid ${props => props.hasError ? '#dc2626' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
