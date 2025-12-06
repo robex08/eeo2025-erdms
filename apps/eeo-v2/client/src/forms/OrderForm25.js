@@ -4105,19 +4105,6 @@ function OrderForm25() {
   // Byl většinou zakomentovaný, odstraněn pro čistší kód
   // Pokud potřebujete debugovat re-renders, použijte React DevTools Profiler
 
-  // 🔒 Registrace aktivní objednávky (pro detekci konfliktu v InvoiceEvidencePage)
-  useEffect(() => {
-    if (formData.id) {
-      window.__activeOrderFormId = formData.id;
-      window.__activeOrderFormEvCislo = formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`;
-    }
-    
-    return () => {
-      delete window.__activeOrderFormId;
-      delete window.__activeOrderFormEvCislo;
-    };
-  }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
-
   // useEffect pro ESC klávesy v fullscreen režimu
   useEffect(() => {
     if (!isFullscreen) return;
@@ -4607,6 +4594,19 @@ function OrderForm25() {
       _setFormData(newData);
     }
   }, []);
+
+  // 🔒 Registrace aktivní objednávky (pro detekci konfliktu v InvoiceEvidencePage)
+  useEffect(() => {
+    if (formData.id) {
+      window.__activeOrderFormId = formData.id;
+      window.__activeOrderFormEvCislo = formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`;
+    }
+    
+    return () => {
+      delete window.__activeOrderFormId;
+      delete window.__activeOrderFormEvCislo;
+    };
+  }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
 
   // 📸 SNAPSHOT původního stavu formuláře pro detekci změn
   const originalFormDataRef = useRef(null);
@@ -5106,6 +5106,7 @@ function OrderForm25() {
       const currentEditId = editOrderId || loadedData?.id || 'NEW';
       if (onDataLoadedCalledRef.current === currentEditId) {
         if (process.env.NODE_ENV === 'development') {
+          console.warn('⚠️ handleDataLoaded už byl zavolán pro:', currentEditId, '- ignoruji duplicitní volání');
         }
         return;
       }
@@ -5113,6 +5114,7 @@ function OrderForm25() {
       // KRITICKÉ: Nastavit ochranu PŘED jakýmikoliv async operacemi
       onDataLoadedCalledRef.current = currentEditId;
       if (process.env.NODE_ENV === 'development') {
+        console.log('🎯 handleDataLoaded zahájen pro:', currentEditId);
       }
 
       // 🛡️ DALŠÍ OCHRANA: Reset ochrany po 5 sekundách pro případ že by došlo k chybě
@@ -5178,10 +5180,13 @@ function OrderForm25() {
               // ❌ Pokud je draft od JINÉ objednávky, IGNORUJ ho!
               if (currentOrderId && draftOrderId && String(draftOrderId) !== String(currentOrderId)) {
                 // NEPOUŽÍVAT tento draft - patří k jiné objednávce
+                console.warn('⚠️ Draft patří k jiné objednávce, ignoruji:', { draftOrderId, currentOrderId });
               } else if (hasDbData) {
                 // ✅ Draft patří k TÉTO objednávce - použij ho!
                 // 🎯 NOVÁ LOGIKA: LocalStorage VŽDY má prioritu (obsahuje aktuální změny uživatele)
                 // DB slouží jen jako základ pro systémová/immutable pole
+
+                console.log('✅ Mergování DB dat s draftem pro objednávku:', currentOrderId);
 
                 finalData = {
                   ...loadedData, // Nejdřív DB (základní systémová data)
@@ -5191,6 +5196,8 @@ function OrderForm25() {
                   id: loadedData.id,
                   ev_cislo: loadedData.ev_cislo || loadedData.cislo_objednavky,
                   cislo_objednavky: loadedData.cislo_objednavky,
+                  datum_vytvoreni: loadedData.datum_vytvoreni,
+                  datum_posledni_zmeny: loadedData.datum_posledni_zmeny,
                   
                   // ✅ FAKTURY: Preferovat draft faktury (obsahují lokální změny), fallback na DB
                   faktury: (draftData.formData.faktury && draftData.formData.faktury.length > 0) 
@@ -5199,11 +5206,15 @@ function OrderForm25() {
                 };
               } else {
                 // NEW: Použij draft
+                console.log('✅ Použití draftu pro novou objednávku');
                 finalData = draftData.formData;
               }
             }
+          } else {
+            console.log('ℹ️ Žádný draft nenalezen pro user_id:', user_id);
           }
         } catch (error) {
+          console.error('❌ Chyba při načítání draftu:', error);
         }
       }
 
@@ -5538,7 +5549,14 @@ function OrderForm25() {
     // 2. isDraftLoaded=true (inicializace dokončena)
     // 3. NENÍ editOrderId (editace se řeší v handleDataLoaded)
     if (!user_id || !isDraftLoaded || editOrderId) {
+      if (process.env.NODE_ENV === 'development' && editOrderId) {
+        console.log('ℹ️ Draft loading skipped - editOrderId present:', editOrderId);
+      }
       return;
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 Loading draft for NEW order...');
     }
 
     let isActive = true;
@@ -5934,6 +5952,8 @@ function OrderForm25() {
     if (editOrderId) {
       setIsDraftLoaded(false);
       setIsInitialized(false);
+      // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
+      onDataLoadedCalledRef.current = null;
     }
   }, [editOrderId]);
 

@@ -1277,28 +1277,23 @@ export default function InvoiceEvidencePage() {
     if (existingDraft && existingDraft.formData && parseInt(existingDraft.formData.id) === parseInt(order.id)) {
       const draftEvCislo = existingDraft.formData.cislo_objednavky || existingDraft.formData.evidencni_cislo || `#${order.id}`;
       
-      // Zobraz custom confirm dialog
-      const shouldClose = await new Promise((resolve) => {
-        setConfirmDialog({
-          isOpen: true,
-          title: '⚠️ Objednávka je otevřená na formuláři',
-          message: `Objednávka ${draftEvCislo} je právě otevřená v editačním formuláři. Pro zobrazení evidence faktury je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false)
-        });
+      // Zobraz dialog
+      setConfirmDialog({
+        isOpen: true,
+        title: '⚠️ Objednávka je otevřená na formuláři',
+        message: `Objednávka ${draftEvCislo} je právě otevřená v editačním formuláři.\n\nPro otevření objednávky pro přidání/aktualizaci faktur je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
+        onConfirm: () => {
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          window.location.href = '/dashboard';
+        },
+        onCancel: () => {
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+        }
       });
-
-      if (!shouldClose) {
-        return; // Uživatel zrušil načtení
-      }
-
-      // Zavři formulář - redirect na dashboard nebo zavři tab
-      window.location.href = '/dashboard';
       return;
     }
 
     // 🚨 KONTROLA 2: Je objednávka zamčená jiným uživatelem?
-    // Načti základní info o objednávce (lightweight check)
     setOrderLoading(true);
     try {
       const orderCheck = await getOrderV2(order.id, token, username, false); // false = bez enriched dat
@@ -1307,21 +1302,23 @@ export default function InvoiceEvidencePage() {
         const lockInfo = orderCheck.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 
-        // Zobraz custom confirm dialog
-        const shouldContinue = await new Promise((resolve) => {
-          setConfirmDialog({
-            isOpen: true,
-            title: '🔒 Objednávka je zamčená',
-            message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\nChcete přesto zobrazit náhled objednávky? (pouze pro čtení)`,
-            onConfirm: () => resolve(true),
-            onCancel: () => resolve(false)
-          });
+        setOrderLoading(false);
+        
+        // Zobraz dialog
+        setConfirmDialog({
+          isOpen: true,
+          title: '🔒 Objednávka je zamčená',
+          message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\nChcete přesto zobrazit náhled objednávky pro přidání/aktualizaci faktur? (pouze náhled objednávky pro čtení)`,
+          onConfirm: () => {
+            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+            // Pokračuj s načtením
+            proceedWithOrderLoad(order, evCislo);
+          },
+          onCancel: () => {
+            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          }
         });
-
-        if (!shouldContinue) {
-          setOrderLoading(false);
-          return; // Uživatel zrušil zobrazení
-        }
+        return;
       }
     } catch (err) {
       console.warn('⚠️ Nepodařilo se zkontrolovat lock status:', err);
@@ -1330,6 +1327,11 @@ export default function InvoiceEvidencePage() {
     }
 
     // ✅ VŠE OK - pokračuj s načtením
+    proceedWithOrderLoad(order, evCislo);
+  };
+
+  // Helper funkce pro načtení objednávky
+  const proceedWithOrderLoad = (order, evCislo) => {
     setFormData(prev => ({
       ...prev,
       order_id: order.id
@@ -2441,29 +2443,28 @@ export default function InvoiceEvidencePage() {
   );
 
   // Render: normální režim vs fullscreen režim (portal)
-  if (isFullscreen) {
-    return createPortal(
-      <FullscreenOverlay>
-        {PageContent}
-      </FullscreenOverlay>,
-      document.body
-    );
-  }
-
-  // Normální režim
   return (
     <>
-      <PageContainer>
-        {PageContent}
-      </PageContainer>
+      {isFullscreen ? (
+        createPortal(
+          <FullscreenOverlay>
+            {PageContent}
+          </FullscreenOverlay>,
+          document.body
+        )
+      ) : (
+        <PageContainer>
+          {PageContent}
+        </PageContainer>
+      )}
 
-      {/* 🔔 Custom Confirm Dialog */}
-      {confirmDialog.isOpen && (
+      {/* 🔔 Custom Confirm Dialog - VŽDY v portálu nad vším */}
+      {confirmDialog.isOpen && createPortal(
         <ConfirmDialog
           isOpen={confirmDialog.isOpen}
           title={confirmDialog.title}
           message={confirmDialog.message}
-          confirmText="Ano, zavřít formulář"
+          confirmText="Ano, pokračovat"
           cancelText="Zrušit"
           variant="warning"
           icon={faExclamationTriangle}
@@ -2471,15 +2472,14 @@ export default function InvoiceEvidencePage() {
             if (confirmDialog.onConfirm) {
               confirmDialog.onConfirm();
             }
-            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           }}
           onClose={() => {
             if (confirmDialog.onCancel) {
               confirmDialog.onCancel();
             }
-            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           }}
-        />
+        />,
+        document.body
       )}
     </>
   );

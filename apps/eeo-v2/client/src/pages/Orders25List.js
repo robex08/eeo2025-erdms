@@ -2564,29 +2564,48 @@ const ActionMenuButton = styled.button`
     pointer-events: none;
   }
 
-  &:hover:not([data-disabled="true"]) {
+  &:hover:not(:disabled):not([disabled]) {
     background: #f1f5f9;
     color: #1e293b;
   }
 
-  &.edit:hover:not([data-disabled="true"]) {
+  &.edit:hover:not(:disabled):not([disabled]) {
     color: #3b82f6;
     background: #eff6ff;
   }
 
-  &.export-document:hover:not([data-disabled="true"]) {
+  &.export-document:hover:not(:disabled):not([disabled]) {
     color: #059669;
     background: #ecfdf5;
   }
 
-  &.delete:hover:not([data-disabled="true"]) {
+  &.delete:hover:not(:disabled):not([disabled]) {
     color: #dc2626;
     background: #fef2f2;
   }
 
-  &[data-disabled="true"] {
-    opacity: 0.4;
-    cursor: not-allowed;
+  &.create-invoice:hover:not(:disabled):not([disabled]) {
+    color: #0891b2;
+    background: #ecfeff;
+  }
+
+  &.financial-control:hover:not(:disabled):not([disabled]) {
+    color: #7c3aed;
+    background: #f5f3ff;
+  }
+
+  /* Disabled stav */
+  &:disabled,
+  &[disabled] {
+    opacity: 0.7;
+    cursor: not-allowed !important;
+    color: #94a3b8;
+    pointer-events: auto;
+    
+    &:hover {
+      background: transparent;
+      color: #94a3b8;
+    }
   }
 `;
 
@@ -7491,6 +7510,7 @@ const Orders25List = () => {
         const orderId = row.original.id; // Actual order ID from database
         return (
           <ActionMenu onClick={handleActionClick}>
+            {/* 1️⃣ EDIT */}
             <ActionMenuButton
               className="edit"
               data-action="edit"
@@ -7507,6 +7527,37 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faEdit} />
             </ActionMenuButton>
+            {/* 2️⃣ EVIDOVAT FAKTURU */}
+            <ActionMenuButton
+              className="create-invoice"
+              data-action="create-invoice"
+              data-order-index={orderIndex}
+              data-order-id={orderId}
+              title={row.original.hasLocalDraftChanges 
+                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro evidování faktury' 
+                : (!canCreateInvoice(row.original) 
+                  ? 'Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
+                  : 'Evidovat fakturu k této objednávce')}
+              disabled={row.original.hasLocalDraftChanges || !canCreateInvoice(row.original)}
+            >
+              <FontAwesomeIcon icon={faFileInvoice} />
+            </ActionMenuButton>
+            {/* 3️⃣ GENEROVAT DOCX */}
+            <ActionMenuButton
+              className="export-document"
+              data-action="export"
+              data-order-index={orderIndex}
+              data-order-id={orderId}
+              title={row.original.hasLocalDraftChanges 
+                ? 'Objednávka je právě otevřená na formuláři - zavřete ji pro generování DOCX' 
+                : (!canExportDocument(row.original) 
+                  ? 'Generování DOCX je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ' 
+                  : 'Generovat DOCX')}
+              disabled={row.original.hasLocalDraftChanges || !canExportDocument(row.original)}
+            >
+              <FontAwesomeIcon icon={faFileWord} />
+            </ActionMenuButton>
+            {/* 4️⃣ FINANČNÍ KONTROLA */}
             <ActionMenuButton
               className="financial-control"
               data-action="financial-control"
@@ -7520,29 +7571,7 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faListCheck} />
             </ActionMenuButton>
-            <ActionMenuButton
-              className="create-invoice"
-              data-action="create-invoice"
-              data-order-index={orderIndex}
-              data-order-id={orderId}
-              title={!canCreateInvoice(row.original)
-                ? 'Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ'
-                : 'Evidovat fakturu k této objednávce'
-              }
-              disabled={!canCreateInvoice(row.original)}
-            >
-              <FontAwesomeIcon icon={faFileInvoice} />
-            </ActionMenuButton>
-            <ActionMenuButton
-              className="export-document"
-              data-action="export"
-              data-order-index={orderIndex}
-              data-order-id={orderId}
-              title="Generovat DOCX"
-              disabled={!canExportDocument(row.original)}
-            >
-              <FontAwesomeIcon icon={faFileWord} />
-            </ActionMenuButton>
+            {/* 5️⃣ SMAZAT */}
             <ActionMenuButton
               className="delete"
               data-action="delete"
@@ -8169,6 +8198,17 @@ const Orders25List = () => {
 
     // ✅ EDITACE - pokračovat v editaci existující DB objednávky (má lokální změny)
     if (order.hasLocalDraftChanges && order.objednavka_id) {
+      // 🎯 ZVÝRAZNĚNÍ: Ulož ID objednávky pro zvýraznění při návratu na seznam
+      try {
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveUIState({ 
+          highlightOrderId: order.objednavka_id,
+          editOrderId: order.objednavka_id 
+        });
+      } catch (e) {
+        console.error('❌ Chyba při ukládání highlightOrderId:', e);
+      }
+      
       navigate(`/order-form-25?edit=${order.objednavka_id}`);
       return;
     }
@@ -8275,6 +8315,17 @@ const Orders25List = () => {
 
     // 🎯 OPTIMALIZACE: Pokud draft patří k TÉTO objednávce, rovnou naviguj bez reload
     if (isDraftForThisOrder) {
+      // 🎯 ZVÝRAZNĚNÍ: Ulož ID objednávky pro zvýraznění při návratu na seznam
+      try {
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveUIState({ 
+          highlightOrderId: order.id,
+          editOrderId: order.id 
+        });
+      } catch (e) {
+        console.error('❌ Chyba při ukládání highlightOrderId:', e);
+      }
+      
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       // NEMAZAT draft, NENAČÍTAT znovu z DB
       navigate(`/order-form-25?edit=${order.id}`);
@@ -8357,6 +8408,17 @@ const Orders25List = () => {
 
     // 🎯 OPTIMALIZACE: Pokud draft patří k TÉTO objednávce, rovnou naviguj bez reload
     if (isDraftForThisOrder && orderToEdit) {
+      // 🎯 ZVÝRAZNĚNÍ: Ulož ID objednávky pro zvýraznění při návratu na seznam
+      try {
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveUIState({ 
+          highlightOrderId: orderToEdit.id,
+          editOrderId: orderToEdit.id 
+        });
+      } catch (e) {
+        console.error('❌ Chyba při ukládání highlightOrderId:', e);
+      }
+      
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       navigate(`/order-form-25?edit=${orderToEdit.id}&archivovano=1`);
       return;
@@ -8544,6 +8606,17 @@ const Orders25List = () => {
           isLoading: false
         }
       }));
+
+      // 🎯 ZVÝRAZNĚNÍ: Ulož ID objednávky pro zvýraznění při návratu na seznam
+      try {
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveUIState({ 
+          highlightOrderId: orderId,
+          editOrderId: orderId 
+        });
+      } catch (e) {
+        console.error('❌ Chyba při ukládání highlightOrderId:', e);
+      }
 
       // Použij React Router s edit parametrem pro načtení objednávky do editace
       navigate(`/order-form-25?edit=${orderId}&archivovano=1`);
