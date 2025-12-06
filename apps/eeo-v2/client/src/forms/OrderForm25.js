@@ -15211,10 +15211,18 @@ function OrderForm25() {
 
       // ✅ FÁZE 7+: VALIDACE VĚCNÉ SPRÁVNOSTI (per-invoice)
       if (currentPhase >= 7 && !isPokladna && formData.faktury && formData.faktury.length > 0) {
+        const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+        
         formData.faktury.forEach((faktura, index) => {
           // Potvrzení věcné správnosti je POVINNÉ ve FÁZI 7+
           if (faktura.potvrzeni_vecne_spravnosti !== 1 && faktura.potvrzeni_vecne_spravnosti !== true) {
             errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Musíte potvrdit věcnou správnost`;
+          }
+          
+          // Poznámka je POVINNÁ pokud faktura překračuje MAX cenu objednávky
+          const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+          if (fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
+            errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Poznámka je povinná - faktura překračuje maximální cenu objednávky`;
           }
         });
       }
@@ -22152,10 +22160,16 @@ function OrderForm25() {
                                     </FormGroup>
 
                                     <FormGroup style={{gridColumn: '1 / -1'}}>
-                                      <Label>Poznámka k věcné správnosti</Label>
+                                      {(() => {
+                                        const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+                                        const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                        const prekroceno = fakturaCastka > maxCena;
+                                        return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - faktura překračuje MAX cenu)' : ''}</Label>;
+                                      })()}
                                       <TextArea
                                         value={isEditing ? (currentData.vecna_spravnost_poznamka || '') : (faktura.vecna_spravnost_poznamka || '')}
                                         disabled={shouldLockVecnaSpravnost}
+                                        hasError={!!validationErrors[`faktura_${index + 1}_poznamka_vs`]}
                                         onChange={(e) => {
                                           if (!isEditing) {
                                             handleEditFaktura(faktura);
@@ -22181,6 +22195,9 @@ function OrderForm25() {
                                         placeholder="Volitelná poznámka k věcné správnosti..."
                                         rows={2}
                                       />
+                                      {validationErrors[`faktura_${index + 1}_poznamka_vs`] && (
+                                        <ErrorText>{validationErrors[`faktura_${index + 1}_poznamka_vs`]}</ErrorText>
+                                      )}
                                     </FormGroup>
                                   </FormRow>
 
