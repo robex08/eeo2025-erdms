@@ -24547,46 +24547,7 @@ function OrderForm25() {
       </p>
     </ConfirmDialog>
 
-    {/* ❌ DISABLED: Confirm Dialog pro odemčení sekce Věcná správnost */}
-    {false && <ConfirmDialog
-      isOpen={false}
-      title="Odemknout sekci Věcná správnost"
-      confirmText="Ano, odemknout"
-      cancelText="Zrušit"
-      variant="warning"
-      icon={faExclamationTriangle}
-      onConfirm={() => {
-        setShowUnlockVecnaSpravnostConfirm(false);
-        workflowManager.unlockSection('vecna_spravnost');
-
-        // 🔄 AUTOMATICKÉ AKCE PO ODEMČENÍ: Zrušit potvrzení a vrátit na FÁZI 7/8
-        addDebugLog('info', 'UNLOCK', 'vecna-spravnost', '🔓 Sekce Věcná správnost odemčena → vrácení na FÁZI 7/8 (VECNA_SPRAVNOST)');
-
-        // ✅ Zrušit checkbox Věcné správnosti → automaticky odebere ZKONTROLOVANA při uložení
-        handleInputChange('potvrzeni_vecne_spravnosti', 0);
-
-        // Zrušit checkbox Dokončení objednávky
-        handleInputChange('potvrzeni_dokonceni_objednavky', 0);
-
-        // 🔄 REFRESH WORKFLOW: Po odemčení přepočítat fázi a viditelnost sekcí
-        workflowForceRefresh(); // Force re-render pro přepočet všech computed values
-
-        // 🔄 OKAMŽITÉ ULOŽENÍ: Trigger autosave pro aktualizaci stavu (odebere ZKONTROLOVANA)
-        setTimeout(() => triggerAutosave(true), 100);
-
-        // Vynutit přepočet fáze (React state se aktualizuje v dalším renderu)
-        setTimeout(() => {
-          const currentPhaseAfterUnlock = getCurrentPhase();
-          addDebugLog('info', 'UNLOCK', 'phase-recalculated', `✅ Aktuální fáze po odemčení: ${currentPhaseAfterUnlock}/8 (vráceno na VECNA_SPRAVNOST)`);
-        }, 200);
-      }}
-      onClose={() => setShowUnlockVecnaSpravnostConfirm(false)}
-    >
-      <p>Opravdu chcete odemknout sekci <strong>Věcná správnost</strong> pro editaci?</p>
-      <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>
-        Stav <strong>ZKONTROLOVANA</strong> bude odebrán a workflow se vrátí na <strong>FÁZI 7/8</strong>.
-      </p>
-    </ConfirmDialog>}
+    {/* ❌ DISABLED: Confirm Dialog pro odemčení sekce Věcná správnost - již není potřeba */}
 
     {/* 🔓 Confirm Dialog pro odemčení Dokončené objednávky (pro ORDER_MANAGE) */}
     <ConfirmDialog
