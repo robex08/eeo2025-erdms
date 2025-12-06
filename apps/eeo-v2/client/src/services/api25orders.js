@@ -2010,24 +2010,31 @@ export function isPreviewableInBrowser(filename) {
 }
 
 /**
- * Otevře soubor v novém okně prohlížeče (pokud je to možné)
+ * Stáhne soubor přímo bez otevírání dialogu
  * @param {Blob} blob - Blob data souboru
  * @param {string} filename - Název souboru
- * @returns {boolean} True pokud se podařilo otevřít
+ * @returns {boolean} True pokud se podařilo stáhnout
  */
 export function openInBrowser25(blob, filename) {
   try {
+    // Místo window.open používáme přímé stažení
     const url = window.URL.createObjectURL(blob);
-    const newWindow = window.open(url, '_blank');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'soubor';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     
-    // Uvolnění URL po 1 minutě (aby si uživatel mohl soubor prohlédnout)
+    // Uvolnění URL po krátké pauze
     setTimeout(() => {
       window.URL.revokeObjectURL(url);
-    }, 60000);
+    }, 100);
     
-    return newWindow !== null;
+    return true;
   } catch (error) {
-    console.error('Chyba při otevírání v prohlížeči:', error);
+    console.error('Chyba při stahování souboru:', error);
     return false;
   }
 }

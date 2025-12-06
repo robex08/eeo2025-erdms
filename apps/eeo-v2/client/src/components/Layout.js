@@ -2350,7 +2350,7 @@ const Layout = ({ children }) => {
             <HeaderTitle>
               Systém správy a workflow objednávek
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                {process.env.REACT_APP_BUILD_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
+                {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
               </sup>
             </HeaderTitle>
             {isLoggedIn && (
@@ -3144,7 +3144,7 @@ const Layout = ({ children }) => {
         </FooterLeft>
         <FooterCenter>
           <span style={{ display: 'block', textAlign: 'center', lineHeight: '1.5' }}>
-            © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_BUILD_VERSION}
+            © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_VERSION}
           </span>
         </FooterCenter>
       </Footer>

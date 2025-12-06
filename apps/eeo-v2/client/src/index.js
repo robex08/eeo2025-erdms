@@ -53,6 +53,62 @@ root.render(
   </>
 );
 
+// Skryje HTML splash screen po načtení React aplikace
+// Zobrazí se pouze při první návštěvě (nový tab/okno), pak už ne při F5
+const isFirstLoad = !sessionStorage.getItem('app_initialized');
+
+const hideSplashScreen = () => {
+  console.log('✅ Hiding splash screen');
+  document.body.classList.add('app-loaded');
+  
+  const splashScreen = document.getElementById('splash-screen');
+  if (splashScreen) {
+    // Fade-out animace
+    setTimeout(() => {
+      splashScreen.classList.add('hidden');
+      splashScreen.style.display = 'none';
+      // Uvolnění z DOM pro jistotu
+      splashScreen.remove();
+      console.log('✅ Splash screen completely removed');
+    }, 500);
+  }
+};
+
+if (isFirstLoad) {
+  // První načtení - zobrazit splash minimálně 5 sekund
+  sessionStorage.setItem('app_initialized', 'true');
+  
+  const startTime = window.splashStartTime || Date.now();
+  const minDisplayTime = 5000; // 5 sekund při prvním načtení
+  const elapsedTime = Date.now() - startTime;
+  const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
+
+  console.log('🎬 First load - showing splash screen for', remainingTime, 'ms');
+
+  // Nastav timeout a ulož ID pro možnost zrušení
+  const splashTimeout = setTimeout(() => {
+    hideSplashScreen();
+  }, remainingTime);
+
+  // Záložní mechanismus - force skrytí po max 10 sekundách (ochrana proti zamrznutí)
+  setTimeout(() => {
+    const splashScreen = document.getElementById('splash-screen');
+    if (splashScreen && splashScreen.style.display !== 'none') {
+      console.warn('⚠️ Force hiding splash screen after 10s timeout');
+      clearTimeout(splashTimeout);
+      hideSplashScreen();
+    }
+  }, 10000);
+} else {
+  // Další reloady - skrýt splash okamžitě
+  console.log('🔄 Reload detected - hiding splash immediately');
+  const splashScreen = document.getElementById('splash-screen');
+  if (splashScreen) {
+    splashScreen.style.display = 'none';
+    splashScreen.remove();
+  }
+}
+
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals

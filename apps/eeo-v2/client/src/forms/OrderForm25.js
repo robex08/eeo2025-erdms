@@ -386,7 +386,7 @@ const TitleWithButtons = styled.div`
 `;
 
 const HeaderTitle = styled.h1`
-  font-size: 2rem;
+  font-size: 1.8125rem;
   font-weight: 700;
   color: #b45309;
   margin: 0;
@@ -410,7 +410,7 @@ const HeaderTitle = styled.h1`
 
   /* Horní index pro ID objednávky */
   .order-id-badge {
-    font-size: 0.45em;
+    font-size: 0.4em;
     font-weight: 500;
     color: #6b7280;
     margin-left: 0.1em;
@@ -11198,6 +11198,15 @@ function OrderForm25() {
 
     // Aktualizovat OKAMŽITĚ při mount
     updateHeaderHeight();
+    
+    // Opakovat několikrát po mount pro jistotu (dynamický obsah se může renderovat postupně)
+    const timeouts = [
+      setTimeout(updateHeaderHeight, 50),
+      setTimeout(updateHeaderHeight, 100),
+      setTimeout(updateHeaderHeight, 200),
+      setTimeout(updateHeaderHeight, 500)
+    ];
+
     window.addEventListener('resize', updateHeaderHeight);
 
     // Aktualizovat také při změnách obsahu headeru (ResizeObserver)
@@ -11210,10 +11219,19 @@ function OrderForm25() {
     }
 
     return () => {
+      timeouts.forEach(t => clearTimeout(t));
       window.removeEventListener('resize', updateHeaderHeight);
       observer.disconnect();
     };
   }, []);
+  
+  // 🔄 Přepočítat výšku headeru při změně stavu objednávky nebo workflow
+  useEffect(() => {
+    if (fixedHeaderRef.current) {
+      const height = fixedHeaderRef.current.offsetHeight;
+      document.documentElement.style.setProperty('--fixed-header-height', `${height + 20}px`);
+    }
+  }, [isOrderCompleted, shouldLockAllSections, formData.stav_workflow_kod, formData.ev_cislo, formData.dokoncil_id]);
 
   // Načtení evidenčního čísla - POUZE pro nové objednávky, POUZE JEDNOU!
   useEffect(() => {
@@ -12556,14 +12574,10 @@ function OrderForm25() {
         return;
       }
 
-      const serverAttachments = rawAttachments.map(mapApiAttachmentToLocal);      addDebugLog('success', 'ATTACHMENTS', 'load-success',
+      const serverAttachments = rawAttachments.map(mapApiAttachmentToLocal);
+      
+      addDebugLog('success', 'ATTACHMENTS', 'load-success',
         `Načteno ${serverAttachments.length} příloh ze serveru`);
-
-      // Logování pro debug
-      if (serverAttachments.length > 0) {
-        const totalSize = serverAttachments.reduce((sum, att) => sum + (att.size || 0), 0);
-
-      }
 
       // Nahraď lokální přílohy těmi ze serveru
       setAttachments(serverAttachments);
@@ -12596,8 +12610,14 @@ function OrderForm25() {
       addDebugLog('info', 'ATTACHMENTS', 'download-import',
         `Stahování importované přílohy ${attachment.name} ze starého systému: ${oldUrl}`);
 
-      // Otevřít v novém okně/tabu pro stažení
-      window.open(oldUrl, '_blank');
+      // Stáhnout přímo bez dialogu
+      const link = document.createElement('a');
+      link.href = oldUrl;
+      link.download = attachment.originalni_nazev_souboru;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
       showToast(`📥 Příloha "${attachment.originalni_nazev_souboru}" se stahuje ze starého systému`, 'info');
       return;
@@ -12614,32 +12634,8 @@ function OrderForm25() {
         token                   // token
       );
 
-      // Zkontrolovat, zda lze soubor zobrazit v prohlížeči
-      const { isPreviewableInBrowser, openInBrowser25 } = await import('../services/api25orders');
-      
-      if (isPreviewableInBrowser(attachment.name)) {
-        // Pokusit se otevřít v prohlížeči
-        const opened = openInBrowser25(blob, attachment.name);
-        
-        if (opened) {
-          addDebugLog('success', 'ATTACHMENTS', 'preview-opened',
-            `Příloha ${attachment.name} otevřena v prohlížeči`);
-          
-          // Nabídnout možnost stažení
-          const shouldDownload = window.confirm(
-            `Příloha "${attachment.name}" byla otevřena v novém okně.\n\nChcete ji také stáhnout?`
-          );
-          
-          if (shouldDownload) {
-            createDownloadLink25(blob, attachment.name);
-            addDebugLog('success', 'ATTACHMENTS', 'download-success',
-              `Příloha ${attachment.name} stažena úspěšně`);
-          }
-          return;
-        }
-      }
-      
-      // Pokud nelze zobrazit v prohlížeči, přímo stáhnout
+      // Přímo stáhnout soubor bez dialogů
+      const { createDownloadLink25 } = await import('../services/api25orders');
       createDownloadLink25(blob, attachment.name);
 
       addDebugLog('success', 'ATTACHMENTS', 'download-success',
@@ -17104,7 +17100,7 @@ function OrderForm25() {
                     alignItems: 'center',
                     gap: '8px',
                     padding: '4px 10px',
-                    marginLeft: '0rem',
+                    marginLeft: '0.5rem',
                     background: isPriceExceeded
                       ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
                       : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',

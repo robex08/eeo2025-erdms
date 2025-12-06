@@ -40,6 +40,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
 );
@@ -159,6 +160,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
       // Fallback 2: Seznam objednávek
       navigate('/orders25-list', { replace: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, navigate, location.pathname]);
 
   return null;
@@ -357,6 +359,7 @@ function App() {
     return () => {
       window.removeEventListener('trigger-initial-exchange-rates', handleInitialExchangeRates);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
   // NOTE: navigate/useLocation must be called inside Router context. We render
@@ -364,7 +367,13 @@ function App() {
   // If auth initialization is still in progress, don't mount the Router/routes.
   // This avoids a premature redirect to /login when a stored token is being validated
   // and preserves current location (so refresh on /orders-new doesn't lose the form).
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Suspense fallback={null}>
+        <SplashScreen message="Načítání autentizace..." />
+      </Suspense>
+    );
+  }
 
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
