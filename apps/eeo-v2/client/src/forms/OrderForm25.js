@@ -22064,7 +22064,7 @@ function OrderForm25() {
                                       <Label>Umístění majetku</Label>
                                       <Input
                                         value={isEditing ? (currentData.vecna_spravnost_umisteni_majetku || '') : (faktura.vecna_spravnost_umisteni_majetku || '')}
-                                        disabled={shouldLockFaktury}
+                                        disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           if (!isEditing) {
                                             handleEditFaktura(faktura);
