@@ -1101,6 +1101,7 @@ export async function createInvoiceWithAttachmentV2({
   order_id,
   file,
   fa_cislo_vema,
+  fa_typ = 'BEZNA',
   fa_datum_vystaveni,
   fa_castka,
   fa_datum_splatnosti = null,
@@ -1146,6 +1147,7 @@ export async function createInvoiceWithAttachmentV2({
 
     // Povinné fieldy
     formData.append('fa_cislo_vema', String(fa_cislo_vema));
+    formData.append('fa_typ', String(fa_typ));
     formData.append('fa_datum_vystaveni', fa_datum_vystaveni);
     formData.append('fa_castka', String(fa_castka));
 
@@ -1268,6 +1270,7 @@ export async function createInvoiceV2({
   username,
   order_id,
   fa_cislo_vema,
+  fa_typ = 'BEZNA',
   fa_datum_vystaveni,
   fa_castka,
   fa_datum_splatnosti = null,
@@ -1305,6 +1308,7 @@ export async function createInvoiceV2({
       username,
       token,
       fa_cislo_vema: String(fa_cislo_vema),
+      fa_typ: String(fa_typ),
       fa_datum_vystaveni,
       fa_castka: String(fa_castka),
       fa_dorucena: Number(fa_dorucena)

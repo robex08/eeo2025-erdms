@@ -9,14 +9,16 @@ import {
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faBoltLightning, faTimesCircle, faDashboard
+  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { translateErrorMessage } from '../utils/errorTranslation';
 import { TooltipWrapper } from '../styles/GlobalTooltip';
 import DatePicker from '../components/DatePicker';
-import { listInvoices25, listOrderInvoiceAttachments25 } from '../services/api25invoices';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
+import { listInvoices25, listOrderInvoiceAttachments25, deleteInvoiceV2 } from '../services/api25invoices';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -907,6 +909,241 @@ const LoadingSubtext = styled.div`
 `;
 
 // =============================================================================
+// SLIDE PANEL - Detail faktury styled components
+// =============================================================================
+
+const DetailViewWrapper = styled.div`
+  position: relative;
+  min-height: 100%;
+`;
+
+const WatermarkIcon = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 280px;
+  color: rgba(0, 0, 0, 0.025);
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+`;
+
+const ContentWrapper = styled.div`
+  position: relative;
+  z-index: 1;
+`;
+
+const DetailSection = styled.div`
+  margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const SectionTitle = styled.h3`
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+`;
+
+const InfoGrid = styled.div`
+  display: grid;
+  gap: 1rem;
+  
+  /* Dva sloupce pro větší obrazovky */
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+`;
+
+const InfoRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+`;
+
+const InfoRowFullWidth = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  grid-column: 1 / -1; /* Roztažení přes oba sloupce */
+`;
+
+const InfoIcon = styled.div`
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border-radius: 6px;
+  color: #3b82f6;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+`;
+
+const InfoContent = styled.div`
+  flex: 1;
+`;
+
+const InfoLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 0.25rem;
+`;
+
+const InfoValue = styled.div`
+  font-size: 0.9375rem;
+  color: #1e293b;
+  font-weight: 500;
+  word-break: break-word;
+`;
+
+const Badge = styled.span`
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: ${props => props.$color || '#e2e8f0'};
+  color: ${props => props.$textColor || '#475569'};
+`;
+
+const ClickableValue = styled.span`
+  cursor: pointer;
+  color: #3b82f6;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  
+  &:hover {
+    color: #1e40af;
+    background: #eff6ff;
+    text-decoration: underline;
+  }
+  
+  &:active {
+    transform: scale(0.98);
+  }
+`;
+
+const ActionButtonsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e2e8f0;
+`;
+
+const SlideActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid ${props => props.$borderColor || '#3b82f6'};
+  background: ${props => props.$bg || 'white'};
+  color: ${props => props.$color || '#3b82f6'};
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.$hoverBg || '#eff6ff'};
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const AttachmentsGrid = styled.div`
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+`;
+
+const AttachmentItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    transform: translateX(4px);
+  }
+`;
+
+const AttachmentIcon = styled.div`
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.$color || '#f1f5f9'};
+  border-radius: 6px;
+  color: ${props => props.$iconColor || '#3b82f6'};
+  flex-shrink: 0;
+  font-size: 0.875rem;
+`;
+
+const AttachmentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AttachmentName = styled.div`
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1e293b;
+  word-break: break-word;
+`;
+
+const AttachmentMeta = styled.div`
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.125rem;
+`;
+
+const AttachmentAction = styled.div`
+  color: #3b82f6;
+  font-size: 1rem;
+`;
+
+// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
@@ -978,10 +1215,31 @@ const Invoices25List = () => {
     }
   }, [LS_KEY]);
   
-  // Kontrola, jestli uživatel má admin práva nebo INVOICE_MANAGE
+  // Kontrola oprávnění
   const canViewAllInvoices = React.useMemo(() => {
     return hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('ORDER_MANAGE'));
   }, [hasPermission]);
+  
+  const canManageInvoices = React.useMemo(() => {
+    return hasPermission && hasPermission('INVOICE_MANAGE');
+  }, [hasPermission]);
+  
+  const isAdmin = React.useMemo(() => {
+    return hasPermission && hasPermission('ADMIN');
+  }, [hasPermission]);
+  
+  // State pro delete dialog
+  const [deleteDialog, setDeleteDialog] = useState({
+    isOpen: false,
+    invoice: null
+  });
+  const [deleteType, setDeleteType] = useState('soft');
+  
+  // State pro slide panel (náhled faktury)
+  const [slidePanelOpen, setSlidePanelOpen] = useState(false);
+  const [slidePanelInvoice, setSlidePanelInvoice] = useState(null);
+  const [slidePanelLoading, setSlidePanelLoading] = useState(false);
+  const [slidePanelAttachments, setSlidePanelAttachments] = useState([]);
   
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
@@ -1413,19 +1671,72 @@ const Invoices25List = () => {
     setSelectedYear(parseInt(e.target.value, 10));
   };
 
-  const handleViewInvoice = (invoice) => {
-    console.log('View invoice:', invoice);
-    showToast?.(`Zobrazit fakturu ${invoice.cislo_faktury}`, { type: 'info' });
+  const handleViewInvoice = async (invoice) => {
+    setSlidePanelInvoice(invoice);
+    setSlidePanelOpen(true);
+    setSlidePanelAttachments([]);
+    
+    // Načti přílohy faktury
+    if (invoice.id) {
+      try {
+        setSlidePanelLoading(true);
+        const attachments = await listOrderInvoiceAttachments25(invoice.id, token, username);
+        setSlidePanelAttachments(attachments || []);
+      } catch (error) {
+        console.error('Chyba při načítání příloh:', error);
+        setSlidePanelAttachments([]);
+      } finally {
+        setSlidePanelLoading(false);
+      }
+    }
   };
 
   const handleEditInvoice = (invoice) => {
-    console.log('Edit invoice:', invoice);
-    showToast?.(`Editovat fakturu ${invoice.cislo_faktury}`, { type: 'info' });
+    // Navigace na evidenční stránku s parametrem pro editaci
+    navigate('/invoice-evidence', { 
+      state: { 
+        editInvoiceId: invoice.id,
+        orderIdForLoad: invoice.objednavka_id || null
+      } 
+    });
   };
 
   const handleDeleteInvoice = (invoice) => {
-    console.log('Delete invoice:', invoice);
-    showToast?.(`Smazat fakturu ${invoice.cislo_faktury}`, { type: 'info' });
+    // Otevře dialog a resetuje typ mazání na 'soft'
+    setDeleteType('soft');
+    setDeleteDialog({
+      isOpen: true,
+      invoice
+    });
+  };
+  
+  const confirmDeleteInvoice = async (hardDelete = false) => {
+    const { invoice } = deleteDialog;
+    
+    if (!invoice) return;
+    
+    try {
+      showProgress?.('Odstraňuji fakturu...');
+      
+      await deleteInvoiceV2(invoice.id, token, username, hardDelete);
+      
+      showToast?.(`Faktura ${invoice.cislo_faktury} byla úspěšně ${hardDelete ? 'trvale smazána' : 'odstraněna'}`, { 
+        type: 'success' 
+      });
+      
+      // Zavřít dialog
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
+      // Obnovit seznam
+      loadData();
+      
+    } catch (err) {
+      console.error('Error deleting invoice:', err);
+      showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+    } finally {
+      hideProgress?.();
+    }
   };
 
   // Generate years for select
@@ -1809,6 +2120,7 @@ const Invoices25List = () => {
                         value={columnFilters.datum_doruceni || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
                         placeholder="Datum"
+                        variant="compact"
                       />
                     </div>
                   </TableHeader>
@@ -1820,6 +2132,7 @@ const Invoices25List = () => {
                         value={columnFilters.datum_vystaveni || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
                         placeholder="Datum"
+                        variant="compact"
                       />
                     </div>
                   </TableHeader>
@@ -1956,6 +2269,7 @@ const Invoices25List = () => {
                         value={columnFilters.datum_splatnosti || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
                         placeholder="Datum"
+                        variant="compact"
                       />
                     </div>
                   </TableHeader>
@@ -2113,7 +2427,7 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell>
                       <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#94a3b8' }} />
-                      {invoice.cislo_objednavky || invoice.objednavka_id}
+                      {invoice.cislo_objednavky || (invoice.objednavka_id && invoice.objednavka_id !== 0 ? invoice.objednavka_id : 'Nepřiřazena')}
                     </TableCell>
                     <TableCell className="right">
                       <strong>{formatCurrency(invoice.castka)}</strong>
@@ -2152,24 +2466,28 @@ const Invoices25List = () => {
                             <FontAwesomeIcon icon={faEye} />
                           </ActionMenuButton>
                         </TooltipWrapper>
-                        <TooltipWrapper text="Editovat" preferredPosition="left">
-                          <ActionMenuButton 
-                            className="edit"
-                            onClick={() => handleEditInvoice(invoice)}
-                            title="Editovat"
-                          >
-                            <FontAwesomeIcon icon={faEdit} />
-                          </ActionMenuButton>
-                        </TooltipWrapper>
-                        <TooltipWrapper text="Smazat" preferredPosition="left">
-                          <ActionMenuButton 
-                            className="delete"
-                            onClick={() => handleDeleteInvoice(invoice)}
-                            title="Smazat"
-                          >
-                            <FontAwesomeIcon icon={faTrash} />
-                          </ActionMenuButton>
-                        </TooltipWrapper>
+                        {canManageInvoices && (
+                          <TooltipWrapper text="Editovat" preferredPosition="left">
+                            <ActionMenuButton 
+                              className="edit"
+                              onClick={() => handleEditInvoice(invoice)}
+                              title="Editovat"
+                            >
+                              <FontAwesomeIcon icon={faEdit} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
+                        {(canManageInvoices || isAdmin) && (
+                          <TooltipWrapper text="Smazat" preferredPosition="left">
+                            <ActionMenuButton 
+                              className="delete"
+                              onClick={() => handleDeleteInvoice(invoice)}
+                              title="Smazat"
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
                       </ActionMenu>
                     </TableCell>
                   </TableRow>
@@ -2237,6 +2555,744 @@ const Invoices25List = () => {
             )}
           </TableWrapper>
       </Container>
+      
+      {/* Delete Confirmation Dialog */}
+      {deleteDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={deleteDialog.isOpen}
+          onClose={() => {
+            setDeleteDialog({ isOpen: false, invoice: null });
+            setDeleteType('soft');
+          }}
+          onConfirm={() => confirmDeleteInvoice(deleteType === 'hard')}
+          title="Odstranit fakturu"
+          icon={faTrash}
+          variant="danger"
+          confirmText={isAdmin ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat (soft)") : "Smazat (soft)"}
+          cancelText="Zrušit"
+        >
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '1.5rem',
+            padding: '1rem 0'
+          }}>
+            {/* LEVÝ SLOUPEC - Volba typu smazání */}
+            <div>
+              <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                Opravdu chcete smazat fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+              </p>
+
+              {isAdmin ? (
+                <>
+                  {/* Výběr typu mazání pro adminy */}
+                  <div style={{
+                    background: '#f8fafc',
+                    border: '2px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '1rem'
+                  }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                      🔧 Vyberte typ smazání:
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.75rem',
+                        cursor: 'pointer',
+                        padding: '0.75rem',
+                        border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                        borderRadius: '6px',
+                        background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                        transition: 'all 0.2s'
+                      }}>
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="soft"
+                          checked={deleteType === 'soft'}
+                          onChange={(e) => setDeleteType(e.target.value)}
+                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
+                            Měkké smazání (SOFT DELETE)
+                          </div>
+                          <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                            Faktura bude označena jako neaktivní. Lze později obnovit.
+                          </div>
+                        </div>
+                      </label>
+
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '0.75rem',
+                        cursor: 'pointer',
+                        padding: '0.75rem',
+                        border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
+                        borderRadius: '6px',
+                        background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                        transition: 'all 0.2s'
+                      }}>
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="hard"
+                          checked={deleteType === 'hard'}
+                          onChange={(e) => setDeleteType(e.target.value)}
+                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
+                            ⚠️ Úplné smazání (HARD DELETE)
+                          </div>
+                          <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>
+                            <strong>NEVRATNÉ!</strong> Smaže vše včetně příloh a historie.
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{
+                  background: '#fef3c7',
+                  border: '2px solid #fcd34d',
+                  borderRadius: '8px',
+                  padding: '1rem'
+                }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
+                    ℹ️ Měkké smazání (SOFT DELETE)
+                  </h4>
+                  <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
+                    Faktura bude pouze <strong>označena jako neaktivní</strong>.
+                    Administrátor ji může později obnovit.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* PRAVÝ SLOUPEC - Detail faktury */}
+            <div style={{
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569' }}>
+                🧾 Detail faktury ke smazání:
+              </h4>
+              <div style={{ margin: 0, color: '#475569' }}>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'white',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+                    {deleteDialog.invoice?.cislo_faktury}
+                  </div>
+                  {deleteDialog.invoice?.cislo_objednavky && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Objednávka:</strong> {deleteDialog.invoice.cislo_objednavky}
+                    </div>
+                  )}
+                  {deleteDialog.invoice?.castka && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Částka:</strong> {formatCurrency(deleteDialog.invoice.castka)}
+                    </div>
+                  )}
+                  {deleteDialog.invoice?.fa_datum_vystaveni && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Vystaveno:</strong> {new Date(deleteDialog.invoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ')}
+                    </div>
+                  )}
+                  {deleteDialog.invoice?.fa_datum_splatnosti && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                      <strong>Splatnost:</strong> {new Date(deleteDialog.invoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ')}
+                    </div>
+                  )}
+                </div>
+                
+                {deleteDialog.invoice?.fa_zaplacena ? (
+                  <div style={{
+                    padding: '0.5rem',
+                    background: '#d1fae5',
+                    border: '1px solid #10b981',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    color: '#065f46',
+                    fontWeight: '600'
+                  }}>
+                    ✅ Faktura je zaplacená
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '0.5rem',
+                    background: '#fee2e2',
+                    border: '1px solid #ef4444',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    color: '#991b1b',
+                    fontWeight: '600'
+                  }}>
+                    ⚠️ Faktura není zaplacená
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* Slide Panel - Detail faktury */}
+      <SlideInDetailPanel
+        isOpen={slidePanelOpen}
+        onClose={() => {
+          setSlidePanelOpen(false);
+          setSlidePanelInvoice(null);
+        }}
+        entityType="invoices"
+        entityId={slidePanelInvoice?.id}
+        loading={slidePanelLoading}
+      >
+        {slidePanelInvoice && (
+          <DetailViewWrapper>
+            <WatermarkIcon>
+              <FontAwesomeIcon icon={faFileInvoice} />
+            </WatermarkIcon>
+            <ContentWrapper>
+              {/* Základní informace */}
+              <DetailSection>
+                <SectionTitle>Základní informace</SectionTitle>
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faFileInvoice} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Číslo faktury</InfoLabel>
+                      <InfoValue style={{ fontSize: '1.125rem', fontWeight: '600' }}>
+                        <ClickableValue
+                          onClick={() => {
+                            setSlidePanelOpen(false);
+                            handleEditInvoice(slidePanelInvoice);
+                          }}
+                          title="Klikněte pro úpravu faktury"
+                        >
+                          {slidePanelInvoice.cislo_faktury}
+                          <FontAwesomeIcon icon={faEdit} style={{ fontSize: '0.85rem' }} />
+                        </ClickableValue>
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+
+                  <InfoRow>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faCheckCircle} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Stav platby</InfoLabel>
+                      <InfoValue>
+                        <StatusBadge $status={getInvoiceStatus(slidePanelInvoice)}>
+                          <FontAwesomeIcon icon={getStatusIcon(getInvoiceStatus(slidePanelInvoice))} />
+                          {' '}
+                          {getStatusLabel(getInvoiceStatus(slidePanelInvoice))}
+                        </StatusBadge>
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRow>
+
+                  {slidePanelInvoice.fa_typ && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faFileAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Typ faktury</InfoLabel>
+                        <InfoValue>
+                          <Badge 
+                            $color={
+                              slidePanelInvoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
+                              slidePanelInvoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
+                              slidePanelInvoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
+                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9'
+                            }
+                            $textColor={
+                              slidePanelInvoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
+                              slidePanelInvoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
+                              slidePanelInvoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
+                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
+                            }
+                          >
+                            {slidePanelInvoice.fa_typ}
+                          </Badge>
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {(slidePanelInvoice.fa_zaplacena === 1 || slidePanelInvoice.fa_zaplacena === true) && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Zaplaceno</InfoLabel>
+                        <InfoValue style={{ color: '#10b981', fontWeight: '700' }}>
+                          ✅ Faktura je uhrazená
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {(slidePanelInvoice.fa_dorucena === 1 || slidePanelInvoice.fa_dorucena === true) && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Doručení</InfoLabel>
+                        <InfoValue style={{ color: '#3b82f6', fontWeight: '600' }}>
+                          📬 Faktura doručena
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
+              {/* Připojená objednávka */}
+              {slidePanelInvoice.cislo_objednavky && (
+                <DetailSection>
+                  <SectionTitle>Připojená objednávka</SectionTitle>
+                  <InfoGrid>
+                    <InfoRowFullWidth>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faFileAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Číslo objednávky</InfoLabel>
+                        <InfoValue style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+                          <ClickableValue
+                            onClick={() => {
+                              if (slidePanelInvoice.objednavka_id) {
+                                setSlidePanelOpen(false);
+                                navigate('/orders25', { 
+                                  state: { 
+                                    editOrderId: slidePanelInvoice.objednavka_id,
+                                    returnTo: '/invoices25'
+                                  } 
+                                });
+                              }
+                            }}
+                            title="Klikněte pro úpravu objednávky"
+                          >
+                            {slidePanelInvoice.cislo_objednavky}
+                            <FontAwesomeIcon icon={faEdit} style={{ fontSize: '0.85rem' }} />
+                          </ClickableValue>
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRowFullWidth>
+                    
+                    {slidePanelInvoice.predmet && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faFileAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Předmět objednávky</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                            {slidePanelInvoice.predmet}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+
+                    {slidePanelInvoice.ev_cislo && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faFileAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Evidenční číslo</InfoLabel>
+                          <InfoValue>{slidePanelInvoice.ev_cislo}</InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.castka_celkem && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faMoneyBill} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Částka objednávky</InfoLabel>
+                          <InfoValue style={{ fontWeight: '600', color: '#1e40af' }}>
+                            {formatCurrency(slidePanelInvoice.castka_celkem)}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.dodavatel_nazev && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faBuilding} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Dodavatel z objednávky</InfoLabel>
+                          <InfoValue>{slidePanelInvoice.dodavatel_nazev}</InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.datum_objednani && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Datum objednání</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.datum_objednani).toLocaleDateString('cs-CZ')}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Dodavatel z faktury */}
+              {slidePanelInvoice.nazev_dodavatele && !slidePanelInvoice.dodavatel_nazev && (
+                <DetailSection>
+                  <SectionTitle>Dodavatel</SectionTitle>
+                  <InfoGrid>
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faBuilding} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Název</InfoLabel>
+                        <InfoValue>{slidePanelInvoice.nazev_dodavatele}</InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                    {slidePanelInvoice.ico_dodavatele && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faIdCard} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>IČO</InfoLabel>
+                          <InfoValue>{slidePanelInvoice.ico_dodavatele}</InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Finanční údaje */}
+              <DetailSection>
+                <SectionTitle>Finanční údaje</SectionTitle>
+                <InfoGrid>
+                  <InfoRowFullWidth>
+                    <InfoIcon>
+                      <FontAwesomeIcon icon={faMoneyBill} />
+                    </InfoIcon>
+                    <InfoContent>
+                      <InfoLabel>Částka faktury</InfoLabel>
+                      <InfoValue style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
+                        {formatCurrency(slidePanelInvoice.castka)}
+                      </InfoValue>
+                    </InfoContent>
+                  </InfoRowFullWidth>
+
+                  {slidePanelInvoice.vs && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Variabilní symbol</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
+                          {slidePanelInvoice.vs}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.ks && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Konstantní symbol</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace' }}>
+                          {slidePanelInvoice.ks}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.ss && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Specifický symbol</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace' }}>
+                          {slidePanelInvoice.ss}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
+              {/* Data */}
+              <DetailSection>
+                <SectionTitle>📅 Důležitá data</SectionTitle>
+                <InfoGrid>
+                  {slidePanelInvoice.fa_datum_vystaveni && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum vystavení</InfoLabel>
+                        <InfoValue>
+                          {new Date(slidePanelInvoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                  
+                  {slidePanelInvoice.fa_datum_splatnosti && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum splatnosti</InfoLabel>
+                        <InfoValue style={{ 
+                          fontWeight: '600',
+                          color: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#dc2626' : '#1e293b'
+                        }}>
+                          {new Date(slidePanelInvoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                          {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
+                            <Badge $color="#fee2e2" $textColor="#991b1b" style={{ marginLeft: '0.5rem' }}>
+                              Po splatnosti
+                            </Badge>
+                          )}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_prijeti && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum přijetí</InfoLabel>
+                        <InfoValue>
+                          {new Date(slidePanelInvoice.fa_datum_prijeti).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_doruceni && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum doručení</InfoLabel>
+                        <InfoValue>
+                          {new Date(slidePanelInvoice.fa_datum_doruceni).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_uhrazeni && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum uhrazení</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600', color: '#10b981' }}>
+                          {new Date(slidePanelInvoice.fa_datum_uhrazeni).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                          {' ✅'}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_platby && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum platby</InfoLabel>
+                        <InfoValue>
+                          {new Date(slidePanelInvoice.fa_datum_platby).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_zuctovani && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum zúčtování</InfoLabel>
+                        <InfoValue>
+                          {new Date(slidePanelInvoice.fa_datum_zuctovani).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
+              {/* Poznámka */}
+              {slidePanelInvoice.fa_poznamka && (
+                <DetailSection>
+                  <SectionTitle>Poznámka</SectionTitle>
+                  <InfoGrid>
+                    <InfoRowFullWidth>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faFileAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Poznámka k faktuře</InfoLabel>
+                        <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                          {slidePanelInvoice.fa_poznamka}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRowFullWidth>
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Přílohy */}
+              {slidePanelAttachments.length > 0 && (
+                <DetailSection>
+                  <SectionTitle>Přílohy ({slidePanelAttachments.length})</SectionTitle>
+                  <AttachmentsGrid>
+                    {slidePanelAttachments.map((attachment, index) => {
+                      const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+                      const fileSize = attachment.velikost_souboru || attachment.file_size;
+                      const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+                      
+                      // Ikona a barva podle typu souboru
+                      let icon = faPaperclip;
+                      let iconColor = '#3b82f6';
+                      let bgColor = '#eff6ff';
+                      
+                      if (['pdf'].includes(fileExtension)) {
+                        icon = faFileAlt;
+                        iconColor = '#dc2626';
+                        bgColor = '#fee2e2';
+                      } else if (['doc', 'docx'].includes(fileExtension)) {
+                        icon = faFileAlt;
+                        iconColor = '#2563eb';
+                        bgColor = '#dbeafe';
+                      } else if (['xls', 'xlsx'].includes(fileExtension)) {
+                        icon = faFileAlt;
+                        iconColor = '#059669';
+                        bgColor = '#d1fae5';
+                      } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+                        icon = faFileAlt;
+                        iconColor = '#7c3aed';
+                        bgColor = '#ede9fe';
+                      }
+
+                      const formatFileSize = (bytes) => {
+                        if (!bytes) return '';
+                        const kb = bytes / 1024;
+                        if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                        return `${(kb / 1024).toFixed(1)} MB`;
+                      };
+
+                      return (
+                        <AttachmentItem
+                          key={attachment.id || index}
+                          onClick={() => {
+                            if (attachment.url || attachment.file_path) {
+                              window.open(attachment.url || attachment.file_path, '_blank');
+                            }
+                          }}
+                          title="Klikněte pro stažení"
+                        >
+                          <AttachmentIcon $color={bgColor} $iconColor={iconColor}>
+                            <FontAwesomeIcon icon={icon} />
+                          </AttachmentIcon>
+                          <AttachmentInfo>
+                            <AttachmentName>{fileName}</AttachmentName>
+                            {fileSize && (
+                              <AttachmentMeta>
+                                {formatFileSize(fileSize)} • {fileExtension.toUpperCase()}
+                              </AttachmentMeta>
+                            )}
+                          </AttachmentInfo>
+                          <AttachmentAction>
+                            <FontAwesomeIcon icon={faDownload} />
+                          </AttachmentAction>
+                        </AttachmentItem>
+                      );
+                    })}
+                  </AttachmentsGrid>
+                </DetailSection>
+              )}
+
+
+            </ContentWrapper>
+          </DetailViewWrapper>
+        )}
+      </SlideInDetailPanel>
     </>
   );
 };

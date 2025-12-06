@@ -1208,7 +1208,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
 
       {/* SEKCE 7: FAKTURY */}
       {orderData.faktury && orderData.faktury.length > 0 && (
-        <Section>
+        <Section data-section="faktury">
           <SectionHeader $theme="blue" $isActive={!collapsed.fakturace} onClick={() => toggleSection('fakturace')}>
             <SectionTitle $theme="blue">
               <FontAwesomeIcon icon={faMoneyBillWave} />

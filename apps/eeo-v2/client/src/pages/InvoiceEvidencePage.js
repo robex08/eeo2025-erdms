@@ -28,7 +28,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
-import { createInvoiceWithAttachmentV2, createInvoiceV2 } from '../services/api25invoices';
+import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { getStrediska25 } from '../services/api25orders';
@@ -255,6 +255,7 @@ const SectionTitle = styled.h2`
   margin: 0 0 1.5rem 0;
   padding-bottom: 12px;
   border-bottom: 2px solid #3498db;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -934,6 +935,7 @@ const MultiSelectOption = styled.div`
 
 export default function InvoiceEvidencePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orderId } = useParams(); // URL param
   const { token, username, user_id, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
@@ -1039,6 +1041,8 @@ export default function InvoiceEvidencePage() {
     onCancel: null
   });
 
+
+
   // Form data
   const [formData, setFormData] = useState({
     order_id: orderId || '',
@@ -1092,6 +1096,83 @@ export default function InvoiceEvidencePage() {
     }
   }, [token, username]);
 
+  // Načtení faktury při editaci (z location.state)
+  useEffect(() => {
+    const loadInvoiceForEdit = async () => {
+      const editInvoiceId = location.state?.editInvoiceId;
+      const orderIdForLoad = location.state?.orderIdForLoad;
+      
+      if (!editInvoiceId || !token || !username) {
+        return;
+      }
+      
+      console.log('📝 Načítám fakturu pro editaci, ID:', editInvoiceId);
+      setLoading(true);
+      setEditingInvoiceId(editInvoiceId);
+      
+      try {
+        // Načíst data faktury
+        const invoiceData = await getInvoiceById25({ token, username, id: editInvoiceId });
+        
+        console.log('✅ Faktura načtena pro editaci:', invoiceData);
+        
+        // Naplnit formulář daty faktury
+        if (invoiceData) {
+          // Parse středisek pokud jsou string
+          let strediskaArray = [];
+          if (invoiceData.fa_strediska_kod) {
+            if (typeof invoiceData.fa_strediska_kod === 'string') {
+              try {
+                strediskaArray = JSON.parse(invoiceData.fa_strediska_kod);
+              } catch (e) {
+                console.warn('Chyba při parsování středisek:', e);
+              }
+            } else if (Array.isArray(invoiceData.fa_strediska_kod)) {
+              strediskaArray = invoiceData.fa_strediska_kod;
+            }
+          }
+          
+          setFormData({
+            order_id: invoiceData.objednavka_id || '',
+            fa_cislo_vema: invoiceData.fa_cislo_vema || '',
+            fa_typ: invoiceData.fa_typ || 'BEZNA',
+            fa_datum_doruceni: formatDateForPicker(invoiceData.fa_datum_doruceni),
+            fa_datum_vystaveni: formatDateForPicker(invoiceData.fa_datum_vystaveni),
+            fa_datum_splatnosti: formatDateForPicker(invoiceData.fa_datum_splatnosti),
+            fa_castka: invoiceData.fa_castka || '',
+            fa_poznamka: invoiceData.fa_poznamka || '',
+            fa_strediska_kod: strediskaArray,
+            file: null // Přílohy se nenačítají při editaci
+          });
+          
+          // Pokud je známa objednávka, načíst ji a nastavit searchTerm
+          if (orderIdForLoad || invoiceData.objednavka_id) {
+            const orderIdToLoad = orderIdForLoad || invoiceData.objednavka_id;
+            await loadOrderData(orderIdToLoad);
+            
+            // Nastavit searchTerm pokud máme číslo objednávky
+            if (invoiceData.cislo_objednavky) {
+              setSearchTerm(invoiceData.cislo_objednavky);
+            }
+          }
+          
+          showToast?.(`Faktura ${invoiceData.fa_cislo_vema} načtena pro editaci`, { type: 'info' });
+        }
+      } catch (err) {
+        console.error('❌ Chyba při načítání faktury:', err);
+        showToast?.(err.message || 'Chyba při načítání faktury', { type: 'error' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    // Spustit pouze pokud existuje editInvoiceId v location.state
+    if (location.state?.editInvoiceId) {
+      loadInvoiceForEdit();
+    }
+  }, [location.state?.editInvoiceId, token, username, showToast]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: Záměrně neincluduju loadOrderData a setSearchTerm - volá se jen jednou při mount
+
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
     if (!orderIdToLoad || !token || !username) {
@@ -1108,8 +1189,10 @@ export default function InvoiceEvidencePage() {
       if (orderData && orderData.id) {
         setOrderData(orderData);
         console.log('✅ Objednávka načtena:', orderData);
+        console.log('🌐 RAW API RESPONSE - COMPLETE orderData:', JSON.stringify(orderData, null, 2));
         console.log('📦 RAW orderData.polozky_objednavky:', JSON.stringify(orderData.polozky_objednavky, null, 2));
         console.log('📦 RAW orderData.faktury:', JSON.stringify(orderData.faktury, null, 2));
+        console.log('💰 orderData.max_cena_s_dph:', orderData.max_cena_s_dph);
         console.log('💰 Počet položek:', orderData.polozky_objednavky?.length || 0);
         console.log('💰 Počet faktur:', orderData.faktury?.length || 0);
         // Aktualizuj searchTerm aby zobrazoval pouze ev. číslo
@@ -1286,14 +1369,11 @@ export default function InvoiceEvidencePage() {
       setConfirmDialog({
         isOpen: true,
         title: '⚠️ Objednávka je otevřená na formuláři',
-        message: `Objednávka ${draftEvCislo} je právě otevřená v editačním formuláři.\n\nPro otevření objednávky pro přidání/aktualizaci faktur je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
+        message: `Objednávka ${draftEvCislo} je právě otevřená v editačním formuláři.\n\n⚠️ NEJDŘÍVE JI ZAVŘETE!\n\nTeprve poté můžete přidávat nebo aktualizovat faktury.`,
         onConfirm: () => {
           setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-          window.location.href = '/dashboard';
         },
-        onCancel: () => {
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-        }
+        onCancel: null
       });
       return;
     }
@@ -1313,15 +1393,11 @@ export default function InvoiceEvidencePage() {
         setConfirmDialog({
           isOpen: true,
           title: '🔒 Objednávka je zamčená',
-          message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\nChcete přesto zobrazit náhled objednávky pro přidání/aktualizaci faktur? (pouze náhled objednávky pro čtení)`,
+          message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\n⚠️ NEJDŘÍVE MUSÍ ${lockedByUserName.toUpperCase()} ZAVŘÍT OBJEDNÁVKU!\n\nObjednávka je zamčená a nelze ji zpracovávat, dokud ji jiný uživatel uzamkl pro editaci.`,
           onConfirm: () => {
             setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-            // Pokračuj s načtením
-            proceedWithOrderLoad(order, evCislo);
           },
-          onCancel: () => {
-            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-          }
+          onCancel: null
         });
         return;
       }
@@ -1475,9 +1551,19 @@ export default function InvoiceEvidencePage() {
       errors.fa_typ = 'Vyberte typ faktury';
     }
 
+    // Datum doručení - POVINNÉ
+    if (!formData.fa_datum_doruceni) {
+      errors.fa_datum_doruceni = 'Vyplňte datum doručení';
+    }
+
     // Datum vystavení - POVINNÉ
     if (!formData.fa_datum_vystaveni) {
       errors.fa_datum_vystaveni = 'Vyplňte datum vystavení';
+    }
+
+    // Datum splatnosti - POVINNÉ
+    if (!formData.fa_datum_splatnosti) {
+      errors.fa_datum_splatnosti = 'Vyplňte datum splatnosti';
     }
 
     // Částka - POVINNÉ
@@ -1501,6 +1587,11 @@ export default function InvoiceEvidencePage() {
         return new Date().toISOString().slice(0, 19).replace('T', ' ');
       };
 
+      console.log('🔍 FORM DATA před API:', {
+        fa_typ: formData.fa_typ,
+        fa_typ_type: typeof formData.fa_typ
+      });
+
       const apiParams = {
         token,
         username,
@@ -1515,23 +1606,42 @@ export default function InvoiceEvidencePage() {
         fa_dorucena: formData.fa_datum_doruceni ? 1 : 0
       };
 
+      console.log('🔍 API PARAMS:', {
+        fa_typ: apiParams.fa_typ,
+        fa_typ_type: typeof apiParams.fa_typ
+      });
+
       let result;
 
-      if (formData.file) {
-        // S přílohou
-        result = await createInvoiceWithAttachmentV2({
+      if (editingInvoiceId) {
+        // EDITACE - UPDATE faktury
+        result = await updateInvoiceV2({
           ...apiParams,
-          file: formData.file
+          invoice_id: editingInvoiceId
         });
+        
+        setProgress?.(100);
+        showToast && showToast('✅ Faktura byla úspěšně aktualizována', 'success');
       } else {
-        // Bez přílohy
-        result = await createInvoiceV2(apiParams);
+        // NOVÁ FAKTURA - CREATE
+        if (formData.file) {
+          // S přílohou
+          result = await createInvoiceWithAttachmentV2({
+            ...apiParams,
+            file: formData.file
+          });
+        } else {
+          // Bez přílohy
+          result = await createInvoiceV2(apiParams);
+        }
+
+        setProgress?.(100);
+        showToast && showToast('✅ Faktura byla úspěšně zaevidována', 'success');
       }
 
-      setProgress?.(100);
-      showToast && showToast('✅ Faktura byla úspěšně zaevidována', 'success');
-
-      // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav na VECNA_SPRAVNOST
+      // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav
+      // - NOVÁ FAKTURA: přidat stav VECNA_SPRAVNOST
+      // - EDITACE: vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
       if (formData.order_id && orderData) {
         try {
           // Parsuj aktuální workflow stavy
@@ -1551,28 +1661,52 @@ export default function InvoiceEvidencePage() {
           const currentState = stavKody.length > 0 ? stavKody[stavKody.length - 1] : null;
 
           // Logika pro změnu workflow stavu podle aktuálního stavu:
+          // NOVÁ FAKTURA:
           // 1. NEUVEREJNIT nebo UVEREJNENA → přidat FAKTURACE → přidat VECNA_SPRAVNOST
           // 2. FAKTURACE → přidat VECNA_SPRAVNOST
           // 3. ZKONTROLOVANA → vrátit na VECNA_SPRAVNOST (faktury byly upraveny)
           // 4. VECNA_SPRAVNOST → nechat beze změny
+          // 
+          // EDITACE FAKTURY:
+          // - ZKONTROLOVANA nebo DOKONCENA → vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
+          // - VECNA_SPRAVNOST → nechat (už čeká na kontrolu)
           
           let needsUpdate = false;
           
-          if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
-            // První faktura → přidat FAKTURACE a pak VECNA_SPRAVNOST
-            stavKody.push('FAKTURACE');
-            stavKody.push('VECNA_SPRAVNOST');
-            needsUpdate = true;
-          } else if (currentState === 'FAKTURACE') {
-            // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
-            stavKody.push('VECNA_SPRAVNOST');
-            needsUpdate = true;
-          } else if (currentState === 'ZKONTROLOVANA') {
-            // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
-            stavKody.pop(); // Odstraň ZKONTROLOVANA
-            needsUpdate = true;
+          if (editingInvoiceId) {
+            // EDITACE existující faktury
+            if (currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
+              // Vrátit zpět na VECNA_SPRAVNOST - musí projít novou kontrolou
+              stavKody.pop(); // Odstraň poslední stav (ZKONTROLOVANA/DOKONCENA)
+              if (currentState === 'DOKONCENA' && stavKody[stavKody.length - 1] === 'ZKONTROLOVANA') {
+                stavKody.pop(); // Odstraň i ZKONTROLOVANA pokud tam je
+              }
+              // Ujisti se že má VECNA_SPRAVNOST
+              if (stavKody[stavKody.length - 1] !== 'VECNA_SPRAVNOST') {
+                stavKody.push('VECNA_SPRAVNOST');
+              }
+              needsUpdate = true;
+              console.log('⚠️ EDITACE FAKTURY: Objednávka vrácena na věcnou správnost');
+            }
+            // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
+          } else {
+            // NOVÁ FAKTURA
+            if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
+              // První faktura → přidat FAKTURACE a pak VECNA_SPRAVNOST
+              stavKody.push('FAKTURACE');
+              stavKody.push('VECNA_SPRAVNOST');
+              needsUpdate = true;
+            } else if (currentState === 'FAKTURACE') {
+              // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
+              stavKody.push('VECNA_SPRAVNOST');
+              needsUpdate = true;
+            } else if (currentState === 'ZKONTROLOVANA') {
+              // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
+              stavKody.pop(); // Odstraň ZKONTROLOVANA
+              needsUpdate = true;
+            }
+            // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
           }
-          // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
 
           if (needsUpdate) {
             // Aktualizuj objednávku
@@ -1821,8 +1955,8 @@ export default function InvoiceEvidencePage() {
     <>
       <PageHeader>
         <PageTitle>
-          <FontAwesomeIcon icon={faFileInvoice} />
-          Zaevidovat fakturu
+          <FontAwesomeIcon icon={editingInvoiceId ? faEdit : faFileInvoice} />
+          {editingInvoiceId ? 'Upravit fakturu' : 'Zaevidovat fakturu'}
         </PageTitle>
         <HeaderActions>
           <IconButton onClick={toggleFullscreen} title={isFullscreen ? 'Normální režim' : 'Celá obrazovka'}>
@@ -1837,11 +1971,54 @@ export default function InvoiceEvidencePage() {
       <ContentLayout $fullscreen={isFullscreen}>
         {/* LEVÁ STRANA - FORMULÁŘ (60%) */}
         <FormColumn>
-          <FormColumnHeader>
-            <SectionTitle>
+          <FormColumnHeader style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+            <SectionTitle style={{ margin: 0 }}>
               <FontAwesomeIcon icon={faCreditCard} />
               Údaje faktury
+              {editingInvoiceId && (
+                <span style={{ 
+                  marginLeft: '1rem',
+                  color: '#6b7280',
+                  fontSize: '0.9rem',
+                  fontWeight: 400
+                }}>
+                  - Režim úprav #{editingInvoiceId}
+                </span>
+              )}
             </SectionTitle>
+            {editingInvoiceId && (
+              <button
+                onClick={() => {
+                  setEditingInvoiceId(null);
+                  setFormData({
+                    order_id: formData.order_id,
+                    fa_cislo_vema: '',
+                    fa_typ: 'BEZNA',
+                    fa_datum_doruceni: formatDateForPicker(new Date()),
+                    fa_datum_vystaveni: formatDateForPicker(new Date()),
+                    fa_datum_splatnosti: '',
+                    fa_castka: '',
+                    fa_poznamka: '',
+                    file: null
+                  });
+                  navigate(location.pathname, { replace: true, state: {} });
+                  showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
+                }}
+                style={{
+                  background: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '600'
+                }}
+                title="Zrušit úpravy a vrátit se k novému záznamu"
+              >
+                <FontAwesomeIcon icon={faTimes} /> Zrušit úpravu
+              </button>
+            )}
           </FormColumnHeader>
 
           <FormColumnContent>
@@ -1850,61 +2027,6 @@ export default function InvoiceEvidencePage() {
                 <FontAwesomeIcon icon={faExclamationTriangle} />
                 {error}
               </ErrorAlert>
-            )}
-            
-            {editingInvoiceId && (
-              <div style={{
-                background: '#eff6ff',
-                border: '2px solid #3b82f6',
-                borderRadius: '8px',
-                padding: '1rem',
-                marginBottom: '1.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#1e40af' }}>
-                  <FontAwesomeIcon icon={faEdit} />
-                  <strong>Režim úprav:</strong> Editujete existující fakturu #{editingInvoiceId}
-                </div>
-                <button
-                  onClick={() => {
-                    setEditingInvoiceId(null);
-                    setFormData({
-                      order_id: formData.order_id,
-                      fa_cislo_vema: '',
-                      fa_typ: 'BEZNA',
-                      fa_datum_doruceni: formatDateForPicker(new Date()),
-                      fa_datum_vystaveni: formatDateForPicker(new Date()),
-                      fa_datum_splatnosti: '',
-                      fa_castka: '',
-                      fa_poznamka: '',
-                      file: null
-                    });
-                    showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
-                  }}
-                  style={{
-                    background: '#1e40af',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    fontWeight: '600',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
-                  }}
-                  onMouseEnter={(e) => e.target.style.background = '#1e3a8a'}
-                  onMouseLeave={(e) => e.target.style.background = '#1e40af'}
-                >
-                  <FontAwesomeIcon icon={faTimes} />
-                  Zrušit úpravu
-                </button>
-              </div>
             )}
 
             <FakturaCard $isEditing={true}>
@@ -1920,8 +2042,8 @@ export default function InvoiceEvidencePage() {
                     value={searchTerm}
                     onChange={handleSearchChange}
                     onFocus={() => setShowSuggestions(true)}
-                    disabled={!!orderId}
-                    placeholder="Začněte psát evidenční číslo (min. 3 znaky)..."
+                    disabled={!!orderId || !!editingInvoiceId}
+                    placeholder={editingInvoiceId ? "Objednávku nelze změnit při editaci" : "Začněte psát evidenční číslo (min. 3 znaky)..."}
                     style={{ width: '100%' }}
                   />
                   {searchTerm && !orderId && (
@@ -2103,7 +2225,14 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   placeholder="dd.mm.rrrr"
+                  hasError={!!fieldErrors.fa_datum_doruceni}
                 />
+                {fieldErrors.fa_datum_doruceni && (
+                  <FieldError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {fieldErrors.fa_datum_doruceni}
+                  </FieldError>
+                )}
               </FieldGroup>
 
               <FieldGroup>
@@ -2132,7 +2261,14 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   placeholder="dd.mm.rrrr"
+                  hasError={!!fieldErrors.fa_datum_splatnosti}
                 />
+                {fieldErrors.fa_datum_splatnosti && (
+                  <FieldError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {fieldErrors.fa_datum_splatnosti}
+                  </FieldError>
+                )}
               </FieldGroup>
             </FieldRow>
 
@@ -2145,7 +2281,10 @@ export default function InvoiceEvidencePage() {
                 <CustomSelect
                   field="fa_typ"
                   value={formData.fa_typ}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fa_typ: e.target.value }))}
+                  onChange={(e) => {
+                    console.log('🔍 FA_TYP CHANGE:', e.target.value, typeof e.target.value);
+                    setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
+                  }}
                   options={[
                     { id: 'BEZNA', nazev: 'Běžná faktura' },
                     { id: 'ZALOHOVA', nazev: 'Zálohová faktura' },
@@ -2279,11 +2418,63 @@ export default function InvoiceEvidencePage() {
             </FieldRow>
           </FakturaCard>
 
-          {/* VAROVÁNÍ: Nelze přidat fakturu k objednávce v nevhodném stavu */}
-          {formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !editingInvoiceId && (
+          {/* VAROVÁNÍ: EDITACE faktury vázané na objednávku - nutnost věcné kontroly (pouze pokud je operace možná) */}
+          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && (
             <div style={{
-              background: '#fef3c7',
-              border: '2px solid #f59e0b',
+              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+              border: '3px solid #f59e0b',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              marginBottom: '1.5rem',
+              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.25)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{
+                  background: '#f59e0b',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '48px',
+                  height: '48px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.5rem',
+                  flexShrink: 0
+                }}>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, color: '#92400e', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                    ⚠️ DŮLEŽITÉ: Aktualizace faktury vázané na objednávku
+                  </div>
+                  <div style={{ fontSize: '0.95rem', color: '#78350f', lineHeight: '1.6' }}>
+                    Editace faktury vázané na objednávku <strong>{orderData.cislo_objednavky || orderData.evidencni_cislo}</strong> způsobí, 
+                    že objednávka bude muset znovu projít <strong>věcnou správností</strong> a kontrolou.
+                  </div>
+                </div>
+              </div>
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.5)',
+                borderRadius: '6px',
+                padding: '0.75rem',
+                fontSize: '0.9rem',
+                color: '#78350f'
+              }}>
+                <strong>Co se stane po uložení:</strong>
+                <ul style={{ margin: '0.5rem 0 0 1.5rem', paddingLeft: 0 }}>
+                  <li>Objednávka bude vrácena do stavu <strong>"Věcná správnost"</strong></li>
+                  <li>Objednatel, garant a schvalovatel obdrží notifikaci</li>
+                  <li>Bude nutné provést novou kontrolu a schválení</li>
+                </ul>
+              </div>
+            </div>
+          )}
+          
+          {/* VAROVÁNÍ: Nelze přidat/upravit fakturu k objednávce v nevhodném stavu */}
+          {formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && (
+            <div style={{
+              background: editingInvoiceId ? '#fee2e2' : '#fef3c7',
+              border: editingInvoiceId ? '3px solid #dc2626' : '2px solid #f59e0b',
               borderRadius: '8px',
               padding: '1rem',
               marginBottom: '1rem',
@@ -2293,13 +2484,21 @@ export default function InvoiceEvidencePage() {
             }}>
               <FontAwesomeIcon 
                 icon={faExclamationTriangle} 
-                style={{ color: '#f59e0b', marginTop: '0.25rem', fontSize: '1.25rem' }} 
+                style={{ 
+                  color: editingInvoiceId ? '#dc2626' : '#f59e0b', 
+                  marginTop: '0.25rem', 
+                  fontSize: '1.25rem' 
+                }} 
               />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: '#92400e', marginBottom: '0.25rem' }}>
-                  ⚠️ Nelze přidat fakturu k této objednávce
+                <div style={{ 
+                  fontWeight: 600, 
+                  color: editingInvoiceId ? '#991b1b' : '#92400e', 
+                  marginBottom: '0.25rem' 
+                }}>
+                  ⚠️ {editingInvoiceId ? 'Nelze aktualizovat fakturu u této objednávky' : 'Nelze přidat fakturu k této objednávce'}
                 </div>
-                <div style={{ fontSize: '0.9rem', color: '#78350f' }}>
+                <div style={{ fontSize: '0.9rem', color: editingInvoiceId ? '#991b1b' : '#78350f' }}>
                   {canAddInvoiceToOrder(orderData).reason}
                 </div>
               </div>
@@ -2315,9 +2514,9 @@ export default function InvoiceEvidencePage() {
             <Button 
               $variant="primary" 
               onClick={handleSubmit} 
-              disabled={loading || (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !editingInvoiceId)}
+              disabled={loading || (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed)}
               title={
-                formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !editingInvoiceId
+                formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed
                   ? canAddInvoiceToOrder(orderData).reason
                   : ''
               }
@@ -2339,84 +2538,161 @@ export default function InvoiceEvidencePage() {
         <PreviewColumn>
           <PreviewColumnHeader>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-              <SectionTitle>
-                <FontAwesomeIcon icon={faBuilding} />
-                Náhled objednávky
+              {/* První řádek: Náhled objednávky + EV.Č. */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                gap: '1rem', 
+                paddingBottom: '12px',
+                borderBottom: '2px solid #3498db',
+                marginBottom: '1rem'
+              }}>
+                <SectionTitle style={{ margin: 0, border: 'none', paddingBottom: 0, whiteSpace: 'nowrap' }}>
+                  <FontAwesomeIcon icon={faBuilding} />
+                  Náhled objednávky
+                </SectionTitle>
                 {orderData && (
-                  <span style={{marginLeft: '1rem', fontSize: '1.1rem', fontWeight: 700, color: '#1e40af'}}>
+                  <span style={{ fontWeight: 700, color: '#1e40af', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
                     {orderData.cislo_objednavky || `#${orderData.id}`}
                   </span>
                 )}
-              </SectionTitle>
-              {orderData && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div style={{
-                      fontSize: '0.95rem',
-                      fontWeight: 700,
-                      color: '#059669',
-                      background: '#d1fae5',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '6px',
-                      border: '2px solid #10b981',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      📋 STAV: {orderData.stav_objednavky || getCurrentWorkflowState(orderData)?.replace(/_/g, ' ') || 'N/A'}
-                    </div>
+              </div>
 
-                    {/* Součet položek objednávky */}
+              {/* Druhý řádek: Součty + STAV */}
+              {orderData && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    {/* STAV */}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      padding: '0.5rem 1rem',
-                      background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                      border: '2px solid #3b82f6',
+                      gap: '6px',
+                      padding: '0.4rem 0.75rem',
+                      background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                      border: '2px solid #10b981',
                       borderRadius: '6px',
-                      fontSize: '0.75rem',
+                      fontSize: '0.7rem',
                       fontWeight: 600,
-                      color: '#1e40af',
+                      color: '#065f46',
                       boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
                       whiteSpace: 'nowrap'
                     }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 500 }}>
-                          OBJ POLOŽKY
+                        <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
+                          STAV
                         </div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
-                          {(() => {
-                            const total = orderData.polozky_objednavky?.reduce((sum, polozka) => {
-                              // cena_s_dph je celková cena položky (jednotková * množství)
-                              const cena = parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
-                              return sum + cena;
-                            }, 0) || 0;
-                            return total.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
-                          })()}
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                          {orderData.stav_objednavky || getCurrentWorkflowState(orderData)?.replace(/_/g, ' ') || 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                    {/* MAX CENA S DPH */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '0.4rem 0.75rem',
+                      background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
+                      border: '2px solid #64748b',
+                      borderRadius: '6px',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
+                          MAX CENA S DPH
+                        </div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                          {parseFloat(orderData.max_cena_s_dph || 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Součet položek objednávky */}
+                    <div 
+                      onClick={() => {
+                        const section = document.querySelector('[data-section="polozky"]');
+                        if (section) {
+                          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.4rem 0.75rem',
+                        background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                        border: '2px solid #fbbf24',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#92400e',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(251, 191, 36, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
+                          POLOŽKY (DPH)
+                        </div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                          {parseFloat(orderData.polozky_celkova_cena_s_dph || 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                         </div>
                       </div>
                     </div>
 
                     {/* Součet faktur */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '0.5rem 1rem',
-                      background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                      border: '2px solid #10b981',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      color: '#15803d',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <div 
+                      onClick={() => {
+                        const section = document.querySelector('[data-section="faktury"]');
+                        if (section) {
+                          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.4rem 0.75rem',
+                        background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                        border: '2px solid #3b82f6',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#1e40af',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                      }}
+                    >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 500 }}>
+                        <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
                           FAKTURY
                         </div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
                           {(() => {
                             const total = orderData.faktury?.reduce((sum, faktura) => {
                               const castka = parseFloat(faktura.fa_castka || 0);
@@ -2592,8 +2868,9 @@ export default function InvoiceEvidencePage() {
           isOpen={confirmDialog.isOpen}
           title={confirmDialog.title}
           message={confirmDialog.message}
-          confirmText="Ano, pokračovat"
+          confirmText={confirmDialog.onCancel ? "Ano, pokračovat" : "OK"}
           cancelText="Zrušit"
+          showCancel={!!confirmDialog.onCancel}
           variant="warning"
           icon={faExclamationTriangle}
           onConfirm={() => {
@@ -2601,11 +2878,11 @@ export default function InvoiceEvidencePage() {
               confirmDialog.onConfirm();
             }
           }}
-          onClose={() => {
+          onClose={confirmDialog.onCancel ? () => {
             if (confirmDialog.onCancel) {
               confirmDialog.onCancel();
             }
-          }}
+          } : () => {}}
         />,
         document.body
       )}
