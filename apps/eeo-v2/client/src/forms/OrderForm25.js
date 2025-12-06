@@ -5113,9 +5113,6 @@ function OrderForm25() {
 
       // KRITICKÉ: Nastavit ochranu PŘED jakýmikoliv async operacemi
       onDataLoadedCalledRef.current = currentEditId;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🎯 handleDataLoaded zahájen pro:', currentEditId);
-      }
 
       // 🛡️ DALŠÍ OCHRANA: Reset ochrany po 5 sekundách pro případ že by došlo k chybě
       setTimeout(() => {
@@ -5186,8 +5183,6 @@ function OrderForm25() {
                 // 🎯 NOVÁ LOGIKA: LocalStorage VŽDY má prioritu (obsahuje aktuální změny uživatele)
                 // DB slouží jen jako základ pro systémová/immutable pole
 
-                console.log('✅ Mergování DB dat s draftem pro objednávku:', currentOrderId);
-
                 finalData = {
                   ...loadedData, // Nejdřív DB (základní systémová data)
                   ...draftData.formData, // Pak LS draft PŘEPÍŠE všechny user-editable fieldy
@@ -5206,12 +5201,9 @@ function OrderForm25() {
                 };
               } else {
                 // NEW: Použij draft
-                console.log('✅ Použití draftu pro novou objednávku');
                 finalData = draftData.formData;
               }
             }
-          } else {
-            console.log('ℹ️ Žádný draft nenalezen pro user_id:', user_id);
           }
         } catch (error) {
           console.error('❌ Chyba při načítání draftu:', error);
@@ -5556,9 +5548,6 @@ function OrderForm25() {
     // 2. isDraftLoaded=true (inicializace dokončena)
     // 3. NENÍ editOrderId (editace se řeší v handleDataLoaded)
     if (!user_id || !isDraftLoaded || editOrderId) {
-      if (process.env.NODE_ENV === 'development' && editOrderId) {
-        console.log('ℹ️ Draft loading skipped - editOrderId present:', editOrderId);
-      }
       return;
     }
 
