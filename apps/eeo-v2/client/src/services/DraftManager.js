@@ -257,7 +257,8 @@ class DraftManager {
         `order25-scroll-${userId}`,
         `order_form_sectionState_${userId}`,
         `order25-phase2-unlocked-${userId}`,
-        `phase2-unlocked-${userId}`
+        `phase2-unlocked-${userId}`,
+        `activeOrderEditId` // 🆕 Globální klíč pro editované objednávky (bez userId)
       ];
 
       // Draft data klíče (všechny formáty)

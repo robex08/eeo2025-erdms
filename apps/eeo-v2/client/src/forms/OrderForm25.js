@@ -14673,8 +14673,19 @@ function OrderForm25() {
           await draftManager.deleteAllDraftKeys();
         }
         
-        // 🎯 Vymazat editOrderId z localStorage
+        // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
         localStorage.removeItem('activeOrderEditId');
+        
+        // 🧹 Vyčistit i staré formáty (pro jistotu)
+        if (user_id) {
+          localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+          localStorage.removeItem(`savedOrderId-${user_id}`);
+          localStorage.removeItem(`highlightOrderId-${user_id}`);
+        }
+        
+        // 🧹 Resetovat všechny state proměnné související s orderID
+        setSavedOrderId(null);
+        setSourceOrderIdForUnlock(null);
 
         // Odemkni objednávku (pokud je editace)
         const unlockOrderId = sourceOrderIdForUnlock || savedOrderId;
@@ -14735,8 +14746,15 @@ function OrderForm25() {
     // 🎯 ZJEDNODUŠENÉ ZAVŘENÍ přes DraftManager
     addDebugLog('info', 'CANCEL', 'draftmanager-close', 'Zavírám formulář přes DraftManager');
     
-    // 🎯 Vymazat editOrderId z localStorage
+    // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
     localStorage.removeItem('activeOrderEditId');
+    
+    // 🧹 Vyčistit i staré formáty (pro jistotu)
+    if (user_id) {
+      localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+      localStorage.removeItem(`savedOrderId-${user_id}`);
+      localStorage.removeItem(`highlightOrderId-${user_id}`);
+    }
 
     try {
       // 🚨 KRITICKÉ: OKAMŽITĚ zablokovat autosave PŘED jakýmkoli dalším krokem
@@ -14755,6 +14773,10 @@ function OrderForm25() {
 
       // 🚨 Nastavit flag pro unmount - zabráníme duplicitnímu unlock
       unlockOrderIdRef.current = null;
+      
+      // 🧹 Resetovat všechny state proměnné související s orderID
+      setSavedOrderId(null);
+      setSourceOrderIdForUnlock(null);
 
       // 🎯 1. Vyčistit VŠECHNY draft data přes DraftManager (centralizovaně)
       if (user_id) {
