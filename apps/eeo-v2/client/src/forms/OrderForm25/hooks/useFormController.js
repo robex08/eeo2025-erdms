@@ -130,10 +130,6 @@ export const useFormController = ({
     // 🔄 NAVIGATION FIX: Reset VŽDY když se změní editOrderId
     // This allows re-initialization when navigating between orders
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 [useFormController] Reset pro editOrderId:', editOrderId);
-    }
-    
     // ✅ CRITICAL: Reset VŠECH flagů pro re-inicializaci
     hasInitializedRef.current = false;
     initLockRef.current = false;
