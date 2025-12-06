@@ -436,7 +436,7 @@ function loadOrderInvoices($db, $order_id) {
         LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         WHERE f.objednavka_id = ? 
-        ORDER BY f.dt_vytvoreni DESC
+        ORDER BY f.id ASC
     ");
     $stmt->execute([$order_id]);
     $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -36,6 +36,7 @@ import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
 import DatePicker from '../components/DatePicker';
 import { CustomSelect } from '../components/CustomSelect';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Search } from 'lucide-react';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
@@ -1001,6 +1002,15 @@ export default function InvoiceEvidencePage() {
   // State pro sledování editace faktury
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null
+  });
+
   // Form data
   const [formData, setFormData] = useState({
     order_id: orderId || '',
@@ -1057,6 +1067,30 @@ export default function InvoiceEvidencePage() {
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
     if (!orderIdToLoad || !token || !username) {
+      return;
+    }
+
+    // 🚨 KONTROLA: Je tatáž objednávka otevřená na formuláři?
+    if (window.__activeOrderFormId && parseInt(window.__activeOrderFormId) === parseInt(orderIdToLoad)) {
+      const evCislo = window.__activeOrderFormEvCislo || `#${orderIdToLoad}`;
+      
+      // Zobraz custom confirm dialog
+      const shouldClose = await new Promise((resolve) => {
+        setConfirmDialog({
+          isOpen: true,
+          title: '⚠️ Objednávka je otevřená na formuláři',
+          message: `Objednávka ${evCislo} je právě otevřená v editačním formuláři. Pro zobrazení evidence faktury je nutné formulář zavřít.\n\nChcete formulář zavřít a pokračovat?`,
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false)
+        });
+      });
+
+      if (!shouldClose) {
+        return; // Uživatel zrušil načtení
+      }
+
+      // Zavři formulář - redirect na dashboard nebo zavři tab
+      window.location.href = '/dashboard';
       return;
     }
 
@@ -1433,10 +1467,25 @@ export default function InvoiceEvidencePage() {
         }
       }
 
-      // Navigovat zpět na seznam faktur
-      setTimeout(() => {
-        navigate('/invoices25');
-      }, 800);
+      // 🔄 ZŮSTAT NA FORMULÁŘI - pouze resetovat formulář faktury
+      setFormData({
+        order_id: formData.order_id, // Zachovat order_id
+        fa_cislo_vema: '',
+        fa_typ: 'BEZNA',
+        fa_datum_doruceni: formatDateForPicker(new Date()),
+        fa_datum_vystaveni: formatDateForPicker(new Date()),
+        fa_datum_splatnosti: '',
+        fa_castka: '',
+        fa_poznamka: '',
+        fa_strediska_kod: [],
+        file: null
+      });
+
+      // Reset editace faktury
+      setEditingInvoiceId(null);
+
+      // Reset pole errors
+      setFieldErrors({});
 
     } catch (err) {
       console.error('Error creating invoice:', err);
@@ -2321,8 +2370,35 @@ export default function InvoiceEvidencePage() {
 
   // Normální režim
   return (
-    <PageContainer>
-      {PageContent}
-    </PageContainer>
+    <>
+      <PageContainer>
+        {PageContent}
+      </PageContainer>
+
+      {/* 🔔 Custom Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText="Ano, zavřít formulář"
+          cancelText="Zrušit"
+          variant="warning"
+          icon={faExclamationTriangle}
+          onConfirm={() => {
+            if (confirmDialog.onConfirm) {
+              confirmDialog.onConfirm();
+            }
+            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          }}
+          onClose={() => {
+            if (confirmDialog.onCancel) {
+              confirmDialog.onCancel();
+            }
+            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          }}
+        />
+      )}
+    </>
   );
 }

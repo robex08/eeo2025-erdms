@@ -4105,6 +4105,19 @@ function OrderForm25() {
   // Byl většinou zakomentovaný, odstraněn pro čistší kód
   // Pokud potřebujete debugovat re-renders, použijte React DevTools Profiler
 
+  // 🔒 Registrace aktivní objednávky (pro detekci konfliktu v InvoiceEvidencePage)
+  useEffect(() => {
+    if (formData.id) {
+      window.__activeOrderFormId = formData.id;
+      window.__activeOrderFormEvCislo = formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`;
+    }
+    
+    return () => {
+      delete window.__activeOrderFormId;
+      delete window.__activeOrderFormEvCislo;
+    };
+  }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
+
   // useEffect pro ESC klávesy v fullscreen režimu
   useEffect(() => {
     if (!isFullscreen) return;
@@ -7062,10 +7075,12 @@ function OrderForm25() {
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
         rozsirujici_data: fakturaFormData.rozsirujici_data || null,
-        // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 s DB
+        // ✅ RESET: Při aktualizaci faktury se zruší JEN checkbox (umístění a poznámka zůstávají)
         vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
         vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
-        vecna_spravnost_potvrzeno: fakturaFormData.vecna_spravnost_potvrzeno || 0
+        vecna_spravnost_potvrzeno: 0,
+        potvrdil_vecnou_spravnost_id: null,
+        dt_potvrzeni_vecne_spravnosti: null
       };
 
       // Volej API update
@@ -9245,12 +9260,12 @@ function OrderForm25() {
               : new Date().toISOString().split('T')[0], // ✅ OPRAVA: Použít jen pokud je validní datum
             fa_strediska_kod: strediskaArray,                                 // ✅ POLE KÓDŮ: ["KLADNO","BENESOV","BEROUN"]
             fa_poznamka: faktura.fa_poznamka || '',                           // VOLITELNÉ - poznámka
-            // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+            // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 DB mapping
             vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
             vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-            vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno || 0,
+            vecna_spravnost_potvrzeno: (faktura.vecna_spravnost_potvrzeno === 1 || faktura.vecna_spravnost_potvrzeno === true) ? 1 : 0,
             potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id || null,
-            dt_vecna_spravnost_potvrzeno: faktura.dt_potvrzeni_vecne_spravnosti || null,
+            dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti || null,
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
@@ -9281,8 +9296,21 @@ function OrderForm25() {
                 : {
                     // STANDARDNÍ FAKTURA - minimální data
                     typ_platby: 'faktura'
-                  }                                                           // VOLITELNÉ - JSON objekt s rozšířenými daty
+                  }
           };
+          
+          // 🔍 DEBUG LOG - věcná správnost před odesláním
+          console.log('[VECNA-SAVE-DEBUG] Faktura #' + faktura.id, {
+            vecna_spravnost_potvrzeno: fakturaData.vecna_spravnost_potvrzeno,
+            potvrdil_vecnou_spravnost_id: fakturaData.potvrdil_vecnou_spravnost_id,
+            dt_potvrzeni_vecne_spravnosti: fakturaData.dt_potvrzeni_vecne_spravnosti,
+            SOURCE_faktura: {
+              vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno,
+              potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id,
+              dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti
+            }
+          });
+          
           return fakturaData;
         });
         addDebugLog('info', 'SAVE', 'faktury-transform', `Přidáno ${formData.faktury.length} faktur do payload`);
@@ -15168,7 +15196,7 @@ function OrderForm25() {
           if (nazev.includes('Limitovan') || nazev.includes('příslib')) {
             if (!formData.lp_kod ||
                 (Array.isArray(formData.lp_kod) && formData.lp_kod.length === 0)) {
-              errors.lp_kod = 'LP kód je povinný při financování z Limitovaného příslibu';
+              errors.lp_kod = "LP kód je povinný při financování z Limitovaného příslibu";
             }
             
             // 🆕 VALIDACE LP U POLOŽEK: Pokud je financování LP, všechny položky MUSÍ mít vyplněné LP
@@ -21497,6 +21525,7 @@ function OrderForm25() {
                             formData.faktury.map((faktura, index) => {
                             const isEditing = editingFaktura?.id === faktura.id;
                             const currentData = isEditing ? fakturaFormData : faktura;
+                            const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
 
                             return (
                             <div key={faktura.id} style={{
@@ -21504,7 +21533,7 @@ function OrderForm25() {
                               borderRadius: '8px',
                               padding: '1rem',
                               marginBottom: '1rem',
-                              background: isEditing ? '#f0f9ff' : '#fafafa'
+                              background: isEditing ? '#f0f9ff' : (isVecnaPotvrzena ? '#f0fdf4' : '#f9fafb')
                             }}>
                               <div style={{
                                 display: 'flex',
@@ -22151,8 +22180,10 @@ function OrderForm25() {
                                 <div style={{
                                   marginTop: '1.5rem',
                                   padding: '1rem',
-                                  background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                                  border: '2px solid #22c55e',
+                                  background: isVecnaPotvrzena 
+                                    ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)' 
+                                    : 'linear-gradient(135deg, #fefefe 0%, #f3f4f6 100%)',
+                                  border: isVecnaPotvrzena ? '2px solid #22c55e' : '2px solid #d1d5db',
                                   borderRadius: '8px'
                                 }}>
                                   <div style={{ 
@@ -22360,32 +22391,51 @@ function OrderForm25() {
                                           fontWeight: '600'
                                         }}>
                                           ✓ ZKONTROLOVÁNO
-                                          {faktura.dt_potvrzeni_vecne_spravnosti && (
-                                            <span style={{ fontWeight: '400', marginLeft: '0.5rem', color: '#15803d' }}>
-                                              ({prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
-                                              {faktura.potvrdil_vecnou_spravnost_jmeno && ` • ${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`})
-                                            </span>
-                                          )}
                                         </span>
                                       )}
                                     </label>
                                     
-                                    {/* Info řádek - kdo a kdy potvrdil */}
-                                    {((isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1))) && faktura.dt_potvrzeni_vecne_spravnosti && (
-                                      <div style={{
-                                        marginTop: '0.5rem',
-                                        padding: '0.5rem 0.75rem',
-                                        background: '#f0fdf4',
-                                        border: '1px solid #86efac',
-                                        borderRadius: '4px',
-                                        fontSize: '0.8rem',
-                                        color: '#15803d'
-                                      }}>
-                                        <strong>Potvrdil:</strong> {faktura.potvrdil_vecnou_spravnost_jmeno ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}` : 'Neznámý uživatel'}
-                                        {' '}<strong>•</strong>{' '}
-                                        <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
-                                      </div>
-                                    )}
+                                    {/* Info řádek - kdo a kdy potvrdil (POUZE ve fázi ZKONTROLOVANA 8+) */}
+                                    {(() => {
+                                      const isChecked = (isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1));
+                                      const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
+                                      const hasTimestamp = faktura.dt_potvrzeni_vecne_spravnosti;
+                                      const isZkontrolovanaPhase = currentPhase >= 8; // Fáze ZKONTROLOVANA a výše
+                                      
+                                      // Debug
+                                      console.log('[VECNA-INFO-BOX]', {
+                                        fakturaId: faktura.id,
+                                        isChecked,
+                                        hasRealId,
+                                        hasTimestamp,
+                                        currentPhase,
+                                        isZkontrolovanaPhase,
+                                        shouldShow: isChecked && hasRealId && hasTimestamp && isZkontrolovanaPhase
+                                      });
+                                      
+                                      if (!isChecked || !hasRealId || !hasTimestamp || !isZkontrolovanaPhase) return null;
+                                      
+                                      // Určit jméno potvrzujícího
+                                      const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
+                                        ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
+                                        : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : null);
+                                      
+                                      return (
+                                        <div style={{
+                                          marginTop: '0.5rem',
+                                          padding: '0.5rem 0.75rem',
+                                          background: '#f0fdf4',
+                                          border: '1px solid #86efac',
+                                          borderRadius: '4px',
+                                          fontSize: '0.8rem',
+                                          color: '#15803d'
+                                        }}>
+                                          <strong>Potvrdil:</strong> {userName || 'Systém'}
+                                          {' '}<strong>•</strong>{' '}
+                                          <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                   {hasError && (
                                     <ErrorText style={{ marginTop: '0.5rem' }}>
@@ -22621,9 +22671,20 @@ function OrderForm25() {
                             <li style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
                               ✅ Fakturace ({formData.dt_faktura_pridana ? prettyDate(formData.dt_faktura_pridana) : ''} • {formData.fakturant_id ? getUserNameById(formData.fakturant_id) : ''})
                             </li>
-                            <li style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
-                              ✅ Kontrola věcné správnosti ({formData.dt_potvrzeni_vecne_spravnosti ? prettyDate(formData.dt_potvrzeni_vecne_spravnosti) : ''} • {formData.potvrdil_vecnou_spravnost_id ? getUserNameById(formData.potvrdil_vecnou_spravnost_id) : ''})
-                            </li>
+                            {/* ✅ PER-INVOICE: Věcná správnost jednotlivých faktur */}
+                            {formData.faktury && formData.faktury.length > 0 && formData.faktury.map((faktura, index) => {
+                              const isPotvrzeno = faktura.vecna_spravnost_potvrzeno === 1;
+                              const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
+                                ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
+                                : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : '');
+                              const datum = faktura.dt_potvrzeni_vecne_spravnosti ? prettyDate(faktura.dt_potvrzeni_vecne_spravnosti) : '';
+                              
+                              return (
+                                <li key={faktura.id || index} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                  {isPotvrzeno ? '✅' : '⚠️'} Věcná správnost faktury #{index + 1} {datum ? `(${datum} • ${userName})` : ''}
+                                </li>
+                              );
+                            })}
                           </ul>
                           <div style={{ marginTop: '0.75rem', fontWeight: '500' }}>
                             Nyní potvrďte finální dokončení objednávky.
