@@ -495,7 +495,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               <FontAwesomeIcon icon={faUser} />
               Objednatel
             </CardTitle>
-            <DataGrid $columns="1fr 1fr 1fr">
+            <DataGrid $columns="1fr 1fr">
               <KeyValuePair>
                 <KeyLabel>Jméno</KeyLabel>
                 <ValueText className="highlight">
@@ -512,21 +512,23 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               </KeyValuePair>
               
               <KeyValuePair>
-                <KeyLabel>E-mail</KeyLabel>
-                <ValueText>
-                  {(() => {
-                    const enriched = orderData._enriched?.uzivatel || orderData._enriched?.objednatel;
-                    return enriched?.email || orderData.uzivatel?.email || orderData.email || '—';
-                  })()}
-                </ValueText>
-              </KeyValuePair>
-              
-              <KeyValuePair>
                 <KeyLabel>Telefon</KeyLabel>
                 <ValueText>
                   {(() => {
                     const enriched = orderData._enriched?.uzivatel || orderData._enriched?.objednatel;
                     return enriched?.telefon || orderData.objednatel_telefon || orderData.uzivatel?.telefon || orderData.telefon || '—';
+                  })()}
+                </ValueText>
+              </KeyValuePair>
+            </DataGrid>
+            
+            <DataGrid $columns="1fr" style={{marginTop: '1rem'}}>
+              <KeyValuePair>
+                <KeyLabel>E-mail</KeyLabel>
+                <ValueText>
+                  {(() => {
+                    const enriched = orderData._enriched?.uzivatel || orderData._enriched?.objednatel;
+                    return enriched?.email || orderData.uzivatel?.email || orderData.email || '—';
                   })()}
                 </ValueText>
               </KeyValuePair>
@@ -539,7 +541,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               <FontAwesomeIcon icon={faCheckCircle} />
               Garant objednávky
             </CardTitle>
-            <DataGrid $columns="1fr 1fr 1fr">
+            <DataGrid $columns="1fr 1fr">
               <KeyValuePair>
                 <KeyLabel>Jméno</KeyLabel>
                 <ValueText className="highlight">
@@ -556,16 +558,18 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               </KeyValuePair>
               
               <KeyValuePair>
-                <KeyLabel>E-mail</KeyLabel>
-                <ValueText>
-                  {orderData._enriched?.garant_uzivatel?.email || '—'}
-                </ValueText>
-              </KeyValuePair>
-              
-              <KeyValuePair>
                 <KeyLabel>Telefon</KeyLabel>
                 <ValueText>
                   {orderData._enriched?.garant_uzivatel?.telefon || '—'}
+                </ValueText>
+              </KeyValuePair>
+            </DataGrid>
+            
+            <DataGrid $columns="1fr" style={{marginTop: '1rem'}}>
+              <KeyValuePair>
+                <KeyLabel>E-mail</KeyLabel>
+                <ValueText>
+                  {orderData._enriched?.garant_uzivatel?.email || '—'}
                 </ValueText>
               </KeyValuePair>
             </DataGrid>
@@ -628,7 +632,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               <FontAwesomeIcon icon={faUser} />
               Příkazce rozpočtu
             </CardTitle>
-            <DataGrid $columns="1fr 1fr 1fr">
+            <DataGrid $columns="1fr 1fr">
               <KeyValuePair>
                 <KeyLabel>Jméno</KeyLabel>
                 <ValueText className="highlight">
@@ -645,16 +649,18 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               </KeyValuePair>
               
               <KeyValuePair>
-                <KeyLabel>E-mail</KeyLabel>
-                <ValueText>
-                  {orderData._enriched?.prikazce?.email || '—'}
-                </ValueText>
-              </KeyValuePair>
-              
-              <KeyValuePair>
                 <KeyLabel>Telefon</KeyLabel>
                 <ValueText>
                   {orderData._enriched?.prikazce?.telefon || '—'}
+                </ValueText>
+              </KeyValuePair>
+            </DataGrid>
+            
+            <DataGrid $columns="1fr" style={{marginTop: '1rem'}}>
+              <KeyValuePair>
+                <KeyLabel>E-mail</KeyLabel>
+                <ValueText>
+                  {orderData._enriched?.prikazce?.email || '—'}
                 </ValueText>
               </KeyValuePair>
             </DataGrid>
@@ -666,7 +672,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               <FontAwesomeIcon icon={faCheckCircle} />
               Schvalovatel
             </CardTitle>
-            <DataGrid $columns="1fr 1fr 1fr">
+            <DataGrid $columns="1fr 1fr">
               <KeyValuePair>
                 <KeyLabel>Jméno</KeyLabel>
                 <ValueText className="highlight">
@@ -683,16 +689,18 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               </KeyValuePair>
               
               <KeyValuePair>
-                <KeyLabel>E-mail</KeyLabel>
-                <ValueText>
-                  {orderData._enriched?.schvalovatel?.email || '—'}
-                </ValueText>
-              </KeyValuePair>
-              
-              <KeyValuePair>
                 <KeyLabel>Telefon</KeyLabel>
                 <ValueText>
                   {orderData._enriched?.schvalovatel?.telefon || '—'}
+                </ValueText>
+              </KeyValuePair>
+            </DataGrid>
+            
+            <DataGrid $columns="1fr" style={{marginTop: '1rem'}}>
+              <KeyValuePair>
+                <KeyLabel>E-mail</KeyLabel>
+                <ValueText>
+                  {orderData._enriched?.schvalovatel?.email || '—'}
                 </ValueText>
               </KeyValuePair>
             </DataGrid>
