@@ -7950,7 +7950,7 @@ function OrderForm25() {
 
     // 🚀 Spustit progress přes DraftManager
     const progressControl = draftManager.startProgress({
-      duration: 3000,
+      duration: 1000, // ⚡ Zkráceno z 3000ms na 1000ms (2 sekundy kratší)
       onProgress: (percent) => {
         setSaveProgress(percent);
       },
