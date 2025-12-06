@@ -9228,6 +9228,10 @@ function OrderForm25() {
               : new Date().toISOString().split('T')[0], // ✅ OPRAVA: Použít jen pokud je validní datum
             fa_strediska_kod: strediskaArray,                                 // ✅ POLE KÓDŮ: ["KLADNO","BENESOV","BEROUN"]
             fa_poznamka: faktura.fa_poznamka || '',                           // VOLITELNÉ - poznámka
+            // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+            vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
+            vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
+            potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
