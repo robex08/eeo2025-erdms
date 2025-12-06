@@ -371,7 +371,7 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, token, username }, ref) => {
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1240,7 +1240,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                     <FontAwesomeIcon icon={faMoneyBillWave} style={{ color: '#3b82f6' }} />
                     FAKTURA Č. {index + 1}
                   </div>
-                  {onEditInvoice && (
+                  {onEditInvoice && canEditInvoice && (
                     <EditInvoiceButton onClick={(e) => {
                       e.stopPropagation();
                       onEditInvoice(faktura);
