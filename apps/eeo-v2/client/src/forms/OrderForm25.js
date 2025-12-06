@@ -6957,7 +6957,11 @@ function OrderForm25() {
       fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || new Date().toISOString().split('T')[0], // Přidat datum vystavení
       fa_datum_splatnosti: fakturaFormData.fa_splatnost || '', // fa_splatnost obsahuje datum splatnosti!
       // 📎 PŘÍLOHY FAKTURY - ukládají se do konceptu stejně jako prilohy_dokumenty
-      attachments: [] // Pole příloh faktury (formát stejný jako u objednávek)
+      attachments: [], // Pole příloh faktury (formát stejný jako u objednávek)
+      // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8)
+      vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
+      vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
+      potvrzeni_vecne_spravnosti: fakturaFormData.potvrzeni_vecne_spravnosti || 0
     };
 
     // Přidat do formData.faktury
@@ -6974,7 +6978,11 @@ function OrderForm25() {
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
       fa_poznamka: '',
-      fa_splatnost: ''
+      fa_splatnost: '',
+      // ✅ NOVÉ: Per-invoice věcná správnost
+      vecna_spravnost_umisteni_majetku: '',
+      vecna_spravnost_poznamka: '',
+      potvrzeni_vecne_spravnosti: 0
     });
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
@@ -7079,7 +7087,11 @@ function OrderForm25() {
         fa_cislo_vema: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
-        fa_splatnost: ''
+        fa_splatnost: '',
+        // ✅ NOVÉ: Per-invoice věcná správnost
+        vecna_spravnost_umisteni_majetku: '',
+        vecna_spravnost_poznamka: '',
+        potvrzeni_vecne_spravnosti: 0
       });
       setEditingFaktura(null);
       setShowAddFakturaForm(false);
@@ -7182,7 +7194,11 @@ function OrderForm25() {
       _isdoc_parsed: true,
       _isdoc_polozky: isdocData._isdoc_polozky,
       _isdoc_dodavatel: isdocData._isdoc_dodavatel,
-      _fromISDOC: true // Flag pro rozpoznání ISDOC faktury
+      _fromISDOC: true, // Flag pro rozpoznání ISDOC faktury
+      // ✅ NOVÉ: Per-invoice věcná správnost (prázdné při ISDOC importu)
+      vecna_spravnost_umisteni_majetku: '',
+      vecna_spravnost_poznamka: '',
+      potvrzeni_vecne_spravnosti: 0
     };
 
     // 🔧 KRITICKÁ OPRAVA: Najdi a odstraň všechny temp faktury, pak přidej reálnou
@@ -7369,7 +7385,11 @@ function OrderForm25() {
       fa_cislo_vema: faktura.fa_cislo_vema || '',
       fa_strediska_kod: strediskaArray,
       fa_poznamka: faktura.fa_poznamka || '',
-      fa_splatnost: faktura.fa_splatnost || (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '') // ✅ DB -> FE: fa_datum_splatnosti -> fa_splatnost
+      fa_splatnost: faktura.fa_splatnost || (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : ''), // ✅ DB -> FE: fa_datum_splatnosti -> fa_splatnost
+      // ✅ NOVÉ: Per-invoice věcná správnost
+      vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
+      vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
+      potvrzeni_vecne_spravnosti: faktura.potvrzeni_vecne_spravnosti || 0
     });
     setShowAddFakturaForm(true);
   };
@@ -7385,7 +7405,11 @@ function OrderForm25() {
       fa_cislo_vema: '',
       fa_strediska_kod: formData.strediska_kod || [],
       fa_poznamka: '',
-      fa_splatnost: ''
+      fa_splatnost: '',
+      // ✅ NOVÉ: Per-invoice věcná správnost
+      vecna_spravnost_umisteni_majetku: '',
+      vecna_spravnost_poznamka: '',
+      potvrzeni_vecne_spravnosti: 0
     });
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
@@ -7641,7 +7665,11 @@ function OrderForm25() {
         fa_cislo_vema: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
-        fa_splatnost: ''
+        fa_splatnost: '',
+        // ✅ NOVÉ: Per-invoice věcná správnost
+        vecna_spravnost_umisteni_majetku: '',
+        vecna_spravnost_poznamka: '',
+        potvrzeni_vecne_spravnosti: 0
       });
       setShowAddFakturaForm(true);
     }
@@ -7686,7 +7714,11 @@ function OrderForm25() {
         dt_vytvoreni: new Date().toISOString(),
         dt_aktualizace: null,
         aktivni: 1,
-        _isNew: true
+        _isNew: true,
+        // ✅ NOVÉ: Per-invoice věcná správnost
+        vecna_spravnost_umisteni_majetku: '',
+        vecna_spravnost_poznamka: '',
+        potvrzeni_vecne_spravnosti: 0
       };
 
       // Přidat první fakturu do state
@@ -7699,7 +7731,11 @@ function OrderForm25() {
         fa_cislo_vema: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
-        fa_splatnost: ''
+        fa_splatnost: '',
+        // ✅ NOVÉ: Per-invoice věcná správnost
+        vecna_spravnost_umisteni_majetku: '',
+        vecna_spravnost_poznamka: '',
+        potvrzeni_vecne_spravnosti: 0
       });
     }
   }, [(formData.id || savedOrderId), formData.faktury?.length, shouldLockFaktury, currentPhase]);
@@ -21583,7 +21619,11 @@ function OrderForm25() {
                                         dt_vytvoreni: new Date().toISOString(),
                                         dt_aktualizace: null,
                                         aktivni: 1,
-                                        _isNew: true
+                                        _isNew: true,
+                                        // ✅ NOVÉ: Per-invoice věcná správnost
+                                        vecna_spravnost_umisteni_majetku: '',
+                                        vecna_spravnost_poznamka: '',
+                                        potvrzeni_vecne_spravnosti: 0
                                       };
 
                                       const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
@@ -21596,7 +21636,11 @@ function OrderForm25() {
                                         fa_cislo_vema: '',
                                         fa_strediska_kod: formData.strediska_kod || [],
                                         fa_poznamka: '',
-                                        fa_splatnost: ''
+                                        fa_splatnost: '',
+                                        // ✅ NOVÉ: Per-invoice věcná správnost
+                                        vecna_spravnost_umisteni_majetku: '',
+                                        vecna_spravnost_poznamka: '',
+                                        potvrzeni_vecne_spravnosti: 0
                                       });
                                     }}
                                     title="Přidat další fakturu"
