@@ -8892,22 +8892,24 @@ function OrderForm25() {
         }
       }
 
-      // 8.5. ZKONTROLOVANA - POUZE při explicitním potvrzení věcné správnosti
-      // ✅ Potvrzením Věcné správnosti → automaticky přidat ZKONTROLOVANA → přesun na FÁZI 8/8
-      // ✅ Kontrola checkboxu (formData) - spolehlivější než workflowStates
-      const jeVecnaSprávnostCheckbox = formData.potvrzeni_vecne_spravnosti === 1 || formData.potvrzeni_vecne_spravnosti === true;
-      if (jeVecnaSprávnostCheckbox && !formData.stav_stornovano) {
+      // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
+      // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
+      const allFakturyVecneSprávny = (formData.faktury || []).length > 0 && 
+        (formData.faktury || []).every(f => f.potvrzeni_vecne_spravnosti === 1 || f.potvrzeni_vecne_spravnosti === true);
+      
+      if (allFakturyVecneSprávny && !formData.stav_stornovano) {
         if (!workflowStates.includes('ZKONTROLOVANA')) {
           workflowStates.push('ZKONTROLOVANA');
-          addDebugLog('info', 'SAVE', 'workflow-update', '✅ Věcná správnost potvrzena → přidán stav ZKONTROLOVANA → FÁZE 8/8');
+          addDebugLog('info', 'SAVE', 'workflow-update', `✅ VŠECHNY faktury (${formData.faktury.length}x) mají potvrzenou věcnou správnost → přidán stav ZKONTROLOVANA → FÁZE 8/8`);
         }
       } else {
-        // ✅ Odebrat ZKONTROLOVANA pokud věcná správnost není potvrzena (odemčení sekce)
+        // ✅ Odebrat ZKONTROLOVANA pokud NENÍ potvrzena věcná správnost VŠECH faktur
         // Automaticky se vrátí na VECNA_SPRAVNOST → FÁZE 7/8
         const hadZkontrolovana = workflowStates.includes('ZKONTROLOVANA');
         workflowStates = workflowStates.filter(s => s !== 'ZKONTROLOVANA');
         if (hadZkontrolovana) {
-          addDebugLog('info', 'SAVE', 'workflow-update', '🔓 Věcná správnost NENÍ potvrzena → odebrán stav ZKONTROLOVANA → návrat na FÁZI 7/8');
+          const nepotvrzeneFaktury = (formData.faktury || []).filter(f => !(f.potvrzeni_vecne_spravnosti === 1 || f.potvrzeni_vecne_spravnosti === true)).length;
+          addDebugLog('info', 'SAVE', 'workflow-update', `🔓 NEJSOU potvrzeny všechny faktury (${nepotvrzeneFaktury}x chybí) → odebrán stav ZKONTROLOVANA → návrat na FÁZI 7/8`);
         }
       }
 
