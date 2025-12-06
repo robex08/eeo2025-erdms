@@ -15208,6 +15208,17 @@ function OrderForm25() {
           // POZNÁMKA: Validace byla odstraněna - střediska jsou čistě informativní pole
         });
       }
+
+      // ✅ FÁZE 7+: VALIDACE VĚCNÉ SPRÁVNOSTI (per-invoice)
+      if (currentPhase >= 7 && !isPokladna && formData.faktury && formData.faktury.length > 0) {
+        formData.faktury.forEach((faktura, index) => {
+          // Potvrzení věcné správnosti je POVINNÉ ve FÁZI 7+
+          if (faktura.potvrzeni_vecne_spravnosti !== 1 && faktura.potvrzeni_vecne_spravnosti !== true) {
+            errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Musíte potvrdit věcnou správnost`;
+          }
+        });
+      }
+    }
     }
 
     const hasErrors = Object.keys(errors).length > 0;
@@ -22175,26 +22186,30 @@ function OrderForm25() {
                                   </FormRow>
 
                                   {/* Checkbox potvrzení věcné správnosti */}
-                                  <div style={{
-                                    marginTop: '1rem',
-                                    padding: '0.75rem',
-                                    background: '#ffffff',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '6px'
-                                  }}>
-                                    <label style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.75rem',
-                                      cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
-                                      fontSize: '0.9rem',
-                                      fontWeight: '600',
-                                      color: '#374151'
-                                    }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)}
-                                        disabled={shouldLockVecnaSpravnost}
+                                  {(() => {
+                                    const hasError = !!validationErrors[`faktura_${index + 1}_vecna_spravnost`];
+                                    return (
+                                      <>
+                                        <div style={{
+                                          marginTop: '1rem',
+                                          padding: '0.75rem',
+                                          background: hasError ? '#fef2f2' : '#ffffff',
+                                          border: hasError ? '2px solid #ef4444' : '1px solid #d1d5db',
+                                          borderRadius: '6px'
+                                        }}>
+                                          <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600',
+                                            color: hasError ? '#dc2626' : '#374151'
+                                          }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={isEditing ? (currentData.potvrzeni_vecne_spravnosti === 1) : (faktura.potvrzeni_vecne_spravnosti === 1)}
+                                              disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           const newValue = e.target.checked ? 1 : 0;
                                           
@@ -22240,6 +22255,15 @@ function OrderForm25() {
                                       )}
                                     </label>
                                   </div>
+                                  {hasError && (
+                                    <ErrorText style={{ marginTop: '0.5rem' }}>
+                                      {validationErrors[`faktura_${index + 1}_vecna_spravnost`]}
+                                    </ErrorText>
+                                  )}
+                                </div>
+                              </>
+                                    );
+                                  })()}
                                 </div>
                               )}
 
