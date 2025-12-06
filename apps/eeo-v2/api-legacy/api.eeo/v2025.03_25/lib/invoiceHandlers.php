@@ -592,6 +592,8 @@ function handle_invoices25_by_id($input, $config, $queries) {
                 s.popis as fa_typ_popis,
                 u_vecna.jmeno as potvrdil_vecnou_spravnost_jmeno,
                 u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
+                u_vecna.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
+                u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za,
                 u_vecna.email as potvrdil_vecnou_spravnost_email
             FROM `$faktury_table` f
             LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
@@ -1309,6 +1311,8 @@ function handle_invoices25_list($input, $config, $queries) {
             s.popis AS fa_typ_popis,
             u_vecna.jmeno AS potvrdil_vecnou_spravnost_jmeno,
             u_vecna.prijmeni AS potvrdil_vecnou_spravnost_prijmeni,
+            u_vecna.titul_pred AS potvrdil_vecnou_spravnost_titul_pred,
+            u_vecna.titul_za AS potvrdil_vecnou_spravnost_titul_za,
             u_vecna.email AS potvrdil_vecnou_spravnost_email
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id

@@ -18,7 +18,7 @@ import { TooltipWrapper } from '../styles/GlobalTooltip';
 import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
-import { listInvoices25, listOrderInvoiceAttachments25, deleteInvoiceV2 } from '../services/api25invoices';
+import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -1235,6 +1235,13 @@ const Invoices25List = () => {
   });
   const [deleteType, setDeleteType] = useState('soft');
   
+  // State pro payment status dialog
+  const [paymentDialog, setPaymentDialog] = useState({
+    isOpen: false,
+    invoice: null,
+    newStatus: false
+  });
+  
   // State pro slide panel (náhled faktury)
   const [slidePanelOpen, setSlidePanelOpen] = useState(false);
   const [slidePanelInvoice, setSlidePanelInvoice] = useState(null);
@@ -1414,6 +1421,18 @@ const Invoices25List = () => {
       } else if (columnFilters.ma_prilohy === 'without') {
         apiParams.filter_ma_prilohy = 0; // Pouze bez příloh
       }
+      
+      // Věcná kontrola - filtr
+      if (columnFilters.vecna_kontrola === 'yes') {
+        apiParams.filter_vecna_kontrola = 1; // Pouze provedena
+      } else if (columnFilters.vecna_kontrola === 'no') {
+        apiParams.filter_vecna_kontrola = 0; // Pouze neprovedena
+      }
+      
+      // Věcnou provedl - text filtr
+      if (columnFilters.vecnou_provedl) {
+        apiParams.filter_vecnou_provedl = columnFilters.vecnou_provedl.trim();
+      }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
@@ -1475,6 +1494,31 @@ const Invoices25List = () => {
         dt_vytvoreni: invoice.dt_vytvoreni,
         dt_aktualizace: invoice.dt_aktualizace,
         aktivni: invoice.aktivni === 1 || invoice.aktivni === true,
+        
+        // Věcná správnost - přenést všechna pole z BE
+        potvrdil_vecnou_spravnost_id: invoice.potvrdil_vecnou_spravnost_id || null,
+        potvrdil_vecnou_spravnost_jmeno: (() => {
+          // Sestavit celé jméno s tituly: "Bc. Jan Novák, Ph.D."
+          if (!invoice.potvrdil_vecnou_spravnost_prijmeni) return null;
+          const parts = [];
+          if (invoice.potvrdil_vecnou_spravnost_titul_pred) {
+            parts.push(invoice.potvrdil_vecnou_spravnost_titul_pred);
+          }
+          if (invoice.potvrdil_vecnou_spravnost_jmeno) {
+            parts.push(invoice.potvrdil_vecnou_spravnost_jmeno);
+          }
+          parts.push(invoice.potvrdil_vecnou_spravnost_prijmeni);
+          let fullName = parts.join(' ');
+          if (invoice.potvrdil_vecnou_spravnost_titul_za) {
+            fullName += ', ' + invoice.potvrdil_vecnou_spravnost_titul_za;
+          }
+          return fullName;
+        })(),
+        potvrdil_vecnou_spravnost_email: invoice.potvrdil_vecnou_spravnost_email || null,
+        dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti || null,
+        vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno === 1 || invoice.vecna_spravnost_potvrzeno === true,
+        vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka || null,
+        vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku || null,
         
         // Vypočítaný status pro UI
         status: getInvoiceStatus(invoice)
@@ -1672,6 +1716,19 @@ const Invoices25List = () => {
   };
 
   const handleViewInvoice = async (invoice) => {
+    console.log('🔍 [Invoices25List] Opening slide panel for invoice:', invoice);
+    console.log('🔍 [Invoices25List] ALL invoice keys:', Object.keys(invoice));
+    console.log('🔍 [Invoices25List] Keys containing "vecn":', Object.keys(invoice).filter(k => k.toLowerCase().includes('vecn')));
+    console.log('🔍 [Invoices25List] Keys containing "potvrd":', Object.keys(invoice).filter(k => k.toLowerCase().includes('potvrd')));
+    console.log('🔍 [Invoices25List] Věcná správnost data:', {
+      potvrdil_vecnou_spravnost_jmeno: invoice.potvrdil_vecnou_spravnost_jmeno,
+      vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno,
+      dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti,
+      vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka,
+      vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku,
+      potvrdil_vecnou_spravnost_id: invoice.potvrdil_vecnou_spravnost_id
+    });
+    
     setSlidePanelInvoice(invoice);
     setSlidePanelOpen(true);
     setSlidePanelAttachments([]);
@@ -1680,7 +1737,12 @@ const Invoices25List = () => {
     if (invoice.id) {
       try {
         setSlidePanelLoading(true);
-        const attachments = await listOrderInvoiceAttachments25(invoice.id, token, username);
+        const attachments = await listInvoiceAttachments25({ 
+          token, 
+          username, 
+          faktura_id: invoice.id,
+          objednavka_id: invoice.objednavka_id 
+        });
         setSlidePanelAttachments(attachments || []);
       } catch (error) {
         console.error('Chyba při načítání příloh:', error);
@@ -1734,6 +1796,61 @@ const Invoices25List = () => {
     } catch (err) {
       console.error('Error deleting invoice:', err);
       showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+    } finally {
+      hideProgress?.();
+    }
+  };
+
+  // Handle payment status toggle (open dialog only for unpaid change)
+  const handleTogglePaymentStatus = (invoice) => {
+    // Use transformed 'zaplacena' field which is boolean
+    const currentlyPaid = invoice.zaplacena;
+    const newStatus = !currentlyPaid;
+    
+    // If changing to paid - do it directly without dialog
+    if (newStatus === true) {
+      confirmTogglePaymentStatus(invoice, newStatus);
+    } else {
+      // If changing to unpaid - show warning dialog
+      setPaymentDialog({
+        isOpen: true,
+        invoice: invoice,
+        newStatus: newStatus
+      });
+    }
+  };
+
+  // Confirm payment status change and update DB
+  const confirmTogglePaymentStatus = async (invoice, newStatus) => {
+    if (!invoice) return;
+    
+    try {
+      showProgress?.('Aktualizuji stav platby...');
+      
+      await updateInvoiceV2({
+        token,
+        username,
+        invoice_id: invoice.id,
+        updateData: {
+          fa_zaplacena: newStatus ? 1 : 0,
+          fa_datum_uhrazeni: newStatus ? new Date().toISOString().split('T')[0] : null
+        }
+      });
+      
+      showToast?.(
+        `Faktura ${invoice.cislo_faktury} označena jako ${newStatus ? 'ZAPLACENO ✅' : 'NEZAPLACENO ⏳'}`, 
+        { type: 'success' }
+      );
+      
+      // Zavřít dialog
+      setPaymentDialog({ isOpen: false, invoice: null, newStatus: false });
+      
+      // Obnovit seznam
+      loadData();
+      
+    } catch (err) {
+      console.error('Error updating payment status:', err);
+      showToast?.(err.message || 'Chyba při aktualizaci stavu platby', { type: 'error' });
     } finally {
       hideProgress?.();
     }
@@ -2096,6 +2213,29 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
+                    className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('vecna_spravnost_potvrzeno')}
+                    title="Věcná kontrola"
+                  >
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
+                    {sortField === 'vecna_spravnost_potvrzeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
+                  >
+                    Věcnou provedl
+                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
                     className={`sortable ${sortField === 'pocet_priloh' ? 'active' : ''}`}
                     onClick={() => handleSort('pocet_priloh')}
                   >
@@ -2310,6 +2450,42 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
+                  {/* Věcná kontrola - select filtr */}
+                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <select
+                      value={columnFilters.vecna_kontrola || ''}
+                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '0.375rem 0.625rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="">Vše</option>
+                      <option value="yes">Provedena</option>
+                      <option value="no">Neprovedena</option>
+                    </select>
+                  </TableHeader>
+                  {/* Věcnou provedl - text filtr */}
+                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <ColumnFilterWrapper>
+                      <FontAwesomeIcon icon={faUser} />
+                      <ColumnFilterInput
+                        type="text"
+                        placeholder="Celé jméno..."
+                        value={columnFilters.vecnou_provedl || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, vecnou_provedl: e.target.value})}
+                      />
+                      {columnFilters.vecnou_provedl && (
+                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}>
+                          <FontAwesomeIcon icon={faTimes} />
+                        </ColumnClearButton>
+                      )}
+                    </ColumnFilterWrapper>
+                  </TableHeader>
                   {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
@@ -2450,6 +2626,23 @@ const Invoices25List = () => {
                       )}
                     </TableCell>
                     <TableCell className="center">
+                      {invoice.vecna_spravnost_potvrzeno ? (
+                        <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a', fontSize: '1.1rem' }} title="Věcná kontrola provedena" />
+                      ) : (
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná kontrola neprovedena" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {invoice.potvrdil_vecnou_spravnost_jmeno ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
+                          {invoice.potvrdil_vecnou_spravnost_jmeno}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#cbd5e1' }}>—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="center">
                       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
                         <FontAwesomeIcon icon={faPaperclip} />
                         <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
@@ -2457,6 +2650,19 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>
+                        <TooltipWrapper text={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
+                          <ActionMenuButton
+                            className={invoice.zaplacena ? "paid" : "unpaid"}
+                            onClick={() => handleTogglePaymentStatus(invoice)}
+                            title={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
+                            style={{
+                              color: invoice.zaplacena ? '#16a34a' : '#dc2626',
+                              background: 'transparent'
+                            }}
+                          >
+                            <FontAwesomeIcon icon={invoice.zaplacena ? faCheckCircle : faMoneyBillWave} />
+                          </ActionMenuButton>
+                        </TooltipWrapper>
                         <TooltipWrapper text="Zobrazit detail" preferredPosition="left">
                           <ActionMenuButton 
                             className="view"
@@ -2748,6 +2954,86 @@ const Invoices25List = () => {
         </ConfirmDialog>
       )}
       
+      {/* Payment Status Dialog */}
+      {paymentDialog.isOpen && paymentDialog.invoice && (
+        <ConfirmDialog
+          isOpen={paymentDialog.isOpen}
+          onClose={() => setPaymentDialog({ isOpen: false, invoice: null, newStatus: false })}
+          onConfirm={() => confirmTogglePaymentStatus(paymentDialog.invoice, paymentDialog.newStatus)}
+          title="⚠️ Změna stavu platby faktury"
+          confirmText="Ano, změnit"
+          cancelText="Zrušit"
+          variant="warning"
+        >
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{
+              background: '#fef3c7',
+              border: '2px solid #fcd34d',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginRight: '0.5rem' }} />
+                Opravdu není faktura zaplacena?
+              </h4>
+              <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
+                Chystáte se změnit stav faktury z <strong>ZAPLACENO</strong> na <strong>NEZAPLACENO</strong>.
+                Prosím, zkontrolujte platební údaje před potvrzením.
+              </p>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569' }}>
+                🧾 Detail faktury:
+              </h4>
+              <div style={{ margin: 0, color: '#475569' }}>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'white',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+                    {paymentDialog.invoice?.cislo_faktury}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                    <strong>Částka:</strong> {formatCurrency(paymentDialog.invoice?.castka)}
+                  </div>
+                  {paymentDialog.invoice?.cislo_objednavky && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Objednávka:</strong> {paymentDialog.invoice.cislo_objednavky}
+                    </div>
+                  )}
+                  {paymentDialog.invoice?.fa_datum_splatnosti && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                      <strong>Splatnost:</strong> {new Date(paymentDialog.invoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ')}
+                    </div>
+                  )}
+                </div>
+                
+                <div style={{
+                  padding: '0.5rem',
+                  background: '#d1fae5',
+                  border: '1px solid #10b981',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  color: '#065f46',
+                  fontWeight: '600'
+                }}>
+                  Aktuální stav: ✅ ZAPLACENO
+                </div>
+              </div>
+            </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      
       {/* Slide Panel - Detail faktury */}
       <SlideInDetailPanel
         isOpen={slidePanelOpen}
@@ -2762,20 +3048,23 @@ const Invoices25List = () => {
         {slidePanelInvoice && (
           <DetailViewWrapper>
             <WatermarkIcon>
-              <FontAwesomeIcon icon={faFileInvoice} />
+              <FontAwesomeIcon icon={faMoneyBillWave} />
             </WatermarkIcon>
             <ContentWrapper>
               {/* Základní informace */}
               <DetailSection>
-                <SectionTitle>Základní informace</SectionTitle>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
+                  Základní informace
+                </SectionTitle>
                 <InfoGrid>
                   <InfoRowFullWidth>
-                    <InfoIcon>
+                    <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
                       <FontAwesomeIcon icon={faFileInvoice} />
                     </InfoIcon>
                     <InfoContent>
                       <InfoLabel>Číslo faktury</InfoLabel>
-                      <InfoValue style={{ fontSize: '1.125rem', fontWeight: '600' }}>
+                      <InfoValue style={{ fontSize: '1.25rem', fontWeight: '700' }}>
                         <ClickableValue
                           onClick={() => {
                             setSlidePanelOpen(false);
@@ -2783,7 +3072,7 @@ const Invoices25List = () => {
                           }}
                           title="Klikněte pro úpravu faktury"
                         >
-                          {slidePanelInvoice.cislo_faktury}
+                          {slidePanelInvoice.fa_cislo_vema || slidePanelInvoice.cislo_faktury}
                           <FontAwesomeIcon icon={faEdit} style={{ fontSize: '0.85rem' }} />
                         </ClickableValue>
                       </InfoValue>
@@ -2819,16 +3108,48 @@ const Invoices25List = () => {
                               slidePanelInvoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
                               slidePanelInvoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
                               slidePanelInvoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
-                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9'
+                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : 
+                              slidePanelInvoice.fa_typ === 'BEZNA' ? '#f0f9ff' : '#f1f5f9'
                             }
                             $textColor={
                               slidePanelInvoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
                               slidePanelInvoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
                               slidePanelInvoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
-                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
+                              slidePanelInvoice.fa_typ === 'DOBROPIS' ? '#166534' : 
+                              slidePanelInvoice.fa_typ === 'BEZNA' ? '#0369a1' : '#475569'
                             }
                           >
                             {slidePanelInvoice.fa_typ}
+                          </Badge>
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_cislo_faktury_dodavatele && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faFileAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Číslo faktury dodavatele</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_cislo_faktury_dodavatele}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_forma_uhrazeni && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Forma úhrady</InfoLabel>
+                        <InfoValue>
+                          <Badge $color="#f0f9ff" $textColor="#0369a1">
+                            {slidePanelInvoice.fa_forma_uhrazeni}
                           </Badge>
                         </InfoValue>
                       </InfoContent>
@@ -2858,6 +3179,29 @@ const Invoices25List = () => {
                         <InfoLabel>Doručení</InfoLabel>
                         <InfoValue style={{ color: '#3b82f6', fontWeight: '600' }}>
                           📬 Faktura doručena
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_strediska_kod && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faBuilding} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Střediska</InfoLabel>
+                        <InfoValue>
+                          {Array.isArray(slidePanelInvoice.fa_strediska_kod) 
+                            ? slidePanelInvoice.fa_strediska_kod.map((s, i) => (
+                                <Badge key={i} $color="#f1f5f9" $textColor="#475569" style={{ marginRight: '0.25rem', marginBottom: '0.25rem' }}>
+                                  {s}
+                                </Badge>
+                              ))
+                            : typeof slidePanelInvoice.fa_strediska_kod === 'string'
+                              ? slidePanelInvoice.fa_strediska_kod
+                              : 'N/A'
+                          }
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -2968,29 +3312,132 @@ const Invoices25List = () => {
               )}
 
               {/* Dodavatel z faktury */}
-              {slidePanelInvoice.nazev_dodavatele && !slidePanelInvoice.dodavatel_nazev && (
+              {(slidePanelInvoice.fa_nazev_dodavatele || slidePanelInvoice.nazev_dodavatele) && !slidePanelInvoice.dodavatel_nazev && (
                 <DetailSection>
-                  <SectionTitle>Dodavatel</SectionTitle>
+                  <SectionTitle>
+                    <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.5rem' }} />
+                    Dodavatel
+                  </SectionTitle>
                   <InfoGrid>
-                    <InfoRow>
-                      <InfoIcon>
+                    <InfoRowFullWidth>
+                      <InfoIcon style={{ background: '#f0f9ff', color: '#0284c7' }}>
                         <FontAwesomeIcon icon={faBuilding} />
                       </InfoIcon>
                       <InfoContent>
-                        <InfoLabel>Název</InfoLabel>
-                        <InfoValue>{slidePanelInvoice.nazev_dodavatele}</InfoValue>
+                        <InfoLabel>Název dodavatele</InfoLabel>
+                        <InfoValue style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_nazev_dodavatele || slidePanelInvoice.nazev_dodavatele}
+                        </InfoValue>
                       </InfoContent>
-                    </InfoRow>
-                    {slidePanelInvoice.ico_dodavatele && (
+                    </InfoRowFullWidth>
+                    
+                    {(slidePanelInvoice.fa_ico_dodavatele || slidePanelInvoice.ico_dodavatele) && (
                       <InfoRow>
                         <InfoIcon>
                           <FontAwesomeIcon icon={faIdCard} />
                         </InfoIcon>
                         <InfoContent>
                           <InfoLabel>IČO</InfoLabel>
-                          <InfoValue>{slidePanelInvoice.ico_dodavatele}</InfoValue>
+                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '1rem' }}>
+                            {slidePanelInvoice.fa_ico_dodavatele || slidePanelInvoice.ico_dodavatele}
+                          </InfoValue>
                         </InfoContent>
                       </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.fa_dic_dodavatele && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faIdCard} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>DIČ</InfoLabel>
+                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '1rem' }}>
+                            {slidePanelInvoice.fa_dic_dodavatele}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.fa_adresa_dodavatele && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faBuilding} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Adresa</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                            {slidePanelInvoice.fa_adresa_dodavatele}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
+
+              {/* Odběratel / Příjemce faktury */}
+              {(slidePanelInvoice.fa_nazev_prijemce || slidePanelInvoice.fa_ico_prijemce || slidePanelInvoice.fa_adresa_prijemce) && (
+                <DetailSection>
+                  <SectionTitle>
+                    <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.5rem' }} />
+                    Odběratel / Příjemce
+                  </SectionTitle>
+                  <InfoGrid>
+                    {slidePanelInvoice.fa_nazev_prijemce && (
+                      <InfoRowFullWidth>
+                        <InfoIcon style={{ background: '#f0fdf4', color: '#16a34a' }}>
+                          <FontAwesomeIcon icon={faBuilding} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Název příjemce</InfoLabel>
+                          <InfoValue style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+                            {slidePanelInvoice.fa_nazev_prijemce}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+                    
+                    {slidePanelInvoice.fa_ico_prijemce && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faIdCard} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>IČO příjemce</InfoLabel>
+                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '1rem' }}>
+                            {slidePanelInvoice.fa_ico_prijemce}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.fa_dic_prijemce && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faIdCard} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>DIČ příjemce</InfoLabel>
+                          <InfoValue style={{ fontFamily: 'monospace', fontSize: '1rem' }}>
+                            {slidePanelInvoice.fa_dic_prijemce}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.fa_adresa_prijemce && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faBuilding} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Adresa příjemce</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                            {slidePanelInvoice.fa_adresa_prijemce}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
                     )}
                   </InfoGrid>
                 </DetailSection>
@@ -2998,35 +3445,38 @@ const Invoices25List = () => {
 
               {/* Finanční údaje */}
               <DetailSection>
-                <SectionTitle>Finanční údaje</SectionTitle>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.5rem' }} />
+                  Finanční údaje
+                </SectionTitle>
                 <InfoGrid>
                   <InfoRowFullWidth>
-                    <InfoIcon>
+                    <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
                       <FontAwesomeIcon icon={faMoneyBill} />
                     </InfoIcon>
                     <InfoContent>
                       <InfoLabel>Částka faktury</InfoLabel>
-                      <InfoValue style={{ fontSize: '1.25rem', fontWeight: '700', color: '#10b981' }}>
-                        {formatCurrency(slidePanelInvoice.castka)}
+                      <InfoValue style={{ fontSize: '1.35rem', fontWeight: '700', color: '#10b981' }}>
+                        {formatCurrency(slidePanelInvoice.fa_castka || slidePanelInvoice.castka)}
                       </InfoValue>
                     </InfoContent>
                   </InfoRowFullWidth>
 
-                  {slidePanelInvoice.vs && (
+                  {slidePanelInvoice.fa_vs && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faMoneyBill} />
                       </InfoIcon>
                       <InfoContent>
                         <InfoLabel>Variabilní symbol</InfoLabel>
-                        <InfoValue style={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
-                          {slidePanelInvoice.vs}
+                        <InfoValue style={{ fontFamily: 'monospace', fontSize: '1.05rem', fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_vs}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.ks && (
+                  {slidePanelInvoice.fa_ks && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faMoneyBill} />
@@ -3034,13 +3484,13 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Konstantní symbol</InfoLabel>
                         <InfoValue style={{ fontFamily: 'monospace' }}>
-                          {slidePanelInvoice.ks}
+                          {slidePanelInvoice.fa_ks}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
                   )}
 
-                  {slidePanelInvoice.ss && (
+                  {slidePanelInvoice.fa_ss && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faMoneyBill} />
@@ -3048,7 +3498,63 @@ const Invoices25List = () => {
                       <InfoContent>
                         <InfoLabel>Specifický symbol</InfoLabel>
                         <InfoValue style={{ fontFamily: 'monospace' }}>
-                          {slidePanelInvoice.ss}
+                          {slidePanelInvoice.fa_ss}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_cislo_uctu && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Číslo účtu dodavatele</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace', fontSize: '1rem', fontWeight: '600' }}>
+                          {slidePanelInvoice.fa_cislo_uctu}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_kod_banky && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faBuilding} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Kód banky</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace' }}>
+                          {slidePanelInvoice.fa_kod_banky}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_iban && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faMoneyBill} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>IBAN</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                          {slidePanelInvoice.fa_iban}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_swift && (
+                    <InfoRow>
+                      <InfoIcon>
+                        <FontAwesomeIcon icon={faBuilding} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>SWIFT/BIC</InfoLabel>
+                        <InfoValue style={{ fontFamily: 'monospace' }}>
+                          {slidePanelInvoice.fa_swift}
                         </InfoValue>
                       </InfoContent>
                     </InfoRow>
@@ -3058,17 +3564,38 @@ const Invoices25List = () => {
 
               {/* Data */}
               <DetailSection>
-                <SectionTitle>📅 Důležitá data</SectionTitle>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faCalendarAlt} style={{ marginRight: '0.5rem' }} />
+                  Důležitá data
+                </SectionTitle>
                 <InfoGrid>
                   {slidePanelInvoice.fa_datum_vystaveni && (
+                    <InfoRow>
+                      <InfoIcon style={{ background: '#dbeafe', color: '#3b82f6' }}>
+                        <FontAwesomeIcon icon={faCalendarAlt} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Datum vystavení</InfoLabel>
+                        <InfoValue style={{ fontWeight: '600' }}>
+                          {new Date(slidePanelInvoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })}
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRow>
+                  )}
+
+                  {slidePanelInvoice.fa_datum_zdanitelneho_plneni && (
                     <InfoRow>
                       <InfoIcon>
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </InfoIcon>
                       <InfoContent>
-                        <InfoLabel>Datum vystavení</InfoLabel>
+                        <InfoLabel>Datum zdanitelného plnění</InfoLabel>
                         <InfoValue>
-                          {new Date(slidePanelInvoice.fa_datum_vystaveni).toLocaleDateString('cs-CZ', {
+                          {new Date(slidePanelInvoice.fa_datum_zdanitelneho_plneni).toLocaleDateString('cs-CZ', {
                             day: '2-digit',
                             month: 'long',
                             year: 'numeric'
@@ -3080,13 +3607,16 @@ const Invoices25List = () => {
                   
                   {slidePanelInvoice.fa_datum_splatnosti && (
                     <InfoRow>
-                      <InfoIcon>
+                      <InfoIcon style={{ 
+                        background: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#fee2e2' : '#fef3c7',
+                        color: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#dc2626' : '#f59e0b'
+                      }}>
                         <FontAwesomeIcon icon={faCalendarAlt} />
                       </InfoIcon>
                       <InfoContent>
                         <InfoLabel>Datum splatnosti</InfoLabel>
                         <InfoValue style={{ 
-                          fontWeight: '600',
+                          fontWeight: '700',
                           color: getInvoiceStatus(slidePanelInvoice) === 'overdue' ? '#dc2626' : '#1e293b'
                         }}>
                           {new Date(slidePanelInvoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ', {
@@ -3096,7 +3626,7 @@ const Invoices25List = () => {
                           })}
                           {getInvoiceStatus(slidePanelInvoice) === 'overdue' && (
                             <Badge $color="#fee2e2" $textColor="#991b1b" style={{ marginLeft: '0.5rem' }}>
-                              Po splatnosti
+                              ⚠️ Po splatnosti
                             </Badge>
                           )}
                         </InfoValue>
@@ -3142,12 +3672,12 @@ const Invoices25List = () => {
 
                   {slidePanelInvoice.fa_datum_uhrazeni && (
                     <InfoRow>
-                      <InfoIcon>
+                      <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
                         <FontAwesomeIcon icon={faCheckCircle} />
                       </InfoIcon>
                       <InfoContent>
                         <InfoLabel>Datum uhrazení</InfoLabel>
-                        <InfoValue style={{ fontWeight: '600', color: '#10b981' }}>
+                        <InfoValue style={{ fontWeight: '700', color: '#10b981' }}>
                           {new Date(slidePanelInvoice.fa_datum_uhrazeni).toLocaleDateString('cs-CZ', {
                             day: '2-digit',
                             month: 'long',
@@ -3220,7 +3750,10 @@ const Invoices25List = () => {
               {/* Přílohy */}
               {slidePanelAttachments.length > 0 && (
                 <DetailSection>
-                  <SectionTitle>Přílohy ({slidePanelAttachments.length})</SectionTitle>
+                  <SectionTitle>
+                    <FontAwesomeIcon icon={faPaperclip} style={{ marginRight: '0.5rem' }} />
+                    Přílohy ({slidePanelAttachments.length})
+                  </SectionTitle>
                   <AttachmentsGrid>
                     {slidePanelAttachments.map((attachment, index) => {
                       const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
@@ -3288,6 +3821,207 @@ const Invoices25List = () => {
                 </DetailSection>
               )}
 
+              {/* Kontrola věcné správnosti */}
+              <DetailSection>
+                <SectionTitle>
+                  <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.5rem' }} />
+                  Kontrola věcné správnosti
+                </SectionTitle>
+                <InfoGrid>
+                  {(slidePanelInvoice.potvrdil_vecnou_spravnost_jmeno || slidePanelInvoice.vecna_spravnost_potvrzeno || slidePanelInvoice.dt_potvrzeni_vecne_spravnosti) ? (
+                    <>
+                    {(slidePanelInvoice.vecna_spravnost_potvrzeno === 1 || slidePanelInvoice.vecna_spravnost_potvrzeno === true) && (
+                      <InfoRowFullWidth>
+                        <InfoIcon style={{ background: '#d1fae5', color: '#10b981' }}>
+                          <FontAwesomeIcon icon={faCheckCircle} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Stav věcné správnosti</InfoLabel>
+                          <InfoValue>
+                            <Badge 
+                              $color="#d1fae5"
+                              $textColor="#166534"
+                              style={{ fontSize: '0.875rem', fontWeight: '700' }}
+                            >
+                              ✅ POTVRZENO
+                            </Badge>
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+                    
+                    {(slidePanelInvoice.vecna_spravnost_potvrzeno === 0 || !slidePanelInvoice.vecna_spravnost_potvrzeno) && slidePanelInvoice.potvrdil_vecnou_spravnost_jmeno && (
+                      <InfoRowFullWidth>
+                        <InfoIcon style={{ background: '#fef3c7', color: '#f59e0b' }}>
+                          <FontAwesomeIcon icon={faHourglassHalf} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Stav věcné správnosti</InfoLabel>
+                          <InfoValue>
+                            <Badge 
+                              $color="#fef3c7"
+                              $textColor="#92400e"
+                              style={{ fontSize: '0.875rem', fontWeight: '700' }}
+                            >
+                              ⏳ ČEKÁ NA KONTROLU
+                            </Badge>
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+
+                    {slidePanelInvoice.potvrdil_vecnou_spravnost_jmeno && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faUser} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Potvrdil věcnou správnost</InfoLabel>
+                          <InfoValue style={{ fontWeight: '600' }}>
+                            {[
+                              slidePanelInvoice.potvrdil_vecnou_spravnost_titul_pred,
+                              slidePanelInvoice.potvrdil_vecnou_spravnost_jmeno,
+                              slidePanelInvoice.potvrdil_vecnou_spravnost_prijmeni,
+                              slidePanelInvoice.potvrdil_vecnou_spravnost_titul_za
+                            ].filter(Boolean).join(' ')}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.dt_potvrzeni_vecne_spravnosti && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Datum potvrzení</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.dt_potvrzeni_vecne_spravnosti).toLocaleString('cs-CZ', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.vecna_spravnost_poznamka && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faFileAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Poznámka ke kontrole</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                            {slidePanelInvoice.vecna_spravnost_poznamka}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+
+                    {slidePanelInvoice.vecna_spravnost_umisteni_majetku && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faBuilding} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Umístění majetku</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap' }}>
+                            {slidePanelInvoice.vecna_spravnost_umisteni_majetku}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+                    </>
+                  ) : (
+                    <InfoRowFullWidth>
+                      <InfoIcon style={{ background: '#f1f5f9', color: '#64748b' }}>
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </InfoIcon>
+                      <InfoContent>
+                        <InfoLabel>Stav kontroly</InfoLabel>
+                        <InfoValue style={{ color: '#64748b', fontStyle: 'italic' }}>
+                          Věcná správnost nebyla dosud zkontrolována
+                        </InfoValue>
+                      </InfoContent>
+                    </InfoRowFullWidth>
+                  )}
+                </InfoGrid>
+              </DetailSection>
+
+              {/* Systémové informace */}
+              {(slidePanelInvoice.dt_vytvoreni || slidePanelInvoice.dt_modifikace || slidePanelInvoice.vytvoril_jmeno) && (
+                <DetailSection>
+                  <SectionTitle>
+                    <FontAwesomeIcon icon={faDatabase} style={{ marginRight: '0.5rem' }} />
+                    Systémové informace
+                  </SectionTitle>
+                  <InfoGrid>
+                    {slidePanelInvoice.vytvoril_jmeno && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faUser} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Zaevidoval</InfoLabel>
+                          <InfoValue>
+                            {[
+                              slidePanelInvoice.vytvoril_titul_pred,
+                              slidePanelInvoice.vytvoril_jmeno,
+                              slidePanelInvoice.vytvoril_prijmeni,
+                              slidePanelInvoice.vytvoril_titul_za
+                            ].filter(Boolean).join(' ')}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.dt_vytvoreni && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Datum vytvoření záznamu</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.dt_vytvoreni).toLocaleString('cs-CZ', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+
+                    {slidePanelInvoice.dt_modifikace && (
+                      <InfoRow>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faCalendarAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Poslední změna</InfoLabel>
+                          <InfoValue>
+                            {new Date(slidePanelInvoice.dt_modifikace).toLocaleString('cs-CZ', {
+                              day: '2-digit',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRow>
+                    )}
+                  </InfoGrid>
+                </DetailSection>
+              )}
 
             </ContentWrapper>
           </DetailViewWrapper>
