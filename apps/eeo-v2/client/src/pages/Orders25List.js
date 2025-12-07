@@ -6303,6 +6303,11 @@ const Orders25List = () => {
       return prilohyCount > 0 ? count + 1 : count;
     }, 0);
 
+    // ⚠️ Počítání mimořádných událostí
+    const mimoradneUdalosti = dataToCount.reduce((count, order) => {
+      return order.mimoradna_udalost ? count + 1 : count;
+    }, 0);
+
     // Debug: ukáž celý byStatus objekt
 
     return {
@@ -6333,7 +6338,8 @@ const Orders25List = () => {
       completedAmount,
       incompleteAmount,
       withInvoices,
-      withAttachments
+      withAttachments,
+      mimoradneUdalosti
     };
   }, [orders, showArchived, getOrderSystemStatus, getOrderDisplayStatus, getOrderTotalPriceWithDPH]);
 
@@ -8740,13 +8746,24 @@ const Orders25List = () => {
     draftManager.setCurrentUser(user_id);
     draftManager.deleteDraft();
 
+    // 🔧 KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
+    localStorage.removeItem('activeOrderEditId');
+
     // Zavři modal a vyčisti state
     setShowEditConfirmModal(false);
     setOrderToEdit(null);
     setCurrentDraftData(null);
 
-    // Přesměruj na prázdný formulář
-    navigate('/order-form-25');
+    // 🔧 FIX: Pokud je otevřený formulář, force reload přes window.location
+    const isOnOrderForm = window.location.pathname === '/order-form-25';
+    
+    if (isOnOrderForm) {
+      // Jsme na formuláři - použij window.location pro hard reload
+      window.location.href = '/order-form-25';
+    } else {
+      // Nejsme na formuláři - normální navigate
+      navigate('/order-form-25');
+    }
   };
 
   // =============================================================================
@@ -9983,6 +10000,21 @@ const Orders25List = () => {
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
       setFilterWithAttachments(true);
+    }
+  };
+
+  const handleToggleMimoradneFilter = () => {
+    const newFilterMimoradne = !filterMimoradneObjednavky;
+    setFilterMimoradneObjednavky(newFilterMimoradne);
+    setUserStorage('orders25List_filterMimoradneObjednavky', newFilterMimoradne);
+    
+    if (newFilterMimoradne) {
+      // Zruš ostatní filtry pokud aktivujeme mimořádné
+      setActiveStatusFilter(null);
+      setStatusFilter([]);
+      setUserStorage('orders25List_statusFilter', []);
+      setFilterWithInvoices(false);
+      setFilterWithAttachments(false);
     }
   };
 
@@ -13498,6 +13530,23 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
+                {isTileVisible('mimoradne_udalosti') && (
+                  <StatCard
+                    $color="#dc2626"
+                    $clickable={true}
+                    $isActive={filterMimoradneObjednavky}
+                    onClick={handleToggleMimoradneFilter}
+                  >
+                    <StatHeader>
+                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatIcon $color="#dc2626">
+                        <FontAwesomeIcon icon={faBoltLightning} />
+                      </StatIcon>
+                    </StatHeader>
+                    <StatLabel>Mimořádné události</StatLabel>
+                  </StatCard>
+                )}
+
                 {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR */}
                 {isTileVisible('moje_objednavky') && userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
                   const currentUserIdNum = parseInt(user_id, 10);
@@ -13888,6 +13937,23 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       </StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
+                  </StatCard>
+                )}
+
+                {stats.mimoradneUdalosti > 0 && (
+                  <StatCard
+                    $color="#dc2626"
+                    $clickable={true}
+                    $isActive={filterMimoradneObjednavky}
+                    onClick={handleToggleMimoradneFilter}
+                  >
+                    <StatHeader>
+                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatIcon $color="#dc2626">
+                        <FontAwesomeIcon icon={faBoltLightning} />
+                      </StatIcon>
+                    </StatHeader>
+                    <StatLabel>Mimořádné události</StatLabel>
                   </StatCard>
                 )}
 
@@ -14307,6 +14373,23 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatIcon>📎</StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
+                  </StatCard>
+                )}
+
+                {isTileVisible('mimoradne_udalosti') && (
+                  <StatCard
+                    $color="#dc2626"
+                    $clickable={true}
+                    $isActive={filterMimoradneObjednavky}
+                    onClick={handleToggleMimoradneFilter}
+                  >
+                    <StatHeader>
+                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatIcon $color="#dc2626">
+                        <FontAwesomeIcon icon={faBoltLightning} />
+                      </StatIcon>
+                    </StatHeader>
+                    <StatLabel>Mimořádné události</StatLabel>
                   </StatCard>
                 )}
 

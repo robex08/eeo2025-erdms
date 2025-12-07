@@ -1222,14 +1222,22 @@ function handle_notifications_send_dual($input, $config, $queries) {
         if ($email_enabled) {
             file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (type: $recipient_type)...\n", FILE_APPEND);
             
-            // Typ příjemce už máme z from/to struktury
+            // Určit přesný typ šablony: APPROVER_NORMAL, APPROVER_URGENT nebo SUBMITTER
             // from[] = SUBMITTER (zelená informační šablona)
-            // to[] = APPROVER (červená šablona ke schválení)
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template type: $recipient_type\n", FILE_APPEND);
+            // to[] = APPROVER_NORMAL (oranžová) nebo APPROVER_URGENT (červená) podle is_urgent flagu
+            $is_urgent = !empty($input['is_urgent']) ? (bool)$input['is_urgent'] : false;
             
-            // Extrahuj správnou HTML šablonu podle typu příjemce
-            $email_body = get_email_template_by_recipient($template['email_body'], $recipient_type);
-            error_log("📧 Extrahována šablona $recipient_type: " . strlen($email_body) . " znaků");
+            if ($recipient_type === 'APPROVER') {
+                $template_type = $is_urgent ? 'APPROVER_URGENT' : 'APPROVER_NORMAL';
+            } else {
+                $template_type = 'SUBMITTER';
+            }
+            
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template type: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
+            
+            // Extrahuj správnou HTML šablonu podle typu (triple-template: normal/urgent/submitter)
+            $email_body = get_email_template_by_recipient($template['email_body'], $template_type);
+            error_log("📧 Extrahována šablona $template_type: " . strlen($email_body) . " znaků");
             
             // Nahraď placeholdery v subject
             $email_subject = str_replace(

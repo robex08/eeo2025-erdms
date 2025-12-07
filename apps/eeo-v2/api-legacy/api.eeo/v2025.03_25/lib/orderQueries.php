@@ -91,7 +91,7 @@ function selectAllOrdersIncludingInactiveQuery() {
 function insertOrderQuery() {
     return "INSERT INTO " . get_orders_table_name() . " (
             cislo_objednavky, dt_objednavky, predmet, strediska_kod, 
-            max_cena_s_dph, financovani, druh_objednavky_kod, stav_workflow_kod, stav_objednavky,
+            max_cena_s_dph, mimoradna_udalost, financovani, druh_objednavky_kod, stav_workflow_kod, stav_objednavky,
             uzivatel_id, uzivatel_akt_id, garant_uzivatel_id, objednatel_id, 
             schvalovatel_id, prikazce_id, dt_schvaleni, schvaleni_komentar,
             dodavatel_id, dodavatel_nazev, dodavatel_adresa, dodavatel_ico, 
@@ -109,7 +109,7 @@ function insertOrderQuery() {
             dokoncil_id, dt_dokonceni, dokonceni_poznamka
         ) VALUES (
             :cislo_objednavky, :dt_objednavky, :predmet, :strediska_kod, 
-            :max_cena_s_dph, :financovani, :druh_objednavky_kod, :stav_workflow_kod, :stav_objednavky,
+            :max_cena_s_dph, :mimoradna_udalost, :financovani, :druh_objednavky_kod, :stav_workflow_kod, :stav_objednavky,
             :uzivatel_id, :uzivatel_akt_id, :garant_uzivatel_id, :objednatel_id, 
             :schvalovatel_id, :prikazce_id, :dt_schvaleni, :schvaleni_komentar,
             :dodavatel_id, :dodavatel_nazev, :dodavatel_adresa, :dodavatel_ico, 
@@ -188,6 +188,7 @@ function updateOrderByIdQuery() {
         predmet = :predmet,
         strediska_kod = :strediska_kod,
         max_cena_s_dph = :max_cena_s_dph,
+        mimoradna_udalost = :mimoradna_udalost,
         financovani = :financovani,
         druh_objednavky_kod = :druh_objednavky_kod,
         stav_workflow_kod = :stav_workflow_kod,
