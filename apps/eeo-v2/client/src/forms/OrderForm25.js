@@ -11751,6 +11751,43 @@ function OrderForm25() {
     }
   }, [token, username, smlouvyList.length, loadingSmlouvyList, loadSmlouvyList]);
 
+  // 🔢 Automatické generování individualni_schvaleni z ev_cislo (O- → I-)
+  useEffect(() => {
+    // Pouze pro Individuální schválení
+    const selectedSource = financovaniOptions.find(opt => opt.kod === formData.zpusob_financovani);
+    const nazev = selectedSource?.nazev || '';
+    const isIndividualni = nazev.includes('Individuální') && !nazev.includes('Pojistná');
+    
+    if (!isIndividualni) {
+      return; // Nejedná se o Individuální schválení
+    }
+
+    // Získat ev_cislo - může být string nebo object
+    let evCislo = '';
+    if (typeof formData.ev_cislo === 'string') {
+      evCislo = formData.ev_cislo;
+    } else if (typeof formData.ev_cislo === 'object' && formData.ev_cislo) {
+      evCislo = formData.ev_cislo.order_number_string || 
+                formData.ev_cislo.next_order_string || 
+                formData.ev_cislo.next_number || '';
+    }
+
+    if (!evCislo || !evCislo.startsWith('O-')) {
+      return; // Nemáme validní ev_cislo začínající O-
+    }
+
+    // Nahradit O- za I-
+    const iCislo = evCislo.replace(/^O-/, 'I-');
+    
+    // Aktualizovat pouze pokud se liší
+    if (formData.individualni_schvaleni !== iCislo) {
+      setFormData(prev => ({
+        ...prev,
+        individualni_schvaleni: iCislo
+      }));
+    }
+  }, [formData.ev_cislo, formData.zpusob_financovani, financovaniOptions, formData.individualni_schvaleni]);
+
   // 📄 Automatické načtení detailu smlouvy při změně čísla smlouvy
   useEffect(() => {
     if (formData.cislo_smlouvy && formData.cislo_smlouvy.trim()) {
@@ -18859,12 +18896,14 @@ function OrderForm25() {
                       <Input
                         type="text"
                         name="individualni_schvaleni"
-                        placeholder="Číslo nebo kód schválení"
+                        placeholder="Automaticky generováno z ev. čísla"
                         value={formData.individualni_schvaleni || ''}
                         onChange={(e) => handleInputChange('individualni_schvaleni', e.target.value)}
-                        disabled={shouldLockFinancovaniSection}
+                        disabled={true}
+                        readOnly={true}
                         hasError={!!validationErrors.individualni_schvaleni}
                         hasIcon
+                        style={{ backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
                       />
                     </InputWithIcon>
                     {validationErrors.individualni_schvaleni && (
