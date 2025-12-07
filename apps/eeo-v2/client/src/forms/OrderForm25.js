@@ -4752,22 +4752,34 @@ function OrderForm25() {
   // �🎯 [GLOBAL STATE] Export stavu pro Layout.js MenuBar
   // Místo složité logiky s draft metadata - OrderForm25 přímo ví, co edituje!
   // 🎯 [CENTRALIZOVANÁ FUNKCE] Broadcast stavu do MenuBaru
-  const broadcastOrderState = useCallback((overrides = {}) => {
-    const state = {
-      isEditMode: !isNewOrder,
-      orderId: savedOrderId || formData.id,
-      orderNumber: formData.cislo_objednavky || formData.ev_cislo,
-      currentPhase,
-      mainWorkflowState,
-      timestamp: Date.now(),
-      ...overrides
+  // Používá ref pro aktuální hodnoty - vždy dostupná i v async funkcích
+  const broadcastOrderStateRef = useRef();
+  
+  useEffect(() => {
+    broadcastOrderStateRef.current = (overrides = {}) => {
+      const state = {
+        isEditMode: !isNewOrder,
+        orderId: savedOrderId || formData.id,
+        orderNumber: formData.cislo_objednavky || formData.ev_cislo,
+        currentPhase,
+        mainWorkflowState,
+        timestamp: Date.now(),
+        ...overrides
+      };
+      
+      window.__orderFormState = state;
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
+      
+      return state;
     };
-    
-    window.__orderFormState = state;
-    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
-    
-    return state;
   }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState]);
+
+  // Helper pro volání z async funkcí
+  const broadcastOrderState = (overrides) => {
+    if (broadcastOrderStateRef.current) {
+      return broadcastOrderStateRef.current(overrides);
+    }
+  };
 
   // 🎯 [MOUNT] Broadcast při načtení formuláře
   useEffect(() => {
@@ -8019,22 +8031,25 @@ function OrderForm25() {
         }
 
         // 🔥 OPRAVENÉ POŘADÍ PRO BĚŽNÉ UŽIVATELE:
-        // 1. Nejprve přepnout na seznam objednávek
-        navigate('/orders25-list', { replace: true });
-
-        // 2. Pak zrušit status editace (tlačítko se změní z "Editace" na "Nová")
-        setIsEditMode(false);
-
-        // 3. Reset MenuBaru (formulář se zavírá)
+        // 1. Reset MenuBaru PŘED navigací
         broadcastOrderState({
           isEditMode: false,
           orderId: null,
           orderNumber: ''
         });
 
-        // 4. Nakonec skrýt progress a ukončit ukládání
-        setShowSaveProgress(false);
-        setIsSaving(false);
+        // 2. Zrušit status editace
+        setIsEditMode(false);
+
+        // 3. Počkej 50ms, aby se broadcast propagoval
+        setTimeout(() => {
+          // 4. Přepnout na seznam objednávek
+          navigate('/orders25-list', { replace: true });
+          
+          // 5. Skrýt progress a ukončit ukládání
+          setShowSaveProgress(false);
+          setIsSaving(false);
+        }, 50);
       }
     });
 
@@ -14905,6 +14920,9 @@ function OrderForm25() {
             orderId: null,
             orderNumber: ''
           });
+          
+          // 🔥 KRITICKÉ: Počkat 50ms, aby se broadcast stihl propagovat
+          await new Promise(resolve => setTimeout(resolve, 50));
         } catch (e) {
           // Ignoruj chybu broadcastu
         }
