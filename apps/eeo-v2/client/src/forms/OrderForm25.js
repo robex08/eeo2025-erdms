@@ -18510,7 +18510,7 @@ function OrderForm25() {
                 </FormGroup>
               </FormRow>
 
-              {/* Dynamická pole podle vybraného zdroje financování */}
+              {/* LP KÓD - zobrazit pouze když je vybraný Limitovaný příslib */}
               {(() => {
                 const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
                 const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
