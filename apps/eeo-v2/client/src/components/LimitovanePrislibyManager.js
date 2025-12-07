@@ -2010,6 +2010,9 @@ const LimitovanePrislibyManager = () => {
               </div>
             );
           })()}
+          
+          {/* 🆕 PŘEHLED ČERPÁNÍ Z POKLADNY */}
+          <CashbookLPSummary />
         </>
       )}
       </CollapsibleContent>
@@ -2026,6 +2029,193 @@ const LimitovanePrislibyManager = () => {
         cancelText="Zrušit"
       />
     </Container>
+  );
+};
+
+/**
+ * 🏦 CASHBOOK LP SUMMARY - Přehled čerpání LP z pokladny
+ * Zobrazuje agregované čerpání LP kódů z pokladny včetně multi-LP položek
+ */
+const CashbookLPSummary = () => {
+  const { userDetail } = useContext(AuthContext);
+  const { showToast } = useContext(ToastContext);
+  const [loading, setLoading] = useState(false);
+  const [lpSummary, setLpSummary] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [collapsed, setCollapsed] = useState(false);
+  
+  const loadLPSummary = useCallback(async () => {
+    if (!userDetail?.id) return;
+    
+    setLoading(true);
+    try {
+      const cashbookAPI = (await import('../services/cashbookService')).default;
+      const result = await cashbookAPI.getLPSummary(userDetail.id, selectedYear);
+      
+      if (result.status === 'ok') {
+        setLpSummary(result.data.lp_summary || []);
+      }
+    } catch (error) {
+      console.error('❌ Chyba při načítání LP summary:', error);
+      showToast('Chyba při načítání přehledu LP z pokladny', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [userDetail, selectedYear, showToast]);
+  
+  useEffect(() => {
+    loadLPSummary();
+  }, [loadLPSummary]);
+  
+  if (!lpSummary || lpSummary.length === 0) {
+    return null; // Nezobrazovat pokud nemá data
+  }
+  
+  return (
+    <div style={{ marginTop: '3rem' }}>
+      <div style={{
+        background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+        border: '2px solid #f59e0b',
+        borderRadius: '12px',
+        padding: '1.5rem',
+        marginBottom: '1.5rem'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: collapsed ? 0 : '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Coins size={20} color="#f59e0b" />
+            <div>
+              <h4 style={{ margin: 0, color: '#92400e', fontSize: '1.1rem' }}>Přehled čerpání z pokladny</h4>
+              {!collapsed && <p style={{ margin: '0.25rem 0 0 0', color: '#78350f', fontSize: '0.875rem' }}>Agregace výdajů podle LP kódů včetně multi-LP položek</p>}
+            </div>
+          </div>
+          <CollapseButton onClick={() => setCollapsed(!collapsed)}>
+            {collapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+          </CollapseButton>
+        </div>
+        
+        {!collapsed && (
+          <>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#78350f', fontWeight: '500' }}>
+                <Calendar size={18} />
+                Rok:
+              </label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: '2px solid #f59e0b',
+                  background: 'white',
+                  fontSize: '0.95rem',
+                  cursor: 'pointer'
+                }}
+              >
+                {[2025, 2024, 2023].map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <Button
+                onClick={loadLPSummary}
+                disabled={loading}
+                style={{ marginLeft: 'auto' }}
+              >
+                <RefreshCw size={16} style={{ animation: loading ? `${spinAnimation} 1s linear infinite` : 'none' }} />
+                Obnovit
+              </Button>
+            </div>
+            
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#78350f' }}>
+                <RefreshCw size={24} style={{ animation: `${spinAnimation} 1s linear infinite` }} />
+                <p>Načítám data...</p>
+              </div>
+            ) : (
+              <div style={{ marginTop: '1.5rem', overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
+                  <thead>
+                    <tr style={{ background: '#fef3c7', borderBottom: '2px solid #f59e0b' }}>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#92400e', fontWeight: '600' }}>LP kód</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#92400e', fontWeight: '600' }}>Název účtu</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Čerpáno z pokladny</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Počet dokladů</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Celkový limit</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', color: '#92400e', fontWeight: '600' }}>% čerpání</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Zbývá</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lpSummary.map((lp, idx) => {
+                      const isOverLimit = lp.prekroceni;
+                      const percentColor = lp.procento_cerpani > 100 ? '#dc2626' : lp.procento_cerpani > 80 ? '#f59e0b' : '#10b981';
+                      
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: '600', color: '#1f2937' }}>{lp.lp_kod}</td>
+                          <td style={{ padding: '0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>{lp.nazev_uctu || '-'}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#1f2937' }}>
+                            {lp.cerpano_pokladna.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6b7280' }}>
+                            {lp.pocet_dokladu} dokladů
+                            {lp.pocet_polozek > lp.pocet_dokladu && (
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', marginLeft: '0.25rem' }}>
+                                ({lp.pocet_polozek} položek)
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6b7280' }}>
+                            {lp.celkovy_limit ? lp.celkovy_limit.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč' : '-'}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {lp.procento_cerpani !== null ? (
+                              <span style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '999px',
+                                background: percentColor + '20',
+                                color: percentColor,
+                                fontWeight: '600',
+                                fontSize: '0.875rem'
+                              }}>
+                                {isOverLimit && <AlertTriangle size={14} />}
+                                {lp.procento_cerpani.toFixed(1)}%
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '500', color: lp.zbyva < 0 ? '#dc2626' : '#10b981' }}>
+                            {lp.zbyva !== null ? lp.zbyva.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč' : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#fef3c7', fontWeight: '700', borderTop: '2px solid #f59e0b' }}>
+                      <td colSpan="2" style={{ padding: '0.75rem', color: '#92400e' }}>CELKEM</td>
+                      <td style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e' }}>
+                        {lpSummary.reduce((sum, lp) => sum + lp.cerpano_pokladna, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e' }}>
+                        {lpSummary.reduce((sum, lp) => sum + lp.pocet_dokladu, 0)} dokladů
+                      </td>
+                      <td colSpan="3"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+                
+                <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#78350f', fontStyle: 'italic' }}>
+                  💡 Zahrnuje všechny výdaje z pokladny včetně multi-LP položek (více LP kódů pod jedním dokladem)
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 };
 
