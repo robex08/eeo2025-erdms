@@ -1,4 +1,9 @@
-import api from './api.eeo';
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo',
+  headers: { 'Content-Type': 'application/json' }
+});
 
 /**
  * Notifikační service pro komunikaci s backend API
@@ -441,6 +446,80 @@ class NotificationService {
       send_email: true,
       priority: 'high'
     });
+  }
+
+  /**
+   * Odeslat DUAL-TEMPLATE notifikace při odeslání ke schválení
+   * 
+   * @param {Object} params
+   * @param {string} params.token - User token
+   * @param {string} params.username - Username
+   * @param {Object} params.orderData - Data objednávky z OrderForm25
+   * @returns {Promise<Object>} Response s počtem odeslaných emailů
+   */
+  async sendOrderApprovalNotifications({
+    token,
+    username,
+    orderData
+  }) {
+    try {
+      // Sestavit pole příjemců s deduplikací
+      const recipientSet = new Set();
+      
+      // APPROVER: příkazce (vždy)
+      if (orderData.prikazce_id) {
+        recipientSet.add(orderData.prikazce_id);
+      }
+      
+      // SUBMITTER: garant, vytvořil, objednatel (deduplikováno)
+      if (orderData.garant_id && orderData.garant_id !== orderData.prikazce_id) {
+        recipientSet.add(orderData.garant_id);
+      }
+      if (orderData.vytvoril && orderData.vytvoril !== orderData.prikazce_id) {
+        recipientSet.add(orderData.vytvoril);
+      }
+      if (orderData.objednatel_id && orderData.objednatel_id !== orderData.prikazce_id) {
+        recipientSet.add(orderData.objednatel_id);
+      }
+
+      const recipients = Array.from(recipientSet);
+
+      if (recipients.length === 0) {
+        console.warn('sendOrderApprovalNotifications: Žádní příjemci k odeslání');
+        return { status: 'warning', message: 'No recipients', sent: 0 };
+      }
+
+      // Formátovat data pro API
+      const payload = {
+        token,
+        username,
+        order_id: orderData.id,
+        order_number: orderData.ev_cislo,
+        order_subject: orderData.predmet,
+        commander_id: orderData.prikazce_id,
+        garant_id: orderData.garant_id,
+        creator_id: orderData.vytvoril,
+        supplier_name: orderData.dodavatel_nazev || 'Neuvedeno',
+        funding: orderData.financovani_display || 'Neuvedeno',
+        max_price: orderData.max_price_with_dph ? `${orderData.max_price_with_dph.toLocaleString('cs-CZ')} Kč` : 'Neuvedeno',
+        recipients
+      };
+
+      // Volat backend API pro dual-template odeslání
+      const response = await api.post('/notifications/send-dual', payload);
+
+      console.log('sendOrderApprovalNotifications SUCCESS:', response);
+      return response;
+
+    } catch (error) {
+      // Non-blocking error - logovat ale nepřerušovat workflow
+      console.error('sendOrderApprovalNotifications ERROR:', error);
+      return { 
+        status: 'error', 
+        message: error.message || 'Failed to send notifications',
+        sent: 0 
+      };
+    }
   }
 }
 

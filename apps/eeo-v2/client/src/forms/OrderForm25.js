@@ -72,6 +72,7 @@ import {
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 // ❌ DEPRECATED: listInvoiceAttachments25, deleteInvoiceAttachment25 - použij V2 API místo toho
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
+import notificationServiceDual from '../services/notificationService'; // 🆕 Dual-template notifikace
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
 import {
   validateWorkflowData,
@@ -9528,7 +9529,33 @@ function OrderForm25() {
             }
           }
 
+          // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
           await sendOrderNotifications(orderId, orderNumber, workflowKod, null, formData);
+
+          // 🆕 DUAL-TEMPLATE EMAIL: Nová objednávka má automaticky ODESLANA_KE_SCHVALENI (NAVÍC k zvonečku)
+          if (hasWorkflowState(workflowKod, 'ODESLANA_KE_SCHVALENI')) {
+            try {
+              await notificationServiceDual.sendOrderApprovalNotifications({
+                token,
+                username,
+                orderData: {
+                  id: orderId,
+                  ev_cislo: orderNumber,
+                  predmet: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,
+                  garant_id: formData.garant_uzivatel_id,
+                  vytvoril: formData.objednatel_id,
+                  objednatel_id: formData.objednatel_id,
+                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_display: formData.zpusob_financovani || 'Neuvedeno',
+                  max_price_with_dph: formData.max_cena_s_dph || 0
+                }
+              });
+              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent-new', `Dual-template EMAILY odeslány pro novou objednávku ${orderNumber}`);
+            } catch (dualError) {
+              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error-new', `Chyba při dual-template emailech: ${dualError.message}`);
+            }
+          }
         } catch (notifError) {
           // Nezastavuj workflow kvůli chybě notifikace
           addDebugLog('warning', 'SAVE', 'notification-error', `Chyba při odesílání notifikace: ${notifError.message}`);
@@ -9971,7 +9998,38 @@ function OrderForm25() {
         // Odeslat notifikace při změně workflow stavu
         try {
           const orderNumber = formData.ev_cislo || formData.cislo_objednavky || savedOrderId;
+          
+          // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
           await sendOrderNotifications(savedOrderId, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);
+          
+          // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání ke schválení (NAVÍC k zvonečku)
+          const hasKeSchvaleni = hasWorkflowState(result.stav_workflow_kod, 'ODESLANA_KE_SCHVALENI');
+          const hadKeSchvaleni = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA_KE_SCHVALENI') : false;
+          
+          if (hasKeSchvaleni && !hadKeSchvaleni) {
+            // Odeslat POUZE EMAILY (zvonečky už vytořila funkce sendOrderNotifications)
+            try {
+              await notificationServiceDual.sendOrderApprovalNotifications({
+                token,
+                username,
+                orderData: {
+                  id: savedOrderId,
+                  ev_cislo: orderNumber,
+                  predmet: formData.predmet || '',
+                  prikazce_id: formData.prikazce_id,
+                  garant_id: formData.garant_uzivatel_id,
+                  vytvoril: formData.objednatel_id,
+                  objednatel_id: formData.objednatel_id,
+                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_display: formData.zpusob_financovani || 'Neuvedeno',
+                  max_price_with_dph: formData.max_cena_s_dph || 0
+                }
+              });
+              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent', `Dual-template EMAILY odeslány pro objednávku ${orderNumber}`);
+            } catch (dualError) {
+              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error', `Chyba při dual-template emailech: ${dualError.message}`);
+            }
+          }
         } catch (notifError) {
         }
 

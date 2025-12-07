@@ -10,13 +10,15 @@ import {
   faDatabase,
   faPaperclip,
   faPalette,
-  faFileInvoice
+  faFileInvoice,
+  faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import OrderV2TestPanel from './OrderV2TestPanel';
 import NotificationTestPanel from './NotificationTestPanel';
 import AttachmentsV2TestPanel from './AttachmentsV2TestPanel';
 import ModalStylesPanel from './ModalStylesPanel';
 import InvoiceAttachmentsTestPanel from './InvoiceAttachmentsTestPanel';
+import MailTestPanelV2 from './MailTestPanelV2';
 
 const Container = styled.div`
   max-width: 100%;
@@ -484,6 +486,9 @@ const DebugPanel = () => {
       case 'modal-styles':
         return <ModalStylesPanel />;
 
+      case 'mail':
+        return <MailTestPanelV2 />;
+
       case 'users':
         return (
           <ComingSoonPanel>
@@ -599,6 +604,14 @@ const DebugPanel = () => {
         >
           <FontAwesomeIcon icon={faBell} />
           Notifications
+        </Tab>
+
+        <Tab
+          $active={activeTab === 'mail'}
+          onClick={() => setActiveTab('mail')}
+        >
+          <FontAwesomeIcon icon={faEnvelope} />
+          Mail Test
         </Tab>
 
         <Tab
