@@ -17961,63 +17961,6 @@ function OrderForm25() {
                   </PhaseProgressBar>
                 </PhaseProgressContainer>
 
-                {/* 💰 Zbývající částka LP - zobrazit pouze pokud je vybrán způsob "Limitovaný příslib" */}
-                {(() => {
-                  const selectedSource = financovaniOptions.find(opt => opt.kod === formData.zpusob_financovani);
-                  const nazev = selectedSource?.nazev || '';
-                  const isLpActive = nazev.includes('Limitovaný příslib');
-                  return isLpActive;
-                })() && Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0 && formData.lp_kod.map(lp_id => {
-                  const detail = lpDetails[lp_id];
-                  if (!detail) return null;
-                  
-                  // 🎯 Vybrat správný typ čerpání podle fáze
-                  let zbyva, typCerpani;
-                  if (currentPhase <= 2) {
-                    // Fáze 1-2: Rezervace (max_cena_s_dph)
-                    zbyva = parseFloat(detail.zbyva_rezervace || 0);
-                    typCerpani = 'Rezervace';
-                  } else if (currentPhase >= 3 && currentPhase <= 6) {
-                    // Fáze 3-6: Předpokládané čerpání (součet položek)
-                    zbyva = parseFloat(detail.zbyva_predpoklad || 0);
-                    typCerpani = 'Předpoklad';
-                  } else {
-                    // Fáze 7-8: Skutečné čerpání (faktury)
-                    zbyva = parseFloat(detail.zbyva_skutecne || 0);
-                    typCerpani = 'Skutečné';
-                  }
-                  
-                  const isNegative = zbyva < 0;
-                  
-                  return (
-                    <div key={lp_id} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '4px 10px',
-                      background: isNegative
-                        ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
-                        : 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                      border: `2px solid ${isNegative ? '#fca5a5' : '#86efac'}`,
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      color: isNegative ? '#991b1b' : '#15803d',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                        <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
-                          LP {lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id)?.cislo_lp || lp_id} ({typCerpani})
-                        </div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                          {Math.abs(zbyva).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
                 {/* 📄 Zbývající částka Smlouvy - zobrazit pouze pokud je vybrán způsob "Smlouva" */}
                 {(() => {
                   const selectedSource = financovaniOptions.find(opt => opt.kod === formData.zpusob_financovani);
@@ -18573,6 +18516,78 @@ function OrderForm25() {
                     />
                     {validationErrors.lp_kod && (
                       <ErrorText>{validationErrors.lp_kod}</ErrorText>
+                    )}
+                    
+                    {/* 💰 LP REZERVACE - kompaktní zobrazení zbývajících částek */}
+                    {Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0 && (
+                      <div style={{
+                        marginTop: '0.75rem',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}>
+                        {formData.lp_kod.map(lp_id => {
+                          const detail = lpDetails[lp_id];
+                          if (!detail) return null;
+                          
+                          // 🎯 Vybrat správný typ čerpání podle fáze
+                          let zbyva, typCerpani, bgColor, borderColor, textColor;
+                          if (currentPhase <= 2) {
+                            // Fáze 1-2: Rezervace (max_cena_s_dph)
+                            zbyva = parseFloat(detail.zbyva_rezervace || 0);
+                            typCerpani = 'Rezervace';
+                          } else if (currentPhase >= 3 && currentPhase <= 6) {
+                            // Fáze 3-6: Předpokládané čerpání (součet položek)
+                            zbyva = parseFloat(detail.zbyva_predpoklad || 0);
+                            typCerpani = 'Předpoklad';
+                          } else {
+                            // Fáze 7-8: Skutečné čerpání (faktury)
+                            zbyva = parseFloat(detail.zbyva_skutecne || 0);
+                            typCerpani = 'Skutečné';
+                          }
+                          
+                          const isNegative = zbyva < 0;
+                          
+                          // Barvy podle stavu
+                          if (isNegative) {
+                            bgColor = '#fee2e2';
+                            borderColor = '#fca5a5';
+                            textColor = '#991b1b';
+                          } else {
+                            bgColor = '#f0fdf4';
+                            borderColor = '#bbf7d0';
+                            textColor = '#15803d';
+                          }
+                          
+                          const lpCislo = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id)?.cislo_lp || lp_id;
+                          
+                          return (
+                            <div key={lp_id} style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 8px',
+                              background: bgColor,
+                              border: `1px solid ${borderColor}`,
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: textColor
+                            }}>
+                              <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                                {lpCislo}
+                              </span>
+                              <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>
+                                ({typCerpani})
+                              </span>
+                              <span style={{ fontWeight: 700 }}>
+                                {zbyva < 0 && '−'}
+                                {Math.abs(zbyva).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </FormGroup>
                 </FormRow>
