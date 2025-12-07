@@ -491,7 +491,7 @@ class NotificationService {
         return { status: 'warning', message: 'No recipients', sent: 0 };
       }
 
-      // Formátovat data pro API (nový formát s from/to + střediska + financování detail + urgence)
+      // Formátovat data pro API (nový formát s from/to + střediska + financování JSON)
       const payload = {
         token,
         username,
@@ -502,9 +502,8 @@ class NotificationService {
         garant_id: orderData.garant_id,
         creator_id: orderData.vytvoril,
         supplier_name: orderData.dodavatel_nazev || 'Neuvedeno',
-        funding: orderData.financovani_display || 'Neuvedeno',
-        funding_number: orderData.financovani_cislo || '',        // Číslo smlouvy/LP
-        funding_note: orderData.financovani_poznamka || '',        // Poznámka ke smlouvě
+        // 💰 FINANCOVÁNÍ - celý JSON objekt (backend ho parsuje)
+        financovani_json: orderData.financovani_json || '{}',
         strediska_names: orderData.strediska_nazvy || [],          // Array názvů středisek (už převedeno ve FE)
         max_price: orderData.max_price_with_dph ? `${orderData.max_price_with_dph.toLocaleString('cs-CZ')} Kč` : 'Neuvedeno',
         is_urgent: orderData.is_urgent || false,                   // 🚨 Mimořádná událost (červená vs oranžová)

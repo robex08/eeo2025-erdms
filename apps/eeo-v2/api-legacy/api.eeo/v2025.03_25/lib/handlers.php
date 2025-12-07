@@ -1107,12 +1107,45 @@ function handle_notifications_send_dual($input, $config, $queries) {
         $strediska_display = implode(', ', $input['strediska_names']);
     }
     
-    // Sestavení FINANCOVÁNÍ (typ + číslo + poznámka)
-    $financovani_full = $input['funding'] ?? 'Neuvedeno';
-    if (!empty($input['funding_number'])) {
-        $financovani_full .= ' - ' . $input['funding_number'];
+    // 💰 FINANCOVÁNÍ - parsovat JSON objekt z frontendu
+    $financovani_full = 'Neuvedeno';
+    $financovani_poznamka = '';
+    
+    if (!empty($input['financovani_json'])) {
+        $financovani_data = json_decode($input['financovani_json'], true);
+        
+        if (json_last_error() === JSON_ERROR_NONE && is_array($financovani_data)) {
+            $typ = $financovani_data['typ'] ?? 'Neuvedeno';
+            $financovani_full = $typ;
+            
+            // Podle typu přidat specifická data
+            // LP
+            if (!empty($financovani_data['lp_kod'])) {
+                $financovani_full .= ' - ' . $financovani_data['lp_kod'];
+            }
+            // Smlouvy
+            if (!empty($financovani_data['cislo_smlouvy'])) {
+                $financovani_full .= ' - ' . $financovani_data['cislo_smlouvy'];
+                if (!empty($financovani_data['smlouva_poznamka'])) {
+                    $financovani_poznamka = $financovani_data['smlouva_poznamka'];
+                }
+            }
+            // Individuální schválení
+            if (!empty($financovani_data['individualni_schvaleni'])) {
+                $financovani_full .= ' - ' . $financovani_data['individualni_schvaleni'];
+                if (!empty($financovani_data['individualni_poznamka'])) {
+                    $financovani_poznamka = $financovani_data['individualni_poznamka'];
+                }
+            }
+            // Pojistná událost
+            if (!empty($financovani_data['pojistna_udalost_cislo'])) {
+                $financovani_full .= ' - ' . $financovani_data['pojistna_udalost_cislo'];
+                if (!empty($financovani_data['pojistna_udalost_poznamka'])) {
+                    $financovani_poznamka = $financovani_data['pojistna_udalost_poznamka'];
+                }
+            }
+        }
     }
-    $financovani_poznamka = !empty($input['funding_note']) ? $input['funding_note'] : '';
     
     // Sestavení dat z FE inputu (všechny potřebné údaje už přicházejí z frontendu)
     $order_data = [
@@ -1123,7 +1156,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
         'vytvoril' => $input['creator_id'],       // Pro načtení jména tvůrce
         'dodavatel_nazev' => $input['supplier_name'],
         'strediska_display' => $strediska_display,        // Spojená střediska
-        'financovani_display' => $financovani_full,       // Financování typ + číslo
+        'financovani_display' => $financovani_full,       // Financování typ + číslo/kód
         'financovani_poznamka' => $financovani_poznamka,  // Poznámka samostatně
         'max_price_formatted' => $input['max_price']
     ];

@@ -188,9 +188,12 @@ function eeo_mail_send_smtp($to, $subject, $body, $fromEmail, $fromName, $replyT
     $fromHeader = $fromName ? "$fromName <$fromEmail>" : $fromEmail;
     $toHeader = is_array($to) ? implode(', ', $to) : $to;
     
+    // ✅ UTF-8 ENCODING pro subject (RFC 2047)
+    $encodedSubject = encode_header($subject);
+    
     $headers = "From: $fromHeader\r\n";
     $headers .= "To: $toHeader\r\n";
-    $headers .= "Subject: $subject\r\n";
+    $headers .= "Subject: $encodedSubject\r\n";
     if ($replyTo) $headers .= "Reply-To: $replyTo\r\n";
     if (count($cc) > 0) $headers .= "Cc: " . implode(', ', $cc) . "\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
