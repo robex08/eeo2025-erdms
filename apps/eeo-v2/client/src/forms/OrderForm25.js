@@ -9557,7 +9557,8 @@ function OrderForm25() {
                   financovani_cislo: formData.cislo_smlouvy || '',
                   financovani_poznamka: formData.smlouva_poznamka || '',
                   strediska_nazvy: strediskaNazvy,
-                  max_price_with_dph: formData.max_cena_s_dph || 0
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
                 }
               });
               addDebugLog('success', 'NOTIFICATION', 'dual-email-sent-new', `Dual-template EMAILY odeslány pro novou objednávku ${orderNumber}`);
@@ -10040,7 +10041,8 @@ function OrderForm25() {
                   financovani_cislo: formData.cislo_smlouvy || '',
                   financovani_poznamka: formData.smlouva_poznamka || '',
                   strediska_nazvy: strediskaNazvy,
-                  max_price_with_dph: formData.max_cena_s_dph || 0
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
                 }
               });
               addDebugLog('success', 'NOTIFICATION', 'dual-email-sent', `Dual-template EMAILY odeslány pro objednávku ${orderNumber}`);

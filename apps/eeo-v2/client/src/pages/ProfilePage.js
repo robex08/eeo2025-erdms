@@ -7,7 +7,7 @@ import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSearch, faList } from '@fortawesome/free-solid-svg-icons';
+import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { fetchFreshUserDetail, fetchCiselniky } from '../services/api2auth';
 import { getOrganizaceDetail } from '../services/apiv2Dictionaries';
 import { CustomSelect } from '../components/CustomSelect';
@@ -1460,6 +1460,7 @@ const ProfilePage = () => {
       archivovano: false,                    // Archivováno / Import
       s_fakturou: false,                     // S fakturou
       s_prilohami: false,                    // S přílohami
+      mimoradne_udalosti: false,             // Mimořádné události
       moje_objednavky: false                 // Moje objednávky
     },
 
@@ -3926,6 +3927,18 @@ const ProfilePage = () => {
                       }))}
                     />
                     <span>📎 S přílohami</span>
+                  </TileCheckbox>
+
+                  <TileCheckbox>
+                    <input
+                      type="checkbox"
+                      checked={userSettings.viditelne_dlazdice.mimoradne_udalosti}
+                      onChange={(e) => setUserSettings(prev => ({
+                        ...prev,
+                        viditelne_dlazdice: { ...prev.viditelne_dlazdice, mimoradne_udalosti: e.target.checked }
+                      }))}
+                    />
+                    <span><FontAwesomeIcon icon={faBoltLightning} style={{ color: '#dc2626' }} /> Mimořádné události</span>
                   </TileCheckbox>
 
                   <TileCheckbox>

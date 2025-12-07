@@ -491,7 +491,7 @@ class NotificationService {
         return { status: 'warning', message: 'No recipients', sent: 0 };
       }
 
-      // Formátovat data pro API (nový formát s from/to + střediska + financování detail)
+      // Formátovat data pro API (nový formát s from/to + střediska + financování detail + urgence)
       const payload = {
         token,
         username,
@@ -507,11 +507,12 @@ class NotificationService {
         funding_note: orderData.financovani_poznamka || '',        // Poznámka ke smlouvě
         strediska_names: orderData.strediska_nazvy || [],          // Array názvů středisek (už převedeno ve FE)
         max_price: orderData.max_price_with_dph ? `${orderData.max_price_with_dph.toLocaleString('cs-CZ')} Kč` : 'Neuvedeno',
+        is_urgent: orderData.is_urgent || false,                   // 🚨 Mimořádná událost (červená vs oranžová)
         from,  // SUBMITTER recipients (zelená šablona)
-        to     // APPROVER recipients (červená šablona)
+        to     // APPROVER recipients (červená/oranžová šablona)
       };
       
-      console.log('Dual notification payload:', { fromCount: from.length, toCount: to.length, strediska: payload.strediska_names.length });
+      console.log('Dual notification payload:', { fromCount: from.length, toCount: to.length, strediska: payload.strediska_names.length, urgent: payload.is_urgent });
 
       // Volat backend API pro dual-template odeslání
       const response = await api.post('/notifications/send-dual', payload);

@@ -19,42 +19,54 @@ function get_email_template_by_recipient($email_body, $recipient_type = 'APPROVE
     // Normalizace na velká písmena
     $recipient_type = strtoupper($recipient_type);
     
-    // Kontrola podporovaných typů
-    if (!in_array($recipient_type, ['APPROVER', 'SUBMITTER'])) {
-        error_log("⚠️ Neznámý recipient_type: $recipient_type, použiji APPROVER");
-        $recipient_type = 'APPROVER';
+    // Kontrola podporovaných typů (triple-template: normal, urgent, submitter)
+    if (!in_array($recipient_type, ['APPROVER_NORMAL', 'APPROVER_URGENT', 'SUBMITTER'])) {
+        error_log("⚠️ Neznámý recipient_type: $recipient_type, použiji APPROVER_NORMAL");
+        $recipient_type = 'APPROVER_NORMAL';
     }
     
-    // Definice delimiteru
-    $delimiter_approver = '<!-- RECIPIENT: APPROVER -->';
+    // Definice triple-template delimiteru
+    $delimiter_normal = '<!-- RECIPIENT: APPROVER_NORMAL -->';
+    $delimiter_urgent = '<!-- RECIPIENT: APPROVER_URGENT -->';
     $delimiter_submitter = '<!-- RECIPIENT: SUBMITTER -->';
     
-    // Pokud šablona neobsahuje delimitery, vrátíme celou (zpětná kompatibilita)
-    if (strpos($email_body, $delimiter_approver) === false) {
-        error_log("ℹ️ Email šablona neobsahuje delimitery, vracím celou (starý formát)");
+    // Pokud šablona neobsahuje triple delimitery, vrátíme celou (zpětná kompatibilita)
+    if (strpos($email_body, $delimiter_normal) === false && strpos($email_body, $delimiter_urgent) === false) {
+        error_log("ℹ️ Email šablona neobsahuje triple delimitery, vracím celou (starý formát)");
         return $email_body;
     }
     
-    // Rozdělení podle delimiteru
-    $parts = explode($delimiter_submitter, $email_body);
-    
-    if ($recipient_type === 'APPROVER') {
-        // Vezmi část před <!-- RECIPIENT: SUBMITTER -->
-        $template = $parts[0];
-        // Odstraň <!-- RECIPIENT: APPROVER --> delimiter ze začátku
-        $template = str_replace($delimiter_approver, '', $template);
-        return trim($template);
-    } else {
-        // Vezmi část za <!-- RECIPIENT: SUBMITTER -->
-        if (isset($parts[1])) {
-            return trim($parts[1]);
-        } else {
-            error_log("⚠️ SUBMITTER šablona nenalezena, použiji APPROVER jako fallback");
-            $template = $parts[0];
-            $template = str_replace($delimiter_approver, '', $template);
-            return trim($template);
+    // Extrakce šablony podle typu
+    if ($recipient_type === 'APPROVER_NORMAL') {
+        $pos = strpos($email_body, $delimiter_normal);
+        if ($pos !== false) {
+            $after = substr($email_body, $pos + strlen($delimiter_normal));
+            $end_pos = min(
+                strpos($after, $delimiter_urgent) ?: PHP_INT_MAX,
+                strpos($after, $delimiter_submitter) ?: PHP_INT_MAX
+            );
+            return trim(substr($after, 0, $end_pos));
+        }
+    } elseif ($recipient_type === 'APPROVER_URGENT') {
+        $pos = strpos($email_body, $delimiter_urgent);
+        if ($pos !== false) {
+            $after = substr($email_body, $pos + strlen($delimiter_urgent));
+            $end_pos = min(
+                strpos($after, $delimiter_normal) ?: PHP_INT_MAX,
+                strpos($after, $delimiter_submitter) ?: PHP_INT_MAX
+            );
+            return trim(substr($after, 0, $end_pos));
+        }
+    } elseif ($recipient_type === 'SUBMITTER') {
+        $pos = strpos($email_body, $delimiter_submitter);
+        if ($pos !== false) {
+            return trim(substr($email_body, $pos + strlen($delimiter_submitter)));
         }
     }
+    
+    // Fallback
+    error_log("⚠️ Šablona $recipient_type nenalezena, použiji fallback");
+    return $email_body;
 }
 
 /**
