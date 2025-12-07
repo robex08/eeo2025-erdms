@@ -9553,17 +9553,8 @@ function OrderForm25() {
                   vytvoril: formData.objednatel_id,
                   objednatel_id: formData.objednatel_id,
                   dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - celý JSON objekt jako string
-                  financovani_json: JSON.stringify({
-                    typ: formData.zpusob_financovani || 'Neuvedeno',
-                    lp_kod: formData.lp_kod || '',
-                    cislo_smlouvy: formData.cislo_smlouvy || '',
-                    smlouva_poznamka: formData.smlouva_poznamka || '',
-                    individualni_schvaleni: formData.individualni_schvaleni || '',
-                    individualni_poznamka: formData.individualni_poznamka || '',
-                    pojistna_udalost_cislo: formData.pojistna_udalost_cislo || '',
-                    pojistna_udalost_poznamka: formData.pojistna_udalost_poznamka || ''
-                  }),
+                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_nazvy: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
                   is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
@@ -10053,17 +10044,8 @@ function OrderForm25() {
                   vytvoril: formData.objednatel_id,
                   objednatel_id: formData.objednatel_id,
                   dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - celý JSON objekt jako string
-                  financovani_json: JSON.stringify({
-                    typ: formData.zpusob_financovani || 'Neuvedeno',
-                    lp_kod: formData.lp_kod || '',
-                    cislo_smlouvy: formData.cislo_smlouvy || '',
-                    smlouva_poznamka: formData.smlouva_poznamka || '',
-                    individualni_schvaleni: formData.individualni_schvaleni || '',
-                    individualni_poznamka: formData.individualni_poznamka || '',
-                    pojistna_udalost_cislo: formData.pojistna_udalost_cislo || '',
-                    pojistna_udalost_poznamka: formData.pojistna_udalost_poznamka || ''
-                  }),
+                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_nazvy: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
                   is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
