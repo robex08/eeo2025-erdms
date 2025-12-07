@@ -1016,6 +1016,14 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+    case 'notifications/send-dual':
+        if ($request_method === 'POST') {
+            handle_notifications_send_dual($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
     case 'old/react':
         if ($request_method === 'POST') {
             handle_old_react_action($input, $config, $queries);

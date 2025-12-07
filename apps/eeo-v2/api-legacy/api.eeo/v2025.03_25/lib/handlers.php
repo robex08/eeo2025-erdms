@@ -956,14 +956,21 @@ function handle_react_action($input, $config, $queries) {
 
 // Send notification email via API (requires token)
 function handle_notify_email($input, $config, $queries) {
+    // DEBUG: Log vše co přijde z frontendu
+    error_log("📧 NOTIFY EMAIL REQUEST: " . json_encode($input));
+    
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
+    error_log("📧 TOKEN: " . substr($token, 0, 20) . "... USERNAME: " . $username);
+    
     $token_data = verify_token($token);
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
+        error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
         return;
     }
+    error_log("📧 TOKEN OK, user: " . $token_data['username']);
 
     $to = isset($input['to']) ? $input['to'] : '';
     $subject = isset($input['subject']) ? $input['subject'] : '';
@@ -972,6 +979,8 @@ function handle_notify_email($input, $config, $queries) {
     $cc = isset($input['cc']) ? $input['cc'] : array();
     $bcc = isset($input['bcc']) ? $input['bcc'] : array();
     $reply_to = isset($input['reply_to']) ? $input['reply_to'] : '';
+    $from_email = isset($input['from_email']) ? $input['from_email'] : '';
+    $from_name = isset($input['from_name']) ? $input['from_name'] : '';
 
     if (!$to || !$subject || !$body) {
         api_error(400, 'Chybí pole to/subject/body', 'MISSING_FIELDS');
@@ -986,6 +995,14 @@ function handle_notify_email($input, $config, $queries) {
         'bcc' => $bcc,
         'reply_to' => $reply_to
     );
+    
+    // Add from_email and from_name if provided
+    if ($from_email) {
+        $opts['from_email'] = $from_email;
+    }
+    if ($from_name) {
+        $opts['from_name'] = $from_name;
+    }
 
     $res = eeo_mail_send($to, $subject, $body, $opts);
 
@@ -994,6 +1011,174 @@ function handle_notify_email($input, $config, $queries) {
         return;
     }
     api_error(500, 'Odeslání emailu selhalo', 'MAIL_FAILED', array('debug' => isset($res['debug']) ? $res['debug'] : null));
+}
+
+/**
+ * Handler pro dual-template email notifikace
+ * Odesílá 2 varianty emailů (APPROVER + SUBMITTER) z jedné šablony v DB
+ * 
+ * @param array $input - Očekává: token, username, order_id, order_number, order_subject,
+ *                       commander_id, garant_id, creator_id, supplier_name, funding, 
+ *                       max_price, recipients (array of user_ids)
+ */
+function handle_notifications_send_dual($input, $config, $queries) {
+    error_log("📧📧 DUAL NOTIFICATION REQUEST: " . json_encode($input));
+    
+    // Verify token
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $token_data = verify_token($token);
+    if (!$token_data || ($username && $token_data['username'] !== $username)) {
+        error_log("📧 TOKEN VERIFICATION FAILED!");
+        api_error(401, 'Neplatný token', 'UNAUTHORIZED');
+        return;
+    }
+    
+    // Validace vstupů
+    if (empty($input['order_id']) || empty($input['recipients']) || !is_array($input['recipients'])) {
+        api_error(400, 'Chybí povinné parametry (order_id, recipients)', 'MISSING_FIELDS');
+        return;
+    }
+    
+    require_once __DIR__ . '/email-template-helper.php';
+    require_once __DIR__ . '/mail.php';
+    require_once __DIR__ . '/notifications.php';
+    
+    $db = get_db($config);
+    
+    // Načtení šablony z DB (type = order_status_ke_schvaleni)
+    $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
+    $stmt->execute();
+    $template = $stmt->fetch();
+    
+    if (!$template) {
+        api_error(404, 'Šablona notifikace nenalezena nebo není aktivní', 'TEMPLATE_NOT_FOUND');
+        return;
+    }
+    
+    error_log("📧 Načtena šablona: {$template['name']} (ID: {$template['id']})");
+    
+    // Sestavení dat pro placeholdery
+    $order_data = [
+        'id' => $input['order_id'],
+        'ev_cislo' => isset($input['order_number']) ? $input['order_number'] : '',
+        'predmet' => isset($input['order_subject']) ? $input['order_subject'] : '',
+        'prikazce_id' => isset($input['commander_id']) ? $input['commander_id'] : null,
+        'garant_id' => isset($input['garant_id']) ? $input['garant_id'] : null,
+        'vytvoril' => isset($input['creator_id']) ? $input['creator_id'] : null,
+        'dodavatel_nazev' => isset($input['supplier_name']) ? $input['supplier_name'] : 'Neuvedeno',
+        'financovani_display' => isset($input['funding']) ? $input['funding'] : 'Neuvedeno',
+        'max_price_formatted' => isset($input['max_price']) ? $input['max_price'] : 'Neuvedeno'
+    ];
+    
+    $results = [];
+    $sent_count = 0;
+    $in_app_count = 0;
+    
+    // Projít všechny příjemce (user_id array)
+    foreach ($input['recipients'] as $user_id) {
+        if (!$user_id) {
+            error_log("⚠️ Prázdné user_id, přeskakuji");
+            continue;
+        }
+        
+        // 1. Načíst user data (email + settings)
+        $stmt_user = $db->prepare("
+            SELECT id, username, email, jmeno, prijmeni, nastaveni 
+            FROM users 
+            WHERE id = ? 
+            LIMIT 1
+        ");
+        $stmt_user->execute([$user_id]);
+        $user = $stmt_user->fetch();
+        
+        if (!$user || empty($user['email'])) {
+            error_log("⚠️ User ID $user_id nemá email nebo neexistuje");
+            $results[] = [
+                'user_id' => $user_id,
+                'sent_email' => false,
+                'sent_in_app' => false,
+                'error' => 'User nemá email nebo neexistuje'
+            ];
+            continue;
+        }
+        
+        // 2. Zkontrolovat nastavení notifikací
+        $settings = [];
+        if (!empty($user['nastaveni'])) {
+            $settings = json_decode($user['nastaveni'], true);
+        }
+        
+        $email_enabled = isset($settings['notifikace']['email']) ? (bool)$settings['notifikace']['email'] : true;
+        $system_enabled = isset($settings['notifikace']['system']) ? (bool)$settings['notifikace']['system'] : true;
+        
+        error_log("📧 User {$user['username']} (ID: $user_id) - Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF'));
+        
+        $sent_email = false;
+        
+        // 3. Odeslat EMAIL (pokud má zapnuté)
+        // ⚠️ POZNÁMKA: IN-APP notifikace (zvonečky) se NEODESÍLAJÍ zde!
+        // Ty už odešle standardní notifikační systém (sendOrderNotifications v OrderForm25.js)
+        // Tato funkce odesílá POUZE dual-template emaily s kontrolou nastavení
+        
+        if ($email_enabled) {
+            // Detekovat typ příjemce (APPROVER vs SUBMITTER)
+            $recipient_type = detect_recipient_type($user_id, $order_data);
+            
+            // Extrahuj správnou HTML šablonu podle typu příjemce
+            $email_body = get_email_template_by_recipient($template['email_body'], $recipient_type);
+            error_log("📧 Extrahována šablona $recipient_type: " . strlen($email_body) . " znaků");
+            
+            // Nahraď placeholdery v subject
+            $email_subject = str_replace(
+                ['{order_number}'],
+                [$order_data['ev_cislo']],
+                $template['email_subject']
+            );
+            
+            // Nahraď placeholdery v body
+            $email_body = str_replace(
+                ['{order_number}', '{predmet}', '{dodavatel_nazev}', '{financovani_display}', '{max_price_with_dph}'],
+                [
+                    $order_data['ev_cislo'],
+                    $order_data['predmet'],
+                    $order_data['dodavatel_nazev'],
+                    $order_data['financovani_display'],
+                    $order_data['max_price_formatted']
+                ],
+                $email_body
+            );
+            
+            error_log("📧 Odesílám email na: {$user['email']} (typ: $recipient_type)");
+            
+            // Odešli email
+            $mail_result = eeo_mail_send($user['email'], $email_subject, $email_body, ['html' => true]);
+            
+            $sent_email = isset($mail_result['ok']) && $mail_result['ok'];
+            if ($sent_email) $sent_count++;
+        } else {
+            error_log("📧 Email pro user $user_id VYPNUTÝ v nastavení");
+        }
+        
+        $results[] = [
+            'user_id' => $user_id,
+            'email' => $user['email'],
+            'sent_email' => $sent_email,
+            'email_enabled' => $email_enabled,
+            'system_enabled' => $system_enabled,
+            'error' => (!$sent_email && $email_enabled) ? 'Email se nepodařilo odeslat' : null
+        ];
+    }
+    
+    error_log("📧 Odesláno $sent_count dual-template emailů z " . count($results) . " příjemců");
+    error_log("📧 ⚠️ POZNÁMKA: In-app notifikace (zvonečky) se odesílají přes standardní systém, ne zde!");
+    
+    api_ok([
+        'sent_email' => $sent_count,
+        'total' => count($results),
+        'results' => $results
+    ]);
 }
 
 // Change password: validates old password and updates to a new secure hash
