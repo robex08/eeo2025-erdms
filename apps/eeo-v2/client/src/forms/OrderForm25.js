@@ -11032,6 +11032,9 @@ function OrderForm25() {
 
     // Reset flagů
     setIsDraftLoaded(false);
+    
+    // 🔥 KRITICKÉ: Reset ref pro načítání ev. čísla - umožnit znovu načíst při nové objednávce
+    hasLoadedNextNumberRef.current = false;
 
     // ✅ Povolit autosave při resetu formuláře (nová objednávka)
     setDisableAutosave(false);
@@ -11045,11 +11048,13 @@ function OrderForm25() {
           sectionState: {},
           scrollPosition: 0
         });
+        // 🔥 KRITICKÉ: Smazat draft z localStorage, aby se při načtení nenačetl starý
+        draftManager.deleteDraft();
       } catch (error) {
       }
     }
 
-    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu');
+    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu a draft smazán');
   };
 
   const hasDraft = () => {
@@ -11383,9 +11388,21 @@ function OrderForm25() {
   const fixedHeaderRef = useRef(null);
 
   // ✅ Sdílet ref přes window pro přístup z onDataLoaded
+  // 🔥 KRITICKÉ: Při mount zkontrolovat, jestli máme draft - pokud ne, resetovat ref
   useEffect(() => {
     window.__orderForm_hasLoadedNextNumberRef = hasLoadedNextNumberRef;
-  }, []);
+    
+    // 🔥 FIX: Pokud NENÍ draft, resetovat ref (případ hard reload po "Nová objednávka")
+    if (user_id) {
+      draftManager.setCurrentUser(user_id);
+      draftManager.hasDraft().then(hasDraft => {
+        if (!hasDraft && !editOrderId) {
+          // Není draft ANI editace → reset ref, aby se načetlo ev. číslo
+          hasLoadedNextNumberRef.current = false;
+        }
+      });
+    }
+  }, [user_id, editOrderId]);
 
   // 📏 Dynamické měření výšky FixedHeader a nastavení CSS variable
   // Výška headeru + konstantní gap 20px = padding-top pro ScrollableInner
