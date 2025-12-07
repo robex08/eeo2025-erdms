@@ -4791,6 +4791,7 @@ function OrderForm25() {
         if (!window.__orderFormState || window.__orderFormState.timestamp < Date.now() - 500) {
           const resetState = {
             isEditMode: false,
+            isNewOrder: false,
             orderId: null,
             orderNumber: '',
             currentPhase: 1,
@@ -4803,6 +4804,14 @@ function OrderForm25() {
       }, 100);
     };
   }, []); // Spustit POUZE při mount/unmount!
+
+  // 🎯 [UPDATE] Broadcast při změně klíčových hodnot (isNewOrder, savedOrderId, formData.id)
+  useEffect(() => {
+    // Broadcast pouze pokud je formulář inicializovaný
+    if (isDraftLoaded) {
+      broadcastOrderState();
+    }
+  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
 
   // Loading state pro tlačítka
   const [isSaving, setIsSaving] = useState(false);
