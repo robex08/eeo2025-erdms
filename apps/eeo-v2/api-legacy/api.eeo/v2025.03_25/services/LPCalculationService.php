@@ -217,8 +217,9 @@ class LPCalculationService {
                 c.celkovy_limit,
                 c.skutecne_cerpano,
                 c.zbyva_skutecne,
-                c.nazev_uctu
+                u.nazev as nazev_uctu
             FROM 25_limitovane_prisliby_cerpani c
+            LEFT JOIN 25_useky u ON u.id = c.usek_id
             WHERE c.rok = ?
         ";
         
