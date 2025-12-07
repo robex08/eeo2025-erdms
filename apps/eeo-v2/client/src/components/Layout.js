@@ -1994,11 +1994,11 @@ const Layout = ({ children }) => {
       const state = e.detail;
       if (!state) return;
 
-      // 🔧 FIX: Rozlišit 3 stavy:
-      // 1. Formulář zavřen: isNewOrder=false && orderId=null -> hasDraft=false
-      // 2. Nová objednávka: isNewOrder=true -> hasDraft=true
-      // 3. Editace: isNewOrder=false && orderId!=null -> hasDraft=true
-      const hasDraft = state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined);
+      // 🔧 FIX: Použij state.hasDraft z OrderForm25 (obsahuje info o isChanged)
+      // Pokud není hasDraft v state, fallback na původní logiku
+      const hasDraft = state.hasDraft !== undefined 
+        ? state.hasDraft 
+        : (state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined));
       
       // 🔧 KRITICKÉ: Pokud dostaneme reset (hasDraft=false), VERIFIKUJ v localStorage
       // Může se stát že OrderForm25 unmount (navigace pryč), ale draft stále existuje!

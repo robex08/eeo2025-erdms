@@ -4336,7 +4336,7 @@ function OrderForm25() {
     // Mapování stavů na české texty a detaily
     const statusMapping = {
       'NOVA': {
-        text: 'Nová objednávka',
+        text: isChanged ? 'Koncept' : 'Nová objednávka',
         icon: '📝',
         type: 'info',
         description: 'Objednávka je v přípravě'
@@ -4747,7 +4747,11 @@ function OrderForm25() {
     };
   }, [isArchivedOrder, phaseProgress]);
 
-
+  // 🎯 Flag pro změny proti DB - řídí prioritu koncept vs DB
+  const [isChanged, setIsChanged] = useState(false);
+  
+  // 🎯 Sleduje zda už proběhlo načtení draftu
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
 
   // �🎯 [GLOBAL STATE] Export stavu pro Layout.js MenuBar
   // Místo složité logiky s draft metadata - OrderForm25 přímo ví, co edituje!
@@ -4763,6 +4767,7 @@ function OrderForm25() {
         orderNumber: formData.cislo_objednavky || formData.ev_cislo,
         currentPhase,
         mainWorkflowState,
+        hasDraft: isChanged || isDraftLoaded, // 🎯 Indikuje že existuje koncept s změnami
         timestamp: Date.now(),
         ...overrides
       };
@@ -4772,7 +4777,7 @@ function OrderForm25() {
       
       return state;
     };
-  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState]);
+  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
 
   // Helper pro volání z async funkcí
   const broadcastOrderState = (overrides) => {
@@ -4805,6 +4810,13 @@ function OrderForm25() {
     };
   }, []); // Spustit POUZE při mount/unmount!
 
+  // 🎯 [UPDATE] Broadcast při změně isChanged - pro aktualizaci menu
+  useEffect(() => {
+    if (isDraftLoaded) {
+      broadcastOrderState();
+    }
+  }, [isChanged]); // Spustit při změně isChanged
+
   // Loading state pro tlačítka
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -4813,7 +4825,7 @@ function OrderForm25() {
   const [lastAutoSave, setLastAutoSave] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [dataSource, setDataSource] = useState(null); // 'concept', 'database', null
-  const [isDraftLoaded, setIsDraftLoaded] = useState(false); // sleduje zda už proběhlo načtení draftu
+  // ❌ REMOVED: isDraftLoaded přesunut výš (před broadcastOrderStateRef)
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
   
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
@@ -5586,7 +5598,7 @@ function OrderForm25() {
   // const [isRegistrUnlocked, setIsRegistrUnlocked] = useState(false);
   // const [isPotvrzeniUnlocked, setIsPotvrzeniUnlocked] = useState(false);
 
-  const [isChanged, setIsChanged] = useState(false); // Flag pro změny proti DB - řídí prioritu koncept vs DB
+  // ❌ REMOVED: isChanged přesunut výš (před broadcastOrderStateRef)
   // ❌ REMOVED: workflowRefreshKey - přesunut výš (před useWorkflowManager)
 
   // 🎯 CENTRÁLNÍ NAČÍTÁNÍ DRAFTU při obnovení stránky (F5)
@@ -14280,6 +14292,9 @@ function OrderForm25() {
       // DEBUG: Order type change - logging removed
     }
 
+    // 🎯 První změna v nové objednávce?
+    const isFirstChangeInNewOrder = !isChanged && !isOrderSavedToDB;
+
     // NASTAVIT isChanged = true při každé změně
     setIsChanged(true);
 
@@ -14288,8 +14303,14 @@ function OrderForm25() {
       setIsDraftLoaded(true);
     }
 
-    // 🎯 SPUSTIT AUTOSAVE s debounce (3 sekundy po poslední změně)
-    triggerAutosave();
+    // 🎯 OKAMŽITÝ AUTOSAVE při první změně v nové objednávce
+    if (isFirstChangeInNewOrder) {
+      // Okamžitě uložit koncept bez debounce
+      triggerAutosave(true); // force immediate save
+    } else {
+      // 🎯 SPUSTIT AUTOSAVE s debounce (3 sekundy po poslední změně)
+      triggerAutosave();
+    }
 
     // Validace pro povinná pole v reálném čase
     const criticalFields = [
@@ -17590,36 +17611,19 @@ function OrderForm25() {
               </div>
             </FormHeader>
 
-            {/* 🎯 ČERPÁNÍ LP - zobrazit ve fázi 3+ když jsou vyplněna LP u položek */}
+            {/* 🎯 ČERPÁNÍ LP - zobrazit v hlavičce nad fází */}
             {(() => {
-              // Zobrazit pouze ve fázi 3+ a když máme LP financování
-              if (currentPhase < 3) return null;
-              
+              // Zobrazit když máme LP financování
               const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
               const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
               const hasLPFinancing = (nazev.includes('Limitovan') || nazev.includes('příslib')) && Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0;
               
               if (!hasLPFinancing) return null;
               
-              // Spočítat čerpání z položek
-              const lpCerpani = {};
-              formData.polozky_objednavky?.forEach(polozka => {
-                if (polozka.lp_id) {
-                  const cena = parseFloat(polozka.cena_s_dph) || 0;
-                  if (!lpCerpani[polozka.lp_id]) {
-                    lpCerpani[polozka.lp_id] = { suma: 0, count: 0 };
-                  }
-                  lpCerpani[polozka.lp_id].suma += cena;
-                  lpCerpani[polozka.lp_id].count++;
-                }
-              });
-              
-              // Pokud nejsou žádná LP přiřazená, nezobrazovat
-              if (Object.keys(lpCerpani).length === 0) return null;
-              
               return (
                 <div style={{
                   marginTop: '0.75rem',
+                  marginBottom: '3px',
                   padding: '0.5rem 0.75rem',
                   background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
                   border: '1px solid #93c5fd',
@@ -17630,52 +17634,77 @@ function OrderForm25() {
                   gap: '0.5rem',
                   alignItems: 'center'
                 }}>
-                  <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.65rem', letterSpacing: '0.5px' }}>
-                    ČERPÁNÍ LP:
-                  </div>
-                  {Object.entries(lpCerpani).map(([lpId, data]) => {
-                    const lpOption = lpOptionsForItems.find(opt => opt.id === parseInt(lpId));
-                    if (!lpOption) return null;
+                  {formData.lp_kod.map(lp_id => {
+                    const detail = lpDetails[lp_id];
+                    if (!detail) return null;
                     
-                    const lpKod = lpOption.kod || `LP #${lpId}`;
+                    // 🎯 Vybrat správný typ čerpání podle fáze
+                    let zbyva, typCerpani, aktualneCerpani;
                     
-                    // Data z API - ROBUSTNÍ AKTUÁLNÍ STAVY LP
-                    const lpStav = lpStavy[parseInt(lpId)];
-                    const lpLimit = lpStav?.limit || 0;
-                    const lpCerpano = lpStav?.cerpano || 0;
-                    const lpZbyva = lpStav?.zbyva || 0;
+                    if (currentPhase <= 2) {
+                      // Fáze 1-2: Poměrné rozdělení MAX CENY mezi vybraná LP
+                      const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+                      const pocetLP = formData.lp_kod.length;
+                      const pomernaCast = pocetLP > 0 ? maxCena / pocetLP : 0;
+                      
+                      const rezervace = parseFloat(detail.zbyva_rezervace || 0);
+                      zbyva = rezervace - pomernaCast;
+                      aktualneCerpani = pomernaCast;
+                      typCerpani = 'Rezervace';
+                    } else if (currentPhase >= 3 && currentPhase <= 6) {
+                      // Fáze 3-6: Předpokládané čerpání (součet položek)
+                      zbyva = parseFloat(detail.zbyva_predpoklad || 0);
+                      typCerpani = 'Předpoklad';
+                    } else {
+                      // Fáze 7-8: Skutečné čerpání (faktury)
+                      zbyva = parseFloat(detail.zbyva_skutecne || 0);
+                      typCerpani = 'Skutečné';
+                    }
                     
-                    // Čerpání v této objednávce
-                    const cerpaniTato = data.suma;
+                    const isNegative = zbyva < 0;
+                    const lpOption = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id);
+                    const lpCislo = lpOption?.cislo_lp || lp_id;
+                    const lpNazev = lpOption?.nazev_uctu || lpOption?.nazev || '';
                     
-                    // Zbude po uložení této objednávky (AKTUÁLNÍ ZŮSTATEK - ČERPÁNÍ TEĎKA)
-                    const zbyvaPoUlozeni = lpZbyva - cerpaniTato;
-                    
-                    const procento = lpLimit > 0 ? ((lpCerpano + cerpaniTato) / lpLimit * 100) : 0;
+                    // Získat informaci o správci z detail (pokud je načten)
+                    const spravce = detail?.spravce;
+                    const spravceText = spravce ? `${spravce.jmeno || ''} ${spravce.prijmeni || ''}`.trim() : '';
+                    const tooltipText = [
+                      lpNazev ? `${lpCislo} - ${lpNazev}` : lpCislo,
+                      spravceText ? `PO: ${spravceText}` : ''
+                    ].filter(Boolean).join('\n');
                     
                     return (
-                      <div key={lpId} style={{
+                      <div key={lp_id} style={{
                         padding: '0.3rem 0.6rem',
-                        background: zbyvaPoUlozeni < 0 ? '#fee2e2' : 'white',
-                        border: `1px solid ${zbyvaPoUlozeni < 0 ? '#fca5a5' : '#bfdbfe'}`,
+                        background: isNegative ? '#fee2e2' : 'white',
+                        border: `1px solid ${isNegative ? '#fca5a5' : '#bfdbfe'}`,
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.4rem',
                         fontSize: '0.7rem'
                       }}>
-                        <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.7rem' }}>
-                          {lpKod}
+                        <div 
+                          style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.7rem', cursor: 'help' }}
+                          title={tooltipText}
+                        >
+                          {lpCislo}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: '0.65rem' }}>
-                          {lpZbyva.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                        <div style={{ fontWeight: 700, color: isNegative ? '#dc2626' : '#059669', fontSize: '0.7rem' }}>
+                          {zbyva < 0 && '−'}
+                          {Math.abs(zbyva).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>→</div>
-                        <div style={{ fontWeight: 700, color: zbyvaPoUlozeni < 0 ? '#dc2626' : '#059669', fontSize: '0.7rem' }}>
-                          {zbyvaPoUlozeni.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
-                        </div>
-                        <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>
-                          ({procento.toFixed(0)}%)
+                        {currentPhase <= 2 && aktualneCerpani > 0 && (
+                          <div style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b' }}>
+                            −{aktualneCerpani.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                          </div>
+                        )}
+                        <div 
+                          style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b', cursor: 'help' }}
+                          title={currentPhase <= 2 ? 'Rezervace - MAX CENA rozdělená poměrně mezi vybraná LP' : currentPhase >= 3 && currentPhase <= 6 ? 'Předpokládané čerpání podle přiřazených položek' : 'Skutečné čerpání podle faktur'}
+                        >
+                          ({currentPhase <= 2 ? 'R' : currentPhase >= 3 && currentPhase <= 6 ? 'P' : 'S'})
                         </div>
                       </div>
                     );
@@ -17963,7 +17992,7 @@ function OrderForm25() {
 
                       // Použití currentPhase z getCurrentPhase()
                       const phaseLabels = {
-                        1: "Fáze 1/8: Nová objednávka",
+                        1: isChanged ? "Fáze 1/8: Koncept" : "Fáze 1/8: Nová objednávka",
                         2: "Fáze 2/8: Ke schválení",
                         3: "Fáze 3/8: Schválená objednávka",
                         4: "Fáze 4/8: Dodavatel + Registr",
@@ -17973,7 +18002,7 @@ function OrderForm25() {
                         8: "Fáze 8/8: Zkontrolováno"
                       };
 
-                      return phaseLabels[currentPhase] || "Fáze 1/8: Nová objednávka";
+                      return phaseLabels[currentPhase] || (isChanged ? "Fáze 1/8: Koncept" : "Fáze 1/8: Nová objednávka");
                     })()}
                   </PhaseText>
 
@@ -18549,78 +18578,6 @@ function OrderForm25() {
                     />
                     {validationErrors.lp_kod && (
                       <ErrorText>{validationErrors.lp_kod}</ErrorText>
-                    )}
-                    
-                    {/* 💰 LP REZERVACE - kompaktní zobrazení zbývajících částek */}
-                    {Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0 && (
-                      <div style={{
-                        marginTop: '0.75rem',
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '0.5rem'
-                      }}>
-                        {formData.lp_kod.map(lp_id => {
-                          const detail = lpDetails[lp_id];
-                          if (!detail) return null;
-                          
-                          // 🎯 Vybrat správný typ čerpání podle fáze
-                          let zbyva, typCerpani, bgColor, borderColor, textColor;
-                          if (currentPhase <= 2) {
-                            // Fáze 1-2: Rezervace (max_cena_s_dph)
-                            zbyva = parseFloat(detail.zbyva_rezervace || 0);
-                            typCerpani = 'Rezervace';
-                          } else if (currentPhase >= 3 && currentPhase <= 6) {
-                            // Fáze 3-6: Předpokládané čerpání (součet položek)
-                            zbyva = parseFloat(detail.zbyva_predpoklad || 0);
-                            typCerpani = 'Předpoklad';
-                          } else {
-                            // Fáze 7-8: Skutečné čerpání (faktury)
-                            zbyva = parseFloat(detail.zbyva_skutecne || 0);
-                            typCerpani = 'Skutečné';
-                          }
-                          
-                          const isNegative = zbyva < 0;
-                          
-                          // Barvy podle stavu
-                          if (isNegative) {
-                            bgColor = '#fee2e2';
-                            borderColor = '#fca5a5';
-                            textColor = '#991b1b';
-                          } else {
-                            bgColor = '#f0fdf4';
-                            borderColor = '#bbf7d0';
-                            textColor = '#15803d';
-                          }
-                          
-                          const lpCislo = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id)?.cislo_lp || lp_id;
-                          
-                          return (
-                            <div key={lp_id} style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '4px 8px',
-                              background: bgColor,
-                              border: `1px solid ${borderColor}`,
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                              color: textColor
-                            }}>
-                              <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                                {lpCislo}
-                              </span>
-                              <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>
-                                ({typCerpani})
-                              </span>
-                              <span style={{ fontWeight: 700 }}>
-                                {zbyva < 0 && '−'}
-                                {Math.abs(zbyva).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
                     )}
                   </FormGroup>
                 </FormRow>
@@ -23394,33 +23351,33 @@ function OrderForm25() {
                       <FontAwesomeIcon icon={faChevronUp} />
                     </CollapseIcon>
                   </SectionHeader>
-                <SectionContent collapsed={sectionStates.fakturace}>
-                  <FormRow>
-                    <FormGroup>
-                      <Label>ČÍSLO FAKTURY</Label>
-                      <InputWithIcon hasIcon>
-                        <Hash />
-                        <Input
-                          type="text"
-                          name="cislo_faktury"
-                          placeholder="Číslo přijaté faktury"
-                          value={formData.cislo_faktury || ''}
-                          onChange={(e) => handleInputChange('cislo_faktury', e.target.value)}
-                          hasIcon
+                  <SectionContent collapsed={sectionStates.fakturace}>
+                    <FormRow>
+                      <FormGroup>
+                        <Label>ČÍSLO FAKTURY</Label>
+                        <InputWithIcon hasIcon>
+                          <Hash />
+                          <Input
+                            type="text"
+                            name="cislo_faktury"
+                            placeholder="Číslo přijaté faktury"
+                            value={formData.cislo_faktury || ''}
+                            onChange={(e) => handleInputChange('cislo_faktury', e.target.value)}
+                            hasIcon
+                          />
+                        </InputWithIcon>
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>DATUM FAKTURY</Label>
+                        <DatePicker
+                          fieldName="datum_faktury"
+                          value={formData.datum_faktury || ''}
+                          onChange={(value) => handleInputChange('datum_faktury', value)}
+                          onBlur={(value) => handleFieldBlur('datum_faktury', value)}
+                          placeholder="Vyberte datum faktury"
                         />
-                      </InputWithIcon>
-                    </FormGroup>
-                    <FormGroup>
-                      <Label>DATUM FAKTURY</Label>
-                      <DatePicker
-                        fieldName="datum_faktury"
-                        value={formData.datum_faktury || ''}
-                        onChange={(value) => handleInputChange('datum_faktury', value)}
-                        onBlur={(value) => handleFieldBlur('datum_faktury', value)}
-                        placeholder="Vyberte datum faktury"
-                      />
-                    </FormGroup>
-                  </FormRow>
+                      </FormGroup>
+                    </FormRow>
                   <FormRow>
                     <FormGroup>
                       <Label>ČÁSTKA BEZ DPH</Label>
