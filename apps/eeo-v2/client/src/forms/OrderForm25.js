@@ -6007,12 +6007,28 @@ function OrderForm25() {
   useEffect(() => {
     // Pokud se změní editOrderId (např. z notifikace nebo universal search), resetuj stav
     if (editOrderId) {
+      // 🔓 DŮLEŽITÉ: Odemknout předchozí objednávku při otevření nové
+      const previousOrderId = unlockOrderIdRef.current;
+      if (previousOrderId && previousOrderId !== editOrderId && token && username) {
+        // Odemkni předchozí objednávku asynchronně
+        unlockOrder25({ token, username, orderId: previousOrderId })
+          .then(() => {
+            addDebugLog?.('success', 'UNLOCK', 'order-switch', `Předchozí objednávka ${previousOrderId} odemknuta při otevření nové objednávky ${editOrderId}`);
+          })
+          .catch((error) => {
+            addDebugLog?.('warning', 'UNLOCK', 'order-switch-error', `Chyba při odemykání předchozí objednávky: ${error.message}`);
+          });
+      }
+      
+      // Nastav nový unlockOrderId
+      unlockOrderIdRef.current = editOrderId;
+      
       setIsDraftLoaded(false);
       setIsInitialized(false);
       // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
       onDataLoadedCalledRef.current = null;
     }
-  }, [editOrderId]);
+  }, [editOrderId, token, username]);
 
   // Zpracování editace objednávky z URL parametru
   // 🚨 DEPRECATED: Data se nyní načítají v initializeForm() PŘED prvním renderem
@@ -6079,11 +6095,16 @@ function OrderForm25() {
             return; // ZABLOKOVAT načtení formuláře
           } else if (dbOrder.lock_info?.is_owned_by_me === true) {
             // ✅ Moje zamčená objednávka - pokračuj v editaci
+            // 🔒 Nastav unlockOrderId pro případ zavření formuláře
+            unlockOrderIdRef.current = editOrderId;
           } else {
             // Objednávka není zamčená - normální lock
             try {
               const lockResult = await lockOrder25({ token, username, orderId: editOrderId });
               if (lockResult.success) {
+                // 🔒 Nastav unlockOrderId po úspěšném zamknutí
+                unlockOrderIdRef.current = editOrderId;
+                
                 showToast?.(
                   `Objednávka zamknuta pro editaci`,
                   'info'
@@ -6449,20 +6470,10 @@ function OrderForm25() {
   // Cleanup se spustí POUZE při skutečném unmount (prázdné dependencies)
   useEffect(() => {
     return () => {
-      // Cleanup funkce se zavolá POUZE při unmount komponenty
-      const unlockOrderId = unlockOrderIdRef.current;
-      const { isSuperAdmin, isAdmin } = userRoleRef.current;
-
-      // 🔒 ADMIN/SUPERADMIN NEMAJÍ AUTO-UNLOCK - zůstávají držet zámek
-      // Ostatní uživatelé se při opuštění formuláře odemknou automaticky
-      if (unlockOrderId && token && username && !isSuperAdmin && !isAdmin) {
-        // Odemkni objednávku asynchronně (bez await v cleanup)
-        unlockOrder25({ token, username, orderId: unlockOrderId })
-          .then(() => {
-          })
-          .catch((error) => {
-          });
-      }
+      // 🔒 DŮLEŽITÉ: Automatické odemykání při unmount VYPNUTO
+      // Zámek se uvolní POUZE explicitně přes handleCancelOrder (tlačítko ZAVŘÍT)
+      // nebo při otevření jiné objednávky
+      // Tím zajistíme, že i ADMIN/SUPERADMIN drží zámek při Save a zůstávají na formuláři
     };
   }, []); // ✅ Prázdné dependencies = cleanup POUZE při unmount
 
