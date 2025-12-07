@@ -1022,13 +1022,21 @@ function handle_notify_email($input, $config, $queries) {
  *                       max_price, recipients (array of user_ids)
  */
 function handle_notifications_send_dual($input, $config, $queries) {
+    set_time_limit(30); // Max 30 sekund
     error_log("📧📧 DUAL NOTIFICATION REQUEST: " . json_encode($input));
     
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     
-    $token_data = verify_token($token);
+    try {
+        $token_data = verify_token($token);
+    } catch (Exception $e) {
+        error_log("📧 TOKEN VERIFICATION ERROR: " . $e->getMessage());
+        api_error(401, 'Chyba ověření tokenu: ' . $e->getMessage(), 'TOKEN_ERROR');
+        return;
+    }
+    
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
         error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
@@ -1043,14 +1051,27 @@ function handle_notifications_send_dual($input, $config, $queries) {
     
     require_once __DIR__ . '/email-template-helper.php';
     require_once __DIR__ . '/mail.php';
-    require_once __DIR__ . '/notifications.php';
     
-    $db = get_db($config);
+    try {
+        $db = get_db($config);
+        error_log("📧 DB connection OK");
+    } catch (Exception $e) {
+        error_log("📧 DB CONNECTION ERROR: " . $e->getMessage());
+        api_error(500, 'Chyba připojení k DB: ' . $e->getMessage(), 'DB_ERROR');
+        return;
+    }
     
     // Načtení šablony z DB (type = order_status_ke_schvaleni)
-    $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
-    $stmt->execute();
-    $template = $stmt->fetch();
+    try {
+        $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
+        $stmt->execute();
+        $template = $stmt->fetch();
+        error_log("📧 Template query executed");
+    } catch (Exception $e) {
+        error_log("📧 TEMPLATE QUERY ERROR: " . $e->getMessage());
+        api_error(500, 'Chyba při načítání šablony: ' . $e->getMessage(), 'QUERY_ERROR');
+        return;
+    }
     
     if (!$template) {
         api_error(404, 'Šablona notifikace nenalezena nebo není aktivní', 'TEMPLATE_NOT_FOUND');
