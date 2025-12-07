@@ -1990,7 +1990,7 @@ const Layout = ({ children }) => {
   // 🎯 [DIRECT STATE] Poslouchat OrderForm25 globální stav (window.__orderFormState)
   // Jednodušší než draft metadata - OrderForm25 přímo říká "edituji objednávku X"
   useEffect(() => {
-    const handler = (e) => {
+    const handler = async (e) => {
       const state = e.detail;
       if (!state) return;
 
@@ -1999,6 +1999,23 @@ const Layout = ({ children }) => {
       // 2. Nová objednávka: isNewOrder=true -> hasDraft=true
       // 3. Editace: isNewOrder=false && orderId!=null -> hasDraft=true
       const hasDraft = state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined);
+      
+      // 🔧 KRITICKÉ: Pokud dostaneme reset (hasDraft=false), VERIFIKUJ v localStorage
+      // Může se stát že OrderForm25 unmount (navigace pryč), ale draft stále existuje!
+      if (!hasDraft && user_id) {
+        try {
+          draftManager.setCurrentUser(user_id);
+          const actuallyHasDraft = await draftManager.hasDraft();
+          
+          if (actuallyHasDraft) {
+            // Draft existuje! Ignoruj reset a načti draft
+            recalcHasDraft();
+            return;
+          }
+        } catch (e) {
+          // Pokud selže kontrola, pokračuj s reset
+        }
+      }
       
       // Přímo nastav stavy z OrderForm25
       setHasDraftOrder(hasDraft);
@@ -2026,7 +2043,7 @@ const Layout = ({ children }) => {
     }
 
     return () => window.removeEventListener('orderFormStateChange', handler);
-  }, []);
+  }, [user_id, draftManager, recalcHasDraft]);
 
   // Recalc když se změní user_id (přihlášení/odhlášení). Už existující vlastní draft se tak znovu označí.
   useEffect(() => {
