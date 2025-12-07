@@ -7,9 +7,25 @@ import {
   faCheckCircle,
   faExclamationTriangle,
   faSpinner,
-  faList
+  faList,
+  faCog,
+  faUser,
+  faReply
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
+import { 
+  DB_TEMPLATE_APPROVER_NORMAL,
+  DB_TEMPLATE_APPROVER_URGENT,
+  DB_TEMPLATE_SUBMITTER 
+} from './emailTemplatesFromDB';
+import {
+  DB_TEMPLATE_APPROVED,
+  DB_TEMPLATE_CONFIRMED_BY_SUPPLIER,
+  DB_TEMPLATE_INVOICE_RECEIVED,
+  DB_TEMPLATE_MATERIAL_CORRECTNESS,
+  DB_TEMPLATE_TO_PUBLISH_REGISTRY,
+  DB_TEMPLATE_PUBLISHED_IN_REGISTRY
+} from './emailTemplatesAdditional';
 
 const Container = styled.div`
   padding: 30px;
@@ -232,7 +248,70 @@ const PlaceholderBadge = styled.span`
   font-family: monospace;
 `;
 
-// HTML ŠABLONA 1: EMAIL PRO SCHVALOVATELE
+const ConfigPanel = styled.div`
+  background: linear-gradient(135deg, #f9fafb, #ffffff);
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+`;
+
+const ConfigTitle = styled.h3`
+  color: #1f2937;
+  font-size: 18px;
+  margin: 0 0 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+
+  svg {
+    color: #dc2626;
+  }
+`;
+
+const ConfigRow = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ConfigLabel = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 160px;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 600;
+
+  svg {
+    color: #9ca3af;
+    font-size: 16px;
+  }
+`;
+
+const ConfigValue = styled.div`
+  flex: 1;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  background: #f9fafb;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+`;
+
+// HTML ŠABLONA 1: EMAIL PRO SCHVALOVATELE (z DB: order_status_ke_schvaleni - APPROVER)
 const TEST_HTML_TEMPLATE_APPROVER = `<!DOCTYPE html>
 <html>
 <head>
@@ -248,7 +327,7 @@ const TEST_HTML_TEMPLATE_APPROVER = `<!DOCTYPE html>
                     <tr>
                         <td style="background: linear-gradient(135deg, #dc2626, #b91c1c); padding: 30px; border-radius: 8px 8px 0 0;">
                             <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">
-                                Nová objednávka ke schválení
+                                <span style="color: #dc2626; font-size: 32px; font-weight: bold; text-shadow: -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 2px 2px 0 #fff, -1px 0 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, 0 1px 0 #fff;">T</span> Nová objednávka ke schválení
                             </h1>
                         </td>
                     </tr>
@@ -261,7 +340,7 @@ const TEST_HTML_TEMPLATE_APPROVER = `<!DOCTYPE html>
                             </p>
                             
                             <p style="margin: 0 0 25px 0; color: #374151; font-size: 16px; line-height: 1.6;">
-                                v systému eRDMS čeká na Vaše schválení nová objednávka od uživatele <strong>{user_name}</strong>.
+                                v systému EEO čeká na Vaše schválení nová objednávka od uživatele <strong>{user_name}</strong>.
                             </p>
                             
                             <!-- Order Info Box -->
@@ -339,7 +418,7 @@ const TEST_HTML_TEMPLATE_APPROVER = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// HTML ŠABLONA 2: EMAIL PRO ZADAVATELE (potvrzení)
+// HTML ŠABLONA 2: EMAIL PRO ZADAVATELE (z DB: order_status_ke_schvaleni - SUBMITTER)
 const TEST_HTML_TEMPLATE_SUBMITTER = `<!DOCTYPE html>
 <html>
 <head>
@@ -655,6 +734,45 @@ const MailTestPanel = () => {
 
   return (
     <Container>
+      {/* KONFIGURACE EMAILU */}
+      <Panel>
+        <ConfigPanel>
+          <ConfigTitle>
+            <FontAwesomeIcon icon={faCog} />
+            Aktuální konfigurace odesílatele emailů
+          </ConfigTitle>
+          
+          <ConfigRow>
+            <ConfigLabel>
+              <FontAwesomeIcon icon={faEnvelope} />
+              Odesílatel (From)
+            </ConfigLabel>
+            <ConfigValue>webmaster@zachranka.cz</ConfigValue>
+          </ConfigRow>
+
+          <ConfigRow>
+            <ConfigLabel>
+              <FontAwesomeIcon icon={faUser} />
+              Název odesílatele
+            </ConfigLabel>
+            <ConfigValue>Webaplikace EEO</ConfigValue>
+          </ConfigRow>
+
+          <ConfigRow>
+            <ConfigLabel>
+              <FontAwesomeIcon icon={faReply} />
+              Odpověď na (Reply-To)
+            </ConfigLabel>
+            <ConfigValue>webmaster@zachranka.cz</ConfigValue>
+          </ConfigRow>
+
+          <InfoBox style={{ marginTop: '16px', marginBottom: '0' }}>
+            <strong>ℹ️ Poznámka:</strong> Tato konfigurace je nastavena v souboru <code>lib/mailconfig.php</code> na backendu. 
+            Všechny odeslané emaily budou mít tyto údaje.
+          </InfoBox>
+        </ConfigPanel>
+      </Panel>
+
       <Panel>
         <Title>
           <FontAwesomeIcon icon={faEnvelope} />
@@ -683,23 +801,23 @@ const MailTestPanel = () => {
               <FontAwesomeIcon icon={faSpinner} spin /> Načítám šablony...
             </div>
           )}
-          <div style={{ marginTop: '12px' }}>
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <Button 
               onClick={() => {
                 const demoData = {
-                  '{order_id}': '12345',
-                  '{order_number}': 'O-0001/75030926/2025/PTN',
-                  '{predmet}': 'SENESI - Mapei MAPESIL AC 150 ŽLUTÁ 310 ml Silikonová těsnicí hmota 4815042IT 1ks',
-                  '{user_name}': username || 'Jan Novák',
-                  '{dodavatel_nazev}': 'SENESI, SE',
-                  '{financovani}': 'LPIT1 - Spotřeba materiálu',
-                  '{amount}': '150 000 Kč',
                   '{approver_name}': 'Petra Svobodová',
-                  '{order_id}': '12345',
-                  '{date}': new Date().toLocaleDateString('cs-CZ')
+                  '{user_name}': username || 'Jan Novák',
+                  '{order_number}': 'O-0001/75030926/2025/PTN',
+                  '{predmet}': 'Nákup kancelářského materiálu',
+                  '{strediska}': 'S01 - Ředitelství, S02 - IT oddělení',
+                  '{financovani}': 'LPIT1 - Spotřeba materiálu',
+                  '{financovani_poznamka}': 'Standardní objednávka - běžný provoz',
+                  '{amount}': '150 000 Kč',
+                  '{date}': new Date().toLocaleDateString('cs-CZ'),
+                  '{order_id}': '123'
                 };
                 
-                let body = TEST_HTML_TEMPLATE_APPROVER;
+                let body = DB_TEMPLATE_APPROVER_NORMAL;
                 Object.entries(demoData).forEach(([placeholder, value]) => {
                   body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
                 });
@@ -711,18 +829,100 @@ const MailTestPanel = () => {
                   isHtml: true
                 });
                 setRawTemplate({
-                  id: 'TEST',
+                  id: 'APPROVER_NORMAL',
                   type: 'order_status_ke_schvaleni',
-                  name: 'TEST HTML Šablona',
+                  name: '📋 APPROVER_NORMAL (Oranžová - z DB)',
                   email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
-                  email_body: TEST_HTML_TEMPLATE_APPROVER,
+                  email_body: DB_TEMPLATE_APPROVER_NORMAL,
                   send_email_default: true
                 });
-                setSelectedTemplate('TEST');
+                setSelectedTemplate('APPROVER_NORMAL');
+              }}
+              style={{ background: '#f97316', fontSize: '14px', padding: '10px 20px' }}
+            >
+              📋 APPROVER_NORMAL (Oranžová - z DB)
+            </Button>
+            
+            <Button 
+              onClick={() => {
+                const demoData = {
+                  '{approver_name}': 'Petra Svobodová',
+                  '{user_name}': username || 'Jan Novák',
+                  '{order_number}': 'O-0001/75030926/2025/PTN',
+                  '{predmet}': 'URGENTNÍ: Nákup zdravotnického materiálu',
+                  '{strediska}': 'S01 - Ředitelství, S05 - Urgentní péče',
+                  '{financovani}': 'Mimořádný nákup - urgentní',
+                  '{financovani_poznamka}': 'URGENTNÍ - nutné schválit do 24h!',
+                  '{amount}': '350 000 Kč',
+                  '{date}': new Date().toLocaleDateString('cs-CZ'),
+                  '{order_id}': '124'
+                };
+                
+                let body = DB_TEMPLATE_APPROVER_URGENT;
+                Object.entries(demoData).forEach(([placeholder, value]) => {
+                  body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                });
+                
+                setFormData({
+                  ...formData,
+                  subject: 'EEO: Nová objednávka ke schválení #O-0001/75030926/2025/PTN',
+                  body: body,
+                  isHtml: true
+                });
+                setRawTemplate({
+                  id: 'APPROVER_URGENT',
+                  type: 'order_status_ke_schvaleni',
+                  name: '⚠️ APPROVER_URGENT (Červená - z DB)',
+                  email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
+                  email_body: DB_TEMPLATE_APPROVER_URGENT,
+                  send_email_default: true
+                });
+                setSelectedTemplate('APPROVER_URGENT');
+              }}
+              style={{ background: '#dc2626', fontSize: '14px', padding: '10px 20px' }}
+            >
+              ⚠️ APPROVER_URGENT (Červená - z DB)
+            </Button>
+            
+            <Button 
+              onClick={() => {
+                const demoData = {
+                  '{approver_name}': 'Petra Svobodová',
+                  '{user_name}': username || 'Jan Novák',
+                  '{order_number}': 'O-0001/75030926/2025/PTN',
+                  '{predmet}': 'Nákup kancelářského materiálu',
+                  '{strediska}': 'S01 - Ředitelství, S02 - IT oddělení',
+                  '{financovani}': 'LPIT1 - Spotřeba materiálu',
+                  '{financovani_poznamka}': 'Standardní objednávka - běžný provoz',
+                  '{amount}': '150 000 Kč',
+                  '{date}': new Date().toLocaleDateString('cs-CZ'),
+                  '{order_id}': '123'
+                };
+                
+                let body = DB_TEMPLATE_SUBMITTER;
+                Object.entries(demoData).forEach(([placeholder, value]) => {
+                  body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                });
+                
+                setFormData({
+                  ...formData,
+                  subject: 'EEO: Vaše objednávka byla odeslána ke schválení #O-0001/75030926/2025/PTN',
+                  body: body,
+                  isHtml: true
+                });
+                setRawTemplate({
+                  id: 'SUBMITTER',
+                  type: 'order_status_ke_schvaleni',
+                  name: '✅ SUBMITTER (Zelená - z DB)',
+                  email_subject: 'EEO: Vaše objednávka byla odeslána ke schválení #{order_number}',
+                  email_body: DB_TEMPLATE_SUBMITTER,
+                  send_email_default: true
+                });
+                setSelectedTemplate('SUBMITTER');
               }}
               style={{ background: '#059669', fontSize: '14px', padding: '10px 20px' }}
             >
-              📝 Načíst testovací HTML šablonu
+              ✅ SUBMITTER (Zelená - z DB)
             </Button>
           </div>
         </FormGroup>
@@ -803,6 +1003,258 @@ const MailTestPanel = () => {
             </div>
           </>
         )}
+
+        {/* DALŠÍ FÁZE WORKFLOW - NÁHLEDY */}
+        <div style={{ marginTop: '40px', borderTop: '3px solid #3b82f6', paddingTop: '30px' }}>
+          <h2 style={{ fontSize: '22px', fontWeight: 'bold', color: '#1f2937', marginBottom: '10px' }}>
+            🚀 Náhledy emailů pro další fáze workflow
+          </h2>
+          <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '30px' }}>
+            Návrhy emailových notifikací pro jednotlivé fáze objednávky. Zatím nejsou v databázi.
+          </p>
+          
+          {/* Grid 3x2 */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr 1fr', 
+            gap: '20px',
+            marginBottom: '30px'
+          }}>
+            {/* 1. SCHVÁLENO */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #10b981, #059669)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                ✅ Objednávka schválena
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#f0fdf4', 
+                border: '1px solid #86efac', 
+                borderRadius: '6px' 
+              }}>
+                EEO: Objednávka O-0001/75030926/2025/PTN byla schválena
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_APPROVED
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Nákup kancelářského materiálu')
+                  .replace(/{amount}/g, '150 000 Kč')
+                  .replace(/{approver_name}/g, 'Petra Svobodová')
+                  .replace(/{order_id}/g, '12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="Schváleno"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+
+            {/* 2. POTVRZENO DODAVATELEM */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                📦 Potvrzeno dodavatelem
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#eff6ff', 
+                border: '1px solid #93c5fd', 
+                borderRadius: '6px' 
+              }}>
+                EEO: Objednávka O-0001/75030926/2025/PTN potvrzena dodavatelem
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_CONFIRMED_BY_SUPPLIER
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Nákup kancelářského materiálu')
+                  .replace(/{amount}/g, '150 000 Kč')
+                  .replace(/{order_id}/g, '12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="Potvrzeno dodavatelem"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+
+            {/* 3. PŘIJATA FAKTURA */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                🧾 Přijata faktura
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#faf5ff', 
+                border: '1px solid #d8b4fe', 
+                borderRadius: '6px' 
+              }}>
+                EEO: K objednávce O-0001/75030926/2025/PTN byla přijata faktura
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_INVOICE_RECEIVED
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Nákup kancelářského materiálu')
+                  .replace(/{invoice_number}/g, 'FA-2025-0123')
+                  .replace(/{invoice_amount}/g, '150 000 Kč')
+                  .replace(/{invoice_count}/g, '1')
+                  .replace(/{order_id}/g, '12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="Přijata faktura"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+
+            {/* 4. VĚCNÁ SPRÁVNOST */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #14b8a6, #0d9488)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                ✔️ Věcná správnost
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#f0fdfa', 
+                border: '1px solid #99f6e4', 
+                borderRadius: '6px' 
+              }}>
+                EEO: Kontrola věcné správnosti O-0001/75030926/2025/PTN
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_MATERIAL_CORRECTNESS
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Nákup kancelářského materiálu')
+                  .replace(/{amount}/g, '150 000 Kč')
+                  .replace(/{invoiced_total}/g, '150 000 Kč')
+                  .replace(/{invoice_count}/g, '1')
+                  .replace(/{order_id}/g, '12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="Věcná správnost"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+
+            {/* 5. K UVEŘEJNĚNÍ V REGISTRU SMLUV */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                📢 K uveřejnění v registru smluv
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#fffbeb', 
+                border: '1px solid #fcd34d', 
+                borderRadius: '6px' 
+              }}>
+                EEO: K uveřejnění v registru smluv O-0001/75030926/2025/PTN
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_TO_PUBLISH_REGISTRY
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Smlouva o dílo - Modernizace IT infrastruktury')
+                  .replace(/{amount}/g, '1 250 000 Kč')
+                  .replace(/{order_link}/g, 'https://erdms.zachranka.cz/eeo-v2/order-form-25?edit=12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="K uveřejnění v registru smluv"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+
+            {/* 6. UVEŘEJNĚNO V REGISTRU SMLUV */}
+            <PreviewPanel>
+              <PreviewTitle style={{ 
+                background: 'linear-gradient(135deg, #06b6d4, #0891b2)', 
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '8px 8px 0 0',
+                margin: '-20px -20px 16px -20px',
+                fontWeight: '700',
+                fontSize: '15px'
+              }}>
+                ✅ Uveřejněno v registru smluv
+              </PreviewTitle>
+              <PreviewSubject style={{ 
+                marginBottom: '15px', 
+                fontSize: '13px', 
+                padding: '8px 12px', 
+                background: '#ecfeff', 
+                border: '1px solid #67e8f9', 
+                borderRadius: '6px' 
+              }}>
+                EEO: Úspěšně uveřejněno v registru smluv O-0001/75030926/2025/PTN
+              </PreviewSubject>
+              <HtmlPreviewFrame
+                srcDoc={DB_TEMPLATE_PUBLISHED_IN_REGISTRY
+                  .replace(/{user_name}/g, 'Jan Novák')
+                  .replace(/{order_number}/g, 'O-0001/75030926/2025/PTN')
+                  .replace(/{predmet}/g, 'Smlouva o dílo - Modernizace IT infrastruktury')
+                  .replace(/{amount}/g, '1 250 000 Kč')
+                  .replace(/{publisher_name}/g, 'Mgr. Petra Svobodová')
+                  .replace(/{order_link}/g, 'https://erdms.zachranka.cz/eeo-v2/order-form-25?edit=12345')
+                  .replace(/{date}/g, new Date().toLocaleDateString('cs-CZ'))
+                }
+                title="Uveřejněno v registru smluv"
+                sandbox="allow-same-origin"
+                style={{ height: '500px' }}
+              />
+            </PreviewPanel>
+          </div>
+        </div>
 
         {/* ODESLÁNÍ EMAILU */}
         <div style={{ marginTop: '30px', borderTop: '2px solid #e5e7eb', paddingTop: '30px' }}>

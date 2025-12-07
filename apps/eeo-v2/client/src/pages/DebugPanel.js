@@ -302,6 +302,22 @@ const o25lDashboardStatuses = {
     { status: 'faktura_uhrazena', label: 'Faktura uhrazena', color: '#10b981', desc: 'Faktura zaplacena' },
     { status: 'faktura_po_splatnosti', label: 'Po splatnosti', color: '#dc2626', desc: 'Faktura po splatnosti' },
   ],
+  'Varování & Výstrahy (barevné varianty)': [
+    { status: 'warning_red', label: '🔴 Kritická chyba', color: '#dc2626', desc: 'Kritické upozornění' },
+    { status: 'warning_orange', label: '🟠 Varování', color: '#ea580c', desc: 'Důležité varování' },
+    { status: 'warning_yellow', label: '🟡 Upozornění', color: '#f59e0b', desc: 'Běžné upozornění' },
+    { status: 'info_blue', label: '🔵 Informace', color: '#3b82f6', desc: 'Informativní zpráva' },
+    { status: 'info_cyan', label: '🟢 OK', color: '#10b981', desc: 'Vše v pořádku' },
+    { status: 'question_purple', label: '🟣 Dotaz', color: '#8b5cf6', desc: 'Vyžaduje akci' },
+  ],
+  'Dokumenty & Office (rozšířené)': [
+    { status: 'doc_smlouva', label: '📜 Smlouva', color: '#7c3aed', desc: 'Smluvní dokument' },
+    { status: 'doc_priloha', label: '📎 Příloha', color: '#0891b2', desc: 'Přiložený soubor' },
+    { status: 'doc_faktura', label: '🧾 Faktura', color: '#059669', desc: 'Fakturační doklad' },
+    { status: 'doc_doklad', label: '📋 Doklad', color: '#3b82f6', desc: 'Účetní doklad' },
+    { status: 'doc_certifikat', label: '🎓 Certifikát', color: '#ea580c', desc: 'Osvědčení' },
+    { status: 'doc_protokol', label: '📄 Protokol', color: '#64748b', desc: 'Protokol/zápis' },
+  ],
 };
 
 // Kategorizováno pro lepší přehlednost
@@ -373,6 +389,13 @@ const iconCategories = {
     { name: 'faClipboard', icon: require('@fortawesome/free-solid-svg-icons').faClipboard },
     { name: 'faClipboardCheck', icon: require('@fortawesome/free-solid-svg-icons').faClipboardCheck },
     { name: 'faClipboardList', icon: require('@fortawesome/free-solid-svg-icons').faClipboardList },
+    { name: 'faFileContract', icon: require('@fortawesome/free-solid-svg-icons').faFileContract },
+    { name: 'faFileInvoice', icon: require('@fortawesome/free-solid-svg-icons').faFileInvoice },
+    { name: 'faFileInvoiceDollar', icon: require('@fortawesome/free-solid-svg-icons').faFileInvoiceDollar },
+    { name: 'faReceipt', icon: require('@fortawesome/free-solid-svg-icons').faReceipt },
+    { name: 'faStamp', icon: require('@fortawesome/free-solid-svg-icons').faStamp },
+    { name: 'faCertificate', icon: require('@fortawesome/free-solid-svg-icons').faCertificate },
+    { name: 'faFileSignature', icon: require('@fortawesome/free-solid-svg-icons').faFileSignature },
   ],
   'Komunikace': [
     { name: 'faEnvelope', icon: require('@fortawesome/free-solid-svg-icons').faEnvelope },
@@ -408,6 +431,14 @@ const iconCategories = {
     { name: 'faHourglassHalf', icon: require('@fortawesome/free-solid-svg-icons').faHourglassHalf },
     { name: 'faSpinner', icon: require('@fortawesome/free-solid-svg-icons').faSpinner },
     { name: 'faCircleNotch', icon: require('@fortawesome/free-solid-svg-icons').faCircleNotch },
+    { name: 'faExclamation', icon: require('@fortawesome/free-solid-svg-icons').faExclamation },
+    { name: 'faQuestion', icon: require('@fortawesome/free-solid-svg-icons').faQuestion },
+    { name: 'faInfo', icon: require('@fortawesome/free-solid-svg-icons').faInfo },
+    { name: 'faLightbulb', icon: require('@fortawesome/free-solid-svg-icons').faLightbulb },
+    { name: 'faBolt', icon: require('@fortawesome/free-solid-svg-icons').faBolt },
+    { name: 'faFire', icon: require('@fortawesome/free-solid-svg-icons').faFire },
+    { name: 'faRadiation', icon: require('@fortawesome/free-solid-svg-icons').faRadiation },
+    { name: 'faSkull', icon: require('@fortawesome/free-solid-svg-icons').faSkull },
   ],
   'Business & Finanční': [
     { name: 'faBuilding', icon: require('@fortawesome/free-solid-svg-icons').faBuilding },
@@ -535,6 +566,196 @@ const DebugPanel = () => {
 
       case 'mail':
         return <MailTestPanelV2 />;
+
+      case 'email-previews':
+        return (
+          <IconsPanel>
+            <SectionTitle>
+              <FontAwesomeIcon icon={faEnvelope} />
+              Email šablony - Náhledy (order_status_ke_schvaleni)
+            </SectionTitle>
+            <SectionDescription>
+              Zobrazeno <strong>3 varianty</strong> email šablon z DB pro "Nová objednávka ke schválení"
+            </SectionDescription>
+
+            <CategorySection>
+              <CategoryTitle>⚡ APPROVER_URGENT (Červená - High Priority)</CategoryTitle>
+              <div style={{ 
+                background: '#ffffff',
+                border: '3px solid #dc2626',
+                borderRadius: '8px',
+                padding: '0',
+                marginBottom: '30px',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+                  padding: '30px',
+                  textAlign: 'center'
+                }}>
+                  <h1 style={{ 
+                    margin: 0,
+                    color: '#ffffff',
+                    fontSize: '24px',
+                    fontWeight: '700'
+                  }}>
+                    ⚡ Nová objednávka ke schválení
+                  </h1>
+                </div>
+                <div style={{ padding: '30px', fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Použití:</strong> Urgentní objednávky vyžadující okamžité schválení
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Ikona v předmětu:</strong> ⚡ (blesk - jako "Mimořádně" na dashboardu)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Příjemce:</strong> Schvalovatel (APPROVER)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Priorita:</strong> HIGH (červená)
+                  </p>
+                  <p style={{ margin: '0', fontSize: '13px', color: '#6b7280' }}>
+                    <strong>Placeholder DB:</strong> APPROVER_URGENT
+                  </p>
+                </div>
+              </div>
+            </CategorySection>
+
+            <CategorySection>
+              <CategoryTitle>❗ APPROVER_NORMAL (Oranžová - Normal Priority)</CategoryTitle>
+              <div style={{ 
+                background: '#ffffff',
+                border: '3px solid #f97316',
+                borderRadius: '8px',
+                padding: '0',
+                marginBottom: '30px',
+                boxShadow: '0 4px 12px rgba(249, 115, 22, 0.2)',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  background: 'linear-gradient(135deg, #f97316, #fb923c)',
+                  padding: '30px',
+                  textAlign: 'center'
+                }}>
+                  <h1 style={{ 
+                    margin: 0,
+                    color: '#ffffff',
+                    fontSize: '24px',
+                    fontWeight: '700'
+                  }}>
+                    ❗ Nová objednávka ke schválení
+                  </h1>
+                </div>
+                <div style={{ padding: '30px', fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Použití:</strong> Standardní objednávky běžné priority
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Ikona v předmětu:</strong> ❗ (vykřičník)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Příjemce:</strong> Schvalovatel (APPROVER)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Priorita:</strong> NORMAL (oranžová)
+                  </p>
+                  <p style={{ margin: '0', fontSize: '13px', color: '#6b7280' }}>
+                    <strong>Placeholder DB:</strong> APPROVER_NORMAL
+                  </p>
+                </div>
+              </div>
+            </CategorySection>
+
+            <CategorySection>
+              <CategoryTitle>✅ SUBMITTER (Zelená - Confirmation)</CategoryTitle>
+              <div style={{ 
+                background: '#ffffff',
+                border: '3px solid #059669',
+                borderRadius: '8px',
+                padding: '0',
+                marginBottom: '30px',
+                boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  background: 'linear-gradient(135deg, #059669, #047857)',
+                  padding: '30px',
+                  textAlign: 'center'
+                }}>
+                  <h1 style={{ 
+                    margin: 0,
+                    color: '#ffffff',
+                    fontSize: '24px',
+                    fontWeight: '700'
+                  }}>
+                    ✅ Objednávka odeslána ke schválení
+                  </h1>
+                </div>
+                <div style={{ padding: '30px', fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Použití:</strong> Potvrzení pro zadavatele objednávky
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Ikona v předmětu:</strong> ✅ (zatím bez ikony v DB)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Příjemce:</strong> Zadavatel/Autor (SUBMITTER)
+                  </p>
+                  <p style={{ margin: '0 0 15px 0' }}>
+                    <strong>Priorita:</strong> INFO (zelená)
+                  </p>
+                  <p style={{ margin: '0', fontSize: '13px', color: '#6b7280' }}>
+                    <strong>Placeholder DB:</strong> SUBMITTER
+                  </p>
+                </div>
+              </div>
+            </CategorySection>
+
+            <div style={{ 
+              background: '#f0f9ff',
+              border: '2px solid #3b82f6',
+              borderRadius: '8px',
+              padding: '20px',
+              marginTop: '30px'
+            }}>
+              <h3 style={{ margin: '0 0 15px 0', color: '#1e40af', fontSize: '18px' }}>
+                📋 Placeholders v šablonách
+              </h3>
+              <div style={{ fontSize: '13px', color: '#374151', fontFamily: 'monospace', lineHeight: '1.8' }}>
+                <div><strong>{`{order_number}`}</strong> - Evidenční číslo objednávky</div>
+                <div><strong>{`{predmet}`}</strong> - Předmět objednávky</div>
+                <div><strong>{`{strediska}`}</strong> - Seznam středisek</div>
+                <div><strong>{`{financovani}`}</strong> - Zdroj financování</div>
+                <div><strong>{`{financovani_poznamka}`}</strong> - Poznámka k financování</div>
+                <div><strong>{`{amount}`}</strong> - Cena s DPH</div>
+                <div><strong>{`{date}`}</strong> - Datum vytvoření</div>
+                <div><strong>{`{approver_name}`}</strong> - Jméno schvalovatele</div>
+                <div><strong>{`{user_name}`}</strong> - Jméno zadavatele</div>
+                <div><strong>{`{order_id}`}</strong> - DB ID objednávky</div>
+              </div>
+            </div>
+
+            <div style={{ 
+              background: '#fef3c7',
+              border: '2px solid #f59e0b',
+              borderRadius: '8px',
+              padding: '20px',
+              marginTop: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 10px 0', color: '#92400e', fontSize: '16px' }}>
+                ⚠️ Důležité poznámky
+              </h3>
+              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#78350f', lineHeight: '1.8' }}>
+                <li>V DB <strong>NENÍ pole dodavatel</strong> - nepoužívat {`{dodavatel_nazev}`}</li>
+                <li>Ikony zatím <strong>pouze v hlavičce</strong>, ne v email předmětu</li>
+                <li>SQL update připraven v: <code>docs/setup/update-notification-icons.sql</code></li>
+                <li>Testování v: <strong>Mail Test tab → 3 barevná tlačítka</strong></li>
+              </ul>
+            </div>
+          </IconsPanel>
+        );
 
       case 'users':
         return (

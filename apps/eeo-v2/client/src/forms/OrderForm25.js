@@ -8637,8 +8637,9 @@ function OrderForm25() {
 
       if (formData.max_cena_s_dph) orderData.max_cena_s_dph = formData.max_cena_s_dph;
       
-      // Mimořádná událost (boolean)
-      orderData.mimoradna_udalost = formData.mimoradna_udalost || false;
+      // Mimořádná událost (boolean) - OPRAVA: explicitní převod na boolean
+      orderData.mimoradna_udalost = Boolean(formData.mimoradna_udalost);
+      addDebugLog('info', 'SAVE', 'mimoradna-udalost', `Mimořádná událost: ${formData.mimoradna_udalost} -> ${orderData.mimoradna_udalost}`);
 
       // ✅ FINANCOVÁNÍ: Normalizovat do objektu pro backend (VŠECHNA POLE jdou do financovani objektu!)
       // 🔥 KRITICKÁ OPRAVA: I když je pole disabled, MUSÍME poslat hodnotu!
@@ -9423,7 +9424,8 @@ function OrderForm25() {
           const phase1Fields = [
             'uzivatel_id', 'objednatel_id', 'predmet', 'garant_uzivatel_id',
             'prikazce_id', 'strediska_kod', 'max_cena_s_dph', 'financovani',
-            'druh_objednavky_kod', 'stav_workflow_kod', 'stav_objednavky', 'dt_objednavky'
+            'druh_objednavky_kod', 'stav_workflow_kod', 'stav_objednavky', 'dt_objednavky',
+            'mimoradna_udalost'  // 🚨 EMERGENCY FLAG
           ];
 
           Object.keys(orderData).forEach(key => {
@@ -11055,6 +11057,7 @@ function OrderForm25() {
       prikazce_id: '',
       strediska_kod: [],
       max_cena_s_dph: '',
+      mimoradna_udalost: false, // Mimořádná událost (výchozí false)
       // Objednatel údaje - naplň z userDetail
       objednatel_jmeno: userDetail ? getUserNameById(user_id) : '',
       objednatel_email: userDetail?.email || '',
@@ -11401,6 +11404,7 @@ function OrderForm25() {
         strediska_kod: [],
         zpusob_financovani: '',
         poznamka: '',
+        mimoradna_udalost: false, // Mimořádná událost
         polozky_objednavky: [{
           nazev: '',
           specifikace: '',
