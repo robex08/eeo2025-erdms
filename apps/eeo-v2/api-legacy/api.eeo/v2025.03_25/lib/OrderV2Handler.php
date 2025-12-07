@@ -382,8 +382,12 @@ class OrderV2Handler {
         // ========== BOOLEAN POLE - PŘEVOD NA TINYINT ==========
         
         // mimoradna_udalost: boolean → TINYINT(1) pro DB
-        if (isset($standardData['mimoradna_udalost'])) {
+        // OPRAVA: Vždy nastavit, i když je false (aby se uložilo do DB při CREATE)
+        if (array_key_exists('mimoradna_udalost', $standardData)) {
             $result['mimoradna_udalost'] = $standardData['mimoradna_udalost'] ? 1 : 0;
+        } else {
+            // Výchozí hodnota pokud není vůbec zadáno
+            $result['mimoradna_udalost'] = 0;
         }
         
         // ========== PENĚŽNÍ ČÁSTKY - PŘEVOD NA DECIMAL ==========

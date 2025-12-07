@@ -21,6 +21,12 @@ define('TABLE_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
 define('TABLE_UZIVATELE_ROLE', '25_uzivatele_role');
 define('TABLE_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
+// === CASHBOOK (POKLADNA) CONSTANTS ===
+define('TABLE_POKLADNI_KNIHY', '25a_pokladni_knihy');
+define('TABLE_POKLADNI_POLOZKY', '25a_pokladni_polozky');
+define('TABLE_POKLADNI_AUDIT', '25a_pokladni_audit');
+define('TABLE_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
+
 // === CHAT SYSTEM CONSTANTS ===
 define('TABLE_CHAT_KONVERZACE', '25_chat_konverzace');
 define('TABLE_CHAT_UCASTNICI', '25_chat_ucastnici');

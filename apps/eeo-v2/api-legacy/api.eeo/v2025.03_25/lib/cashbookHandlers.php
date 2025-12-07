@@ -6,6 +6,7 @@
  * PHP 5.6 kompatibilní
  */
 
+require_once __DIR__ . '/queries.php'; // Table name constants
 require_once __DIR__ . '/../models/CashbookModel.php';
 require_once __DIR__ . '/../models/CashbookEntryModel.php';
 require_once __DIR__ . '/../models/CashbookAuditModel.php';
@@ -435,29 +436,33 @@ function handle_cashbook_close_post($config, $input) {
                 $result = $service->closeBookByUser($input['book_id'], $userData['id']);
             }
             
-            $db->commit();
-            
             // === PŘEPOČET LIMITOVANÝCH PŘÍSLIBŮ ===
-            // Pokud kniha byla uzavřena, přepočítat LP z položek
+            // TODO: Implementovat přepočet LP po uzavření měsíce
+            // Prozatím zakomentováno kvůli kompatibilitě PDO/mysqli
+            /*
             if ($akce === 'uzavrit_mesic' || $akce === 'zamknout_spravcem') {
                 // Získat všechna LP použitá v položkách této knihy
                 $sql_lp = "
-                    SELECT DISTINCT limitovana_prisliba 
-                    FROM 25_pokladna_polozky 
-                    WHERE pokladna_id = :book_id
-                    AND limitovana_prisliba IS NOT NULL
-                    AND limitovana_prisliba != ''
+                    SELECT DISTINCT lp_kod 
+                    FROM " . TABLE_POKLADNI_POLOZKY . " 
+                    WHERE pokladni_kniha_id = :book_id
+                    AND lp_kod IS NOT NULL
+                    AND lp_kod != ''
                 ";
                 
                 $stmt_lp = $db->prepare($sql_lp);
                 $stmt_lp->bindValue(':book_id', $input['book_id']);
                 $stmt_lp->execute();
                 
-                // Přepočítat každé LP
+                // Přepočítat každé LP (vyžaduje mysqli connection)
                 while ($row_lp = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
-                    prepocetCerpaniPodleCislaLP($db, $row_lp['limitovana_prisliba']);
+                    // prepocetCerpaniPodleCislaLP($mysqli_conn, $row_lp['lp_kod']);
                 }
             }
+            */
+            
+            // Commit transakce až po všech operacích
+            $db->commit();
             
             return api_ok($result);
             

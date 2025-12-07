@@ -2931,7 +2931,8 @@ const CashBookPage = () => {
           // Pokud se číslo změnilo, aktualizovat v DB
           if (newNumber && newNumber !== entry.cislo_dokladu) {
             console.log(`  🔄 ${entry.cislo_dokladu} → ${newNumber}`);
-            await cashbookAPI.updateEntry(entry.db_id, {
+            // ✅ FIX: RAW data z API mají 'id', ne 'db_id'
+            await cashbookAPI.updateEntry(entry.id, {
               cislo_dokladu: newNumber
             });
           }
@@ -2951,6 +2952,19 @@ const CashBookPage = () => {
     setCloseMonthDialogOpen(false);
 
     try {
+      // 🔄 KROK 0: Zkontrolovat aktuální stav knihy před operací
+      const bookCheckResult = await cashbookAPI.getBook(currentBookId, false);
+      if (bookCheckResult.status === 'ok' && bookCheckResult.data?.stav_knihy) {
+        const currentState = bookCheckResult.data.stav_knihy;
+        
+        if (currentState !== 'aktivni') {
+          // Kniha už je uzavřená - synchronizovat stav ve frontendu
+          setBookStatus(currentState);
+          showToast(`Kniha je již ve stavu: ${currentState}`, 'warning');
+          return;
+        }
+      }
+
       // 🔄 KROK 1: Nejprve přečíslovat všechny knihy od aktuální do budoucna
       showToast('Probíhá přečíslování dokladů...', 'info');
       const renumberResult = await renumberAllFutureMonths();
@@ -2983,6 +2997,16 @@ const CashBookPage = () => {
     } catch (error) {
       console.error('❌ Chyba při uzavírání měsíce:', error);
       showToast('Chyba při uzavírání měsíce: ' + error.message, 'error');
+      
+      // 🔄 Po chybě znovu načíst stav knihy z DB
+      try {
+        const bookCheckResult = await cashbookAPI.getBook(currentBookId, false);
+        if (bookCheckResult.status === 'ok' && bookCheckResult.data?.stav_knihy) {
+          setBookStatus(bookCheckResult.data.stav_knihy);
+        }
+      } catch (recheckError) {
+        console.error('Nepodařilo se znovu načíst stav knihy:', recheckError);
+      }
     }
   };
 

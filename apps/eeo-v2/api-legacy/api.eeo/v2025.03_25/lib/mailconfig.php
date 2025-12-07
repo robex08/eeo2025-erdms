@@ -3,9 +3,9 @@
 // You can override these via environment variables if available.
 return array(
     'from_email' => getenv('MAIL_FROM') ? getenv('MAIL_FROM') : 'webmaster@zachranka.cz',
-    'from_name'  => getenv('MAIL_FROM_NAME') ? getenv('MAIL_FROM_NAME') : 'eRDMS Systém',
+    'from_name'  => getenv('MAIL_FROM_NAME') ? getenv('MAIL_FROM_NAME') : 'Webaplikace EEO',
     // Optional reply-to
-    'reply_to'   => getenv('MAIL_REPLY_TO') ? getenv('MAIL_REPLY_TO') : 'podpora@zachranka.cz',
+    'reply_to'   => getenv('MAIL_REPLY_TO') ? getenv('MAIL_REPLY_TO') : 'webmaster@zachranka.cz',
     // Toggle debug output in API responses (false for production)
     'debug'      => (getenv('MAIL_DEBUG') ? (strtolower(getenv('MAIL_DEBUG')) === 'true') : true),
     // SMTP configuration (if use_smtp = true)
