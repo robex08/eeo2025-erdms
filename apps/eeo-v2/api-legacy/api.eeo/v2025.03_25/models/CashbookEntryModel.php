@@ -2,7 +2,7 @@
 /**
  * CashbookEntryModel.php
  * Model pro práci s položkami pokladní knihy (25a_pokladni_polozky)
- * PHP 5.6 kompatibilní
+ * PHP 8.4+ s podporou multi-LP detail položek
  */
 
 class CashbookEntryModel {
@@ -11,6 +11,218 @@ class CashbookEntryModel {
     
     public function __construct($db) {
         $this->db = $db;
+    }
+    
+    // ============================================
+    // DETAIL POLOŽKY (multi-LP)
+    // ============================================
+    
+    /**
+     * Získat detail položky pro záznam
+     * @param int $entryId
+     * @return array
+     */
+    public function getDetailItems(int $entryId): array {
+        $stmt = $this->db->prepare("
+            SELECT * 
+            FROM 25a_pokladni_polozky_detail
+            WHERE polozka_id = ?
+            ORDER BY poradi ASC
+        ");
+        $stmt->execute([$entryId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Vložit detail položku
+     * @param int $entryId
+     * @param int $poradi
+     * @param array $data ['popis', 'castka', 'lp_kod', 'lp_popis', 'poznamka']
+     * @return int ID nové detail položky
+     */
+    public function insertDetailItem(int $entryId, int $poradi, array $data): int {
+        $stmt = $this->db->prepare("
+            INSERT INTO 25a_pokladni_polozky_detail (
+                polozka_id, poradi, popis, castka, lp_kod, lp_popis, poznamka, vytvoreno
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        
+        $stmt->execute([
+            $entryId,
+            $poradi,
+            $data['popis'],
+            $data['castka'],
+            $data['lp_kod'],
+            $data['lp_popis'] ?? null,
+            $data['poznamka'] ?? null
+        ]);
+        
+        return (int) $this->db->lastInsertId();
+    }
+    
+    /**
+     * Aktualizovat detail položku
+     * @param int $detailId
+     * @param array $data
+     * @return bool
+     */
+    public function updateDetailItem(int $detailId, array $data): bool {
+        $fields = [];
+        $params = [];
+        
+        if (isset($data['popis'])) {
+            $fields[] = "popis = ?";
+            $params[] = $data['popis'];
+        }
+        if (isset($data['castka'])) {
+            $fields[] = "castka = ?";
+            $params[] = $data['castka'];
+        }
+        if (isset($data['lp_kod'])) {
+            $fields[] = "lp_kod = ?";
+            $params[] = $data['lp_kod'];
+        }
+        if (isset($data['lp_popis'])) {
+            $fields[] = "lp_popis = ?";
+            $params[] = $data['lp_popis'];
+        }
+        if (isset($data['poznamka'])) {
+            $fields[] = "poznamka = ?";
+            $params[] = $data['poznamka'];
+        }
+        
+        if (empty($fields)) {
+            return true;
+        }
+        
+        $fields[] = "aktualizovano = NOW()";
+        $params[] = $detailId;
+        
+        $sql = "UPDATE 25a_pokladni_polozky_detail SET " . implode(', ', $fields) . " WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
+    }
+    
+    /**
+     * Smazat všechny detail položky pro záznam
+     * @param int $entryId
+     * @return bool
+     */
+    public function deleteDetailItems(int $entryId): bool {
+        $stmt = $this->db->prepare("DELETE FROM 25a_pokladni_polozky_detail WHERE polozka_id = ?");
+        return $stmt->execute([$entryId]);
+    }
+    
+    /**
+     * Vytvořit záznam včetně detail položek (atomická operace)
+     * @param array $masterData Data hlavičky
+     * @param array $detailItems Pole detail položek
+     * @param int $userId
+     * @return int ID nového záznamu
+     * @throws Exception
+     */
+    public function createEntryWithDetails(array $masterData, array $detailItems, int $userId): int {
+        $this->db->beginTransaction();
+        
+        try {
+            // 1. Spočítat celkovou částku z detailů
+            $castka_celkem = array_sum(array_column($detailItems, 'castka'));
+            
+            // 2. Vytvořit master záznam
+            $entryId = $this->createEntry(array_merge($masterData, [
+                'castka_celkem' => $castka_celkem,
+                'ma_detail' => !empty($detailItems) ? 1 : 0
+            ]), $userId);
+            
+            // 3. Vložit detail položky
+            foreach ($detailItems as $idx => $item) {
+                $this->insertDetailItem($entryId, $idx + 1, $item);
+            }
+            
+            $this->db->commit();
+            return $entryId;
+            
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+    
+    /**
+     * Aktualizovat záznam včetně detail položek
+     * @param int $entryId
+     * @param array $masterData
+     * @param array $detailItems
+     * @param int $userId
+     * @return bool
+     * @throws Exception
+     */
+    public function updateEntryWithDetails(int $entryId, array $masterData, array $detailItems, int $userId): bool {
+        $this->db->beginTransaction();
+        
+        try {
+            // 1. Spočítat celkovou částku
+            $castka_celkem = array_sum(array_column($detailItems, 'castka'));
+            
+            // 2. Aktualizovat master záznam
+            $this->updateEntry($entryId, array_merge($masterData, [
+                'castka_celkem' => $castka_celkem,
+                'ma_detail' => !empty($detailItems) ? 1 : 0
+            ]), $userId);
+            
+            // 3. Smazat staré detail položky
+            $this->deleteDetailItems($entryId);
+            
+            // 4. Vložit nové detail položky
+            foreach ($detailItems as $idx => $item) {
+                $this->insertDetailItem($entryId, $idx + 1, $item);
+            }
+            
+            $this->db->commit();
+            return true;
+            
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+    
+    /**
+     * Získat záznam včetně detail položek
+     * @param int $entryId
+     * @return array|null ['master' => ..., 'details' => [...]]
+     */
+    public function getEntryWithDetails(int $entryId): ?array {
+        $master = $this->getEntryById($entryId);
+        
+        if (!$master) {
+            return null;
+        }
+        
+        // Pro zpětnou kompatibilitu: pokud nemá ma_detail flag, vytvořit detail z původních sloupců
+        if (!isset($master['ma_detail']) || $master['ma_detail'] == 0) {
+            $details = [];
+            
+            // Pokud má starý LP kód, vytvořit z něj detail položku
+            if (!empty($master['lp_kod'])) {
+                $details[] = [
+                    'id' => null,
+                    'poradi' => 1,
+                    'popis' => $master['obsah_zapisu'],
+                    'castka' => $master['castka_celkem'] ?? ($master['castka_vydaj'] ?? $master['castka_prijem']),
+                    'lp_kod' => $master['lp_kod'],
+                    'lp_popis' => $master['lp_popis'],
+                    'poznamka' => null
+                ];
+            }
+        } else {
+            $details = $this->getDetailItems($entryId);
+        }
+        
+        return [
+            'master' => $master,
+            'details' => $details
+        ];
     }
     
     /**
@@ -62,40 +274,42 @@ class CashbookEntryModel {
         $sql = "
             INSERT INTO 25a_pokladni_polozky (
                 pokladni_kniha_id, datum_zapisu, cislo_dokladu, cislo_poradi_v_roce, typ_dokladu,
-                obsah_zapisu, komu_od_koho, castka_prijem, castka_vydaj,
+                obsah_zapisu, komu_od_koho, castka_prijem, castka_vydaj, castka_celkem,
                 zustatek_po_operaci, lp_kod, lp_popis, poznamka,
-                poradi_radku, vytvoreno, vytvoril
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+                poradi_radku, ma_detail, vytvoreno, vytvoril
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         ";
         
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(array(
+        $stmt->execute([
             $data['pokladni_kniha_id'],
             $data['datum_zapisu'],
             $data['cislo_dokladu'],
             $data['cislo_poradi_v_roce'],
             $data['typ_dokladu'],
             $data['obsah_zapisu'],
-            isset($data['komu_od_koho']) ? $data['komu_od_koho'] : null,
-            isset($data['castka_prijem']) ? $data['castka_prijem'] : null,
-            isset($data['castka_vydaj']) ? $data['castka_vydaj'] : null,
+            $data['komu_od_koho'] ?? null,
+            $data['castka_prijem'] ?? null,
+            $data['castka_vydaj'] ?? null,
+            $data['castka_celkem'] ?? ($data['castka_vydaj'] ?? $data['castka_prijem']),
             $data['zustatek_po_operaci'],
-            isset($data['lp_kod']) ? $data['lp_kod'] : null,
-            isset($data['lp_popis']) ? $data['lp_popis'] : null,
-            isset($data['poznamka']) ? $data['poznamka'] : null,
-            isset($data['poradi_radku']) ? $data['poradi_radku'] : 0,
+            $data['lp_kod'] ?? null,
+            $data['lp_popis'] ?? null,
+            $data['poznamka'] ?? null,
+            $data['poradi_radku'] ?? 0,
+            $data['ma_detail'] ?? 0,
             $userId
-        ));
+        ]);
         
-        return $this->db->lastInsertId();
+        return (int) $this->db->lastInsertId();
     }
     
     /**
      * Aktualizovat položku
      */
     public function updateEntry($entryId, $data, $userId) {
-        $fields = array();
-        $params = array();
+        $fields = [];
+        $params = [];
         
         if (isset($data['datum_zapisu'])) {
             $fields[] = "datum_zapisu = ?";
@@ -117,6 +331,14 @@ class CashbookEntryModel {
             $fields[] = "castka_vydaj = ?";
             $params[] = $data['castka_vydaj'];
         }
+        if (isset($data['castka_celkem'])) {
+            $fields[] = "castka_celkem = ?";
+            $params[] = $data['castka_celkem'];
+        }
+        if (isset($data['ma_detail'])) {
+            $fields[] = "ma_detail = ?";
+            $params[] = $data['ma_detail'];
+        }
         if (isset($data['lp_kod'])) {
             $fields[] = "lp_kod = ?";
             $params[] = $data['lp_kod'];
@@ -129,8 +351,6 @@ class CashbookEntryModel {
             $fields[] = "poznamka = ?";
             $params[] = $data['poznamka'];
         }
-        
-        // 🆕 NOVÉ SLOUPCE - pokud frontend pošle, uložit do DB
         if (isset($data['cislo_dokladu'])) {
             $fields[] = "cislo_dokladu = ?";
             $params[] = $data['cislo_dokladu'];
@@ -143,19 +363,15 @@ class CashbookEntryModel {
             $fields[] = "typ_dokladu = ?";
             $params[] = $data['typ_dokladu'];
         }
-        if (isset($data['poradove_cislo'])) {
-            $fields[] = "poradove_cislo = ?";
-            $params[] = $data['poradove_cislo'];
-        }
-        
-        $fields[] = "aktualizoval = ?";
-        $params[] = $userId;
-        
-        $params[] = $entryId;
         
         if (empty($fields)) {
             return true;
         }
+        
+        $fields[] = "aktualizoval = ?";
+        $fields[] = "aktualizovano = NOW()";
+        $params[] = $userId;
+        $params[] = $entryId;
         
         $sql = "UPDATE 25a_pokladni_polozky SET " . implode(', ', $fields) . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);

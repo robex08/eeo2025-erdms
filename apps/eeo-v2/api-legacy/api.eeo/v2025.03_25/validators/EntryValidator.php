@@ -2,10 +2,181 @@
 /**
  * EntryValidator.php
  * Validace vstupních dat pro položky pokladní knihy
- * PHP 5.6 kompatibilní
+ * PHP 8.4+ s podporou multi-LP detail položek
  */
 
 class EntryValidator {
+    
+    private $db;
+    
+    public function __construct($db = null) {
+        $this->db = $db;
+    }
+    
+    // ============================================
+    // MULTI-LP VALIDACE (nové metody)
+    // ============================================
+    
+    /**
+     * Validovat LP povinnost podle typu dokladu
+     * LP je POVINNÝ pouze pro VÝDAJE, pro PŘÍJMY není povinný
+     */
+    public function validateLpRequired(string $typDokladu, array $detailItems): bool {
+        // Pro PŘÍJMY není LP povinný (dotace pokladny)
+        if ($typDokladu === 'prijem') {
+            return true;
+        }
+        
+        // Pro VÝDAJE je LP POVINNÝ na všech detail položkách
+        if ($typDokladu === 'vydaj') {
+            if (empty($detailItems)) {
+                throw new Exception('Výdaj musí mít alespoň jednu detail položku s LP kódem');
+            }
+            
+            foreach ($detailItems as $idx => $item) {
+                if (empty($item['lp_kod'])) {
+                    throw new Exception("LP kód je povinný pro všechny výdaje (položka #" . ($idx + 1) . ")");
+                }
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validovat, že součet detail položek se shoduje s celkovou částkou
+     */
+    public function validateDetailsSum(float $masterCastka, array $detailItems): bool {
+        if (empty($detailItems)) {
+            return true;
+        }
+        
+        $detailSum = array_sum(array_column($detailItems, 'castka'));
+        $rozdil = abs($masterCastka - $detailSum);
+        
+        // Tolerance 1 halíř
+        if ($rozdil > 0.01) {
+            throw new Exception(
+                sprintf(
+                    "Součet detail položek (%.2f Kč) se neshoduje s celkovou částkou (%.2f Kč)",
+                    $detailSum,
+                    $masterCastka
+                )
+            );
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validovat dostupnost LP limitu
+     * Kontroluje čerpání podle tabulky 25_limitovane_prisliby_cerpani
+     */
+    public function checkLpAvailability(string $lpKod, float $pozadovanaCastka, int $rok): array {
+        if (!$this->db) {
+            return ['status' => 'ok', 'message' => 'DB validace přeskočena'];
+        }
+        
+        $stmt = $this->db->prepare("
+            SELECT 
+                lp.cislo_lp,
+                lp.nazev,
+                lp.celkovy_limit,
+                COALESCE(c.skutecne_cerpano, 0) as skutecne_cerpano,
+                COALESCE(c.zbyva_skutecne, lp.celkovy_limit) as zbyva
+            FROM 25_limitovane_prisliby lp
+            LEFT JOIN 25_limitovane_prisliby_cerpani c 
+              ON c.cislo_lp = lp.cislo_lp AND c.rok = lp.rok
+            WHERE lp.cislo_lp = ? AND lp.rok = ?
+        ");
+        
+        $stmt->execute([$lpKod, $rok]);
+        $lp = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$lp) {
+            return [
+                'status' => 'warning',
+                'message' => "LP kód '{$lpKod}' nenalezen pro rok {$rok}"
+            ];
+        }
+        
+        $zbyva = (float) $lp['zbyva'];
+        $procento = $lp['celkovy_limit'] > 0 
+            ? round((($lp['skutecne_cerpano'] + $pozadovanaCastka) / $lp['celkovy_limit']) * 100, 2)
+            : 0;
+        
+        // Překročení limitu
+        if ($pozadovanaCastka > $zbyva) {
+            return [
+                'status' => 'error',
+                'message' => sprintf(
+                    "⚠️ PŘEKROČENÍ LIMITU! LP %s má zbývající %.2f Kč, požadováno %.2f Kč",
+                    $lpKod,
+                    $zbyva,
+                    $pozadovanaCastka
+                )
+            ];
+        }
+        
+        // Varování při 90%+
+        if ($procento >= 90) {
+            return [
+                'status' => 'warning',
+                'message' => sprintf("⚠️ LP %s bude vyčerpán na %.2f%%", $lpKod, $procento)
+            ];
+        }
+        
+        return [
+            'status' => 'ok',
+            'message' => sprintf("LP %s: %.2f%% vyčerpáno", $lpKod, $procento)
+        ];
+    }
+    
+    /**
+     * Validovat kompletní záznam s multi-LP
+     */
+    public function validateEntryWithDetails(array $masterData, array $detailItems, int $rok): array {
+        $errors = [];
+        $warnings = [];
+        
+        try {
+            // 1. LP povinnost
+            $this->validateLpRequired($masterData['typ_dokladu'], $detailItems);
+            
+            // 2. Součet částek
+            $castka_celkem = $masterData['castka_celkem'] 
+                ?? ($masterData['castka_vydaj'] ?? $masterData['castka_prijem']);
+            $this->validateDetailsSum((float) $castka_celkem, $detailItems);
+            
+            // 3. Dostupnost LP limitů (pouze pro výdaje)
+            if ($masterData['typ_dokladu'] === 'vydaj' && $this->db) {
+                foreach ($detailItems as $item) {
+                    if (!empty($item['lp_kod'])) {
+                        $check = $this->checkLpAvailability($item['lp_kod'], (float) $item['castka'], $rok);
+                        
+                        if ($check['status'] === 'error') {
+                            $warnings[] = $check['message']; // Soft warning, ne hard error
+                        } elseif ($check['status'] === 'warning') {
+                            $warnings[] = $check['message'];
+                        }
+                    }
+                }
+            }
+            
+        } catch (Exception $e) {
+            $errors[] = $e->getMessage();
+        }
+        
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors,
+            'warnings' => $warnings
+        ];
+    }
+    
+    // ============================================
+    // PŮVODNÍ METODY (zachováno pro kompatibilitu)
+    // ============================================
     
     /**
      * Validovat data pro vytvoření položky
