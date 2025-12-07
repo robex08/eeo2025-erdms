@@ -45,29 +45,15 @@ class DocumentNumberService {
             
             $year = $book['rok'];
             
-            // Zjistit, zda používat prefix
-            $usePrefix = $this->settingsModel->isDocumentPrefixEnabled();
-            
             // Určit prefix podle typu
             $letter = ($type === 'prijem') ? 'P' : 'V';
             
             // Získat další pořadové číslo v roce
             $nextNumber = $this->getNextDocumentNumber($userId, $year, $type);
             
-            // Sestavit číslo dokladu
-            if ($usePrefix) {
-                $rada = ($type === 'prijem') ? $book['ciselna_rada_ppd'] : $book['ciselna_rada_vpd'];
-                if ($rada) {
-                    // S prefixem: V591-001, P491-023
-                    $documentNumber = sprintf('%s%s-%03d', $letter, $rada, $nextNumber);
-                } else {
-                    // Pokud není číselná řada, použít bez prefixu
-                    $documentNumber = sprintf('%s%03d', $letter, $nextNumber);
-                }
-            } else {
-                // Bez prefixu: V001, P023
-                $documentNumber = sprintf('%s%03d', $letter, $nextNumber);
-            }
+            // 🔧 OPRAVA: Backend vrací JEN základní číslo (V001, P023)
+            // Prefix si přidává frontend pro vizualizaci podle nastavení
+            $documentNumber = sprintf('%s%03d', $letter, $nextNumber);
             
             return array(
                 'cislo_dokladu' => $documentNumber,

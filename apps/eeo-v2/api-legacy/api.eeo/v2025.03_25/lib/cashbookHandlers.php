@@ -207,7 +207,9 @@ function handle_cashbook_get_post($config, $input) {
         // 🆕 MULTI-LP: Načíst detail položky pro každý záznam, který má ma_detail = 1
         foreach ($entries as &$entry) {
             if (isset($entry['ma_detail']) && $entry['ma_detail'] == 1) {
-                $entry['details'] = $entryModel->getDetailItems($entry['id']);
+                $entry['detail_items'] = $entryModel->getDetailItems($entry['id']);
+            } else {
+                $entry['detail_items'] = [];
             }
         }
         unset($entry);
@@ -608,70 +610,94 @@ function handle_cashbook_entry_create_post($config, $input) {
         // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items, použít nový flow
         $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
-        // Vytvořit položku
-        $db->beginTransaction();
+        $entryModel = new CashbookEntryModel($db);
         
-        try {
-            $entryModel = new CashbookEntryModel($db);
+        if ($hasDetailItems) {
+            // 🆕 MULTI-LP FLOW - model má vlastní transakci
+            $validator = new EntryValidator($db);
             
-            if ($hasDetailItems) {
-                // 🆕 MULTI-LP FLOW
-                $validator = new EntryValidator($db);
-                
-                // Validace multi-LP
-                $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
-                
-                if (!$validation['valid']) {
-                    throw new Exception('Validace selhala: ' . implode(', ', $validation['errors']));
-                }
-                
-                // Varování logovat (ne blokovat)
-                if (!empty($validation['warnings'])) {
-                    error_log("LP warnings: " . implode(', ', $validation['warnings']));
-                }
-                
-                // Vytvořit master + details
-                $entryId = $entryModel->createEntryWithDetails($input, $input['detail_items'], $userData['id']);
-                
-            } else {
-                // PŮVODNÍ FLOW (zpětná kompatibilita)
-                $validator = new EntryValidator();
-                $data = $validator->validateCreate($input);
-                
-                $service = new CashbookService($db);
-                $entryId = $service->createEntry($input['book_id'], $data, $userData['id']);
+            // Validace multi-LP
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            
+            if (!$validation['valid']) {
+                return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            // Načíst vytvořenou položku
-            if ($hasDetailItems) {
-                $entry = $entryModel->getEntryWithDetails($entryId);
-            } else {
-                $entry = $entryModel->getEntryById($entryId);
+            // Varování logovat (ne blokovat)
+            if (!empty($validation['warnings'])) {
+                error_log("LP warnings: " . implode(', ', $validation['warnings']));
             }
             
-            // 🆕 KASKÁDOVÝ PŘEPOČET
-            if ($book['pokladna_id'] && $book['uzivatel_id']) {
-                $bookModel->recalculateFollowingMonths(
-                    $book['uzivatel_id'],
-                    $book['pokladna_id'],
-                    $book['rok'],
-                    $book['mesic']
-                );
-            }
+            // 🔧 Vygenerovat číslo dokladu a pořadové číslo
+            require_once __DIR__ . '/../services/DocumentNumberService.php';
+            $docNumberService = new DocumentNumberService($db);
+            $docNumberData = $docNumberService->generateDocumentNumber(
+                $input['book_id'],
+                $input['typ_dokladu'],
+                $input['datum_zapisu'],
+                $book['uzivatel_id']
+            );
             
-            $db->commit();
+            // 🔧 Vypočítat zůstatek po operaci
+            require_once __DIR__ . '/../services/BalanceCalculator.php';
+            $balanceCalculator = new BalanceCalculator($db);
+            $amount = $input['castka_celkem'];
+            $balance = $balanceCalculator->calculateNewEntryBalance(
+                $input['book_id'],
+                $amount,
+                $input['typ_dokladu'],
+                $input['datum_zapisu']
+            );
             
-            return api_ok([
-                'entry_id' => $entryId,
-                'entry' => $entry,
-                'has_details' => $hasDetailItems,
-                'message' => 'Položka byla úspěšně vytvořena'
+            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id + přidat vše potřebné
+            $masterData = array_merge($input, [
+                'pokladni_kniha_id' => $input['book_id'],
+                'cislo_dokladu' => $docNumberData['cislo_dokladu'],
+                'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
+                'zustatek_po_operaci' => $balance,
+                'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
+                'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
             ]);
             
-        } catch (Exception $e) {
-            $db->rollBack();
-            throw $e;
+            // Vytvořit master + details (model má vlastní transakci)
+            $entryId = $entryModel->createEntryWithDetails($masterData, $input['detail_items'], $userData['id']);
+            
+        } else {
+            // PŮVODNÍ FLOW (zpětná kompatibilita) - služba má vlastní transakci
+            $validator = new EntryValidator();
+            $data = $validator->validateCreate($input);
+            
+            $service = new CashbookService($db);
+            $entryId = $service->createEntry($input['book_id'], $data, $userData['id']);
         }
+        
+        // Načíst vytvořenou položku
+        if ($hasDetailItems) {
+            $entryData = $entryModel->getEntryWithDetails($entryId);
+            // Transformovat do flat struktury
+            $entry = array_merge($entryData['master'], [
+                'detail_items' => $entryData['details']
+            ]);
+        } else {
+            $entry = $entryModel->getEntryById($entryId);
+        }
+        
+        // 🆕 KASKÁDOVÝ PŘEPOČET
+        if ($book['pokladna_id'] && $book['uzivatel_id']) {
+            $bookModel->recalculateFollowingMonths(
+                $book['uzivatel_id'],
+                $book['pokladna_id'],
+                $book['rok'],
+                $book['mesic']
+            );
+        }
+        
+        return api_ok([
+            'entry_id' => $entryId,
+            'entry' => $entry,
+            'has_details' => $hasDetailItems,
+            'message' => 'Položka byla úspěšně vytvořena'
+        ]);
         
     } catch (Exception $e) {
         error_log("handle_cashbook_entry_create_post error: " . $e->getMessage());
@@ -724,58 +750,58 @@ function handle_cashbook_entry_update_post($config, $input) {
         $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
         // Aktualizovat
-        $db->beginTransaction();
-        
-        try {
-            if ($hasDetailItems) {
-                // 🆕 MULTI-LP UPDATE
-                $validator = new EntryValidator($db);
-                
-                $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
-                
-                if (!$validation['valid']) {
-                    throw new Exception('Validace selhala: ' . implode(', ', $validation['errors']));
-                }
-                
-                if (!empty($validation['warnings'])) {
-                    error_log("LP warnings: " . implode(', ', $validation['warnings']));
-                }
-                
-                // Update master + details
-                $entryModel->updateEntryWithDetails($input['entry_id'], $input, $input['detail_items'], $userData['id']);
-                $updatedEntry = $entryModel->getEntryWithDetails($input['entry_id']);
-                
-            } else {
-                // PŮVODNÍ FLOW
-                $validator = new EntryValidator();
-                $data = $validator->validateUpdate($input);
-                
-                $service = new CashbookService($db);
-                $service->updateEntry($input['entry_id'], $data, $userData['id']);
-                $updatedEntry = $entryModel->getEntryById($input['entry_id']);
+        if ($hasDetailItems) {
+            // 🆕 MULTI-LP UPDATE - model má vlastní transakci
+            $validator = new EntryValidator($db);
+            
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            
+            if (!$validation['valid']) {
+                return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
             }
             
-            // 🆕 KASKÁDOVÝ PŘEPOČET
-            if ($book['pokladna_id'] && $book['uzivatel_id']) {
-                $bookModel->recalculateFollowingMonths(
-                    $book['uzivatel_id'],
-                    $book['pokladna_id'],
-                    $book['rok'],
-                    $book['mesic']
-                );
+            if (!empty($validation['warnings'])) {
+                error_log("LP warnings: " . implode(', ', $validation['warnings']));
             }
             
-            $db->commit();
+            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model
+            $masterData = array_merge($input, [
+                'pokladni_kniha_id' => $input['book_id']
+            ]);
             
-            return api_ok(array(
-                'entry' => $updatedEntry,
-                'message' => 'Položka byla úspěšně aktualizována'
-            ));
+            // Update master + details (model má vlastní transakci)
+            $entryModel->updateEntryWithDetails($input['entry_id'], $masterData, $input['detail_items'], $userData['id']);
+            $entryData = $entryModel->getEntryWithDetails($input['entry_id']);
             
-        } catch (Exception $e) {
-            $db->rollBack();
-            throw $e;
+            // Transformovat do flat struktury
+            $updatedEntry = array_merge($entryData['master'], [
+                'detail_items' => $entryData['details']
+            ]);
+            
+        } else {
+            // PŮVODNÍ FLOW - služba má vlastní transakci
+            $validator = new EntryValidator();
+            $data = $validator->validateUpdate($input);
+            
+            $service = new CashbookService($db);
+            $service->updateEntry($input['entry_id'], $data, $userData['id']);
+            $updatedEntry = $entryModel->getEntryById($input['entry_id']);
         }
+        
+        // 🆕 KASKÁDOVÝ PŘEPOČET
+        if ($book['pokladna_id'] && $book['uzivatel_id']) {
+            $bookModel->recalculateFollowingMonths(
+                $book['uzivatel_id'],
+                $book['pokladna_id'],
+                $book['rok'],
+                $book['mesic']
+            );
+        }
+        
+        return api_ok(array(
+            'entry' => $updatedEntry,
+            'message' => 'Položka byla úspěšně aktualizována'
+        ));
         
     } catch (Exception $e) {
         error_log("handle_cashbook_entry_update_post error: " . $e->getMessage());
@@ -1034,6 +1060,128 @@ function handle_cashbook_force_renumber_post($config, $input) {
         
     } catch (Exception $e) {
         error_log("handle_cashbook_force_renumber_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}
+
+// ===========================================================================
+// LP CALCULATION - Přepočet čerpání LP kódů
+// ===========================================================================
+
+/**
+ * POST /cashbook-lp-summary
+ * Získat přehled čerpání LP kódů včetně multi-LP položek
+ * 
+ * Input:
+ * - username, token (auth)
+ * - user_id (volitelné, default = přihlášený uživatel)
+ * - year (volitelné, default = aktuální rok)
+ */
+function handle_cashbook_lp_summary_post($config, $input) {
+    try {
+        // Ověření tokenu
+        if (empty($input['username']) || empty($input['token'])) {
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            return api_error(401, 'Neplatný token');
+        }
+        
+        // Parametry
+        $userId = isset($input['user_id']) ? intval($input['user_id']) : $userData['id'];
+        $year = isset($input['year']) ? intval($input['year']) : intval(date('Y'));
+        
+        // Kontrola oprávnění - může vidět své LP nebo admin všechny
+        $permissions = new CashbookPermissions($userData, $db);
+        if ($userId !== $userData['id'] && !$permissions->canReadCashbook($userId)) {
+            return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        require_once __DIR__ . '/../services/LPCalculationService.php';
+        $lpService = new LPCalculationService($db);
+        
+        // Získat přehled čerpání LP s limity
+        $summary = $lpService->getLPSummaryWithLimits($userId, $year);
+        
+        return api_ok([
+            'user_id' => $userId,
+            'year' => $year,
+            'lp_summary' => $summary,
+            'count' => count($summary)
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbook_lp_summary_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST /cashbook-lp-detail
+ * Získat detailní rozpis čerpání konkrétního LP kódu
+ * 
+ * Input:
+ * - username, token (auth)
+ * - lp_kod (povinné)
+ * - user_id (volitelné)
+ * - year (volitelné)
+ */
+function handle_cashbook_lp_detail_post($config, $input) {
+    try {
+        // Ověření tokenu
+        if (empty($input['username']) || empty($input['token'])) {
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        if (empty($input['lp_kod'])) {
+            return api_error(400, 'Chybí lp_kod');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            return api_error(401, 'Neplatný token');
+        }
+        
+        // Parametry
+        $lpKod = $input['lp_kod'];
+        $userId = isset($input['user_id']) ? intval($input['user_id']) : $userData['id'];
+        $year = isset($input['year']) ? intval($input['year']) : intval(date('Y'));
+        
+        // Kontrola oprávnění
+        $permissions = new CashbookPermissions($userData, $db);
+        if ($userId !== $userData['id'] && !$permissions->canReadCashbook($userId)) {
+            return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        require_once __DIR__ . '/../services/LPCalculationService.php';
+        $lpService = new LPCalculationService($db);
+        
+        // Získat detail čerpání
+        $detail = $lpService->getLPDetail($lpKod, $userId, $year);
+        
+        // Spočítat celkem
+        $celkem = 0;
+        foreach ($detail as $item) {
+            $celkem += floatval($item['castka']);
+        }
+        
+        return api_ok([
+            'lp_kod' => $lpKod,
+            'user_id' => $userId,
+            'year' => $year,
+            'celkem_vydano' => $celkem,
+            'pocet_zaznamu' => count($detail),
+            'detail' => $detail
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbook_lp_detail_post error: " . $e->getMessage());
         return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
     }
 }

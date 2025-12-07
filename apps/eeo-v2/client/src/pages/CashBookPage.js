@@ -20,6 +20,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EditableCombobox from '../components/EditableCombobox';
@@ -955,6 +957,10 @@ const CashBookPage = () => {
   // LP kódy načtené z API
   const [lpCodes, setLpCodes] = useState([]);
   const [lpLoading, setLpLoading] = useState(true);
+  
+  // 🆕 MULTI-LP: Inline rozbalovací panel pro editaci podřádků
+  const [expandedDetailEntryId, setExpandedDetailEntryId] = useState(null);
+  const [detailEditBuffer, setDetailEditBuffer] = useState([]);
 
   // 🆕 CASHBOOK V2: Přiřazení pokladny
   const [mainAssignment, setMainAssignment] = useState(null);
@@ -1050,6 +1056,10 @@ const CashBookPage = () => {
     // ✅ Použít DB timestamp pro detekci změn (admin mohl přečíslovat)
     const dbTimestamp = dbEntry.aktualizovano || dbEntry.vytvoreno;
 
+    // 🆕 MULTI-LP: Načíst detail položky pokud existují
+    const detailItems = dbEntry.detail_items || [];
+    const hasDetails = detailItems.length > 0;
+
     return {
       id: `local_${Date.now()}_${Math.random()}`, // Lokální ID
       db_id: dbEntry.id,                           // DB ID
@@ -1060,9 +1070,16 @@ const CashBookPage = () => {
       income: dbEntry.castka_prijem ? parseFloat(dbEntry.castka_prijem) : null,
       expense: dbEntry.castka_vydaj ? parseFloat(dbEntry.castka_vydaj) : null,
       balance: parseFloat(dbEntry.zustatek_po_operaci || 0),
-      lpCode: dbEntry.lp_kod || '',
+      lpCode: hasDetails ? '' : (dbEntry.lp_kod || ''), // Master LP kod jen pokud NENÍ multi-LP
       note: dbEntry.poznamka || '',
       isEditing: false,
+
+      // 🆕 MULTI-LP support
+      detailItems: detailItems.map(item => ({
+        lp_kod: item.lp_kod || '',
+        castka: parseFloat(item.castka || 0),
+        popis: item.popis || ''
+      })),
 
       // 🆕 SYNC metadata pro detekci změn v DB
       last_modified_local: new Date().toISOString(),
@@ -1077,18 +1094,35 @@ const CashBookPage = () => {
    * Transformace Frontend entry → DB payload
    */
   const transformFrontendEntryToDB = useCallback((entry, bookId) => {
-    return {
+    const payload = {
       book_id: bookId,
       datum_zapisu: entry.date,
       cislo_dokladu: entry.documentNumber, // ✅ Poslat číslo dokladu (může být změněno při změně typu)
-      obsah_zapisu: entry.description,
-      komu_od_koho: entry.person,
+      obsah_zapisu: entry.description || '', // Vždy poslat, i když prázdný string
+      komu_od_koho: entry.person || '', // Vždy poslat
       // ✅ FIX: Explicitně poslat 0 místo null/undefined, aby se smazala původní hodnota
       castka_prijem: entry.income || 0,
       castka_vydaj: entry.expense || 0,
-      lp_kod: entry.lpCode,
-      poznamka: entry.note
+      typ_dokladu: entry.expense > 0 ? 'vydaj' : 'prijem', // 🆕 MULTI-LP potřebuje typ
+      poznamka: entry.note || '' // Vždy poslat
     };
+    
+    // 🆕 MULTI-LP: Pokud má detailItems, poslat je (NEPOSLAT master lp_kod)
+    if (entry.detailItems && entry.detailItems.length > 0) {
+      payload.detail_items = entry.detailItems;
+      payload.castka_celkem = entry.detailItems.reduce((sum, item) => sum + (item.castka || 0), 0);
+      console.log('📦 MULTI-LP payload:', { 
+        detail_items_count: entry.detailItems.length, 
+        castka_celkem: payload.castka_celkem,
+        detail_items: entry.detailItems
+      });
+      // Master LP kód je prázdný, když jsou detaily
+    } else if (entry.lpCode) {
+      // Původní flow - pouze pokud NENÍ multi-LP
+      payload.lp_kod = entry.lpCode;
+    }
+    
+    return payload;
   }, []); // žádné dependencies
 
   /**
@@ -2114,7 +2148,10 @@ const CashBookPage = () => {
       balance: totals.currentBalance,
       lpCode: "",
       note: "",
-      isEditing: true
+      isEditing: true,
+      // 🆕 MULTI-LP: Podřádky s LP kódy
+      detailItems: [], // Pole {popis, castka, lp_kod, lp_popis}
+      hasDetails: false // Flag zda má podřádky
     };
 
     setCashBookEntries(prev => [...prev, newEntry]);
@@ -2259,6 +2296,36 @@ const CashBookPage = () => {
   const stopEditing = async (id) => {
     const editedEntry = cashBookEntries.find(e => e.id === id);
     if (!editedEntry) return;
+
+    // 🔧 VALIDACE: Pokud je entry prázdná (nemá popis), zrušit ji místo ukládání
+    const isEmpty = !editedEntry.description?.trim() && 
+                    !editedEntry.income && 
+                    !editedEntry.expense && 
+                    (!editedEntry.detailItems || editedEntry.detailItems.length === 0);
+    
+    if (isEmpty) {
+      // Pokud je to nový záznam (nemá db_id), smazat ho
+      if (!editedEntry.db_id) {
+        setCashBookEntries(prev => {
+          const filtered = prev.filter(entry => entry.id !== id);
+          
+          // Uložit změny do localStorage
+          const dataToSave = {
+            entries: filtered.map(entry => ({ ...entry, isEditing: false })),
+            carryOverAmount: carryOverAmount,
+            lastModified: new Date().toISOString()
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+          
+          return filtered;
+        });
+        return;
+      } else {
+        // Pokud existuje v DB, jen zrušit editaci (obnovit původní data)
+        cancelEditing(id);
+        return;
+      }
+    }
 
     // ✅ VALIDACE: Zkontrolovat, jestli prefix čísla dokladu odpovídá typu (příjem/výdaj)
     let documentNumber = editedEntry.documentNumber;
@@ -3594,8 +3661,8 @@ const CashBookPage = () => {
             {cashBookEntries.map((entry, index) => {
               const isLastSaved = entry.id === lastSavedEntryId;
               return (
+              <React.Fragment key={entry.id}>
               <tr
-                key={entry.id}
                 onDoubleClick={() => {
                   if (canActuallyEdit && !entry.isEditing) {
                     startEditing(entry.id);
@@ -3625,12 +3692,32 @@ const CashBookPage = () => {
                 <td className="document-cell">
                   {/* 🆕 KROK 4: Zobrazit prefixované číslo pokud je zapnuto nastavení */}
                   {(() => {
-                    if (!usePrefixedNumbers || !entry.documentNumber) {
-                      // Standardní číslo bez prefixu
+                    if (!entry.documentNumber) {
+                      return '';
+                    }
+
+                    // 🔧 OPRAVA: Pokud číslo už obsahuje pomlčku, je už prefixované z DB → zobrazit jak je
+                    if (entry.documentNumber.includes('-')) {
+                      const type = entry.documentNumber.charAt(0); // P nebo V
+                      return (
+                        <span
+                          title={`Číslo dokladu: ${entry.documentNumber}`}
+                          style={{
+                            cursor: 'help',
+                            fontWeight: '500',
+                            color: type === 'P' ? '#059669' : '#dc2626'
+                          }}
+                        >
+                          {entry.documentNumber}
+                        </span>
+                      );
+                    }
+
+                    // Číslo nemá prefix (např. V012) → přidat prefix pokud je zapnuto
+                    if (!usePrefixedNumbers) {
                       return entry.documentNumber;
                     }
 
-                    // Prefixované číslo: V599-001 nebo P599-001
                     const type = entry.documentNumber.charAt(0); // P nebo V
                     const number = entry.documentNumber.substring(1); // 001
 
@@ -3693,9 +3780,13 @@ const CashBookPage = () => {
                   {entry.isEditing ? (
                     <CurrencyInputWrapper>
                       <EditableInput
-                        type="number"
-                        value={entry.income || ''}
-                        onChange={(e) => updateEntry(entry.id, 'income', e.target.value ? parseFloat(e.target.value) : null)}
+                        type="text"
+                        value={entry.income ? entry.income.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
+                        onChange={(e) => {
+                          const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
+                          const numValue = parseFloat(cleanValue);
+                          updateEntry(entry.id, 'income', isNaN(numValue) ? null : numValue);
+                        }}
                         onKeyDown={(e) => handleKeyDown(e, entry.id)}
                         onBlur={autoSave}
                         placeholder="0"
@@ -3711,9 +3802,13 @@ const CashBookPage = () => {
                   {entry.isEditing ? (
                     <CurrencyInputWrapper>
                       <EditableInput
-                        type="number"
-                        value={entry.expense || ''}
-                        onChange={(e) => updateEntry(entry.id, 'expense', e.target.value ? parseFloat(e.target.value) : null)}
+                        type="text"
+                        value={entry.expense ? entry.expense.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
+                        onChange={(e) => {
+                          const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
+                          const numValue = parseFloat(cleanValue);
+                          updateEntry(entry.id, 'expense', isNaN(numValue) ? null : numValue);
+                        }}
                         onKeyDown={(e) => handleKeyDown(e, entry.id)}
                         onBlur={autoSave}
                         placeholder="0"
@@ -3731,19 +3826,94 @@ const CashBookPage = () => {
 
                 <td className="lp-code-cell">
                   {entry.isEditing ? (
-                    <EditableCombobox
-                      value={entry.lpCode || ''}
-                      onChange={(e) => updateEntry(entry.id, 'lpCode', e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, entry.id)}
-                      onBlur={autoSave}
-                      options={lpCodes}
-                      placeholder={lpLoading ? 'Načítání...' : 'LP kód (např. LPIT01)'}
-                      disabled={lpLoading}
-                      loading={lpLoading}
-                      hasError={false}
-                    />
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      {/* Master LP kód - disabled pokud jsou detail položky, povinný u výdajů */}
+                      {!(entry.detailItems && entry.detailItems.length > 0) && (
+                        <div style={{ position: 'relative', flex: 1 }}>
+                          <EditableCombobox
+                            value={entry.lpCode || ''}
+                            onChange={(e) => updateEntry(entry.id, 'lpCode', e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, entry.id)}
+                            onBlur={autoSave}
+                            options={lpCodes}
+                            placeholder={lpLoading ? 'Načítání...' : (entry.expense > 0 ? 'LP kód (povinný) *' : 'LP kód (nepovinný)')}
+                            disabled={lpLoading}
+                            loading={lpLoading}
+                            hasError={entry.expense > 0 && !entry.lpCode}
+                          />
+                          {entry.expense > 0 && !entry.lpCode && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              top: '100%', 
+                              left: 0, 
+                              fontSize: '10px', 
+                              color: '#f44336', 
+                              marginTop: '2px',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              ⚠ LP kód je povinný u výdajů
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Tlačítko pro rozbalení inline panelu - pouze u výdajů */}
+                      {entry.expense > 0 && (
+                        <button
+                          onClick={() => {
+                            if (expandedDetailEntryId === entry.id) {
+                              setExpandedDetailEntryId(null);
+                              setDetailEditBuffer([]);
+                            } else {
+                              setExpandedDetailEntryId(entry.id);
+                              setDetailEditBuffer(entry.detailItems && entry.detailItems.length > 0 
+                                ? [...entry.detailItems] 
+                                : [{ popis: '', castka: 0, lp_kod: '', lp_popis: '' }]
+                              );
+                            }
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            background: expandedDetailEntryId === entry.id 
+                              ? '#ff9800' 
+                              : (entry.detailItems && entry.detailItems.length > 0 ? '#4caf50' : '#2196f3'),
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            minWidth: '24px'
+                          }}
+                          title={expandedDetailEntryId === entry.id 
+                            ? 'Zavřít panel' 
+                            : (entry.detailItems && entry.detailItems.length > 0 
+                              ? entry.detailItems.map(item => `${item.lp_kod}: ${item.castka} Kč${item.popis ? ' - ' + item.popis : ''}`).join('\n')
+                              : 'Přidat více LP kódů')
+                          }
+                        >
+                          {expandedDetailEntryId === entry.id 
+                            ? '▼' 
+                            : (entry.detailItems && entry.detailItems.length > 0 ? `${entry.detailItems.length}×` : '+')}
+                        </button>
+                      )}
+                      {/* Zobrazení multi-LP v edit módu */}
+                      {entry.detailItems && entry.detailItems.length > 0 && (
+                        <div style={{ fontSize: '11px', color: '#4caf50', fontWeight: 'bold' }}>
+                          Multi-LP ({entry.detailItems.length}×)
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    entry.lpCode || '-'
+                    <div>
+                      {entry.detailItems && entry.detailItems.length > 0 ? (
+                        <div style={{ fontSize: '11px', color: '#666' }}>
+                          {entry.detailItems.map((item, idx) => (
+                            <div key={idx}>{item.lp_kod} ({item.castka} Kč)</div>
+                          ))}
+                        </div>
+                      ) : (
+                        entry.lpCode || '-'
+                      )}
+                    </div>
                   )}
                 </td>
 
@@ -3788,6 +3958,280 @@ const CashBookPage = () => {
                   </td>
                 )}
               </tr>
+              {/* 🆕 INLINE MULTI-LP PANEL */}
+              {expandedDetailEntryId === entry.id && (
+                <tr key={`detail-${entry.id}`} style={{ background: '#f8f9fa' }}>
+                  <td colSpan={1} style={{ padding: 0 }}></td>
+                  <td colSpan={2} style={{ padding: 0 }}></td>
+                  <td colSpan={canActuallyEdit ? 8 : 7} style={{ padding: '16px 16px 16px 8px' }}>
+                    <div style={{ 
+                      background: 'white', 
+                      border: '2px solid #2196f3', 
+                      borderRadius: '8px', 
+                      padding: '16px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        marginBottom: '12px',
+                        borderBottom: '2px solid #e0e0e0',
+                        paddingBottom: '8px'
+                      }}>
+                        <h4 style={{ margin: 0, color: '#2196f3' }}>
+                          📋 Rozpad LP kódů pro doklad {entry.documentNumber || '(nový)'}
+                        </h4>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                          Celkem: {entry.expense || 0} Kč
+                        </div>
+                      </div>
+
+                      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', tableLayout: 'fixed' }}>
+                        <thead>
+                          <tr style={{ background: '#f5f5f5' }}>
+                            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd', width: '50%' }}>Popis položky</th>
+                            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd', width: '18%' }}>Částka</th>
+                            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd', width: '25%' }}>LP kód</th>
+                            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '7%' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailEditBuffer.map((item, idx) => {
+                            const isValidLp = !item.lp_kod || lpCodes.find(lp => lp.code === item.lp_kod);
+                            return (
+                              <tr key={idx}>
+                                <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                                  <input
+                                    type="text"
+                                    value={item.popis || ''}
+                                    onChange={(e) => {
+                                      const updated = [...detailEditBuffer];
+                                      updated[idx].popis = e.target.value;
+                                      setDetailEditBuffer(updated);
+                                    }}
+                                    style={{ 
+                                      width: '100%', 
+                                      padding: '0.5rem', 
+                                      fontSize: '0.9rem', 
+                                      border: '1px solid #ccc', 
+                                      borderRadius: '4px',
+                                      boxSizing: 'border-box'
+                                    }}
+                                    placeholder="Např. Oprava kavovaru"
+                                  />
+                                </td>
+                                <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                      type="text"
+                                      value={item.castka ? item.castka.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
+                                      onChange={(e) => {
+                                        const updated = [...detailEditBuffer];
+                                        const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
+                                        const numValue = parseFloat(cleanValue);
+                                        updated[idx].castka = isNaN(numValue) ? 0 : numValue;
+                                        setDetailEditBuffer(updated);
+                                      }}
+                                      style={{ 
+                                        width: '100%', 
+                                        padding: '0.5rem 35px 0.5rem 0.5rem', 
+                                        fontSize: '0.9rem', 
+                                        border: '1px solid #ccc', 
+                                        borderRadius: '4px',
+                                        textAlign: 'right',
+                                        boxSizing: 'border-box'
+                                      }}
+                                      placeholder="0"
+                                    />
+                                    <span style={{
+                                      position: 'absolute',
+                                      right: '8px',
+                                      color: '#374151',
+                                      fontWeight: '600',
+                                      fontSize: '13px',
+                                      pointerEvents: 'none',
+                                      userSelect: 'none'
+                                    }}>
+                                      Kč
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                                  <EditableCombobox
+                                    value={item.lp_kod || ''}
+                                    onChange={(e) => {
+                                      const updated = [...detailEditBuffer];
+                                      const selectedLp = lpCodes.find(lp => lp.code === e.target.value);
+                                      updated[idx].lp_kod = e.target.value;
+                                      updated[idx].lp_popis = selectedLp?.name || '';
+                                      setDetailEditBuffer(updated);
+                                    }}
+                                    options={lpCodes}
+                                    placeholder={lpLoading ? 'Načítání...' : 'LP kód (např. LPIT01)'}
+                                    disabled={lpLoading}
+                                    loading={lpLoading}
+                                    hasError={!isValidLp}
+                                  />
+                                  {!isValidLp && (
+                                    <div style={{ color: '#f44336', fontSize: '10px', marginTop: '2px' }}>
+                                      ⚠ Neplatný kód
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>
+                                  <button
+                                    onClick={() => {
+                                      const updated = detailEditBuffer.filter((_, i) => i !== idx);
+                                      setDetailEditBuffer(updated);
+                                    }}
+                                    style={{ 
+                                      padding: '0.5rem', 
+                                      background: '#dc3545', 
+                                      color: 'white', 
+                                      border: 'none', 
+                                      borderRadius: '4px', 
+                                      cursor: 'pointer',
+                                      fontSize: '18px',
+                                      minWidth: '40px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      lineHeight: 1
+                                    }}
+                                    title="Smazat řádek"
+                                  >
+                                    ×
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      <button
+                        onClick={() => {
+                          setDetailEditBuffer([...detailEditBuffer, { popis: '', castka: 0, lp_kod: '', lp_popis: '' }]);
+                        }}
+                        style={{ 
+                          padding: '6px 12px', 
+                          background: '#4caf50', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '4px', 
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          marginBottom: '12px'
+                        }}
+                      >
+                        + Přidat položku
+                      </button>
+
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginTop: '12px',
+                        paddingTop: '12px',
+                        borderTop: '2px solid #e0e0e0'
+                      }}>
+                        <div style={{ fontSize: '14px' }}>
+                          Součet položek: <strong>{detailEditBuffer.reduce((sum, item) => sum + (item.castka || 0), 0).toFixed(2)} Kč</strong>
+                          {Math.abs(detailEditBuffer.reduce((sum, item) => sum + (item.castka || 0), 0) - (entry.expense || 0)) > 0.01 && (
+                            <span style={{ color: '#f44336', marginLeft: '8px' }}>
+                              ⚠ Nesouhlasí s částkou výdaje!
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => {
+                              setExpandedDetailEntryId(null);
+                              setDetailEditBuffer([]);
+                            }}
+                            style={{ 
+                              padding: '8px 16px', 
+                              background: '#6c757d', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '4px', 
+                              cursor: 'pointer' 
+                            }}
+                          >
+                            Zrušit
+                          </button>
+                          <button
+                            onClick={() => {
+                              // Validace
+                              const totalDetail = detailEditBuffer.reduce((sum, item) => sum + (item.castka || 0), 0);
+                              if (Math.abs(totalDetail - (entry.expense || 0)) > 0.01) {
+                                toast.error(`⚠️ Součet položek (${totalDetail.toFixed(2)} Kč) se neshoduje s částkou výdaje (${entry.expense} Kč)`, {
+                                  position: "top-center",
+                                  autoClose: 4000
+                                });
+                                return;
+                              }
+                              
+                              for (const item of detailEditBuffer) {
+                                if (!item.lp_kod) {
+                                  toast.warning('⚠️ Všechny položky musí mít vybraný LP kód', {
+                                    position: "top-center",
+                                    autoClose: 3000
+                                  });
+                                  return;
+                                }
+                                if (!lpCodes.find(lp => lp.code === item.lp_kod)) {
+                                  toast.error(`❌ LP kód '${item.lp_kod}' není platný`, {
+                                    position: "top-center",
+                                    autoClose: 3000
+                                  });
+                                  return;
+                                }
+                              }
+                              
+                              // Uložit do entry
+                              setCashBookEntries(prev => prev.map(e => 
+                                e.id === entry.id 
+                                  ? { 
+                                      ...e, 
+                                      detailItems: detailEditBuffer,
+                                      lpCode: '',
+                                      hasDetails: true,
+                                      changed: true,
+                                      sync_status: 'pending'
+                                    }
+                                  : e
+                              ));
+                              
+                              toast.success(`✅ Uloženo ${detailEditBuffer.length} LP kódů pod dokladem ${entry.documentNumber}`, {
+                                position: "top-right",
+                                autoClose: 2000
+                              });
+                              
+                              setExpandedDetailEntryId(null);
+                              setDetailEditBuffer([]);
+                              autoSave();
+                            }}
+                            style={{ 
+                              padding: '8px 16px', 
+                              background: '#2196f3', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '4px', 
+                              cursor: 'pointer',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            💾 Uložit
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
               );
             })}
           </tbody>
@@ -4102,6 +4546,20 @@ const CashBookPage = () => {
 
       {/* Kontextový pomocník - Moderní Sponka */}
       {hasPermission('HELPER_VIEW') && <ModernHelper pageContext="cashbook" />}
+      
+      {/* Toast notifikace kontejner */}
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={true}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
       </PageContainer>
     </>
   );

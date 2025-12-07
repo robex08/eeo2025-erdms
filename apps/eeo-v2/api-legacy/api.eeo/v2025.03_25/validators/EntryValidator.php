@@ -77,26 +77,25 @@ class EntryValidator {
             return ['status' => 'ok', 'message' => 'DB validace přeskočena'];
         }
         
+        // Načíst čerpání LP z agregované tabulky
         $stmt = $this->db->prepare("
             SELECT 
-                lp.cislo_lp,
-                lp.nazev,
-                lp.celkovy_limit,
+                c.cislo_lp,
+                c.celkovy_limit,
                 COALESCE(c.skutecne_cerpano, 0) as skutecne_cerpano,
-                COALESCE(c.zbyva_skutecne, lp.celkovy_limit) as zbyva
-            FROM 25_limitovane_prisliby lp
-            LEFT JOIN 25_limitovane_prisliby_cerpani c 
-              ON c.cislo_lp = lp.cislo_lp AND c.rok = lp.rok
-            WHERE lp.cislo_lp = ? AND lp.rok = ?
+                COALESCE(c.zbyva_skutecne, c.celkovy_limit) as zbyva
+            FROM 25_limitovane_prisliby_cerpani c
+            WHERE c.cislo_lp = ? AND c.rok = ?
         ");
         
         $stmt->execute([$lpKod, $rok]);
         $lp = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$lp) {
+            // LP kód neexistuje v čerpání - možná ještě nebyl použit
             return [
-                'status' => 'warning',
-                'message' => "LP kód '{$lpKod}' nenalezen pro rok {$rok}"
+                'status' => 'ok',
+                'message' => "LP kód '{$lpKod}' zatím nemá žádné čerpání"
             ];
         }
         
