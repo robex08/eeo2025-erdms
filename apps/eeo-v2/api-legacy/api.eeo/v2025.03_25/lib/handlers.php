@@ -1107,7 +1107,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
         $strediska_display = implode(', ', $input['strediska_names']);
     }
     
-    // 💰 FINANCOVÁNÍ - parsovat JSON objekt z frontendu
+    // 💰 FINANCOVÁNÍ - parsovat JSON objekt z frontendu (formát z normalizeFinancovaniForBackend)
     $financovani_full = 'Neuvedeno';
     $financovani_poznamka = '';
     
@@ -1116,12 +1116,26 @@ function handle_notifications_send_dual($input, $config, $queries) {
         
         if (json_last_error() === JSON_ERROR_NONE && is_array($financovani_data)) {
             $typ = $financovani_data['typ'] ?? 'Neuvedeno';
-            $financovani_full = $typ;
+            $nazev = $financovani_data['nazev'] ?? $typ;
+            $financovani_full = $nazev;
             
             // Podle typu přidat specifická data
-            // LP
-            if (!empty($financovani_data['lp_kod'])) {
-                $financovani_full .= ' - ' . $financovani_data['lp_kod'];
+            // LP - načíst čísla LP z DB podle ID
+            if (!empty($financovani_data['lp_kody']) && is_array($financovani_data['lp_kody'])) {
+                $lp_ids = array_map('intval', $financovani_data['lp_kody']);
+                $lp_placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
+                
+                try {
+                    $stmt_lp = $db->prepare("SELECT cislo_lp FROM 25_limitovane_prisliby WHERE id IN ($lp_placeholders)");
+                    $stmt_lp->execute($lp_ids);
+                    $lp_cisla = $stmt_lp->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    if (!empty($lp_cisla)) {
+                        $financovani_full .= ' - ' . implode(', ', $lp_cisla);
+                    }
+                } catch (Exception $e) {
+                    error_log("⚠️ Chyba při načítání LP čísel: " . $e->getMessage());
+                }
             }
             // Smlouvy
             if (!empty($financovani_data['cislo_smlouvy'])) {
