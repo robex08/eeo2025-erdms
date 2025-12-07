@@ -204,6 +204,14 @@ function handle_cashbook_get_post($config, $input) {
         $entryModel = new CashbookEntryModel($db);
         $entries = $entryModel->getEntriesByBookId($input['book_id'], false);
         
+        // 🆕 MULTI-LP: Načíst detail položky pro každý záznam, který má ma_detail = 1
+        foreach ($entries as &$entry) {
+            if (isset($entry['ma_detail']) && $entry['ma_detail'] == 1) {
+                $entry['details'] = $entryModel->getDetailItems($entry['id']);
+            }
+        }
+        unset($entry);
+        
         // Vypočítat souhrnné hodnoty
         $summary = array(
             'total_income' => 0,
@@ -559,6 +567,7 @@ function handle_cashbook_reopen_post($config, $input) {
 /**
  * POST /cashbook-entry-create
  * Vytvořit novou položku v pokladní knize
+ * 🆕 MULTI-LP SUPPORT: Pokud input obsahuje 'detail_items', vytvoří multi-LP záznam
  */
 function handle_cashbook_entry_create_post($config, $input) {
     try {
@@ -596,24 +605,52 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění pro editaci této knihy');
         }
         
-        // Validace
-        $validator = new EntryValidator();
-        $data = $validator->validateCreate($input);
+        // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items, použít nový flow
+        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
         // Vytvořit položku
         $db->beginTransaction();
         
         try {
-            $service = new CashbookService($db);
-            $entryId = $service->createEntry($input['book_id'], $data, $userData['id']);
+            $entryModel = new CashbookEntryModel($db);
+            
+            if ($hasDetailItems) {
+                // 🆕 MULTI-LP FLOW
+                $validator = new EntryValidator($db);
+                
+                // Validace multi-LP
+                $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+                
+                if (!$validation['valid']) {
+                    throw new Exception('Validace selhala: ' . implode(', ', $validation['errors']));
+                }
+                
+                // Varování logovat (ne blokovat)
+                if (!empty($validation['warnings'])) {
+                    error_log("LP warnings: " . implode(', ', $validation['warnings']));
+                }
+                
+                // Vytvořit master + details
+                $entryId = $entryModel->createEntryWithDetails($input, $input['detail_items'], $userData['id']);
+                
+            } else {
+                // PŮVODNÍ FLOW (zpětná kompatibilita)
+                $validator = new EntryValidator();
+                $data = $validator->validateCreate($input);
+                
+                $service = new CashbookService($db);
+                $entryId = $service->createEntry($input['book_id'], $data, $userData['id']);
+            }
             
             // Načíst vytvořenou položku
-            $entryModel = new CashbookEntryModel($db);
-            $entry = $entryModel->getEntryById($entryId);
+            if ($hasDetailItems) {
+                $entry = $entryModel->getEntryWithDetails($entryId);
+            } else {
+                $entry = $entryModel->getEntryById($entryId);
+            }
             
-            // 🆕 KASKÁDOVÝ PŘEPOČET: Položka mění koncový stav → přepočítat následující měsíce
+            // 🆕 KASKÁDOVÝ PŘEPOČET
             if ($book['pokladna_id'] && $book['uzivatel_id']) {
-                $bookModel = new CashbookModel($db);
                 $bookModel->recalculateFollowingMonths(
                     $book['uzivatel_id'],
                     $book['pokladna_id'],
@@ -624,11 +661,12 @@ function handle_cashbook_entry_create_post($config, $input) {
             
             $db->commit();
             
-            return api_ok(array(
+            return api_ok([
                 'entry_id' => $entryId,
                 'entry' => $entry,
+                'has_details' => $hasDetailItems,
                 'message' => 'Položka byla úspěšně vytvořena'
-            ));
+            ]);
             
         } catch (Exception $e) {
             $db->rollBack();
@@ -644,6 +682,7 @@ function handle_cashbook_entry_create_post($config, $input) {
 /**
  * POST /cashbook-entry-update
  * Aktualizovat položku
+ * 🆕 MULTI-LP SUPPORT: Pokud input obsahuje 'detail_items', aktualizuje multi-LP záznam
  */
 function handle_cashbook_entry_update_post($config, $input) {
     try {
@@ -681,21 +720,42 @@ function handle_cashbook_entry_update_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
-        // Validace
-        $validator = new EntryValidator();
-        $data = $validator->validateUpdate($input);
+        // 🆕 DETEKCE MULTI-LP
+        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
         // Aktualizovat
         $db->beginTransaction();
         
         try {
-            $service = new CashbookService($db);
-            $service->updateEntry($input['entry_id'], $data, $userData['id']);
+            if ($hasDetailItems) {
+                // 🆕 MULTI-LP UPDATE
+                $validator = new EntryValidator($db);
+                
+                $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+                
+                if (!$validation['valid']) {
+                    throw new Exception('Validace selhala: ' . implode(', ', $validation['errors']));
+                }
+                
+                if (!empty($validation['warnings'])) {
+                    error_log("LP warnings: " . implode(', ', $validation['warnings']));
+                }
+                
+                // Update master + details
+                $entryModel->updateEntryWithDetails($input['entry_id'], $input, $input['detail_items'], $userData['id']);
+                $updatedEntry = $entryModel->getEntryWithDetails($input['entry_id']);
+                
+            } else {
+                // PŮVODNÍ FLOW
+                $validator = new EntryValidator();
+                $data = $validator->validateUpdate($input);
+                
+                $service = new CashbookService($db);
+                $service->updateEntry($input['entry_id'], $data, $userData['id']);
+                $updatedEntry = $entryModel->getEntryById($input['entry_id']);
+            }
             
-            // Načíst aktualizovanou položku
-            $updatedEntry = $entryModel->getEntryById($input['entry_id']);
-            
-            // 🆕 KASKÁDOVÝ PŘEPOČET: Úprava položky mění koncový stav → přepočítat následující měsíce
+            // 🆕 KASKÁDOVÝ PŘEPOČET
             if ($book['pokladna_id'] && $book['uzivatel_id']) {
                 $bookModel->recalculateFollowingMonths(
                     $book['uzivatel_id'],
