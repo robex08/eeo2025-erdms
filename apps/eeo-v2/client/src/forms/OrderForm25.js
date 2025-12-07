@@ -9669,6 +9669,14 @@ function OrderForm25() {
             }
           }
 
+          // 🚀 KRITICKÉ: Invaliduj cache PŘED navigací (aby seznam měl čerstvá data)
+          try {
+            ordersCacheService.invalidate(user_id);
+            addDebugLog('success', 'INSERT', 'cache-invalidation', 'Cache invalidována před navigací');
+          } catch (e) {
+            addDebugLog('error', 'INSERT', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
+          }
+
           startSaveProgressAndRedirect(orderNumber, orderId);
 
         } else {
@@ -10488,6 +10496,14 @@ function OrderForm25() {
               addDebugLog('success', 'UPDATE', 'draftmanager-delete', `Všechny klíče smazány přes DraftManager`);
             } else {
             }
+          }
+
+          // 🚀 KRITICKÉ: Invaliduj cache PŘED navigací (aby seznam měl čerstvá data)
+          try {
+            ordersCacheService.invalidate(user_id);
+            addDebugLog('success', 'UPDATE', 'cache-invalidation', 'Cache invalidována před navigací');
+          } catch (e) {
+            addDebugLog('error', 'UPDATE', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
           }
 
           startSaveProgressAndRedirect(orderNumber, updateOrderId);
