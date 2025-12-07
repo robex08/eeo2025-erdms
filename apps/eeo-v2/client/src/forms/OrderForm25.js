@@ -5207,8 +5207,9 @@ function OrderForm25() {
               // 🎯 Pokud draft má savedOrderId, JE TO EDITACE - nastav HNED!
               if (draftOrderId) {
                 setIsEditMode(true);
-                setIsNewOrder(false); // 🔧 KRITICKÉ: Nastav že nejde o novou objednávku
                 setSavedOrderId(draftOrderId);
+                // 🔧 POZNÁMKA: isNewOrder je computed value z useMemo(!formData.id && !savedOrderId)
+                // Nastavením savedOrderId automaticky isNewOrder = false
                 // 🎯 PERSISTENCE: Ulož do localStorage pro refresh
                 localStorage.setItem('activeOrderEditId', String(draftOrderId));
               }
