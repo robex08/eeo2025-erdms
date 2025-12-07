@@ -5207,6 +5207,7 @@ function OrderForm25() {
               // 🎯 Pokud draft má savedOrderId, JE TO EDITACE - nastav HNED!
               if (draftOrderId) {
                 setIsEditMode(true);
+                setIsNewOrder(false); // 🔧 KRITICKÉ: Nastav že nejde o novou objednávku
                 setSavedOrderId(draftOrderId);
                 // 🎯 PERSISTENCE: Ulož do localStorage pro refresh
                 localStorage.setItem('activeOrderEditId', String(draftOrderId));
@@ -6336,6 +6337,7 @@ function OrderForm25() {
           // 🔄 Aktualizovat MenuBar s načtenou objednávkou
           broadcastOrderState({
             isEditMode: true,
+            isNewOrder: false,
             orderId: orderId,
             orderNumber: dbOrder.cislo_objednavky || dbOrder.ev_cislo
           });
