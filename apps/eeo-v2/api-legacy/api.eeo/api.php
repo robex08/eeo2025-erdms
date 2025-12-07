@@ -1017,7 +1017,7 @@ switch ($endpoint) {
         }
         break;
     case 'notifications/send-dual':
-        if ($request_method === 'POST') {
+        if ($request_method === 'POST' || $request_method === 'GET') {
             handle_notifications_send_dual($input, $config, $queries);
         } else {
             http_response_code(405);
