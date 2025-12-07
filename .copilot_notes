@@ -1,0 +1,12 @@
+
+# MySQL Connection Info
+- Host: 10.3.172.11
+- User: erdms_user
+- Password: AhchohTahnoh7eim
+- Database: eeo2025
+- Connection example: mysql -h 10.3.172.11 -u erdms_user -pAhchohTahnoh7eim eeo2025
+
+# Email Template Structure (order_status_ke_schvaleni)
+- 3 variants: APPROVER_NORMAL (orange), APPROVER_URGENT (red), SUBMITTER (green)
+- Fields: {order_number}, {predmet}, {strediska}, {financovani}, {financovani_poznamka}, {amount}, {date}, {approver_name}, {user_name}, {order_id}
+- NO dodavatel field in current DB template!

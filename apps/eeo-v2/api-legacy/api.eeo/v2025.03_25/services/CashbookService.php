@@ -247,8 +247,8 @@ class CashbookService {
             // Uzavřít uživatelem
             $this->bookModel->closeBookByUser($bookId, $userId);
             
-            // Audit log
-            $this->auditModel->logAction('kniha', $bookId, 'uzavreni_uzivatelem', $userId, 
+            // Audit log - ✅ FIX: použít 'uzavreni' místo 'uzavreni_uzivatelem' (ENUM omezení)
+            $this->auditModel->logAction('kniha', $bookId, 'uzavreni', $userId, 
                 array('stav_knihy' => 'aktivni'), 
                 array('stav_knihy' => 'uzavrena_uzivatelem'));
             
@@ -283,8 +283,8 @@ class CashbookService {
             // Zamknout správcem
             $this->bookModel->lockBookByAdmin($bookId, $adminId);
             
-            // Audit log
-            $this->auditModel->logAction('kniha', $bookId, 'zamknuti_spravcem', $adminId, 
+            // Audit log - ✅ FIX: použít 'zamknuti' místo 'zamknuti_spravcem' (ENUM omezení)
+            $this->auditModel->logAction('kniha', $bookId, 'zamknuti', $adminId, 
                 array('stav_knihy' => 'uzavrena_uzivatelem'), 
                 array('stav_knihy' => 'zamknuta_spravcem'));
             
@@ -321,8 +321,8 @@ class CashbookService {
             // Odemknout
             $this->bookModel->unlockBook($bookId);
             
-            // Audit log
-            $this->auditModel->logAction('kniha', $bookId, 'odemknuti_spravcem', $adminId, 
+            // Audit log - ✅ FIX: použít 'odemknuti' místo 'odemknuti_spravcem' (ENUM omezení)
+            $this->auditModel->logAction('kniha', $bookId, 'odemknuti', $adminId, 
                 array('stav_knihy' => $oldState), 
                 array('stav_knihy' => 'aktivni'));
             
