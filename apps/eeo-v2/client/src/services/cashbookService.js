@@ -847,6 +847,63 @@ const cashbookAPI = {
     }
   },
 
+  /**
+   * 📊 Získat přehled čerpání LP kódů
+   * Agreguje výdaje podle LP kódů včetně multi-LP položek
+   * 
+   * @param {number} userId - ID uživatele (volitelné, default = přihlášený)
+   * @param {number} year - Rok (volitelné, default = aktuální)
+   * @returns {Promise} Response s LP summary
+   */
+  getLPSummary: async (userId = null, year = null) => {
+    try {
+      const auth = await getAuthData();
+      
+      const payload = {
+        username: auth.username,
+        token: auth.token
+      };
+      
+      if (userId) payload.user_id = userId;
+      if (year) payload.year = year;
+      
+      const response = await axios.post(`${API_BASE}/cashbook-lp-summary`, payload);
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání LP summary');
+      throw error;
+    }
+  },
+
+  /**
+   * 📋 Získat detailní rozpis čerpání LP kódu
+   * Vrátí všechny doklady které čerpaly daný LP kód
+   * 
+   * @param {string} lpCode - LP kód
+   * @param {number} userId - ID uživatele (volitelné)
+   * @param {number} year - Rok (volitelné)
+   * @returns {Promise} Response s detailem čerpání
+   */
+  getLPDetail: async (lpCode, userId = null, year = null) => {
+    try {
+      const auth = await getAuthData();
+      
+      const payload = {
+        username: auth.username,
+        token: auth.token,
+        lp_kod: lpCode
+      };
+      
+      if (userId) payload.user_id = userId;
+      if (year) payload.year = year;
+      
+      const response = await axios.post(`${API_BASE}/cashbook-lp-detail`, payload);
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání LP detailu');
+      throw error;
+    }
+  }
 };
 
 // ========================================================================
