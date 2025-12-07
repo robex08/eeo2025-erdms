@@ -1994,8 +1994,11 @@ const Layout = ({ children }) => {
       const state = e.detail;
       if (!state) return;
 
-      // 🔧 FIX: Pokud orderId je null, formulář byl zavřen -> draft neexistuje
-      const hasDraft = !!(state.orderId || state.isNewOrder);
+      // 🔧 FIX: Rozlišit 3 stavy:
+      // 1. Formulář zavřen: isNewOrder=false && orderId=null -> hasDraft=false
+      // 2. Nová objednávka: isNewOrder=true -> hasDraft=true
+      // 3. Editace: isNewOrder=false && orderId!=null -> hasDraft=true
+      const hasDraft = state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined);
       
       // Přímo nastav stavy z OrderForm25
       setHasDraftOrder(hasDraft);

@@ -261,26 +261,46 @@ const ComingSoonPanel = styled.div`
 // Rozšířený seznam ikon z FontAwesome @fortawesome/free-solid-svg-icons
 // 🎯 O25L Dashboard Status Icons & Colors
 const o25lDashboardStatuses = {
-  'Základní stavy': [
-    { status: 'nova', label: 'Nová', color: '#2563eb' },
-    { status: 'ke_schvaleni', label: 'Ke schválení', color: '#f59e0b' },
-    { status: 'schvalena', label: 'Schválena', color: '#10b981' },
-    { status: 'zamitnuta', label: 'Zamítnuta', color: '#dc2626' },
-    { status: 'rozpracovana', label: 'Rozpracovaná', color: '#6366f1' },
+  'Základní stavy (používané)': [
+    { status: 'nova', label: 'Nová', color: '#2563eb', desc: 'Nově vytvořená objednávka' },
+    { status: 'ke_schvaleni', label: 'Ke schválení', color: '#f59e0b', desc: 'Čeká na schválení' },
+    { status: 'schvalena', label: 'Schválena', color: '#10b981', desc: 'Byla schválena' },
+    { status: 'zamitnuta', label: 'Zamítnuta', color: '#dc2626', desc: 'Byla zamítnuta' },
+    { status: 'rozpracovana', label: 'Rozpracovaná', color: '#6366f1', desc: 'Draft/koncept' },
   ],
-  'Pracovní stavy': [
-    { status: 'odeslana', label: 'Odeslaná', color: '#0891b2' },
-    { status: 'potvrzena', label: 'Potvrzená', color: '#059669' },
-    { status: 'uverejnena', label: 'Uveřejněná', color: '#7c3aed' },
-    { status: 'dokoncena', label: 'Dokončená', color: '#15803d' },
-    { status: 'ceka_potvrzeni', label: 'Čeká potvrzení', color: '#ea580c' },
-    { status: 'ceka_se', label: 'Čeká se', color: '#d97706' },
-    { status: 'zrusena', label: 'Zrušená', color: '#991b1b' },
-    { status: 'archivovano', label: 'Archivováno', color: '#64748b' },
+  'Pracovní stavy (používané)': [
+    { status: 'odeslana', label: 'Odeslaná', color: '#0891b2', desc: 'Odesláno dodavateli' },
+    { status: 'potvrzena', label: 'Potvrzená', color: '#059669', desc: 'Dodavatel potvrdil' },
+    { status: 'uverejnena', label: 'Uveřejněná', color: '#7c3aed', desc: 'Zveřejněno v registru' },
+    { status: 'dokoncena', label: 'Dokončená', color: '#15803d', desc: 'Kompletně dokončeno' },
+    { status: 'ceka_potvrzeni', label: 'Čeká potvrzení', color: '#ea580c', desc: 'Čeká na potvrzení' },
+    { status: 'ceka_se', label: 'Čeká se', color: '#d97706', desc: 'Obecné čekání' },
+    { status: 'zrusena', label: 'Zrušená', color: '#991b1b', desc: 'Stornováno' },
+    { status: 'archivovano', label: 'Archivováno', color: '#64748b', desc: 'V archivu' },
   ],
-  'Kontrolní stavy': [
-    { status: 'kontrola_ceka', label: 'Čeká kontrola', color: '#f59e0b' },
-    { status: 'kontrola_potvrzena', label: 'Věcná správnost', color: '#10b981' },
+  'Kontrolní stavy (používané)': [
+    { status: 'kontrola_ceka', label: 'Čeká kontrola', color: '#f59e0b', desc: 'Čeká na kontrolu' },
+    { status: 'kontrola_potvrzena', label: 'Věcná správnost', color: '#10b981', desc: 'Kontrola OK' },
+  ],
+  'Dodatečné stavy (dostupné pro budoucnost)': [
+    { status: 'koncept', label: 'Koncept', color: '#8b5cf6', desc: 'Neuložený koncept' },
+    { status: 'smazana', label: 'Smazaná', color: '#78716c', desc: 'Smazána z DB' },
+    { status: 'registr_zverejnena', label: 'Registr zveřejněna', color: '#7c3aed', desc: 'Alt. verze uveřejněna' },
+    { status: 'pozastavena', label: 'Pozastavená', color: '#f97316', desc: 'Dočasně pozastaveno' },
+    { status: 'verejna_soutez', label: 'Veřejná soutěž', color: '#06b6d4', desc: 'Režim veř. soutěže' },
+    { status: 'zmena_objednavky', label: 'Změna objednávky', color: '#84cc16', desc: 'Probíhá změna' },
+  ],
+  'Prioritní varianty (pro notifikace/urgence)': [
+    { status: 'urgent', label: '🚨 Urgentní', color: '#dc2626', desc: 'Nejvyšší priorita' },
+    { status: 'high', label: '⚠️ Vysoká', color: '#ea580c', desc: 'Vysoká priorita' },
+    { status: 'normal', label: '🔔 Normální', color: '#0891b2', desc: 'Běžná priorita' },
+    { status: 'low', label: 'ℹ️ Nízká', color: '#64748b', desc: 'Nízká priorita' },
+  ],
+  'Fakturační stavy (pro budoucí integraci)': [
+    { status: 'faktura_ceka', label: 'Čeká faktura', color: '#f59e0b', desc: 'Čeká na vystavení' },
+    { status: 'faktura_vystavena', label: 'Faktura vystavena', color: '#3b82f6', desc: 'Faktura vystavena' },
+    { status: 'faktura_uhrazena', label: 'Faktura uhrazena', color: '#10b981', desc: 'Faktura zaplacena' },
+    { status: 'faktura_po_splatnosti', label: 'Po splatnosti', color: '#dc2626', desc: 'Faktura po splatnosti' },
   ],
 };
 
@@ -542,16 +562,21 @@ const DebugPanel = () => {
               <CategorySection key={category}>
                 <CategoryTitle>{category} ({statuses.length})</CategoryTitle>
                 <IconsGrid>
-                  {statuses.map(({ status, label, color }) => {
+                  {statuses.map(({ status, label, color, desc }) => {
                     const icon = getStatusIcon(status);
                     const emoji = getStatusEmoji(status);
                     return (
-                      <IconCard key={status} style={{ borderColor: color }}>
+                      <IconCard key={status} style={{ borderColor: color, minHeight: '180px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                           <FontAwesomeIcon icon={icon} style={{ color, fontSize: '2rem' }} />
                           <div style={{ fontSize: '1.5rem' }}>{emoji}</div>
                         </div>
                         <div className="icon-name" style={{ color }}>{label}</div>
+                        {desc && (
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', fontStyle: 'italic', textAlign: 'center' }}>
+                            {desc}
+                          </div>
+                        )}
                         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>{status}</div>
                         <div style={{ 
                           fontSize: '0.7rem', 
