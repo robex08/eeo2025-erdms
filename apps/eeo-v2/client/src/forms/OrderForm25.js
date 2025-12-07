@@ -4805,14 +4805,6 @@ function OrderForm25() {
     };
   }, []); // Spustit POUZE při mount/unmount!
 
-  // 🎯 [UPDATE] Broadcast při změně klíčových hodnot (isNewOrder, savedOrderId, formData.id)
-  useEffect(() => {
-    // Broadcast pouze pokud je formulář inicializovaný
-    if (isDraftLoaded) {
-      broadcastOrderState();
-    }
-  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
-
   // Loading state pro tlačítka
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -4917,6 +4909,14 @@ function OrderForm25() {
     enabled: !disableAutosave && isDraftLoaded,
     dependencies: [disableAutosave, isDraftLoaded, formData.faktury]
   });
+
+  // 🎯 [UPDATE] Broadcast při změně klíčových hodnot (isNewOrder, savedOrderId, formData.id)
+  useEffect(() => {
+    // Broadcast pouze pokud je formulář inicializovaný
+    if (isDraftLoaded) {
+      broadcastOrderState();
+    }
+  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
 
   const [templateActionsLog, setTemplateActionsLog] = useState([]);
   const [hoveredPreviewKey, setHoveredPreviewKey] = useState(null);
