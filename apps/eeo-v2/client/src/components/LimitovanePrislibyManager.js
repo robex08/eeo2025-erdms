@@ -2010,12 +2010,12 @@ const LimitovanePrislibyManager = () => {
               </div>
             );
           })()}
-          
-          {/* 🆕 PŘEHLED ČERPÁNÍ Z POKLADNY */}
-          <CashbookLPSummary />
         </>
       )}
       </CollapsibleContent>
+      
+      {/* 🆕 PŘEHLED ČERPÁNÍ Z POKLADNY - samostatný blok mimo collapsible */}
+      <CashbookLPSummary />
       
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
