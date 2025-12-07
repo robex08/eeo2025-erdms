@@ -3107,6 +3107,28 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/cashbook-lp-summary - přehled čerpání LP kódů (včetně multi-LP)
+        if ($endpoint === 'cashbook-lp-summary') {
+            if ($request_method === 'POST') {
+                handle_cashbook_lp_summary_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbook-lp-detail - detailní rozpis čerpání LP kódu
+        if ($endpoint === 'cashbook-lp-detail') {
+            if ($request_method === 'POST') {
+                handle_cashbook_lp_detail_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // ===========================================================================
         // CASHBOOK EXTENDED API - Přiřazení pokladen, nastavení, 3-stavové zamykání
         // ===========================================================================
