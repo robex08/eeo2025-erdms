@@ -4751,21 +4751,46 @@ function OrderForm25() {
 
   // �🎯 [GLOBAL STATE] Export stavu pro Layout.js MenuBar
   // Místo složité logiky s draft metadata - OrderForm25 přímo ví, co edituje!
-  useEffect(() => {
-    window.__orderFormState = {
+  // 🎯 [CENTRALIZOVANÁ FUNKCE] Broadcast stavu do MenuBaru
+  const broadcastOrderState = useCallback((overrides = {}) => {
+    const state = {
       isEditMode: !isNewOrder,
       orderId: savedOrderId || formData.id,
-      orderNumber: formData.cislo_objednavky,
+      orderNumber: formData.cislo_objednavky || formData.ev_cislo,
       currentPhase,
       mainWorkflowState,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...overrides
     };
+    
+    window.__orderFormState = state;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
+    
+    return state;
+  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState]);
 
-    // Broadcast změnu (pro Layout.js)
-    window.dispatchEvent(new CustomEvent('orderFormStateChange', {
-      detail: window.__orderFormState
-    }));
-  }, [isNewOrder, savedOrderId, formData.id, formData.cislo_objednavky, currentPhase, mainWorkflowState]);
+  // 🎯 [MOUNT] Broadcast při načtení formuláře
+  useEffect(() => {
+    broadcastOrderState();
+    
+    return () => {
+      // Cleanup: Reset stavu po 100ms (pokud se nemountla nová instance)
+      setTimeout(() => {
+        if (!window.__orderFormState || window.__orderFormState.timestamp < Date.now() - 500) {
+          const resetState = {
+            isEditMode: false,
+            orderId: null,
+            orderNumber: '',
+            currentPhase: 1,
+            mainWorkflowState: 'NOVA',
+            timestamp: Date.now()
+          };
+          window.__orderFormState = resetState;
+          window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: resetState }));
+        }
+      }, 100);
+    };
+  }, []); // Spustit POUZE při mount/unmount!
 
   // Loading state pro tlačítka
   const [isSaving, setIsSaving] = useState(false);
@@ -6296,16 +6321,12 @@ function OrderForm25() {
             ev_cislo: freshDraft.formData.ev_cislo || freshDraft.formData.cislo_objednavky
           });
 
-          // 🔄 REFRESH MENUBAR: Oznám MenuBaru, že se načetla objednávka pro editaci
-          window.dispatchEvent(new CustomEvent('orderDraftChange', {
-            detail: {
-              hasDraft: true,
-              isEditMode: true, // EDITACE objednávky (ne koncept)
-              orderId: orderId,
-              orderNumber: dbOrder.cislo_objednavky || dbOrder.ev_cislo,
-              isLoading: false
-            }
-          }));
+          // 🔄 Aktualizovat MenuBar s načtenou objednávkou
+          broadcastOrderState({
+            isEditMode: true,
+            orderId: orderId,
+            orderNumber: dbOrder.cislo_objednavky || dbOrder.ev_cislo
+          });
 
           // 🎯 DEBUG LOG - FÁZE 2: Objednávka načtena z URL
           const currentPhaseNum = (() => {
@@ -8004,16 +8025,12 @@ function OrderForm25() {
         // 2. Pak zrušit status editace (tlačítko se změní z "Editace" na "Nová")
         setIsEditMode(false);
 
-        // 3. Broadcast změnu do MenuBaru (tlačítko "Nová objednávka")
-        window.dispatchEvent(new CustomEvent('orderDraftChange', {
-          detail: {
-            hasDraft: false,
-            isEditMode: false,
-            orderId: null,
-            orderNumber: '',
-            isLoading: false
-          }
-        }));
+        // 3. Reset MenuBaru (formulář se zavírá)
+        broadcastOrderState({
+          isEditMode: false,
+          orderId: null,
+          orderNumber: ''
+        });
 
         // 4. Nakonec skrýt progress a ukončit ukládání
         setShowSaveProgress(false);
@@ -9833,17 +9850,13 @@ function OrderForm25() {
           // 📸 AKTUALIZOVAT SNAPSHOT po úspěšném uložení
           originalFormDataRef.current = JSON.parse(JSON.stringify(mergedDraftData));
 
-          // 🚀 BROADCAST: Oznámit Layout.js změnu editačního režimu
-          window.dispatchEvent(new CustomEvent('orderDraftChange', {
-            detail: {
-              hasDraft: true,
-              isEditMode: true,  // Po INSERT se přepne do editačního režimu
-              orderId: orderId,
-              orderNumber: orderNumber,
-              isLoading: false
-            }
-          }));
-          addDebugLog('success', 'INSERT', 'broadcast', `Broadcast orderDraftChange odeslán (hasDraft: true, isEditMode: true, orderId: ${orderId})`);
+          // 🚀 BROADCAST: Aktualizovat MenuBar s novým stavem
+          broadcastOrderState({
+            isEditMode: true,
+            orderId: orderId,
+            orderNumber: orderNumber
+          });
+          addDebugLog('success', 'INSERT', 'broadcast', `Broadcast stavu odeslán (isEditMode: true, orderId: ${orderId})`);
         } catch (error) {
           addDebugLog('error', 'INSERT', 'draft-update-error', `Chyba při aktualizaci draftu: ${error.message}`);
         }
@@ -10365,17 +10378,13 @@ function OrderForm25() {
           // 📸 AKTUALIZOVAT SNAPSHOT po úspěšném uložení
           originalFormDataRef.current = JSON.parse(JSON.stringify(mergedDraftData));
 
-          // 🚀 BROADCAST: Oznámit Layout.js že draft byl aktualizován (zůstává v edit režimu)
-          window.dispatchEvent(new CustomEvent('orderDraftChange', {
-            detail: {
-              hasDraft: true,
-              isEditMode: true,  // Stále v editačním režimu
-              orderId: savedOrderId,
-              orderNumber: formData.ev_cislo || formData.cislo_objednavky,
-              isLoading: false
-            }
-          }));
-          addDebugLog('success', 'UPDATE', 'broadcast', `Broadcast orderDraftChange odeslán (hasDraft: true, isEditMode: true, orderId: ${savedOrderId})`);
+          // 🚀 BROADCAST: Aktualizovat MenuBar (zůstává v edit režimu)
+          broadcastOrderState({
+            isEditMode: true,
+            orderId: savedOrderId,
+            orderNumber: formData.ev_cislo || formData.cislo_objednavky
+          });
+          addDebugLog('success', 'UPDATE', 'broadcast', `Broadcast stavu odeslán (isEditMode: true, orderId: ${savedOrderId})`);
         } catch (error) {
           addDebugLog('error', 'UPDATE', 'draft-update-error', `Chyba při aktualizaci draftu: ${error.message}`);
         }
@@ -14888,18 +14897,14 @@ function OrderForm25() {
           }
         }
 
-        // Broadcast změnu stavu
+        // Reset MenuBaru
         try {
           broadcastDraftDeleted(user_id);
-          window.dispatchEvent(new CustomEvent('orderDraftChange', {
-            detail: {
-              hasDraft: false,
-              isEditMode: false,
-              orderId: null,
-              orderNumber: '',
-              isLoading: false
-            }
-          }));
+          broadcastOrderState({
+            isEditMode: false,
+            orderId: null,
+            orderNumber: ''
+          });
         } catch (e) {
           // Ignoruj chybu broadcastu
         }
@@ -15022,24 +15027,20 @@ function OrderForm25() {
         }
       }
 
-      // 3. Broadcast změnu stavu - SYNCHRONNĚ s await pro dokončení
+      // 3. Reset MenuBaru
       try {
         broadcastDraftDeleted(user_id);
 
-        // Počkej krátce, aby se broadcast stihl zpracovat v jiných tabech
+        // Počkej krátce, aby se broadcast stihl zpracovat
         await new Promise(resolve => setTimeout(resolve, 50));
 
-        window.dispatchEvent(new CustomEvent('orderDraftChange', {
-          detail: {
-            hasDraft: false,
-            isEditMode: false,
-            orderId: null,
-            orderNumber: '',
-            isLoading: false
-          }
-        }));
+        broadcastOrderState({
+          isEditMode: false,
+          orderId: null,
+          orderNumber: ''
+        });
 
-        addDebugLog('success', 'CANCEL', 'broadcast', 'Broadcast odeslán a zpracován');
+        addDebugLog('success', 'CANCEL', 'broadcast', 'Broadcast stavu odeslán');
       } catch (e) {
         addDebugLog('warning', 'CANCEL', 'broadcast-error', `Chyba při broadcastu: ${e.message}`);
       }
