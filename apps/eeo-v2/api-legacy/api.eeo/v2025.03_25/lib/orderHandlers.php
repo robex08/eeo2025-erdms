@@ -1937,6 +1937,24 @@ function handle_orders25_insert($input, $config, $queries) {
                     $financovani_normalized = $input['financovani'];
                 }
             }
+            
+            // 🔢 AUTO-GENEROVÁNÍ individualni_schvaleni z ev_cislo pro Individuální schválení
+            // Pokud je typ financování "INDIVIDUALNI" a máme ev_cislo, vygeneruj I-číslo
+            if ($financovani_normalized) {
+                $finData = json_decode($financovani_normalized, true);
+                if ($finData && isset($finData['typ']) && $finData['typ'] === 'INDIVIDUALNI') {
+                    // Získat ev_cislo - při insertu používáme $final_order_number
+                    $evCislo = isset($final_order_number) ? $final_order_number : null;
+                    
+                    // Vygenerovat I-číslo z O-čísla
+                    if ($evCislo && strpos($evCislo, 'O-') === 0) {
+                        $iCislo = 'I-' . substr($evCislo, 2);
+                        $finData['individualni_schvaleni'] = $iCislo;
+                        $financovani_normalized = json_encode($finData);
+                        error_log("🔢 AUTO-GENEROVÁNO (INSERT): individualni_schvaleni = {$iCislo} z ev_cislo = {$evCislo}");
+                    }
+                }
+            }
         }
         
         $orderData = [
@@ -2376,6 +2394,24 @@ function handle_orders25_update($input, $config, $queries) {
                     $financovani_normalized = json_encode($financovaniData);
                 } else {
                     $financovani_normalized = $input['financovani'];
+                }
+            }
+            
+            // 🔢 AUTO-GENEROVÁNÍ individualni_schvaleni z ev_cislo pro Individuální schválení
+            // Pokud je typ financování "INDIVIDUALNI" a máme ev_cislo, vygeneruj I-číslo
+            if ($financovani_normalized) {
+                $finData = json_decode($financovani_normalized, true);
+                if ($finData && isset($finData['typ']) && $finData['typ'] === 'INDIVIDUALNI') {
+                    // Získat ev_cislo z inputu
+                    $evCislo = isset($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null;
+                    
+                    // Vygenerovat I-číslo z O-čísla
+                    if ($evCislo && strpos($evCislo, 'O-') === 0) {
+                        $iCislo = 'I-' . substr($evCislo, 2);
+                        $finData['individualni_schvaleni'] = $iCislo;
+                        $financovani_normalized = json_encode($finData);
+                        error_log("🔢 AUTO-GENEROVÁNO: individualni_schvaleni = {$iCislo} z ev_cislo = {$evCislo}");
+                    }
                 }
             }
         }
