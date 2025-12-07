@@ -463,33 +463,35 @@ class NotificationService {
     orderData
   }) {
     try {
-      // Sestavit pole příjemců s deduplikací
-      const recipientSet = new Set();
+      // Sestavit FROM (SUBMITTER - zelená šablona) a TO (APPROVER - červená šablona)
+      const fromSet = new Set();
+      const toSet = new Set();
       
-      // APPROVER: příkazce (vždy)
+      // TO = APPROVER: příkazce (červená šablona ke schválení)
       if (orderData.prikazce_id) {
-        recipientSet.add(orderData.prikazce_id);
+        toSet.add(orderData.prikazce_id);
       }
       
-      // SUBMITTER: garant, vytvořil, objednatel (deduplikováno)
+      // FROM = SUBMITTER: garant, vytvořil, objednatel (zelená informační šablona)
       if (orderData.garant_id && orderData.garant_id !== orderData.prikazce_id) {
-        recipientSet.add(orderData.garant_id);
+        fromSet.add(orderData.garant_id);
       }
       if (orderData.vytvoril && orderData.vytvoril !== orderData.prikazce_id) {
-        recipientSet.add(orderData.vytvoril);
+        fromSet.add(orderData.vytvoril);
       }
       if (orderData.objednatel_id && orderData.objednatel_id !== orderData.prikazce_id) {
-        recipientSet.add(orderData.objednatel_id);
+        fromSet.add(orderData.objednatel_id);
       }
 
-      const recipients = Array.from(recipientSet);
+      const from = Array.from(fromSet);
+      const to = Array.from(toSet);
 
-      if (recipients.length === 0) {
+      if (from.length === 0 && to.length === 0) {
         console.warn('sendOrderApprovalNotifications: Žádní příjemci k odeslání');
         return { status: 'warning', message: 'No recipients', sent: 0 };
       }
 
-      // Formátovat data pro API
+      // Formátovat data pro API (nový formát s from/to + střediska + financování detail)
       const payload = {
         token,
         username,
@@ -501,9 +503,15 @@ class NotificationService {
         creator_id: orderData.vytvoril,
         supplier_name: orderData.dodavatel_nazev || 'Neuvedeno',
         funding: orderData.financovani_display || 'Neuvedeno',
+        funding_number: orderData.financovani_cislo || '',        // Číslo smlouvy/LP
+        funding_note: orderData.financovani_poznamka || '',        // Poznámka ke smlouvě
+        strediska_names: orderData.strediska_nazvy || [],          // Array názvů středisek (už převedeno ve FE)
         max_price: orderData.max_price_with_dph ? `${orderData.max_price_with_dph.toLocaleString('cs-CZ')} Kč` : 'Neuvedeno',
-        recipients
+        from,  // SUBMITTER recipients (zelená šablona)
+        to     // APPROVER recipients (červená šablona)
       };
+      
+      console.log('Dual notification payload:', { fromCount: from.length, toCount: to.length, strediska: payload.strediska_names.length });
 
       // Volat backend API pro dual-template odeslání
       const response = await api.post('/notifications/send-dual', payload);
