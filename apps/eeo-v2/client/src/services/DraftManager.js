@@ -549,14 +549,37 @@ class DraftManager {
     // Okamžitě zakázat autosave
     this.setAutosaveEnabled(false, 'Progress started');
     this.progressActive = true;
-    // Callback pro progress update
-    if (onProgress) {
-      setTimeout(() => onProgress(100), 50);
-    }
+    
+    // ✅ OPRAVENO: Plynulý dojezd progress baru místo okamžitého skoku na 100%
+    // Progress se bude postupně navyšovat od 0 do 100 během celé duration
+    let currentProgress = 0;
+    const steps = 50; // Počet kroků animace (50 kroků = plynulá animace)
+    const stepDuration = duration / steps; // Čas na jeden krok
+    const progressIncrement = 100 / steps; // Přírůstek progress na krok
+    
+    const intervalId = setInterval(() => {
+      currentProgress += progressIncrement;
+      
+      if (currentProgress >= 100) {
+        currentProgress = 100;
+        clearInterval(intervalId);
+      }
+      
+      // Callback pro aktualizaci UI
+      if (onProgress) {
+        onProgress(Math.min(currentProgress, 100));
+      }
+    }, stepDuration);
 
-    // Timer pro dokončení
+    // Timer pro dokončení (po duration)
     const timeoutId = setTimeout(() => {
+      clearInterval(intervalId); // Zastavit interval pokud ještě běží
       this.progressActive = false;
+
+      // Poslední update na 100% (pro jistotu)
+      if (onProgress) {
+        onProgress(100);
+      }
 
       if (onComplete) {
         onComplete();
@@ -567,6 +590,7 @@ class DraftManager {
     return {
       cancel: () => {
         clearTimeout(timeoutId);
+        clearInterval(intervalId);
         this.progressActive = false;
         this.setAutosaveEnabled(true, 'Progress cancelled');
       }
