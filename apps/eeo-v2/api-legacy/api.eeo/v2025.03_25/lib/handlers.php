@@ -1023,7 +1023,11 @@ function handle_notify_email($input, $config, $queries) {
  */
 function handle_notifications_send_dual($input, $config, $queries) {
     set_time_limit(30); // Max 30 sekund
+    
+    // AGRESIVNÍ LOGGING - zajistit, že se zobrazí
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "📧📧 DUAL NOTIFICATION CALLED\n", FILE_APPEND);
     error_log("📧📧 DUAL NOTIFICATION REQUEST: " . json_encode($input));
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "Input: " . json_encode($input) . "\n", FILE_APPEND);
     
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
@@ -1043,19 +1047,31 @@ function handle_notifications_send_dual($input, $config, $queries) {
         return;
     }
     
-    // Validace vstupů
-    if (empty($input['order_id']) || empty($input['recipients']) || !is_array($input['recipients'])) {
-        api_error(400, 'Chybí povinné parametry (order_id, recipients)', 'MISSING_FIELDS');
+    // Validace vstupů - nový formát s from/to
+    $has_from = !empty($input['from']) && is_array($input['from']);
+    $has_to = !empty($input['to']) && is_array($input['to']);
+    
+    if (empty($input['order_id']) || (!$has_from && !$has_to)) {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ VALIDATION FAILED\n", FILE_APPEND);
+        api_error(400, 'Chybí povinné parametry (order_id, from nebo to)', 'MISSING_FIELDS');
         return;
     }
     
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Validation OK (from: " . ($has_from ? count($input['from']) : 0) . ", to: " . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
+    
     require_once __DIR__ . '/email-template-helper.php';
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ email-template-helper loaded\n", FILE_APPEND);
+    
     require_once __DIR__ . '/mail.php';
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ mail.php loaded\n", FILE_APPEND);
     
     try {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔌 Connecting to DB...\n", FILE_APPEND);
         $db = get_db($config);
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ DB connection OK\n", FILE_APPEND);
         error_log("📧 DB connection OK");
     } catch (Exception $e) {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ DB ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 DB CONNECTION ERROR: " . $e->getMessage());
         api_error(500, 'Chyba připojení k DB: ' . $e->getMessage(), 'DB_ERROR');
         return;
@@ -1063,56 +1079,106 @@ function handle_notifications_send_dual($input, $config, $queries) {
     
     // Načtení šablony z DB (type = order_status_ke_schvaleni)
     try {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
         $stmt = $db->prepare("SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);
         error_log("📧 Template query executed");
     } catch (Exception $e) {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         error_log("📧 TEMPLATE QUERY ERROR: " . $e->getMessage());
         api_error(500, 'Chyba při načítání šablony: ' . $e->getMessage(), 'QUERY_ERROR');
         return;
     }
     
     if (!$template) {
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "❌ Template NOT FOUND\n", FILE_APPEND);
         api_error(404, 'Šablona notifikace nenalezena nebo není aktivní', 'TEMPLATE_NOT_FOUND');
         return;
     }
     
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template OK: {$template['name']}\n", FILE_APPEND);
     error_log("📧 Načtena šablona: {$template['name']} (ID: {$template['id']})");
     
-    // Sestavení dat pro placeholdery
+    // Sestavení STŘEDISEK (spojit názvy čárkou - frontend už poslal převedené názvy)
+    $strediska_display = 'Neuvedeno';
+    if (!empty($input['strediska_names']) && is_array($input['strediska_names']) && count($input['strediska_names']) > 0) {
+        $strediska_display = implode(', ', $input['strediska_names']);
+    }
+    
+    // Sestavení FINANCOVÁNÍ (typ + číslo + poznámka)
+    $financovani_full = $input['funding'] ?? 'Neuvedeno';
+    if (!empty($input['funding_number'])) {
+        $financovani_full .= ' - ' . $input['funding_number'];
+    }
+    $financovani_poznamka = !empty($input['funding_note']) ? $input['funding_note'] : '';
+    
+    // Sestavení dat z FE inputu (všechny potřebné údaje už přicházejí z frontendu)
     $order_data = [
         'id' => $input['order_id'],
-        'ev_cislo' => isset($input['order_number']) ? $input['order_number'] : '',
-        'predmet' => isset($input['order_subject']) ? $input['order_subject'] : '',
-        'prikazce_id' => isset($input['commander_id']) ? $input['commander_id'] : null,
-        'garant_id' => isset($input['garant_id']) ? $input['garant_id'] : null,
-        'vytvoril' => isset($input['creator_id']) ? $input['creator_id'] : null,
-        'dodavatel_nazev' => isset($input['supplier_name']) ? $input['supplier_name'] : 'Neuvedeno',
-        'financovani_display' => isset($input['funding']) ? $input['funding'] : 'Neuvedeno',
-        'max_price_formatted' => isset($input['max_price']) ? $input['max_price'] : 'Neuvedeno'
+        'ev_cislo' => $input['order_number'],
+        'predmet' => $input['order_subject'],
+        'prikazce_id' => $input['commander_id'],  // Pro načtení jména příkazce
+        'vytvoril' => $input['creator_id'],       // Pro načtení jména tvůrce
+        'dodavatel_nazev' => $input['supplier_name'],
+        'strediska_display' => $strediska_display,        // Spojená střediska
+        'financovani_display' => $financovani_full,       // Financování typ + číslo
+        'financovani_poznamka' => $financovani_poznamka,  // Poznámka samostatně
+        'max_price_formatted' => $input['max_price']
     ];
+    
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Order data from FE (strediska: $strediska_display, financovani: $financovani_full)\n", FILE_APPEND);
     
     $results = [];
     $sent_count = 0;
     $in_app_count = 0;
     
-    // Projít všechny příjemce (user_id array)
-    foreach ($input['recipients'] as $user_id) {
+    // Sloučit from (SUBMITTER) a to (APPROVER) do jednoho pole s type označením
+    $all_recipients = [];
+    
+    if ($has_from) {
+        foreach ($input['from'] as $user_id) {
+            $all_recipients[] = ['user_id' => $user_id, 'type' => 'SUBMITTER'];
+        }
+    }
+    
+    if ($has_to) {
+        foreach ($input['to'] as $user_id) {
+            $all_recipients[] = ['user_id' => $user_id, 'type' => 'APPROVER'];
+        }
+    }
+    
+    file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔄 Starting recipient loop (" . count($all_recipients) . " recipients: from=" . ($has_from ? count($input['from']) : 0) . ", to=" . ($has_to ? count($input['to']) : 0) . ")\n", FILE_APPEND);
+    
+    // Projít všechny příjemce
+    foreach ($all_recipients as $recipient) {
+        $user_id = $recipient['user_id'];
+        $recipient_type = $recipient['type'];
+        
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (type: $recipient_type)\n", FILE_APPEND);
         if (!$user_id) {
             error_log("⚠️ Prázdné user_id, přeskakuji");
             continue;
         }
         
         // 1. Načíst user data (email + settings)
-        $stmt_user = $db->prepare("
-            SELECT id, username, email, jmeno, prijmeni, nastaveni 
-            FROM users 
-            WHERE id = ? 
-            LIMIT 1
-        ");
-        $stmt_user->execute([$user_id]);
-        $user = $stmt_user->fetch();
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔍 Querying user data...\n", FILE_APPEND);
+        try {
+            $stmt_user = $db->prepare("
+                SELECT u.id, u.username, u.email, u.jmeno, u.prijmeni, s.nastaveni_data as nastaveni
+                FROM 25_uzivatele u
+                LEFT JOIN 25_uzivatel_nastaveni s ON u.id = s.uzivatel_id
+                WHERE u.id = ? 
+                LIMIT 1
+            ");
+            $stmt_user->execute([$user_id]);
+            $user = $stmt_user->fetch();
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ User fetched: " . ($user ? $user['username'] : 'NOT FOUND') . "\n", FILE_APPEND);
+        } catch (Exception $e) {
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ USER QUERY ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+            throw $e;
+        }
         
         if (!$user || empty($user['email'])) {
             error_log("⚠️ User ID $user_id nemá email nebo neexistuje");
@@ -1128,12 +1194,22 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // 2. Zkontrolovat nastavení notifikací
         $settings = [];
         if (!empty($user['nastaveni'])) {
-            $settings = json_decode($user['nastaveni'], true);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📋 Parsing settings JSON...\n", FILE_APPEND);
+            $decoded = json_decode($user['nastaveni'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $settings = $decoded;
+                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ Settings parsed OK\n", FILE_APPEND);
+            } else {
+                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ⚠️ JSON decode failed: " . json_last_error_msg() . "\n", FILE_APPEND);
+            }
+        } else {
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ℹ️ No settings found\n", FILE_APPEND);
         }
         
         $email_enabled = isset($settings['notifikace']['email']) ? (bool)$settings['notifikace']['email'] : true;
         $system_enabled = isset($settings['notifikace']['system']) ? (bool)$settings['notifikace']['system'] : true;
         
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📧 Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF') . "\n", FILE_APPEND);
         error_log("📧 User {$user['username']} (ID: $user_id) - Email: " . ($email_enabled ? 'ON' : 'OFF') . ", System: " . ($system_enabled ? 'ON' : 'OFF'));
         
         $sent_email = false;
@@ -1144,8 +1220,12 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // Tato funkce odesílá POUZE dual-template emaily s kontrolou nastavení
         
         if ($email_enabled) {
-            // Detekovat typ příjemce (APPROVER vs SUBMITTER)
-            $recipient_type = detect_recipient_type($user_id, $order_data);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (type: $recipient_type)...\n", FILE_APPEND);
+            
+            // Typ příjemce už máme z from/to struktury
+            // from[] = SUBMITTER (zelená informační šablona)
+            // to[] = APPROVER (červená šablona ke schválení)
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template type: $recipient_type\n", FILE_APPEND);
             
             // Extrahuj správnou HTML šablonu podle typu příjemce
             $email_body = get_email_template_by_recipient($template['email_body'], $recipient_type);
@@ -1158,23 +1238,73 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $template['email_subject']
             );
             
+            // Načíst jméno příkazce (schvalovatele) pro {approver_name}
+            $approver_name = 'Schvalovatel';
+            if ($order_data['prikazce_id']) {
+                $stmt_approver = $db->prepare("SELECT jmeno, prijmeni FROM 25_uzivatele WHERE id = ? LIMIT 1");
+                $stmt_approver->execute([$order_data['prikazce_id']]);
+                $approver = $stmt_approver->fetch();
+                if ($approver) {
+                    $approver_name = trim($approver['jmeno'] . ' ' . $approver['prijmeni']);
+                }
+            }
+            
+            // {user_name} = jméno AKTUÁLNÍHO příjemce emailu (ne tvůrce objednávky!)
+            $recipient_name = trim($user['jmeno'] . ' ' . $user['prijmeni']);
+            
+            // Datum = aktuální čas odeslání emailu
+            $date_formatted = date('d.m.Y H:i');
+            
             // Nahraď placeholdery v body
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🔄 Replacing placeholders...\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       recipient_name: $recipient_name (user_id: $user_id)\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       approver_name: $approver_name\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       strediska: {$order_data['strediska_display']}\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       financovani: {$order_data['financovani_display']}\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       poznamka: {$order_data['financovani_poznamka']}\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "       date: $date_formatted\n", FILE_APPEND);
+            
             $email_body = str_replace(
-                ['{order_number}', '{predmet}', '{dodavatel_nazev}', '{financovani_display}', '{max_price_with_dph}'],
+                [
+                    '{order_number}', 
+                    '{order_id}',
+                    '{predmet}', 
+                    '{strediska}',           // ZMĚNĚNO z dodavatel_nazev
+                    '{financovani}',         // Typ + číslo smlouvy/LP
+                    '{financovani_poznamka}', // Poznámka ke smlouvě
+                    '{amount}',
+                    '{date}',
+                    '{user_name}',
+                    '{approver_name}'
+                ],
                 [
                     $order_data['ev_cislo'],
+                    $order_data['id'],
                     $order_data['predmet'],
-                    $order_data['dodavatel_nazev'],
-                    $order_data['financovani_display'],
-                    $order_data['max_price_formatted']
+                    $order_data['strediska_display'],       // Střediska spojená čárkou
+                    $order_data['financovani_display'],     // Financování typ + číslo
+                    $order_data['financovani_poznamka'],    // Poznámka samostatně
+                    $order_data['max_price_formatted'],
+                    $date_formatted,
+                    $recipient_name,  // Jméno AKTUÁLNÍHO příjemce
+                    $approver_name    // Jméno příkazce z DB
                 ],
                 $email_body
             );
             
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ All 10 placeholders replaced\n", FILE_APPEND);
+            
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Calling eeo_mail_send to: {$user['email']}\n", FILE_APPEND);
             error_log("📧 Odesílám email na: {$user['email']} (typ: $recipient_type)");
             
             // Odešli email
-            $mail_result = eeo_mail_send($user['email'], $email_subject, $email_body, ['html' => true]);
+            try {
+                $mail_result = eeo_mail_send($user['email'], $email_subject, $email_body, ['html' => true]);
+                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ✅ eeo_mail_send returned: " . json_encode($mail_result) . "\n", FILE_APPEND);
+            } catch (Exception $e) {
+                file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    ❌ MAIL ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+                throw $e;
+            }
             
             $sent_email = isset($mail_result['ok']) && $mail_result['ok'];
             if ($sent_email) $sent_count++;

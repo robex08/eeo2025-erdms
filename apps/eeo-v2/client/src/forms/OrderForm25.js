@@ -9535,6 +9535,12 @@ function OrderForm25() {
           // 🆕 DUAL-TEMPLATE EMAIL: Nová objednávka má automaticky ODESLANA_KE_SCHVALENI (NAVÍC k zvonečku)
           if (hasWorkflowState(workflowKod, 'ODESLANA_KE_SCHVALENI')) {
             try {
+              // Převést kódy středisek na názvy (strediskaOptions má strukturu {value, label})
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
+              });
+              
               await notificationServiceDual.sendOrderApprovalNotifications({
                 token,
                 username,
@@ -9548,6 +9554,9 @@ function OrderForm25() {
                   objednatel_id: formData.objednatel_id,
                   dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_display: formData.zpusob_financovani || 'Neuvedeno',
+                  financovani_cislo: formData.cislo_smlouvy || '',
+                  financovani_poznamka: formData.smlouva_poznamka || '',
+                  strediska_nazvy: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0
                 }
               });
@@ -10009,6 +10018,12 @@ function OrderForm25() {
           if (hasKeSchvaleni && !hadKeSchvaleni) {
             // Odeslat POUZE EMAILY (zvonečky už vytořila funkce sendOrderNotifications)
             try {
+              // Převést kódy středisek na názvy (strediskaOptions má strukturu {value, label})
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
+              });
+              
               await notificationServiceDual.sendOrderApprovalNotifications({
                 token,
                 username,
@@ -10022,6 +10037,9 @@ function OrderForm25() {
                   objednatel_id: formData.objednatel_id,
                   dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_display: formData.zpusob_financovani || 'Neuvedeno',
+                  financovani_cislo: formData.cislo_smlouvy || '',
+                  financovani_poznamka: formData.smlouva_poznamka || '',
+                  strediska_nazvy: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0
                 }
               });
