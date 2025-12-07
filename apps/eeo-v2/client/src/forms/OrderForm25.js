@@ -14917,6 +14917,7 @@ function OrderForm25() {
           broadcastDraftDeleted(user_id);
           broadcastOrderState({
             isEditMode: false,
+            isNewOrder: false,
             orderId: null,
             orderNumber: ''
           });
@@ -15054,11 +15055,12 @@ function OrderForm25() {
 
         broadcastOrderState({
           isEditMode: false,
+          isNewOrder: false,
           orderId: null,
           orderNumber: ''
         });
 
-        addDebugLog('success', 'CANCEL', 'broadcast', 'Broadcast stavu odeslán');
+        addDebugLog('success', 'CANCEL', 'broadcast', 'Broadcast stavu odeslán (formulář zavřen)');
       } catch (e) {
         addDebugLog('warning', 'CANCEL', 'broadcast-error', `Chyba při broadcastu: ${e.message}`);
       }

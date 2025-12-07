@@ -1994,8 +1994,11 @@ const Layout = ({ children }) => {
       const state = e.detail;
       if (!state) return;
 
+      // 🔧 FIX: Pokud orderId je null, formulář byl zavřen -> draft neexistuje
+      const hasDraft = !!(state.orderId || state.isNewOrder);
+      
       // Přímo nastav stavy z OrderForm25
-      setHasDraftOrder(true); // OrderForm25 je aktivní
+      setHasDraftOrder(hasDraft);
       setIsOrderEditMode(state.isEditMode);
       setEditOrderId(state.orderId);
       setEditOrderNumber(state.orderNumber);
@@ -2006,6 +2009,9 @@ const Layout = ({ children }) => {
           phase: state.currentPhase,
           isZrusena: state.mainWorkflowState === 'ZRUSENA'
         });
+      } else if (!hasDraft) {
+        // Reset phase info když formulář zavřen
+        setOrderPhaseInfo({ phase: 1, isZrusena: false });
       }
     };
 
