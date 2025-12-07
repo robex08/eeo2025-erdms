@@ -11,8 +11,10 @@ import {
   faPaperclip,
   faPalette,
   faFileInvoice,
-  faEnvelope
+  faEnvelope,
+  faClipboardList
 } from '@fortawesome/free-solid-svg-icons';
+import { getStatusIcon, getStatusEmoji } from '../utils/iconMapping';
 import OrderV2TestPanel from './OrderV2TestPanel';
 import NotificationTestPanel from './NotificationTestPanel';
 import AttachmentsV2TestPanel from './AttachmentsV2TestPanel';
@@ -257,6 +259,31 @@ const ComingSoonPanel = styled.div`
 `;
 
 // Rozšířený seznam ikon z FontAwesome @fortawesome/free-solid-svg-icons
+// 🎯 O25L Dashboard Status Icons & Colors
+const o25lDashboardStatuses = {
+  'Základní stavy': [
+    { status: 'nova', label: 'Nová', color: '#2563eb' },
+    { status: 'ke_schvaleni', label: 'Ke schválení', color: '#f59e0b' },
+    { status: 'schvalena', label: 'Schválena', color: '#10b981' },
+    { status: 'zamitnuta', label: 'Zamítnuta', color: '#dc2626' },
+    { status: 'rozpracovana', label: 'Rozpracovaná', color: '#6366f1' },
+  ],
+  'Pracovní stavy': [
+    { status: 'odeslana', label: 'Odeslaná', color: '#0891b2' },
+    { status: 'potvrzena', label: 'Potvrzená', color: '#059669' },
+    { status: 'uverejnena', label: 'Uveřejněná', color: '#7c3aed' },
+    { status: 'dokoncena', label: 'Dokončená', color: '#15803d' },
+    { status: 'ceka_potvrzeni', label: 'Čeká potvrzení', color: '#ea580c' },
+    { status: 'ceka_se', label: 'Čeká se', color: '#d97706' },
+    { status: 'zrusena', label: 'Zrušená', color: '#991b1b' },
+    { status: 'archivovano', label: 'Archivováno', color: '#64748b' },
+  ],
+  'Kontrolní stavy': [
+    { status: 'kontrola_ceka', label: 'Čeká kontrola', color: '#f59e0b' },
+    { status: 'kontrola_potvrzena', label: 'Věcná správnost', color: '#10b981' },
+  ],
+};
+
 // Kategorizováno pro lepší přehlednost
 const iconCategories = {
   'Používané v Aplikaci': [
@@ -498,6 +525,52 @@ const DebugPanel = () => {
           </ComingSoonPanel>
         );
 
+      case 'o25l-dashboard':
+        const totalStatuses = Object.values(o25lDashboardStatuses).reduce((sum, statuses) => sum + statuses.length, 0);
+
+        return (
+          <IconsPanel>
+            <SectionTitle>
+              <FontAwesomeIcon icon={faClipboardList} />
+              O25L Dashboard - Stavy objednávek
+            </SectionTitle>
+            <SectionDescription>
+              Zobrazeno <strong>{totalStatuses} stavů</strong> používaných v Orders25List dashboardu s ikonami a barvami
+            </SectionDescription>
+
+            {Object.entries(o25lDashboardStatuses).map(([category, statuses]) => (
+              <CategorySection key={category}>
+                <CategoryTitle>{category} ({statuses.length})</CategoryTitle>
+                <IconsGrid>
+                  {statuses.map(({ status, label, color }) => {
+                    const icon = getStatusIcon(status);
+                    const emoji = getStatusEmoji(status);
+                    return (
+                      <IconCard key={status} style={{ borderColor: color }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <FontAwesomeIcon icon={icon} style={{ color, fontSize: '2rem' }} />
+                          <div style={{ fontSize: '1.5rem' }}>{emoji}</div>
+                        </div>
+                        <div className="icon-name" style={{ color }}>{label}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>{status}</div>
+                        <div style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#94a3b8', 
+                          marginTop: '4px',
+                          fontFamily: 'monospace',
+                          backgroundColor: '#f1f5f9',
+                          padding: '2px 6px',
+                          borderRadius: '4px'
+                        }}>{color}</div>
+                      </IconCard>
+                    );
+                  })}
+                </IconsGrid>
+              </CategorySection>
+            ))}
+          </IconsPanel>
+        );
+
       case 'icons':
         const filteredCategories = {};
         Object.entries(iconCategories).forEach(([category, icons]) => {
@@ -628,6 +701,14 @@ const DebugPanel = () => {
         >
           <FontAwesomeIcon icon={faUserCog} />
           Users API
+        </Tab>
+
+        <Tab
+          $active={activeTab === 'o25l-dashboard'}
+          onClick={() => setActiveTab('o25l-dashboard')}
+        >
+          <FontAwesomeIcon icon={faClipboardList} />
+          O25L Dashboard
         </Tab>
 
         <Tab

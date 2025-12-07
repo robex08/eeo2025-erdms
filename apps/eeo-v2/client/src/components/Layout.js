@@ -1963,9 +1963,17 @@ const Layout = ({ children }) => {
           setEditOrderNumber(e.detail.orderNumber);
         }
 
-        // 🔧 FIX: Vždy volat recalcHasDraft() pro refresh MenuBar stavu z draftu
-        // Metadata v draftu (savedOrderId) jsou autoritativní pro určení editačního režimu
-        recalcHasDraft();
+        // 🔧 FIX: Volat recalcHasDraft() POUZE když hasDraft je TRUE
+        // Pokud je false, draft byl smazán a není co načítat
+        if (e.detail.hasDraft === true) {
+          recalcHasDraft();
+        } else {
+          // Draft byl smazán - vyčistit všechny stavy
+          setIsOrderEditMode(false);
+          setEditOrderId(null);
+          setEditOrderNumber('');
+          setOrderPhaseInfo({ phase: 1, isZrusena: false });
+        }
       } else {
         // fallback: explicitně načti jen pro aktuálního uživatele / anonymně
         recalcHasDraft(); // async ale nemusí čekat
