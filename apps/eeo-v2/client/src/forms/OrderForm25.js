@@ -5371,41 +5371,73 @@ function OrderForm25() {
         } else if (finalData.lp_kod && Array.isArray(finalData.lp_kod) && finalData.lp_kod.length > 0) {
           // ✅ FALLBACK: Objednávka má LP financování, ale chybí lp_nazvy data - načti z API
           console.log('⚠️ LP financování detekováno, ale chybí lp_nazvy - načítám z API...');
+          console.log('📋 lpKodyOptions:', lpKodyOptions);
+          console.log('📦 finalData.lp_kod:', finalData.lp_kod);
+          
           try {
+            // 🔧 KROK 1: Pokud lpKodyOptions není dostupné, načti všechny LP
+            let lpMappingData = lpKodyOptions || [];
+            if (!lpKodyOptions || lpKodyOptions.length === 0) {
+              console.log('📥 lpKodyOptions není dostupné, načítám z API...');
+              try {
+                lpMappingData = await fetchLimitovanePrisliby({ token, username });
+                console.log('✅ Načteno LP mapování:', lpMappingData.length, 'záznamů');
+              } catch (err) {
+                console.error('❌ Chyba načítání LP mapování:', err);
+                lpMappingData = [];
+              }
+            }
+            
+            // 🔧 KROK 2: Načti detaily pro každé LP (převeď ID → KÓD)
             const lpDetails = await Promise.all(
-              finalData.lp_kod.map(async (lpIdOrKod) => {
+              finalData.lp_kod.map(async (lpValue) => {
+                // Deklarujeme proměnné na úrovni map callbacku, aby byly dostupné i v catch
+                let lpKod = lpValue;
+                const originalValue = lpValue;
+                
                 try {
-                  // 🔧 Pokud je lpIdOrKod číslo (ID), najdi odpovídající KÓD z lpKodyOptions
-                  let lpKod = lpIdOrKod;
-                  if (typeof lpIdOrKod === 'number' || !isNaN(lpIdOrKod)) {
-                    const lpOption = lpKodyOptions.find(opt => opt.id === Number(lpIdOrKod));
+                  // 🔧 lpValue může být ID (number/string-number) nebo KÓD (string)
+                  // Pokud je to číslo, najdi KÓD z lpMappingData, jinak použij přímo
+                  
+                  if (lpMappingData && lpMappingData.length > 0) {
+                    // Zkus najít podle ID nebo KÓD
+                    const lpOption = lpMappingData.find(opt => 
+                      opt.id === lpValue || 
+                      opt.id === Number(lpValue) ||
+                      opt.kod === lpValue ||
+                      opt.cislo_lp === lpValue
+                    );
+                    
                     if (lpOption) {
-                      lpKod = lpOption.kod || lpOption.cislo_lp || lpIdOrKod;
-                      console.log(`🔄 Převod LP ID ${lpIdOrKod} → KÓD ${lpKod}`);
+                      lpKod = lpOption.cislo_lp || lpOption.kod || lpValue;
+                      console.log(`🔄 Převod LP ID ${lpValue} → KÓD ${lpKod}`);
                     } else {
-                      console.warn(`⚠️ LP ID ${lpIdOrKod} nebylo nalezeno v lpKodyOptions`);
+                      console.warn(`⚠️ LP ${lpValue} nebylo nalezeno v LP mapování (${lpMappingData.length} záznamů)`);
+                      // Zkusíme použít hodnotu přímo - možná je to už KÓD
                     }
+                  } else {
+                    console.warn('⚠️ LP mapování není dostupné, zkusím hodnotu přímo:', lpValue);
                   }
                   
                   const lpDetail = await fetchLPDetail({ token, username, cislo_lp: lpKod });
                   // ✅ Zkontroluj, jestli API vrátilo platná data
                   if (!lpDetail || !lpDetail.id) {
-                    console.warn(`⚠️ LP ${lpKod} (ID: ${lpIdOrKod}) nebylo nalezeno nebo nemá platná data`);
+                    console.warn(`⚠️ LP ${lpKod} (ID: ${originalValue}) nebylo nalezeno nebo nemá platná data`);
                     return null;
                   }
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
-                    nazev: lpDetail.nazev || 'Bez názvu',
+                    nazev: lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu',
                     kategorie: lpDetail.kategorie,
                     limit: lpDetail.celkovy_limit || 0,
                     cerpano: lpDetail.skutecne_cerpano || 0,
                     zbyva: lpDetail.zbyva_skutecne || 0,
                     rok: lpDetail.rok,
-                    label: `${lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`} - ${lpDetail.nazev || 'Bez názvu'}`
+                    label: `${lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
                   };
                 } catch (err) {
-                  console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${lpIdOrKod}):`, err);
+                  console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${originalValue}):`, err);
                   return null;
                 }
               })
