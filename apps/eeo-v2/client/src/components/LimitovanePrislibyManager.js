@@ -209,6 +209,37 @@ const FilterSelect = styled.select`
   }
 `;
 
+const CashbookYearSelect = styled.select`
+  padding: 0.6rem 1rem;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  background: white;
+  color: #92400e;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+  
+  &:hover {
+    border-color: #d97706;
+    background: #fffbeb;
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: #d97706;
+    background: #fffbeb;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+  }
+  
+  option {
+    background: white;
+    color: #1f2937;
+    padding: 0.5rem;
+  }
+`;
+
 const TableContainer = styled.div`
   overflow-x: auto;
   border-radius: 12px;
@@ -2067,10 +2098,6 @@ const CashbookLPSummary = () => {
     loadLPSummary();
   }, [loadLPSummary]);
   
-  if (!lpSummary || lpSummary.length === 0) {
-    return null; // Nezobrazovat pokud nemá data
-  }
-  
   return (
     <div style={{ marginTop: '3rem' }}>
       <div style={{
@@ -2100,22 +2127,14 @@ const CashbookLPSummary = () => {
                 <Calendar size={18} />
                 Rok:
               </label>
-              <select
+              <CashbookYearSelect
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                style={{
-                  padding: '0.5rem 1rem',
-                  borderRadius: '6px',
-                  border: '2px solid #f59e0b',
-                  background: 'white',
-                  fontSize: '0.95rem',
-                  cursor: 'pointer'
-                }}
               >
                 {[2025, 2024, 2023].map(year => (
                   <option key={year} value={year}>{year}</option>
                 ))}
-              </select>
+              </CashbookYearSelect>
               <Button
                 onClick={loadLPSummary}
                 disabled={loading}
@@ -2131,13 +2150,29 @@ const CashbookLPSummary = () => {
                 <RefreshCw size={24} style={{ animation: `${spinAnimation} 1s linear infinite` }} />
                 <p>Načítám data...</p>
               </div>
+            ) : !lpSummary || lpSummary.length === 0 ? (
+              <div style={{ 
+                marginTop: '1.5rem', 
+                padding: '2rem', 
+                background: 'white', 
+                borderRadius: '8px', 
+                textAlign: 'center',
+                border: '2px dashed #f59e0b'
+              }}>
+                <AlertTriangle size={32} color="#f59e0b" style={{ marginBottom: '0.5rem' }} />
+                <p style={{ margin: 0, color: '#92400e', fontSize: '1rem', fontWeight: '500' }}>
+                  Pro rok {selectedYear} nejsou k dispozici žádná data z pokladny
+                </p>
+                <p style={{ margin: '0.5rem 0 0 0', color: '#78350f', fontSize: '0.875rem' }}>
+                  Zkuste vybrat jiný rok nebo vytvořte první pokladní doklad s LP kódem
+                </p>
+              </div>
             ) : (
               <div style={{ marginTop: '1.5rem', overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: '8px', overflow: 'hidden' }}>
                   <thead>
                     <tr style={{ background: '#fef3c7', borderBottom: '2px solid #f59e0b' }}>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#92400e', fontWeight: '600' }}>LP kód</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#92400e', fontWeight: '600' }}>Název účtu</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#92400e', fontWeight: '600', minWidth: '140px' }}>LP kód</th>
                       <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Čerpáno z pokladny</th>
                       <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Počet dokladů</th>
                       <th style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e', fontWeight: '600' }}>Celkový limit</th>
@@ -2152,8 +2187,12 @@ const CashbookLPSummary = () => {
                       
                       return (
                         <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: '600', color: '#1f2937' }}>{lp.lp_kod}</td>
-                          <td style={{ padding: '0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>{lp.nazev_uctu || '-'}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>{lp.lp_kod}</div>
+                            {lp.nazev_uctu && (
+                              <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>{lp.nazev_uctu}</div>
+                            )}
+                          </td>
                           <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#1f2937' }}>
                             {lp.cerpano_pokladna.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                           </td>
@@ -2195,7 +2234,7 @@ const CashbookLPSummary = () => {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#fef3c7', fontWeight: '700', borderTop: '2px solid #f59e0b' }}>
-                      <td colSpan="2" style={{ padding: '0.75rem', color: '#92400e' }}>CELKEM</td>
+                      <td style={{ padding: '0.75rem', color: '#92400e' }}>CELKEM</td>
                       <td style={{ padding: '0.75rem', textAlign: 'right', color: '#92400e' }}>
                         {lpSummary.reduce((sum, lp) => sum + lp.cerpano_pokladna, 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                       </td>
