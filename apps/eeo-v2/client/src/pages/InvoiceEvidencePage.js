@@ -1016,7 +1016,7 @@ export default function InvoiceEvidencePage() {
   }, []);
 
   // State
-  const [isFullscreen, setIsFullscreen] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderData, setOrderData] = useState(null);
@@ -1210,19 +1210,14 @@ export default function InvoiceEvidencePage() {
       // Pokud už je tato faktura načtená (máme data v formData), skip
       // Kontrola přes fa_cislo_vema je spolehlivější než editingInvoiceId
       if (editingInvoiceId === editInvoiceId && formData.fa_cislo_vema) {
-        console.log('ℹ️ Faktura už je načtená (fa_cislo_vema:', formData.fa_cislo_vema, ')');
         return;
       }
-      
-      console.log('📝 Načítám fakturu pro editaci, ID:', editInvoiceId);
       setLoading(true);
       setEditingInvoiceId(editInvoiceId);
       
       try {
         // Načíst data faktury
         const invoiceData = await getInvoiceById25({ token, username, id: editInvoiceId });
-        
-        console.log('✅ Faktura načtena pro editaci:', invoiceData);
         
         // Naplnit formulář daty faktury
         if (invoiceData) {
@@ -1301,8 +1296,6 @@ export default function InvoiceEvidencePage() {
             await loadSmlouvaData(invoiceData.smlouva_id);
             setSelectedType('smlouva');
           }
-          
-          showToast?.(`Faktura ${invoiceData.fa_cislo_vema} načtena pro editaci`, { type: 'info' });
         }
       } catch (err) {
         console.error('❌ Chyba při načítání faktury:', err);
@@ -1333,13 +1326,6 @@ export default function InvoiceEvidencePage() {
 
       if (orderData && orderData.id) {
         setOrderData(orderData);
-        console.log('✅ Objednávka načtena:', orderData);
-        console.log('🌐 RAW API RESPONSE - COMPLETE orderData:', JSON.stringify(orderData, null, 2));
-        console.log('📦 RAW orderData.polozky_objednavky:', JSON.stringify(orderData.polozky_objednavky, null, 2));
-        console.log('📦 RAW orderData.faktury:', JSON.stringify(orderData.faktury, null, 2));
-        console.log('💰 orderData.max_cena_s_dph:', orderData.max_cena_s_dph);
-        console.log('💰 Počet položek:', orderData.polozky_objednavky?.length || 0);
-        console.log('💰 Počet faktur:', orderData.faktury?.length || 0);
         // Aktualizuj searchTerm aby zobrazoval pouze ev. číslo
         const evCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
         setSearchTerm(evCislo);

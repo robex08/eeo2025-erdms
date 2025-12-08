@@ -687,15 +687,13 @@ function handle_invoices25_by_id($input, $config, $queries) {
             return;
         }
 
-        // Formátovat jméno zaměstnance (stejně jako v LIST)
-        if (!empty($faktura['fa_predana_zam_jmeno']) && !empty($faktura['fa_predana_zam_prijmeni'])) {
-            $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $faktura['fa_predana_zam_jmeno']);
-            if (!empty($faktura['fa_predana_zam_titul_pred'])) {
-                $predana_jmeno_cele = trim($faktura['fa_predana_zam_titul_pred']) . ' ' . $predana_jmeno_cele;
-            }
-            if (!empty($faktura['fa_predana_zam_titul_za'])) {
-                $predana_jmeno_cele = $predana_jmeno_cele . ', ' . trim($faktura['fa_predana_zam_titul_za']);
-            }
+        // Formátovat jméno zaměstnance - zkrácené (Bezoušková T.)
+        if (isset($faktura['fa_predana_zam_jmeno']) && isset($faktura['fa_predana_zam_prijmeni'])
+            && $faktura['fa_predana_zam_jmeno'] !== '' && $faktura['fa_predana_zam_prijmeni'] !== '') {
+            // První písmeno jména s tečkou
+            $jmeno_zkracene = substr($faktura['fa_predana_zam_jmeno'], 0, 1) . '.';
+            // Příjmení + zkrácené jméno
+            $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $jmeno_zkracene);
             $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
         }
 
@@ -1042,7 +1040,9 @@ function handle_invoices25_list($input, $config, $queries) {
             'search_term', 'cislo_objednavky', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
             'filter_stav', 'filter_vytvoril_uzivatel',
             // Filtry pro částku a přílohy
-            'castka_min', 'castka_max', 'filter_ma_prilohy'
+            'castka_min', 'castka_max', 'filter_ma_prilohy',
+            // Filtry pro věcnou kontrolu a předání zaměstnanci
+            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec'
         );
         foreach ($filter_keys as $key) {
             if (isset($input[$key]) && !isset($filters[$key])) {
@@ -1188,9 +1188,13 @@ function handle_invoices25_list($input, $config, $queries) {
         // ========================================================================
         
         // Filtr: cislo_objednavky (částečná shoda - LIKE)
+        // ⚠️ UNIVERSAL: Hledá v čísle objednávky NEBO v čísle smlouvy!
         if (isset($filters['cislo_objednavky']) && trim($filters['cislo_objednavky']) !== '') {
-            $where_conditions[] = 'LOWER(o.cislo_objednavky) LIKE ?';
-            $params[] = '%' . strtolower(trim($filters['cislo_objednavky'])) . '%';
+            $search_obj_sml = strtolower(trim($filters['cislo_objednavky']));
+            $where_conditions[] = '(LOWER(o.cislo_objednavky) LIKE ? OR LOWER(sm.cislo_smlouvy) LIKE ?)';
+            $params[] = '%' . $search_obj_sml . '%';
+            $params[] = '%' . $search_obj_sml . '%';
+            error_log("Invoices25 LIST: Applying cislo_objednavky filter (OBJ + SML) = '$search_obj_sml'");
         }
         
         // Filtr: filter_datum_vystaveni (přesná shoda na den)
@@ -1261,6 +1265,37 @@ function handle_invoices25_list($input, $config, $queries) {
             }
         }
         
+        // Filtr: filter_vecna_kontrola (věcná kontrola provedena/neprovedena)
+        if (isset($filters['filter_vecna_kontrola']) && $filters['filter_vecna_kontrola'] !== '') {
+            if ((int)$filters['filter_vecna_kontrola'] === 1) {
+                // Pouze provedena
+                $where_conditions[] = 'f.vecna_spravnost_potvrzeno = 1';
+            } else if ((int)$filters['filter_vecna_kontrola'] === 0) {
+                // Pouze neprovedena
+                $where_conditions[] = '(f.vecna_spravnost_potvrzeno = 0 OR f.vecna_spravnost_potvrzeno IS NULL)';
+            }
+        }
+        
+        // Filtr: filter_vecnou_provedl (uživatel který provedl věcnou kontrolu)
+        if (isset($filters['filter_vecnou_provedl']) && trim($filters['filter_vecnou_provedl']) !== '') {
+            $search_vecna = strtolower(trim($filters['filter_vecnou_provedl']));
+            error_log("Invoices25 LIST: Applying filter_vecnou_provedl = '$search_vecna'");
+            $where_conditions[] = '(LOWER(u_vecna.jmeno) LIKE ? OR LOWER(u_vecna.prijmeni) LIKE ? OR LOWER(CONCAT(u_vecna.jmeno, " ", u_vecna.prijmeni)) LIKE ?)';
+            $params[] = '%' . $search_vecna . '%';
+            $params[] = '%' . $search_vecna . '%';
+            $params[] = '%' . $search_vecna . '%';
+        }
+        
+        // Filtr: filter_predano_zamestnanec (zaměstnanec kterému byla faktura předána)
+        if (isset($filters['filter_predano_zamestnanec']) && trim($filters['filter_predano_zamestnanec']) !== '') {
+            $search_predano = strtolower(trim($filters['filter_predano_zamestnanec']));
+            error_log("Invoices25 LIST: Applying filter_predano_zamestnanec = '$search_predano'");
+            $where_conditions[] = '(LOWER(u_predana.jmeno) LIKE ? OR LOWER(u_predana.prijmeni) LIKE ? OR LOWER(CONCAT(u_predana.jmeno, " ", u_predana.prijmeni)) LIKE ?)';
+            $params[] = '%' . $search_predano . '%';
+            $params[] = '%' . $search_predano . '%';
+            $params[] = '%' . $search_predano . '%';
+        }
+        
         // Filtr: filter_status (dashboard stav faktury - zaplaceno, nezaplaceno, po splatnosti, atd.)
         if (isset($filters['filter_status']) && !empty($filters['filter_status'])) {
             $filter_status = trim($filters['filter_status']);
@@ -1312,14 +1347,19 @@ function handle_invoices25_list($input, $config, $queries) {
             $search_conditions = array(
                 'LOWER(f.fa_cislo_vema) LIKE ?',              // Číslo faktury
                 'LOWER(o.cislo_objednavky) LIKE ?',           // Číslo objednávky
-                'LOWER(org.nazev_organizace) LIKE ?',         // Název organizace (skutečný sloupec)
-                'LOWER(us_obj.usek_zkr) LIKE ?',              // Zkratka úseku (skutečný sloupec)
+                'LOWER(sm.cislo_smlouvy) LIKE ?',             // Číslo smlouvy ✅ PŘIDÁNO
+                'LOWER(sm.nazev_smlouvy) LIKE ?',             // Název smlouvy ✅ PŘIDÁNO
+                'LOWER(org.nazev_organizace) LIKE ?',         // Název organizace
+                'LOWER(us_obj.usek_zkr) LIKE ?',              // Zkratka úseku
                 'LOWER(CONCAT_WS(" ", u_vytvoril.titul_pred, u_vytvoril.jmeno, u_vytvoril.prijmeni, u_vytvoril.titul_za)) LIKE ?',  // Celé jméno uživatele
+                'LOWER(CONCAT_WS(" ", u_vecna.titul_pred, u_vecna.jmeno, u_vecna.prijmeni, u_vecna.titul_za)) LIKE ?',  // Věcnou provedl ✅ PŘIDÁNO
+                'LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?',  // Předáno zaměstnanci ✅ PŘIDÁNO
                 'LOWER(f.fa_poznamka) LIKE ?',                // Poznámka
-                'LOWER(f.fa_strediska_kod) LIKE ?'            // Střediska (JSON jako text - MySQL 5.5 kompatibilní)
+                'LOWER(f.fa_strediska_kod) LIKE ?',           // Střediska (JSON jako text)
+                'LOWER(f.fa_typ) LIKE ?'                      // Typ faktury ✅ PŘIDÁNO
             );
             
-            // Přidání parametrů pro každou search podmínku (7x stejný search_like)
+            // Přidání parametrů pro každou search podmínku
             foreach ($search_conditions as $condition) {
                 $params[] = $search_like;
             }
@@ -1327,7 +1367,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Spojení všech search podmínek jako OR a přidání jako AND do hlavních podmínek
             $where_conditions[] = '(' . implode(' OR ', $search_conditions) . ')';
             
-            error_log("Invoices25 LIST: Applying global search_term = " . $search_term);
+            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (12 fields)");
         }
 
         // Sestavení WHERE klauzule
@@ -1351,10 +1391,13 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
         LEFT JOIN `25_organizace_vizitka` org ON u_obj.organizace_id = org.id
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
+        LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
+        LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         WHERE $where_sql";
         
         $stats_stmt = $db->prepare($stats_sql);
@@ -1463,6 +1506,13 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             $faktura['vytvoril_uzivatel'] = $vytvoril_jmeno_cele;
             
+            // Vytvoril uzivatel - zkrácené jméno (Bezoušková T.)
+            $vytvoril_jmeno_zkracene = '';
+            if (!empty($faktura['vytvoril_jmeno']) && !empty($faktura['vytvoril_prijmeni'])) {
+                $vytvoril_jmeno_zkracene = trim($faktura['vytvoril_prijmeni'] . ' ' . substr($faktura['vytvoril_jmeno'], 0, 1) . '.');
+            }
+            $faktura['vytvoril_uzivatel_zkracene'] = $vytvoril_jmeno_zkracene;
+            
             // Vytvoril uzivatel - detail object pro FE (ten kdo fakturu EVIDOVAL v systému)
             $faktura['vytvoril_uzivatel_detail'] = array(
                 'id' => (int)$faktura['vytvoril_uzivatel_id'],
@@ -1526,9 +1576,15 @@ function handle_invoices25_list($input, $config, $queries) {
                 $faktura['rozsirujici_data'] = null;
             }
             
-            // Předáno zaměstnanci - sestavit celé jméno
-            error_log("🔍 Faktura ID {$faktura['id']}: fa_predana_zam_jmeno = " . ($faktura['fa_predana_zam_jmeno'] ?? 'NULL') . ", prijmeni = " . ($faktura['fa_predana_zam_prijmeni'] ?? 'NULL'));
+            // Potvrdil věcnou správnost - zkrácené jméno (Bezoušková T.)
+            $potvrdil_vecnou_spravnost_zkracene = '';
+            if (!empty($faktura['potvrdil_vecnou_spravnost_jmeno']) && !empty($faktura['potvrdil_vecnou_spravnost_prijmeni'])) {
+                $potvrdil_vecnou_spravnost_zkracene = trim($faktura['potvrdil_vecnou_spravnost_prijmeni'] . ' ' . substr($faktura['potvrdil_vecnou_spravnost_jmeno'], 0, 1) . '.');
+            }
+            $faktura['potvrdil_vecnou_spravnost_zkracene'] = $potvrdil_vecnou_spravnost_zkracene;
             
+            // Předáno zaměstnanci - sestavit PLNÉ jméno s tituly (NE zkrácené!)
+            $predana_jmeno_cele = '';
             if (!empty($faktura['fa_predana_zam_jmeno']) && !empty($faktura['fa_predana_zam_prijmeni'])) {
                 $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $faktura['fa_predana_zam_jmeno']);
                 if (!empty($faktura['fa_predana_zam_titul_pred'])) {
@@ -1537,12 +1593,8 @@ function handle_invoices25_list($input, $config, $queries) {
                 if (!empty($faktura['fa_predana_zam_titul_za'])) {
                     $predana_jmeno_cele = $predana_jmeno_cele . ', ' . trim($faktura['fa_predana_zam_titul_za']);
                 }
-                $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
-                error_log("✅ Faktura ID {$faktura['id']}: Sestavené jméno = " . $predana_jmeno_cele);
-            } else {
-                $faktura['fa_predana_zam_jmeno'] = null;
-                error_log("⚠️ Faktura ID {$faktura['id']}: Jméno NULL (prázdné pole)");
             }
+            $faktura['fa_predana_zam_jmeno_cele'] = $predana_jmeno_cele;
             
             // Odstraníme pouze pomocné sloupce (detail už je v vytvoril_uzivatel_detail)
             unset($faktura['vytvoril_jmeno']);

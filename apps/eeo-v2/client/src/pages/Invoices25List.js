@@ -582,10 +582,22 @@ const TableHeader = styled.th`
     max-width: 90px;
   }
   
-  /* Širší sloupce pro čísla */
+  /* Širší sloupce pro Faktura VS a Číslo obj/Sml */
   &.wide-column {
-    min-width: 110px;
-    max-width: 130px;
+    min-width: 140px;
+    max-width: 160px;
+  }
+  
+  /* Středně široký sloupec pro Stav */
+  &.status-column {
+    min-width: 125px;
+    max-width: 145px;
+  }
+  
+  /* Úzký sloupec pro zkrácená jména */
+  &.narrow-column {
+    min-width: 90px;
+    max-width: 110px;
   }
   
   /* Úzký sloupec pro částku */
@@ -763,6 +775,7 @@ const StatusBadge = styled.span`
   text-transform: uppercase;
   letter-spacing: 0.025em;
   border: 2px solid;
+  white-space: nowrap;
   background: ${props => {
     switch(props.$status) {
       case 'paid': return '#dcfce7';
@@ -1434,6 +1447,11 @@ const Invoices25List = () => {
       if (columnFilters.vecnou_provedl) {
         apiParams.filter_vecnou_provedl = columnFilters.vecnou_provedl.trim();
       }
+      
+      // Předáno zaměstnanci - text filtr
+      if (columnFilters.predano_zamestnanec) {
+        apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
+      }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
@@ -1523,6 +1541,16 @@ const Invoices25List = () => {
         vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno === 1 || invoice.vecna_spravnost_potvrzeno === true,
         vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka || null,
         vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku || null,
+        
+        // Předáno zaměstnanci
+        fa_predana_zam_id: invoice.fa_predana_zam_id || null,
+        fa_predana_zam_jmeno_cele: invoice.fa_predana_zam_jmeno_cele || null,
+        fa_datum_predani_zam: invoice.fa_datum_predani_zam || null,
+        fa_datum_vraceni_zam: invoice.fa_datum_vraceni_zam || null,
+        
+        // Zkrácená jména pro tabulku
+        vytvoril_uzivatel_zkracene: invoice.vytvoril_uzivatel_zkracene || null,
+        potvrdil_vecnou_spravnost_zkracene: invoice.potvrdil_vecnou_spravnost_zkracene || null,
         
         // Vypočítaný status pro UI
         status: getInvoiceStatus(invoice)
@@ -2195,7 +2223,7 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
-                    className={`sortable ${sortField === 'status' ? 'active' : ''}`}
+                    className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
                     onClick={() => handleSort('status')}
                   >
                     Stav
@@ -2206,34 +2234,11 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
-                    className={`sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
+                    className={`narrow-column sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
                     onClick={() => handleSort('vytvoril_uzivatel')}
                   >
                     Zaevidoval
                     {sortField === 'vytvoril_uzivatel' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
-                    onClick={() => handleSort('vecna_spravnost_potvrzeno')}
-                    title="Věcná kontrola"
-                  >
-                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
-                    {sortField === 'vecna_spravnost_potvrzeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
-                    onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
-                  >
-                    Věcnou provedl
-                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
                       </span>
@@ -2246,6 +2251,29 @@ const Invoices25List = () => {
                   >
                     Předáno zaměstnanci
                     {sortField === 'fa_predana_zam_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`narrow-column sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
+                  >
+                    Věcnou provedl
+                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('vecna_spravnost_potvrzeno')}
+                    title="Věcná kontrola"
+                  >
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
+                    {sortField === 'vecna_spravnost_potvrzeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
                       </span>
@@ -2336,9 +2364,10 @@ const Invoices25List = () => {
                       <FontAwesomeIcon icon={faSearch} />
                       <ColumnFilterInput
                         type="text"
-                        placeholder="Číslo obj..."
+                        placeholder="Obj/Sml..."
                         value={columnFilters.cislo_objednavky || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
+                        title="Hledá v číslech objednávek i smluv"
                       />
                       {columnFilters.cislo_objednavky && (
                         <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}>
@@ -2466,24 +2495,22 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
-                  {/* Věcná kontrola - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.vecna_kontrola || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="yes">Provedena</option>
-                      <option value="no">Neprovedena</option>
-                    </select>
+                  {/* Předáno zaměstnanci - text filtr */}
+                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
+                    <ColumnFilterWrapper>
+                      <FontAwesomeIcon icon={faUser} />
+                      <ColumnFilterInput
+                        type="text"
+                        placeholder="Celé jméno..."
+                        value={columnFilters.predano_zamestnanec || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
+                      />
+                      {columnFilters.predano_zamestnanec && (
+                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
+                          <FontAwesomeIcon icon={faTimes} />
+                        </ColumnClearButton>
+                      )}
+                    </ColumnFilterWrapper>
                   </TableHeader>
                   {/* Věcnou provedl - text filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -2502,22 +2529,24 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
-                  {/* Předáno zaměstnanci - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
-                        type="text"
-                        placeholder="Celé jméno..."
-                        value={columnFilters.predano_zamestnanec || ''}
-                        onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
-                      />
-                      {columnFilters.predano_zamestnanec && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
+                  {/* Věcná kontrola - select filtr */}
+                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <select
+                      value={columnFilters.vecna_kontrola || ''}
+                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
+                      style={{
+                        width: '100%',
+                        padding: '0.375rem 0.625rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="">Vše</option>
+                      <option value="yes">Provedena</option>
+                      <option value="no">Neprovedena</option>
+                    </select>
                   </TableHeader>
                   {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -2662,38 +2691,21 @@ const Invoices25List = () => {
                       </StatusBadge>
                     </TableCell>
                     <TableCell>
-                      {invoice.vytvoril_uzivatel ? (
+                      {invoice.vytvoril_uzivatel_zkracene ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.vytvoril_uzivatel}
+                          {invoice.vytvoril_uzivatel_zkracene}
                         </span>
                       ) : (
                         <span style={{ color: '#94a3b8' }}>—</span>
                       )}
                     </TableCell>
-                    <TableCell className="center">
-                      {invoice.vecna_spravnost_potvrzeno ? (
-                        <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a', fontSize: '1.1rem' }} title="Věcná kontrola provedena" />
-                      ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná kontrola neprovedena" />
-                      )}
-                    </TableCell>
                     <TableCell>
-                      {invoice.potvrdil_vecnou_spravnost_jmeno ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.potvrdil_vecnou_spravnost_jmeno}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {invoice.fa_predana_zam_jmeno ? (
+                      {invoice.fa_predana_zam_jmeno_cele ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
-                            <strong>{invoice.fa_predana_zam_jmeno}</strong>
+                            <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
                           </div>
                           {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
                             <div style={{ color: '#64748b', fontSize: '0.75rem', paddingLeft: '1rem' }}>
@@ -2708,6 +2720,23 @@ const Invoices25List = () => {
                         </div>
                       ) : (
                         <span style={{ color: '#cbd5e1' }}>—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {invoice.potvrdil_vecnou_spravnost_zkracene ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
+                          {invoice.potvrdil_vecnou_spravnost_zkracene}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#cbd5e1' }}>—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="center">
+                      {invoice.vecna_spravnost_potvrzeno ? (
+                        <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a', fontSize: '1.1rem' }} title="Věcná kontrola provedena" />
+                      ) : (
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná kontrola neprovedena" />
                       )}
                     </TableCell>
                     <TableCell className="center">
