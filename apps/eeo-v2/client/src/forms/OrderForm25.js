@@ -21732,7 +21732,7 @@ function OrderForm25() {
                                 dt_aktualizace: null,
                                 aktivni: 1,
                                 _isNew: true,
-                                _isPokladna: true, // 🆕 Příznak pro pokladní doklad
+                               _isPokladna: true, // 🆕 Příznak pro pokladní doklad
                                 attachments: []
                               };
 
