@@ -5639,17 +5639,17 @@ function OrderForm25() {
       else if (key.startsWith('polozka_') || key.includes('druh_objednavky') || message.includes('Položka')) {
         categories.detaily.errors.push(cleanMessage);
       }
-      // 4. Dodavatel - MUSÍ BÝT PO detailech (kvůli 'ico' v 'cislo_smlouvy')
+      // 4. Potvrzení objednávky dodavatelem - MUSÍ BÝT PŘED "dodavatel" (kvůli dodavatel_zpusob_potvrzeni)
+      else if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
+        categories.potvrzeni_objednavky.errors.push(cleanMessage);
+      }
+      // 5. Dodavatel - MUSÍ BÝT PO potvrzení (kvůli dodavatel_zpusob_potvrzeni)
       else if (key.includes('dodavatel') || key.includes('ico') || key.includes('adresa') || key.includes('kontakt')) {
         categories.dodavatel.errors.push(cleanMessage);
       }
-      // 5. Odeslání objednávky
+      // 6. Odeslání objednávky
       else if (key.includes('datum_odeslani') || key.includes('stav_odeslani')) {
         categories.stav_odeslani.errors.push(cleanMessage);
-      }
-      // 6. Potvrzení objednávky dodavatelem
-      else if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
-        categories.potvrzeni_objednavky.errors.push(cleanMessage);
       }
       // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
       else if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
@@ -20240,20 +20240,19 @@ function OrderForm25() {
                           );
                         })()}
                       </div>
-                      <div style={{display: 'flex', gap: '0.5rem'}}>
-                        {/* Tlačítko smazat položku */}
-                        {(formData.polozky_objednavky || []).length > 1 && (
-                          <DeleteItemButton
-                            type="button"
-                            onClick={shouldLockPhase3Sections ? undefined : () => removePolozka(polozka.id)}
-                            disabled={shouldLockPhase3Sections}
-                            title={shouldLockPhase3Sections ? "Zamčeno - sekce FÁZE 3" : "Smazat položku"}
-                            style={{ opacity: shouldLockPhase3Sections ? 0.5 : 1, cursor: shouldLockPhase3Sections ? 'not-allowed' : 'pointer' }}
-                          >
-                            <Trash size={16} />
-                          </DeleteItemButton>
-                        )}
-                      </div>
+                      
+                      {/* Tlačítko smazat položku */}
+                      {(formData.polozky_objednavky || []).length > 1 && (
+                        <DeleteItemButton
+                          type="button"
+                          onClick={shouldLockPhase3Sections ? undefined : () => removePolozka(polozka.id)}
+                          disabled={shouldLockPhase3Sections}
+                          title={shouldLockPhase3Sections ? "Zamčeno - sekce FÁZE 3" : "Smazat položku"}
+                          style={{ opacity: shouldLockPhase3Sections ? 0.5 : 1, cursor: shouldLockPhase3Sections ? 'not-allowed' : 'pointer' }}
+                        >
+                          <Trash size={16} />
+                        </DeleteItemButton>
+                      )}
                     </div>
 
                     <FormRow style={{marginBottom: '1rem'}}>
