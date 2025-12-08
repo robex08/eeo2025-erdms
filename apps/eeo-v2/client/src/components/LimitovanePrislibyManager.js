@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
-import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter, X } from 'lucide-react';
 import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 
 const spinAnimation = keyframes`
@@ -197,13 +197,47 @@ const FilterWrapper = styled.div`
 const FilterLabel = styled.label`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
   color: #374151;
+  width: 100%;
   
   svg {
     color: #6b7280;
+  }
+`;
+
+const FilterLabelLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const FilterClearButton = styled.button`
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  opacity: ${props => props.$visible ? 1 : 0};
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+
+  &:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
   }
 `;
 
@@ -1822,11 +1856,6 @@ const LimitovanePrislibyManager = () => {
     </TableContainer>
   );
   
-  // DEBUG: Výpis dat pro analýzu (jen pokud je problém)
-  if (lpData.length === 0) {
-    console.warn('⚠️ Žádná LP data k zobrazení');
-  }
-
   // Získání unikátních hodnot pro filtry
   const usekMap = new Map();
   lpData.forEach(lp => {
@@ -1853,10 +1882,6 @@ const LimitovanePrislibyManager = () => {
   const uniqueUsers = Array.from(userMap.values());
   
   const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie).filter(k => k))];
-  
-  console.log('🔍 Unikátní úseky:', uniqueUseky);
-  console.log('🔍 Unikátní uživatelé:', uniqueUsers);
-  console.log('🔍 Unikátní kategorie:', uniqueKategorie);
   
   return (
     <Container $collapsed={isMainCollapsed}>
@@ -2015,8 +2040,18 @@ const LimitovanePrislibyManager = () => {
         <FilterBar>
           <FilterWrapper>
             <FilterLabel>
-              <Building2 size={16} />
-              Úseky
+              <FilterLabelLeft>
+                <Building2 size={16} />
+                Úseky
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                $visible={filterUsek.length > 0}
+                onClick={() => setFilterUsek([])}
+                title="Vymazat filtr"
+              >
+                <X size={12} />
+              </FilterClearButton>
             </FilterLabel>
             <CustomSelect
               field="filterUsek"
@@ -2028,7 +2063,6 @@ const LimitovanePrislibyManager = () => {
               }))}
               placeholder="Všechny úseky"
               multiple={true}
-              isClearable={true}
               selectStates={selectStates}
               setSelectStates={setSelectStates}
               searchStates={searchStates}
@@ -2049,8 +2083,18 @@ const LimitovanePrislibyManager = () => {
           
           <FilterWrapper>
             <FilterLabel>
-              <User size={16} />
-              Správci
+              <FilterLabelLeft>
+                <User size={16} />
+                Správci
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                $visible={filterUser.length > 0}
+                onClick={() => setFilterUser([])}
+                title="Vymazat filtr"
+              >
+                <X size={12} />
+              </FilterClearButton>
             </FilterLabel>
             <CustomSelect
               field="filterUser"
@@ -2062,7 +2106,6 @@ const LimitovanePrislibyManager = () => {
               }))}
               placeholder="Všichni správci"
               multiple={true}
-              isClearable={true}
               selectStates={selectStates}
               setSelectStates={setSelectStates}
               searchStates={searchStates}
@@ -2083,8 +2126,18 @@ const LimitovanePrislibyManager = () => {
           
           <FilterWrapper>
             <FilterLabel>
-              <Filter size={16} />
-              Kategorie
+              <FilterLabelLeft>
+                <Filter size={16} />
+                Kategorie
+              </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                $visible={filterKategorie.length > 0}
+                onClick={() => setFilterKategorie([])}
+                title="Vymazat filtr"
+              >
+                <X size={12} />
+              </FilterClearButton>
             </FilterLabel>
             <CustomSelect
               field="filterKategorie"
@@ -2096,7 +2149,6 @@ const LimitovanePrislibyManager = () => {
               }))}
               placeholder="Všechny kategorie"
               multiple={true}
-              isClearable={true}
               selectStates={selectStates}
               setSelectStates={setSelectStates}
               searchStates={searchStates}

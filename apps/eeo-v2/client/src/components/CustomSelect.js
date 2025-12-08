@@ -547,7 +547,9 @@ const CustomSelect = ({
     setSearchStates(prev => ({ ...prev, [field]: '' }));
 
     // Označ pole jako touched při výběru hodnoty
-    setTouchedSelectFields(prev => new Set(prev).add(field));
+    if (setTouchedSelectFields) {
+      setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
+    }
 
     // Zavolej onBlur callback pro automatické ukládání
     if (onBlur) {
@@ -576,7 +578,9 @@ const CustomSelect = ({
     onChange(newValues); // Pro multiselect pošli přímo array
 
     // Označ pole jako touched při výběru hodnoty
-    setTouchedSelectFields(prev => new Set(prev).add(field));
+    if (setTouchedSelectFields) {
+      setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
+    }
 
     // Zavolej onBlur callback pro automatické ukládání
     if (onBlur) {
@@ -699,7 +703,9 @@ const CustomSelect = ({
         }}
         onBlur={() => {
           // Označ pole jako touched
-          setTouchedSelectFields(prev => new Set(prev).add(field));
+          if (setTouchedSelectFields) {
+            setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
+          }
 
           // Volej onBlur pouze pokud není dropdown otevřený
           if (!isOpen && onBlur) {
