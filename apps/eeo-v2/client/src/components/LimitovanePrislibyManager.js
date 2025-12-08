@@ -188,37 +188,49 @@ const FilterBar = styled.div`
 `;
 
 const FilterSelect = styled.select`
-  padding: 0.75rem 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 1.75rem 0.75rem 0.75rem;
   border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
-  color: #1f2937;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: white;
   cursor: pointer;
+  color: #1f2937;
+  font-weight: 500;
   transition: all 0.2s ease;
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
   flex: 1;
-  min-width: 220px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  
-  &:hover {
-    border-color: #3b82f6;
-    background: linear-gradient(to bottom, #ffffff 0%, #eff6ff 100%);
-    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
-  }
-  
+  min-width: 200px;
+
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    background: #ffffff;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 2px 8px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
-  
+
+  &:hover {
+    border-color: #3b82f6;
+  }
+
+  /* Custom dropdown arrow - stejná jako v OrderForm25 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 16px 16px;
+
+  /* Styling pro placeholder option */
+  option[value="all"] {
+    color: #6b7280;
+    font-weight: 500;
+  }
+
   option {
-    background: white;
     color: #1f2937;
-    padding: 0.75rem;
-    font-weight: normal;
+    font-weight: 500;
+    padding: 0.5rem;
   }
 `;
 
@@ -1778,18 +1790,23 @@ const LimitovanePrislibyManager = () => {
   // Získání unikátních hodnot pro filtry
   const usekMap = new Map();
   lpData.forEach(lp => {
-    if (lp.usek_nazev && !usekMap.has(lp.usek_nazev)) {
-      usekMap.set(lp.usek_nazev, { id: lp.usek_id || lp.usek_nazev, nazev: lp.usek_nazev });
+    if (lp.usek_id) {
+      usekMap.set(lp.usek_id, { 
+        id: lp.usek_id, 
+        nazev: lp.usek_nazev || `Úsek ${lp.usek_id}` 
+      });
     }
   });
   const uniqueUseky = Array.from(usekMap.values());
   
   const userMap = new Map();
   lpData.forEach(lp => {
-    // spravce už je naformátovaný jako string v mapování dat
-    const userName = lp.spravce || '';
-    if (userName && !userMap.has(userName)) {
-      userMap.set(userName, { id: userName, name: userName });
+    // Použít user_id jako klíč pro správné filtrování
+    if (lp.user_id) {
+      userMap.set(lp.user_id, { 
+        id: lp.user_id, 
+        name: lp.spravce || `User ${lp.user_id}` 
+      });
     }
   });
   const uniqueUsers = Array.from(userMap.values());
