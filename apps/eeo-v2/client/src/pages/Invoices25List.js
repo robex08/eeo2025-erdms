@@ -584,7 +584,8 @@ const TableHeader = styled.th`
   
   /* Širší sloupce pro čísla */
   &.wide-column {
-    min-width: 140px;
+    min-width: 110px;
+    max-width: 130px;
   }
   
   /* Úzký sloupec pro částku */
@@ -2153,7 +2154,7 @@ const Invoices25List = () => {
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_faktury')}
                   >
-                    Číslo faktury
+                    Faktura VS
                     {sortField === 'cislo_faktury' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -2233,6 +2234,18 @@ const Invoices25List = () => {
                   >
                     Věcnou provedl
                     {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_predana_zam_jmeno' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_predana_zam_jmeno')}
+                    style={{ minWidth: '120px' }}
+                  >
+                    Předáno zaměstnanci
+                    {sortField === 'fa_predana_zam_jmeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
                       </span>
@@ -2489,6 +2502,23 @@ const Invoices25List = () => {
                       )}
                     </ColumnFilterWrapper>
                   </TableHeader>
+                  {/* Předáno zaměstnanci - text filtr */}
+                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
+                    <ColumnFilterWrapper>
+                      <FontAwesomeIcon icon={faUser} />
+                      <ColumnFilterInput
+                        type="text"
+                        placeholder="Celé jméno..."
+                        value={columnFilters.predano_zamestnanec || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
+                      />
+                      {columnFilters.predano_zamestnanec && (
+                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
+                          <FontAwesomeIcon icon={faTimes} />
+                        </ColumnClearButton>
+                      )}
+                    </ColumnFilterWrapper>
+                  </TableHeader>
                   {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
@@ -2526,7 +2556,7 @@ const Invoices25List = () => {
                 {/* Error State v tabulce */}
                 {error && (
                   <tr>
-                    <td colSpan="11" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={error.includes('ve vývoji') || error.includes('404') ? faExclamationTriangle : faTimesCircle} />
                       </EmptyStateIcon>
@@ -2554,7 +2584,7 @@ const Invoices25List = () => {
                 {/* Empty State v tabulce */}
                 {!error && invoices.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="11" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </EmptyStateIcon>
@@ -2654,6 +2684,28 @@ const Invoices25List = () => {
                           <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
                           {invoice.potvrdil_vecnou_spravnost_jmeno}
                         </span>
+                      ) : (
+                        <span style={{ color: '#cbd5e1' }}>—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {invoice.fa_predana_zam_jmeno ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                            <strong>{invoice.fa_predana_zam_jmeno}</strong>
+                          </div>
+                          {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
+                            <div style={{ color: '#64748b', fontSize: '0.75rem', paddingLeft: '1rem' }}>
+                              {invoice.fa_datum_predani_zam && (
+                                <div title="Datum předání">↓ {formatDateOnly(invoice.fa_datum_predani_zam)}</div>
+                              )}
+                              {invoice.fa_datum_vraceni_zam && (
+                                <div title="Datum vrácení">↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ color: '#cbd5e1' }}>—</span>
                       )}

@@ -687,6 +687,18 @@ function handle_invoices25_by_id($input, $config, $queries) {
             return;
         }
 
+        // Formátovat jméno zaměstnance (stejně jako v LIST)
+        if (!empty($faktura['fa_predana_zam_jmeno']) && !empty($faktura['fa_predana_zam_prijmeni'])) {
+            $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $faktura['fa_predana_zam_jmeno']);
+            if (!empty($faktura['fa_predana_zam_titul_pred'])) {
+                $predana_jmeno_cele = trim($faktura['fa_predana_zam_titul_pred']) . ' ' . $predana_jmeno_cele;
+            }
+            if (!empty($faktura['fa_predana_zam_titul_za'])) {
+                $predana_jmeno_cele = $predana_jmeno_cele . ', ' . trim($faktura['fa_predana_zam_titul_za']);
+            }
+            $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
+        }
+
         http_response_code(200);
         echo json_encode($faktura);
 
@@ -1393,7 +1405,11 @@ function handle_invoices25_list($input, $config, $queries) {
             u_vecna.prijmeni AS potvrdil_vecnou_spravnost_prijmeni,
             u_vecna.titul_pred AS potvrdil_vecnou_spravnost_titul_pred,
             u_vecna.titul_za AS potvrdil_vecnou_spravnost_titul_za,
-            u_vecna.email AS potvrdil_vecnou_spravnost_email
+            u_vecna.email AS potvrdil_vecnou_spravnost_email,
+            u_predana.jmeno AS fa_predana_zam_jmeno,
+            u_predana.prijmeni AS fa_predana_zam_prijmeni,
+            u_predana.titul_pred AS fa_predana_zam_titul_pred,
+            u_predana.titul_za AS fa_predana_zam_titul_za
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -1404,6 +1420,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25a_faktury_prilohy` prilohy ON f.id = prilohy.faktura_id
         LEFT JOIN `25_ciselnik_stavy` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
+        LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         WHERE $where_sql
         GROUP BY f.id
         ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
@@ -1509,6 +1526,24 @@ function handle_invoices25_list($input, $config, $queries) {
                 $faktura['rozsirujici_data'] = null;
             }
             
+            // Předáno zaměstnanci - sestavit celé jméno
+            error_log("🔍 Faktura ID {$faktura['id']}: fa_predana_zam_jmeno = " . ($faktura['fa_predana_zam_jmeno'] ?? 'NULL') . ", prijmeni = " . ($faktura['fa_predana_zam_prijmeni'] ?? 'NULL'));
+            
+            if (!empty($faktura['fa_predana_zam_jmeno']) && !empty($faktura['fa_predana_zam_prijmeni'])) {
+                $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $faktura['fa_predana_zam_jmeno']);
+                if (!empty($faktura['fa_predana_zam_titul_pred'])) {
+                    $predana_jmeno_cele = trim($faktura['fa_predana_zam_titul_pred']) . ' ' . $predana_jmeno_cele;
+                }
+                if (!empty($faktura['fa_predana_zam_titul_za'])) {
+                    $predana_jmeno_cele = $predana_jmeno_cele . ', ' . trim($faktura['fa_predana_zam_titul_za']);
+                }
+                $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
+                error_log("✅ Faktura ID {$faktura['id']}: Sestavené jméno = " . $predana_jmeno_cele);
+            } else {
+                $faktura['fa_predana_zam_jmeno'] = null;
+                error_log("⚠️ Faktura ID {$faktura['id']}: Jméno NULL (prázdné pole)");
+            }
+            
             // Odstraníme pouze pomocné sloupce (detail už je v vytvoril_uzivatel_detail)
             unset($faktura['vytvoril_jmeno']);
             unset($faktura['vytvoril_prijmeni']);
@@ -1517,6 +1552,9 @@ function handle_invoices25_list($input, $config, $queries) {
             unset($faktura['vytvoril_email']);
             unset($faktura['vytvoril_telefon']);
             unset($faktura['objednavka_uzivatel_id']);
+            unset($faktura['fa_predana_zam_prijmeni']);
+            unset($faktura['fa_predana_zam_titul_pred']);
+            unset($faktura['fa_predana_zam_titul_za']);
         }
         
         // KROK 3: Načíst přílohy pro každou fakturu (enriched data)
