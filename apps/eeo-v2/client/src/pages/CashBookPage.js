@@ -3523,41 +3523,6 @@ const CashBookPage = () => {
         </MonthControls>
       </MonthNavigation>
 
-      {/* ⚠️ Warning box pro zamčenou knihu */}
-      {bookStatus === 'zamknuta_spravcem' && (
-        <LockedBookWarning className="no-print">
-          <div className="warning-header">
-            <div className="icon">
-              <FontAwesomeIcon icon={faLock} />
-            </div>
-            <h3>🔒 Pokladní kniha je FINÁLNĚ UZAMČENA správcem</h3>
-          </div>
-          <div className="warning-content">
-            <p>
-              <strong>Tento měsíc byl zamčen administrátorem a je již zaúčtován.</strong>
-            </p>
-            <p>
-              V tomto stavu <strong>nelze provádět žádné změny</strong>:
-            </p>
-            <ul style={{ marginLeft: '1.5rem', marginTop: '0.5rem' }}>
-              <li>❌ Nelze přidávat nové záznamy</li>
-              <li>❌ Nelze upravovat existující záznamy</li>
-              <li>❌ Nelze mazat záznamy</li>
-              <li>❌ Kniha je <strong>finálně uzavřena</strong> pro účetní operace</li>
-            </ul>
-            <div className="contact-info">
-              <p style={{ margin: 0 }}>
-                <strong>⚠️ POTŘEBUJETE ODEMKNOUT KNIHU?</strong>
-              </p>
-              <p style={{ margin: '0.5rem 0 0 0' }}>
-                V případě potřeby změn kontaktujte <strong>správce pokladní knihy</strong>.
-                Pouze administrátor s oprávněním může tuto knihu odemknout.
-              </p>
-            </div>
-          </div>
-        </LockedBookWarning>
-      )}
-
       {/* ⚠️ Warning box pro otevřený předchozí měsíc */}
       {showPreviousMonthWarning && (
         <PreviousMonthWarning>
@@ -4246,6 +4211,48 @@ const CashBookPage = () => {
           </div>
         )}
       </TableContainer>
+      
+      {/* ⚠️ Kompaktní info box pro zamčenou knihu */}
+      {bookStatus === 'zamknuta_spravcem' && (
+        <div className="no-print" style={{
+          background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+          border: '2px solid #dc2626',
+          borderRadius: '8px',
+          padding: '1rem 1.25rem',
+          marginTop: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <div style={{
+            fontSize: '2rem',
+            color: '#dc2626',
+            flexShrink: 0
+          }}>
+            <FontAwesomeIcon icon={faLock} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ 
+              margin: '0 0 0.5rem 0', 
+              color: '#991b1b', 
+              fontSize: '1rem',
+              fontWeight: '600'
+            }}>
+              🔒 Pokladní kniha je finálně uzamčena správcem
+            </h4>
+            <p style={{ 
+              margin: 0, 
+              color: '#7f1d1d', 
+              fontSize: '0.875rem',
+              lineHeight: '1.4'
+            }}>
+              Tento měsíc byl zamčen administrátorem a je již zaúčtován. 
+              <strong> Nelze přidávat, upravovat ani mazat záznamy.</strong>
+              {' '}V případě potřeby změn kontaktujte správce pokladní knihy.
+            </p>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* Legenda horkých kláves - pouze pro aktivní knihu */}
