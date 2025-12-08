@@ -5578,8 +5578,8 @@ function OrderForm25() {
   const typyFakturOptions = dictionaries.data?.typyFakturOptions || []; // Typy faktur z reduceru
   const stavyWorkflowMap = dictionaries.data?.stavyWorkflowMap || {}; // 🆕 Mapa workflow stavů z DB číselníku
 
-  // 🆕 Helper: Kontrola zda je druh objednávky majetek (atribut_objektu = 1)
-  const isMaterialOrder = React.useCallback(() => {
+  // 🆕 Memoizovaná hodnota: Je druh objednávky majetek (atribut_objektu = 1)?
+  const isMaterialOrder = React.useMemo(() => {
     if (!formData.druh_objednavky_kod) return false;
     
     const druhObj = druhyObjednavkyOptions.find(opt =>
@@ -5587,13 +5587,6 @@ function OrderForm25() {
       (opt.kod && opt.kod === formData.druh_objednavky_kod) ||
       (opt.value && opt.value === formData.druh_objednavky_kod)
     );
-    
-    console.log('🔍 isMaterialOrder CHECK:', {
-      druh_objednavky_kod: formData.druh_objednavky_kod,
-      druhObj: druhObj,
-      atribut_objektu: druhObj?.atribut_objektu,
-      isMajetek: druhObj?.atribut_objektu === 1
-    });
     
     // Kontrola atribut_objektu = 1 (majetek)
     return druhObj?.atribut_objektu === 1;
@@ -5627,8 +5620,6 @@ function OrderForm25() {
     Object.entries(errors).forEach(([key, message]) => {
       // Vytvoř lidsky čitelnou zprávu (odstraň technické prefixy)
       let cleanMessage = message;
-      
-      console.log('🔍 Kategorizace validační chyby:', { key, message, keyStartsWithPolozka: key.startsWith('polozka_') });
       
       // ✅ KRITICKÉ: Detekce kategorie MUSÍ být IDENTICKÁ s FloatingNavigator.categorizeErrorKey()
       // POŘADÍ JE DŮLEŽITÉ - specifičtější podmínky musí být PŘED obecnějšími!
@@ -5805,7 +5796,7 @@ function OrderForm25() {
       const newPanelStates = {};
       
       // Zkontroluj, jestli druh objednávky má atribut_objektu = 1 (majetek)
-      const isMaterialOrderValue = isMaterialOrder();
+      const isMaterialOrderValue = isMaterialOrder;
       
       formData.polozky_objednavky.forEach(polozka => {
         // Zkontroluj, zda má položka vyplněná lokalizační data
@@ -8819,18 +8810,9 @@ function OrderForm25() {
         { type: 'error' }
       );
 
-      // Odrolovat na sekci Detail objednávky
-      const detailSection = document.querySelector('[data-section="detaily"]');
-      if (detailSection) {
-        detailSection.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-
-        // Rozbalit sekci pokud je sbalená
-        if (sectionStates.detaily) {
-          setSectionStates(prev => ({ ...prev, detaily: false }));
-        }
+      // Rozbalit sekci Detail objednávky pokud je sbalená (ale NEAUTOMATICKY scrollovat)
+      if (sectionStates.detaily) {
+        setSectionStates(prev => ({ ...prev, detaily: false }));
       }
 
       // KRITICKÉ: Vyčistit saving stav při chybě validace
@@ -15754,7 +15736,7 @@ function OrderForm25() {
 
       // 🆕 VALIDACE ÚSEK, BUDOVA, MÍSTNOST U POLOŽEK: Pouze u majetkových objednávek
       // ✅ VALIDOVAT POUZE VE FÁZI 3+ (lokalizační pole jsou dostupná až od fáze 3)
-      const isMaterialOrderValue = isMaterialOrder();
+      const isMaterialOrderValue = isMaterialOrder;
       
       if (currentPhase >= 3 && isMaterialOrderValue && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         formData.polozky_objednavky.forEach((polozka, index) => {
@@ -16006,7 +15988,7 @@ function OrderForm25() {
 
       // 🆕 VALIDACE ÚSEK, BUDOVA, MÍSTNOST U POLOŽEK: Pouze u majetkových objednávek
       // ✅ VALIDOVAT POUZE VE FÁZI 3+ (lokalizační pole jsou dostupná až od fáze 3)
-      const isMaterialOrderValue = isMaterialOrder();
+      const isMaterialOrderValue = isMaterialOrder;
       
       if (currentPhase >= 3 && isMaterialOrderValue && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         formData.polozky_objednavky.forEach((polozka, index) => {
@@ -20355,7 +20337,7 @@ function OrderForm25() {
                     <div style={{ marginTop: '1rem' }}>
                       {(() => {
                         // Zkontrolovat, zda druh objednávky má atribut_objektu = 1 (majetek)
-                        const isMaterialOrderValue = isMaterialOrder();
+                        const isMaterialOrderValue = isMaterialOrder;
                         
                         return (
                           <button
@@ -20410,7 +20392,7 @@ function OrderForm25() {
 
                       {lokalizacePanelStates[polozka.id] && (() => {
                         // Zkontrolovat, zda druh objednávky má atribut_objektu = 1 (majetek)
-                        const isMaterialOrderValue = isMaterialOrder();
+                        const isMaterialOrderValue = isMaterialOrder;
                         
                         return (
                           <div style={{
