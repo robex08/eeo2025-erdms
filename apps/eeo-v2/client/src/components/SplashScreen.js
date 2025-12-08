@@ -120,7 +120,7 @@ const SplashScreen = ({ message = 'Načítání aplikace...' }) => {
 
       <LoadingText>{message}</LoadingText>
 
-      <VersionText>verze {process.env.REACT_APP_VERSION || '1.85.V2.05122025'}</VersionText>
+      <VersionText>verze {process.env.REACT_APP_VERSION || '1.86.V2.08122025 (LP financování fix, DatePicker portal fix, UI cleanup)'}</VersionText>
     </SplashContainer>
   );
 };
