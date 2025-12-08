@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
-import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown, AlertCircle } from 'lucide-react';
+import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown, AlertCircle, CheckCircle2, AlertTriangle, InfoIcon } from 'lucide-react';
 import { CustomSelect, SelectWithIcon } from '../components/CustomSelect';
 import { InvoiceAttachmentsCompact } from '../components/invoices';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -5487,11 +5487,62 @@ function OrderForm25() {
       }
   }, [editOrderId, user_id, draftManager, setFormData, setSourceOrderIdForUnlock, setSavedOrderId, setIsEditMode, setIsDraftLoaded, setIsInitialized, autoFillSupplierFromContract, setSupplierAutoFillSource]);
 
+  // 🎨 HELPER FUNKCE PRO FORMÁTOVANÉ TOASTY
+  // Vytváří jednotný vzhled pro všechny toast zprávy s ikonami a barvami
+  const formatToastMessage = useCallback((message, type = 'info') => {
+    const styles = {
+      error: {
+        bg: '#fff1f0',
+        color: '#d32f2f',
+        icon: <AlertCircle size={18} color="#ff4d4f" />,
+      },
+      success: {
+        bg: '#f0f9ff',
+        color: '#0d7d3e',
+        icon: <CheckCircle2 size={18} color="#10b981" />,
+      },
+      warning: {
+        bg: '#fff7e6',
+        color: '#d46b08',
+        icon: <AlertTriangle size={18} color="#f59e0b" />,
+      },
+      info: {
+        bg: '#f5f5f5',
+        color: '#4b5563',
+        icon: <InfoIcon size={18} color="#6b7280" />,
+      }
+    };
+
+    const style = styles[type] || styles.info;
+
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'flex-start', 
+        gap: '10px',
+        padding: '4px',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ flexShrink: 0, marginTop: '2px' }}>
+          {style.icon}
+        </div>
+        <div style={{ 
+          flex: 1,
+          fontSize: '14px',
+          lineHeight: '1.5',
+          color: style.color
+        }}>
+          {message}
+        </div>
+      </div>
+    );
+  }, []);
+
   // Ostatní callback funkce pro formController
   const handleError = useCallback((error) => {
     // Callback při chybě inicializace
-    showToast?.(`Chyba při načítání formuláře: ${error.message}`, 'error');
-  }, []); // 🔧 FIX: Remove showToast dependency to prevent infinite loop
+    showToast?.(formatToastMessage(`Nepodařilo se načíst formulář: ${error.message}`, 'error'), { type: 'error' });
+  }, [formatToastMessage]); // 🔧 FIX: Remove showToast dependency to prevent infinite loop
 
   const handleReady = useCallback(() => {
     // Formulář ready - můžeme dodatečně inicializovat UI
@@ -5537,6 +5588,13 @@ function OrderForm25() {
       (opt.value && opt.value === formData.druh_objednavky_kod)
     );
     
+    console.log('🔍 isMaterialOrder CHECK:', {
+      druh_objednavky_kod: formData.druh_objednavky_kod,
+      druhObj: druhObj,
+      atribut_objektu: druhObj?.atribut_objektu,
+      isMajetek: druhObj?.atribut_objektu === 1
+    });
+    
     // Kontrola atribut_objektu = 1 (majetek)
     return druhObj?.atribut_objektu === 1;
   }, [formData.druh_objednavky_kod, druhyObjednavkyOptions]);
@@ -5570,6 +5628,8 @@ function OrderForm25() {
       // Vytvoř lidsky čitelnou zprávu (odstraň technické prefixy)
       let cleanMessage = message;
       
+      console.log('🔍 Kategorizace validační chyby:', { key, message, keyStartsWithPolozka: key.startsWith('polozka_') });
+      
       // ✅ KRITICKÉ: Detekce kategorie MUSÍ být IDENTICKÁ s FloatingNavigator.categorizeErrorKey()
       // POŘADÍ JE DŮLEŽITÉ - specifičtější podmínky musí být PŘED obecnějšími!
       
@@ -5585,7 +5645,7 @@ function OrderForm25() {
         categories.schvaleni.errors.push(cleanMessage);
       }
       // 3. Detaily objednávky (FÁZE 3+: položky + druh + lokalizace) - MUSÍ BÝT PŘED dodavatelem!
-      else if (key.startsWith('polozka_') || key.includes('druh_objednavky')) {
+      else if (key.startsWith('polozka_') || key.includes('druh_objednavky') || message.includes('Položka')) {
         categories.detaily.errors.push(cleanMessage);
       }
       // 4. Dodavatel - MUSÍ BÝT PO detailech (kvůli 'ico' v 'cislo_smlouvy')
@@ -6301,7 +6361,7 @@ function OrderForm25() {
           const dbOrder = await getOrderV2(editOrderId, token, username, true);
 
           if (!dbOrder) {
-            showToast?.('Nepodařilo se načíst objednávku pro editaci', 'error');
+            showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });
             return;
           }
 
@@ -7245,7 +7305,7 @@ function OrderForm25() {
   // Přidat novou fakturu
   const handleAddFaktura = async () => {
     if (!(formData.id || savedOrderId)) {
-      showToast && showToast('Nelze přidat fakturu - objednávka není uložena', { type: 'error' });
+      showToast && showToast(formatToastMessage('Nejprve uložte objednávku', 'error'), { type: 'error' });
       return;
     }
 
@@ -7368,7 +7428,7 @@ function OrderForm25() {
       
       if (!isRealInvoice) {
         console.groupEnd();
-        showToast && showToast('Nejdřív přidej přílohu, aby se faktura uložila do DB', { type: 'error' });
+        showToast && showToast(formatToastMessage('Přidejte nejprve přílohu faktury', 'error'), { type: 'error' });
         return;
       }
 
@@ -8174,7 +8234,7 @@ function OrderForm25() {
       }));
 
       // 🆕 Zobraz uživateli error toast
-      showToast?.('Nepodařilo se načíst evidenční číslo. Zkuste obnovit stránku.', 'error');
+      showToast?.(formatToastMessage('Nepodařilo se načíst evidenční číslo. Zkuste stránku obnovit.', 'error'), { type: 'error' });
 
       return false;
     } finally {
@@ -8606,7 +8666,7 @@ function OrderForm25() {
   const saveOrderToAPI = async () => {
     
     if (!token || !username) {
-      showToast && showToast('Nejste přihlášen - nelze uložit objednávku', { type: 'error' });
+      showToast && showToast(formatToastMessage('Pro uložení objednávky musíte být přihlášeni', 'error'), { type: 'error' });
       return;
     }
 
@@ -10024,32 +10084,9 @@ function OrderForm25() {
             showToast(message, { type: 'success' });
           }
 
-          // ✅ ADMIN: Automaticky rozbalit správnou sekci podle nové fáze
-          setTimeout(() => {
-            const newPhase = getCurrentPhase();
-            addDebugLog('info', 'INSERT', 'phase-auto-navigate', `Automatická navigace na fázi: ${newPhase}`);
-
-            // Rozbalit příslušnou sekci podle fáze
-            if (newPhase === 2) {
-              // Fáze 2 - rozbalit sekci přílohy
-              setSectionStates(prev => ({ ...prev, prilohy: false }));
-              setTimeout(() => {
-                const prilohy = document.querySelector('[data-section="prilohy"]');
-                if (prilohy) {
-                  prilohy.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }, 100);
-            } else if (newPhase === 3) {
-              // Fáze 3 - rozbalit sekci odeslání
-              setSectionStates(prev => ({ ...prev, stav_odeslani: false }));
-              setTimeout(() => {
-                const odeslani = document.querySelector('[data-section="stav_odeslani"]');
-                if (odeslani) {
-                  odeslani.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }, 100);
-            }
-          }, 500); // Delay aby se stihlo aktualizovat formData
+          // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
+          // Uživatel má možnost pokračovat tam, kde skončil
+          addDebugLog('info', 'INSERT', 'stay-in-place', 'Zůstaň na stejné pozici po uložení');
         }
 
         // RESET isChanged - data jsou synchronizována s DB
@@ -10805,32 +10842,9 @@ function OrderForm25() {
           draftManager.setAutosaveEnabled(true, 'SUPERADMIN/ADMIN stays on form after UPDATE');
           addDebugLog('info', 'UPDATE', 'stay-on-form', `SUPERADMIN/ADMIN zůstává na formuláři - koncept NENÍ smazán`);
 
-          // ✅ ADMIN: Automaticky rozbalit správnou sekci podle nové fáze
-          setTimeout(() => {
-            const newPhase = getCurrentPhase();
-            addDebugLog('info', 'UPDATE', 'phase-auto-navigate', `Automatická navigace na fázi: ${newPhase}`);
-
-            // Rozbalit příslušnou sekci podle fáze
-            if (newPhase === 3) {
-              // Fáze 3 - rozbalit sekci odeslání
-              setSectionStates(prev => ({ ...prev, stav_odeslani: false }));
-              setTimeout(() => {
-                const odeslani = document.querySelector('[data-section="stav_odeslani"]');
-                if (odeslani) {
-                  odeslani.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }, 100);
-            } else if (newPhase === 4) {
-              // Fáze 4 - rozbalit sekci potvrzení
-              setSectionStates(prev => ({ ...prev, potvrzeni_objednavky: false }));
-              setTimeout(() => {
-                const potvrzeni = document.querySelector('[data-section="potvrzeni_objednavky"]');
-                if (potvrzeni) {
-                  potvrzeni.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }, 100);
-            }
-          }, 500); // Delay aby se stihlo aktualizovat formData
+          // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
+          // Uživatel má možnost pokračovat tam, kde skončil
+          addDebugLog('info', 'UPDATE', 'stay-in-place', 'Zůstaň na stejné pozici po uložení');
         }
       }
 
@@ -20245,31 +20259,6 @@ function OrderForm25() {
                         })()}
                       </div>
                       <div style={{display: 'flex', gap: '0.5rem'}}>
-                        {/* Tlačítko přidat další položku */}
-                        <button
-                          type="button"
-                          onClick={shouldLockPhase3Sections ? undefined : addPolozka}
-                          title={shouldLockPhase3Sections ? "Zamčeno - sekce FÁZE 3" : "Přidat další položku"}
-                          disabled={shouldLockPhase3Sections}
-                          style={{
-                            background: shouldLockPhase3Sections ? '#9ca3af' : '#10b981',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '0.4rem',
-                            fontSize: '0.875rem',
-                            fontWeight: '500',
-                            cursor: shouldLockPhase3Sections ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '32px',
-                            height: '32px'
-                          }}
-                        >
-                          <Plus size={16} />
-                        </button>
-
                         {/* Tlačítko smazat položku */}
                         {(formData.polozky_objednavky || []).length > 1 && (
                           <DeleteItemButton
@@ -20516,9 +20505,49 @@ function OrderForm25() {
                     </div>
                   </div>
                 ))}
+                
+                {/* Tlačítko přidat další položku */}
+                <button
+                  type="button"
+                  onClick={shouldLockPhase3Sections ? undefined : addPolozka}
+                  disabled={shouldLockPhase3Sections}
+                  style={{
+                    width: '100%',
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    background: 'transparent',
+                    border: shouldLockPhase3Sections ? '2px dashed #d1d5db' : '2px dashed #10b981',
+                    borderRadius: '8px',
+                    color: shouldLockPhase3Sections ? '#9ca3af' : '#10b981',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    cursor: shouldLockPhase3Sections ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s ease',
+                    opacity: shouldLockPhase3Sections ? 0.5 : 1
+                  }}
+                  onMouseOver={(e) => {
+                    if (!shouldLockPhase3Sections) {
+                      e.currentTarget.style.background = '#f0fdf4';
+                      e.currentTarget.style.borderColor = '#059669';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!shouldLockPhase3Sections) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = '#10b981';
+                    }
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>Přidat další položku</span>
+                </button>
               </div>
 
-              <FormRow>
+              <FormRow style={{marginTop: '1.5rem'}}>
                 <FormGroup style={{gridColumn: '1 / -1'}}>
                   <Label>POZNÁMKA:</Label>
                   <TextArea

@@ -1282,7 +1282,8 @@ export const getDruhyObjednavky25 = async ({ token, username, aktivni = 1 }) => 
       nazev: item.nazev_stavu,
       nazev_stavu: item.nazev_stavu, // Standardní pojmenování
       value: item.kod_stavu,  // Legacy podpora
-      label: item.nazev_stavu  // Legacy podpora
+      label: item.nazev_stavu,  // Legacy podpora
+      atribut_objektu: item.atribut_objektu  // ✅ DŮLEŽITÉ: Zachovat atribut_objektu pro určení majetku
     }));
 
     logDebug('info', 'states25/by-object-type', null, {
