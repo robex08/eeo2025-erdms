@@ -262,7 +262,17 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       </InputWithIcon>
 
       {isOpen && !disabled && createPortal(
-        <DateCalendarPopup ref={calendarRef} openUpwards={openUpwards} $isPositioned={isPositioned} style={{ top: `${position.top}px`, left: `${position.left}px`, width: `${position.width}px` }}>
+        <DateCalendarPopup 
+          ref={calendarRef} 
+          openUpwards={openUpwards} 
+          $isPositioned={isPositioned} 
+          style={{ top: `${position.top}px`, left: `${position.left}px`, width: `${position.width}px` }}
+          onMouseDown={(e) => {
+            // Zabrání zavření kalendáře při kliknutí dovnitř
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
           <CalendarHeader>
             <CalendarNav onClick={(e) => {
               e.preventDefault();

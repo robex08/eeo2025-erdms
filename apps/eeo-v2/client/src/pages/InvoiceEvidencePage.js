@@ -2224,6 +2224,7 @@ export default function InvoiceEvidencePage() {
                 <DatePicker
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
+                  onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_doruceni}
                 />
@@ -2242,6 +2243,7 @@ export default function InvoiceEvidencePage() {
                 <DatePicker
                   value={formData.fa_datum_vystaveni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
+                  onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_vystaveni}
                 />
@@ -2260,6 +2262,7 @@ export default function InvoiceEvidencePage() {
                 <DatePicker
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
+                  onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_splatnosti}
                 />
