@@ -1154,6 +1154,54 @@ const Label = styled.label`
   }
 `;
 
+// Label s Clear tlačítkem vpravo (pro selects)
+const LabelWithClear = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.5rem;
+`;
+
+const LabelText = styled.label`
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #374151;
+
+  &::after {
+    content: ${props => props.required ? '" *"' : '""'};
+    color: #dc2626;
+    margin-left: 2px;
+  }
+`;
+
+const ClearSelectButton = styled.button`
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  opacity: ${props => props.$visible ? 1 : 0};
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+
+  &:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
 // Wrapper pro input s ikonou
 const InputWithIcon = styled.div`
   position: relative;
@@ -18382,7 +18430,17 @@ function OrderForm25() {
           </FormRow>
           <FormRow>
             <FormGroup data-custom-select>
-              <Label required>GARANT</Label>
+              <LabelWithClear>
+                <LabelText required>GARANT</LabelText>
+                <ClearSelectButton
+                  type="button"
+                  $visible={!!formData.garant_uzivatel_id}
+                  onClick={() => handleInputChange('garant_uzivatel_id', '')}
+                  title="Vymazat výběr"
+                >
+                  <X size={12} />
+                </ClearSelectButton>
+              </LabelWithClear>
               <StableCustomSelect
                 value={formData.garant_uzivatel_id || ''}
                 onChange={(selectedValue) => handleInputChange('garant_uzivatel_id', selectedValue)}
@@ -18396,7 +18454,6 @@ function OrderForm25() {
                 loading={false}
                 loadingText=""
                 icon={<User />}
-                isClearable={true}
                 getOptionLabel={getOptionLabel}
                 getOptionValue={(option, field) => option.id || option.user_id || option}
                 hasTriedToSubmit={hasTriedToSubmit}
@@ -18477,7 +18534,17 @@ function OrderForm25() {
           </FormRow>
           <FormRow>
             <FormGroup data-custom-select>
-              <Label required>PŘÍKAZCE</Label>
+              <LabelWithClear>
+                <LabelText required>PŘÍKAZCE</LabelText>
+                <ClearSelectButton
+                  type="button"
+                  $visible={!!formData.prikazce_id}
+                  onClick={() => handleInputChange('prikazce_id', '')}
+                  title="Vymazat výběr"
+                >
+                  <X size={12} />
+                </ClearSelectButton>
+              </LabelWithClear>
               <StableCustomSelect
                 value={formData.prikazce_id || ''}
                 onChange={(selectedValue) => handleInputChange('prikazce_id', selectedValue)}
@@ -18491,7 +18558,6 @@ function OrderForm25() {
                 loading={false}
                 loadingText=""
                 icon={<Users />}
-                isClearable={true}
                 getOptionLabel={getOptionLabel}
                 getOptionValue={(option, field) => option.id || option.user_id || option}
                 hasTriedToSubmit={hasTriedToSubmit}
@@ -18540,7 +18606,17 @@ function OrderForm25() {
           </FormRow>
           <FormRow>
             <FormGroup data-custom-select style={{gridColumn: '1 / -1'}}>
-              <Label required>STŘEDISKO</Label>
+              <LabelWithClear>
+                <LabelText required>STŘEDISKO</LabelText>
+                <ClearSelectButton
+                  type="button"
+                  $visible={Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0}
+                  onClick={() => handleInputChange('strediska_kod', [])}
+                  title="Vymazat výběr"
+                >
+                  <X size={12} />
+                </ClearSelectButton>
+              </LabelWithClear>
               <StableCustomSelect
                 value={formData.strediska_kod || []}
                 onChange={(selectedValues) => handleInputChange('strediska_kod', selectedValues)}
@@ -18553,7 +18629,6 @@ function OrderForm25() {
                 required={true}
                 multiple={true}
                 icon={<Building />}
-                isClearable={true}
                 getOptionLabel={getOptionLabel}
                 getOptionValue={(option, field) => option.value || option.id || option}
                 hasTriedToSubmit={hasTriedToSubmit}
@@ -18588,7 +18663,6 @@ function OrderForm25() {
                     loading={false}
                     loadingText=""
                     icon={<Coins />}
-                    isClearable={true}
                     disabled={shouldLockFinancovaniSection}
                     hasError={!!validationErrors.zpusob_financovani}
                     required={true}
@@ -18609,7 +18683,17 @@ function OrderForm25() {
               })() && (
                 <FormRow>
                   <FormGroup style={{gridColumn: '1 / -1'}}>
-                    <Label required>LP KÓD</Label>
+                    <LabelWithClear>
+                      <LabelText required>LP KÓD</LabelText>
+                      <ClearSelectButton
+                        type="button"
+                        $visible={Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0}
+                        onClick={() => handleInputChange('lp_kod', [])}
+                        title="Vymazat výběr"
+                      >
+                        <X size={12} />
+                      </ClearSelectButton>
+                    </LabelWithClear>
                     <StableCustomSelect
                       value={formData.lp_kod || []}
                       onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
@@ -18620,7 +18704,6 @@ function OrderForm25() {
                       loading={false}
                       loadingText=""
                       icon={<Hash />}
-                      isClearable={true}
                       disabled={shouldLockFinancovaniSection}
                       hasError={!!validationErrors.lp_kod}
                       required={true}
@@ -19837,7 +19920,17 @@ function OrderForm25() {
             <SectionContent collapsed={sectionStates.detaily}>
               <FormRow>
                 <FormGroup style={{gridColumn: '1 / -1'}}>
-                  <Label required>DRUH OBJ.</Label>
+                  <LabelWithClear>
+                    <LabelText required>DRUH OBJ.</LabelText>
+                    <ClearSelectButton
+                      type="button"
+                      $visible={!!formData.druh_objednavky_kod}
+                      onClick={() => handleInputChange('druh_objednavky_kod', '')}
+                      title="Vymazat výběr"
+                    >
+                      <X size={12} />
+                    </ClearSelectButton>
+                  </LabelWithClear>
                   <StableCustomSelect
                     value={formData.druh_objednavky_kod}
                     onChange={(selectedValue) => handleInputChange('druh_objednavky_kod', selectedValue)}
@@ -19846,7 +19939,6 @@ function OrderForm25() {
                     placeholder="Vyberte druh objednávky..."
                     field="druh_objednavky_kod"
                     icon={<Package />}
-                    isClearable={true}
                     disabled={shouldLockPhase3Sections}
                     hasError={!!validationErrors.druh_objednavky_kod}
                     required={true}
@@ -19925,7 +20017,6 @@ function OrderForm25() {
                                 required={true}
                                 hasTriedToSubmit={hasTriedToSubmit}
                                 icon={<Hash />}
-                                isClearable={true}
                                 getOptionLabel={getOptionLabel}
                                 getOptionValue={(option) => option.id}
                               />
@@ -22325,7 +22416,33 @@ function OrderForm25() {
                                 </FormGroup>
 
                                 <FormGroup data-custom-select style={{gridColumn: '2 / -1'}}>
-                                  <Label>Střediska</Label>
+                                  <LabelWithClear>
+                                    <LabelText>Střediska</LabelText>
+                                    <ClearSelectButton
+                                      type="button"
+                                      $visible={(() => {
+                                        const currentData = isEditing ? fakturaFormData : faktura;
+                                        const strediska = currentData.fa_strediska_kod || [];
+                                        return Array.isArray(strediska) && strediska.length > 0;
+                                      })()}
+                                      onClick={() => {
+                                        if (!isEditing) {
+                                          handleEditFaktura(faktura);
+                                        }
+                                        setFakturaFormData(prev => ({
+                                          ...prev,
+                                          fa_strediska_kod: []
+                                        }));
+                                        const updatedFaktury = formData.faktury.map(f =>
+                                          f.id === faktura.id ? { ...f, fa_strediska_kod: [] } : f
+                                        );
+                                        updateFaktury(updatedFaktury);
+                                      }}
+                                      title="Vymazat výběr"
+                                    >
+                                      <X size={12} />
+                                    </ClearSelectButton>
+                                  </LabelWithClear>
                                   <StableCustomSelect
                                     value={(() => {
                                       // 🔧 NORMALIZE: Parse string → array pokud je potřeba
@@ -22342,7 +22459,6 @@ function OrderForm25() {
                                       return Array.isArray(rawValue) ? rawValue : [];
                                     })()}
                                     disabled={shouldLockFaktury}
-                                    isClearable={true}
                                     onChange={(selectedValues) => {
                                       if (!isEditing) {
                                         handleEditFaktura(faktura);
