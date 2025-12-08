@@ -1055,7 +1055,11 @@ export default function InvoiceEvidencePage() {
     fa_poznamka: '',
     fa_strediska_kod: [], // Střediska - array kódů
     // Příloha
-    file: null
+    file: null,
+    // Nové položky (nepovinné, pod čárou)
+    fa_predana_zam_id: null,
+    fa_datum_predani_zam: '',
+    fa_datum_vraceni_zam: ''
   });
 
   // CustomSelect states
@@ -1066,8 +1070,16 @@ export default function InvoiceEvidencePage() {
   // Střediska options
   const [strediskaOptions, setStrediskaOptions] = useState([]);
   const [strediskaLoading, setStrediskaLoading] = useState(false);
+  
+  // Zaměstnanci options (pro předání FA)
+  const [zamestnanci, setZamestnanci] = useState([]);
+  const [zamestnanciLoading, setZamestnanciLoading] = useState(false);
+  
+  // Tracking změn kritických polí
+  const [originalFormData, setOriginalFormData] = useState(null);
+  const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // Načtení středisek při mount (pouze pokud existuje token)
+  // Načtení středisek a zaměstnanců při mount (pouze pokud existuje token)
   useEffect(() => {
     const loadStrediska = async () => {
       if (!token || !username) {
@@ -1090,11 +1102,74 @@ export default function InvoiceEvidencePage() {
       }
     };
 
+    const loadZamestnanci = async () => {
+      if (!token || !username) return;
+      
+      setZamestnanciLoading(true);
+      try {
+        // Načtení aktivních uživatelů přes universal search
+        const response = await universalSearch({
+          token,
+          username,
+          query: '',
+          types: ['users'],
+          limit: 500
+        });
+        
+        if (response?.results?.users) {
+          // Filtrovat pouze aktivní uživatele a seřadit podle příjmení
+          const aktivni = response.results.users
+            .filter(u => u.aktivni === 1)
+            .sort((a, b) => {
+              const aName = `${a.prijmeni || ''} ${a.jmeno || ''}`.trim();
+              const bName = `${b.prijmeni || ''} ${b.jmeno || ''}`.trim();
+              return aName.localeCompare(bName, 'cs');
+            });
+          setZamestnanci(aktivni);
+          console.log('✅ Zaměstnanci načteni:', aktivni.length);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání zaměstnanců:', err);
+      } finally {
+        setZamestnanciLoading(false);
+      }
+    };
+
     // Spustit pouze pokud máme token a username
     if (token && username) {
       loadStrediska();
+      loadZamestnanci();
     }
   }, [token, username]);
+
+  // Detekce změny kritických polí faktury
+  useEffect(() => {
+    if (!editingInvoiceId || !originalFormData) return;
+    
+    const criticalFields = [
+      'fa_castka',
+      'fa_cislo_vema',
+      'fa_strediska_kod',
+      'fa_typ',
+      'fa_datum_vystaveni',
+      'fa_datum_splatnosti',
+      'fa_datum_doruceni'
+    ];
+    
+    const hasChanged = criticalFields.some(field => {
+      const original = originalFormData[field];
+      const current = formData[field];
+      
+      // Speciální handling pro array (střediska)
+      if (Array.isArray(original) && Array.isArray(current)) {
+        return JSON.stringify(original.sort()) !== JSON.stringify(current.sort());
+      }
+      
+      return original !== current;
+    });
+    
+    setHasChangedCriticalField(hasChanged);
+  }, [formData, originalFormData, editingInvoiceId]);
 
   // Načtení faktury při editaci (z location.state)
   useEffect(() => {
@@ -1132,7 +1207,7 @@ export default function InvoiceEvidencePage() {
             }
           }
           
-          setFormData({
+          const loadedFormData = {
             order_id: invoiceData.objednavka_id || '',
             fa_cislo_vema: invoiceData.fa_cislo_vema || '',
             fa_typ: invoiceData.fa_typ || 'BEZNA',
@@ -1142,8 +1217,16 @@ export default function InvoiceEvidencePage() {
             fa_castka: invoiceData.fa_castka || '',
             fa_poznamka: invoiceData.fa_poznamka || '',
             fa_strediska_kod: strediskaArray,
-            file: null // Přílohy se nenačítají při editaci
-          });
+            file: null, // Přílohy se nenačítají při editaci
+            // Nové položky
+            fa_predana_zam_id: invoiceData.fa_predana_zam_id || null,
+            fa_datum_predani_zam: formatDateForPicker(invoiceData.fa_datum_predani_zam),
+            fa_datum_vraceni_zam: formatDateForPicker(invoiceData.fa_datum_vraceni_zam)
+          };
+          
+          setFormData(loadedFormData);
+          // Uložit originální data pro detekci změn
+          setOriginalFormData(loadedFormData);
           
           // Pokud je známa objednávka, načíst ji a nastavit searchTerm
           if (orderIdForLoad || invoiceData.objednavka_id) {
@@ -1571,6 +1654,15 @@ export default function InvoiceEvidencePage() {
       errors.fa_castka = 'Vyplňte platnou částku faktury';
     }
 
+    // Validace datumů předání/vrácení (nepovinné, ale pokud jsou vyplněné)
+    if (formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam) {
+      const predani = new Date(formData.fa_datum_predani_zam);
+      const vraceni = new Date(formData.fa_datum_vraceni_zam);
+      if (vraceni < predani) {
+        errors.fa_datum_vraceni_zam = 'Datum vrácení nemůže být dřívější než datum předání';
+      }
+    }
+
     // Pokud jsou chyby, zobraz je a zastav submit
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -1603,7 +1695,11 @@ export default function InvoiceEvidencePage() {
         fa_datum_doruceni: formData.fa_datum_doruceni || null,
         fa_castka: formData.fa_castka,
         fa_poznamka: formData.fa_poznamka || null,
-        fa_dorucena: formData.fa_datum_doruceni ? 1 : 0
+        fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
+        // Nové položky (nepovinné)
+        fa_predana_zam_id: formData.fa_predana_zam_id || null,
+        fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
+        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null
       };
 
       console.log('🔍 API PARAMS:', {
@@ -2419,6 +2515,105 @@ export default function InvoiceEvidencePage() {
                 )}
               </FieldGroup>
             </FieldRow>
+
+            {/* ODDĚLUJÍCÍ ČÁRA */}
+            <div style={{
+              borderTop: '2px solid #e5e7eb',
+              margin: '1.5rem 0',
+              position: 'relative'
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '-12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#f9fafb',
+                padding: '0 1rem',
+                fontSize: '0.875rem',
+                color: '#6b7280',
+                fontWeight: 600
+              }}>
+                Doplňující údaje (nepovinné)
+              </div>
+            </div>
+
+            {/* GRID 2x - ŘÁDEK: Předání zaměstnanci */}
+            <FieldRow $columns="1fr 1fr">
+              <FieldGroup>
+                <FieldLabel>
+                  Předáno zaměstnanci
+                </FieldLabel>
+                <select
+                  value={formData.fa_predana_zam_id || ''}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    fa_predana_zam_id: e.target.value ? parseInt(e.target.value) : null 
+                  }))}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.95rem',
+                    background: 'white',
+                    cursor: 'pointer'
+                  }}
+                  disabled={zamestnanciLoading}
+                >
+                  <option value="">-- Nevybráno --</option>
+                  {zamestnanci.map(zam => (
+                    <option key={zam.id} value={zam.id}>
+                      {zam.prijmeni} {zam.jmeno} {zam.titul_za ? `, ${zam.titul_za}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {zamestnanciLoading && (
+                  <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                    <FontAwesomeIcon icon={faSpinner} spin /> Načítám zaměstnance...
+                  </div>
+                )}
+              </FieldGroup>
+
+              <FieldGroup>
+                <FieldLabel>
+                  Datum předání
+                </FieldLabel>
+                <Input
+                  type="date"
+                  value={formData.fa_datum_predani_zam || ''}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    fa_datum_predani_zam: e.target.value 
+                  }))}
+                />
+              </FieldGroup>
+            </FieldRow>
+
+            {/* GRID 1x - ŘÁDEK: Datum vrácení */}
+            <FieldRow $columns="1fr 1fr">
+              <FieldGroup>
+                <FieldLabel>
+                  Datum vrácení
+                </FieldLabel>
+                <Input
+                  type="date"
+                  value={formData.fa_datum_vraceni_zam || ''}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    fa_datum_vraceni_zam: e.target.value 
+                  }))}
+                  min={formData.fa_datum_predani_zam || undefined}
+                />
+                {formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam && 
+                 new Date(formData.fa_datum_vraceni_zam) < new Date(formData.fa_datum_predani_zam) && (
+                  <FieldError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    Datum vrácení nemůže být dřívější než datum předání
+                  </FieldError>
+                )}
+              </FieldGroup>
+              <div />
+            </FieldRow>
           </FakturaCard>
 
           {/* VAROVÁNÍ: EDITACE faktury vázané na objednávku - nutnost věcné kontroly (pouze pokud je operace možná) */}
@@ -2504,6 +2699,26 @@ export default function InvoiceEvidencePage() {
                 <div style={{ fontSize: '0.9rem', color: editingInvoiceId ? '#991b1b' : '#78350f' }}>
                   {canAddInvoiceToOrder(orderData).reason}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* VAROVÁNÍ: Změna kritických polí vyžaduje nové schválení */}
+          {editingInvoiceId && hasChangedCriticalField && (
+            <div style={{
+              background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
+              border: '2px solid #fb923c',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <FontAwesomeIcon icon={faExclamationTriangle} style={{ color: '#ea580c', fontSize: '1.25rem' }} />
+              <div style={{ flex: 1, fontSize: '0.9rem', color: '#9a3412' }}>
+                <strong>Pozor:</strong> Změnili jste kritické pole faktury (částka, číslo, středisko, typ nebo datum). 
+                Po uložení bude nutné <strong>znovu schválit věcnou správnost</strong>.
               </div>
             </div>
           )}
