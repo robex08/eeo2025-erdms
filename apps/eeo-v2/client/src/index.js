@@ -64,7 +64,6 @@ root.render(
 const isFirstLoad = !sessionStorage.getItem('app_initialized');
 
 const hideSplashScreen = () => {
-  console.log('✅ Hiding splash screen');
   document.body.classList.add('app-loaded');
   
   const splashScreen = document.getElementById('splash-screen');
@@ -75,7 +74,6 @@ const hideSplashScreen = () => {
       splashScreen.style.display = 'none';
       // Uvolnění z DOM pro jistotu
       splashScreen.remove();
-      console.log('✅ Splash screen completely removed');
     }, 500);
   }
 };
@@ -88,8 +86,6 @@ if (isFirstLoad) {
   const minDisplayTime = 5000; // 5 sekund při prvním načtení
   const elapsedTime = Date.now() - startTime;
   const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
-
-  console.log('🎬 First load - showing splash screen for', remainingTime, 'ms');
 
   // Nastav timeout a ulož ID pro možnost zrušení
   const splashTimeout = setTimeout(() => {
