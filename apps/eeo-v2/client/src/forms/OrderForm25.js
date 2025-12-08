@@ -5370,18 +5370,13 @@ function OrderForm25() {
           setLpOptionsForItems(lpOptions);
         } else if (finalData.lp_kod && Array.isArray(finalData.lp_kod) && finalData.lp_kod.length > 0) {
           // ✅ FALLBACK: Objednávka má LP financování, ale chybí lp_nazvy data - načti z API
-          console.log('⚠️ LP financování detekováno, ale chybí lp_nazvy - načítám z API...');
-          console.log('📋 lpKodyOptions:', lpKodyOptions);
-          console.log('📦 finalData.lp_kod:', finalData.lp_kod);
           
           try {
             // 🔧 KROK 1: Pokud lpKodyOptions není dostupné, načti všechny LP
             let lpMappingData = lpKodyOptions || [];
             if (!lpKodyOptions || lpKodyOptions.length === 0) {
-              console.log('📥 lpKodyOptions není dostupné, načítám z API...');
               try {
                 lpMappingData = await fetchLimitovanePrisliby({ token, username });
-                console.log('✅ Načteno LP mapování:', lpMappingData.length, 'záznamů');
               } catch (err) {
                 console.error('❌ Chyba načítání LP mapování:', err);
                 lpMappingData = [];
@@ -5410,7 +5405,6 @@ function OrderForm25() {
                     
                     if (lpOption) {
                       lpKod = lpOption.cislo_lp || lpOption.kod || lpValue;
-                      console.log(`🔄 Převod LP ID ${lpValue} → KÓD ${lpKod}`);
                     } else {
                       console.warn(`⚠️ LP ${lpValue} nebylo nalezeno v LP mapování (${lpMappingData.length} záznamů)`);
                       // Zkusíme použít hodnotu přímo - možná je to už KÓD
@@ -5444,7 +5438,6 @@ function OrderForm25() {
             );
             const validLpOptions = lpDetails.filter(lp => lp !== null).sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
             setLpOptionsForItems(validLpOptions);
-            console.log('✅ LP načteny z API:', validLpOptions);
           } catch (err) {
             console.error('❌ Chyba při načítání LP z API:', err);
             setLpOptionsForItems([]);
