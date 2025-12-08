@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
-import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown } from 'lucide-react';
+import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown, AlertCircle } from 'lucide-react';
 import { CustomSelect, SelectWithIcon } from '../components/CustomSelect';
 import { InvoiceAttachmentsCompact } from '../components/invoices';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -5527,6 +5527,148 @@ function OrderForm25() {
   const typyFakturOptions = dictionaries.data?.typyFakturOptions || []; // Typy faktur z reduceru
   const stavyWorkflowMap = dictionaries.data?.stavyWorkflowMap || {}; // 🆕 Mapa workflow stavů z DB číselníku
 
+  // 🆕 Helper: Kontrola zda je druh objednávky majetek (atribut_objektu = 1)
+  const isMaterialOrder = React.useCallback(() => {
+    if (!formData.druh_objednavky_kod) return false;
+    
+    const druhObj = druhyObjednavkyOptions.find(opt =>
+      (opt.kod_stavu && opt.kod_stavu === formData.druh_objednavky_kod) ||
+      (opt.kod && opt.kod === formData.druh_objednavky_kod) ||
+      (opt.value && opt.value === formData.druh_objednavky_kod)
+    );
+    
+    // Kontrola atribut_objektu = 1 (majetek)
+    return druhObj?.atribut_objektu === 1;
+  }, [formData.druh_objednavky_kod, druhyObjednavkyOptions]);
+
+  // 🆕 Helper: Formátování chybových hlášek do strukturované podoby
+  const formatValidationErrors = React.useCallback((errors) => {
+    if (!errors || Object.keys(errors).length === 0) return null;
+
+    console.log('📝 formatValidationErrors - vstup:', {
+      errorKeys: Object.keys(errors),
+      errorCount: Object.keys(errors).length,
+      errors
+    });
+
+    // ✅ SJEDNOCENO S FloatingNavigator.categorizeErrorKey() - MUSÍ BÝT 100% STEJNÉ!
+    // Kategorizace chyb podle sekcí NAVIGÁTORU (odpovídá FloatingNavigator.js sekce IDs)
+    const categories = {
+      objednatel: { label: 'Informace o objednateli', errors: [] },
+      schvaleni: { label: 'Schválení nákupu PO', errors: [] },
+      dodavatel: { label: 'Dodavatel', errors: [] },
+      detaily: { label: 'Detaily objednávky', errors: [] },
+      stav_odeslani: { label: 'Odeslání objednávky', errors: [] },
+      potvrzeni_objednavky: { label: 'Potvrzení objednávky dodavatelem', errors: [] },
+      fakturace: { label: 'Fakturace', errors: [] },
+      vecna_spravnost: { label: 'Věcná správnost', errors: [] },
+      registr_smluv_vyplneni: { label: 'Registr smluv', errors: [] },
+      ostatni: { label: 'Ostatní', errors: [] }
+    };
+
+    Object.entries(errors).forEach(([key, message]) => {
+      // Vytvoř lidsky čitelnou zprávu (odstraň technické prefixy)
+      let cleanMessage = message;
+      
+      // ✅ KRITICKÉ: Detekce kategorie MUSÍ být IDENTICKÁ s FloatingNavigator.categorizeErrorKey()
+      // POŘADÍ JE DŮLEŽITÉ - specifičtější podmínky musí být PŘED obecnějšími!
+      
+      // 1. Informace o objednateli (včetně garanta!)
+      if (key.includes('jmeno') || key.includes('email') || key.includes('ev_cislo') || key.includes('garant')) {
+        categories.objednatel.errors.push(cleanMessage);
+      }
+      // 2. Schválení nákupu PO (FÁZE 1-2) - včetně FINANCOVÁNÍ!
+      else if (key.includes('prikazce') || key.includes('max_cena') || 
+               key.includes('strediska') || key.includes('predmet') ||
+               key.includes('financovani') || key.includes('lp_kod') || key.includes('cislo_smlouvy') ||
+               key.includes('individualni_schvaleni') || key.includes('pojistna_udalost')) {
+        categories.schvaleni.errors.push(cleanMessage);
+      }
+      // 3. Detaily objednávky (FÁZE 3+: položky + druh + lokalizace) - MUSÍ BÝT PŘED dodavatelem!
+      else if (key.startsWith('polozka_') || key.includes('druh_objednavky')) {
+        categories.detaily.errors.push(cleanMessage);
+      }
+      // 4. Dodavatel - MUSÍ BÝT PO detailech (kvůli 'ico' v 'cislo_smlouvy')
+      else if (key.includes('dodavatel') || key.includes('ico') || key.includes('adresa') || key.includes('kontakt')) {
+        categories.dodavatel.errors.push(cleanMessage);
+      }
+      // 5. Odeslání objednávky
+      else if (key.includes('datum_odeslani') || key.includes('stav_odeslani')) {
+        categories.stav_odeslani.errors.push(cleanMessage);
+      }
+      // 6. Potvrzení objednávky dodavatelem
+      else if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
+        categories.potvrzeni_objednavky.errors.push(cleanMessage);
+      }
+      // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
+      else if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
+        categories.vecna_spravnost.errors.push(cleanMessage);
+      }
+      // 8. Fakturace
+      else if (key.startsWith('faktura_')) {
+        categories.fakturace.errors.push(cleanMessage);
+      }
+      // 9. Registr smluv
+      else if (key.includes('dt_zverejneni') || key.includes('registr') || key.includes('ma_byt_zverejnena')) {
+        categories.registr_smluv_vyplneni.errors.push(cleanMessage);
+      }
+      // 10. Ostatní (fallback)
+      else {
+        categories.ostatni.errors.push(cleanMessage);
+      }
+    });
+
+    // Sestavení strukturované zprávy - pouze neprázdné kategorie
+    return (
+      <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+        <div style={{ 
+          fontSize: '15px', 
+          fontWeight: '600', 
+          marginBottom: '12px', 
+          color: '#1a1a1a',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+          <span>Pro uložení je nutné vyplnit následující položky:</span>
+        </div>
+        {Object.values(categories).map((cat, idx) => 
+          cat.errors.length > 0 && (
+            <div key={idx} style={{ 
+              marginBottom: '10px',
+              padding: '10px',
+              backgroundColor: '#fff1f0',
+              borderRadius: '4px'
+            }}>
+              <div style={{ 
+                fontWeight: '600', 
+                fontSize: '13px',
+                color: '#d32f2f',
+                marginBottom: '6px'
+              }}>
+                {cat.label}
+              </div>
+              {cat.errors.map((err, errIdx) => (
+                <div key={errIdx} style={{ 
+                  fontSize: '12px',
+                  color: '#666',
+                  marginLeft: '8px',
+                  marginTop: '4px',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                  <span>{err}</span>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+    );
+  }, []);
+
   // 🆕 Kombinované options pro dodatečné dokumenty (PRILOHA_TYP + FAKTURA_TYP)
   // ✅ OPRAVA: Deduplikace podle value, aby nedošlo k duplicitním klíčům v React
   const dodatecneDokladyOptions = React.useMemo(() => {
@@ -5602,9 +5744,8 @@ function OrderForm25() {
     if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
       const newPanelStates = {};
       
-      // Zkontroluj, jestli KÓD druhu objednávky obsahuje MAJETEK
-      const isMaterialOrder = formData.druh_objednavky_kod && 
-        formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
+      // Zkontroluj, jestli druh objednávky má atribut_objektu = 1 (majetek)
+      const isMaterialOrderValue = isMaterialOrder();
       
       formData.polozky_objednavky.forEach(polozka => {
         // Zkontroluj, zda má položka vyplněná lokalizační data
@@ -5615,7 +5756,7 @@ function OrderForm25() {
           (polozka.poznamka && polozka.poznamka.trim() !== '');
 
         // Pokud má data NEBO je materiálová objednávka, rozbal panel
-        if (hasLocationData || isMaterialOrder) {
+        if (hasLocationData || isMaterialOrderValue) {
           newPanelStates[polozka.id] = true;
         } else {
           // Pokud NENÍ materiálová objednávka a NEMÁ data, zavři panel
@@ -15554,14 +15695,14 @@ function OrderForm25() {
               ? formData.individualni_schvaleni
               : '';
             if (!individualniValue.trim()) {
-              errors.individualni_schvaleni = 'Identifikátor schválení je povinný při Individuálním schválení';
+              errors.individualni_schvaleni = 'Zadejte identifikátor - referenční číslo nebo označení schválení je povinné';
             }
           }
 
           // Pojistná událost - Číslo události je POVINNÉ
           if (nazev.includes('Pojistn')) {
             if (!formData.pojistna_udalost_cislo?.trim()) {
-              errors.pojistna_udalost_cislo = 'Číslo pojistné události je povinné při financování z Pojistné události';
+              errors.pojistna_udalost_cislo = 'Zadejte číslo pojistné události - referenční číslo škodní události je povinné';
             }
           }
         }
@@ -15575,18 +15716,18 @@ function OrderForm25() {
         const maZpusob = zpusobyPotvrzeni?.zpusoby && zpusobyPotvrzeni.zpusoby.length > 0;
 
         if (!maZpusob) {
-          errors.dodavatel_zpusob_potvrzeni = 'Způsob potvrzení - při odpovědi "ANO" musí být vybrán alespoň jeden způsob';
+          errors.dodavatel_zpusob_potvrzeni = 'Vyberte způsob potvrzení (e-mail, telefon nebo písemně) - při odpovědi "ANO" je povinný alespoň jeden';
         }
 
         // ✅ Způsob platby - kontrola, že je nastavena hodnota (vždy "faktura")
         // POZNÁMKA: Platba je v kódu pevně nastavena na "faktura" (readonly checkbox)
         if (!zpusobyPotvrzeni?.platba || zpusobyPotvrzeni.platba.trim() === '') {
-          errors.zpusob_platby = 'Způsob platby je povinný při potvrzení dodavatele "ANO"';
+          errors.zpusob_platby = 'Vyberte způsob platby (faktura/pokladna) - pole je povinné při potvrzení dodavatele';
         }
 
         // ✅ Datum akceptace je VŽDY povinné (nezávisle na způsobu potvrzení)
         if (!formData.dt_akceptace?.trim()) {
-          errors.dt_akceptace = 'Datum akceptace je povinné při potvrzení dodavatele "ANO"';
+          errors.dt_akceptace = 'Zadejte datum akceptace - kdy dodavatel potvrdil objednávku';
         }
       }
 
@@ -15599,19 +15740,18 @@ function OrderForm25() {
 
       // 🆕 VALIDACE ÚSEK, BUDOVA, MÍSTNOST U POLOŽEK: Pouze u majetkových objednávek
       // ✅ VALIDOVAT POUZE VE FÁZI 3+ (lokalizační pole jsou dostupná až od fáze 3)
-      const isMaterialOrder = formData.druh_objednavky_kod && 
-        formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
+      const isMaterialOrderValue = isMaterialOrder();
       
-      if (currentPhase >= 3 && isMaterialOrder && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
+      if (currentPhase >= 3 && isMaterialOrderValue && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         formData.polozky_objednavky.forEach((polozka, index) => {
           if (!polozka.usek_kod || !polozka.usek_kod.trim()) {
-            errors[`polozka_${index}_usek_kod`] = `Položka ${index + 1}: Úsek je povinný u majetkových objednávek`;
+            errors[`polozka_${index}_usek_kod`] = `Položka ${index + 1}: Vyberte úsek - určení lokace je povinné u majetkových položek`;
           }
           if (!polozka.budova_kod || !polozka.budova_kod.trim()) {
-            errors[`polozka_${index}_budova_kod`] = `Položka ${index + 1}: Budova je povinná u majetkových objednávek`;
+            errors[`polozka_${index}_budova_kod`] = `Položka ${index + 1}: Vyberte budovu - určení lokace je povinné u majetkových položek`;
           }
           if (!polozka.mistnost_kod || !polozka.mistnost_kod.trim()) {
-            errors[`polozka_${index}_mistnost_kod`] = `Položka ${index + 1}: Místnost je povinná u majetkových objednávek`;
+            errors[`polozka_${index}_mistnost_kod`] = `Položka ${index + 1}: Vyberte místnost - určení lokace je povinné u majetkových položek`;
             console.log(`❌ Položka ${index + 1}: Chybí místnost`);
           }
         });
@@ -15630,22 +15770,22 @@ function OrderForm25() {
 
           // Variabilní symbol je povinný
           if (!faktura.fa_cislo_vema || (typeof faktura.fa_cislo_vema === 'string' && faktura.fa_cislo_vema.trim() === '')) {
-            errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Variabilní symbol je povinný`;
+            errors[`${fakturaPrefix}_cislo`] = `Faktura ${index + 1}: Zadejte variabilní symbol faktury`;
           }
 
           // Částka je povinná a musí být větší než 0
           if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
-            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Částka je povinná a musí být větší než 0`;
+            errors[`${fakturaPrefix}_castka`] = `Faktura ${index + 1}: Zadejte částku faktury (musí být větší než 0 Kč)`;
           }
 
           // Datum doručení je povinné - kontroluj fa_datum_doruceni (ne fa_dorucena, to je boolean)
           if (!faktura.fa_datum_doruceni || (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.trim() === '')) {
-            errors[`${fakturaPrefix}_dorucena`] = `Faktura ${index + 1}: Datum doručení je povinné`;
+            errors[`${fakturaPrefix}_dorucena`] = `Faktura ${index + 1}: Zadejte datum, kdy byla faktura doručena`;
           }
 
           // Datum splatnosti je povinné
           if (!faktura.fa_splatnost || (typeof faktura.fa_splatnost === 'string' && faktura.fa_splatnost.trim() === '')) {
-            errors[`${fakturaPrefix}_splatnost`] = `Faktura ${index + 1}: Datum splatnosti je povinné`;
+            errors[`${fakturaPrefix}_splatnost`] = `Faktura ${index + 1}: Zadejte datum splatnosti faktury`;
           }
 
           // 🏢 Střediska faktury jsou VOLITELNÁ a NEvalidují se proti strediskaOptions
@@ -15662,13 +15802,13 @@ function OrderForm25() {
         formData.faktury.forEach((faktura, index) => {
           // Potvrzení věcné správnosti je POVINNÉ ve FÁZI 7+
           if (faktura.vecna_spravnost_potvrzeno !== 1 && faktura.vecna_spravnost_potvrzeno !== true) {
-            errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Musíte potvrdit věcnou správnost`;
+            errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Zaškrtněte políčko "Potvrzuji věcnou správnost" po kontrole faktury`;
           }
           
           // Poznámka je POVINNÁ pokud faktura překračuje MAX cenu objednávky
           const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
           if (fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
-            errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Poznámka je povinná - faktura překračuje maximální cenu objednávky`;
+            errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky (${maxCena.toFixed(2)} Kč)`;
           }
         });
       }
@@ -15730,11 +15870,25 @@ function OrderForm25() {
     if (hasErrors) {
       const errorCount = Object.keys(errors).length;
       
-      const errorMessage = formData.stav_stornovano
-        ? `Nelze stornovat - zkontrolujte vyznačená pole`
-        : `Formulář obsahuje ${errorCount} ${errorCount === 1 ? 'chybu' : errorCount < 5 ? 'chyby' : 'chyb'} - zkontrolujte červeně označená pole`;
-
-      showToast && showToast(errorMessage, { type: 'error' });
+      console.log('🍞 TOAST - zobrazuji chyby:', {
+        errorCount,
+        errorKeys: Object.keys(errors),
+        errors
+      });
+      
+      if (formData.stav_stornovano) {
+        // Speciální zpráva pro stornování
+        showToast && showToast(`Nelze stornovat - zkontrolujte vyznačená pole`, { type: 'error' });
+      } else {
+        // Strukturovaná chybová zpráva
+        const structuredMessage = formatValidationErrors(errors);
+        console.log('🍞 TOAST - formatovaná zpráva:', structuredMessage);
+        
+        showToast && showToast(structuredMessage, { 
+          type: 'error', 
+          timeout: 10000
+        });
+      }
 
       // Scroll na první chybový element s mírným zpožděním
       setTimeout(() => {
@@ -15838,10 +15992,9 @@ function OrderForm25() {
 
       // 🆕 VALIDACE ÚSEK, BUDOVA, MÍSTNOST U POLOŽEK: Pouze u majetkových objednávek
       // ✅ VALIDOVAT POUZE VE FÁZI 3+ (lokalizační pole jsou dostupná až od fáze 3)
-      const isMaterialOrderSilent = formData.druh_objednavky_kod && 
-        formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
+      const isMaterialOrderValue = isMaterialOrder();
       
-      if (currentPhase >= 3 && isMaterialOrderSilent && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
+      if (currentPhase >= 3 && isMaterialOrderValue && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         formData.polozky_objednavky.forEach((polozka, index) => {
           if (!polozka.usek_kod || !polozka.usek_kod.trim()) {
             errors[`polozka_${index}_usek_kod`] = `Položka ${index + 1}: Úsek je povinný u majetkových objednávek`;
@@ -18704,7 +18857,17 @@ function OrderForm25() {
 
               <FormRow>
                 <FormGroup style={{gridColumn: '1 / -1'}}>
-                  <Label required>ZPŮSOB FINANCOVÁNÍ</Label>
+                  <LabelWithClear>
+                    <LabelText required>ZPŮSOB FINANCOVÁNÍ</LabelText>
+                    <ClearSelectButton
+                      type="button"
+                      $visible={!!formData.zpusob_financovani}
+                      onClick={() => handleInputChange('zpusob_financovani', '')}
+                      title="Vymazat výběr"
+                    >
+                      <X size={12} />
+                    </ClearSelectButton>
+                  </LabelWithClear>
                   <StableCustomSelect
                     value={formData.zpusob_financovani || ''}
                     onChange={(selectedValue) => handleInputChange('zpusob_financovani', selectedValue)}
@@ -20202,23 +20365,22 @@ function OrderForm25() {
                     {/* 🏢 Lokalizace položky - rozkládací panel */}
                     <div style={{ marginTop: '1rem' }}>
                       {(() => {
-                        // Zkontrolovat, zda KÓD druhu objednávky obsahuje MAJETEK
-                        const isMaterialOrder = formData.druh_objednavky_kod && 
-                          formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
+                        // Zkontrolovat, zda druh objednávky má atribut_objektu = 1 (majetek)
+                        const isMaterialOrderValue = isMaterialOrder();
                         
                         return (
                           <button
                             type="button"
                             onClick={() => {
                               // Pro materiálové objednávky nelze panel zavřít
-                              if (!isMaterialOrder) {
+                              if (!isMaterialOrderValue) {
                                 setLokalizacePanelStates(prev => ({
                                   ...prev,
                                   [polozka.id]: !prev[polozka.id]
                                 }));
                               }
                             }}
-                            disabled={shouldLockPhase3Sections || isMaterialOrder}
+                            disabled={shouldLockPhase3Sections || isMaterialOrderValue}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -20226,17 +20388,17 @@ function OrderForm25() {
                               padding: '0.5rem 0',
                               background: 'transparent',
                               border: 'none',
-                              color: isMaterialOrder ? '#ef4444' : '#6b7280',
+                              color: isMaterialOrderValue ? '#ef4444' : '#6b7280',
                               fontSize: '0.875rem',
-                              fontWeight: isMaterialOrder ? '600' : '500',
-                              cursor: (shouldLockPhase3Sections || isMaterialOrder) ? 'not-allowed' : 'pointer',
+                              fontWeight: isMaterialOrderValue ? '600' : '500',
+                              cursor: (shouldLockPhase3Sections || isMaterialOrderValue) ? 'not-allowed' : 'pointer',
                               opacity: shouldLockPhase3Sections ? 0.5 : 1,
                               transition: 'color 0.2s'
                             }}
-                            onMouseOver={(e) => !shouldLockPhase3Sections && !isMaterialOrder && (e.currentTarget.style.color = '#374151')}
-                            onMouseOut={(e) => !shouldLockPhase3Sections && !isMaterialOrder && (e.currentTarget.style.color = '#6b7280')}
+                            onMouseOver={(e) => !shouldLockPhase3Sections && !isMaterialOrderValue && (e.currentTarget.style.color = '#374151')}
+                            onMouseOut={(e) => !shouldLockPhase3Sections && !isMaterialOrderValue && (e.currentTarget.style.color = '#6b7280')}
                           >
-                            {!isMaterialOrder && (
+                            {!isMaterialOrderValue && (
                               <svg
                                 width="14"
                                 height="14"
@@ -20252,27 +20414,26 @@ function OrderForm25() {
                                 <polyline points="6 9 12 15 18 9"></polyline>
                               </svg>
                             )}
-                            Upřesnění místa dodání {isMaterialOrder ? (<span style={{color: '#ef4444'}}>*</span>) : '(volitelné)'}
+                            Upřesnění místa dodání {isMaterialOrderValue ? (<span style={{color: '#ef4444'}}>*</span>) : '(volitelné)'}
                           </button>
                         );
                       })()}
 
                       {lokalizacePanelStates[polozka.id] && (() => {
-                        // Zkontrolovat, zda KÓD druhu objednávky obsahuje MAJETEK
-                        const isMaterialOrder = formData.druh_objednavky_kod && 
-                          formData.druh_objednavky_kod.toUpperCase().includes('MAJETEK');
+                        // Zkontrolovat, zda druh objednávky má atribut_objektu = 1 (majetek)
+                        const isMaterialOrderValue = isMaterialOrder();
                         
                         return (
                           <div style={{
                             marginTop: '0.75rem',
                             padding: '1rem',
-                            background: isMaterialOrder ? '#fef2f2' : '#f9fafb',
+                            background: isMaterialOrderValue ? '#fef2f2' : '#f9fafb',
                             borderRadius: '6px',
-                            border: isMaterialOrder ? '1px solid #fca5a5' : '1px dashed #d1d5db'
+                            border: isMaterialOrderValue ? '1px solid #fca5a5' : '1px dashed #d1d5db'
                           }}>
                             <FormRow style={{gridTemplateColumns: '1fr 1fr 1fr'}}>
                               <FormGroup>
-                                <Label>ÚSEK {isMaterialOrder && <span style={{color: '#ef4444'}}>*</span>}</Label>
+                                <Label>ÚSEK {isMaterialOrderValue && <span style={{color: '#ef4444'}}>*</span>}</Label>
                                 <InputWithIcon hasIcon>
                                   <MapPin size={16} />
                                   <Input
@@ -20293,7 +20454,7 @@ function OrderForm25() {
                               </FormGroup>
 
                               <FormGroup>
-                                <Label>BUDOVA {isMaterialOrder && <span style={{color: '#ef4444'}}>*</span>}</Label>
+                                <Label>BUDOVA {isMaterialOrderValue && <span style={{color: '#ef4444'}}>*</span>}</Label>
                                 <InputWithIcon hasIcon>
                                   <MapPin size={16} />
                                   <Input
@@ -20314,7 +20475,7 @@ function OrderForm25() {
                               </FormGroup>
 
                               <FormGroup>
-                                <Label>MÍSTNOST {isMaterialOrder && <span style={{color: '#ef4444'}}>*</span>}</Label>
+                                <Label>MÍSTNOST {isMaterialOrderValue && <span style={{color: '#ef4444'}}>*</span>}</Label>
                                 <InputWithIcon hasIcon>
                                   <MapPin size={16} />
                                   <Input

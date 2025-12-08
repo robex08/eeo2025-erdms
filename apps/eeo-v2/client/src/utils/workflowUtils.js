@@ -62,16 +62,23 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     const sectionState = sectionStates[fieldPhase];
     if (!sectionState) return true; // Pokud sekce není definována, validuj
 
-    // ⚠️ VÝJIMKA: Dodavatel se VŽDY validuje i když je sekce zamčená
-    // (potřebujeme ho zkontrolovat ve FÁZI 4 před odesláním)
-    const alwaysValidateFields = ['dodavatel_nazev', 'dodavatel_adresa', 'dodavatel_ico', 'dodavatel_kontakt'];
+    // ⚠️ VÝJIMKY: Tato pole se VŽDY validují i když je sekce zamčená
+    // Důvod: Jsou to KRITICKÁ pole která musí být vyplněná pro uložení objednávky
+    const alwaysValidateFields = [
+      'dodavatel_nazev', 'dodavatel_adresa', 'dodavatel_ico', 'dodavatel_kontakt', // Dodavatel
+      'prikazce_id', 'max_cena_s_dph', 'garant_uzivatel_id', 'predmet', 'strediska_kod' // Schválení PO - FÁZE 1
+    ];
     if (alwaysValidateFields.includes(fieldName)) {
-      return sectionState.visible; // Validuj pokud je sekce viditelná (ignoruj locked)
+      const shouldValidate = sectionState.visible;
+      console.log(`⚠️ shouldValidateField - alwaysValidate: "${fieldName}" → visible=${sectionState.visible} → shouldValidate=${shouldValidate}`);
+      return shouldValidate; // Validuj pokud je sekce viditelná (ignoruj locked)
     }
 
     // VALIDOVAT: Sekce je viditelná A odemčená
     // NEVALIDOVAT: Sekce není viditelná NEBO je zamčená
-    return sectionState.visible && !sectionState.locked;
+    const shouldValidate = sectionState.visible && !sectionState.locked;
+    console.log(`🔍 shouldValidateField: "${fieldName}" → phase="${fieldPhase}" → visible=${sectionState.visible} → locked=${sectionState.locked} → shouldValidate=${shouldValidate}`);
+    return shouldValidate;
   };
 
   // Mapa pole → fáze/sekce (pro kontrolu viditelnosti a zamčení)
@@ -165,13 +172,13 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
         break;
 
       case 'garant_uzivatel_id':
-        if (!formData.garant_uzivatel_id) {
+        if (!formData.garant_uzivatel_id || formData.garant_uzivatel_id === '') {
           errors.garant_uzivatel_id = `${FIELD_LABELS.garant_uzivatel_id} je povinný - vyberte osobu zodpovědnou za objednávku`;
         }
         break;
 
       case 'prikazce_id':
-        if (!formData.prikazce_id) {
+        if (!formData.prikazce_id || formData.prikazce_id === '') {
           errors.prikazce_id = `${FIELD_LABELS.prikazce_id} je povinný - vyberte osobu, která schvaluje objednávku`;
         }
         break;
