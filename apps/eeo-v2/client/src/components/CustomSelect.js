@@ -309,6 +309,7 @@ const CustomSelect = ({
   icon = null,
   multiple = false,
   isClearable = false,
+  enableSearch = true, // Výchozí hodnota true, ale lze vypnout
   // Global state hooks
   selectStates,
   setSelectStates,
@@ -403,18 +404,18 @@ const CustomSelect = ({
   //   console.log(`🎯 CustomSelect[${field}] selectedOption:`, selectedOption, 'z options.length=', options.length);
   // }
 
-  const displayValue = multiple && field === 'lp_kod'
+  const displayValue = multiple
     ? (Array.isArray(value) && value.length > 0
         ? value.map(val => {
             const option = options.find(opt => (opt.id || opt.kod) === val);
             // OPRAVA: Použij label místo jen cislo_lp, aby se zobrazil celý název včetně popisu
-            return option ? (option.label || option.cislo_lp || val) : val;
+            return option ? (option.label || option.cislo_lp || option.nazev || val) : val;
           }).join(', ')
         : placeholder)
     : (selectedOption ? getOptionLabel(selectedOption, field) : placeholder);
 
-  // Pro multiselect LP kódy kontroluj hodnotu jinak
-  const hasValue = multiple && field === 'lp_kod'
+  // Pro multiselect kontroluj hodnotu jinak
+  const hasValue = multiple
     ? (Array.isArray(value) && value.length > 0)
     : selectedOption;
 
@@ -747,7 +748,7 @@ const CustomSelect = ({
             width: `${dropdownPosition.width}px`
           }}
         >
-          {options.length > 5 && (
+          {enableSearch && options.length > 5 && (
             <SearchBox>
               <SearchIcon>
                 <FontAwesomeIcon icon={faSearch} size="sm" />
@@ -836,7 +837,7 @@ const CustomSelect = ({
             <CustomSelectOption>{loadingText}</CustomSelectOption>
           ) : filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => {
-              const isSelected = multiple && field === 'lp_kod'
+              const isSelected = multiple
                 ? (Array.isArray(value) ? value.includes(option.id || option.kod || option) : false)
                 : field === 'statusFilter'
                 ? ((option.kod_stavu || option.kod) === value || option === value)
@@ -854,8 +855,8 @@ const CustomSelect = ({
 
               const isHighlighted = highlightedIndex === index;
 
-              // Pro multiselect LP kódy používej speciální komponentu s checkboxem
-              if (multiple && field === 'lp_kod') {
+              // Pro všechny multiselect používej speciální komponentu s checkboxem
+              if (multiple) {
                 return (
                   <MultiSelectOption
                     key={option.id || option.user_id || option.value || index}
