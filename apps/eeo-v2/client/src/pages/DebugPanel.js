@@ -12,7 +12,8 @@ import {
   faPalette,
   faFileInvoice,
   faEnvelope,
-  faClipboardList
+  faClipboardList,
+  faBookOpen
 } from '@fortawesome/free-solid-svg-icons';
 import { getStatusIcon, getStatusEmoji } from '../utils/iconMapping';
 import OrderV2TestPanel from './OrderV2TestPanel';
@@ -817,6 +818,17 @@ const DebugPanel = () => {
           </IconsPanel>
         );
 
+      case 'spisovka':
+        return (
+          <ComingSoonPanel>
+            <FontAwesomeIcon icon={faBookOpen} />
+            <h2>Spisovka Test Panel</h2>
+            <SectionDescription>
+              Testovací prostředí pro správu spisovny a dokumentů.
+            </SectionDescription>
+          </ComingSoonPanel>
+        );
+
       case 'icons':
         const filteredCategories = {};
         Object.entries(iconCategories).forEach(([category, icons]) => {
@@ -955,6 +967,14 @@ const DebugPanel = () => {
         >
           <FontAwesomeIcon icon={faClipboardList} />
           O25L Dashboard
+        </Tab>
+
+        <Tab
+          $active={activeTab === 'spisovka'}
+          onClick={() => setActiveTab('spisovka')}
+        >
+          <FontAwesomeIcon icon={faBookOpen} />
+          Spisovka
         </Tab>
 
         <Tab

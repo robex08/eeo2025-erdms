@@ -2708,12 +2708,23 @@ const Invoices25List = () => {
                             <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
                           </div>
                           {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
-                            <div style={{ color: '#64748b', fontSize: '0.75rem', paddingLeft: '1rem' }}>
+                            <div style={{ 
+                              color: '#64748b', 
+                              fontSize: '0.75rem', 
+                              display: 'flex',
+                              gap: '0.5rem',
+                              flexWrap: 'wrap',
+                              alignItems: 'center'
+                            }}>
                               {invoice.fa_datum_predani_zam && (
-                                <div title="Datum předání">↓ {formatDateOnly(invoice.fa_datum_predani_zam)}</div>
+                                <div title="Datum předání" style={{ whiteSpace: 'nowrap' }}>
+                                  ↓ {formatDateOnly(invoice.fa_datum_predani_zam)}
+                                </div>
                               )}
                               {invoice.fa_datum_vraceni_zam && (
-                                <div title="Datum vrácení">↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}</div>
+                                <div title="Datum vrácení" style={{ whiteSpace: 'nowrap' }}>
+                                  ↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}
+                                </div>
                               )}
                             </div>
                           )}

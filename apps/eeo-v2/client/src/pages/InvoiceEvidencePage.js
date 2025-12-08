@@ -671,22 +671,24 @@ const ClearButton = styled.button`
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #9ca3af;
+  color: #cbd5e1;
   cursor: pointer;
   padding: 0.25rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  font-size: 0.75rem;
+  opacity: 0.6;
 
   &:hover {
-    color: #6b7280;
-    background: #f3f4f6;
+    color: #94a3b8;
+    opacity: 1;
   }
 
   &:active {
-    transform: translateY(-50%) scale(0.95);
+    transform: translateY(-50%) scale(0.9);
   }
 `;
 
@@ -1051,6 +1053,8 @@ export default function InvoiceEvidencePage() {
 
   // State pro unlock entity (změna objednávky/smlouvy u existující FA)
   const [isEntityUnlocked, setIsEntityUnlocked] = useState(false);
+  // State pro zapamatování, zda měla faktura původně přiřazenou objednávku/smlouvu
+  const [hadOriginalEntity, setHadOriginalEntity] = useState(false);
 
 
 
@@ -1279,6 +1283,9 @@ export default function InvoiceEvidencePage() {
           setFormData(loadedFormData);
           // Uložit originální data pro detekci změn
           setOriginalFormData(loadedFormData);
+          
+          // Zapamatovat si, zda měla faktura původně přiřazenou objednávku nebo smlouvu
+          setHadOriginalEntity(!!(invoiceData.objednavka_id || invoiceData.smlouva_id));
           
           // Pokud je známa objednávka, načíst ji a nastavit searchTerm
           if (orderIdForLoad || invoiceData.objednavka_id) {
@@ -1862,10 +1869,10 @@ export default function InvoiceEvidencePage() {
         fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
         // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
         fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
-        // Nové položky (nepovinné) - prázdný string místo null aby PHP !empty() vrátil NULL do DB
-        fa_predana_zam_id: formData.fa_predana_zam_id || '',
-        fa_datum_predani_zam: formData.fa_datum_predani_zam || '',
-        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || ''
+        // Nové položky (nepovinné) - null pokud není vyplněno
+        fa_predana_zam_id: formData.fa_predana_zam_id || null,
+        fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
+        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null
       };
 
       console.log('🔍 API PARAMS:', {
@@ -1889,9 +1896,9 @@ export default function InvoiceEvidencePage() {
           fa_castka: formData.fa_castka,
           fa_poznamka: formData.fa_poznamka || '',
           fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
-          fa_predana_zam_id: formData.fa_predana_zam_id || '',
-          fa_datum_predani_zam: formData.fa_datum_predani_zam || '',
-          fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || '',
+          fa_predana_zam_id: formData.fa_predana_zam_id || null,
+          fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
+          fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
         };
@@ -2328,15 +2335,43 @@ export default function InvoiceEvidencePage() {
             )}
 
             <FakturaCard $isEditing={true}>
-            {/* GRID 3x - ŘÁDEK 1: Ev. číslo objednávky | Předmět | Celková cena */}
-            <FieldRow $columns="2fr 2fr 1fr">
+            {/* ŘÁDEK 1: Název smlouvy / Předmět objednávky - přes celou šířku */}
+            <FieldRow $columns="1fr">
+              <FieldGroup>
+                <FieldLabel>
+                  {selectedType === 'smlouva' ? 'Název smlouvy' : 'Předmět objednávky'}
+                </FieldLabel>
+                <div style={{ 
+                  minHeight: '62px',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: (orderData || smlouvaData) ? '#f0f9ff' : '#f9fafb', 
+                  border: (orderData || smlouvaData) ? '2px solid #3b82f6' : '2px solid #e5e7eb', 
+                  borderRadius: '8px',
+                  color: (orderData || smlouvaData) ? '#1e40af' : '#9ca3af',
+                  fontWeight: (orderData || smlouvaData) ? '600' : '400',
+                  fontSize: '0.95rem',
+                  boxSizing: 'border-box'
+                }}>
+                  {selectedType === 'order' && orderData 
+                    ? (orderData.predmet || '—')
+                    : selectedType === 'smlouva' && smlouvaData
+                    ? (smlouvaData.nazev_smlouvy || smlouvaData.nazev || '—')
+                    : '—'}
+                </div>
+              </FieldGroup>
+            </FieldRow>
+
+            {/* ŘÁDEK 2: Výběr objednávky/smlouvy | Platnost/Datum vytvoření | Celková cena */}
+            <FieldRow $columns="2fr 1fr 1fr">
               <FieldGroup style={{ width: '100%' }}>
                 <FieldLabel>
                   Vyberte objednávku nebo smlouvu
                 </FieldLabel>
                 <AutocompleteWrapper className="autocomplete-wrapper" style={{ width: '100%', position: 'relative' }}>
                   {/* Ikona zámku - klikatelná pro odemčení */}
-                  {editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked && (
+                  {editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked && (
                     <div
                       onClick={handleUnlockEntity}
                       style={{
@@ -2362,20 +2397,21 @@ export default function InvoiceEvidencePage() {
                     value={searchTerm}
                     onChange={handleSearchChange}
                     onFocus={() => setShowSuggestions(true)}
-                    disabled={!!orderId || (editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
+                    disabled={!!orderId || (editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
                     placeholder={
                       "Začněte psát ev. číslo objednávky nebo smlouvy (min. 3 znaky)..."
                     }
                     style={{ 
                       width: '100%',
-                      paddingLeft: (editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked) ? '2.5rem' : '0.75rem'
+                      paddingLeft: (editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked) ? '2.5rem' : '0.75rem',
+                      paddingRight: searchTerm ? '2.5rem' : '0.75rem'
                     }}
                   />
-                  {searchTerm && !orderId && isEntityUnlocked && (
+                  {searchTerm && (
                     <ClearButton
                       type="button"
                       onClick={handleClearSearch}
-                      title="Vymazat hledání"
+                      title="Vymazat text"
                     >
                       <FontAwesomeIcon icon={faTimes} />
                     </ClearButton>
@@ -2522,29 +2558,38 @@ export default function InvoiceEvidencePage() {
                 </HelpText>
               </FieldGroup>
 
-              {/* Předmět / Název - dynamicky podle typu entity */}
+              {/* Platnost do / Datum vytvoření */}
               <FieldGroup>
                 <FieldLabel>
-                  {selectedType === 'smlouva' ? 'Název smlouvy' : 'Předmět objednávky'}
+                  {selectedType === 'smlouva' ? 'Platnost do' : 'Datum vytvoření'}
                 </FieldLabel>
                 <div style={{ 
                   height: '48px',
                   padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
-                  background: (orderData || smlouvaData) ? '#f0f9ff' : '#f9fafb', 
-                  border: (orderData || smlouvaData) ? '2px solid #3b82f6' : '2px solid #e5e7eb', 
+                  background: (orderData || smlouvaData) ? '#fef3c7' : '#f9fafb', 
+                  border: (orderData || smlouvaData) ? '2px solid #f59e0b' : '2px solid #e5e7eb', 
                   borderRadius: '8px',
-                  color: (orderData || smlouvaData) ? '#1e40af' : '#9ca3af',
-                  fontWeight: (orderData || smlouvaData) ? '500' : '400',
-                  fontSize: '0.95rem',
+                  color: (orderData || smlouvaData) ? '#92400e' : '#9ca3af',
+                  fontWeight: (orderData || smlouvaData) ? '600' : '400',
+                  fontSize: '0.875rem',
                   boxSizing: 'border-box'
                 }}>
-                  {selectedType === 'order' && orderData 
-                    ? (orderData.predmet || '—')
-                    : selectedType === 'smlouva' && smlouvaData
-                    ? (smlouvaData.nazev_smlouvy || smlouvaData.nazev || '—')
-                    : '—'}
+                  {(() => {
+                    // Pro objednávky zobrazit datum vytvoření
+                    if (orderData) {
+                      const datum = orderData.dt_objednavky || orderData.datum_objednavky || orderData.created_at || orderData.dt_vytvoreni || orderData.datum_vytvoreni;
+                      if (datum) {
+                        return formatDateOnly(datum);
+                      }
+                    }
+                    // Pro smlouvy zobrazit platnost do
+                    if (smlouvaData && smlouvaData.platnost_do) {
+                      return formatDateOnly(smlouvaData.platnost_do);
+                    }
+                    return '—';
+                  })()}
                 </div>
               </FieldGroup>
 
@@ -3446,7 +3491,10 @@ export default function InvoiceEvidencePage() {
                   <FontAwesomeIcon icon={faCalendar} /> Datum vytvoření:
                 </OrderDetailLabel>
                 <OrderDetailValue>
-                  {orderData.datum_vytvoreni ? formatDateOnly(orderData.datum_vytvoreni) : 'N/A'}
+                  {(() => {
+                    const datum = orderData.dt_objednavky || orderData.datum_objednavky || orderData.created_at || orderData.dt_vytvoreni || orderData.datum_vytvoreni;
+                    return datum ? formatDateOnly(datum) : 'N/A';
+                  })()}
                 </OrderDetailValue>
               </OrderDetailRow>
 
