@@ -188,24 +188,37 @@ const FilterBar = styled.div`
 `;
 
 const FilterSelect = styled.select`
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1.25rem;
   border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 0.95rem;
-  background: white;
+  font-weight: 500;
+  background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
+  color: #1f2937;
   cursor: pointer;
   transition: all 0.2s ease;
   flex: 1;
-  min-width: 200px;
+  min-width: 220px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   
   &:hover {
     border-color: #3b82f6;
+    background: linear-gradient(to bottom, #ffffff 0%, #eff6ff 100%);
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
   }
   
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 2px 8px rgba(59, 130, 246, 0.2);
+  }
+  
+  option {
+    background: white;
+    color: #1f2937;
+    padding: 0.75rem;
+    font-weight: normal;
   }
 `;
 
@@ -893,6 +906,24 @@ const LimitovanePrislibyManager = () => {
     message: '',
     onConfirm: null
   });
+  
+  // ===== MAPOVÁNÍ LP KATEGORIÍ S POPISY =====
+  const LP_CATEGORY_NAMES = {
+    'LPE': 'Energie',
+    'LPIA': 'IT aplikace',
+    'LPIT': 'IT technologie',
+    'LPL': 'Licence',
+    'LPMK': 'Marketing',
+    'LPN': 'Nájem',
+    'LPP': 'Poradenství',
+    'LPPT': 'Protipožární technika',
+    'LPR': 'Revize',
+    'LPSO': 'Stavební objekty',
+    'LPT': 'Technika',
+    'LPZDR': 'Zdravotnické prostředky',
+    'LPZOS': 'Zdravotní služby',
+    'LPÚČ': 'Účetnictví'
+  };
   
   // ===== DETEKCE ROLÍ podle nové dokumentace v3.0 =====
   
@@ -1936,7 +1967,9 @@ const LimitovanePrislibyManager = () => {
           <FilterSelect value={filterKategorie} onChange={(e) => setFilterKategorie(e.target.value)}>
             <option value="all">Všechny kategorie</option>
             {uniqueKategorie.map(kat => (
-              <option key={kat} value={kat}>{kat}</option>
+              <option key={kat} value={kat}>
+                {kat} - {LP_CATEGORY_NAMES[kat] || kat}
+              </option>
             ))}
           </FilterSelect>
         </FilterBar>
