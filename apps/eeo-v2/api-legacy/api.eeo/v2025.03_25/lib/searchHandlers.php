@@ -59,6 +59,11 @@ function handle_universal_search($input, $config) {
         // FE může poslat search_all=true aby prohledal všechno bez omezení na aktuálního uživatele
         $searchAll = isset($input['search_all']) ? normalizeBool($input['search_all']) : false;
         
+        // NOVÝ PARAMETR: filter_obj_form = pouze smlouvy pro obj. formulář (pouzit_v_obj_formu=1)
+        // FALSE/NULL = všechny smlouvy (modul smluv, faktury)
+        // TRUE = pouze smlouvy pro obj. formulář
+        $filterObjForm = isset($input['filter_obj_form']) ? normalizeBool($input['filter_obj_form']) : false;
+        
         // Admin check - SUPERADMIN nebo ADMINISTRATOR = plný přístup bez permissions
         $user_roles = isset($auth_result['roles']) ? $auth_result['roles'] : array();
         $isAdmin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
@@ -114,7 +119,7 @@ function handle_universal_search($input, $config) {
             $results['contracts'] = array(
                 'category_label' => getCategoryLabel('contracts'),
                 'total' => 0,
-                'results' => searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin)
+                'results' => searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $filterObjForm)
             );
             $results['contracts']['total'] = count($results['contracts']['results']);
         }
@@ -297,17 +302,25 @@ function searchOrders2025($db, $likeQuery, $normalizedQuery, $limit, $includeIna
  * @param string $likeQuery Escapovaný query s % wildcardy
  * @param int $limit Max počet výsledků
  * @param bool $includeInactive Zahrnout neaktivní
+ * @param bool $isAdmin Je admin
+ * @param bool $filterObjForm TRUE = pouze smlouvy pro obj. formulář (pouzit_v_obj_formu=1)
  * @return array Pole výsledků
  */
-function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin) {
+function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $filterObjForm = false) {
     try {
-        $sql = getSqlSearchContracts();
+        $sql = getSqlSearchContracts($filterObjForm);
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
         $stmt->bindValue(':include_inactive', $includeInactive ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':is_admin', $isAdmin ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        
+        // Bind filter_obj_form pouze pokud je aktivní
+        if ($filterObjForm) {
+            $stmt->bindValue(':filter_obj_form', 1, PDO::PARAM_INT);
+        }
+        
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);

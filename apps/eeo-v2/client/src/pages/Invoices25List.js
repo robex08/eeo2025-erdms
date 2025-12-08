@@ -9,7 +9,7 @@ import {
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard
+  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -2161,7 +2161,7 @@ const Invoices25List = () => {
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
                   >
-                    Objednávka
+                    Objednávka/Smlouva
                     {sortField === 'cislo_objednavky' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -2602,8 +2602,21 @@ const Invoices25List = () => {
                       <strong>{invoice.cislo_faktury}</strong>
                     </TableCell>
                     <TableCell>
-                      <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#94a3b8' }} />
-                      {invoice.cislo_objednavky || (invoice.objednavka_id && invoice.objednavka_id !== 0 ? invoice.objednavka_id : 'Nepřiřazena')}
+                      {invoice.cislo_smlouvy ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <div>
+                            <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
+                            {invoice.cislo_smlouvy}
+                          </div>
+                        </div>
+                      ) : invoice.cislo_objednavky ? (
+                        <div>
+                          <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#94a3b8' }} />
+                          {invoice.cislo_objednavky}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
+                      )}
                     </TableCell>
                     <TableCell className="right">
                       <strong>{formatCurrency(invoice.castka)}</strong>
