@@ -2856,6 +2856,18 @@ function handle_templates_insert($input, $config, $queries) {
 
     try {
         $db = get_db($config);
+        
+        // Načíst usek_zkr uživatele
+        $usek_zkr = null;
+        $userQuery = "SELECT u.usek_id, us.usek_zkr FROM " . TBL_UZIVATELE . " u LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id WHERE u.id = :user_id";
+        $stmtUser = $db->prepare($userQuery);
+        $stmtUser->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmtUser->execute();
+        $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
+        if ($userData && $userData['usek_zkr']) {
+            $usek_zkr = $userData['usek_zkr'];
+        }
+        
         $stmt = $db->prepare($queries['sablony_objednavek_insert']);
         $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
         $stmt->bindParam(':nazev_sablony', $nazev);
@@ -2863,6 +2875,7 @@ function handle_templates_insert($input, $config, $queries) {
         $stmt->bindParam(':polozky_detail', $polozky_detail);
         $stmt->bindParam(':typ', $typ);
         $stmt->bindParam(':kategorie', $kategorie);
+        $stmt->bindParam(':usek_zkr', $usek_zkr);
         $stmt->execute();
         $id = $db->lastInsertId();
         api_ok(array('id' => (int)$id));

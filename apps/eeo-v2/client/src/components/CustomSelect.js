@@ -333,7 +333,7 @@ const CustomSelect = ({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   
   // State pro pozicování dropdownu (pro portal)
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpwards: false });
 
   const filteredOptions = filterOptions(options, searchTerm, field);
   
@@ -342,10 +342,18 @@ const CustomSelect = ({
     const updatePosition = () => {
       if (isOpen && buttonRef.current) {
         const rect = buttonRef.current.getBoundingClientRect();
+        const dropdownMaxHeight = 300; // Max výška dropdownu
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        
+        // Pokud není dost místa dole (méně než 300px) a nahoře je víc místa, otevři nahoru
+        const openUpwards = spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow;
+        
         setDropdownPosition({
-          top: rect.bottom + 4,
+          top: openUpwards ? rect.top - 4 : rect.bottom + 4,
           left: rect.left,
-          width: rect.width
+          width: rect.width,
+          openUpwards: openUpwards
         });
       }
     };
@@ -749,7 +757,8 @@ const CustomSelect = ({
         <CustomSelectDropdown 
           ref={dropdownRef}
           style={{
-            top: `${dropdownPosition.top}px`,
+            top: dropdownPosition.openUpwards ? 'auto' : `${dropdownPosition.top}px`,
+            bottom: dropdownPosition.openUpwards ? `${window.innerHeight - dropdownPosition.top}px` : 'auto',
             left: `${dropdownPosition.left}px`,
             width: `${dropdownPosition.width}px`
           }}
