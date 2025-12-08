@@ -1790,10 +1790,10 @@ const LimitovanePrislibyManager = () => {
   // Získání unikátních hodnot pro filtry
   const usekMap = new Map();
   lpData.forEach(lp => {
-    if (lp.usek_id) {
+    if (lp.usek_id && lp.usek_nazev) {
       usekMap.set(lp.usek_id, { 
         id: lp.usek_id, 
-        nazev: lp.usek_nazev || `Úsek ${lp.usek_id}` 
+        nazev: lp.usek_nazev 
       });
     }
   });
@@ -1802,16 +1802,16 @@ const LimitovanePrislibyManager = () => {
   const userMap = new Map();
   lpData.forEach(lp => {
     // Použít user_id jako klíč pro správné filtrování
-    if (lp.user_id) {
+    if (lp.user_id && lp.spravce) {
       userMap.set(lp.user_id, { 
         id: lp.user_id, 
-        name: lp.spravce || `User ${lp.user_id}` 
+        name: lp.spravce 
       });
     }
   });
   const uniqueUsers = Array.from(userMap.values());
   
-  const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie))];
+  const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie).filter(k => k))];
   
   return (
     <Container $collapsed={isMainCollapsed}>
