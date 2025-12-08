@@ -98,7 +98,7 @@ export function ToastProvider({ children }) {
               aria-live={t.type === 'error' ? 'assertive' : 'polite'}
               style={{
                 minWidth: 220,
-                maxWidth: 420,
+                maxWidth: t.type === 'error' ? 550 : 420,
                 ...toastStyle,
                 padding: '10px 12px',
                 borderRadius: 8,
@@ -107,7 +107,7 @@ export function ToastProvider({ children }) {
               }}
             >
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{heading}</div>
-              <div style={{ whiteSpace: 'pre-wrap', marginBottom: t.action ? 8 : 0 }}>{t.message}</div>
+              <div style={{ whiteSpace: 'pre-wrap', marginBottom: t.action ? 8 : 0, lineHeight: '1.5' }}>{t.message}</div>
                 {t.action && (
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button

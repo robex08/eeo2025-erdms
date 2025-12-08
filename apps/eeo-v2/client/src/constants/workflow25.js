@@ -117,7 +117,8 @@ export const canTransitionTo = (fromState, toState) => {
 // Validace povinných polí podle stavu workflow
 export const getRequiredFields = (workflowCode) => {
   // ✅ Financování je povinné ve všech fázích od začátku
-  const baseFields = ['predmet', 'max_cena_s_dph', 'strediska_kod', 'zpusob_financovani'];
+  // ✅ OPRAVA: prikazce_id a garant_uzivatel_id jsou povinné už v NOVA fázi (formulář je označuje jako required)
+  const baseFields = ['predmet', 'max_cena_s_dph', 'strediska_kod', 'zpusob_financovani', 'prikazce_id', 'garant_uzivatel_id'];
 
   switch (workflowCode) {
     case 'NOVA':

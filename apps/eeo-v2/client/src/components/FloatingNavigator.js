@@ -32,6 +32,66 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import TemplateDropdown from './TemplateDropdown';
 
+// ✅ KRITICKÉ: Kategorizace chybových klíčů do sekcí navigátoru
+// MUSÍ BÝT 100% SHODNÁ s OrderForm25.formatValidationErrors() !!!
+// Jakákoliv změna zde MUSÍ být provedena i v OrderForm25.js
+const categorizeErrorKey = (key) => {
+  // POŘADÍ JE DŮLEŽITÉ - specifičtější podmínky musí být PŘED obecnějšími!
+  
+  // 1. Informace o objednateli (včetně garanta!)
+  if (key.includes('jmeno') || key.includes('email') || key.includes('ev_cislo') || key.includes('garant')) {
+    console.log(`🔍 categorizeErrorKey: "${key}" → objednatel`);
+    return 'objednatel';
+  }
+  
+  // 2. Schválení nákupu PO (FÁZE 1-2) - včetně FINANCOVÁNÍ!
+  if (key.includes('prikazce') || key.includes('max_cena') || 
+      key.includes('strediska') || key.includes('predmet') ||
+      key.includes('financovani') || key.includes('lp_kod') || key.includes('cislo_smlouvy') ||
+      key.includes('individualni_schvaleni') || key.includes('pojistna_udalost')) {
+    console.log(`🔍 categorizeErrorKey: "${key}" → schvaleni`);
+    return 'schvaleni';
+  }
+  
+  // 3. Detaily objednávky (FÁZE 3+: položky + druh + lokalizace) - MUSÍ BÝT PŘED dodavatelem!
+  if (key.startsWith('polozka_') || key.includes('druh_objednavky')) {
+    return 'detaily';
+  }
+  
+  // 4. Dodavatel - MUSÍ BÝT PO detailech (kvůli 'ico' v 'cislo_smlouvy')
+  if (key.includes('dodavatel') || key.includes('ico') || key.includes('adresa') || key.includes('kontakt')) {
+    return 'dodavatel';
+  }
+  
+  // 5. Odeslání objednávky
+  if (key.includes('datum_odeslani') || key.includes('stav_odeslani')) {
+    return 'stav_odeslani';
+  }
+  
+  // 6. Potvrzení objednávky dodavatelem
+  if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
+    return 'potvrzeni_objednavky';
+  }
+  
+  // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
+  if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
+    return 'vecna_spravnost';
+  }
+  
+  // 8. Fakturace
+  if (key.startsWith('faktura_')) {
+    return 'fakturace';
+  }
+  
+  // 9. Registr smluv
+  if (key.includes('dt_zverejneni') || key.includes('registr') || key.includes('ma_byt_zverejnena')) {
+    return 'registr_smluv_vyplneni';
+  }
+  
+  // 10. Ostatní (fallback)
+  return null;
+};
+
 // Konstanta pro šířku navigátoru
 const NAVIGATOR_WIDTH = 305; // +25px
 const NAVIGATOR_MINIMIZED_WIDTH = 40;
@@ -1035,45 +1095,23 @@ const FloatingNavigator = ({
 
   // Count fields for section - počítá chyby validace + nevyplněná povinná pole
   const getSectionValidationInfo = useCallback((section) => {
-    // Najdi všechny validační chyby pro tuto sekci
+    // Použij centralizovanou kategorizaci chyb
     const sectionErrors = Object.keys(validationErrors).filter(key => {
-      // 1. Přímé mapování pole → sekce
-      if (FIELD_TO_SECTION[key] === section.id) {
-        return true;
-      }
-      
-      // 2. Pattern matching pro dynamická pole
-      // Položky objednávky: polozka_N_... → detaily
-      if (section.id === 'detaily' && key.match(/^polozka_\d+_/)) {
-        return true;
-      }
-      
-      // Faktury: faktura_N_... → fakturace nebo vecna_spravnost
-      if (key.match(/^faktura_\d+_/)) {
-        // Věcná správnost: faktura_N_vecna_spravnost, faktura_N_poznamka_vs
-        if (section.id === 'vecna_spravnost' && (key.includes('_vecna_spravnost') || key.includes('_poznamka_vs'))) {
-          return true;
-        }
-        // Fakturace: ostatní fakturační pole (cislo, castka, dorucena, splatnost atd.)
-        if (section.id === 'fakturace' && !key.includes('_vecna_spravnost') && !key.includes('_poznamka_vs')) {
-          return true;
-        }
-      }
-      
-      // 3. Fallback: Pokud klíč obsahuje ID sekce
-      if (key.includes(section.id)) {
-        return true;
-      }
-      
-      // 4. Pokud chyba má explicitní section property
-      if (validationErrors[key]?.section === section.id) {
-        return true;
-      }
-      
-      return false;
+      const category = categorizeErrorKey(key);
+      const matches = category === section.id;
+      return matches;
     });
 
     const errorCount = sectionErrors.length;
+    
+    if (Object.keys(validationErrors).length > 0 && section.id === 'schvaleni') {
+      console.log(`🧭 NaviPanel - sekce "${section.id}":`, {
+        allValidationErrors: validationErrors,
+        allErrorKeys: Object.keys(validationErrors),
+        sectionErrors,
+        errorCount
+      });
+    }
 
     // 🆕 Spočítat nevyplněná povinná pole (jen pokud NEJSOU validační chyby)
     // Toto slouží k zobrazení "oranžové tečky" před pokusem o uložení
