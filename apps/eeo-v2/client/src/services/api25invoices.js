@@ -1099,6 +1099,7 @@ export async function createInvoiceWithAttachmentV2({
   token,
   username,
   order_id,
+  smlouva_id = null,
   file,
   fa_cislo_vema,
   fa_typ = 'BEZNA',
@@ -1113,7 +1114,11 @@ export async function createInvoiceWithAttachmentV2({
   // Věcná správnost (nové fieldy)
   potvrzeni_vecne_spravnosti = null,
   vecna_spravnost_umisteni_majetku = null,
-  vecna_spravnost_poznamka = null
+  vecna_spravnost_poznamka = null,
+  // Předání zaměstnanci (nové fieldy)
+  fa_predana_zam_id = null,
+  fa_datum_predani_zam = null,
+  fa_datum_vraceni_zam = null
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
@@ -1185,6 +1190,24 @@ export async function createInvoiceWithAttachmentV2({
 
     if (vecna_spravnost_poznamka) {
       formData.append('vecna_spravnost_poznamka', String(vecna_spravnost_poznamka));
+    }
+
+    // Předání zaměstnanci
+    if (fa_predana_zam_id) {
+      formData.append('fa_predana_zam_id', String(fa_predana_zam_id));
+    }
+
+    if (fa_datum_predani_zam) {
+      formData.append('fa_datum_predani_zam', fa_datum_predani_zam);
+    }
+
+    if (fa_datum_vraceni_zam) {
+      formData.append('fa_datum_vraceni_zam', fa_datum_vraceni_zam);
+    }
+
+    // Smlouva (může být null)
+    if (smlouva_id) {
+      formData.append('smlouva_id', String(smlouva_id));
     }
 
     // Objednávka (může být null)
@@ -1269,6 +1292,7 @@ export async function createInvoiceV2({
   token,
   username,
   order_id,
+  smlouva_id = null,
   fa_cislo_vema,
   fa_typ = 'BEZNA',
   fa_datum_vystaveni,
@@ -1282,7 +1306,11 @@ export async function createInvoiceV2({
   // Věcná správnost (nové fieldy)
   potvrzeni_vecne_spravnosti = null,
   vecna_spravnost_umisteni_majetku = null,
-  vecna_spravnost_poznamka = null
+  vecna_spravnost_poznamka = null,
+  // Předání zaměstnanci (nové fieldy)
+  fa_predana_zam_id = null,
+  fa_datum_predani_zam = null,
+  fa_datum_vraceni_zam = null
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
@@ -1348,6 +1376,23 @@ export async function createInvoiceV2({
       payload.vecna_spravnost_poznamka = String(vecna_spravnost_poznamka);
     }
 
+    // Předání zaměstnanci
+    if (fa_predana_zam_id) {
+      payload.fa_predana_zam_id = Number(fa_predana_zam_id);
+    }
+
+    if (fa_datum_predani_zam) {
+      payload.fa_datum_predani_zam = fa_datum_predani_zam;
+    }
+
+    if (fa_datum_vraceni_zam) {
+      payload.fa_datum_vraceni_zam = fa_datum_vraceni_zam;
+    }
+
+    // Smlouva
+    if (smlouva_id) {
+      payload.smlouva_id = Number(smlouva_id);
+    }
 
     // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
     const endpoint = order_id 

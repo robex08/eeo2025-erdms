@@ -20473,45 +20473,41 @@ function OrderForm25() {
                   </div>
                 ))}
                 
-                {/* Tlačítko přidat další položku */}
-                <button
-                  type="button"
-                  onClick={shouldLockPhase3Sections ? undefined : addPolozka}
-                  disabled={shouldLockPhase3Sections}
-                  style={{
-                    width: '100%',
-                    marginTop: '1rem',
-                    padding: '1rem',
-                    background: 'transparent',
-                    border: shouldLockPhase3Sections ? '2px dashed #d1d5db' : '2px dashed #10b981',
-                    borderRadius: '8px',
-                    color: shouldLockPhase3Sections ? '#9ca3af' : '#10b981',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    cursor: shouldLockPhase3Sections ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    transition: 'all 0.2s ease',
-                    opacity: shouldLockPhase3Sections ? 0.5 : 1
-                  }}
-                  onMouseOver={(e) => {
-                    if (!shouldLockPhase3Sections) {
+                {/* Tlačítko přidat další položku - zobrazit pouze když NENÍ zamčeno */}
+                {!shouldLockPhase3Sections && (
+                  <button
+                    type="button"
+                    onClick={addPolozka}
+                    style={{
+                      width: '100%',
+                      marginTop: '1rem',
+                      padding: '1rem',
+                      background: 'transparent',
+                      border: '2px dashed #10b981',
+                      borderRadius: '8px',
+                      color: '#10b981',
+                      fontSize: '0.875rem',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
                       e.currentTarget.style.background = '#f0fdf4';
                       e.currentTarget.style.borderColor = '#059669';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!shouldLockPhase3Sections) {
+                    }}
+                    onMouseOut={(e) => {
                       e.currentTarget.style.background = 'transparent';
                       e.currentTarget.style.borderColor = '#10b981';
-                    }
-                  }}
-                >
-                  <Plus size={16} />
-                  <span>Přidat další položku</span>
-                </button>
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span>Přidat další položku</span>
+                  </button>
+                )}
               </div>
 
               <FormRow style={{marginTop: '1.5rem'}}>
