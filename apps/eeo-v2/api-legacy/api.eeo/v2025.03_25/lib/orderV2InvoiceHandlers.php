@@ -160,8 +160,9 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
             fa_strediska_kod, fa_poznamka,
             potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti,
             vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
-            rozsirujici_data, vytvoril_uzivatel_id, dt_vytvoreni, aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+            rozsirujici_data, fa_predana_zam_id, fa_datum_predani_zam, fa_datum_vraceni_zam,
+            vytvoril_uzivatel_id, dt_vytvoreni, aktivni
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
         
         $stmt_insert = $db->prepare($sql_insert);
         $stmt_insert->execute(array(
@@ -182,6 +183,9 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
             isset($input['vecna_spravnost_poznamka']) ? $input['vecna_spravnost_poznamka'] : null,
             isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : 0,
             isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null,
+            isset($input['fa_predana_zam_id']) && !empty($input['fa_predana_zam_id']) ? (int)$input['fa_predana_zam_id'] : null,
+            isset($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : null,
+            isset($input['fa_datum_vraceni_zam']) ? $input['fa_datum_vraceni_zam'] : null,
             $token_data['id']  // Použít ID z tokenu
         ));
         
@@ -221,6 +225,21 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
     try {
         $db = get_db($config);
         
+        // Nastavit MySQL timezone pro konzistentní datetime handling
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        // Načíst současný stav faktury
+        $sql_current = "SELECT * FROM 25a_objednavky_faktury WHERE id = ? AND aktivni = 1";
+        $stmt_current = $db->prepare($sql_current);
+        $stmt_current->execute(array($invoice_id));
+        $current_invoice = $stmt_current->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$current_invoice) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena'));
+            return;
+        }
+        
         // Build dynamic update query based on provided fields
         $updateFields = array();
         $updateValues = array();
@@ -230,8 +249,66 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             'fa_castka', 'fa_dorucena', 'fa_zaplacena', 'fa_typ',
             'fa_strediska_kod', 'fa_poznamka', 'rozsirujici_data',
             'potvrdil_vecnou_spravnost_id', 'dt_potvrzeni_vecne_spravnosti',
-            'vecna_spravnost_umisteni_majetku', 'vecna_spravnost_poznamka', 'vecna_spravnost_potvrzeno'
+            'vecna_spravnost_umisteni_majetku', 'vecna_spravnost_poznamka', 'vecna_spravnost_potvrzeno',
+            // Nové fieldy
+            'fa_datum_zaplaceni', 'fa_predana_zam_id', 'fa_datum_predani_zam', 'fa_datum_vraceni_zam'
         );
+        
+        // Pole vyžadující re-schválení věcné správnosti
+        $fields_requiring_reapproval = array(
+            'fa_castka', 'fa_cislo_vema', 'fa_strediska_kod', 'fa_typ',
+            'fa_datum_vystaveni', 'fa_datum_splatnosti', 'fa_datum_doruceni'
+        );
+        
+        // Detekce změny kritických polí
+        $requires_reapproval = false;
+        foreach ($fields_requiring_reapproval as $field) {
+            if (isset($input[$field]) && isset($current_invoice[$field])) {
+                if ($input[$field] != $current_invoice[$field]) {
+                    $requires_reapproval = true;
+                    break;
+                }
+            }
+        }
+        
+        // Automatické vynulování věcné správnosti při změně kritických polí
+        if ($requires_reapproval && (int)$current_invoice['vecna_spravnost_potvrzeno'] === 1) {
+            $updateFields[] = 'vecna_spravnost_potvrzeno = ?';
+            $updateValues[] = 0;
+            $updateFields[] = 'potvrdil_vecnou_spravnost_id = ?';
+            $updateValues[] = null;
+            $updateFields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+            $updateValues[] = null;
+        }
+        
+        // Automatické nastavení fa_datum_zaplaceni při změně fa_zaplacena na 1
+        if (isset($input['fa_zaplacena']) && (int)$input['fa_zaplacena'] === 1) {
+            if ((int)$current_invoice['fa_zaplacena'] === 0 && empty($current_invoice['fa_datum_zaplaceni'])) {
+                $updateFields[] = 'fa_datum_zaplaceni = ?';
+                $updateValues[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+            }
+        }
+        
+        // Automatické vynulování fa_datum_zaplaceni při změně fa_zaplacena na 0
+        if (isset($input['fa_zaplacena']) && (int)$input['fa_zaplacena'] === 0) {
+            $updateFields[] = 'fa_datum_zaplaceni = ?';
+            $updateValues[] = null;
+        }
+        
+        // Validace: datum vrácení musí být >= datum předání
+        if (isset($input['fa_datum_predani_zam']) && isset($input['fa_datum_vraceni_zam'])) {
+            $predani = strtotime($input['fa_datum_predani_zam']);
+            $vraceni = strtotime($input['fa_datum_vraceni_zam']);
+            
+            if ($vraceni < $predani) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => 'Datum vrácení nemůže být dřívější než datum předání'
+                ));
+                return;
+            }
+        }
         
         foreach ($allowedFields as $field) {
             if (isset($input[$field])) {
@@ -241,7 +318,7 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                 } else if (in_array($field, array('fa_dorucena', 'fa_zaplacena', 'vecna_spravnost_potvrzeno'))) {
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = (int)$input[$field];
-                } else if ($field === 'potvrdil_vecnou_spravnost_id') {
+                } else if (in_array($field, array('potvrdil_vecnou_spravnost_id', 'fa_predana_zam_id'))) {
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = !empty($input[$field]) ? (int)$input[$field] : null;
                 } else if ($field === 'rozsirujici_data') {
@@ -287,7 +364,8 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             'data' => array(
                 'invoice_id' => $invoice_id,
                 'updated_fields' => $updatedFieldNames,
-                'fa_datum_splatnosti' => isset($input['fa_datum_splatnosti']) ? $input['fa_datum_splatnosti'] : null
+                'fa_datum_splatnosti' => isset($input['fa_datum_splatnosti']) ? $input['fa_datum_splatnosti'] : null,
+                'vecna_spravnost_reset' => $requires_reapproval && (int)$current_invoice['vecna_spravnost_potvrzeno'] === 1
             )
         ));
         
