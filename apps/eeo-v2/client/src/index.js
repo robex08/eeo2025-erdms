@@ -101,7 +101,6 @@ if (isFirstLoad) {
   }, 10000);
 } else {
   // Další reloady - skrýt splash okamžitě
-  console.log('🔄 Reload detected - hiding splash immediately');
   const splashScreen = document.getElementById('splash-screen');
   if (splashScreen) {
     splashScreen.style.display = 'none';
