@@ -1455,6 +1455,9 @@ const Invoices25List = () => {
         id: typeof invoice.id === 'string' ? parseInt(invoice.id) : invoice.id,
         objednavka_id: typeof invoice.objednavka_id === 'string' ? parseInt(invoice.objednavka_id) : invoice.objednavka_id,
         cislo_objednavky: invoice.cislo_objednavky || '',
+        // Smlouva (univerzální přiřazení OBJ nebo SML)
+        smlouva_id: typeof invoice.smlouva_id === 'string' ? parseInt(invoice.smlouva_id) : invoice.smlouva_id,
+        cislo_smlouvy: invoice.cislo_smlouvy || '',
         
         // Organizace
         organizace_id: invoice.organizace_id || null,

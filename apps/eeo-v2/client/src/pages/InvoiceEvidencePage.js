@@ -1202,16 +1202,15 @@ export default function InvoiceEvidencePage() {
         return;
       }
       
-      // KRITICKÉ: Počkat na načtení středisek (stejně jako OrderForm25)
-      if (strediskaLoading || strediskaOptions.length === 0) {
-        console.log('⏳ Čekám na načtení středisek...');
+      // Počkat na načtení středisek (potřebujeme je pro mapování)
+      if (strediskaOptions.length === 0) {
         return;
       }
       
-      // Pokud už je tato faktura načtená (formData má fa_cislo_vema), přeskočit
-      // Tím zabráníme opakovanému načítání při změně dependencies
-      if (formData.fa_cislo_vema && editingInvoiceId === editInvoiceId) {
-        console.log('ℹ️ Faktura už je načtená (formData.fa_cislo_vema exists), přeskakuji...');
+      // Pokud už je tato faktura načtená (máme data v formData), skip
+      // Kontrola přes fa_cislo_vema je spolehlivější než editingInvoiceId
+      if (editingInvoiceId === editInvoiceId && formData.fa_cislo_vema) {
+        console.log('ℹ️ Faktura už je načtená (fa_cislo_vema:', formData.fa_cislo_vema, ')');
         return;
       }
       
@@ -1317,9 +1316,7 @@ export default function InvoiceEvidencePage() {
     if (location.state?.editInvoiceId) {
       loadInvoiceForEdit();
     }
-  }, [location.state?.editInvoiceId, token, username, showToast, strediskaOptions, strediskaLoading]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: Záměrně neincluduju loadOrderData a setSearchTerm - volá se jen jednou při mount
-  // DŮLEŽITÉ: strediskaOptions a strediskaLoading musí být v dependencies, aby se čekalo na načtení!
+  }, [location.state?.editInvoiceId, token, username, strediskaOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
@@ -1711,6 +1708,26 @@ export default function InvoiceEvidencePage() {
     }));
   };
 
+  // Handler: drag & drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      setFormData(prev => ({
+        ...prev,
+        file: file
+      }));
+    }
+  };
+
   // 🔔 Funkce pro odeslání notifikací při změně stavu objednávky na věcnou kontrolu
   const sendInvoiceNotifications = async (orderId, orderData) => {
     try {
@@ -1855,14 +1872,14 @@ export default function InvoiceEvidencePage() {
         fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
         fa_datum_doruceni: formData.fa_datum_doruceni || null,
         fa_castka: formData.fa_castka,
-        fa_poznamka: formData.fa_poznamka || null,
+        fa_poznamka: formData.fa_poznamka || '',
         fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
         // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
         fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
-        // Nové položky (nepovinné)
-        fa_predana_zam_id: formData.fa_predana_zam_id || null,
-        fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
-        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null
+        // Nové položky (nepovinné) - prázdný string místo null aby PHP !empty() vrátil NULL do DB
+        fa_predana_zam_id: formData.fa_predana_zam_id || '',
+        fa_datum_predani_zam: formData.fa_datum_predani_zam || '',
+        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || ''
       };
 
       console.log('🔍 API PARAMS:', {
@@ -1884,11 +1901,11 @@ export default function InvoiceEvidencePage() {
           fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
           fa_datum_doruceni: formData.fa_datum_doruceni || null,
           fa_castka: formData.fa_castka,
-          fa_poznamka: formData.fa_poznamka || null,
+          fa_poznamka: formData.fa_poznamka || '',
           fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
-          fa_predana_zam_id: formData.fa_predana_zam_id || null,
-          fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
-          fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
+          fa_predana_zam_id: formData.fa_predana_zam_id || '',
+          fa_datum_predani_zam: formData.fa_datum_predani_zam || '',
+          fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || '',
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
         };
@@ -2020,9 +2037,12 @@ export default function InvoiceEvidencePage() {
       }
 
       // 🔄 ZŮSTAT NA FORMULÁŘI - pouze resetovat formulář faktury
+      // Při editaci vymazat entity, při nové faktuře zachovat pro další evidenci
+      const keepEntity = !editingInvoiceId;
+      
       setFormData({
-        order_id: formData.order_id, // Zachovat order_id
-        smlouva_id: formData.smlouva_id, // Zachovat smlouva_id
+        order_id: keepEntity ? formData.order_id : '', // Při editaci vymazat
+        smlouva_id: keepEntity ? formData.smlouva_id : null, // Při editaci vymazat
         fa_cislo_vema: '',
         fa_typ: 'BEZNA',
         fa_datum_doruceni: formatDateForPicker(new Date()),
@@ -2039,6 +2059,14 @@ export default function InvoiceEvidencePage() {
 
       // Reset editace faktury
       setEditingInvoiceId(null);
+      
+      // Při editaci vymazat i preview entity
+      if (editingInvoiceId) {
+        setOrderData(null);
+        setSmlouvaData(null);
+        setSearchTerm('');
+        setShowSuggestions(false);
+      }
 
       // Reset pole errors
       setFieldErrors({});
@@ -2317,42 +2345,32 @@ export default function InvoiceEvidencePage() {
             {/* GRID 3x - ŘÁDEK 1: Ev. číslo objednávky | Předmět | Celková cena */}
             <FieldRow $columns="2fr 2fr 1fr">
               <FieldGroup style={{ width: '100%' }}>
-                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Vyberte objednávku nebo smlouvu</span>
+                <FieldLabel>
+                  Vyberte objednávku nebo smlouvu
+                </FieldLabel>
+                <AutocompleteWrapper className="autocomplete-wrapper" style={{ width: '100%', position: 'relative' }}>
+                  {/* Ikona zámku - klikatelná pro odemčení */}
                   {editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked && (
-                    <button
-                      type="button"
+                    <div
                       onClick={handleUnlockEntity}
                       style={{
-                        background: '#fef3c7',
-                        border: '2px solid #f59e0b',
-                        color: '#92400e',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
+                        position: 'absolute',
+                        left: '0.75rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        color: '#f59e0b',
+                        fontSize: '0.875rem',
+                        zIndex: 1,
                         cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        transition: 'all 0.2s'
+                        transition: 'color 0.2s'
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#fde68a';
-                        e.currentTarget.style.borderColor = '#d97706';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#fef3c7';
-                        e.currentTarget.style.borderColor = '#f59e0b';
-                      }}
-                      title="Klikněte pro změnu přiřazené objednávky/smlouvy"
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#d97706'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#f59e0b'}
+                      title="Klikněte pro odemčení změny objednávky/smlouvy"
                     >
                       <FontAwesomeIcon icon={faLock} />
-                      Odemknout změnu
-                    </button>
+                    </div>
                   )}
-                </FieldLabel>
-                <AutocompleteWrapper className="autocomplete-wrapper" style={{ width: '100%' }}>
                   <AutocompleteInput
                     type="text"
                     value={searchTerm}
@@ -2360,11 +2378,12 @@ export default function InvoiceEvidencePage() {
                     onFocus={() => setShowSuggestions(true)}
                     disabled={!!orderId || (editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
                     placeholder={
-                      editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked
-                        ? "🔒 Entita je zamčená - klikněte na 'Odemknout změnu' pro editaci"
-                        : "Začněte psát ev. číslo objednávky nebo smlouvy (min. 3 znaky)..."
+                      "Začněte psát ev. číslo objednávky nebo smlouvy (min. 3 znaky)..."
                     }
-                    style={{ width: '100%' }}
+                    style={{ 
+                      width: '100%',
+                      paddingLeft: (editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked) ? '2.5rem' : '0.75rem'
+                    }}
                   />
                   {searchTerm && !orderId && isEntityUnlocked && (
                     <ClearButton
@@ -2682,8 +2701,29 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
 
               <FieldGroup>
-                <FieldLabel>
-                  Variabilní symbol <RequiredStar>*</RequiredStar>
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Variabilní symbol <RequiredStar>*</RequiredStar></span>
+                  {formData.fa_cislo_vema && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, fa_cislo_vema: '' }))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        padding: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      title="Vymazat variabilní symbol"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  )}
                 </FieldLabel>
                 <Input
                   type="text"
@@ -2702,8 +2742,29 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
 
               <FieldGroup>
-                <FieldLabel>
-                  Částka vč. DPH <RequiredStar>*</RequiredStar>
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Částka vč. DPH <RequiredStar>*</RequiredStar></span>
+                  {formData.fa_castka && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, fa_castka: '' }))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        padding: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      title="Vymazat částku"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  )}
                 </FieldLabel>
                 <CurrencyInputWrapper>
                   <Input
@@ -2729,8 +2790,29 @@ export default function InvoiceEvidencePage() {
             {/* GRID 1x - ŘÁDEK 5: Střediska (celá šířka) */}
             <FieldRow $columns="1fr">
               <FieldGroup>
-                <FieldLabel>
-                  Střediska
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Střediska</span>
+                  {formData.fa_strediska_kod && formData.fa_strediska_kod.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, fa_strediska_kod: [] }))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        padding: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      title="Vymazat střediska"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  )}
                 </FieldLabel>
                 <MultiSelect
                   values={formData.fa_strediska_kod}
@@ -2752,8 +2834,29 @@ export default function InvoiceEvidencePage() {
             {/* GRID 1x - ŘÁDEK 6: Poznámka (celá šířka) */}
             <FieldRow $columns="1fr">
               <FieldGroup>
-                <FieldLabel>
-                  Poznámka
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Poznámka</span>
+                  {formData.fa_poznamka && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, fa_poznamka: '' }))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        padding: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      title="Vymazat poznámku"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  )}
                 </FieldLabel>
                 <Textarea
                   name="fa_poznamka"
@@ -2770,7 +2873,10 @@ export default function InvoiceEvidencePage() {
                 <FieldLabel>
                   Příloha faktury
                 </FieldLabel>
-                <FileInputWrapper>
+                <FileInputWrapper
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                >
                   <FileInputLabel htmlFor="file-upload">
                     <FontAwesomeIcon icon={faUpload} size="2x" />
                     <div>Klikněte nebo přetáhněte soubor</div>
@@ -2852,8 +2958,34 @@ export default function InvoiceEvidencePage() {
             {/* GRID 1x - ŘÁDEK: Předáno zaměstnanci (celá šířka) */}
             <FieldRow $columns="1fr">
               <FieldGroup>
-                <FieldLabel>
-                  Předáno zaměstnanci
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Předáno zaměstnanci</span>
+                  {formData.fa_predana_zam_id && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ 
+                        ...prev, 
+                        fa_predana_zam_id: null,
+                        fa_datum_predani_zam: '',
+                        fa_datum_vraceni_zam: ''
+                      }))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        padding: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.875rem'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      title="Vymazat zaměstnance (včetně datumů předání/vrácení)"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  )}
                 </FieldLabel>
                 <CustomSelect
                   value={formData.fa_predana_zam_id}
