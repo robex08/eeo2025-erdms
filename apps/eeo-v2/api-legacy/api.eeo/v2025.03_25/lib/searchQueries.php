@@ -350,7 +350,9 @@ function getSqlSearchOrders2025() {
  * 
  * @return string SQL dotaz
  */
-function getSqlSearchContracts() {
+function getSqlSearchContracts($filterObjForm = false) {
+    $objFormFilter = $filterObjForm ? "AND sm.pouzit_v_obj_formu = :filter_obj_form" : "";
+    
     return "
         SELECT 
             sm.id,
@@ -366,6 +368,7 @@ function getSqlSearchContracts() {
             sm.cerpano_celkem,
             sm.zbyva,
             sm.procento_cerpani,
+            sm.pouzit_v_obj_formu,
             CONCAT(
                 COALESCE(us.usek_zkr, ''),
                 IF(us.usek_zkr IS NOT NULL AND us.usek_nazev IS NOT NULL, ' - ', ''),
@@ -415,6 +418,7 @@ function getSqlSearchContracts() {
             OR us.usek_zkr LIKE :query
         )
         AND (:is_admin = 1 OR sm.aktivni = 1 OR :include_inactive = 1)
+        $objFormFilter
         ORDER BY sm.dt_vytvoreni DESC
         LIMIT :limit
     ";

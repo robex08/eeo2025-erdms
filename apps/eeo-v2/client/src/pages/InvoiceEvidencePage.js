@@ -23,18 +23,23 @@ import {
   faChevronDown,
   faSearch,
   faSpinner,
-  faEdit
+  faEdit,
+  faFileContract,
+  faLock,
+  faUnlock
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
 import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
+import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { fetchAllUsers } from '../services/api2auth';
 import { getStrediska25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
+import SmlouvaPreview from '../components/SmlouvaPreview';
 import DatePicker from '../components/DatePicker';
 import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -1015,12 +1020,14 @@ export default function InvoiceEvidencePage() {
   const [loading, setLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderData, setOrderData] = useState(null);
+  const [smlouvaData, setSmlouvaData] = useState(null);
+  const [selectedType, setSelectedType] = useState('order'); // 'order' nebo 'smlouva'
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
 
-  // Autocomplete state
+  // Autocomplete state - univerzální pro objednávky i smlouvy
   const [searchTerm, setSearchTerm] = useState('');
-  const [orderSuggestions, setOrderSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState([]); // Změněno z orderSuggestions
   const [isSearching, setIsSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -1041,6 +1048,9 @@ export default function InvoiceEvidencePage() {
     onConfirm: null,
     onCancel: null
   });
+
+  // State pro unlock entity (změna objednávky/smlouvy u existující FA)
+  const [isEntityUnlocked, setIsEntityUnlocked] = useState(false);
 
 
 
@@ -1139,8 +1149,23 @@ export default function InvoiceEvidencePage() {
   }, [token, username]);
 
   // Detekce změny kritických polí faktury
+  // Varování má smysl POUZE pokud:
+  // 1. FA MĚLA přiřazenou OBJ nebo SML (ne NULL)
+  // 2. FA NEBYLA předána zaměstnanci
+  // 3. Věcná kontrola JIŽ BYLA PROVEDENA (vecna_spravnost_potvrzeno = 1)
   useEffect(() => {
     if (!editingInvoiceId || !originalFormData) return;
+    
+    // Kontrola podmínek pro zobrazení varování
+    const hadOrderOrContract = originalFormData.order_id || originalFormData.smlouva_id;
+    const wasNotHandedToEmployee = !originalFormData.fa_predana_zam_id;
+    const wasAlreadyApproved = originalFormData.vecna_spravnost_potvrzeno === 1;
+    
+    // Varování zobrazit jen pokud jsou splněny všechny podmínky
+    if (!hadOrderOrContract || !wasNotHandedToEmployee || !wasAlreadyApproved) {
+      setHasChangedCriticalField(false);
+      return;
+    }
     
     const criticalFields = [
       'fa_castka',
@@ -1177,6 +1202,19 @@ export default function InvoiceEvidencePage() {
         return;
       }
       
+      // KRITICKÉ: Počkat na načtení středisek (stejně jako OrderForm25)
+      if (strediskaLoading || strediskaOptions.length === 0) {
+        console.log('⏳ Čekám na načtení středisek...');
+        return;
+      }
+      
+      // Pokud už je tato faktura načtená (formData má fa_cislo_vema), přeskočit
+      // Tím zabráníme opakovanému načítání při změně dependencies
+      if (formData.fa_cislo_vema && editingInvoiceId === editInvoiceId) {
+        console.log('ℹ️ Faktura už je načtená (formData.fa_cislo_vema exists), přeskakuji...');
+        return;
+      }
+      
       console.log('📝 Načítám fakturu pro editaci, ID:', editInvoiceId);
       setLoading(true);
       setEditingInvoiceId(editInvoiceId);
@@ -1189,22 +1227,44 @@ export default function InvoiceEvidencePage() {
         
         // Naplnit formulář daty faktury
         if (invoiceData) {
-          // Parse středisek pokud jsou string
+          // Parse středisek pokud jsou string - STEJNĚ JAKO OrderForm25
           let strediskaArray = [];
           if (invoiceData.fa_strediska_kod) {
+            let parsed = [];
             if (typeof invoiceData.fa_strediska_kod === 'string') {
               try {
-                strediskaArray = JSON.parse(invoiceData.fa_strediska_kod);
+                parsed = JSON.parse(invoiceData.fa_strediska_kod);
               } catch (e) {
                 console.warn('Chyba při parsování středisek:', e);
               }
             } else if (Array.isArray(invoiceData.fa_strediska_kod)) {
-              strediskaArray = invoiceData.fa_strediska_kod;
+              parsed = invoiceData.fa_strediska_kod;
             }
+            
+            // MultiSelect očekává array STRINGŮ (values), ne objektů!
+            // Pouze ověřit, že codes existují v options
+            strediskaArray = parsed.map(item => {
+              // Pokud je to string, vrátit ho (to je správný formát)
+              if (typeof item === 'string') {
+                // Ověřit, že existuje v options
+                const exists = strediskaOptions.find(opt => opt.value === item);
+                if (!exists) {
+                  console.warn(`⚠️ Středisko ${item} není v options (neaktivní)`);
+                }
+                return item;
+              }
+              // Pokud je to objekt, extrahovat value
+              if (typeof item === 'object' && item.value) {
+                return item.value;
+              }
+              // Fallback
+              return item;
+            });
           }
           
           const loadedFormData = {
             order_id: invoiceData.objednavka_id || '',
+            smlouva_id: invoiceData.smlouva_id || null,
             fa_cislo_vema: invoiceData.fa_cislo_vema || '',
             fa_typ: invoiceData.fa_typ || 'BEZNA',
             fa_datum_doruceni: formatDateForPicker(invoiceData.fa_datum_doruceni),
@@ -1217,7 +1277,9 @@ export default function InvoiceEvidencePage() {
             // Nové položky
             fa_predana_zam_id: invoiceData.fa_predana_zam_id || null,
             fa_datum_predani_zam: formatDateForPicker(invoiceData.fa_datum_predani_zam),
-            fa_datum_vraceni_zam: formatDateForPicker(invoiceData.fa_datum_vraceni_zam)
+            fa_datum_vraceni_zam: formatDateForPicker(invoiceData.fa_datum_vraceni_zam),
+            // Věcná správnost (pro detekci změn kritických polí)
+            vecna_spravnost_potvrzeno: invoiceData.vecna_spravnost_potvrzeno || 0
           };
           
           setFormData(loadedFormData);
@@ -1228,11 +1290,17 @@ export default function InvoiceEvidencePage() {
           if (orderIdForLoad || invoiceData.objednavka_id) {
             const orderIdToLoad = orderIdForLoad || invoiceData.objednavka_id;
             await loadOrderData(orderIdToLoad);
+            setSelectedType('order');
             
             // Nastavit searchTerm pokud máme číslo objednávky
             if (invoiceData.cislo_objednavky) {
               setSearchTerm(invoiceData.cislo_objednavky);
             }
+          }
+          // Pokud je známa smlouva, načíst ji
+          else if (invoiceData.smlouva_id) {
+            await loadSmlouvaData(invoiceData.smlouva_id);
+            setSelectedType('smlouva');
           }
           
           showToast?.(`Faktura ${invoiceData.fa_cislo_vema} načtena pro editaci`, { type: 'info' });
@@ -1249,8 +1317,9 @@ export default function InvoiceEvidencePage() {
     if (location.state?.editInvoiceId) {
       loadInvoiceForEdit();
     }
-  }, [location.state?.editInvoiceId, token, username, showToast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.state?.editInvoiceId, token, username, showToast, strediskaOptions, strediskaLoading]); // eslint-disable-line react-hooks/exhaustive-deps
   // Note: Záměrně neincluduju loadOrderData a setSearchTerm - volá se jen jednou při mount
+  // DŮLEŽITÉ: strediskaOptions a strediskaLoading musí být v dependencies, aby se čekalo na načtení!
 
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
@@ -1288,11 +1357,68 @@ export default function InvoiceEvidencePage() {
     }
   }, [token, username, showToast]);
 
-  // Search objednávek pro autocomplete
-  const searchOrders = useCallback(async (search) => {
+  const loadSmlouvaData = useCallback(async (smlouvaId) => {
+    if (!smlouvaId || !token || !username) {
+      return;
+    }
+
+    setOrderLoading(true); // Použijeme stejný loading state
+    setError(null);
+
+    try {
+      console.log('🔍 Načítám smlouvu ID:', smlouvaId);
+      const smlouvaData = await getSmlouvaDetail({ token, username, id: smlouvaId });
+      
+      console.log('📦 RAW API RESPONSE - smlouvaData:', JSON.stringify(smlouvaData, null, 2));
+
+      if (smlouvaData) {
+        // API vrací data v objektu { smlouva: {...}, objednavky: [], statistiky: {} }
+        // Potřebujeme extrahovat jen část smlouva
+        const contract = smlouvaData.smlouva || smlouvaData;
+        
+        // Normalizace dat - přenést všechna data + přidat celý response
+        const normalizedData = {
+          ...contract,
+          // Přidáme objednavky a statistiky z root objektu
+          objednavky: smlouvaData.objednavky || [],
+          statistiky: smlouvaData.statistiky || {}
+        };
+        
+        setSmlouvaData(normalizedData);
+        setSelectedType('smlouva');
+        console.log('✅ Smlouva načtena (normalized):', normalizedData);
+        
+        // Aktualizuj formData s smlouva_id
+        setFormData(prev => ({
+          ...prev,
+          smlouva_id: normalizedData.id,
+          order_id: null // Vyčistit objednávku pokud byla předtím
+        }));
+        
+        // Aktualizuj searchTerm - číslo smlouvy
+        const cislo = normalizedData.cislo_smlouvy || `#${normalizedData.id}`;
+        setSearchTerm(cislo);
+        
+        // Vyčistit orderData
+        setOrderData(null);
+      } else {
+        setError('Nepodařilo se načíst data smlouvy - prázdná odpověď z API');
+        showToast && showToast('Nepodařilo se načíst data smlouvy', 'error');
+      }
+    } catch (err) {
+      console.error('❌ Chyba při načítání smlouvy:', err);
+      setError(err.message || 'Chyba při načítání smlouvy');
+      showToast && showToast(err.message || 'Chyba při načítání smlouvy', 'error');
+    } finally {
+      setOrderLoading(false);
+    }
+  }, [token, username, showToast]);
+
+  // Search objednávek a smluv pro autocomplete
+  const searchEntities = useCallback(async (search) => {
     // ✅ universalSearch vyžaduje min 3 znaky
     if (!search || search.length < 3) {
-      setOrderSuggestions([]);
+      setSuggestions([]);
       return;
     }
 
@@ -1300,22 +1426,19 @@ export default function InvoiceEvidencePage() {
     try {
       const searchParams = {
         query: search,
-        categories: ['orders_2025'],
+        categories: ['orders_2025', 'contracts'], // Objednávky + Smlouvy
         limit: 15,
-        archivovano: 0, // Jen aktivní objednávky
-        search_all: canViewAllOrders // ✅ Ignorovat permissions, vrátit všechny výsledky
+        archivovano: 0,
+        search_all: canViewAllOrders
       };
       
       const response = await universalSearch(searchParams);
 
-      // ✅ Správná cesta k datům z universalSearch
       const orders = response?.categories?.orders_2025?.results || [];
+      const contracts = response?.categories?.contracts?.results || [];
 
       // Filtruj objednávky - zobraz VŠECHNY odeslané/aktivní objednávky
-      // Kontrola stavů pro fakturaci se provede AŽ PO VÝBĚRU objednávky (v canAddInvoiceToOrder)
-      // Fáze workflow: NOVA → ROZPRACOVANA → KE_SCHVALENI → SCHVALENA → ODESLANA → POTVRZENA → FAKTURACE → VECNA_SPRAVNOST → DOKONCENA
       const sentOrders = orders.filter(order => {
-        // ✅ stav_kod je JSON string, musíme parsovat
         let stavKody = [];
         try {
           if (order.stav_kod) {
@@ -1325,8 +1448,6 @@ export default function InvoiceEvidencePage() {
           // Ignorovat chyby parsování
         }
         
-        // Vyřaď pouze neplatné stavy (stornované/zamítnuté)
-        // ❌ NEPLATNÉ: STORNOVANA, ZAMITNUTA
         const invalidStates = ['STORNOVANA', 'ZAMITNUTA'];
         const hasInvalidState = stavKody.some(stav => invalidStates.includes(stav));
         
@@ -1334,7 +1455,6 @@ export default function InvoiceEvidencePage() {
           return false;
         }
         
-        // Vyřaď objednávky které ještě nebyly odeslány (NOVA, KONCEPT, KE_SCHVALENI, SCHVALENA)
         const validStates = ['ODESLANA', 'ODESLANO', 'POTVRZENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'];
         const hasValidState = stavKody.some(stav => validStates.includes(stav));
         
@@ -1342,36 +1462,37 @@ export default function InvoiceEvidencePage() {
           return false;
         }
 
-        // ✅ Pokud má uživatel MANAGE práva nebo je ADMIN, zobraz všechny objednávky
-        if (canViewAllOrders) {
-          return true;
-        }
-
-        // ⚠️ Běžný uživatel - kontrola vlastnictví nebo úseku
-        // TODO: Implementovat kontrolu úseku (usek_id) pokud bude potřeba
-        // Pro teď předpokládáme že universalSearch už filtruje podle úseku na backendu
-        return true;
+        return canViewAllOrders || true;
       });
 
-      setOrderSuggestions(sentOrders);
+      // Filtruj smlouvy - pouze aktivní
+      const activeContracts = contracts.filter(contract => contract.aktivni === 1);
+
+      // Kombinuj výsledky s označením typu
+      const combinedResults = [
+        ...sentOrders.map(order => ({ ...order, _type: 'order' })),
+        ...activeContracts.map(contract => ({ ...contract, _type: 'smlouva' }))
+      ];
+
+      setSuggestions(combinedResults);
       setShowSuggestions(true);
     } catch (err) {
-      setOrderSuggestions([]);
+      setSuggestions([]);
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [canViewAllOrders]);
 
   // Debounced search při psaní (jen když jsou suggestions otevřené)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchTerm && showSuggestions) {
-        searchOrders(searchTerm);
+        searchEntities(searchTerm);
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, showSuggestions, searchOrders]);
+  }, [searchTerm, showSuggestions, searchEntities]);
 
   // Effect: Načíst objednávku když je orderId v URL
   useEffect(() => {
@@ -1424,13 +1545,49 @@ export default function InvoiceEvidencePage() {
     }
   };
 
+  // Handler: odemčení entity (změna OBJ/SML u existující FA)
+  const handleUnlockEntity = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '⚠️ Změna objednávky/smlouvy',
+      message: (
+        <div style={{ lineHeight: '1.6' }}>
+          <p style={{ marginBottom: '1rem', fontWeight: 600 }}>
+            Opravdu chcete změnit přiřazení faktury k jiné objednávce nebo smlouvě?
+          </p>
+          <div style={{ background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+            <strong style={{ color: '#92400e' }}>⚠️ VAROVÁNÍ - Možné dopady:</strong>
+            <ul style={{ margin: '0.5rem 0 0 1.25rem', color: '#78350f' }}>
+              <li>Původní objednávka může být vrácena na <strong>věcnou správnost</strong></li>
+              <li>Může dojít ke změně <strong>workflow stavu</strong> objednávky</li>
+              <li>Částka faktury ovlivní <strong>čerpání rozpočtu</strong> nové entity</li>
+              <li>Historie a notifikace budou navázány na novou entitu</li>
+            </ul>
+          </div>
+          <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+            Po odemčení budete moci vybrat jinou objednávku nebo smlouvu.
+          </p>
+        </div>
+      ),
+      onConfirm: () => {
+        setIsEntityUnlocked(true);
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      },
+      onCancel: () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      }
+    });
+  };
+
   // Handler: vymazání hledání objednávky
   const handleClearSearch = () => {
     setSearchTerm('');
-    setOrderSuggestions([]);
+    setSuggestions([]);
     setShowSuggestions(false);
-    setFormData(prev => ({ ...prev, order_id: '' }));
+    setFormData(prev => ({ ...prev, order_id: '', smlouva_id: null }));
     setOrderData(null);
+    setSmlouvaData(null);
+    setSelectedType('order'); // Reset na výchozí
   };
 
   // Handler: výběr objednávky z autocomplete
@@ -1494,10 +1651,13 @@ export default function InvoiceEvidencePage() {
   const proceedWithOrderLoad = (order, evCislo) => {
     setFormData(prev => ({
       ...prev,
-      order_id: order.id
+      order_id: order.id,
+      smlouva_id: null // Vyčistit smlouvu pokud byla předtím
     }));
     setSearchTerm(evCislo);
     setShowSuggestions(false);
+    setSelectedType('order');
+    setSmlouvaData(null); // Vyčistit data smlouvy
     
     // 🎯 Nastavit pro OrderForm25 - načte z localStorage
     localStorage.setItem('activeOrderEditId', order.id);
@@ -1518,6 +1678,7 @@ export default function InvoiceEvidencePage() {
 
     setFormData({
       order_id: faktura.objednavka_id || '',
+      smlouva_id: faktura.smlouva_id || null,
       fa_cislo_vema: faktura.fa_cislo_vema || '',
       fa_typ: faktura.fa_typ || 'BEZNA',
       fa_datum_vystaveni: faktura.fa_datum_vystaveni || '',
@@ -1526,6 +1687,9 @@ export default function InvoiceEvidencePage() {
       fa_castka: faktura.fa_castka || '',
       fa_variabilni_symbol: faktura.fa_variabilni_symbol || '',
       fa_poznamka: faktura.fa_poznamka || '',
+      fa_predana_zam_id: faktura.fa_predana_zam_id || null,
+      fa_datum_predani_zam: faktura.fa_datum_predani_zam || '',
+      fa_datum_vraceni_zam: faktura.fa_datum_vraceni_zam || '',
       file: null,
       invoice_id: faktura.id // Uložíme ID faktury pro update místo create
     });
@@ -1684,6 +1848,7 @@ export default function InvoiceEvidencePage() {
         token,
         username,
         order_id: formData.order_id || null, // Může být null pokud faktura není vázána na objednávku
+        smlouva_id: formData.smlouva_id || null, // Může být null pokud faktura není vázána na smlouvu
         fa_cislo_vema: formData.fa_cislo_vema,
         fa_typ: formData.fa_typ || 'BEZNA',
         fa_datum_vystaveni: formData.fa_datum_vystaveni,
@@ -1692,6 +1857,8 @@ export default function InvoiceEvidencePage() {
         fa_castka: formData.fa_castka,
         fa_poznamka: formData.fa_poznamka || null,
         fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
+        // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
+        fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
         // Nové položky (nepovinné)
         fa_predana_zam_id: formData.fa_predana_zam_id || null,
         fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
@@ -1707,9 +1874,30 @@ export default function InvoiceEvidencePage() {
 
       if (editingInvoiceId) {
         // EDITACE - UPDATE faktury
+        // updateInvoiceV2 očekává updateData jako separátní objekt
+        const updateData = {
+          objednavka_id: formData.order_id || null,
+          smlouva_id: formData.smlouva_id || null,
+          fa_cislo_vema: formData.fa_cislo_vema,
+          fa_typ: formData.fa_typ || 'BEZNA',
+          fa_datum_vystaveni: formData.fa_datum_vystaveni,
+          fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
+          fa_datum_doruceni: formData.fa_datum_doruceni || null,
+          fa_castka: formData.fa_castka,
+          fa_poznamka: formData.fa_poznamka || null,
+          fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
+          fa_predana_zam_id: formData.fa_predana_zam_id || null,
+          fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
+          fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
+          // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
+          fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
+        };
+
         result = await updateInvoiceV2({
-          ...apiParams,
-          invoice_id: editingInvoiceId
+          token,
+          username,
+          invoice_id: editingInvoiceId,
+          updateData
         });
         
         setProgress?.(100);
@@ -1834,6 +2022,7 @@ export default function InvoiceEvidencePage() {
       // 🔄 ZŮSTAT NA FORMULÁŘI - pouze resetovat formulář faktury
       setFormData({
         order_id: formData.order_id, // Zachovat order_id
+        smlouva_id: formData.smlouva_id, // Zachovat smlouva_id
         fa_cislo_vema: '',
         fa_typ: 'BEZNA',
         fa_datum_doruceni: formatDateForPicker(new Date()),
@@ -1842,7 +2031,10 @@ export default function InvoiceEvidencePage() {
         fa_castka: '',
         fa_poznamka: '',
         fa_strediska_kod: [],
-        file: null
+        file: null,
+        fa_predana_zam_id: null,
+        fa_datum_predani_zam: '',
+        fa_datum_vraceni_zam: ''
       });
 
       // Reset editace faktury
@@ -2125,8 +2317,40 @@ export default function InvoiceEvidencePage() {
             {/* GRID 3x - ŘÁDEK 1: Ev. číslo objednávky | Předmět | Celková cena */}
             <FieldRow $columns="2fr 2fr 1fr">
               <FieldGroup style={{ width: '100%' }}>
-                <FieldLabel>
-                  Vyberte objednávku dle ev. čísla
+                <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Vyberte objednávku nebo smlouvu</span>
+                  {editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked && (
+                    <button
+                      type="button"
+                      onClick={handleUnlockEntity}
+                      style={{
+                        background: '#fef3c7',
+                        border: '2px solid #f59e0b',
+                        color: '#92400e',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#fde68a';
+                        e.currentTarget.style.borderColor = '#d97706';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#fef3c7';
+                        e.currentTarget.style.borderColor = '#f59e0b';
+                      }}
+                      title="Klikněte pro změnu přiřazené objednávky/smlouvy"
+                    >
+                      <FontAwesomeIcon icon={faLock} />
+                      Odemknout změnu
+                    </button>
+                  )}
                 </FieldLabel>
                 <AutocompleteWrapper className="autocomplete-wrapper" style={{ width: '100%' }}>
                   <AutocompleteInput
@@ -2134,11 +2358,15 @@ export default function InvoiceEvidencePage() {
                     value={searchTerm}
                     onChange={handleSearchChange}
                     onFocus={() => setShowSuggestions(true)}
-                    disabled={!!orderId || !!editingInvoiceId}
-                    placeholder={editingInvoiceId ? "Objednávku nelze změnit při editaci" : "Začněte psát evidenční číslo (min. 3 znaky)..."}
+                    disabled={!!orderId || (editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
+                    placeholder={
+                      editingInvoiceId && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked
+                        ? "🔒 Entita je zamčená - klikněte na 'Odemknout změnu' pro editaci"
+                        : "Začněte psát ev. číslo objednávky nebo smlouvy (min. 3 znaky)..."
+                    }
                     style={{ width: '100%' }}
                   />
-                  {searchTerm && !orderId && (
+                  {searchTerm && !orderId && isEntityUnlocked && (
                     <ClearButton
                       type="button"
                       onClick={handleClearSearch}
@@ -2159,93 +2387,123 @@ export default function InvoiceEvidencePage() {
                           <FontAwesomeIcon icon={faSearch} style={{ marginRight: '0.5rem' }} />
                           Zadejte alespoň 3 znaky pro vyhledávání
                         </NoResults>
-                      ) : orderSuggestions.length > 0 ? (
-                        orderSuggestions.map(order => {
-                          // Získat poslední stav z workflow
-                          let stavText = '';
-                          
-                          // Pole "stav" obsahuje český název aktuálního stavu (např. "Rozpracovaná")
-                          if (order.stav) {
-                            stavText = order.stav;
+                      ) : suggestions.length > 0 ? (
+                        suggestions.map(item => {
+                          const isOrder = item._type === 'order';
+                          const isSmlouva = item._type === 'smlouva';
+
+                          // Pro objednávky
+                          if (isOrder) {
+                            const stavText = item.stav || '';
+                            const getStavColor = (stav) => {
+                              const stavLower = (stav || '').toLowerCase();
+                              if (stavLower.includes('dokončen') || stavLower.includes('zkontrolovan')) {
+                                return { bg: '#d1fae5', text: '#065f46' };
+                              }
+                              if (stavLower.includes('fakturac') || stavLower.includes('věcná správnost')) {
+                                return { bg: '#dbeafe', text: '#1e40af' };
+                              }
+                              if (stavLower.includes('odeslan') || stavLower.includes('potvr')) {
+                                return { bg: '#e0e7ff', text: '#3730a3' };
+                              }
+                              if (stavLower.includes('schval')) {
+                                return { bg: '#fef3c7', text: '#92400e' };
+                              }
+                              return { bg: '#e5e7eb', text: '#374151' };
+                            };
+                            const stavColors = getStavColor(stavText);
+
+                            return (
+                              <OrderSuggestionItem
+                                key={`order-${item.id}`}
+                                onClick={() => handleSelectOrder(item)}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                  <OrderSuggestionTitle style={{ flex: 1 }}>
+                                    <OrderSuggestionBadge $color="#3b82f6" $textColor="white" style={{ marginRight: '0.5rem' }}>
+                                      OBJ
+                                    </OrderSuggestionBadge>
+                                    {item.cislo_objednavky || item.evidencni_cislo || `#${item.id}`}
+                                    {stavText && (
+                                      <OrderSuggestionBadge $color={stavColors.bg} $textColor={stavColors.text} style={{ marginLeft: '0.5rem' }}>
+                                        {stavText}
+                                      </OrderSuggestionBadge>
+                                    )}
+                                    {item.max_cena_s_dph && (
+                                      <OrderSuggestionBadge $color="#fef3c7" $textColor="#92400e" style={{ marginLeft: '0.5rem' }}>
+                                        {parseFloat(item.max_cena_s_dph).toLocaleString('cs-CZ')} Kč
+                                      </OrderSuggestionBadge>
+                                    )}
+                                  </OrderSuggestionTitle>
+                                  {item.pocet_faktur !== undefined && (
+                                    <OrderSuggestionBadge 
+                                      $color={item.pocet_faktur > 0 ? '#e0f2fe' : '#f1f5f9'} 
+                                      $textColor={item.pocet_faktur > 0 ? '#0369a1' : '#64748b'}
+                                      style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                    >
+                                      <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize: '0.7rem' }} />
+                                      {item.pocet_faktur || 0}
+                                    </OrderSuggestionBadge>
+                                  )}
+                                </div>
+                                <OrderSuggestionDetail>
+                                  {item.predmet && <span><strong>Předmět:</strong> {item.predmet}</span>}
+                                  {item.dodavatel_nazev && (
+                                    <span>
+                                      <strong>{item.dodavatel_nazev}</strong>
+                                      {item.dodavatel_ico && ` (IČO: ${item.dodavatel_ico})`}
+                                    </span>
+                                  )}
+                                </OrderSuggestionDetail>
+                              </OrderSuggestionItem>
+                            );
                           }
-                          
-                          // Případně lze použít stav_kod (JSON array) a vzít poslední
-                          // např. ["SCHVALENA","ROZPRACOVANA"] -> "ROZPRACOVANA"
-                          // Ale "stav" už obsahuje lidsky čitelný název, takže to stačí
 
-                          // Barva badgeu podle stavu
-                          const getStavColor = (stav) => {
-                            const stavLower = (stav || '').toLowerCase();
-                            if (stavLower.includes('dokončen') || stavLower.includes('zkontrolovan')) {
-                              return { bg: '#d1fae5', text: '#065f46' }; // Zelená
-                            }
-                            if (stavLower.includes('fakturac') || stavLower.includes('věcná správnost')) {
-                              return { bg: '#dbeafe', text: '#1e40af' }; // Modrá
-                            }
-                            if (stavLower.includes('odeslan') || stavLower.includes('potvr')) {
-                              return { bg: '#e0e7ff', text: '#3730a3' }; // Indigo
-                            }
-                            if (stavLower.includes('schval')) {
-                              return { bg: '#fef3c7', text: '#92400e' }; // Žlutá
-                            }
-                            return { bg: '#e5e7eb', text: '#374151' }; // Šedá (default)
-                          };
-
-                          const stavColors = getStavColor(stavText);
-
-                          return (
-                            <OrderSuggestionItem
-                              key={order.id}
-                              onClick={() => handleSelectOrder(order)}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                <OrderSuggestionTitle style={{ flex: 1 }}>
-                                  {order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`}
-                                  {stavText && (
-                                    <OrderSuggestionBadge $color={stavColors.bg} $textColor={stavColors.text} style={{ marginLeft: '0.5rem' }}>
-                                      {stavText}
+                          // Pro smlouvy
+                          if (isSmlouva) {
+                            return (
+                              <OrderSuggestionItem
+                                key={`smlouva-${item.id}`}
+                                onClick={() => {
+                                  setSelectedType('smlouva');
+                                  loadSmlouvaData(item.id);
+                                  setShowSuggestions(false);
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                  <OrderSuggestionTitle style={{ flex: 1 }}>
+                                    <OrderSuggestionBadge $color="#10b981" $textColor="white" style={{ marginRight: '0.5rem' }}>
+                                      SML
                                     </OrderSuggestionBadge>
+                                    {item.cislo_smlouvy}
+                                    {item.hodnota_s_dph && (
+                                      <OrderSuggestionBadge $color="#fef3c7" $textColor="#92400e" style={{ marginLeft: '0.5rem' }}>
+                                        {parseFloat(item.hodnota_s_dph).toLocaleString('cs-CZ')} Kč
+                                      </OrderSuggestionBadge>
+                                    )}
+                                  </OrderSuggestionTitle>
+                                </div>
+                                <OrderSuggestionDetail>
+                                  {item.nazev_smlouvy && <span><strong>Název:</strong> {item.nazev_smlouvy}</span>}
+                                  {item.nazev_firmy && (
+                                    <span>
+                                      <strong>{item.nazev_firmy}</strong>
+                                      {item.ico && ` (IČO: ${item.ico})`}
+                                    </span>
                                   )}
-                                  {order.max_cena_s_dph && (
-                                    <OrderSuggestionBadge $color="#fef3c7" $textColor="#92400e" style={{ marginLeft: '0.5rem' }}>
-                                      {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ')} Kč
-                                    </OrderSuggestionBadge>
-                                  )}
-                                </OrderSuggestionTitle>
-                                {order.pocet_faktur !== undefined && (
-                                  <OrderSuggestionBadge 
-                                    $color={order.pocet_faktur > 0 ? '#e0f2fe' : '#f1f5f9'} 
-                                    $textColor={order.pocet_faktur > 0 ? '#0369a1' : '#64748b'}
-                                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                  >
-                                    <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize: '0.7rem' }} />
-                                    {order.pocet_faktur || 0}
-                                  </OrderSuggestionBadge>
-                                )}
-                              </div>
-                              <OrderSuggestionDetail>
-                                {order.dodavatel_nazev && (
-                                  <span>
-                                    <strong>{order.dodavatel_nazev}</strong>
-                                    {order.dodavatel_ico && ` (IČO: ${order.dodavatel_ico})`}
-                                  </span>
-                                )}
-                                {order.creator && (
-                                  <span>Objednatel: {order.creator}</span>
-                                )}
-                                {order.schvalovatel && (
-                                  <span>Schvalovatel: {order.schvalovatel}</span>
-                                )}
-                              </OrderSuggestionDetail>
-                            </OrderSuggestionItem>
-                          );
+                                </OrderSuggestionDetail>
+                              </OrderSuggestionItem>
+                            );
+                          }
+
+                          return null;
                         })
                       ) : (
                         <NoResults>
                           <FontAwesomeIcon icon={faSearch} style={{ marginRight: '0.5rem' }} />
-                          Žádné objednávky nenalezeny
+                          Žádné objednávky ani smlouvy nenalezeny
                           <div style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: '#9ca3af' }}>
-                            Hledají se jen odeslané objednávky (od stavu ODESLÁNA výše)
+                            Hledají se odeslané objednávky a aktivní smlouvy
                           </div>
                         </NoResults>
                       )}
@@ -2255,54 +2513,71 @@ export default function InvoiceEvidencePage() {
                 <HelpText>
                   {orderId 
                     ? 'Objednávka je předvyplněna z kontextu' 
-                    : 'Nepovinné - pokud faktura není vázána na objednávku, nechte prázdné'}
+                    : 'Nepovinné - pokud faktura není vázána na objednávku ani smlouvu, nechte prázdné'}
                 </HelpText>
               </FieldGroup>
 
-              {/* Předmět - dynamicky zobrazený při výběru objednávky */}
+              {/* Předmět / Název - dynamicky podle typu entity */}
               <FieldGroup>
-                <FieldLabel>Předmět</FieldLabel>
+                <FieldLabel>
+                  {selectedType === 'smlouva' ? 'Název smlouvy' : 'Předmět objednávky'}
+                </FieldLabel>
                 <div style={{ 
                   height: '48px',
                   padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
-                  background: orderData ? '#f0f9ff' : '#f9fafb', 
-                  border: orderData ? '2px solid #3b82f6' : '2px solid #e5e7eb', 
+                  background: (orderData || smlouvaData) ? '#f0f9ff' : '#f9fafb', 
+                  border: (orderData || smlouvaData) ? '2px solid #3b82f6' : '2px solid #e5e7eb', 
                   borderRadius: '8px',
-                  color: orderData ? '#1e40af' : '#9ca3af',
-                  fontWeight: orderData ? '500' : '400',
+                  color: (orderData || smlouvaData) ? '#1e40af' : '#9ca3af',
+                  fontWeight: (orderData || smlouvaData) ? '500' : '400',
                   fontSize: '0.95rem',
                   boxSizing: 'border-box'
                 }}>
-                  {orderData ? (orderData.predmet || '—') : '—'}
+                  {selectedType === 'order' && orderData 
+                    ? (orderData.predmet || '—')
+                    : selectedType === 'smlouva' && smlouvaData
+                    ? (smlouvaData.nazev_smlouvy || smlouvaData.nazev || '—')
+                    : '—'}
                 </div>
               </FieldGroup>
 
-              {/* Celková cena objednávky */}
+              {/* Celková cena - dynamicky podle typu entity */}
               <FieldGroup>
-                <FieldLabel>Celková cena</FieldLabel>
+                <FieldLabel>
+                  {selectedType === 'smlouva' ? 'Celkem plnění s DPH' : 'Celková cena'}
+                </FieldLabel>
                 <div style={{ 
                   height: '48px',
                   padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'flex-end',
-                  background: orderData ? '#f0fdf4' : '#f9fafb', 
-                  border: orderData ? '2px solid #10b981' : '2px solid #e5e7eb', 
+                  background: (orderData || smlouvaData) ? '#f0fdf4' : '#f9fafb', 
+                  border: (orderData || smlouvaData) ? '2px solid #10b981' : '2px solid #e5e7eb', 
                   borderRadius: '8px',
-                  color: orderData ? '#065f46' : '#9ca3af',
-                  fontWeight: orderData ? '700' : '400',
+                  color: (orderData || smlouvaData) ? '#065f46' : '#9ca3af',
+                  fontWeight: (orderData || smlouvaData) ? '700' : '400',
                   fontSize: '0.875rem',
                   boxSizing: 'border-box'
                 }}>
-                  {orderData && orderData.max_cena_s_dph 
-                    ? new Intl.NumberFormat('cs-CZ', { 
-                        style: 'decimal', 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
-                      }).format(parseFloat(orderData.max_cena_s_dph)) + ' Kč'
-                    : '—'}
+                  {(() => {
+                    let amount = null;
+                    if (selectedType === 'order' && orderData?.max_cena_s_dph) {
+                      amount = orderData.max_cena_s_dph;
+                    } else if (selectedType === 'smlouva' && smlouvaData) {
+                      amount = smlouvaData.hodnota_s_dph || smlouvaData.celkova_castka;
+                    }
+                    
+                    return amount
+                      ? new Intl.NumberFormat('cs-CZ', { 
+                          style: 'decimal', 
+                          minimumFractionDigits: 2, 
+                          maximumFractionDigits: 2 
+                        }).format(parseFloat(amount)) + ' Kč'
+                      : '—';
+                  })()}
                 </div>
               </FieldGroup>
             </FieldRow>
@@ -2459,7 +2734,14 @@ export default function InvoiceEvidencePage() {
                 </FieldLabel>
                 <MultiSelect
                   values={formData.fa_strediska_kod}
-                  onChange={(e) => setFormData(prev => ({ ...prev, fa_strediska_kod: e.target.value }))}
+                  onChange={(e) => {
+                    // MultiSelect vrací array objektů [{kod_stavu, nazev_stavu}]
+                    // Stejně jako CustomSelect v OrderForm25
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      fa_strediska_kod: e.target.value 
+                    }));
+                  }}
                   options={strediskaOptions}
                   placeholder={strediskaLoading ? "Načítám střediska..." : "Vyberte střediska..."}
                   disabled={strediskaLoading}
@@ -2748,27 +3030,32 @@ export default function InvoiceEvidencePage() {
           </FormColumnContent>
         </FormColumn>
 
-        {/* PRAVÁ STRANA - NÁHLED OBJEDNÁVKY (40%) */}
+        {/* PRAVÁ STRANA - NÁHLED OBJEDNÁVKY / SMLOUVY (40%) */}
         <PreviewColumn>
           <PreviewColumnHeader>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-              {/* První řádek: Náhled objednávky + EV.Č. */}
+              {/* První řádek: Náhled + EV.Č. - dynamický podle typu */}
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between', 
                 gap: '1rem', 
                 paddingBottom: '12px',
-                borderBottom: '2px solid #3498db',
+                borderBottom: selectedType === 'smlouva' ? '2px solid #10b981' : '2px solid #3498db',
                 marginBottom: '1rem'
               }}>
                 <SectionTitle style={{ margin: 0, border: 'none', paddingBottom: 0, whiteSpace: 'nowrap' }}>
-                  <FontAwesomeIcon icon={faBuilding} />
-                  Náhled objednávky
+                  <FontAwesomeIcon icon={selectedType === 'smlouva' ? faFileContract : faBuilding} />
+                  {selectedType === 'smlouva' ? 'Náhled smlouvy' : 'Náhled objednávky'}
                 </SectionTitle>
-                {orderData && (
+                {orderData && selectedType === 'order' && (
                   <span style={{ fontWeight: 700, color: '#1e40af', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
                     {orderData.cislo_objednavky || `#${orderData.id}`}
+                  </span>
+                )}
+                {smlouvaData && selectedType === 'smlouva' && (
+                  <span style={{ fontWeight: 700, color: '#059669', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
+                    {smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`}
                   </span>
                 )}
               </div>
@@ -2939,26 +3226,31 @@ export default function InvoiceEvidencePage() {
           {orderLoading && (
             <LoadingOverlay>
               <LoadingSpinner />
-              <div>Načítám objednávku...</div>
+              <div>Načítám {selectedType === 'smlouva' ? 'smlouvu' : 'objednávku'}...</div>
             </LoadingOverlay>
           )}
 
-          {!orderLoading && !orderData && formData.order_id && (
+          {!orderLoading && !orderData && !smlouvaData && formData.order_id && (
             <ErrorAlert>
               <FontAwesomeIcon icon={faExclamationTriangle} />
               Nepodařilo se načíst objednávku ID {formData.order_id}
             </ErrorAlert>
           )}
 
-          {!orderLoading && !orderData && !formData.order_id && (
+          {!orderLoading && !orderData && !smlouvaData && !formData.order_id && (
             <div style={{ color: '#94a3af', textAlign: 'center', padding: '3rem' }}>
-              <FontAwesomeIcon icon={faBuilding} size="3x" style={{ marginBottom: '1rem', opacity: 0.3 }} />
-              <div style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Žádná objednávka nevybrána</div>
-              <div style={{ fontSize: '0.9rem' }}>Začněte psát do pole "Vyberte objednávku"</div>
+              <FontAwesomeIcon icon={selectedType === 'smlouva' ? faFileContract : faBuilding} size="3x" style={{ marginBottom: '1rem', opacity: 0.3 }} />
+              <div style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                {selectedType === 'smlouva' ? 'Žádná smlouva nevybrána' : 'Žádná objednávka nevybrána'}
+              </div>
+              <div style={{ fontSize: '0.9rem' }}>
+                Začněte psát do pole "Vyberte objednávku nebo smlouvu"
+              </div>
             </div>
           )}
 
-          {!orderLoading && orderData && (
+          {/* NÁHLED OBJEDNÁVKY */}
+          {!orderLoading && orderData && selectedType === 'order' && (
             <OrderFormReadOnly 
               ref={orderFormRef} 
               orderData={orderData}
@@ -2968,6 +3260,11 @@ export default function InvoiceEvidencePage() {
               token={token}
               username={username}
             />
+          )}
+
+          {/* NÁHLED SMLOUVY */}
+          {!orderLoading && smlouvaData && selectedType === 'smlouva' && (
+            <SmlouvaPreview smlouvaData={smlouvaData} />
           )}
 
           {false && orderData && (

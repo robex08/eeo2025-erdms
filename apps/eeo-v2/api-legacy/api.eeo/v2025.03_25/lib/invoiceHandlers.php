@@ -153,6 +153,7 @@ function handle_invoices25_create($input, $config, $queries) {
         $faktury_table = get_invoices_table_name();
         $sql = "INSERT INTO `$faktury_table` (
             objednavka_id,
+            smlouva_id,
             fa_dorucena,
             fa_zaplacena,
             fa_castka,
@@ -173,7 +174,7 @@ function handle_invoices25_create($input, $config, $queries) {
             dt_vytvoreni,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -195,6 +196,8 @@ function handle_invoices25_create($input, $config, $queries) {
         // ✅ NORMALIZACE: fa_strediska_kod → JSON array stringů (UPPERCASE)
         $fa_strediska_kod = null;
         if (isset($input['fa_strediska_kod'])) {
+            error_log("🔍 PHP fa_strediska_kod INPUT: type=" . gettype($input['fa_strediska_kod']) . ", value=" . json_encode($input['fa_strediska_kod']));
+            
             if (is_array($input['fa_strediska_kod'])) {
                 // Normalizace: UPPERCASE + odstranění prázdných hodnot
                 $normalizedStrediska = array_map(function($kod) {
@@ -202,9 +205,23 @@ function handle_invoices25_create($input, $config, $queries) {
                 }, $input['fa_strediska_kod']);
                 $normalizedStrediska = array_values(array_unique(array_filter($normalizedStrediska)));
                 $fa_strediska_kod = json_encode($normalizedStrediska);
-            } else {
-                // Už je to string (možná JSON)
-                $fa_strediska_kod = $input['fa_strediska_kod'];
+                error_log("🔍 PHP fa_strediska_kod NORMALIZED: " . $fa_strediska_kod);
+            } else if (is_string($input['fa_strediska_kod'])) {
+                // Je to string - pokusit se ho parsovat jako JSON
+                $decoded = json_decode($input['fa_strediska_kod'], true);
+                if (is_array($decoded)) {
+                    // Byl to JSON array - normalizovat
+                    $normalizedStrediska = array_map(function($kod) {
+                        return strtoupper(trim($kod));
+                    }, $decoded);
+                    $normalizedStrediska = array_values(array_unique(array_filter($normalizedStrediska)));
+                    $fa_strediska_kod = json_encode($normalizedStrediska);
+                    error_log("🔍 PHP fa_strediska_kod FROM JSON: " . $fa_strediska_kod);
+                } else {
+                    // Není to JSON - uložit jako prázdný array
+                    $fa_strediska_kod = json_encode([]);
+                    error_log("⚠️ PHP fa_strediska_kod IS STRING (not JSON): " . $input['fa_strediska_kod'] . " - saving empty array");
+                }
             }
         }
         
@@ -218,9 +235,11 @@ function handle_invoices25_create($input, $config, $queries) {
         $vecna_spravnost_potvrzeno = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : 0;
         
         $rozsirujici_data = isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null;
+        $smlouva_id = isset($input['smlouva_id']) && !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
 
         $stmt->execute([
             $objednavka_id,
+            $smlouva_id,
             $fa_dorucena,
             $fa_zaplacena,
             $fa_castka,
@@ -310,6 +329,14 @@ function handle_invoices25_update($input, $config, $queries) {
         $fields = [];
         $values = [];
 
+        if (isset($input['objednavka_id'])) {
+            $fields[] = 'objednavka_id = ?';
+            $values[] = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+        }
+        if (isset($input['smlouva_id'])) {
+            $fields[] = 'smlouva_id = ?';
+            $values[] = !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
+        }
         if (isset($input['fa_dorucena'])) {
             $fields[] = 'fa_dorucena = ?';
             $values[] = (int)$input['fa_dorucena'];
@@ -345,6 +372,8 @@ function handle_invoices25_update($input, $config, $queries) {
         // ✅ NORMALIZACE: fa_strediska_kod → JSON array stringů (UPPERCASE)
         if (isset($input['fa_strediska_kod'])) {
             $fields[] = 'fa_strediska_kod = ?';
+            error_log("🔍 UPDATE fa_strediska_kod INPUT: type=" . gettype($input['fa_strediska_kod']) . ", value=" . json_encode($input['fa_strediska_kod']));
+            
             if (is_array($input['fa_strediska_kod'])) {
                 // Normalizace: UPPERCASE + odstranění prázdných hodnot
                 $normalizedStrediska = array_map(function($kod) {
@@ -352,9 +381,23 @@ function handle_invoices25_update($input, $config, $queries) {
                 }, $input['fa_strediska_kod']);
                 $normalizedStrediska = array_values(array_unique(array_filter($normalizedStrediska)));
                 $values[] = json_encode($normalizedStrediska);
-            } else {
-                // Už je to string (možná JSON)
-                $values[] = $input['fa_strediska_kod'];
+                error_log("🔍 UPDATE fa_strediska_kod NORMALIZED: " . json_encode($normalizedStrediska));
+            } else if (is_string($input['fa_strediska_kod'])) {
+                // Je to string - pokusit se ho parsovat jako JSON
+                $decoded = json_decode($input['fa_strediska_kod'], true);
+                if (is_array($decoded)) {
+                    // Byl to JSON array - normalizovat
+                    $normalizedStrediska = array_map(function($kod) {
+                        return strtoupper(trim($kod));
+                    }, $decoded);
+                    $normalizedStrediska = array_values(array_unique(array_filter($normalizedStrediska)));
+                    $values[] = json_encode($normalizedStrediska);
+                    error_log("🔍 UPDATE fa_strediska_kod FROM JSON: " . json_encode($normalizedStrediska));
+                } else {
+                    // Není to JSON - uložit jako prázdný array
+                    $values[] = json_encode([]);
+                    error_log("⚠️ UPDATE fa_strediska_kod IS STRING (not JSON): " . $input['fa_strediska_kod'] . " - saving empty array");
+                }
             }
         }
         if (isset($input['fa_poznamka'])) {
@@ -588,16 +631,27 @@ function handle_invoices25_by_id($input, $config, $queries) {
         $stmt = $db->prepare("
             SELECT 
                 f.*,
+                o.cislo_objednavky,
+                sm.cislo_smlouvy,
+                sm.nazev_smlouvy,
                 s.nazev_stavu as fa_typ_nazev,
                 s.popis as fa_typ_popis,
                 u_vecna.jmeno as potvrdil_vecnou_spravnost_jmeno,
                 u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
                 u_vecna.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
                 u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za,
-                u_vecna.email as potvrdil_vecnou_spravnost_email
+                u_vecna.email as potvrdil_vecnou_spravnost_email,
+                u_predana.jmeno as fa_predana_zam_jmeno,
+                u_predana.prijmeni as fa_predana_zam_prijmeni,
+                u_predana.titul_pred as fa_predana_zam_titul_pred,
+                u_predana.titul_za as fa_predana_zam_titul_za,
+                u_predana.email as fa_predana_zam_email
             FROM `$faktury_table` f
+            LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+            LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
             LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
             LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
+            LEFT JOIN `$users_table` u_predana ON f.fa_predana_zam_id = u_predana.id
             WHERE f.id = ? AND f.aktivni = 1
         ");
         $stmt->execute([$faktura_id]);
@@ -1290,6 +1344,8 @@ function handle_invoices25_list($input, $config, $queries) {
             f.*,
             o.cislo_objednavky,
             o.uzivatel_id AS objednavka_uzivatel_id,
+            sm.cislo_smlouvy,
+            sm.nazev_smlouvy,
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_vytvoril.titul_pred AS vytvoril_titul_pred,
@@ -1316,6 +1372,7 @@ function handle_invoices25_list($input, $config, $queries) {
             u_vecna.email AS potvrdil_vecnou_spravnost_email
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
         LEFT JOIN `25_organizace_vizitka` org ON u_obj.organizace_id = org.id

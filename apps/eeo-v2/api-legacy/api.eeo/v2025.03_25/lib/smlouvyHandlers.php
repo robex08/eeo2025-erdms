@@ -510,6 +510,9 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $hodnota_plneni_bez_dph = isset($input['hodnota_plneni_bez_dph']) ? (float)$input['hodnota_plneni_bez_dph'] : null;
         $hodnota_plneni_s_dph = isset($input['hodnota_plneni_s_dph']) ? (float)$input['hodnota_plneni_s_dph'] : null;
         
+        // Pouzit_v_obj_formu - defaultně 0 (pouze v modulu smluv a faktur)
+        $pouzit_v_obj_formu = isset($input['pouzit_v_obj_formu']) ? (int)$input['pouzit_v_obj_formu'] : 0;
+        
         // Insert
         $sql = "
             INSERT INTO 25_smlouvy (
@@ -518,7 +521,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
                 platnost_od, platnost_do,
                 hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                 hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
-                aktivni, stav, poznamka, cislo_dms, kategorie,
+                aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
                 dt_vytvoreni, vytvoril_user_id,
                 cerpano_celkem, zbyva, procento_cerpani
             ) VALUES (
@@ -527,7 +530,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
                 :platnost_od, :platnost_do,
                 :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                 :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
-                :aktivni, :stav, :poznamka, :cislo_dms, :kategorie,
+                :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
                 NOW(), :vytvoril_user_id,
                 0, :zbyva, 0
             )
@@ -551,6 +554,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':hodnota_plneni_bez_dph', $hodnota_plneni_bez_dph);
         $stmt->bindValue(':hodnota_plneni_s_dph', $hodnota_plneni_s_dph);
         $stmt->bindValue(':aktivni', $aktivni, PDO::PARAM_INT);
+        $stmt->bindValue(':pouzit_v_obj_formu', $pouzit_v_obj_formu, PDO::PARAM_INT);
         $stmt->bindValue(':stav', $stav, PDO::PARAM_STR);
         $stmt->bindValue(':poznamka', isset($input['poznamka']) ? $input['poznamka'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':cislo_dms', isset($input['cislo_dms']) ? $input['cislo_dms'] : null, PDO::PARAM_STR);
@@ -941,6 +945,9 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $hodnota_plneni_s_dph = isset($row['hodnota_plneni_s_dph']) ? (float)$row['hodnota_plneni_s_dph'] : null;
                 $aktivni = isset($row['aktivni']) ? (int)$row['aktivni'] : 1;
                 
+                // Import CSV: defaultně pouzit_v_obj_formu = 0 (pouze modul smluv + faktury)
+                $pouzit_v_obj_formu = isset($row['pouzit_v_obj_formu']) ? (int)$row['pouzit_v_obj_formu'] : 0;
+                
                 // Automatický výpočet stavu (ignoruje $row['stav'])
                 $stav = calculateSmlouvaStav($aktivni, $row['platnost_od'], $row['platnost_do']);
                 
@@ -951,7 +958,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                         platnost_od, platnost_do,
                         hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                         hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
-                        aktivni, stav, poznamka, cislo_dms, kategorie,
+                        aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
                         dt_vytvoreni, vytvoril_user_id,
                         cerpano_celkem, zbyva, procento_cerpani
                     ) VALUES (
@@ -960,7 +967,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                         :platnost_od, :platnost_do,
                         :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                         :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
-                        :aktivni, :stav, :poznamka, :cislo_dms, :kategorie,
+                        :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
                         NOW(), :vytvoril_user_id,
                         0, :zbyva, 0
                     )
@@ -984,6 +991,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stmt->bindValue(':hodnota_plneni_bez_dph', $hodnota_plneni_bez_dph);
                 $stmt->bindValue(':hodnota_plneni_s_dph', $hodnota_plneni_s_dph);
                 $stmt->bindValue(':aktivni', $aktivni, PDO::PARAM_INT);
+                $stmt->bindValue(':pouzit_v_obj_formu', $pouzit_v_obj_formu, PDO::PARAM_INT);
                 $stmt->bindValue(':stav', $stav, PDO::PARAM_STR);
                 $stmt->bindValue(':poznamka', isset($row['poznamka']) ? $row['poznamka'] : null, PDO::PARAM_STR);
                 $stmt->bindValue(':cislo_dms', isset($row['cislo_dms']) ? $row['cislo_dms'] : null, PDO::PARAM_STR);
