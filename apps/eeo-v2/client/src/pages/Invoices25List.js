@@ -1453,8 +1453,18 @@ const Invoices25List = () => {
         apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
       }
 
+      // 🔍 DEBUG: Log API parametrů před odesláním
+      console.log('🔍 [Invoices25List] API Request Payload:', JSON.stringify(apiParams, null, 2));
+
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
+      
+      // 🔍 DEBUG: Log API response
+      console.log('📦 [Invoices25List] API Response:', {
+        faktury_count: response.faktury?.length || 0,
+        pagination: response.pagination,
+        first_invoice: response.faktury?.[0] || null
+      });
 
       // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];

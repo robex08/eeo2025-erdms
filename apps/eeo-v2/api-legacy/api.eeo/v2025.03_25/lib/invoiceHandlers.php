@@ -1280,8 +1280,8 @@ function handle_invoices25_list($input, $config, $queries) {
         if (isset($filters['filter_vecnou_provedl']) && trim($filters['filter_vecnou_provedl']) !== '') {
             $search_vecna = strtolower(trim($filters['filter_vecnou_provedl']));
             error_log("Invoices25 LIST: Applying filter_vecnou_provedl = '$search_vecna'");
-            // Hledá v celém jméně včetně titulů
-            $where_conditions[] = '(LOWER(u_vecna.jmeno) LIKE ? OR LOWER(u_vecna.prijmeni) LIKE ? OR LOWER(CONCAT(u_vecna.jmeno, " ", u_vecna.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u_vecna.titul_pred, u_vecna.jmeno, u_vecna.prijmeni, u_vecna.titul_za)) LIKE ?)';
+            // Hledá v celém jméně včetně titulů - MUSÍ existovat JOIN (u_vecna.id IS NOT NULL)
+            $where_conditions[] = '(u_vecna.id IS NOT NULL AND (LOWER(u_vecna.jmeno) LIKE ? OR LOWER(u_vecna.prijmeni) LIKE ? OR LOWER(CONCAT(u_vecna.jmeno, " ", u_vecna.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u_vecna.titul_pred, u_vecna.jmeno, u_vecna.prijmeni, u_vecna.titul_za)) LIKE ?))';
             $params[] = '%' . $search_vecna . '%';
             $params[] = '%' . $search_vecna . '%';
             $params[] = '%' . $search_vecna . '%';
@@ -1292,8 +1292,8 @@ function handle_invoices25_list($input, $config, $queries) {
         if (isset($filters['filter_predano_zamestnanec']) && trim($filters['filter_predano_zamestnanec']) !== '') {
             $search_predano = strtolower(trim($filters['filter_predano_zamestnanec']));
             error_log("Invoices25 LIST: Applying filter_predano_zamestnanec = '$search_predano'");
-            // Hledá v celém jméně včetně titulů
-            $where_conditions[] = '(LOWER(u_predana.jmeno) LIKE ? OR LOWER(u_predana.prijmeni) LIKE ? OR LOWER(CONCAT(u_predana.jmeno, " ", u_predana.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?)';
+            // Hledá v celém jméně včetně titulů - MUSÍ existovat JOIN (u_predana.id IS NOT NULL)
+            $where_conditions[] = '(u_predana.id IS NOT NULL AND (LOWER(u_predana.jmeno) LIKE ? OR LOWER(u_predana.prijmeni) LIKE ? OR LOWER(CONCAT(u_predana.jmeno, " ", u_predana.prijmeni)) LIKE ? OR LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?))';
             $params[] = '%' . $search_predano . '%';
             $params[] = '%' . $search_predano . '%';
             $params[] = '%' . $search_predano . '%';
