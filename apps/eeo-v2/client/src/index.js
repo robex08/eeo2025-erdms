@@ -35,6 +35,12 @@ if (process.env.NODE_ENV === 'development') {
   }).catch(() => {});
 }
 
+// Aktualizuj verzi na splash screen z .env
+const versionText = document.getElementById('splash-version');
+if (versionText && process.env.REACT_APP_VERSION) {
+  versionText.textContent = `verze ${process.env.REACT_APP_VERSION}`;
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <>
