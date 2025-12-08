@@ -1460,6 +1460,8 @@ const LimitovanePrislibyManager = () => {
     celkove_rezervovano: filteredData.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0),
     celkove_predpokladane: filteredData.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0),
     celkove_skutecne: filteredData.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0),
+    // Čerpání z pokladny:
+    celkove_pokladna: filteredData.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0),
     // Zpětná kompatibilita:
     celkove_cerpano: filteredData.reduce((sum, lp) => sum + lp.aktualne_cerpano, 0),
     prekroceno: filteredData.filter(lp => lp.je_prekroceno).length
@@ -1717,6 +1719,7 @@ const LimitovanePrislibyManager = () => {
                   <SubAmounts>
                     <SubAmount>Požadováno: {formatAmount(lp.rezervovano)}</SubAmount>
                     <SubAmount>Plánováno: {formatAmount(lp.predpokladane_cerpani)}</SubAmount>
+                    <SubAmount>Z pokladny: {formatAmount(lp.cerpano_pokladna || 0)}</SubAmount>
                   </SubAmounts>
                 </ThreeTypeAmount>
               </td>
@@ -1777,6 +1780,9 @@ const LimitovanePrislibyManager = () => {
                   </SubAmount>
                   <SubAmount style={{ fontWeight: '600' }}>
                     Plánováno: {formatAmount(data.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0))}
+                  </SubAmount>
+                  <SubAmount style={{ fontWeight: '600' }}>
+                    Z pokladny: {formatAmount(data.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0))}
                   </SubAmount>
                 </SubAmounts>
               </ThreeTypeAmount>
@@ -1968,6 +1974,7 @@ const LimitovanePrislibyManager = () => {
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
                   <div>→ Požadováno: {formatAmount(stats.celkove_rezervovano)}</div>
                   <div>→ Plánováno: {formatAmount(stats.celkove_predpokladane)}</div>
+                  <div>→ Z pokladny: {formatAmount(stats.celkove_pokladna)}</div>
                 </div>
               </StatContent>
             </StatCard>
