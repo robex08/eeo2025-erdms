@@ -5373,9 +5373,26 @@ function OrderForm25() {
           console.log('⚠️ LP financování detekováno, ale chybí lp_nazvy - načítám z API...');
           try {
             const lpDetails = await Promise.all(
-              finalData.lp_kod.map(async (lpId) => {
+              finalData.lp_kod.map(async (lpIdOrKod) => {
                 try {
-                  const lpDetail = await fetchLPDetail({ token, username, cislo_lp: lpId });
+                  // 🔧 Pokud je lpIdOrKod číslo (ID), najdi odpovídající KÓD z lpKodyOptions
+                  let lpKod = lpIdOrKod;
+                  if (typeof lpIdOrKod === 'number' || !isNaN(lpIdOrKod)) {
+                    const lpOption = lpKodyOptions.find(opt => opt.id === Number(lpIdOrKod));
+                    if (lpOption) {
+                      lpKod = lpOption.kod || lpOption.cislo_lp || lpIdOrKod;
+                      console.log(`🔄 Převod LP ID ${lpIdOrKod} → KÓD ${lpKod}`);
+                    } else {
+                      console.warn(`⚠️ LP ID ${lpIdOrKod} nebylo nalezeno v lpKodyOptions`);
+                    }
+                  }
+                  
+                  const lpDetail = await fetchLPDetail({ token, username, cislo_lp: lpKod });
+                  // ✅ Zkontroluj, jestli API vrátilo platná data
+                  if (!lpDetail || !lpDetail.id) {
+                    console.warn(`⚠️ LP ${lpKod} (ID: ${lpIdOrKod}) nebylo nalezeno nebo nemá platná data`);
+                    return null;
+                  }
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
@@ -5388,7 +5405,7 @@ function OrderForm25() {
                     label: `${lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`} - ${lpDetail.nazev || 'Bez názvu'}`
                   };
                 } catch (err) {
-                  console.error(`❌ Chyba načítání LP ${lpId}:`, err);
+                  console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${lpIdOrKod}):`, err);
                   return null;
                 }
               })
