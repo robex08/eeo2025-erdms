@@ -17845,16 +17845,26 @@ function OrderForm25() {
                           {Math.abs(zbyva).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
                         </div>
                         {currentPhase <= 2 && aktualneCerpani > 0 && (
-                          <div style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b' }}>
-                            −{aktualneCerpani.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                          <>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b' }}>
+                              −{aktualneCerpani.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Kč
+                            </div>
+                            <div 
+                              style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b', cursor: 'help' }}
+                              title='Rezervace - MAX CENA rozdělená poměrně mezi vybraná LP'
+                            >
+                              (R)
+                            </div>
+                          </>
+                        )}
+                        {currentPhase >= 3 && (
+                          <div 
+                            style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b', cursor: 'help' }}
+                            title={currentPhase >= 3 && currentPhase <= 6 ? 'Předpokládané čerpání podle přiřazených položek' : 'Skutečné čerpání podle faktur'}
+                          >
+                            ({currentPhase >= 3 && currentPhase <= 6 ? 'P' : 'S'})
                           </div>
                         )}
-                        <div 
-                          style={{ fontSize: '0.65rem', opacity: 0.7, color: '#64748b', cursor: 'help' }}
-                          title={currentPhase <= 2 ? 'Rezervace - MAX CENA rozdělená poměrně mezi vybraná LP' : currentPhase >= 3 && currentPhase <= 6 ? 'Předpokládané čerpání podle přiřazených položek' : 'Skutečné čerpání podle faktur'}
-                        >
-                          ({currentPhase <= 2 ? 'R' : currentPhase >= 3 && currentPhase <= 6 ? 'P' : 'S'})
-                        </div>
                       </div>
                     );
                   })}
