@@ -58,19 +58,19 @@ const categorizeErrorKey = (key) => {
     return 'detaily';
   }
   
-  // 4. Dodavatel - MUSÍ BÝT PO detailech (kvůli 'ico' v 'cislo_smlouvy')
+  // 4. Potvrzení objednávky dodavatelem - MUSÍ BÝT PŘED "dodavatel" (kvůli dodavatel_zpusob_potvrzeni)
+  if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
+    return 'potvrzeni_objednavky';
+  }
+  
+  // 5. Dodavatel - MUSÍ BÝT PO potvrzení (kvůli dodavatel_zpusob_potvrzeni)
   if (key.includes('dodavatel') || key.includes('ico') || key.includes('adresa') || key.includes('kontakt')) {
     return 'dodavatel';
   }
   
-  // 5. Odeslání objednávky
+  // 6. Odeslání objednávky
   if (key.includes('datum_odeslani') || key.includes('stav_odeslani')) {
     return 'stav_odeslani';
-  }
-  
-  // 6. Potvrzení objednávky dodavatelem
-  if (key.includes('zpusob_potvrzeni') || key.includes('dt_akceptace') || key.includes('zpusob_platby')) {
-    return 'potvrzeni_objednavky';
   }
   
   // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
