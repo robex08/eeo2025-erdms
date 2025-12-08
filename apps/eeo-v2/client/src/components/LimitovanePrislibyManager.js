@@ -4,7 +4,8 @@ import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import ConfirmDialog from './ConfirmDialog';
-import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp } from 'lucide-react';
+import { CustomSelect } from './CustomSelect';
+import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 
 const spinAnimation = keyframes`
@@ -180,11 +181,30 @@ const StatValue = styled.div`
 `;
 
 const FilterBar = styled.div`
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
-  flex-wrap: wrap;
+  align-items: start;
+`;
+
+const FilterWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+const FilterLabel = styled.label`
+  display: flex;
   align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  
+  svg {
+    color: #6b7280;
+  }
 `;
 
 const FilterSelect = styled.select`
@@ -887,10 +907,15 @@ const LimitovanePrislibyManager = () => {
   const [initializing, setInitializing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   
-  // State pro filtry
-  const [filterUsek, setFilterUsek] = useState('all');
-  const [filterUser, setFilterUser] = useState('all');
-  const [filterKategorie, setFilterKategorie] = useState('all');
+  // State pro filtry - MULTI-SELECT podporuje pole hodnot
+  const [filterUsek, setFilterUsek] = useState([]);
+  const [filterUser, setFilterUser] = useState([]);
+  const [filterKategorie, setFilterKategorie] = useState([]);
+  
+  // CustomSelect states (pro vyhledávání a dropdown)
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+  const [touchedSelectFields, setTouchedSelectFields] = useState({});
   
   // State pro collapsed sekce (s localStorage)
   const [collapsedSections, setCollapsedSections] = useState(() => {
@@ -1231,6 +1256,7 @@ const LimitovanePrislibyManager = () => {
                 // Metadata
                 usek_nazev: mojeLp.usek_nazev || globalLp?.usek_nazev || '',
                 usek_id: parseInt(mojeLp.usek_id || globalLp?.usek_id || 0),
+                user_id: parseInt(globalLp?.user_id || 0),
                 spravce: globalLp?.spravce ? `${globalLp.spravce.prijmeni || ''} ${globalLp.spravce.jmeno || ''}`.trim() : ''
               };
             });
@@ -1396,11 +1422,14 @@ const LimitovanePrislibyManager = () => {
     }
   };
   
-  // Filtrování dat
+  // Filtrování dat - MULTI-SELECT logika
   const filteredData = lpData.filter(lp => {
-    if (filterUsek !== 'all' && lp.usek_id !== parseInt(filterUsek)) return false;
-    if (filterUser !== 'all' && lp.user_id !== parseInt(filterUser)) return false;
-    if (filterKategorie !== 'all' && lp.kategorie !== filterKategorie) return false;
+    // Filtr úseku - pokud je pole prázdné, zobraz vše
+    if (filterUsek.length > 0 && !filterUsek.includes(lp.usek_nazev)) return false;
+    // Filtr správce - pokud je pole prázdné, zobraz vše
+    if (filterUser.length > 0 && !filterUser.includes(lp.spravce)) return false;
+    // Filtr kategorie - pokud je pole prázdné, zobraz vše
+    if (filterKategorie.length > 0 && !filterKategorie.includes(lp.kategorie)) return false;
     return true;
   });
   
@@ -1787,12 +1816,18 @@ const LimitovanePrislibyManager = () => {
     </TableContainer>
   );
   
+  // DEBUG: Výpis dat pro analýzu (jen pokud je problém)
+  if (lpData.length === 0) {
+    console.warn('⚠️ Žádná LP data k zobrazení');
+  }
+
   // Získání unikátních hodnot pro filtry
   const usekMap = new Map();
   lpData.forEach(lp => {
-    if (lp.usek_id && lp.usek_nazev) {
-      usekMap.set(lp.usek_id, { 
-        id: lp.usek_id, 
+    // Použít usek_nazev jako klíč, protože usek_id je často 0
+    if (lp.usek_nazev) {
+      usekMap.set(lp.usek_nazev, { 
+        id: lp.usek_id || 0, 
         nazev: lp.usek_nazev 
       });
     }
@@ -1801,10 +1836,10 @@ const LimitovanePrislibyManager = () => {
   
   const userMap = new Map();
   lpData.forEach(lp => {
-    // Použít user_id jako klíč pro správné filtrování
-    if (lp.user_id && lp.spravce) {
-      userMap.set(lp.user_id, { 
-        id: lp.user_id, 
+    // Použít jméno správce jako klíč, protože user_id je často stejné (např. 1)
+    if (lp.spravce) {
+      userMap.set(lp.spravce, { 
+        id: lp.user_id || 0, 
         name: lp.spravce 
       });
     }
@@ -1812,6 +1847,10 @@ const LimitovanePrislibyManager = () => {
   const uniqueUsers = Array.from(userMap.values());
   
   const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie).filter(k => k))];
+  
+  console.log('🔍 Unikátní úseky:', uniqueUseky);
+  console.log('🔍 Unikátní uživatelé:', uniqueUsers);
+  console.log('🔍 Unikátní kategorie:', uniqueKategorie);
   
   return (
     <Container $collapsed={isMainCollapsed}>
@@ -1964,31 +2003,110 @@ const LimitovanePrislibyManager = () => {
         )}
       </StatsGrid>
       
-      {/* Filtry */}
+      {/* Filtry - Custom multi-select s vyhledáváním */}
       {isAdmin && (
         <FilterBar>
-          <FilterSelect value={filterUsek} onChange={(e) => setFilterUsek(e.target.value)}>
-            <option value="all">Všechny úseky</option>
-            {uniqueUseky.map((usek, idx) => (
-              <option key={`usek-${idx}-${usek.id}`} value={usek.id}>{usek.nazev}</option>
-            ))}
-          </FilterSelect>
+          <FilterWrapper>
+            <FilterLabel>
+              <Building2 size={16} />
+              Úseky
+            </FilterLabel>
+            <CustomSelect
+              field="filterUsek"
+              value={filterUsek}
+              onChange={(newValues) => setFilterUsek(Array.isArray(newValues) ? newValues : [])}
+              options={uniqueUseky.map(usek => ({
+                id: usek.nazev,
+                nazev: usek.nazev
+              }))}
+              placeholder="Všechny úseky"
+              multiple={true}
+              isClearable={true}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              touchedSelectFields={touchedSelectFields}
+              setTouchedSelectFields={setTouchedSelectFields}
+              toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+              filterOptions={(options, searchTerm) => {
+                if (!searchTerm) return options;
+                return options.filter(opt => 
+                  opt.nazev?.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+              }}
+              getOptionLabel={(option) => option?.nazev || ''}
+              enableSearch={uniqueUseky.length > 5}
+            />
+          </FilterWrapper>
           
-          <FilterSelect value={filterUser} onChange={(e) => setFilterUser(e.target.value)}>
-            <option value="all">Všichni správci</option>
-            {uniqueUsers.map((user, idx) => (
-              <option key={`user-${idx}-${user.id}`} value={user.id}>{user.name}</option>
-            ))}
-          </FilterSelect>
+          <FilterWrapper>
+            <FilterLabel>
+              <User size={16} />
+              Správci
+            </FilterLabel>
+            <CustomSelect
+              field="filterUser"
+              value={filterUser}
+              onChange={(newValues) => setFilterUser(Array.isArray(newValues) ? newValues : [])}
+              options={uniqueUsers.map(user => ({
+                id: user.name,
+                nazev: user.name
+              }))}
+              placeholder="Všichni správci"
+              multiple={true}
+              isClearable={true}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              touchedSelectFields={touchedSelectFields}
+              setTouchedSelectFields={setTouchedSelectFields}
+              toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+              filterOptions={(options, searchTerm) => {
+                if (!searchTerm) return options;
+                return options.filter(opt => 
+                  opt.nazev?.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+              }}
+              getOptionLabel={(option) => option?.nazev || ''}
+              enableSearch={uniqueUsers.length > 5}
+            />
+          </FilterWrapper>
           
-          <FilterSelect value={filterKategorie} onChange={(e) => setFilterKategorie(e.target.value)}>
-            <option value="all">Všechny kategorie</option>
-            {uniqueKategorie.map(kat => (
-              <option key={kat} value={kat}>
-                {kat} - {LP_CATEGORY_NAMES[kat] || kat}
-              </option>
-            ))}
-          </FilterSelect>
+          <FilterWrapper>
+            <FilterLabel>
+              <Filter size={16} />
+              Kategorie
+            </FilterLabel>
+            <CustomSelect
+              field="filterKategorie"
+              value={filterKategorie}
+              onChange={(newValues) => setFilterKategorie(Array.isArray(newValues) ? newValues : [])}
+              options={uniqueKategorie.map(kat => ({
+                id: kat,
+                nazev: `${kat} - ${LP_CATEGORY_NAMES[kat] || kat}`
+              }))}
+              placeholder="Všechny kategorie"
+              multiple={true}
+              isClearable={true}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              touchedSelectFields={touchedSelectFields}
+              setTouchedSelectFields={setTouchedSelectFields}
+              toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+              filterOptions={(options, searchTerm) => {
+                if (!searchTerm) return options;
+                return options.filter(opt => 
+                  opt.nazev?.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+              }}
+              getOptionLabel={(option) => option?.nazev || ''}
+              enableSearch={uniqueKategorie.length > 5}
+            />
+          </FilterWrapper>
         </FilterBar>
       )}
       
