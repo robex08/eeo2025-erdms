@@ -31,6 +31,7 @@ import { ProgressContext } from '../context/ProgressContext';
 import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
 import { universalSearch } from '../services/apiUniversalSearch';
+import { fetchAllUsers } from '../services/api2auth';
 import { getStrediska25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
@@ -1046,6 +1047,7 @@ export default function InvoiceEvidencePage() {
   // Form data
   const [formData, setFormData] = useState({
     order_id: orderId || '',
+    smlouva_id: null, // ID smlouvy (alternativa k order_id)
     fa_cislo_vema: '',
     fa_typ: 'BEZNA', // Výchozí typ: Běžná faktura
     fa_datum_doruceni: formatDateForPicker(new Date()),
@@ -1107,18 +1109,12 @@ export default function InvoiceEvidencePage() {
       
       setZamestnanciLoading(true);
       try {
-        // Načtení aktivních uživatelů přes universal search
-        const response = await universalSearch({
-          token,
-          username,
-          query: '',
-          types: ['users'],
-          limit: 500
-        });
+        // Načtení všech uživatelů přes fetchAllUsers API (stejně jako OrderList25)
+        const usersData = await fetchAllUsers({ token, username });
         
-        if (response?.results?.users) {
+        if (usersData && Array.isArray(usersData)) {
           // Filtrovat pouze aktivní uživatele a seřadit podle příjmení
-          const aktivni = response.results.users
+          const aktivni = usersData
             .filter(u => u.aktivni === 1)
             .sort((a, b) => {
               const aName = `${a.prijmeni || ''} ${a.jmeno || ''}`.trim();
@@ -2537,72 +2533,29 @@ export default function InvoiceEvidencePage() {
               </div>
             </div>
 
-            {/* GRID 2x - ŘÁDEK: Předání zaměstnanci */}
+            {/* GRID 2x - ŘÁDEK: Datum předání | Datum vrácení */}
             <FieldRow $columns="1fr 1fr">
-              <FieldGroup>
-                <FieldLabel>
-                  Předáno zaměstnanci
-                </FieldLabel>
-                <select
-                  value={formData.fa_predana_zam_id || ''}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    fa_predana_zam_id: e.target.value ? parseInt(e.target.value) : null 
-                  }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.95rem',
-                    background: 'white',
-                    cursor: 'pointer'
-                  }}
-                  disabled={zamestnanciLoading}
-                >
-                  <option value="">-- Nevybráno --</option>
-                  {zamestnanci.map(zam => (
-                    <option key={zam.id} value={zam.id}>
-                      {zam.prijmeni} {zam.jmeno} {zam.titul_za ? `, ${zam.titul_za}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {zamestnanciLoading && (
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                    <FontAwesomeIcon icon={faSpinner} spin /> Načítám zaměstnance...
-                  </div>
-                )}
-              </FieldGroup>
-
               <FieldGroup>
                 <FieldLabel>
                   Datum předání
                 </FieldLabel>
-                <Input
-                  type="date"
-                  value={formData.fa_datum_predani_zam || ''}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    fa_datum_predani_zam: e.target.value 
-                  }))}
+                <DatePicker
+                  value={formData.fa_datum_predani_zam}
+                  onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
+                  onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
+                  placeholder="dd.mm.rrrr"
                 />
               </FieldGroup>
-            </FieldRow>
 
-            {/* GRID 1x - ŘÁDEK: Datum vrácení */}
-            <FieldRow $columns="1fr 1fr">
               <FieldGroup>
                 <FieldLabel>
                   Datum vrácení
                 </FieldLabel>
-                <Input
-                  type="date"
-                  value={formData.fa_datum_vraceni_zam || ''}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    fa_datum_vraceni_zam: e.target.value 
-                  }))}
-                  min={formData.fa_datum_predani_zam || undefined}
+                <DatePicker
+                  value={formData.fa_datum_vraceni_zam}
+                  onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
+                  onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
+                  placeholder="dd.mm.rrrr"
                 />
                 {formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam && 
                  new Date(formData.fa_datum_vraceni_zam) < new Date(formData.fa_datum_predani_zam) && (
@@ -2612,7 +2565,50 @@ export default function InvoiceEvidencePage() {
                   </FieldError>
                 )}
               </FieldGroup>
-              <div />
+            </FieldRow>
+
+            {/* GRID 1x - ŘÁDEK: Předáno zaměstnanci (celá šířka) */}
+            <FieldRow $columns="1fr">
+              <FieldGroup>
+                <FieldLabel>
+                  Předáno zaměstnanci
+                </FieldLabel>
+                <CustomSelect
+                  value={formData.fa_predana_zam_id}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    fa_predana_zam_id: e.target.value ? parseInt(e.target.value) : null 
+                  }))}
+                  options={zamestnanci}
+                  placeholder={zamestnanciLoading ? "Načítám zaměstnance..." : "-- Nevybráno --"}
+                  disabled={zamestnanciLoading}
+                  field="fa_predana_zam_id"
+                  selectStates={selectStates}
+                  setSelectStates={setSelectStates}
+                  searchStates={searchStates}
+                  setSearchStates={setSearchStates}
+                  touchedSelectFields={touchedSelectFields}
+                  setTouchedSelectFields={setTouchedSelectFields}
+                  toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+                  filterOptions={(options, searchTerm) => {
+                    if (!searchTerm) return options;
+                    return options.filter(opt => {
+                      const fullName = `${opt.prijmeni || ''} ${opt.jmeno || ''} ${opt.titul_za || ''}`.toLowerCase();
+                      return fullName.includes(searchTerm.toLowerCase());
+                    });
+                  }}
+                  getOptionLabel={(option) => {
+                    if (!option) return '';
+                    return `${option.prijmeni || ''} ${option.jmeno || ''} ${option.titul_za ? `, ${option.titul_za}` : ''}`.trim();
+                  }}
+                  allowEmpty={true}
+                />
+                {zamestnanciLoading && (
+                  <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                    <FontAwesomeIcon icon={faSpinner} spin /> Načítám zaměstnance...
+                  </div>
+                )}
+              </FieldGroup>
             </FieldRow>
           </FakturaCard>
 

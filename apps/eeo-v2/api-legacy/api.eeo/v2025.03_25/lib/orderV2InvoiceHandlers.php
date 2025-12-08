@@ -44,15 +44,16 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         
         // Create invoice record
         $sql_insert = "INSERT INTO 25a_objednavky_faktury (
-            objednavka_id, fa_dorucena, fa_castka, fa_cislo_vema, 
+            objednavka_id, smlouva_id, fa_dorucena, fa_castka, fa_cislo_vema, 
             fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
             fa_strediska_kod, fa_poznamka, rozsirujici_data,
             vytvoril_uzivatel_id, dt_vytvoreni, aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
         
         $stmt_insert = $db->prepare($sql_insert);
         $stmt_insert->execute(array(
             $order_id,
+            isset($input['smlouva_id']) ? (int)$input['smlouva_id'] : null,
             isset($input['fa_dorucena']) ? (int)$input['fa_dorucena'] : 0,
             $input['fa_castka'],
             trim($input['fa_cislo_vema']),
@@ -155,18 +156,19 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         
         // Create invoice record
         $sql_insert = "INSERT INTO 25a_objednavky_faktury (
-            objednavka_id, fa_dorucena, fa_zaplacena, fa_castka, fa_cislo_vema, 
+            objednavka_id, smlouva_id, fa_dorucena, fa_zaplacena, fa_castka, fa_cislo_vema, 
             fa_typ, fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
             fa_strediska_kod, fa_poznamka,
             potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti,
             vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
             rozsirujici_data, fa_predana_zam_id, fa_datum_predani_zam, fa_datum_vraceni_zam,
             vytvoril_uzivatel_id, dt_vytvoreni, aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
         
         $stmt_insert = $db->prepare($sql_insert);
         $stmt_insert->execute(array(
             $order_id,
+            isset($input['smlouva_id']) && !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null,
             isset($input['fa_dorucena']) ? (int)$input['fa_dorucena'] : 0,
             isset($input['fa_zaplacena']) ? (int)$input['fa_zaplacena'] : 0,
             $input['fa_castka'],
@@ -250,8 +252,10 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             'fa_strediska_kod', 'fa_poznamka', 'rozsirujici_data',
             'potvrdil_vecnou_spravnost_id', 'dt_potvrzeni_vecne_spravnosti',
             'vecna_spravnost_umisteni_majetku', 'vecna_spravnost_poznamka', 'vecna_spravnost_potvrzeno',
-            // Nové fieldy
-            'fa_datum_zaplaceni', 'fa_predana_zam_id', 'fa_datum_predani_zam', 'fa_datum_vraceni_zam'
+            // Nové fieldy - předání zaměstnanci
+            'fa_datum_zaplaceni', 'fa_predana_zam_id', 'fa_datum_predani_zam', 'fa_datum_vraceni_zam',
+            // Vazba na smlouvu
+            'smlouva_id'
         );
         
         // Pole vyžadující re-schválení věcné správnosti

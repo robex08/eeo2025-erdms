@@ -109,7 +109,7 @@ $queries['limitovane_prisliby_select_by_id'] = "SELECT * FROM ".TABLE_LIMITOVANE
 $queries['sablony_objednavek_select_all'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " ORDER BY id";
 $queries['sablony_objednavek_select_by_user_or_global'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0) ORDER BY id";
 $queries['sablony_objednavek_select_by_id'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE id = :id LIMIT 1";
-$queries['sablony_objednavek_insert'] = "INSERT INTO " . TABLE_SABLONY_OBJEDNAVEK . " (user_id, dt_vytvoreni, dt_aktualizace, nazev_sablony, polozky_po, polozky_detail, typ, kategorie) VALUES (:user_id, NOW(), NOW(), :nazev_sablony, :polozky_po, :polozky_detail, :typ, :kategorie)";
+$queries['sablony_objednavek_insert'] = "INSERT INTO " . TABLE_SABLONY_OBJEDNAVEK . " (user_id, dt_vytvoreni, dt_aktualizace, nazev_sablony, polozky_po, polozky_detail, typ, kategorie, usek_zkr) VALUES (:user_id, NOW(), NOW(), :nazev_sablony, :polozky_po, :polozky_detail, :typ, :kategorie, :usek_zkr)";
 $queries['sablony_objednavek_update'] = "UPDATE " . TABLE_SABLONY_OBJEDNAVEK . " SET dt_aktualizace = NOW(), nazev_sablony = :nazev_sablony, polozky_po = :polozky_po, polozky_detail = :polozky_detail, typ = :typ, kategorie = :kategorie WHERE id = :id";
 $queries['sablony_objednavek_delete'] = "DELETE FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE id = :id";
 $queries['pozice_select_all'] = "SELECT * FROM ".TABLE_POZICE;
