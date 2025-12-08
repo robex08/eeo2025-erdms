@@ -164,6 +164,9 @@ function handle_invoices25_create($input, $config, $queries) {
             fa_datum_doruceni,
             fa_strediska_kod,
             fa_poznamka,
+            fa_predana_zam_id,
+            fa_datum_predani_zam,
+            fa_datum_vraceni_zam,
             potvrdil_vecnou_spravnost_id,
             dt_potvrzeni_vecne_spravnosti,
             vecna_spravnost_umisteni_majetku,
@@ -174,7 +177,7 @@ function handle_invoices25_create($input, $config, $queries) {
             dt_vytvoreni,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -227,6 +230,11 @@ function handle_invoices25_create($input, $config, $queries) {
         
         $fa_poznamka = isset($input['fa_poznamka']) ? $input['fa_poznamka'] : null;
         
+        // Předání zaměstnanci
+        $fa_predana_zam_id = isset($input['fa_predana_zam_id']) && !empty($input['fa_predana_zam_id']) ? (int)$input['fa_predana_zam_id'] : null;
+        $fa_datum_predani_zam = isset($input['fa_datum_predani_zam']) && !empty($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : null;
+        $fa_datum_vraceni_zam = isset($input['fa_datum_vraceni_zam']) && !empty($input['fa_datum_vraceni_zam']) ? $input['fa_datum_vraceni_zam'] : null;
+        
         // Věcná kontrola
         $potvrdil_vecnou_spravnost_id = isset($input['potvrdil_vecnou_spravnost_id']) && !empty($input['potvrdil_vecnou_spravnost_id']) ? (int)$input['potvrdil_vecnou_spravnost_id'] : null;
         $dt_potvrzeni_vecne_spravnosti = isset($input['dt_potvrzeni_vecne_spravnosti']) ? $input['dt_potvrzeni_vecne_spravnosti'] : null;
@@ -250,6 +258,9 @@ function handle_invoices25_create($input, $config, $queries) {
             $fa_datum_doruceni,
             $fa_strediska_kod,
             $fa_poznamka,
+            $fa_predana_zam_id,
+            $fa_datum_predani_zam,
+            $fa_datum_vraceni_zam,
             $potvrdil_vecnou_spravnost_id,
             $dt_potvrzeni_vecne_spravnosti,
             $vecna_spravnost_umisteni_majetku,
@@ -403,6 +414,19 @@ function handle_invoices25_update($input, $config, $queries) {
         if (isset($input['fa_poznamka'])) {
             $fields[] = 'fa_poznamka = ?';
             $values[] = $input['fa_poznamka'];
+        }
+        // Předání zaměstnanci
+        if (isset($input['fa_predana_zam_id'])) {
+            $fields[] = 'fa_predana_zam_id = ?';
+            $values[] = !empty($input['fa_predana_zam_id']) ? (int)$input['fa_predana_zam_id'] : null;
+        }
+        if (isset($input['fa_datum_predani_zam'])) {
+            $fields[] = 'fa_datum_predani_zam = ?';
+            $values[] = !empty($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : null;
+        }
+        if (isset($input['fa_datum_vraceni_zam'])) {
+            $fields[] = 'fa_datum_vraceni_zam = ?';
+            $values[] = !empty($input['fa_datum_vraceni_zam']) ? $input['fa_datum_vraceni_zam'] : null;
         }
         // Věcná kontrola
         if (isset($input['potvrdil_vecnou_spravnost_id'])) {

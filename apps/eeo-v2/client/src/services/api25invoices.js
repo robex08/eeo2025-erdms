@@ -1433,12 +1433,13 @@ export async function updateInvoiceV2({
     const payload = {
       username,
       token,
+      id: invoice_id,  // PHP očekává 'id', ne 'invoice_id'
       ...updateData
     };
 
 
     const response = await api25invoices.post(
-      `order-v2/invoices/${invoice_id}/update`,
+      `invoices25/update`,
       payload,
       { timeout: 10000 }
     );
