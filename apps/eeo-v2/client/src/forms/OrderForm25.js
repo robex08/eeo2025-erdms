@@ -5894,10 +5894,6 @@ function OrderForm25() {
       return;
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Loading draft for NEW order...');
-    }
-
     let isActive = true;
 
     const loadDraftData = async () => {
@@ -9657,17 +9653,7 @@ function OrderForm25() {
                   }
           };
           
-          // 🔍 DEBUG LOG - věcná správnost před odesláním
-          console.log('[VECNA-SAVE-DEBUG] Faktura #' + faktura.id, {
-            vecna_spravnost_potvrzeno: fakturaData.vecna_spravnost_potvrzeno,
-            potvrdil_vecnou_spravnost_id: fakturaData.potvrdil_vecnou_spravnost_id,
-            dt_potvrzeni_vecne_spravnosti: fakturaData.dt_potvrzeni_vecne_spravnosti,
-            SOURCE_faktura: {
-              vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno,
-              potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id,
-              dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti
-            }
-          });
+
           
           return fakturaData;
         });

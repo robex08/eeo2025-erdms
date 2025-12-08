@@ -71,14 +71,12 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     ];
     if (alwaysValidateFields.includes(fieldName)) {
       const shouldValidate = sectionState.visible;
-      console.log(`⚠️ shouldValidateField - alwaysValidate: "${fieldName}" → visible=${sectionState.visible} → shouldValidate=${shouldValidate}`);
       return shouldValidate; // Validuj pokud je sekce viditelná (ignoruj locked)
     }
 
     // VALIDOVAT: Sekce je viditelná A odemčená
     // NEVALIDOVAT: Sekce není viditelná NEBO je zamčená
     const shouldValidate = sectionState.visible && !sectionState.locked;
-    console.log(`🔍 shouldValidateField: "${fieldName}" → phase="${fieldPhase}" → visible=${sectionState.visible} → locked=${sectionState.locked} → shouldValidate=${shouldValidate}`);
     return shouldValidate;
   };
 
