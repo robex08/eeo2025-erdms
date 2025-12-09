@@ -217,9 +217,7 @@ export async function listInvoiceAttachments25({ token, username, faktura_id, ob
     throw new Error('Chybí ID faktury.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ⚠️ objednavka_id není povinná - faktury mohou existovat samostatně (nový modul FA)
 
   // 🔍 DEBUG: Kontrola typu faktura_id
   if (typeof faktura_id === 'string' && faktura_id.includes('{')) {
@@ -228,10 +226,14 @@ export async function listInvoiceAttachments25({ token, username, faktura_id, ob
 
   try {
     const payload = {
-      order_id: Number(objednavka_id),
       token,
       username
     };
+
+    // Pokud je objednavka_id poskytnutá, přidej ji do payloadu
+    if (objednavka_id) {
+      payload.order_id = Number(objednavka_id);
+    }
 
     // ✅ NOVÁ URL STRUKTURA: POST /order-v2/invoices/{invoice_id}/attachments (token + username v BODY)
     const response = await api25invoices.post(
