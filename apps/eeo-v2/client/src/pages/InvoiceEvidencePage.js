@@ -510,45 +510,6 @@ const Select = styled.select`
   }
 `;
 
-const FileInputWrapper = styled.div`
-  border: 2px dashed #cbd5e1;
-  border-radius: 8px;
-  padding: 1.5rem;
-  text-align: center;
-  background: #f8fafc;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-
-  &:hover {
-    border-color: #3b82f6;
-    background: #eff6ff;
-  }
-
-  &.dragging {
-    border-color: #10b981;
-    background: #f0fdf4;
-    border-width: 3px;
-  }
-
-  input[type="file"] {
-    display: none;
-  }
-`;
-
-const FileInputLabel = styled.label`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  color: #64748b;
-
-  &:hover {
-    color: #3b82f6;
-  }
-`;
-
 const ErrorMessage = styled.div`
   color: #ef4444;
   font-size: 0.875rem;
@@ -754,19 +715,6 @@ const FieldError = styled.div`
   align-items: center;
   gap: 0.35rem;
   font-weight: 500;
-`;
-
-const SelectedFileName = styled.div`
-  margin-top: 0.75rem;
-  padding: 0.5rem;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  color: #1e40af;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 `;
 
 // Autocomplete styled components
