@@ -597,7 +597,24 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
           {!loading && !error && faktury.length > 0 && (
             <InboxContent>
               {faktury.map((faktura) => (
-                <FakturaCard key={faktura.dokument_id}>
+                <FakturaCard 
+                  key={faktura.dokument_id}
+                  draggable={faktura.prilohy && faktura.prilohy.length > 0}
+                  onDragStart={(e) => {
+                    if (faktura.prilohy && faktura.prilohy.length > 0) {
+                      // Předat všechny přílohy jako JSON
+                      const attachmentsData = faktura.prilohy.map(p => ({
+                        url: p.download_url,
+                        filename: p.filename,
+                        mime_type: p.mime_type || 'application/octet-stream'
+                      }));
+                      e.dataTransfer.setData('text/spisovka-attachments', JSON.stringify(attachmentsData));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }
+                  }}
+                  style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
+                  title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
+                >
                   <FakturaHeader>
                     <FakturaNazev>{faktura.nazev}</FakturaNazev>
                     <FakturaID>#{faktura.dokument_id}</FakturaID>

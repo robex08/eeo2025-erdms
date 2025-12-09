@@ -1189,7 +1189,62 @@ const InvoiceAttachmentsCompact = ({
 
     if (isDropzoneDisabled) return;
 
-    // 🔔 PRIORITA 1: Kontrola drag & drop ze spisovky (CORS proxy)
+    // 🔔 PRIORITA 1a: Kontrola drag & drop VŠECH příloh faktury ze spisovky
+    const spisovkaAttachmentsJson = e.dataTransfer.getData('text/spisovka-attachments');
+    
+    if (spisovkaAttachmentsJson) {
+      try {
+        const attachments = JSON.parse(spisovkaAttachmentsJson);
+        
+        if (!Array.isArray(attachments) || attachments.length === 0) {
+          showToast && showToast('❌ Žádné přílohy k nahrání', { type: 'error' });
+          return;
+        }
+
+        // ✅ VALIDACE PŘED STAŽENÍM (jen pro ne-ISDOC soubory)
+        const hasISDOC = attachments.some(a => isISDOCFile(a.filename));
+        
+        if (!hasISDOC && !isPokladna) {
+          const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
+          
+          if (!validation.isValid) {
+            showToast && showToast(
+              `❌ Nelze nahrát přílohy\n\nPro běžné přílohy vyplňte nejprve povinná pole faktury:\n${validation.missingFields.join(', ')}\n\nℹ️ ISDOC soubory lze nahrát kdykoliv.`,
+              { type: 'error' }
+            );
+            return;
+          }
+        }
+
+        // Stáhnout všechny soubory paralelně
+        showToast && showToast(`📥 Stahuji ${attachments.length} příloh ze spisovky...`, { type: 'info' });
+        
+        const downloadPromises = attachments.map(async (attachment) => {
+          const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(attachment.url)}`;
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error(`Chyba při stahování ${attachment.filename}`);
+          
+          const originalFilename = response.headers.get('X-Original-Filename');
+          const finalFilename = originalFilename || attachment.filename;
+          
+          const blob = await response.blob();
+          return new File([blob], finalFilename, { type: attachment.mime_type || blob.type });
+        });
+
+        const files = await Promise.all(downloadPromises);
+        
+        showToast && showToast(`✅ Staženo ${files.length} příloh`, { type: 'success' });
+        
+        // Zpracovat všechny soubory najednou
+        await handleFileUpload(files);
+      } catch (error) {
+        console.error('❌ Chyba při stahování příloh ze spisovky:', error);
+        showToast && showToast(`❌ Chyba: ${error.message}`, { type: 'error' });
+      }
+      return;
+    }
+
+    // 🔔 PRIORITA 1b: Kontrola drag & drop jedné přílohy ze spisovky (CORS proxy)
     const spisovkaFileUrl = e.dataTransfer.getData('text/spisovka-file-url');
     const spisovkaFileName = e.dataTransfer.getData('text/spisovka-file-name');
     const spisovkaFileMime = e.dataTransfer.getData('text/spisovka-file-mime');
