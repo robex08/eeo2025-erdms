@@ -29,19 +29,19 @@ const InboxContainer = styled.div`
 `;
 
 const InboxHeader = styled.div`
-  background: linear-gradient(135deg, #059669, #047857);
+  background: linear-gradient(135deg, #475569, #334155);
   padding: 0.6rem;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #10b981;
+  border: 1px solid #64748b;
 `;
 
 const InboxTitle = styled.div`
   font-size: 0.75rem;
   font-weight: 700;
-  color: #f0fdf4;
+  color: #f1f5f9;
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
@@ -50,7 +50,7 @@ const InboxTitle = styled.div`
 
 const InboxStats = styled.div`
   font-size: 0.65rem;
-  color: #d1fae5;
+  color: #cbd5e1;
   font-weight: 600;
 `;
 
@@ -66,7 +66,7 @@ const InboxContent = styled.div`
   min-height: 0;
 
   scrollbar-width: thin;
-  scrollbar-color: #059669 rgba(255, 255, 255, 0.05);
+  scrollbar-color: #64748b rgba(255, 255, 255, 0.05);
 
   &::-webkit-scrollbar {
     width: 8px;
@@ -78,27 +78,27 @@ const InboxContent = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #059669;
+    background: #64748b;
     border-radius: 4px;
     border: 2px solid rgba(15, 23, 42, 0.92);
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #10b981;
+    background: #475569;
   }
 `;
 
 const FakturaCard = styled.div`
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.08));
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: linear-gradient(135deg, rgba(100, 116, 139, 0.12), rgba(71, 85, 105, 0.08));
+  border: 1px solid rgba(100, 116, 139, 0.3);
   border-radius: 8px;
   padding: 0.7rem;
   transition: all 0.2s;
   cursor: pointer;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.12));
-    border-color: rgba(16, 185, 129, 0.5);
+    background: linear-gradient(135deg, rgba(100, 116, 139, 0.18), rgba(71, 85, 105, 0.12));
+    border-color: rgba(100, 116, 139, 0.5);
     transform: translateX(2px);
   }
 `;
@@ -114,16 +114,16 @@ const FakturaHeader = styled.div`
 const FakturaNazev = styled.div`
   font-size: 0.75rem;
   font-weight: 600;
-  color: #f0fdf4;
+  color: #f1f5f9;
   line-height: 1.3;
   flex: 1;
 `;
 
 const FakturaID = styled.div`
   font-size: 0.6rem;
-  color: #6ee7b7;
+  color: #94a3b8;
   font-family: 'Courier New', monospace;
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(100, 116, 139, 0.2);
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
   white-space: nowrap;
@@ -134,7 +134,7 @@ const FakturaInfo = styled.div`
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.65rem;
-  color: #a7f3d0;
+  color: #cbd5e1;
 `;
 
 const InfoRow = styled.div`
@@ -144,23 +144,23 @@ const InfoRow = styled.div`
 `;
 
 const InfoLabel = styled.span`
-  color: #6ee7b7;
+  color: #94a3b8;
   font-weight: 600;
 `;
 
 const InfoValue = styled.span`
-  color: #d1fae5;
+  color: #e2e8f0;
 `;
 
 const PrilohaSection = styled.div`
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid rgba(16, 185, 129, 0.2);
+  border-top: 1px solid rgba(100, 116, 139, 0.25);
 `;
 
 const PrilohaTitle = styled.div`
   font-size: 0.65rem;
-  color: #6ee7b7;
+  color: #94a3b8;
   font-weight: 600;
   margin-bottom: 0.4rem;
   display: flex;
@@ -173,13 +173,13 @@ const PrilohaItem = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.4rem;
-  background: rgba(16, 185, 129, 0.08);
+  background: rgba(100, 116, 139, 0.1);
   border-radius: 5px;
   margin-bottom: 0.3rem;
   transition: background 0.15s;
 
   &:hover {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(100, 116, 139, 0.18);
   }
 
   &:last-child {
@@ -194,7 +194,7 @@ const PrilohaInfo = styled.div`
 
 const PrilohaFilename = styled.div`
   font-size: 0.65rem;
-  color: #f0fdf4;
+  color: #f1f5f9;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -203,7 +203,7 @@ const PrilohaFilename = styled.div`
 
 const PrilohaMeta = styled.div`
   font-size: 0.55rem;
-  color: #a7f3d0;
+  color: #cbd5e1;
   margin-top: 0.15rem;
 `;
 
@@ -212,7 +212,7 @@ const PrilohaButton = styled.a`
   align-items: center;
   gap: 0.3rem;
   padding: 0.3rem 0.5rem;
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border-radius: 4px;
   text-decoration: none;
@@ -222,7 +222,7 @@ const PrilohaButton = styled.a`
   white-space: nowrap;
 
   &:hover {
-    background: linear-gradient(135deg, #059669, #047857);
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
     transform: scale(1.05);
   }
 
@@ -236,7 +236,7 @@ const LoadingBox = styled.div`
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  color: #6ee7b7;
+  color: #94a3b8;
   font-size: 0.75rem;
   gap: 0.5rem;
 `;
@@ -259,7 +259,7 @@ const EmptyBox = styled.div`
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
-  color: #6ee7b7;
+  color: #94a3b8;
   font-size: 0.75rem;
   text-align: center;
   gap: 0.5rem;
@@ -267,9 +267,9 @@ const EmptyBox = styled.div`
 `;
 
 const RefreshButton = styled.button`
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #6ee7b7;
+  background: rgba(100, 116, 139, 0.15);
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
   padding: 0.3rem 0.6rem;
   border-radius: 5px;
   cursor: pointer;
@@ -321,7 +321,7 @@ const FileModalHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, #059669, #047857);
+  background: linear-gradient(135deg, #475569, #334155);
   color: white;
 `;
 
@@ -382,7 +382,7 @@ const DownloadButton = styled.a`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border-radius: 8px;
   text-decoration: none;
@@ -390,9 +390,9 @@ const DownloadButton = styled.a`
   transition: all 0.2s;
 
   &:hover {
-    background: linear-gradient(135deg, #059669, #047857);
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
   }
 `;
 
@@ -410,7 +410,7 @@ const TxtViewer = styled.pre`
   word-wrap: break-word;
 
   scrollbar-width: thin;
-  scrollbar-color: #059669 #1e293b;
+  scrollbar-color: #64748b #1e293b;
 
   &::-webkit-scrollbar {
     width: 10px;
@@ -422,12 +422,12 @@ const TxtViewer = styled.pre`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #059669;
+    background: #64748b;
     border-radius: 5px;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #10b981;
+    background: #475569;
   }
 `;
 
@@ -544,7 +544,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
         style={{ cursor: 'move' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#10b981' }} />
+          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#94a3b8' }} />
           Spisovka Inbox
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
@@ -685,7 +685,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
                         );
                       })}
                       {faktura.prilohy.length > 3 && (
-                        <div style={{ fontSize: '0.6rem', color: '#6ee7b7', marginTop: '0.3rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '0.3rem', textAlign: 'center' }}>
                           +{faktura.prilohy.length - 3} další
                         </div>
                       )}
@@ -717,7 +717,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
                 title={fileViewer.filename}
               >
                 <PdfFallback>
-                  <FontAwesomeIcon icon={faFileAlt} size="3x" style={{ color: '#10b981' }} />
+                  <FontAwesomeIcon icon={faFileAlt} size="3x" style={{ color: '#64748b' }} />
                   <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>PDF nelze zobrazit v prohlížeči</div>
                   <div style={{ fontSize: '0.9rem', color: '#64748b', textAlign: 'center', maxWidth: '400px' }}>
                     Váš prohlížeč nepodporuje zobrazení PDF souborů. Můžete soubor stáhnout a otevřít externě.
