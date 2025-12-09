@@ -26,7 +26,8 @@ import {
   faEdit,
   faFileContract,
   faLock,
-  faUnlock
+  faUnlock,
+  faBookOpen
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -36,7 +37,7 @@ import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { fetchAllUsers } from '../services/api2auth';
-import { getStrediska25 } from '../services/api25orders';
+import { getStrediska25, getTypyFaktur25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
 import SmlouvaPreview from '../components/SmlouvaPreview';
@@ -46,6 +47,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { Search } from 'lucide-react';
 import draftManager from '../services/DraftManager';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
+import SpisovkaInboxPanel from '../components/panels/SpisovkaInboxPanel';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -124,6 +126,7 @@ const IconButton = styled.button`
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  position: relative;
 
   &:hover {
     background: rgba(255, 255, 255, 0.25);
@@ -135,6 +138,103 @@ const IconButton = styled.button`
   &:active {
     transform: translateY(0);
   }
+`;
+
+const NotificationBadge = styled.span`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #0f172a;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+`;
+
+const TooltipWrapper = styled.div`
+  position: relative;
+  display: inline-block;
+`;
+
+const TooltipContent = styled.div`
+  position: fixed;
+  top: ${props => props.$top || 0}px;
+  left: ${props => props.$left || 0}px;
+  min-width: 350px;
+  max-width: 450px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  opacity: ${props => props.show ? 1 : 0};
+  visibility: ${props => props.show ? 'visible' : 'hidden'};
+  transform: ${props => props.show ? 'translateY(0)' : 'translateY(-10px)'};
+  transition: all 0.2s ease;
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    right: 20px;
+    border: 6px solid transparent;
+    border-bottom-color: rgba(16, 185, 129, 0.3);
+  }
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    right: 21px;
+    border: 5px solid transparent;
+    border-bottom-color: rgba(15, 23, 42, 0.98);
+  }
+`;
+
+const TooltipTitle = styled.div`
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #10b981;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const TooltipItem = styled.div`
+  padding: 0.4rem;
+  border-radius: 6px;
+  margin-bottom: 0.3rem;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  font-size: 0.75rem;
+  color: #e2e8f0;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const TooltipItemTitle = styled.div`
+  font-weight: 600;
+  color: #d1fae5;
+  margin-bottom: 0.2rem;
+`;
+
+const TooltipItemMeta = styled.div`
+  font-size: 0.7rem;
+  color: #94a3b8;
+  display: flex;
+  justify-content: space-between;
 `;
 
 const ContentLayout = styled.div`
@@ -416,10 +516,17 @@ const FileInputWrapper = styled.div`
   background: #f8fafc;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
 
   &:hover {
     border-color: #3b82f6;
     background: #eff6ff;
+  }
+
+  &.dragging {
+    border-color: #10b981;
+    background: #f0fdf4;
+    border-width: 3px;
   }
 
   input[type="file"] {
@@ -438,6 +545,12 @@ const FileInputLabel = styled.label`
   &:hover {
     color: #3b82f6;
   }
+`;
+
+const ErrorMessage = styled.div`
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
 `;
 
 const VecnaSpravnostPanel = styled.div`
@@ -1056,7 +1169,20 @@ export default function InvoiceEvidencePage() {
   // State pro zapamatování, zda měla faktura původně přiřazenou objednávku/smlouvu
   const [hadOriginalEntity, setHadOriginalEntity] = useState(false);
 
-
+  // Spisovka Inbox Panel - pouze pro ADMIN
+  const [spisovkaInboxOpen, setSpisovkaInboxOpen] = useState(false);
+  const [spisovkaInboxState, setSpisovkaInboxState] = useState({
+    x: window.innerWidth - 420,
+    y: 100,
+    w: 400,
+    h: 600,
+    minimized: false
+  });
+  const [spisovkaTodayCount, setSpisovkaTodayCount] = useState(0);
+  const [spisovkaLastRecords, setSpisovkaLastRecords] = useState([]);
+  const [showSpisovkaTooltip, setShowSpisovkaTooltip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const tooltipButtonRef = useRef(null);
 
   // Form data
   const [formData, setFormData] = useState({
@@ -1072,6 +1198,7 @@ export default function InvoiceEvidencePage() {
     fa_strediska_kod: [], // Střediska - array kódů
     // Příloha
     file: null,
+    klasifikace: 'FAKTURA', // Klasifikace přílohy (FAKTURA_TYP) - výchozí hodnota
     // Nové položky (nepovinné, pod čárou)
     fa_predana_zam_id: null,
     fa_datum_predani_zam: '',
@@ -1081,11 +1208,15 @@ export default function InvoiceEvidencePage() {
   // CustomSelect states
   const [selectStates, setSelectStates] = useState({});
   const [searchStates, setSearchStates] = useState({});
-  const [touchedSelectFields, setTouchedSelectFields] = useState(new Set());
+  const [touchedSelectFields, setTouchedSelectFields] = useState({});
 
   // Střediska options
   const [strediskaOptions, setStrediskaOptions] = useState([]);
   const [strediskaLoading, setStrediskaLoading] = useState(false);
+
+  // Typy faktur (klasifikace příloh)
+  const [typyFakturOptions, setTypyFakturOptions] = useState([]);
+  const [typyFakturLoading, setTypyFakturLoading] = useState(false);
   
   // Zaměstnanci options (pro předání FA)
   const [zamestnanci, setZamestnanci] = useState([]);
@@ -1095,7 +1226,7 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // Načtení středisek a zaměstnanců při mount (pouze pokud existuje token)
+  // Načtení středisek, typů faktur a zaměstnanců při mount (pouze pokud existuje token)
   useEffect(() => {
     const loadStrediska = async () => {
       if (!token || !username) {
@@ -1115,6 +1246,23 @@ export default function InvoiceEvidencePage() {
         console.error('Chyba při načítání středisek:', err);
       } finally {
         setStrediskaLoading(false);
+      }
+    };
+
+    const loadTypyFaktur = async () => {
+      if (!token || !username) return;
+      
+      setTypyFakturLoading(true);
+      try {
+        const data = await getTypyFaktur25({ token, username, aktivni: 1 });
+        if (data && Array.isArray(data)) {
+          setTypyFakturOptions(data);
+          console.log('✅ Typy faktur načteny:', data.length);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání typů faktur:', err);
+      } finally {
+        setTypyFakturLoading(false);
       }
     };
 
@@ -1148,6 +1296,7 @@ export default function InvoiceEvidencePage() {
     // Spustit pouze pokud máme token a username
     if (token && username) {
       loadStrediska();
+      loadTypyFaktur();
       loadZamestnanci();
     }
   }, [token, username]);
@@ -1512,6 +1661,44 @@ export default function InvoiceEvidencePage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Effect: Načíst počet faktur ze spisovky za dnešní den (pro badge) a posledních 5 záznamů (pro tooltip)
+  useEffect(() => {
+    if (!hasPermission('ADMIN')) return;
+
+    const fetchSpisovkaData = async () => {
+      try {
+        // Fetch count
+        const countUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/count-today`;
+        const countResponse = await fetch(countUrl);
+        if (countResponse.ok) {
+          const countData = await countResponse.json();
+          if (countData.status === 'success') {
+            setSpisovkaTodayCount(countData.count);
+          }
+        }
+
+        // Fetch last 5 records
+        const faktoryUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=5&offset=0&rok=2025`;
+        const faktoryResponse = await fetch(faktoryUrl);
+        if (faktoryResponse.ok) {
+          const faktoryData = await faktoryResponse.json();
+          if (faktoryData.status === 'success') {
+            setSpisovkaLastRecords(faktoryData.data);
+          }
+        }
+      } catch (error) {
+        console.error('Chyba při načítání dat ze spisovky:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchSpisovkaData();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchSpisovkaData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [hasPermission]);
+
   // Handler: změna inputu
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -1694,30 +1881,90 @@ export default function InvoiceEvidencePage() {
 
   // Handler: změna souboru
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    setFormData(prev => ({
-      ...prev,
-      file: file || null
-    }));
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      // Přidání fa- prefixu k názvu souboru
+      const newFileName = selectedFile.name.startsWith('fa-') 
+        ? selectedFile.name 
+        : `fa-${selectedFile.name}`;
+      
+      // Vytvoření nového File objektu s upraveným názvem
+      const renamedFile = new File([selectedFile], newFileName, {
+        type: selectedFile.type,
+        lastModified: selectedFile.lastModified
+      });
+      
+      setFormData(prev => ({ ...prev, file: renamedFile }));
+    } else {
+      setFormData(prev => ({ ...prev, file: null }));
+    }
   };
 
   // Handler: drag & drop
+  const [isDragging, setIsDragging] = useState(false);
+
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(true);
   };
 
-  const handleDrop = (e) => {
+  const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
     
+    // Kontrola, zda se jedná o drag ze Spisovka panelu
+    const spisovkaFileUrl = e.dataTransfer.getData('text/spisovka-file-url');
+    const spisovkaFileName = e.dataTransfer.getData('text/spisovka-file-name');
+    const spisovkaFileMime = e.dataTransfer.getData('text/spisovka-file-mime');
+    
+    if (spisovkaFileUrl && spisovkaFileName) {
+      // Stažení souboru ze spisovky přes proxy a vytvoření File objektu
+      try {
+        // Použít proxy endpoint pro stažení (řešení CORS)
+        const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(spisovkaFileUrl)}`;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Chyba při stahování souboru');
+        
+        const blob = await response.blob();
+        const newFileName = spisovkaFileName.startsWith('fa-') 
+          ? spisovkaFileName 
+          : `fa-${spisovkaFileName}`;
+        
+        const file = new File([blob], newFileName, { type: spisovkaFileMime || blob.type });
+        setFormData(prev => ({ ...prev, file }));
+        console.log('✅ Soubor ze spisovky přidán:', newFileName);
+      } catch (error) {
+        console.error('❌ Chyba při stahování souboru ze spisovky:', error);
+        alert('Chyba při stahování souboru ze spisovky');
+      }
+      return;
+    }
+    
+    // Standardní drag & drop z filesystému
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      const file = files[0];
-      setFormData(prev => ({
-        ...prev,
-        file: file
-      }));
+      const selectedFile = files[0];
+      
+      // Přidání fa- prefixu k názvu souboru
+      const newFileName = selectedFile.name.startsWith('fa-') 
+        ? selectedFile.name 
+        : `fa-${selectedFile.name}`;
+      
+      // Vytvoření nového File objektu s upraveným názvem
+      const renamedFile = new File([selectedFile], newFileName, {
+        type: selectedFile.type,
+        lastModified: selectedFile.lastModified
+      });
+      
+      setFormData(prev => ({ ...prev, file: renamedFile }));
     }
   };
 
@@ -1775,6 +2022,101 @@ export default function InvoiceEvidencePage() {
       // Neblokujeme workflow kvůli chybě notifikace
     }
   };
+
+  // ============================================================
+  // SPISOVKA INBOX PANEL - Drag handling
+  // ============================================================
+  const handleSpisovkaInboxDrag = useCallback((e, key, dir) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startState = { ...spisovkaInboxState };
+
+    const onMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      setSpisovkaInboxState(prev => {
+        let newState = { ...prev };
+        const minW = 320;
+        const minH = 200;
+
+        if (dir === 'move') {
+          newState.x = Math.max(0, Math.min(startState.x + dx, window.innerWidth - prev.w));
+          newState.y = Math.max(0, Math.min(startState.y + dy, window.innerHeight - prev.h));
+        } 
+        // Pravá hrana
+        else if (dir === 'right') {
+          newState.w = Math.max(minW, startState.w + dx);
+        } 
+        // Levá hrana
+        else if (dir === 'left') {
+          const newW = Math.max(minW, startState.w - dx);
+          if (newW > minW) {
+            newState.w = newW;
+            newState.x = startState.x + dx;
+          }
+        } 
+        // Horní hrana
+        else if (dir === 'top') {
+          const newH = Math.max(minH, startState.h - dy);
+          if (newH > minH) {
+            newState.h = newH;
+            newState.y = startState.y + dy;
+          }
+        } 
+        // Dolní hrana
+        else if (dir === 'bottom') {
+          newState.h = Math.max(minH, startState.h + dy);
+        } 
+        // Rohy
+        else if (dir === 'top-left') {
+          const newW = Math.max(minW, startState.w - dx);
+          const newH = Math.max(minH, startState.h - dy);
+          if (newW > minW) {
+            newState.w = newW;
+            newState.x = startState.x + dx;
+          }
+          if (newH > minH) {
+            newState.h = newH;
+            newState.y = startState.y + dy;
+          }
+        } 
+        else if (dir === 'top-right') {
+          const newH = Math.max(minH, startState.h - dy);
+          newState.w = Math.max(minW, startState.w + dx);
+          if (newH > minH) {
+            newState.h = newH;
+            newState.y = startState.y + dy;
+          }
+        } 
+        else if (dir === 'bottom-left') {
+          const newW = Math.max(minW, startState.w - dx);
+          newState.h = Math.max(minH, startState.h + dy);
+          if (newW > minW) {
+            newState.w = newW;
+            newState.x = startState.x + dx;
+          }
+        } 
+        else if (dir === 'bottom-right') {
+          newState.w = Math.max(minW, startState.w + dx);
+          newState.h = Math.max(minH, startState.h + dy);
+        }
+
+        return newState;
+      });
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [spisovkaInboxState]);
 
   // Handler: submit formuláře
   const handleSubmit = async () => {
@@ -1918,7 +2260,8 @@ export default function InvoiceEvidencePage() {
           // S přílohou
           result = await createInvoiceWithAttachmentV2({
             ...apiParams,
-            file: formData.file
+            file: formData.file,
+            klasifikace: formData.klasifikace || null // Typ přílohy
           });
         } else {
           // Bez přílohy
@@ -2264,6 +2607,65 @@ export default function InvoiceEvidencePage() {
           {editingInvoiceId ? 'Upravit fakturu' : 'Zaevidovat fakturu'}
         </PageTitle>
         <HeaderActions>
+          {hasPermission('ADMIN') && (
+            <TooltipWrapper
+              ref={tooltipButtonRef}
+              onMouseEnter={() => {
+                setShowSpisovkaTooltip(true);
+                if (tooltipButtonRef.current) {
+                  const rect = tooltipButtonRef.current.getBoundingClientRect();
+                  const tooltipWidth = 350;
+                  let left = rect.right - tooltipWidth;
+                  
+                  // Adjust if tooltip would go off left edge
+                  if (left < 10) {
+                    left = 10;
+                  }
+                  
+                  // Adjust if tooltip would go off right edge
+                  if (left + tooltipWidth > window.innerWidth - 10) {
+                    left = window.innerWidth - tooltipWidth - 10;
+                  }
+                  
+                  setTooltipPosition({
+                    top: rect.bottom + 10,
+                    left: left
+                  });
+                }
+              }}
+              onMouseLeave={() => setShowSpisovkaTooltip(false)}
+            >
+              <IconButton 
+                onClick={() => setSpisovkaInboxOpen(!spisovkaInboxOpen)} 
+                title={spisovkaInboxOpen ? 'Zavřít Spisovka InBox' : 'Otevřít Spisovka InBox'}
+                style={{ 
+                  backgroundColor: spisovkaInboxOpen ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                  color: spisovkaInboxOpen ? '#10b981' : '#9ca3af'
+                }}
+              >
+                <FontAwesomeIcon icon={faBookOpen} />
+                {spisovkaTodayCount > 0 && (
+                  <NotificationBadge>{spisovkaTodayCount}</NotificationBadge>
+                )}
+              </IconButton>
+              <TooltipContent 
+                show={showSpisovkaTooltip && spisovkaLastRecords.length > 0}
+                $top={tooltipPosition.top}
+                $left={tooltipPosition.left}
+              >
+                <TooltipTitle>Posledních 5 záznamů</TooltipTitle>
+                {spisovkaLastRecords.map((record) => (
+                  <TooltipItem key={record.dokument_id}>
+                    <TooltipItemTitle>{record.nazev}</TooltipItemTitle>
+                    <TooltipItemMeta>
+                      <span>📎 {record.pocet_priloh} přílohy</span>
+                      <span>#{record.dokument_id}</span>
+                    </TooltipItemMeta>
+                  </TooltipItem>
+                ))}
+              </TooltipContent>
+            </TooltipWrapper>
+          )}
           <IconButton onClick={toggleFullscreen} title={isFullscreen ? 'Normální režim' : 'Celá obrazovka'}>
             <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
           </IconButton>
@@ -2898,15 +3300,63 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
             </FieldRow>
 
+            {/* Klasifikace přílohy */}
+            <FieldRow>
+              <FieldGroup>
+                <FieldLabel>
+                  Typ přílohy faktury
+                  <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
+                </FieldLabel>
+                <CustomSelect
+                  field="klasifikace"
+                  value={formData.klasifikace}
+                  onChange={(e) => {
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      klasifikace: e.target.value 
+                    }));
+                  }}
+                  options={typyFakturOptions}
+                  placeholder={typyFakturLoading ? "Načítám typy faktur..." : "Vyberte typ přílohy..."}
+                  disabled={typyFakturLoading}
+                  required={true}
+                  selectStates={selectStates}
+                  setSelectStates={setSelectStates}
+                  searchStates={searchStates}
+                  setSearchStates={setSearchStates}
+                  touchedSelectFields={touchedSelectFields}
+                  setTouchedSelectFields={setTouchedSelectFields}
+                  toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+                  filterOptions={(options, searchTerm) => {
+                    if (!searchTerm) return options;
+                    return options.filter(opt => 
+                      opt.nazev?.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                  }}
+                  getOptionLabel={(option) => option?.nazev || ''}
+                />
+                {touchedSelectFields['klasifikace'] && !formData.klasifikace && (
+                  <ErrorMessage>Vyberte typ přílohy</ErrorMessage>
+                )}
+              </FieldGroup>
+            </FieldRow>
+
             {/* Příloha */}
             <FieldRow>
               <FieldGroup>
                 <FieldLabel>
-                  Příloha faktury
+                  Soubor přílohy faktury
+                  {formData.klasifikace && <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>}
                 </FieldLabel>
                 <FileInputWrapper
+                  className={isDragging ? 'dragging' : ''}
                   onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
+                  style={{
+                    opacity: !formData.klasifikace ? 0.5 : 1,
+                    pointerEvents: !formData.klasifikace ? 'none' : 'auto'
+                  }}
                 >
                   <FileInputLabel htmlFor="file-upload">
                     <FontAwesomeIcon icon={faUpload} size="2x" />
@@ -2920,8 +3370,14 @@ export default function InvoiceEvidencePage() {
                     type="file"
                     accept=".pdf,.isdoc,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
                     onChange={handleFileChange}
+                    disabled={!formData.klasifikace}
                   />
                 </FileInputWrapper>
+                {!formData.klasifikace && (
+                  <div style={{ fontSize: '0.875rem', color: '#94a3af', marginTop: '8px' }}>
+                    ℹ️ Nejprve vyberte typ přílohy, pak můžete nahrát soubor
+                  </div>
+                )}
                 {formData.file && (
                   <SelectedFileName>
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#10b981' }} />
@@ -3562,6 +4018,16 @@ export default function InvoiceEvidencePage() {
           } : () => {}}
         />,
         document.body
+      )}
+
+      {/* 📖 Spisovka Inbox Panel - pouze pro ADMIN */}
+      {hasPermission('ADMIN') && spisovkaInboxOpen && (
+        <SpisovkaInboxPanel
+          panelState={spisovkaInboxState}
+          setPanelState={setSpisovkaInboxState}
+          beginDrag={handleSpisovkaInboxDrag}
+          onClose={() => setSpisovkaInboxOpen(false)}
+        />
       )}
     </>
   );
