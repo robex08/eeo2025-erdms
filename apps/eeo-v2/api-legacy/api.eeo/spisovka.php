@@ -498,12 +498,21 @@ if ($endpoint === 'proxy-txt' && $request_method === 'GET') {
         send_error($http_code, 'Soubor nebyl nalezen ve spisovce');
     }
     
-    // Konvertovat z Windows-1250 na UTF-8
-    $body = iconv('Windows-1250', 'UTF-8//IGNORE', $body);
+    // ✅ Automatická detekce kódování
+    $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+    
+    // Pokud není UTF-8, konvertovat
+    if ($detected_encoding && $detected_encoding !== 'UTF-8') {
+        $body = iconv($detected_encoding, 'UTF-8//IGNORE', $body);
+    } elseif (!$detected_encoding) {
+        // Fallback - pokud detekce selhala, zkusit Windows-1250 (nejčastější v ČR)
+        $body = iconv('Windows-1250', 'UTF-8//IGNORE', $body);
+    }
     
     // Odeslat soubor jako plain text s UTF-8
     header("Content-Type: text/plain; charset=utf-8");
     header("Content-Length: " . strlen($body));
+    header("X-Original-Encoding: " . ($detected_encoding ?: 'Windows-1250'));
     
     echo $body;
     exit;
@@ -578,6 +587,27 @@ if ($endpoint === 'proxy-file' && $request_method === 'GET') {
                 }
             }
         }
+    }
+    
+    // ✅ Pro textové soubory provést detekci a konverzi kódování
+    $is_text = (strpos($content_type, 'text/') === 0) || 
+               ($original_filename && preg_match('/\.(txt|log|csv)$/i', $original_filename));
+    
+    if ($is_text) {
+        // Automatická detekce kódování
+        $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+        
+        // Pokud není UTF-8, konvertovat
+        if ($detected_encoding && $detected_encoding !== 'UTF-8') {
+            $body = iconv($detected_encoding, 'UTF-8//IGNORE', $body);
+        } elseif (!$detected_encoding) {
+            // Fallback - pokud detekce selhala, zkusit Windows-1250
+            $body = iconv('Windows-1250', 'UTF-8//IGNORE', $body);
+        }
+        
+        // Vždy vrátit jako UTF-8
+        $content_type = 'text/plain; charset=utf-8';
+        header("X-Original-Encoding: " . ($detected_encoding ?: 'Windows-1250'));
     }
     
     // Odeslat soubor s původním názvem pokud je k dispozici
