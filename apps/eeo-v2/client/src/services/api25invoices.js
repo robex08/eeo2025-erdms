@@ -118,9 +118,10 @@ export async function uploadInvoiceAttachment25({
     throw new Error('Chybí ID faktury.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // objednavka_id je nepovinné pro standalone faktury
+  // if (!objednavka_id) {
+  //   throw new Error('Chybí ID objednávky.');
+  // }
 
   if (!typ_prilohy) {
     throw new Error('Chybí typ přílohy.');
@@ -141,7 +142,8 @@ export async function uploadInvoiceAttachment25({
       formData.append('user_id', userId);
     }
 
-    formData.append('order_id', String(objednavka_id)); // ✅ podle nové dokumentace
+    // ✅ order_id je nepovinné pro standalone faktury (backend může vyžadovat prázdný string)
+    formData.append('order_id', objednavka_id ? String(objednavka_id) : '');
     formData.append('typ_prilohy', typ_prilohy);
     formData.append('file', file);
 
@@ -422,17 +424,26 @@ export async function downloadInvoiceAttachment25({ token, username, faktura_id,
     throw new Error('Chybí ID přílohy.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ✅ objednavka_id není nutné pro standalone faktury
+  // if (!objednavka_id) {
+  //   throw new Error('Chybí ID objednávky.');
+  // }
 
   try {
 
     const payload = {
       token,
-      username,
-      order_id: Number(objednavka_id) // ✅ Podle nové dokumentace
+      username
     };
+
+    // ✅ Přidat order_id jen pokud je k dispozici
+    if (objednavka_id) {
+      payload.order_id = Number(objednavka_id);
+    }
+    // ✅ Přidat order_id jen pokud je k dispozici
+    if (objednavka_id) {
+      payload.order_id = Number(objednavka_id);
+    }
 
     // ✅ ORDER V2 API: POST s token + username + order_id v BODY
     const response = await api25invoices.post(
@@ -514,16 +525,21 @@ export async function updateInvoiceAttachment25({
     throw new Error('Chybí ID přílohy.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ✅ objednavka_id není nutné pro standalone faktury
+  // if (!objednavka_id) {
+  //   throw new Error('Chybí ID objednávky.');
+  // }
 
   try {
     const payload = {
       token,
       username
-      // order_id není potřeba podle dokumentace
     };
+
+    // ✅ Přidat order_id jen pokud je k dispozici
+    if (objednavka_id) {
+      payload.order_id = Number(objednavka_id);
+    }
 
     // ✅ Preferuj 'type' (anglicky) pokud je poslaný, jinak 'typ_prilohy' (česky)
     if (type) {
@@ -652,19 +668,24 @@ export async function deleteInvoiceAttachment25({ token, username, faktura_id, p
     throw new Error('Chybí ID přílohy.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky.');
-  }
+  // ✅ objednavka_id není nutné pro standalone faktury
+  // if (!objednavka_id) {
+  //   throw new Error('Chybí ID objednávky.');
+  // }
 
   try {
 
     const payload = {
       token,
       username,
-      order_id: Number(objednavka_id), // ✅ Podle nové dokumentace
       hard_delete: Number(hard_delete), // ✅ 0 = soft delete, 1 = hard delete
       _method: 'DELETE' // ✅ Pro případy kdy server preferuje POST s _method
     };
+
+    // ✅ Přidat order_id jen pokud je k dispozici
+    if (objednavka_id) {
+      payload.order_id = Number(objednavka_id);
+    }
 
     // ✅ NOVÁ URL STRUKTURA: POST /order-v2/invoices/{invoice_id}/attachments/{attachment_id}/delete
     // Token, username a order_id posíláme v BODY
@@ -746,16 +767,21 @@ export async function verifyInvoiceAttachments25({ token, username, invoice_id, 
     throw new Error('Chybí ID faktury pro ověření příloh.');
   }
 
-  if (!objednavka_id) {
-    throw new Error('Chybí ID objednávky pro ověření příloh.');
-  }
+  // objednavka_id je nepovinné pro standalone faktury
+  // if (!objednavka_id) {
+  //   throw new Error('Chybí ID objednávky pro ověření příloh.');
+  // }
 
   try {
     const payload = {
       token,
-      username,
-      objednavka_id: Number(objednavka_id)  // ID objednávky v payload (pro kontrolu práv)
+      username
     };
+    
+    // ✅ objednavka_id je nepovinné pro standalone faktury
+    if (objednavka_id) {
+      payload.objednavka_id = Number(objednavka_id);
+    }
 
     // ✅ SPRÁVNÁ URL STRUKTURA: POST /order-v2/invoices/{invoice_id}/attachments/verify
     // invoice_id je v URL (identifikuje fakturu)
