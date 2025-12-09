@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
-import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, FileX, X, Info } from 'lucide-react';
+import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, FileX, X, Info, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
 import {
   uploadInvoiceAttachment25,
   listInvoiceAttachments25,
@@ -21,6 +21,7 @@ import { prettyDate } from '../../utils/format';
 import ISDOCParsingDialog from './ISDOCParsingDialog';
 import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../../utils/isdocParser';
 import ConfirmDialog from '../ConfirmDialog'; // 🆕 Vlastní confirm dialog
+import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR'; // 🆕 OCR
 
 /**
  * InvoiceAttachmentsCompact Component
@@ -325,7 +326,8 @@ const InvoiceAttachmentsCompact = ({
   onAttachmentUploaded, // 🆕 Callback po úspěšném uploadu jakékoliv přílohy (včetně ISDOC)
   attachments: externalAttachments = [], // 🆕 Attachments z formData.faktury[].attachments (controlled)
   onAttachmentsChange, // 🆕 Callback pro aktualizaci attachments (controlled component pattern)
-  onCreateInvoiceInDB // 🆕 Callback pro vytvoření faktury v DB (temp → real ID)
+  onCreateInvoiceInDB, // 🆕 Callback pro vytvoření faktury v DB (temp → real ID)
+  onOCRDataExtracted // 🆕 Callback pro předání OCR vytěžených dat
 }) => {
   const { username, token } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext); // ✅ OPRAVENO: showToast místo addToast
@@ -582,10 +584,57 @@ const InvoiceAttachmentsCompact = ({
       
       if (!validation.isValid) {
         // ⚠️ ZAMÍTNOUT běžné soubory - chybí povinná pole
-        showToast && showToast(
-          `❌ Nelze nahrát přílohy\n\nPro běžné přílohy (PDF, JPG...) vyplňte nejprve povinná pole faktury:\n${validation.missingFields.join(', ')}\n\nℹ️ ISDOC soubory lze nahrát kdykoliv (automatické vytěžení hodnot).`,
-          { type: 'error' }
+        // ✅ Strukturovaná chybová zpráva (PŘESNĚ jako OrderForm25)
+        const errorMessage = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '12px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+              <span>Pro uložení je nutné vyplnit následující položky:</span>
+            </div>
+            {Object.values(validation.categories).map((cat, idx) => 
+              cat.errors.length > 0 && (
+                <div key={idx} style={{ 
+                  marginBottom: '10px',
+                  padding: '10px',
+                  backgroundColor: '#fff1f0',
+                  borderRadius: '4px'
+                }}>
+                  <div style={{ 
+                    fontWeight: '600', 
+                    fontSize: '13px',
+                    color: '#d32f2f',
+                    marginBottom: '6px'
+                  }}>
+                    {cat.label}
+                  </div>
+                  {cat.errors.map((err, errIdx) => (
+                    <div key={errIdx} style={{ 
+                      fontSize: '12px',
+                      color: '#666',
+                      marginLeft: '8px',
+                      marginTop: '4px',
+                      display: 'flex',
+                      alignItems: 'flex-start'
+                    }}>
+                      <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                      <span>{err}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
         );
+        
+        showToast && showToast(errorMessage, { type: 'error' });
         return; // Ukončit upload
       }
     }
@@ -887,8 +936,33 @@ const InvoiceAttachmentsCompact = ({
           } : f
         ));
 
-        // Příloha úspěšně nahrána
-        showToast&&showToast('✅ Příloha byla úspěšně nahrána', { type: 'success' });
+        // Příloha úspěšně nahrána - zelený stylovaný toast
+        const successMessage = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '8px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+              <span>Příloha úspěšně nahrána</span>
+            </div>
+            <div style={{ 
+              padding: '8px',
+              backgroundColor: '#f0fdf4',
+              borderRadius: '4px',
+              fontSize: '13px',
+              color: '#166534'
+            }}>
+              {file.file.name}
+            </div>
+          </div>
+        );
+        showToast&&showToast(successMessage, { type: 'success' });
 
         // � Refresh attachments ze serveru pro synchronizaci
         await loadAttachmentsFromServer();
@@ -990,7 +1064,33 @@ const InvoiceAttachmentsCompact = ({
         } : f
       ));
 
-      showToast&&showToast('✅ Příloha byla úspěšně nahrána', { type: 'success' });
+      // Zelený stylovaný success toast
+      const successMessage = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ 
+            fontSize: '15px', 
+            fontWeight: '600', 
+            marginBottom: '8px', 
+            color: '#1a1a1a',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <span>Příloha úspěšně nahrána</span>
+          </div>
+          <div style={{ 
+            padding: '8px',
+            backgroundColor: '#f0fdf4',
+            borderRadius: '4px',
+            fontSize: '13px',
+            color: '#166534'
+          }}>
+            {file.file.name}
+          </div>
+        </div>
+      );
+      showToast&&showToast(successMessage, { type: 'success' });
 
       // � Refresh attachments ze serveru pro synchronizaci
       await loadAttachmentsFromServer();
@@ -1032,7 +1132,9 @@ const InvoiceAttachmentsCompact = ({
       title: 'Odstranit přílohu',
       message: `Opravdu chcete odstranit přílohu "${file.name}"?`,
       onConfirm: () => {
+        // ✅ Odstranit z lokálního stavu
         updateAttachments(prev => prev.filter(f => f.id !== fileId));
+        showToast&&showToast('✅ Příloha odstraněna', { type: 'success' });
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
       }
     });
@@ -1156,6 +1258,177 @@ const InvoiceAttachmentsCompact = ({
     }
   };
 
+  // 🆕 OCR EXTRAKCE Z PDF
+  const handleOCRExtraction = async (fileId) => {
+    const file = attachments.find(f => f.id === fileId);
+    if (!file) return;
+
+    // Kontrola, zda je soubor PDF
+    const isPDF = file.name?.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+    if (!isPDF) {
+      showToast&&showToast('OCR funguje pouze pro PDF soubory', { type: 'error' });
+      return;
+    }
+
+    // Získáme file object - buď z nahraného souboru nebo stáhneme ze serveru
+    let fileBlob = file.file;
+    
+    if (!fileBlob && file.serverId) {
+      // Pokud je soubor již nahrán na serveru, musíme ho stáhnout
+      try {
+        fileBlob = await downloadInvoiceAttachment25({
+          token: token,
+          username: username,
+          faktura_id: fakturaId,
+          priloha_id: file.serverId,
+          objednavka_id: objednavkaId
+        });
+      } catch (err) {
+        showToast&&showToast('Nepodařilo se stáhnout PDF pro OCR: ' + err.message, { type: 'error' });
+        return;
+      }
+    }
+
+    if (!fileBlob) {
+      showToast&&showToast('Soubor není k dispozici pro OCR', { type: 'error' });
+      return;
+    }
+
+    // Vytvoříme File object, pokud máme jen Blob
+    const fileObject = fileBlob instanceof File 
+      ? fileBlob 
+      : new File([fileBlob], file.name, { type: 'application/pdf' });
+
+    // Zobrazíme progress toast
+    let currentToastId = null;
+    
+    const updateProgress = (progress, message) => {
+      const progressContent = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '8px', color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={20} color="#8b5cf6" style={{ flexShrink: 0 }} />
+            <span>OCR extrakce z PDF</span>
+          </div>
+          <div style={{ padding: '8px', backgroundColor: '#f5f3ff', borderRadius: '4px', fontSize: '13px', color: '#6d28d9' }}>
+            <div style={{ marginBottom: '4px' }}>{message}</div>
+            <div style={{ height: '4px', backgroundColor: '#e9d5ff', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', 
+                width: `${progress}%`, 
+                backgroundColor: '#8b5cf6', 
+                transition: 'width 0.3s ease' 
+              }} />
+            </div>
+          </div>
+        </div>
+      );
+
+      if (currentToastId) {
+        // Update existing toast - musíme najít a aktualizovat v ToastContext
+        // Pro jednoduchost vytvoříme nový toast
+        showToast&&showToast(progressContent, { type: 'info', duration: 999999 });
+      } else {
+        currentToastId = showToast&&showToast(progressContent, { type: 'info', duration: 999999 });
+      }
+    };
+
+    try {
+      // Spustíme OCR extrakci
+      const extractedText = await extractTextFromPDF(fileObject, updateProgress);
+      
+      // Vytěžíme data faktury z textu
+      const extractedData = extractInvoiceData(extractedText);
+      
+      console.log('📄 OCR Extracted Data:', extractedData);
+
+      // Zavřeme progress toast
+      if (currentToastId) {
+        // ToastContext by měl mít metodu na zavření konkrétního toastu
+        // Pro teď jen necháme vymizet automaticky
+      }
+
+      // Zobrazit varování, pokud dokument není faktura
+      if (extractedData.warning) {
+        const warningContent = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '8px', color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertTriangle size={20} color="#f59e0b" style={{ flexShrink: 0 }} />
+              <span>Varování - Není faktura</span>
+            </div>
+            <div style={{ padding: '8px', backgroundColor: '#fffbeb', borderRadius: '4px', fontSize: '13px', color: '#92400e' }}>
+              {extractedData.warning}
+            </div>
+          </div>
+        );
+        showToast&&showToast(warningContent, { type: 'warning', duration: 8000 });
+      }
+
+      // Zkontrolujeme, co se podařilo vytěžit
+      const foundFields = [];
+      if (extractedData.variabilniSymbol) foundFields.push('Variabilní symbol');
+      if (extractedData.datumVystaveni) foundFields.push('Datum vystavení');
+      if (extractedData.datumSplatnosti) foundFields.push('Datum splatnosti');
+      if (extractedData.castka) foundFields.push('Částka');
+
+      if (foundFields.length === 0) {
+        showToast&&showToast('❌ Nepodařilo se vytěžit žádná data z PDF', { type: 'error' });
+        return;
+      }
+
+      // Zobrazíme nalezené údaje
+      const successContent = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '8px', color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <span>OCR extrakce úspěšná</span>
+          </div>
+          <div style={{ padding: '8px', backgroundColor: '#f0fdf4', borderRadius: '4px', fontSize: '13px', color: '#166534' }}>
+            <div style={{ marginBottom: '4px', fontWeight: '500' }}>Nalezené údaje:</div>
+            {extractedData.variabilniSymbol && (
+              <div>• Variabilní symbol: {extractedData.variabilniSymbol}</div>
+            )}
+            {extractedData.datumVystaveni && (
+              <div>• Datum vystavení: {extractedData.datumVystaveni}</div>
+            )}
+            {extractedData.datumSplatnosti && (
+              <div>• Datum splatnosti: {extractedData.datumSplatnosti}</div>
+            )}
+            {extractedData.castka && (
+              <div>• Částka vč. DPH: {extractedData.castka.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč</div>
+            )}
+          </div>
+        </div>
+      );
+
+      showToast&&showToast(successContent, { type: 'success', duration: 10000 });
+
+      // 🎯 CALLBACK: Předat vytěžená data zpět do formuláře
+      if (onOCRDataExtracted) {
+        onOCRDataExtracted(extractedData);
+      }
+
+    } catch (err) {
+      console.error('❌ OCR Error:', err);
+      
+      const errorContent = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '8px', color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
+            <span>Chyba při OCR extrakci</span>
+          </div>
+          <div style={{ padding: '8px', backgroundColor: '#fef2f2', borderRadius: '4px', fontSize: '13px', color: '#991b1b' }}>
+            {err.message}
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+              💡 Můžete vyplnit údaje manuálně z náhledu PDF
+            </div>
+          </div>
+        </div>
+      );
+      
+      showToast&&showToast(errorContent, { type: 'error', duration: 8000 });
+    }
+  };
+
   // 🆕 Validace faktury pro přidání příloh - VYPOČÍTAT PŘED HANDLERS
   const invoiceValidation = useMemo(() => {
     if (isPokladna) {
@@ -1220,17 +1493,60 @@ const InvoiceAttachmentsCompact = ({
           const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
           
           if (!validation.isValid) {
-            showToast && showToast(
-              `❌ Nelze nahrát přílohy\n\nPro běžné přílohy vyplňte nejprve povinná pole faktury:\n${validation.missingFields.join(', ')}\n\nℹ️ ISDOC soubory lze nahrát kdykoliv.`,
-              { type: 'error' }
+            const errorMessage = (
+              <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+                <div style={{ 
+                  fontSize: '15px', 
+                  fontWeight: '600', 
+                  marginBottom: '12px', 
+                  color: '#1a1a1a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+                  <span>Pro uložení je nutné vyplnit následující položky:</span>
+                </div>
+                {Object.values(validation.categories).map((cat, idx) => 
+                  cat.errors.length > 0 && (
+                    <div key={idx} style={{ 
+                      marginBottom: '10px',
+                      padding: '10px',
+                      backgroundColor: '#fff1f0',
+                      borderRadius: '4px'
+                    }}>
+                      <div style={{ 
+                        fontWeight: '600', 
+                        fontSize: '13px',
+                        color: '#d32f2f',
+                        marginBottom: '6px'
+                      }}>
+                        {cat.label}
+                      </div>
+                      {cat.errors.map((err, errIdx) => (
+                        <div key={errIdx} style={{ 
+                          fontSize: '12px',
+                          color: '#666',
+                          marginLeft: '8px',
+                          marginTop: '4px',
+                          display: 'flex',
+                          alignItems: 'flex-start'
+                        }}>
+                          <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                          <span>{err}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
             );
+            showToast && showToast(errorMessage, { type: 'error' });
             return;
           }
         }
 
         // Stáhnout všechny soubory paralelně
-        showToast && showToast(`📥 Stahuji ${attachments.length} příloh ze spisovky...`, { type: 'info' });
-        
         const downloadPromises = attachments.map(async (attachment) => {
           const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(attachment.url)}`;
           const response = await fetch(proxyUrl);
@@ -1245,10 +1561,36 @@ const InvoiceAttachmentsCompact = ({
 
         const files = await Promise.all(downloadPromises);
         
-        showToast && showToast(`✅ Staženo ${files.length} příloh`, { type: 'success' });
-        
         // Zpracovat všechny soubory najednou
         await handleFileUpload(files);
+        
+        // Zelený success toast po nahrání
+        const successMessage = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '8px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+              <span>Přílohy úspěšně nahrány</span>
+            </div>
+            <div style={{ 
+              padding: '8px',
+              backgroundColor: '#f0fdf4',
+              borderRadius: '4px',
+              fontSize: '13px',
+              color: '#166534'
+            }}>
+              Nahráno {files.length} {files.length === 1 ? 'příloha' : files.length < 5 ? 'přílohy' : 'příloh'} ze spisovky
+            </div>
+          </div>
+        );
+        showToast && showToast(successMessage, { type: 'success' });
       } catch (error) {
         console.error('❌ Chyba při stahování příloh ze spisovky:', error);
         
@@ -1278,18 +1620,61 @@ const InvoiceAttachmentsCompact = ({
         
         if (!validation.isValid) {
           // ⚠️ ZAMÍTNOUT - chybí povinná pole
-          showToast && showToast(
-            `❌ Nelze nahrát přílohy\n\nPro běžné přílohy (PDF, JPG...) vyplňte nejprve povinná pole faktury:\n${validation.missingFields.join(', ')}\n\nℹ️ ISDOC soubory lze nahrát kdykoliv (automatické vytěžení hodnot).`,
-            { type: 'error' }
+          const errorMessage = (
+            <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+              <div style={{ 
+                fontSize: '15px', 
+                fontWeight: '600', 
+                marginBottom: '12px', 
+                color: '#1a1a1a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+                <span>Pro uložení je nutné vyplnit následující položky:</span>
+              </div>
+              {Object.values(validation.categories).map((cat, idx) => 
+                cat.errors.length > 0 && (
+                  <div key={idx} style={{ 
+                    marginBottom: '10px',
+                    padding: '10px',
+                    backgroundColor: '#fff1f0',
+                    borderRadius: '4px'
+                  }}>
+                    <div style={{ 
+                      fontWeight: '600', 
+                      fontSize: '13px',
+                      color: '#d32f2f',
+                      marginBottom: '6px'
+                    }}>
+                      {cat.label}
+                    </div>
+                    {cat.errors.map((err, errIdx) => (
+                      <div key={errIdx} style={{ 
+                        fontSize: '12px',
+                        color: '#666',
+                        marginLeft: '8px',
+                        marginTop: '4px',
+                        display: 'flex',
+                        alignItems: 'flex-start'
+                      }}>
+                        <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                        <span>{err}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
           );
+          showToast && showToast(errorMessage, { type: 'error' });
           return; // Ukončit upload
         }
       }
 
       // Stažení souboru ze spisovky přes proxy a vytvoření File objektu
       try {
-        showToast && showToast('📥 Stahuji soubor ze spisovky...', { type: 'info' });
-        
         // Použít proxy endpoint pro stažení (řešení CORS)
         const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(spisovkaFileUrl)}`;
         const response = await fetch(proxyUrl);
@@ -1302,10 +1687,36 @@ const InvoiceAttachmentsCompact = ({
         const blob = await response.blob();
         const file = new File([blob], finalFilename, { type: spisovkaFileMime || blob.type });
         
-        // Soubor ze spisovky stažen
-        
         // Zpracovat jako běžný soubor
         await handleFileUpload([file]);
+        
+        // Zelený success toast po nahrání
+        const successMessage = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '8px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+              <span>Příloha úspěšně nahrána</span>
+            </div>
+            <div style={{ 
+              padding: '8px',
+              backgroundColor: '#f0fdf4',
+              borderRadius: '4px',
+              fontSize: '13px',
+              color: '#166534'
+            }}>
+              {finalFilename}
+            </div>
+          </div>
+        );
+        showToast && showToast(successMessage, { type: 'success' });
       } catch (error) {
         console.error('❌ Chyba při stahování souboru ze spisovky:', error);
         showToast && showToast('❌ Chyba při stahování souboru ze spisovky', { type: 'error' });
@@ -1743,6 +2154,30 @@ const InvoiceAttachmentsCompact = ({
                         title="Stáhnout soubor"
                       >
                         <Download size={14} />
+                      </button>
+                    )}
+
+                    {/* OCR Extrakce - pouze pro PDF */}
+                    {(file.name?.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') && (
+                      <button
+                        type="button"
+                        onClick={() => handleOCRExtraction(file.id)}
+                        disabled={file.status === 'uploading'}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: file.status === 'uploading' ? '#9ca3af' : '#8b5cf6',
+                          cursor: file.status === 'uploading' ? 'not-allowed' : 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          opacity: file.status === 'uploading' ? 0.6 : 1,
+                          fontSize: '12px',
+                          flexShrink: 0
+                        }}
+                        title="Vytěžit údaje pomocí OCR"
+                      >
+                        <Sparkles size={14} />
                       </button>
                     )}
 

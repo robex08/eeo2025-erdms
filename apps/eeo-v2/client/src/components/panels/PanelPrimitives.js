@@ -8,7 +8,7 @@ export const PanelBase = styled.div`
 	backdrop-filter: blur(2px);
 	border: 1px solid var(--app-dark-border, #374151);
 	border-radius: 10px; padding:0.6rem 0.6rem 0.75rem; display:flex; flex-direction:column; gap:0.5rem;
-	color: var(--panel-foreground, #f8fafc); font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,0.55); z-index:4100; user-select:none;
+	color: var(--panel-foreground, #f8fafc); font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,0.55); z-index:100001; user-select:none;
 `;
 export const PanelHeader = styled.div`display:flex; align-items:center; justify-content:space-between; gap:.5rem; font-size:.7rem; font-weight:600; letter-spacing:.75px; text-transform:uppercase;`;
 export const TinyBtn = styled.button`

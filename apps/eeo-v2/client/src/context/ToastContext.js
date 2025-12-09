@@ -49,7 +49,7 @@ export function ToastProvider({ children }) {
         }
       `}</style>
       {children}
-      <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 20000, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 100000, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map(t => {
           const typeLabelMap = {
             success: 'Úspěch',
@@ -106,8 +106,10 @@ export function ToastProvider({ children }) {
                 fontSize: 13
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>{heading}</div>
-              <div style={{ whiteSpace: 'pre-wrap', marginBottom: t.action ? 8 : 0, lineHeight: '1.5' }}>{t.message}</div>
+              {heading && <div style={{ fontWeight: 600, marginBottom: 4 }}>{heading}</div>}
+              <div style={{ whiteSpace: 'pre-wrap', marginBottom: t.action ? 8 : 0, lineHeight: '1.5' }}>
+                {t.message}
+              </div>
                 {t.action && (
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button

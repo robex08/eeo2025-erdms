@@ -333,12 +333,36 @@
   margin: 0;
 }
 
+/* Apps Section */
+.apps-section {
+  margin-bottom: 3rem;
+}
+
+.apps-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 1.5rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 3px solid #e2e8f0;
+  letter-spacing: -0.025em;
+}
+
 /* Apps Grid */
 .apps-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, 400px);
   gap: 1.5rem;
   justify-content: flex-start;
+}
+
+/* Microsoft Apps Grid - jiné barvy */
+.ms-apps-grid {
+  grid-template-columns: repeat(auto-fill, 400px);
 }
 
 .app-card {
@@ -368,45 +392,109 @@
   border-bottom-color: #FDB714;
 }
 
-/* EEO Card - Modrý gradient */
-.eeo-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+/* Organizační aplikace - Tmavší modrá s jemným stínem */
+.eeo-card,
+.szm-card,
+.intranet-card,
+.elo-card,
+.editace-card,
+.settings-card {
+  background: #1e40af;
   color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.eeo-card:hover,
+.szm-card:hover,
+.intranet-card:hover,
+.elo-card:hover,
+.editace-card:hover,
+.settings-card:hover {
+  background: #1e3a8a;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .eeo-card .app-title,
-.eeo-card .app-description {
-  color: white;
-}
-
-.eeo-card .app-link-text {
-  color: white;
-}
-
-.eeo-card .app-arrow {
-  color: white;
-}
-
-/* Intranet Card - Modrý gradient */
-.intranet-card {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  color: white;
-}
-
+.eeo-card .app-description,
+.eeo-card .app-link-text,
+.eeo-card .app-arrow,
+.szm-card .app-title,
+.szm-card .app-description,
+.szm-card .app-link-text,
+.szm-card .app-arrow,
 .intranet-card .app-title,
-.intranet-card .app-description {
+.intranet-card .app-description,
+.intranet-card .app-link-text,
+.intranet-card .app-arrow,
+.elo-card .app-title,
+.elo-card .app-description,
+.elo-card .app-link-text,
+.elo-card .app-arrow,
+.editace-card .app-title,
+.editace-card .app-description,
+.editace-card .app-link-text,
+.editace-card .app-arrow,
+.settings-card .app-title,
+.settings-card .app-description,
+.settings-card .app-link-text,
+.settings-card .app-arrow {
   color: white;
 }
 
-.intranet-card .app-link-text {
+/* Microsoft 365 - Tmavší tyrkysová s jemným stínem */
+.ms-copilot-card,
+.ms-teams-card,
+.ms-excel-card,
+.ms-word-card,
+.ms-outlook-card {
+  background: #0e7490;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.ms-copilot-card:hover,
+.ms-teams-card:hover,
+.ms-excel-card:hover,
+.ms-word-card:hover,
+.ms-outlook-card:hover {
+  background: #155e75;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ms-copilot-card .app-title,
+.ms-copilot-card .app-description,
+.ms-copilot-card .app-link-text,
+.ms-copilot-card .app-arrow,
+.ms-teams-card .app-title,
+.ms-teams-card .app-description,
+.ms-teams-card .app-link-text,
+.ms-teams-card .app-arrow,
+.ms-excel-card .app-title,
+.ms-excel-card .app-description,
+.ms-excel-card .app-link-text,
+.ms-excel-card .app-arrow,
+.ms-word-card .app-title,
+.ms-word-card .app-description,
+.ms-word-card .app-link-text,
+.ms-word-card .app-arrow,
+.ms-outlook-card .app-title,
+.ms-outlook-card .app-description,
+.ms-outlook-card .app-link-text,
+.ms-outlook-card .app-arrow {
   color: white;
 }
 
-.intranet-card .app-arrow {
-  color: white;
+/* Microsoft Icon styling */
+.ms-icon {
+  background: rgba(255, 255, 255, 0.25);
 }
 
-/* Admin Card - Světlý gradient */
+.ms-badge {
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Admin Card - Pro zpětnou kompatibilitu */
 .admin-card {
   background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
   color: #1e293b;
@@ -1357,22 +1445,7 @@
   color: #4299e1;
 }
 
-.app-card {
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
-  border-radius: 12px;
-  padding: 1.25rem;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 4px 6px rgba(66, 153, 225, 0.2);
-  gap: 0.75rem;
-  transition: all 0.3s ease;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-
+/* Globální .app-card definice odstraněna - používají se specifické třídy (ms-copilot-card, ms-teams-card, atd.) */
 
 .app-icon {
   font-size: 2.5rem;

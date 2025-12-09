@@ -333,62 +333,237 @@ function Dashboard() {
       <div className="dashboard-content">
         {/* Tab: Aplikace */}
         {activeTab === 'apps' && (
-          <div className="apps-grid">
-            <a href="https://erdms.zachranka.cz/eeo-v2/" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
-              <div className="app-card-header">
-                <div className="app-icon-wrapper">
-                  <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <span className="app-badge">Aktivní</span>
-              </div>
-              <h3 className="app-title">EEO v2</h3>
-              <p className="app-description">Elektronická správa a workflow objednávek a změn</p>
-              <div className="app-footer">
-                <span className="app-link-text">Otevřít aplikaci</span>
-                <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
-                </svg>
-              </div>
-            </a>
+          <>
+            {/* Organizační aplikace */}
+            <div className="apps-section">
+              <h2 className="section-title">📋 Organizační aplikace</h2>
+              <div className="apps-grid">
+                <a href="https://erdms.zachranka.cz/eeo-v2/" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge">Aktivní</span>
+                  </div>
+                  <h3 className="app-title">EEO v2</h3>
+                  <p className="app-description">Elektronická správa a workflow objednávek a změn</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
 
-            <a href="https://intranet.zachranka.cz" className="app-card intranet-card" target="_blank" rel="noopener noreferrer">
-              <div className="app-card-header">
-                <div className="app-icon-wrapper">
-                  <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <span className="app-badge">Aktivní</span>
-              </div>
-              <h3 className="app-title">Intranet</h3>
-              <p className="app-description">Interní portál organizace - aktuality, dokumenty a firemní informace</p>
-              <div className="app-footer">
-                <span className="app-link-text">Otevřít aplikaci</span>
-                <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
-                </svg>
-              </div>
-            </a>
+                <a href="https://szm.zachranka.cz" className="app-card szm-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M20 7h-9a2 2 0 00-2 2v6a2 2 0 002 2h9a2 2 0 002-2V9a2 2 0 00-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M14 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h7a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge">Aktivní</span>
+                  </div>
+                  <h3 className="app-title">SZM</h3>
+                  <p className="app-description">Objednávkový systém zdravotnického materiálu</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
 
-            <div className="app-card admin-card disabled">
-              <div className="app-card-header">
-                <div className="app-icon-wrapper">
-                  <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                <a href="https://intranet.zachranka.cz" className="app-card intranet-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge">Aktivní</span>
+                  </div>
+                  <h3 className="app-title">Intranet</h3>
+                  <p className="app-description">Interní portál organizace - aktuality, dokumenty a firemní informace</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://dms.zachranka.cz/ix-ELO/plugin/auth2/sign-in" className="app-card elo-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M9 13h6m-6 4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge">Aktivní</span>
+                  </div>
+                  <h3 className="app-title">ELO</h3>
+                  <p className="app-description">Elektronický dokument management systém</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://editace.zzssck.cz" className="app-card editace-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M16 3v4a2 2 0 002 2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge">Aktivní</span>
+                  </div>
+                  <h3 className="app-title">Editace / Profilé</h3>
+                  <p className="app-description">Zdravotnická dokumentace</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <div className="app-card settings-card disabled">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge soon">Brzy</span>
+                  </div>
+                  <h3 className="app-title">Nastavení</h3>
+                  <p className="app-description">Správa systému, uživatelů a nastavení oprávnění</p>
+                  <div className="app-footer disabled-footer">
+                    <span className="app-link-text">Připravujeme</span>
+                  </div>
                 </div>
-                <span className="app-badge soon">Brzy</span>
-              </div>
-              <h3 className="app-title">Admin Panel</h3>
-              <p className="app-description">Administrace systému, správa uživatelů a nastavení oprávnění</p>
-              <div className="app-footer disabled-footer">
-                <span className="app-link-text">Připravujeme</span>
               </div>
             </div>
-          </div>
+
+            {/* Microsoft 365 aplikace */}
+            <div className="apps-section">
+              <h2 className="section-title">☁️ Microsoft 365</h2>
+              <div className="apps-grid ms-apps-grid">
+                <a href="https://copilot.microsoft.com" className="app-card ms-copilot-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Copilot</h3>
+                  <p className="app-description">AI asistent pro zvýšení produktivity a kreativní práci</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://teams.microsoft.com" className="app-card ms-teams-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                        <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Teams</h3>
+                  <p className="app-description">Komunikace, videokonference a týmová spolupráce</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://www.office.com/launch/excel" className="app-card ms-excel-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 3h18v18H3V3z" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke="currentColor" strokeWidth="1.5"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Excel</h3>
+                  <p className="app-description">Tabulky, grafy a analýza dat</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://www.office.com/launch/word" className="app-card ms-word-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 4h16v16H4V4z" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Word</h3>
+                  <p className="app-description">Textové dokumenty a úprava textu</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://outlook.office.com" className="app-card ms-outlook-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M4 4l8 5 8-5v12l-8 5-8-5V4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M4 4l8 5 8-5" stroke="currentColor" strokeWidth="1.5"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Outlook</h3>
+                  <p className="app-description">E-mailová komunikace a kalendář</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Tab: Můj profil */}

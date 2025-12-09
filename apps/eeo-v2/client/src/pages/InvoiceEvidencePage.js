@@ -1122,9 +1122,9 @@ export default function InvoiceEvidencePage() {
   // Spisovka Inbox Panel - pouze pro ADMIN
   const [spisovkaInboxOpen, setSpisovkaInboxOpen] = useState(false);
   const [spisovkaInboxState, setSpisovkaInboxState] = useState({
-    x: window.innerWidth - 420,
-    y: 100,
-    w: 400,
+    x: window.innerWidth - 620, // Širší panel (600px)
+    y: Math.max(200, window.innerHeight / 2 - 300),
+    w: 600, // Zvětšená šířka z 400 na 600
     h: 600,
     minimized: false
   });
@@ -1134,6 +1134,26 @@ export default function InvoiceEvidencePage() {
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   const tooltipButtonRef = useRef(null);
 
+  // 🔄 Resize handler - kontrola pozice panelu při změně velikosti okna
+  useEffect(() => {
+    const handleResize = () => {
+      setSpisovkaInboxState(prev => {
+        // Kontrola, zda panel není mimo viditelnou oblast
+        const maxX = window.innerWidth - prev.w - 20;
+        const maxY = window.innerHeight - prev.h - 20;
+        
+        return {
+          ...prev,
+          x: Math.min(Math.max(20, prev.x), maxX),
+          y: Math.min(Math.max(20, prev.y), maxY)
+        };
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Form data
   const [formData, setFormData] = useState({
     order_id: orderId || '',
@@ -1141,7 +1161,7 @@ export default function InvoiceEvidencePage() {
     fa_cislo_vema: '',
     fa_typ: 'BEZNA', // Výchozí typ: Běžná faktura
     fa_datum_doruceni: formatDateForPicker(new Date()),
-    fa_datum_vystaveni: formatDateForPicker(new Date()),
+    fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
     fa_datum_splatnosti: '',
     fa_castka: '',
     fa_poznamka: '',
@@ -1848,12 +1868,9 @@ export default function InvoiceEvidencePage() {
       return {
         isValid: true,
         isISDOC: false,
-        missingFields: []
+        categories: {}
       };
     }
-    
-    // Pro nově vytvářené faktury validuj povinná pole
-    const missingFields = [];
     
     // Pokud je file ISDOC, povolit upload i bez vyplněných polí
     const isISDOC = file && file.name && file.name.toLowerCase().endsWith('.isdoc');
@@ -1863,21 +1880,36 @@ export default function InvoiceEvidencePage() {
       return {
         isValid: true,
         isISDOC: true,
-        missingFields: []
+        categories: {}
       };
     }
     
     // Běžné soubory (PDF, JPG...) - kontrolovat povinná pole faktury
-    if (!faktura?.fa_cislo_vema) missingFields.push('Číslo faktury');
-    if (!faktura?.fa_datum_vystaveni) missingFields.push('Datum vystavení');
-    if (!faktura?.fa_datum_splatnosti) missingFields.push('Datum splatnosti');
-    if (!faktura?.fa_castka) missingFields.push('Částka');
-    // Střediska nejsou povinná
+    const categories = {
+      objednateli: {
+        label: 'Informace o objednateli',
+        errors: []
+      },
+      schvaleni: {
+        label: 'Schválení nákupu PO',
+        errors: []
+      }
+    };
+    
+    // Kategorie: Informace o objednateli
+    if (!faktura?.fa_cislo_vema) categories.objednateli.errors.push('Číslo faktury');
+    if (!faktura?.fa_datum_splatnosti) categories.objednateli.errors.push('Datum splatnosti');
+    if (!faktura?.fa_castka) categories.objednateli.errors.push('Částka');
+    
+    // Kategorie: Schválení nákupu PO (prázdná pro faktury - pouze pro objednávky)
+    // categories.schvaleni.errors zde zůstává prázdné
+    
+    const allErrors = [...categories.objednateli.errors, ...categories.schvaleni.errors];
     
     return {
-      isValid: missingFields.length === 0,
+      isValid: allErrors.length === 0,
       isISDOC: false,
-      missingFields
+      categories
     };
   }, [editingInvoiceId]);
 
@@ -1962,6 +1994,49 @@ export default function InvoiceEvidencePage() {
       );
     }
   }, [formData, orderData, strediskaOptions, showToast]);
+
+  // 🆕 OCR Callback - Vyplní data z OCR do formuláře
+  const handleOCRDataExtracted = useCallback((ocrData) => {
+    try {
+      // Aktualizuj formData s daty z OCR
+      setFormData(prev => {
+        const updates = {};
+        
+        // Variabilní symbol -> fa_cislo_vema
+        if (ocrData.variabilniSymbol) {
+          updates.fa_cislo_vema = ocrData.variabilniSymbol;
+        }
+        
+        // Datum vystavení
+        if (ocrData.datumVystaveni) {
+          updates.fa_datum_vystaveni = ocrData.datumVystaveni;
+        }
+        
+        // Datum splatnosti
+        if (ocrData.datumSplatnosti) {
+          updates.fa_datum_splatnosti = ocrData.datumSplatnosti;
+        }
+        
+        // Částka
+        if (ocrData.castka) {
+          updates.fa_castka = ocrData.castka;
+        }
+        
+        return {
+          ...prev,
+          ...updates
+        };
+      });
+      
+      console.log('✅ OCR data úspěšně aplikována do formuláře:', ocrData);
+    } catch (error) {
+      console.error('❌ Chyba při aplikaci OCR dat:', error);
+      showToast && showToast(
+        `Chyba při aplikaci OCR dat: ${error.message}`,
+        { type: 'error' }
+      );
+    }
+  }, [showToast]);
 
   // 🔔 Funkce pro odeslání notifikací při změně stavu objednávky na věcnou kontrolu
   const sendInvoiceNotifications = async (orderId, orderData) => {
@@ -2371,13 +2446,17 @@ export default function InvoiceEvidencePage() {
       // Při editaci vymazat entity, při nové faktuře zachovat pro další evidenci
       const keepEntity = !editingInvoiceId;
       
+      // ✅ VÝJIMKA: Pokud je vyplněno "Vyberte obj/sml" (searchTerm není prázdný),
+      // resetovat entity i při nové faktuře
+      const shouldResetEntity = !keepEntity || searchTerm.trim().length > 0;
+      
       setFormData({
-        order_id: keepEntity ? formData.order_id : '', // Při editaci vymazat
-        smlouva_id: keepEntity ? formData.smlouva_id : null, // Při editaci vymazat
+        order_id: shouldResetEntity ? '' : formData.order_id,
+        smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
         fa_cislo_vema: '',
         fa_typ: 'BEZNA',
         fa_datum_doruceni: formatDateForPicker(new Date()),
-        fa_datum_vystaveni: formatDateForPicker(new Date()),
+        fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
         fa_datum_splatnosti: '',
         fa_castka: '',
         fa_poznamka: '',
@@ -2388,19 +2467,30 @@ export default function InvoiceEvidencePage() {
         fa_datum_vraceni_zam: ''
       });
 
-      // Reset editace faktury
+      // Reset editace faktury a příloh
+      const wasEditing = !!editingInvoiceId;
       setEditingInvoiceId(null);
+      setAttachments([]); // ✅ DŮLEŽITÉ: Vyčistit seznam příloh po uložení
       
-      // Při editaci vymazat i preview entity
-      if (editingInvoiceId) {
+      // Reset preview entity a autocomplete pokud je potřeba
+      if (shouldResetEntity) {
         setOrderData(null);
         setSmlouvaData(null);
         setSearchTerm('');
         setShowSuggestions(false);
+        setIsEntityUnlocked(false); // Reset unlock stavu
+        setHadOriginalEntity(false);
+      } else if (!wasEditing) {
+        // Při nové faktuře (bez resetu entity) refresh objednávky pro aktualizované faktury
+        if (formData.order_id && orderData) {
+          await loadOrderData(formData.order_id);
+        }
       }
 
-      // Reset pole errors
+      // Reset pole errors a tracking změn
       setFieldErrors({});
+      setOriginalFormData(null);
+      setHasChangedCriticalField(false);
 
     } catch (err) {
       console.error('Error creating invoice:', err);
@@ -2631,7 +2721,10 @@ export default function InvoiceEvidencePage() {
               onMouseLeave={() => setShowSpisovkaTooltip(false)}
             >
               <IconButton 
-                onClick={() => setSpisovkaInboxOpen(!spisovkaInboxOpen)} 
+                onClick={() => {
+                  setShowSpisovkaTooltip(false);
+                  setSpisovkaInboxOpen(!spisovkaInboxOpen);
+                }} 
                 title={spisovkaInboxOpen ? 'Zavřít Spisovka InBox' : 'Otevřít Spisovka InBox'}
                 style={{ 
                   backgroundColor: spisovkaInboxOpen ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
@@ -2691,18 +2784,43 @@ export default function InvoiceEvidencePage() {
             {editingInvoiceId && (
               <button
                 onClick={() => {
+                  // ✅ Kompletní reset při zrušení úpravy
                   setEditingInvoiceId(null);
+                  setAttachments([]); // ✅ Vyčistit přílohy
+                  setOriginalFormData(null);
+                  setHasChangedCriticalField(false);
+                  setIsEntityUnlocked(false);
+                  setHadOriginalEntity(false);
+                  setFieldErrors({});
+                  
+                  // ✅ Při duplikaci resetovat i autocomplete pokud byl použit
+                  const shouldResetEntity = searchTerm.trim().length > 0;
+                  
                   setFormData({
-                    order_id: formData.order_id,
+                    order_id: shouldResetEntity ? '' : formData.order_id,
+                    smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
                     fa_cislo_vema: '',
                     fa_typ: 'BEZNA',
                     fa_datum_doruceni: formatDateForPicker(new Date()),
-                    fa_datum_vystaveni: formatDateForPicker(new Date()),
+                    fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
                     fa_datum_splatnosti: '',
                     fa_castka: '',
                     fa_poznamka: '',
-                    file: null
+                    fa_strediska_kod: [],
+                    file: null,
+                    fa_predana_zam_id: null,
+                    fa_datum_predani_zam: '',
+                    fa_datum_vraceni_zam: ''
                   });
+                  
+                  // ✅ Reset autocomplete pokud byl použit
+                  if (shouldResetEntity) {
+                    setOrderData(null);
+                    setSmlouvaData(null);
+                    setSearchTerm('');
+                    setShowSuggestions(false);
+                  }
+                  
                   navigate(location.pathname, { replace: true, state: {} });
                   showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
                 }}
@@ -3315,6 +3433,7 @@ export default function InvoiceEvidencePage() {
               onAttachmentsChange={handleAttachmentsChange}
               onAttachmentUploaded={handleAttachmentUploaded}
               onCreateInvoiceInDB={handleCreateInvoiceInDB}
+              onOCRDataExtracted={handleOCRDataExtracted}
             />
 
             {/* ODDĚLUJÍCÍ ČÁRA */}
@@ -3957,6 +4076,7 @@ export default function InvoiceEvidencePage() {
           setPanelState={setSpisovkaInboxState}
           beginDrag={handleSpisovkaInboxDrag}
           onClose={() => setSpisovkaInboxOpen(false)}
+          onOCRDataExtracted={handleOCRDataExtracted}
         />
       )}
     </>
