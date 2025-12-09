@@ -165,7 +165,8 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     $invoice_id = isset($input['invoice_id']) ? (int)$input['invoice_id'] : 0;
-    $order_id = isset($input['order_id']) ? (int)$input['order_id'] : 0;
+    // ✅ order_id je nepovinné pro standalone faktury (může být prázdný string nebo null)
+    $order_id = isset($input['order_id']) && $input['order_id'] !== '' ? (int)$input['order_id'] : null;
     $typ_prilohy = isset($input['typ_prilohy']) ? $input['typ_prilohy'] : 'FAKTURA';
     
     if (!$token || !$username) {
@@ -186,14 +187,15 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         return;
     }
     
-    if ($order_id <= 0) {
-        http_response_code(400);
-        echo json_encode(array(
-            'success' => false,
-            'error' => 'Chybí nebo je neplatné order_id (povinné)'
-        ));
-        return;
-    }
+    // ✅ order_id je nepovinné pro standalone faktury
+    // if ($order_id <= 0) {
+    //     http_response_code(400);
+    //     echo json_encode(array(
+    //         'success' => false,
+    //         'error' => 'Chybí nebo je neplatné order_id (povinné)'
+    //     ));
+    //     return;
+    // }
     
     // Kontrola, zda byl nahrán soubor
     if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
@@ -245,14 +247,16 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         $file_tmp_path = $file['tmp_name'];
         
         // Validace typu souboru
-        $allowed_extensions = array('pdf', 'isdoc', 'jpg', 'jpeg', 'png', 'xls', 'xlsx', 'doc', 'docx');
+        $allowed_extensions = array('pdf', 'isdoc', 'jpg', 'jpeg', 'png', 'xls', 'xlsx', 'doc', 'docx', 'txt', 'csv');
         $file_extension = strtolower(pathinfo($original_filename, PATHINFO_EXTENSION));
         
         if (!in_array($file_extension, $allowed_extensions)) {
             http_response_code(400);
             echo json_encode(array(
                 'success' => false,
-                'error' => 'Nepodporovaný typ souboru. Povolené typy: PDF, ISDOC, JPG, PNG, XLS, XLSX, DOC, DOCX'
+                'error' => 'Nepodporovaný typ souboru. Povolené typy: PDF, ISDOC, JPG, PNG, XLS, XLSX, DOC, DOCX, TXT, CSV',
+                'filename' => $original_filename,
+                'extension' => $file_extension
             ));
             return;
         }
@@ -289,6 +293,7 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         $file_prefix = 'fa-';
         
         // Získání upload cesty (stejná jako pro objednávky)
+        // ✅ $order_id může být null pro standalone faktury
         $uploadPath = get_order_v2_upload_path($config, $order_id, $user_id);
         
         // Vytvoření adresáře pokud neexistuje

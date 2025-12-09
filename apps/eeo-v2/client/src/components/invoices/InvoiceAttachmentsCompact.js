@@ -930,10 +930,22 @@ const InvoiceAttachmentsCompact = ({
           } : f
         ));
 
-        showToast&&showToast(
-          `Chyba: ${err.message || 'Nepodařilo se nahrát přílohu'}`,
-          { type: 'error' }
-        );
+        // Lepší error zpráva s názvem souboru
+        const fileName = fileObj?.name || 'soubor';
+        let errorMsg = err.message || 'Nepodařilo se nahrát přílohu';
+        
+        // Zkontrolovat, jestli jde o nepodporovaný typ souboru
+        if (errorMsg.includes('Nepodporovaný typ souboru') || errorMsg.includes('Povolené typy')) {
+          showToast&&showToast(
+            `❌ Soubor "${fileName}" nelze nahrát\n\n${errorMsg}`,
+            { type: 'error' }
+          );
+        } else {
+          showToast&&showToast(
+            `❌ Chyba při nahrávání "${fileName}": ${errorMsg}`,
+            { type: 'error' }
+          );
+        }
         return;
       }
     }
@@ -1239,7 +1251,14 @@ const InvoiceAttachmentsCompact = ({
         await handleFileUpload(files);
       } catch (error) {
         console.error('❌ Chyba při stahování příloh ze spisovky:', error);
-        showToast && showToast(`❌ Chyba: ${error.message}`, { type: 'error' });
+        
+        // Lepší error zpráva - extrahovat název souboru z chybové zprávy
+        let errorMsg = error.message;
+        if (errorMsg.includes('Chyba při stahování')) {
+          showToast && showToast(`❌ ${errorMsg}`, { type: 'error' });
+        } else {
+          showToast && showToast(`❌ Chyba při zpracování příloh: ${errorMsg}`, { type: 'error' });
+        }
       }
       return;
     }
