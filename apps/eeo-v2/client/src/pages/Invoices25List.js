@@ -1763,26 +1763,10 @@ const Invoices25List = () => {
     
     setSlidePanelInvoice(invoice);
     setSlidePanelOpen(true);
-    setSlidePanelAttachments([]);
     
-    // Načti přílohy faktury
-    if (invoice.id) {
-      try {
-        setSlidePanelLoading(true);
-        const attachments = await listInvoiceAttachments25({ 
-          token, 
-          username, 
-          faktura_id: invoice.id,
-          objednavka_id: invoice.objednavka_id 
-        });
-        setSlidePanelAttachments(attachments || []);
-      } catch (error) {
-        console.error('Chyba při načítání příloh:', error);
-        setSlidePanelAttachments([]);
-      } finally {
-        setSlidePanelLoading(false);
-      }
-    }
+    // Přílohy jsou už v invoice.prilohy - není potřeba volat API
+    setSlidePanelAttachments(invoice.prilohy || []);
+    setSlidePanelLoading(false);
   };
 
   const handleEditInvoice = (invoice) => {
