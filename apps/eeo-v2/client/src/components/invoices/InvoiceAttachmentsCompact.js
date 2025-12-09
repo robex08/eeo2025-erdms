@@ -544,11 +544,7 @@ const InvoiceAttachmentsCompact = ({
           // Neblokovat načítání kvůli chybě verify
         }
       } else {
-        console.log('⏭️ VERIFY ATTACHMENTS přeskočeno - neplatné ID faktury:', {
-          fakturaId,
-          numFakturaId,
-          isFakturaValid
-        });
+        // VERIFY ATTACHMENTS přeskočeno - neplatné ID faktury
       }
 
     } catch (err) {
@@ -654,12 +650,7 @@ const InvoiceAttachmentsCompact = ({
     if (newFiles.length > 0) {
       updateAttachments(prev => [...prev, ...newFiles]);
 
-      console.log('📁 New files added:', newFiles.map(f => ({
-        name: f.name,
-        klasifikace: f.klasifikace,
-        status: f.status,
-        je_isdoc: f.je_isdoc
-      })));
+      // New files added
 
       // 🆕 Automatický upload všech souborů (mají již klasifikaci)
       // 🚫 Toast "Nahrávám..." odstraněn - zbytečné info, uživatel vidí progress
@@ -667,21 +658,19 @@ const InvoiceAttachmentsCompact = ({
       // 🆕 Pro temp faktury pouze uložit lokálně, pro reálné faktury uploadnout
       const isTempFaktura = String(fakturaId).startsWith('temp-');
       
-      console.log('🔄 Auto-uploading files...', { isTempFaktura, fakturaId, fileCount: newFiles.length });
+      // Auto-uploading files
       
       // ⚠️ State update je async, musíme počkat na další render
       // Místo toho používáme newFiles přímo
       if (!isTempFaktura) {
-        console.log('🚀 Starting upload for non-temp faktura');
+        // Starting upload for non-temp faktura
         for (const file of newFiles) {
-          console.log('⏳ About to upload file:', file.id, file.name);
           await uploadFileToServer(file.id, file.klasifikace, file);
         }
       } else {
-        console.log('🚀 Starting upload for temp faktura');
+        // Starting upload for temp faktura
         // Pro temp faktury zavolat uploadFileToServer (který je uloží lokálně s pending_upload)
         for (const file of newFiles) {
-          console.log('⏳ About to upload file:', file.id, file.name);
           await uploadFileToServer(file.id, file.klasifikace, file);
         }
       }
@@ -714,14 +703,6 @@ const InvoiceAttachmentsCompact = ({
     const file = attachments.find(f => f.id === fileId);
     if (!file) return;
 
-    console.log('🎯 updateFileKlasifikace called:', {
-      fileId,
-      klasifikace,
-      currentStatus: file.status,
-      currentKlasifikace: file.klasifikace,
-      jeISDOC: file.je_isdoc
-    });
-
     // Update lokálně
     updateAttachments(prev => prev.map(f =>
       f.id === fileId ? { ...f, klasifikace } : f
@@ -730,25 +711,16 @@ const InvoiceAttachmentsCompact = ({
     // 🔧 Pokud má klasifikaci a čeká na upload -> automaticky upload
     // (pending_classification i pending_upload)
     if (klasifikace && klasifikace.trim() !== '' && (file.status === 'pending_classification' || file.status === 'pending_upload')) {
-      console.log('✅ Triggering auto-upload for pending file');
+      // Triggering auto-upload for pending file
       // Upload s aktualizovanou klasifikací
       await uploadFileToServer(fileId, klasifikace);
     }
     // Pokud je již nahraná na serveru -> update přes API
     else if (klasifikace && klasifikace.trim() !== '' && file.status === 'uploaded' && file.serverId) {
       try {
-        console.log('🔄 Updating attachment klasifikace:', {
-          fakturaId,
-          isTemp: String(fakturaId).startsWith('temp-'),
-          priloha_id: file.serverId,
-          current_klasifikace: file.klasifikace,
-          new_klasifikace: klasifikace,
-          is_same: file.klasifikace === klasifikace
-        });
-
         // ⚠️ Pokud je klasifikace stejná jako původní, přeskoč update
         if (file.klasifikace === klasifikace) {
-          console.log('⏭️ Klasifikace se nezměnila, skip update');
+          // Klasifikace se nezměnila, skip update
           return;
         }
 
@@ -792,7 +764,7 @@ const InvoiceAttachmentsCompact = ({
     // Použij předaný fileObj nebo hledej v attachments state
     const file = fileObj || attachments.find(f => f.id === fileId);
     if (!file || !file.file) {
-      console.log('❌ uploadFileToServer: file not found or no file object', { fileId, hasFileObj: !!fileObj });
+      // File not found or no file object
       return;
     }
 
@@ -806,20 +778,14 @@ const InvoiceAttachmentsCompact = ({
     // 🆕 Pokud má faktura temp-ID, NEJDŘÍV vytvořit fakturu v DB
     const isTempFaktura = String(fakturaId).startsWith('temp-');
     
-    console.log('📤 uploadFileToServer:', {
-      fileId,
-      fakturaId,
-      isTempFaktura,
-      klasifikace,
-      hasCallback: !!onCreateInvoiceInDB
-    });
+    // uploadFileToServer
     
     if (isTempFaktura) {
       // Validace povinných polí faktury před vytvořením v DB
       if (!isPokladna) {
         const validation = validateInvoiceForAttachments?.(faktura, file.file);
         
-        console.log('📋 Validace faktury:', validation);
+        // Validace faktury
         
         // 🆕 Pro ISDOC povolit upload i bez validních polí
         if (!validation?.isValid && !validation?.isISDOC) {
@@ -854,12 +820,12 @@ const InvoiceAttachmentsCompact = ({
           throw new Error('Chybí callback pro vytvoření faktury v DB');
         }
 
-        console.log('🔄 Volám onCreateInvoiceInDB callback...');
+        // Volám onCreateInvoiceInDB callback
         showToast&&showToast('⏳ Vytvářím fakturu v databázi...', { type: 'info' });
         
         const realFakturaId = await onCreateInvoiceInDB(fakturaId);
         
-        console.log('✅ Faktura vytvořena, ID:', realFakturaId);
+        // Faktura vytvořena
         
         if (!realFakturaId || String(realFakturaId).startsWith('temp-')) {
           throw new Error('Nepodařilo se získat reálné ID faktury');
@@ -884,7 +850,7 @@ const InvoiceAttachmentsCompact = ({
           }
         };
         console.group('🔍 DEBUG: Upload přílohy faktury');
-        console.log('📤 REQUEST Payload:', JSON.stringify(attachmentPayload, null, 2));
+        // REQUEST Payload
 
         // Teď nahrajeme přílohu s reálným ID faktury
         const response = await uploadInvoiceAttachment25({
@@ -897,7 +863,7 @@ const InvoiceAttachmentsCompact = ({
         });
 
         // 🔍 DEBUG: Response z backendu
-        console.log('📥 RESPONSE:', JSON.stringify(response, null, 2));
+        // RESPONSE
         console.groupEnd();
 
         // Získej ID přílohy z různých možných struktur
@@ -907,7 +873,7 @@ const InvoiceAttachmentsCompact = ({
                             response.data?.id || 
                             response.id;
 
-        console.log('📎 Attachment ID (temp upload):', attachmentId);
+        // Attachment ID (temp upload)
 
         // Update s server ID
         updateAttachments(prev => prev.map(f =>
@@ -921,7 +887,7 @@ const InvoiceAttachmentsCompact = ({
           } : f
         ));
 
-        console.log('✅ Příloha úspěšně nahrána s ID:', response.priloha?.id || response.priloha_id);
+        // Příloha úspěšně nahrána
         showToast&&showToast('✅ Příloha byla úspěšně nahrána', { type: 'success' });
 
         // � Refresh attachments ze serveru pro synchronizaci
@@ -986,7 +952,7 @@ const InvoiceAttachmentsCompact = ({
         file: file.file
       });
       
-      console.log('📤 Upload response:', response);
+      // Upload response
       
       // Najdi název typu přílohy pro zobrazení
       const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === klasifikace);
@@ -998,7 +964,7 @@ const InvoiceAttachmentsCompact = ({
                           response.data?.id || 
                           response.id;
 
-      console.log('📎 Attachment ID:', attachmentId);
+      // Attachment ID
 
       // Update s server ID
       updateAttachments(prev => prev.map(f =>
@@ -1085,21 +1051,12 @@ const InvoiceAttachmentsCompact = ({
             hard_delete: 1 // 🔥 HARD DELETE - smaže soubor z disku
           });
 
-          console.log('🗑️ DELETE Response:', response);
+          // DELETE Response
 
           // ✅ Kontrola response před aktualizací UI
           if (response && (response.status === 'ok' || response.status === 'success' || response.success === true)) {
             // Log informací o smazání
             if (response.data) {
-              const { file_existed, file_deleted_from_disk, db_record_deleted } = response.data;
-
-              console.log('🗑️ Smazání přílohy faktury:', {
-                file_existed,
-                file_deleted_from_disk,
-                db_record_deleted,
-                warning: response.warning
-              });
-
               // ✅ Podle BE dokumentace: Pokud je status='ok', DB záznam JE smazán (vždy)
               // Zobraz success, ale upozorni na warning pokud něco bylo špatně se souborem
               if (response.warning) {
@@ -1271,7 +1228,7 @@ const InvoiceAttachmentsCompact = ({
         const blob = await response.blob();
         const file = new File([blob], finalFilename, { type: spisovkaFileMime || blob.type });
         
-        console.log('✅ Soubor ze spisovky stažen:', finalFilename, originalFilename ? '(původní název)' : '(generický název)');
+        // Soubor ze spisovky stažen
         
         // Zpracovat jako běžný soubor
         await handleFileUpload([file]);
