@@ -1164,23 +1164,8 @@ const InvoiceAttachmentsCompact = ({
         const opened = openInBrowser25(blob, filename);
         
         if (opened) {
-          // Nabídnout možnost stažení
-          const shouldDownload = window.confirm(
-            `Příloha "${filename}" byla otevřena v novém okně.\n\nChcete ji také stáhnout?`
-          );
-          
-          if (shouldDownload) {
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            
-            showToast&&showToast('Soubor stažen', { type: 'success' });
-          }
+          // ✅ Soubor otevřen v novém okně - neptat se na stažení
+          showToast&&showToast('Příloha otevřena v novém okně', { type: 'success' });
           return;
         }
       }
@@ -1247,6 +1232,53 @@ const InvoiceAttachmentsCompact = ({
 
     if (isDropzoneDisabled) return;
 
+    // 🔔 PRIORITA 1: Kontrola drag & drop ze spisovky (CORS proxy)
+    const spisovkaFileUrl = e.dataTransfer.getData('text/spisovka-file-url');
+    const spisovkaFileName = e.dataTransfer.getData('text/spisovka-file-name');
+    const spisovkaFileMime = e.dataTransfer.getData('text/spisovka-file-mime');
+    
+    if (spisovkaFileUrl && spisovkaFileName) {
+      // ✅ VALIDACE PŘED STAŽENÍM (pro běžné soubory)
+      const isISDOC = isISDOCFile(spisovkaFileName);
+      
+      if (!isISDOC && !isPokladna) {
+        // Zkontroluj validaci faktury před stažením
+        const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
+        
+        if (!validation.isValid) {
+          // ⚠️ ZAMÍTNOUT - chybí povinná pole
+          showToast && showToast(
+            `❌ Nelze nahrát přílohy\n\nPro běžné přílohy (PDF, JPG...) vyplňte nejprve povinná pole faktury:\n${validation.missingFields.join(', ')}\n\nℹ️ ISDOC soubory lze nahrát kdykoliv (automatické vytěžení hodnot).`,
+            { type: 'error' }
+          );
+          return; // Ukončit upload
+        }
+      }
+
+      // Stažení souboru ze spisovky přes proxy a vytvoření File objektu
+      try {
+        showToast && showToast('📥 Stahuji soubor ze spisovky...', { type: 'info' });
+        
+        // Použít proxy endpoint pro stažení (řešení CORS)
+        const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(spisovkaFileUrl)}`;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Chyba při stahování souboru');
+        
+        const blob = await response.blob();
+        const file = new File([blob], spisovkaFileName, { type: spisovkaFileMime || blob.type });
+        
+        console.log('✅ Soubor ze spisovky stažen:', spisovkaFileName);
+        
+        // Zpracovat jako běžný soubor
+        await handleFileUpload([file]);
+      } catch (error) {
+        console.error('❌ Chyba při stahování souboru ze spisovky:', error);
+        showToast && showToast('❌ Chyba při stahování souboru ze spisovky', { type: 'error' });
+      }
+      return;
+    }
+    
+    // PRIORITA 2: Standardní drag & drop z filesystému
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
