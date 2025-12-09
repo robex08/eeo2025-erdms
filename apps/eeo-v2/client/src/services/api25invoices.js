@@ -836,7 +836,7 @@ export async function verifyInvoiceAttachments25({ token, username, invoice_id, 
  * Validace typu souboru (frontend check)
  */
 export function isAllowedInvoiceFileType(filename) {
-  const allowedExtensions = ['pdf', 'isdoc', 'jpg', 'jpeg', 'png', 'xml', 'doc', 'docx', 'xls', 'xlsx'];
+  const allowedExtensions = ['pdf', 'isdoc', 'jpg', 'jpeg', 'png', 'xml', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
   const ext = filename.split('.').pop().toLowerCase();
   return allowedExtensions.includes(ext);
 }

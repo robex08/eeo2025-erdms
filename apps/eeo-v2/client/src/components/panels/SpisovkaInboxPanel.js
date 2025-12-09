@@ -13,8 +13,11 @@ import {
   faSquare,
   faWindowRestore
 } from '@fortawesome/free-solid-svg-icons';
+import { Sparkles } from 'lucide-react';
 import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives';
 import styled from '@emotion/styled';
+import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR';
+import ErrorDialog from '../ErrorDialog';
 
 // ============================================================
 // STYLED COMPONENTS
@@ -29,13 +32,13 @@ const InboxContainer = styled.div`
 `;
 
 const InboxHeader = styled.div`
-  background: linear-gradient(135deg, #475569, #334155);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   padding: 0.6rem;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #64748b;
+  border: 1px solid #60a5fa;
 `;
 
 const InboxTitle = styled.div`
@@ -66,7 +69,7 @@ const InboxContent = styled.div`
   min-height: 0;
 
   scrollbar-width: thin;
-  scrollbar-color: #64748b rgba(255, 255, 255, 0.05);
+  scrollbar-color: #93c5fd rgba(255, 255, 255, 0.05);
 
   &::-webkit-scrollbar {
     width: 8px;
@@ -78,27 +81,27 @@ const InboxContent = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #64748b;
+    background: #93c5fd;
     border-radius: 4px;
     border: 2px solid rgba(15, 23, 42, 0.92);
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #60a5fa;
   }
 `;
 
 const FakturaCard = styled.div`
-  background: linear-gradient(135deg, rgba(100, 116, 139, 0.12), rgba(71, 85, 105, 0.08));
-  border: 1px solid rgba(100, 116, 139, 0.3);
+  background: linear-gradient(135deg, rgba(147, 197, 253, 0.12), rgba(96, 165, 250, 0.08));
+  border: 1px solid rgba(96, 165, 250, 0.3);
   border-radius: 8px;
   padding: 0.7rem;
   transition: all 0.2s;
   cursor: pointer;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(100, 116, 139, 0.18), rgba(71, 85, 105, 0.12));
-    border-color: rgba(100, 116, 139, 0.5);
+    background: linear-gradient(135deg, rgba(147, 197, 253, 0.18), rgba(96, 165, 250, 0.12));
+    border-color: rgba(96, 165, 250, 0.5);
     transform: translateX(2px);
   }
 `;
@@ -121,9 +124,9 @@ const FakturaNazev = styled.div`
 
 const FakturaID = styled.div`
   font-size: 0.6rem;
-  color: #94a3b8;
+  color: #60a5fa;
   font-family: 'Courier New', monospace;
-  background: rgba(100, 116, 139, 0.2);
+  background: rgba(96, 165, 250, 0.2);
   padding: 0.2rem 0.4rem;
   border-radius: 4px;
   white-space: nowrap;
@@ -155,7 +158,7 @@ const InfoValue = styled.span`
 const PrilohaSection = styled.div`
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid rgba(100, 116, 139, 0.25);
+  border-top: 1px solid rgba(96, 165, 250, 0.25);
 `;
 
 const PrilohaTitle = styled.div`
@@ -173,13 +176,13 @@ const PrilohaItem = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.4rem;
-  background: rgba(100, 116, 139, 0.1);
+  background: rgba(96, 165, 250, 0.1);
   border-radius: 5px;
   margin-bottom: 0.3rem;
   transition: background 0.15s;
 
   &:hover {
-    background: rgba(100, 116, 139, 0.18);
+    background: rgba(96, 165, 250, 0.18);
   }
 
   &:last-child {
@@ -293,27 +296,29 @@ const RefreshButton = styled.button`
 
 const FileModal = styled.div`
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-  padding: 2rem;
-`;
-
-const FileModalContent = styled.div`
-  width: 90vw;
-  height: 90vh;
+  top: ${props => props.y || 50}px;
+  left: ${props => props.x || (window.innerWidth / 2)}px;
+  width: ${props => props.w || (window.innerWidth / 2 - 40)}px;
+  height: ${props => props.h || (window.innerHeight - 100)}px;
   background: white;
   border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  z-index: 100002;
+  resize: both;
+  min-width: 400px;
+  min-height: 300px;
+`;
+
+const FileModalContent = styled.div`
+  width: 100%;
+  height: 100%;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 `;
 
 const FileModalHeader = styled.div`
@@ -435,12 +440,24 @@ const TxtViewer = styled.pre`
 // MAIN COMPONENT
 // ============================================================
 
-const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) => {
+const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted }) => {
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
+  const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
+  const [fileViewerPosition, setFileViewerPosition] = useState(() => {
+    // PDF viewer napravo - poloviční šířka okna (jako z Spisovky)
+    return {
+      x: window.innerWidth / 2, // Pravá polovina obrazovky
+      y: 50, // Trochu od vrchu
+      w: window.innerWidth / 2 - 40, // Poloviční šířka minus offset
+      h: window.innerHeight - 100 // Výška do konce obrazovky
+    };
+  });
+  const [isDraggingViewer, setIsDraggingViewer] = useState(false);
+  const [errorDialog, setErrorDialog] = useState({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
 
   const fetchTxtContent = async (url) => {
     try {
@@ -455,6 +472,175 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
     } catch (error) {
       console.error('Chyba při načítání TXT souboru:', error);
       return `Chyba při načítání souboru:\n${error.message}\n\nURL: ${url}`;
+    }
+  };
+
+  const handleFileViewerDrag = useCallback((e) => {
+    if (!isDraggingViewer) return;
+    e.preventDefault();
+    setFileViewerPosition(prev => ({
+      ...prev,
+      x: e.clientX - 200,
+      y: e.clientY - 20
+    }));
+  }, [isDraggingViewer]);
+
+  const handleFileViewerDragEnd = useCallback(() => {
+    setIsDraggingViewer(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingViewer) {
+      window.addEventListener('mousemove', handleFileViewerDrag);
+      window.addEventListener('mouseup', handleFileViewerDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleFileViewerDrag);
+        window.removeEventListener('mouseup', handleFileViewerDragEnd);
+      };
+    }
+  }, [isDraggingViewer, handleFileViewerDrag, handleFileViewerDragEnd]);
+
+  const handleOCRExtraction = async (priloha, dokumentId) => {
+    try {
+      // ✅ RESET polí před OCR
+      if (onOCRDataExtracted) {
+        onOCRDataExtracted({
+          datumVystaveni: '',
+          datumSplatnosti: '',
+          variabilniSymbol: '',
+          castka: ''
+        });
+      }
+      
+      setOcrProgress({ visible: true, progress: 0, message: 'Stahuji PDF ze Spisovky...' });
+
+      // Použít proxy-file endpoint pro stažení PDF (řešení CORS)
+      const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(priloha.download_url)}`;
+      
+      console.log(`📄 Fetching PDF via proxy: ${proxyUrl}`);
+      console.log(`📄 Original URL: ${priloha.download_url}`);
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      const contentLength = response.headers.get('content-length');
+      console.log(`📄 Response received, Content-Type: ${contentType}, Length: ${contentLength}`);
+      
+      // Validace response
+      if (!contentType || !contentType.includes('pdf')) {
+        throw new Error(`Neplatný formát souboru: ${contentType || 'unknown'}. Očekáváno PDF.`);
+      }
+      
+      setOcrProgress({ visible: true, progress: 3, message: 'Stahuji PDF data...' });
+      
+      // DŮLEŽITÉ: Počkáme na kompletní stažení jako ArrayBuffer
+      const arrayBuffer = await response.arrayBuffer();
+      console.log(`✅ PDF completely downloaded: ${arrayBuffer.byteLength} bytes`);
+      
+      // Validace stažených dat
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error('Stažený soubor je prázdný. Zkuste to prosím znovu.');
+      }
+      
+      if (arrayBuffer.byteLength < 100) {
+        throw new Error(`Stažený soubor je příliš malý (${arrayBuffer.byteLength} bytes). Stahování možná selhalo.`);
+      }
+      
+      // Validace PDF magických bytů (%PDF)
+      const header = new Uint8Array(arrayBuffer.slice(0, 5));
+      const headerStr = String.fromCharCode(...header);
+      if (!headerStr.startsWith('%PDF')) {
+        console.error('Invalid PDF header:', headerStr);
+        throw new Error('Stažený soubor není platné PDF (chybí PDF header).');
+      }
+      
+      console.log(`✅ PDF validated: header="${headerStr}", size=${arrayBuffer.byteLength} bytes`);
+      
+      setOcrProgress({ visible: true, progress: 5, message: 'PDF staženo, připravuji OCR...' });
+
+      // OCR extrakce (předáváme přímo ArrayBuffer)
+      const text = await extractTextFromPDF(arrayBuffer, (progress, message) => {
+        setOcrProgress({ visible: true, progress, message });
+      });
+
+      // Vytěžení dat
+      const data = extractInvoiceData(text);
+      
+      setOcrProgress({ visible: false, progress: 100, message: 'Hotovo!' });
+
+      // Zobrazit varování, pokud dokument není faktura
+      if (data.warning) {
+        await new Promise((resolve) => {
+          setErrorDialog({
+            isOpen: true,
+            title: '⚠️ Varování',
+            message: data.warning,
+            details: null,
+            onConfirm: () => {
+              setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+              resolve(true);
+            },
+            onClose: () => {
+              setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+              resolve(false);
+            }
+          });
+        }).then((proceed) => {
+          if (!proceed) {
+            console.log('📄 OCR zrušeno uživatelem - dokument není faktura');
+            throw new Error('OCR_CANCELLED');
+          }
+        });
+      }
+
+      // Zavolat callback s daty
+      if (onOCRDataExtracted) {
+        onOCRDataExtracted(data);
+      }
+
+      console.log('📄 OCR Data:', data);
+      
+      // ✅ AUTOMATICKY OTEVŘÍT PDF pro kontrolu výsledků OCR
+      console.log('📄 Opening PDF for verification...');
+      setFileViewer({
+        visible: true,
+        url: priloha.download_url,
+        filename: priloha.filename,
+        type: 'pdf',
+        content: ''
+      });
+    } catch (err) {
+      console.error('❌ OCR Error:', err);
+      setOcrProgress({ visible: false, progress: 0, message: '' });
+      
+      // Ignorovat cancel chybu
+      if (err.message === 'OCR_CANCELLED') {
+        return;
+      }
+      
+      // Zobrazit error dialog
+      setErrorDialog({
+        isOpen: true,
+        title: 'Chyba při OCR extrakci',
+        message: err.message || 'Nepodařilo se extrahovat data z dokumentu.',
+        details: err.stack || null,
+        onConfirm: () => {
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+          // Otevřít PDF viewer pro manuální práci (použít STEJNOU URL jako preview)
+          setFileViewer({
+            visible: true,
+            url: priloha.download_url,
+            filename: priloha.filename,
+            type: 'pdf',
+            content: ''
+          });
+        },
+        onClose: () => {
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+        }
+      });
     }
   };
 
@@ -504,10 +690,13 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('cs-CZ', {
+    return date.toLocaleString('cs-CZ', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
   };
 
@@ -599,23 +788,32 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
               {faktury.map((faktura) => (
                 <FakturaCard 
                   key={faktura.dokument_id}
-                  draggable={faktura.prilohy && faktura.prilohy.length > 0}
-                  onDragStart={(e) => {
-                    if (faktura.prilohy && faktura.prilohy.length > 0) {
-                      // Předat všechny přílohy jako JSON
-                      const attachmentsData = faktura.prilohy.map(p => ({
-                        url: p.download_url,
-                        filename: p.filename,
-                        mime_type: p.mime_type || 'application/octet-stream'
-                      }));
-                      e.dataTransfer.setData('text/spisovka-attachments', JSON.stringify(attachmentsData));
-                      e.dataTransfer.effectAllowed = 'copy';
-                    }
-                  }}
-                  style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
-                  title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
                 >
-                  <FakturaHeader>
+                  <FakturaHeader
+                    draggable={faktura.prilohy && faktura.prilohy.length > 0}
+                    onDragStart={(e) => {
+                      if (faktura.prilohy && faktura.prilohy.length > 0) {
+                        e.stopPropagation();
+                        e.currentTarget.style.cursor = 'grabbing';
+                        e.currentTarget.style.opacity = '0.6';
+                        // Předat všechny přílohy jako JSON
+                        const attachmentsData = faktura.prilohy.map(p => ({
+                          url: p.download_url,
+                          filename: p.filename,
+                          mime_type: p.mime_type || 'application/octet-stream'
+                        }));
+                        e.dataTransfer.setData('text/spisovka-attachments', JSON.stringify(attachmentsData));
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }
+                    }}
+                    onDragEnd={(e) => {
+                      e.stopPropagation();
+                      e.currentTarget.style.cursor = (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default';
+                      e.currentTarget.style.opacity = '1';
+                    }}
+                    style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
+                    title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte hlavičku pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
+                  >
                     <FakturaNazev>{faktura.nazev}</FakturaNazev>
                     <FakturaID>#{faktura.dokument_id}</FakturaID>
                   </FakturaHeader>
@@ -649,6 +847,9 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
                             key={priloha.file_id}
                             draggable={true}
                             onDragStart={(e) => {
+                              e.stopPropagation();
+                              e.currentTarget.style.cursor = 'grabbing';
+                              e.currentTarget.style.opacity = '0.6';
                               e.dataTransfer.setData('text/spisovka-file-url', priloha.download_url);
                               e.dataTransfer.setData('text/spisovka-file-name', priloha.filename);
                               e.dataTransfer.setData('text/spisovka-file-mime', priloha.mime_type || 'application/octet-stream');
@@ -656,7 +857,9 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
                             }}
                             style={{ cursor: 'grab' }}
                             onDragEnd={(e) => {
+                              e.stopPropagation();
                               e.currentTarget.style.cursor = 'grab';
+                              e.currentTarget.style.opacity = '1';
                             }}
                           >
                             <PrilohaInfo>
@@ -667,37 +870,77 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
                                 {formatFileSize(priloha.size)}
                               </PrilohaMeta>
                             </PrilohaInfo>
-                            <PrilohaButton
-                              as={canPreview ? 'button' : 'a'}
-                              href={canPreview ? undefined : priloha.download_url}
-                              target={canPreview ? undefined : "_blank"}
-                              rel={canPreview ? undefined : "noopener noreferrer"}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (isPdf) {
-                                  // Otevřít PDF v modalu
-                                  setFileViewer({
-                                    visible: true,
-                                    url: priloha.download_url,
-                                    filename: priloha.filename,
-                                    type: 'pdf',
-                                    content: ''
-                                  });
-                                } else if (isTxt) {
-                                  const txtContent = await fetchTxtContent(priloha.download_url);
-                                  setFileViewer({
-                                    visible: true,
-                                    url: priloha.download_url,
-                                    filename: priloha.filename,
-                                    type: 'txt',
-                                    content: txtContent
-                                  });
-                                }
-                              }}
-                            >
-                              <FontAwesomeIcon icon={isPdf ? faFileAlt : (isTxt ? faFileAlt : faDownload)} />
-                              {isPdf ? 'PDF' : (isTxt ? 'TXT' : 'DL')}
-                            </PrilohaButton>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              {/* OCR Button VLEVO - pouze pro PDF */}
+                              {isPdf && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOCRExtraction(priloha, faktura.dokument_id);
+                                  }}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    color: 'white',
+                                    fontSize: '0.65rem',
+                                    fontWeight: '600',
+                                    boxShadow: '0 1px 3px rgba(139, 92, 246, 0.3)',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'scale(1.05)';
+                                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(139, 92, 246, 0.5)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(139, 92, 246, 0.3)';
+                                  }}
+                                  title="Vytěžit údaje pomocí OCR"
+                                >
+                                  <Sparkles size={12} />
+                                  <span>OCR</span>
+                                </button>
+                              )}
+                              
+                              {/* PDF/TXT Preview Button VPRAVO */}
+                              <PrilohaButton
+                                as={canPreview ? 'button' : 'a'}
+                                href={canPreview ? undefined : priloha.download_url}
+                                target={canPreview ? undefined : "_blank"}
+                                rel={canPreview ? undefined : "noopener noreferrer"}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (isPdf) {
+                                    // Otevřít PDF v modalu
+                                    setFileViewer({
+                                      visible: true,
+                                      url: priloha.download_url,
+                                      filename: priloha.filename,
+                                      type: 'pdf',
+                                      content: ''
+                                    });
+                                  } else if (isTxt) {
+                                    const txtContent = await fetchTxtContent(priloha.download_url);
+                                    setFileViewer({
+                                      visible: true,
+                                      url: priloha.download_url,
+                                      filename: priloha.filename,
+                                      type: 'txt',
+                                      content: txtContent
+                                    });
+                                  }
+                                }}
+                              >
+                                <FontAwesomeIcon icon={isPdf ? faFileAlt : (isTxt ? faFileAlt : faDownload)} />
+                                {isPdf ? 'PDF' : (isTxt ? 'TXT' : 'DL')}
+                              </PrilohaButton>
+                            </div>
                           </PrilohaItem>
                         );
                       })}
@@ -715,10 +958,59 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
         </InboxContainer>
       )}
 
+      {/* OCR Progress Overlay */}
+      {ocrProgress.visible && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(255, 255, 255, 0.95)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '1rem',
+          zIndex: 1000,
+          borderRadius: '8px'
+        }}>
+          <Sparkles size={48} color="#8b5cf6" style={{ animation: 'spin 2s linear infinite' }} />
+          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#1a1a1a' }}>
+            OCR extrakce z PDF
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            {ocrProgress.message}
+          </div>
+          <div style={{ width: '80%', maxWidth: '300px', height: '8px', backgroundColor: '#e9d5ff', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{ 
+              height: '100%', 
+              width: `${ocrProgress.progress}%`, 
+              backgroundColor: '#8b5cf6', 
+              transition: 'width 0.3s ease' 
+            }} />
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: '600' }}>
+            {Math.round(ocrProgress.progress)}%
+          </div>
+        </div>
+      )}
+
       {fileViewer.visible && ReactDOM.createPortal(
-        <FileModal onClick={() => setFileViewer({ visible: false, url: '', filename: '', type: '', content: '' })}>
-          <FileModalContent onClick={(e) => e.stopPropagation()}>
-            <FileModalHeader>
+        <FileModal 
+          x={fileViewerPosition.x}
+          y={fileViewerPosition.y}
+          w={fileViewerPosition.w}
+          h={fileViewerPosition.h}
+        >
+          <FileModalContent>
+            <FileModalHeader
+              onMouseDown={(e) => {
+                setIsDraggingViewer(true);
+                e.preventDefault();
+              }}
+              style={{ cursor: isDraggingViewer ? 'grabbing' : 'grab' }}
+            >
               <FileModalTitle>
                 <FontAwesomeIcon icon={faFileAlt} />
                 {fileViewer.filename}
@@ -752,6 +1044,17 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose }) =
         </FileModal>,
         document.body
       )}
+
+      <ErrorDialog
+        isOpen={errorDialog.isOpen}
+        title={errorDialog.title}
+        message={errorDialog.message}
+        details={errorDialog.details}
+        onConfirm={errorDialog.onConfirm}
+        onClose={errorDialog.onClose}
+        confirmText={errorDialog.onConfirm ? (errorDialog.title.includes('Varování') ? 'Pokračovat' : 'Otevřít PDF') : null}
+        cancelText="Zrušit"
+      />
     </PanelBase>,
     document.body
   );

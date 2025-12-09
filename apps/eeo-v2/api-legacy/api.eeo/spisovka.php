@@ -501,13 +501,13 @@ if ($endpoint === 'proxy-txt' && $request_method === 'GET') {
     // ✅ Automatická detekce kódování (s fallbackem pro systémy bez mbstring)
     $detected_encoding = null;
     if (function_exists('mb_detect_encoding')) {
-        $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+        $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'ISO-8859-2', 'ASCII'], true);
     } else {
         // Fallback: jednoduchá heuristika bez mbstring
         if (preg_match('//u', $body)) {
             $detected_encoding = 'UTF-8'; // validní UTF-8
         } else {
-            $detected_encoding = 'Windows-1250'; // předpokládáme Win-1250
+            $detected_encoding = 'ISO-8859-2'; // předpokládáme ISO-8859-2
         }
     }
     
@@ -515,14 +515,14 @@ if ($endpoint === 'proxy-txt' && $request_method === 'GET') {
     if ($detected_encoding && $detected_encoding !== 'UTF-8') {
         $body = iconv($detected_encoding, 'UTF-8//IGNORE', $body);
     } elseif (!$detected_encoding) {
-        // Fallback - pokud detekce selhala, zkusit Windows-1250 (nejčastější v ČR)
-        $body = iconv('Windows-1250', 'UTF-8//IGNORE', $body);
+        // Fallback - pokud detekce selhala, zkusit ISO-8859-2 (čeština)
+        $body = iconv('ISO-8859-2', 'UTF-8//IGNORE', $body);
     }
     
     // Odeslat soubor jako plain text s UTF-8
     header("Content-Type: text/plain; charset=utf-8");
     header("Content-Length: " . strlen($body));
-    header("X-Original-Encoding: " . ($detected_encoding ?: 'Windows-1250'));
+    header("X-Original-Encoding: " . ($detected_encoding ?: 'ISO-8859-2'));
     
     echo $body;
     exit;
@@ -607,13 +607,13 @@ if ($endpoint === 'proxy-file' && $request_method === 'GET') {
         // Automatická detekce kódování (s fallbackem pro systémy bez mbstring)
         $detected_encoding = null;
         if (function_exists('mb_detect_encoding')) {
-            $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+            $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'ISO-8859-2', 'ASCII'], true);
         } else {
             // Fallback: jednoduchá heuristika bez mbstring
             if (preg_match('//u', $body)) {
                 $detected_encoding = 'UTF-8'; // validní UTF-8
             } else {
-                $detected_encoding = 'Windows-1250'; // předpokládáme Win-1250
+                $detected_encoding = 'ISO-8859-2'; // předpokládáme ISO-8859-2
             }
         }
         
@@ -621,13 +621,13 @@ if ($endpoint === 'proxy-file' && $request_method === 'GET') {
         if ($detected_encoding && $detected_encoding !== 'UTF-8') {
             $body = iconv($detected_encoding, 'UTF-8//IGNORE', $body);
         } elseif (!$detected_encoding) {
-            // Fallback - pokud detekce selhala, zkusit Windows-1250
-            $body = iconv('Windows-1250', 'UTF-8//IGNORE', $body);
+            // Fallback - pokud detekce selhala, zkusit ISO-8859-2
+            $body = iconv('ISO-8859-2', 'UTF-8//IGNORE', $body);
         }
         
         // Vždy vrátit jako UTF-8
         $content_type = 'text/plain; charset=utf-8';
-        header("X-Original-Encoding: " . ($detected_encoding ?: 'Windows-1250'));
+        header("X-Original-Encoding: " . ($detected_encoding ?: 'ISO-8859-2'));
     }
     
     // Odeslat soubor s původním názvem pokud je k dispozici
