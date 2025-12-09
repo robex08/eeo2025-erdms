@@ -1512,7 +1512,17 @@ export const InvoiceDetailView = ({ data, username, token }) => {
 
   // Načíst přílohy faktury
   useEffect(() => {
-    if (!data?.id || !token || !username) return;
+    if (!data?.id) return;
+
+    // Pokud jsou přílohy už v datech (z Invoices25List), použij je přímo
+    if (data.prilohy && Array.isArray(data.prilohy)) {
+      setAttachments(data.prilohy);
+      setAttachmentsLoading(false);
+      return;
+    }
+
+    // Jinak načti z API (pro UniversalSearch)
+    if (!token || !username) return;
 
     const loadAttachments = async () => {
       try {
@@ -1537,7 +1547,7 @@ export const InvoiceDetailView = ({ data, username, token }) => {
     };
 
     loadAttachments();
-  }, [data?.id, data?.objednavka_id, data?.order_id, token, username]);
+  }, [data?.id, data?.prilohy, data?.objednavka_id, data?.order_id, token, username]);
 
   if (!data) return <EmptyState>Nepodařilo se načíst data</EmptyState>;
 
@@ -1802,8 +1812,10 @@ export const InvoiceDetailView = ({ data, username, token }) => {
           </SectionTitle>
           <AttachmentsGrid>
             {attachments.map((attachment, index) => {
-              const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
-              const fileSize = attachment.velikost_souboru || attachment.file_size;
+              // Podporuje různé struktury API
+              const fileName = attachment.original_filename || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+              const fileSizeKb = attachment.velikost_kb || attachment.file_size_kb;
+              const fileSizeMb = attachment.velikost_mb || attachment.file_size_mb;
               const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
               
               // Ikona a barva podle typu souboru
@@ -1829,14 +1841,24 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                 bgColor = '#ede9fe';
               }
 
-              const formatFileSize = (bytes) => {
-                if (!bytes) return '';
-                const kb = bytes / 1024;
-                if (kb < 1024) return `${kb.toFixed(1)} KB`;
-                return `${(kb / 1024).toFixed(1)} MB`;
+              const formatFileSize = () => {
+                if (fileSizeMb) return `${fileSizeMb} MB`;
+                if (fileSizeKb) return `${fileSizeKb} KB`;
+                return '';
               };
 
-              const downloadUrl = attachment.url || attachment.file_path;
+              const fileSizeFormatted = formatFileSize();
+
+              // Vytvoř URL pro stažení
+              // Pokud má attachment.url nebo attachment.file_path, použij je
+              // Jinak vytvoř URL z ID přílohy přes API endpoint
+              let downloadUrl = attachment.url || attachment.file_path;
+              
+              if (!downloadUrl && attachment.id) {
+                // Použij API endpoint pro stažení přílohy podle ID
+                const API_BASE = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+                downloadUrl = `${API_BASE}order-v2/attachments/${attachment.id}/download`;
+              }
 
               return (
                 <AttachmentItem key={attachment.id || index}>
@@ -1845,9 +1867,9 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                   </AttachmentIcon>
                   <AttachmentInfo>
                     <AttachmentName>{fileName}</AttachmentName>
-                    {fileSize && (
+                    {fileSizeFormatted && (
                       <AttachmentMeta>
-                        {formatFileSize(fileSize)} • {fileExtension.toUpperCase()}
+                        {fileSizeFormatted} • {fileExtension.toUpperCase()}
                       </AttachmentMeta>
                     )}
                   </AttachmentInfo>

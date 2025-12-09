@@ -22065,7 +22065,7 @@ function OrderForm25() {
                               marginBottom: '1.5rem',
                               background: isEditing ? '#f0f9ff' : (isVecnaPotvrzena ? '#f0fdf4' : '#ffffff'),
                               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                              overflow: 'hidden'
+                              overflow: 'visible'
                             }}>
                               {/* Záhlaví faktury - výrazné */}
                               <div style={{
