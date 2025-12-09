@@ -48,6 +48,8 @@ import { Search } from 'lucide-react';
 import draftManager from '../services/DraftManager';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import SpisovkaInboxPanel from '../components/panels/SpisovkaInboxPanel';
+import { InvoiceAttachmentsCompact } from '../components/invoices';
+import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/isdocParser';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -1196,14 +1198,14 @@ export default function InvoiceEvidencePage() {
     fa_castka: '',
     fa_poznamka: '',
     fa_strediska_kod: [], // Střediska - array kódů
-    // Příloha
-    file: null,
-    klasifikace: 'FAKTURA', // Klasifikace přílohy (FAKTURA_TYP) - výchozí hodnota
     // Nové položky (nepovinné, pod čárou)
     fa_predana_zam_id: null,
     fa_datum_predani_zam: '',
     fa_datum_vraceni_zam: ''
   });
+
+  // Přílohy faktury - array objektů (podle vzoru OrderForm25)
+  const [attachments, setAttachments] = useState([]);
 
   // CustomSelect states
   const [selectStates, setSelectStates] = useState({});
@@ -1879,94 +1881,90 @@ export default function InvoiceEvidencePage() {
     showToast && showToast('📝 Faktura načtena pro úpravu', 'info');
   }, [showToast, orderData, canAddInvoiceToOrder]);
 
-  // Handler: změna souboru
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      // Přidání fa- prefixu k názvu souboru
-      const newFileName = selectedFile.name.startsWith('fa-') 
-        ? selectedFile.name 
-        : `fa-${selectedFile.name}`;
+  // 📎 Handler: změna příloh (controlled component pattern)
+  const handleAttachmentsChange = useCallback((newAttachments) => {
+    setAttachments(newAttachments);
+  }, []);
+
+  // 📎 Handler: po úspěšném uploadu přílohy (placeholder - zatím nepoužito)
+  const handleAttachmentUploaded = useCallback((uploadedAttachment) => {
+    console.log('✅ Příloha nahrána:', uploadedAttachment);
+    // Zde můžeme případně triggernout autosave nebo jiné akce
+  }, []);
+
+  // 📎 Validace faktury před uploadem příloh (podle vzoru OrderForm25)
+  const validateInvoiceForAttachments = useCallback((file) => {
+    // Pro nově vytvářené faktury (editingInvoiceId = null) validuj povinná pole
+    if (!editingInvoiceId) {
+      const missingFields = [];
       
-      // Vytvoření nového File objektu s upraveným názvem
-      const renamedFile = new File([selectedFile], newFileName, {
-        type: selectedFile.type,
-        lastModified: selectedFile.lastModified
-      });
+      // Pokud je file ISDOC, povolit upload i bez vyplněných polí
+      const isISDOC = file && file.name && file.name.toLowerCase().endsWith('.isdoc');
       
-      setFormData(prev => ({ ...prev, file: renamedFile }));
-    } else {
-      setFormData(prev => ({ ...prev, file: null }));
-    }
-  };
-
-  // Handler: drag & drop
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    // Kontrola, zda se jedná o drag ze Spisovka panelu
-    const spisovkaFileUrl = e.dataTransfer.getData('text/spisovka-file-url');
-    const spisovkaFileName = e.dataTransfer.getData('text/spisovka-file-name');
-    const spisovkaFileMime = e.dataTransfer.getData('text/spisovka-file-mime');
-    
-    if (spisovkaFileUrl && spisovkaFileName) {
-      // Stažení souboru ze spisovky přes proxy a vytvoření File objektu
-      try {
-        // Použít proxy endpoint pro stažení (řešení CORS)
-        const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(spisovkaFileUrl)}`;
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error('Chyba při stahování souboru');
-        
-        const blob = await response.blob();
-        const newFileName = spisovkaFileName.startsWith('fa-') 
-          ? spisovkaFileName 
-          : `fa-${spisovkaFileName}`;
-        
-        const file = new File([blob], newFileName, { type: spisovkaFileMime || blob.type });
-        setFormData(prev => ({ ...prev, file }));
-        console.log('✅ Soubor ze spisovky přidán:', newFileName);
-      } catch (error) {
-        console.error('❌ Chyba při stahování souboru ze spisovky:', error);
-        alert('Chyba při stahování souboru ze spisovky');
+      if (isISDOC) {
+        // ISDOC soubor - povolit upload, data se vytěží z ISDOC
+        return {
+          isValid: true,
+          isISDOC: true,
+          missingFields: []
+        };
       }
-      return;
+      
+      // Běžné soubory (PDF, JPG...) - kontrolovat povinná pole
+      if (!formData.fa_cislo_vema) missingFields.push('Číslo faktury');
+      if (!formData.fa_datum_vystaveni) missingFields.push('Datum vystavení');
+      if (!formData.fa_datum_splatnosti) missingFields.push('Datum splatnosti');
+      if (!formData.fa_castka) missingFields.push('Částka');
+      if (!formData.fa_strediska_kod || formData.fa_strediska_kod.length === 0) missingFields.push('Středisko');
+      
+      return {
+        isValid: missingFields.length === 0,
+        isISDOC: false,
+        missingFields
+      };
     }
     
-    // Standardní drag & drop z filesystému
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const selectedFile = files[0];
-      
-      // Přidání fa- prefixu k názvu souboru
-      const newFileName = selectedFile.name.startsWith('fa-') 
-        ? selectedFile.name 
-        : `fa-${selectedFile.name}`;
-      
-      // Vytvoření nového File objektu s upraveným názvem
-      const renamedFile = new File([selectedFile], newFileName, {
-        type: selectedFile.type,
-        lastModified: selectedFile.lastModified
+    // Pro editaci existující faktury - povolit upload bez omezení
+    return {
+      isValid: true,
+      isISDOC: false,
+      missingFields: []
+    };
+  }, [formData, editingInvoiceId]);
+
+  // 📄 Handler: ISDOC parsing - vyplnění faktury z ISDOC souboru
+  const handleISDOCParsed = useCallback((isdocData, isdocSummary) => {
+    try {
+      // Mapování ISDOC dat na fakturu
+      const mappedData = mapISDOCToFaktura(isdocData, {
+        strediska: strediskaOptions,
+        // Pokud je přiřazena objednávka, použij její střediska
+        orderStrediska: orderData?.strediska_kod || formData.fa_strediska_kod
       });
-      
-      setFormData(prev => ({ ...prev, file: renamedFile }));
+
+      // Aktualizuj formData s daty z ISDOC
+      setFormData(prev => ({
+        ...prev,
+        fa_cislo_vema: mappedData.fa_cislo_vema || prev.fa_cislo_vema,
+        fa_datum_vystaveni: mappedData.fa_datum_vystaveni || prev.fa_datum_vystaveni,
+        fa_datum_splatnosti: mappedData.fa_datum_splatnosti || prev.fa_datum_splatnosti,
+        fa_castka: mappedData.fa_castka || prev.fa_castka,
+        fa_strediska_kod: mappedData.fa_strediska_kod || prev.fa_strediska_kod,
+        fa_poznamka: mappedData.fa_poznamka || prev.fa_poznamka
+      }));
+
+      showToast && showToast(
+        `✅ Data z ISDOC byla úspěšně načtena\n\nČíslo faktury: ${mappedData.fa_cislo_vema}\nČástka: ${mappedData.fa_castka} Kč`,
+        { type: 'success' }
+      );
+    } catch (error) {
+      console.error('❌ Chyba při zpracování ISDOC:', error);
+      showToast && showToast(
+        `Chyba při zpracování ISDOC: ${error.message}`,
+        { type: 'error' }
+      );
     }
-  };
+  }, [formData, orderData, strediskaOptions, showToast]);
 
   // 🔔 Funkce pro odeslání notifikací při změně stavu objednávky na věcnou kontrolu
   const sendInvoiceNotifications = async (orderId, orderData) => {
@@ -3300,92 +3298,27 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
             </FieldRow>
 
-            {/* Klasifikace přílohy */}
-            <FieldRow>
-              <FieldGroup>
-                <FieldLabel>
-                  Typ přílohy faktury
-                  <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>
-                </FieldLabel>
-                <CustomSelect
-                  field="klasifikace"
-                  value={formData.klasifikace}
-                  onChange={(e) => {
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      klasifikace: e.target.value 
-                    }));
-                  }}
-                  options={typyFakturOptions}
-                  placeholder={typyFakturLoading ? "Načítám typy faktur..." : "Vyberte typ přílohy..."}
-                  disabled={typyFakturLoading}
-                  required={true}
-                  selectStates={selectStates}
-                  setSelectStates={setSelectStates}
-                  searchStates={searchStates}
-                  setSearchStates={setSearchStates}
-                  touchedSelectFields={touchedSelectFields}
-                  setTouchedSelectFields={setTouchedSelectFields}
-                  toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
-                  filterOptions={(options, searchTerm) => {
-                    if (!searchTerm) return options;
-                    return options.filter(opt => 
-                      opt.nazev?.toLowerCase().includes(searchTerm.toLowerCase())
-                    );
-                  }}
-                  getOptionLabel={(option) => option?.nazev || ''}
-                />
-                {touchedSelectFields['klasifikace'] && !formData.klasifikace && (
-                  <ErrorMessage>Vyberte typ přílohy</ErrorMessage>
-                )}
-              </FieldGroup>
-            </FieldRow>
-
-            {/* Příloha */}
-            <FieldRow>
-              <FieldGroup>
-                <FieldLabel>
-                  Soubor přílohy faktury
-                  {formData.klasifikace && <span style={{ color: '#ef4444', marginLeft: '4px' }}>*</span>}
-                </FieldLabel>
-                <FileInputWrapper
-                  className={isDragging ? 'dragging' : ''}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  style={{
-                    opacity: !formData.klasifikace ? 0.5 : 1,
-                    pointerEvents: !formData.klasifikace ? 'none' : 'auto'
-                  }}
-                >
-                  <FileInputLabel htmlFor="file-upload">
-                    <FontAwesomeIcon icon={faUpload} size="2x" />
-                    <div>Klikněte nebo přetáhněte soubor</div>
-                    <div style={{ fontSize: '0.85rem', color: '#94a3af' }}>
-                      Podporované formáty: PDF, ISDOC, DOCX, XLSX, obrázky (JPG, PNG, GIF)
-                    </div>
-                  </FileInputLabel>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    accept=".pdf,.isdoc,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
-                    onChange={handleFileChange}
-                    disabled={!formData.klasifikace}
-                  />
-                </FileInputWrapper>
-                {!formData.klasifikace && (
-                  <div style={{ fontSize: '0.875rem', color: '#94a3af', marginTop: '8px' }}>
-                    ℹ️ Nejprve vyberte typ přílohy, pak můžete nahrát soubor
-                  </div>
-                )}
-                {formData.file && (
-                  <SelectedFileName>
-                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#10b981' }} />
-                    <strong>Vybraný soubor:</strong> {formData.file.name}
-                  </SelectedFileName>
-                )}
-              </FieldGroup>
-            </FieldRow>
+            {/* 📎 PŘÍLOHY FAKTURY - Nová komponenta podle vzoru OrderForm25 */}
+            <InvoiceAttachmentsCompact
+              fakturaId={editingInvoiceId || 'temp-new-invoice'}
+              objednavkaId={formData.order_id || null}
+              fakturaTypyPrilohOptions={typyFakturOptions}
+              readOnly={false}
+              onISDOCParsed={handleISDOCParsed}
+              formData={formData}
+              faktura={{
+                fa_cislo_vema: formData.fa_cislo_vema,
+                fa_datum_vystaveni: formData.fa_datum_vystaveni,
+                fa_datum_splatnosti: formData.fa_datum_splatnosti,
+                fa_castka: formData.fa_castka,
+                fa_strediska_kod: formData.fa_strediska_kod
+              }}
+              validateInvoiceForAttachments={validateInvoiceForAttachments}
+              attachments={attachments}
+              onAttachmentsChange={handleAttachmentsChange}
+              onAttachmentUploaded={handleAttachmentUploaded}
+              onCreateInvoiceInDB={null} // TODO: přidat callback pro vytvoření faktury v DB pokud bude potřeba
+            />
 
             {/* ODDĚLUJÍCÍ ČÁRA */}
             <div style={{
