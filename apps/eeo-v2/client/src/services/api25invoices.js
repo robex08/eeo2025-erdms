@@ -1101,6 +1101,7 @@ export async function createInvoiceWithAttachmentV2({
   order_id,
   smlouva_id = null,
   file,
+  klasifikace = null, // Klasifikace přílohy (FAKTURA_TYP)
   fa_cislo_vema,
   fa_typ = 'BEZNA',
   fa_datum_vystaveni,
@@ -1217,6 +1218,11 @@ export async function createInvoiceWithAttachmentV2({
 
     // Soubor
     formData.append('file', file);
+
+    // Klasifikace přílohy (typ přílohy)
+    if (klasifikace) {
+      formData.append('klasifikace', String(klasifikace));
+    }
 
     // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
     const endpoint = order_id 

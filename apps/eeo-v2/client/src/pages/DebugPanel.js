@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -13,7 +13,10 @@ import {
   faFileInvoice,
   faEnvelope,
   faClipboardList,
-  faBookOpen
+  faBookOpen,
+  faDownload,
+  faSpinner,
+  faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import { getStatusIcon, getStatusEmoji } from '../utils/iconMapping';
 import OrderV2TestPanel from './OrderV2TestPanel';
@@ -819,15 +822,7 @@ const DebugPanel = () => {
         );
 
       case 'spisovka':
-        return (
-          <ComingSoonPanel>
-            <FontAwesomeIcon icon={faBookOpen} />
-            <h2>Spisovka Test Panel</h2>
-            <SectionDescription>
-              Testovací prostředí pro správu spisovny a dokumentů.
-            </SectionDescription>
-          </ComingSoonPanel>
-        );
+        return <SpisovkaPanel />;
 
       case 'icons':
         const filteredCategories = {};
@@ -992,5 +987,336 @@ const DebugPanel = () => {
     </Container>
   );
 };
+
+// ============================================================
+// SPISOVKA PANEL - Faktury ze spisovky
+// ============================================================
+const SpisovkaPanel = () => {
+  const [faktury, setFaktury] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
+
+  const fetchFaktury = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${pagination.rok}`;
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setFaktury(data.data);
+        setPagination(data.pagination);
+      } else {
+        throw new Error(data.message || 'Nepodařilo se načíst faktury');
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Chyba při načítání faktur ze spisovky:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFaktury();
+  }, []);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('cs-CZ', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <SpisovkaContainer>
+      <SectionTitle>
+        <FontAwesomeIcon icon={faBookOpen} />
+        Faktury ze Spisovky (Databáze: spisovka350)
+      </SectionTitle>
+      
+      <SectionDescription>
+        Zobrazení faktur z produkční spisovky na serveru 10.1.1.253 s download odkazy na přílohy.
+      </SectionDescription>
+
+      <InfoBox>
+        <strong>Celkem faktur v roce {pagination.rok}:</strong> {pagination.total} | 
+        <strong> Zobrazeno:</strong> {faktury.length} z {pagination.total}
+      </InfoBox>
+
+      {loading && (
+        <LoadingBox>
+          <FontAwesomeIcon icon={faSpinner} spin />
+          Načítám faktury ze spisovky...
+        </LoadingBox>
+      )}
+
+      {error && (
+        <ErrorBox>
+          <FontAwesomeIcon icon={faExclamationTriangle} />
+          Chyba: {error}
+        </ErrorBox>
+      )}
+
+      {!loading && !error && faktury.length > 0 && (
+        <TableContainer>
+          <StyledTable>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>JID</th>
+                <th>Název faktury</th>
+                <th>Číslo jednací</th>
+                <th>Datum vzniku</th>
+                <th>Datum vyřízení</th>
+                <th>Stav</th>
+                <th>Přílohy</th>
+              </tr>
+            </thead>
+            <tbody>
+              {faktury.map((faktura) => (
+                <React.Fragment key={faktura.dokument_id}>
+                  <tr>
+                    <td>{faktura.dokument_id}</td>
+                    <td><code>{faktura.jid}</code></td>
+                    <td><strong>{faktura.nazev}</strong></td>
+                    <td>{faktura.cislo_jednaci}</td>
+                    <td>{formatDate(faktura.datum_vzniku)}</td>
+                    <td>{formatDate(faktura.datum_vyrizeni)}</td>
+                    <td>
+                      <StatusBadge $stav={faktura.stav}>
+                        {faktura.stav === 5 ? 'Vyřízeno' : `Stav ${faktura.stav}`}
+                      </StatusBadge>
+                    </td>
+                    <td>
+                      <strong>{faktura.pocet_priloh}</strong>
+                    </td>
+                  </tr>
+                  {faktura.prilohy && faktura.prilohy.length > 0 && (
+                    <tr>
+                      <td colSpan="8" style={{ padding: 0 }}>
+                        <PrilohaContainer>
+                          <PrilohaTitle>📎 Přílohy ({faktura.prilohy.length}):</PrilohaTitle>
+                          {faktura.prilohy.map((priloha) => {
+                            const isPdf = priloha.mime_type === 'application/pdf';
+                            return (
+                              <PrilohaItem key={priloha.file_id}>
+                                <PrilohaInfo>
+                                  <PrilohaName>
+                                    {isPdf && '📄 '}{priloha.filename}
+                                  </PrilohaName>
+                                  <PrilohaMeta>
+                                    {priloha.mime_type} • {formatFileSize(priloha.size)}
+                                  </PrilohaMeta>
+                                </PrilohaInfo>
+                                <DownloadButton
+                                  href={priloha.download_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <FontAwesomeIcon icon={isPdf ? faFileAlt : faDownload} />
+                                  {isPdf ? 'Zobrazit PDF' : 'Stáhnout'}
+                                </DownloadButton>
+                              </PrilohaItem>
+                            );
+                          })}
+                        </PrilohaContainer>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </StyledTable>
+        </TableContainer>
+      )}
+    </SpisovkaContainer>
+  );
+};
+
+// Styled components pro Spisovka Panel
+const SpisovkaContainer = styled.div`
+  padding: 26px;
+`;
+
+const InfoBox = styled.div`
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: #1e40af;
+  
+  strong {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+`;
+
+const LoadingBox = styled.div`
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+  color: #6b7280;
+  
+  svg {
+    margin-right: 10px;
+    color: #3b82f6;
+  }
+`;
+
+const ErrorBox = styled.div`
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: #dc2626;
+  
+  svg {
+    margin-right: 10px;
+  }
+`;
+
+const TableContainer = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+`;
+
+const StyledTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  
+  th {
+    background: #f9fafb;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+    font-size: 14px;
+  }
+  
+  tbody tr {
+    border-bottom: 1px solid #e5e7eb;
+    transition: background 0.15s;
+    
+    &:hover {
+      background: #f9fafb;
+    }
+  }
+  
+  td {
+    padding: 12px 16px;
+    color: #1f2937;
+    font-size: 14px;
+    
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+    }
+  }
+`;
+
+const StatusBadge = styled.span`
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: ${props => props.$stav === 5 ? '#dcfce7' : '#fef3c7'};
+  color: ${props => props.$stav === 5 ? '#166534' : '#92400e'};
+`;
+
+const PrilohaContainer = styled.div`
+  background: #f9fafb;
+  padding: 16px;
+  border-top: 2px solid #e5e7eb;
+`;
+
+const PrilohaTitle = styled.div`
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #374151;
+`;
+
+const PrilohaItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border: 1px solid #e5e7eb;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const PrilohaInfo = styled.div`
+  flex: 1;
+`;
+
+const PrilohaName = styled.div`
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
+`;
+
+const PrilohaMeta = styled.div`
+  font-size: 12px;
+  color: #6b7280;
+`;
+
+const DownloadButton = styled.a`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+  
+  &:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px);
+  }
+  
+  svg {
+    font-size: 14px;
+  }
+`;
 
 export default DebugPanel;

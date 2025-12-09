@@ -4,13 +4,14 @@
  * Quick preview views pro jednotlivé typy entit v slide-in panelu
  */
 
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import draftManager from '../../services/DraftManager';
 import { getStoredUserId } from '../../utils/authStorage';
 import ConfirmDialog from '../ConfirmDialog';
+import { listInvoiceAttachments25 } from '../../services/api25invoices';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faEnvelope, 
@@ -182,6 +183,77 @@ const EmptyState = styled.div`
   padding: 2rem;
   color: #94a3b8;
   font-size: 0.875rem;
+`;
+
+const AttachmentItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+  }
+`;
+
+const AttachmentIcon = styled.div`
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.$color || '#eff6ff'};
+  color: ${props => props.$iconColor || '#3b82f6'};
+  border-radius: 8px;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+`;
+
+const AttachmentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AttachmentName = styled.div`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const AttachmentMeta = styled.div`
+  font-size: 0.75rem;
+  color: #64748b;
+`;
+
+const DownloadButton = styled.button`
+  padding: 0.5rem 1rem;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &:hover {
+    background: #2563eb;
+  }
 `;
 
 /**
@@ -1434,7 +1506,35 @@ export const ContractDetailView = ({ data }) => {
 /**
  * Invoice Detail View
  */
-export const InvoiceDetailView = ({ data }) => {
+export const InvoiceDetailView = ({ data, username, token }) => {
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  // Načíst přílohy faktury
+  useEffect(() => {
+    if (!data?.id || !token || !username) return;
+
+    const loadAttachments = async () => {
+      try {
+        setAttachmentsLoading(true);
+        const result = await listInvoiceAttachments25({
+          token,
+          username,
+          faktura_id: data.id,
+          objednavka_id: data.objednavka_id || data.order_id
+        });
+        setAttachments(result || []);
+      } catch (error) {
+        console.error('Chyba při načítání příloh faktury:', error);
+        setAttachments([]);
+      } finally {
+        setAttachmentsLoading(false);
+      }
+    };
+
+    loadAttachments();
+  }, [data?.id, data?.objednavka_id, data?.order_id, token, username]);
+
   if (!data) return <EmptyState>Nepodařilo se načíst data</EmptyState>;
 
   return (
@@ -1680,6 +1780,88 @@ export const InvoiceDetailView = ({ data }) => {
           </InfoGrid>
         </DetailSection>
       )}
+
+      {/* Přílohy */}
+      {attachmentsLoading ? (
+        <DetailSection>
+          <SectionTitle>
+            <FontAwesomeIcon icon={faPaperclip} style={{ marginRight: '0.5rem' }} />
+            Přílohy
+          </SectionTitle>
+          <EmptyState>Načítám přílohy...</EmptyState>
+        </DetailSection>
+      ) : attachments.length > 0 ? (
+        <DetailSection>
+          <SectionTitle>
+            <FontAwesomeIcon icon={faPaperclip} style={{ marginRight: '0.5rem' }} />
+            Přílohy ({attachments.length})
+          </SectionTitle>
+          <AttachmentsGrid>
+            {attachments.map((attachment, index) => {
+              const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+              const fileSize = attachment.velikost_souboru || attachment.file_size;
+              const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+              
+              // Ikona a barva podle typu souboru
+              let icon = faPaperclip;
+              let iconColor = '#3b82f6';
+              let bgColor = '#eff6ff';
+              
+              if (['pdf'].includes(fileExtension)) {
+                icon = faFileAlt;
+                iconColor = '#dc2626';
+                bgColor = '#fee2e2';
+              } else if (['doc', 'docx'].includes(fileExtension)) {
+                icon = faFileAlt;
+                iconColor = '#2563eb';
+                bgColor = '#dbeafe';
+              } else if (['xls', 'xlsx'].includes(fileExtension)) {
+                icon = faFileAlt;
+                iconColor = '#059669';
+                bgColor = '#d1fae5';
+              } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+                icon = faFileAlt;
+                iconColor = '#7c3aed';
+                bgColor = '#ede9fe';
+              }
+
+              const formatFileSize = (bytes) => {
+                if (!bytes) return '';
+                const kb = bytes / 1024;
+                if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                return `${(kb / 1024).toFixed(1)} MB`;
+              };
+
+              const downloadUrl = attachment.url || attachment.file_path;
+
+              return (
+                <AttachmentItem key={attachment.id || index}>
+                  <AttachmentIcon $color={bgColor} $iconColor={iconColor}>
+                    <FontAwesomeIcon icon={icon} />
+                  </AttachmentIcon>
+                  <AttachmentInfo>
+                    <AttachmentName>{fileName}</AttachmentName>
+                    {fileSize && (
+                      <AttachmentMeta>
+                        {formatFileSize(fileSize)} • {fileExtension.toUpperCase()}
+                      </AttachmentMeta>
+                    )}
+                  </AttachmentInfo>
+                  {downloadUrl && (
+                    <DownloadButton
+                      onClick={() => window.open(downloadUrl, '_blank')}
+                      title="Stáhnout přílohu"
+                    >
+                      <FontAwesomeIcon icon={faDownload} />
+                      Stáhnout
+                    </DownloadButton>
+                  )}
+                </AttachmentItem>
+              );
+            })}
+          </AttachmentsGrid>
+        </DetailSection>
+      ) : null}
       </ContentWrapper>
     </DetailViewWrapper>
   );
