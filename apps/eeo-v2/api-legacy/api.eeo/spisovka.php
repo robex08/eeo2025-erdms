@@ -498,8 +498,18 @@ if ($endpoint === 'proxy-txt' && $request_method === 'GET') {
         send_error($http_code, 'Soubor nebyl nalezen ve spisovce');
     }
     
-    // ✅ Automatická detekce kódování
-    $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+    // ✅ Automatická detekce kódování (s fallbackem pro systémy bez mbstring)
+    $detected_encoding = null;
+    if (function_exists('mb_detect_encoding')) {
+        $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+    } else {
+        // Fallback: jednoduchá heuristika bez mbstring
+        if (preg_match('//u', $body)) {
+            $detected_encoding = 'UTF-8'; // validní UTF-8
+        } else {
+            $detected_encoding = 'Windows-1250'; // předpokládáme Win-1250
+        }
+    }
     
     // Pokud není UTF-8, konvertovat
     if ($detected_encoding && $detected_encoding !== 'UTF-8') {
@@ -594,8 +604,18 @@ if ($endpoint === 'proxy-file' && $request_method === 'GET') {
                ($original_filename && preg_match('/\.(txt|log|csv)$/i', $original_filename));
     
     if ($is_text) {
-        // Automatická detekce kódování
-        $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+        // Automatická detekce kódování (s fallbackem pro systémy bez mbstring)
+        $detected_encoding = null;
+        if (function_exists('mb_detect_encoding')) {
+            $detected_encoding = mb_detect_encoding($body, ['UTF-8', 'Windows-1250', 'ISO-8859-2', 'ASCII'], true);
+        } else {
+            // Fallback: jednoduchá heuristika bez mbstring
+            if (preg_match('//u', $body)) {
+                $detected_encoding = 'UTF-8'; // validní UTF-8
+            } else {
+                $detected_encoding = 'Windows-1250'; // předpokládáme Win-1250
+            }
+        }
         
         // Pokud není UTF-8, konvertovat
         if ($detected_encoding && $detected_encoding !== 'UTF-8') {
