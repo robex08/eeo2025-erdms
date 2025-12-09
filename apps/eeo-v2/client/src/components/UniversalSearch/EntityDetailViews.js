@@ -1521,9 +1521,13 @@ export const InvoiceDetailView = ({ data, username, token }) => {
           token,
           username,
           faktura_id: data.id,
-          objednavka_id: data.objednavka_id || data.order_id
+          objednavka_id: data.objednavka_id || data.order_id || null
         });
-        setAttachments(result || []);
+        
+        // API může vracet různé struktury:
+        // { success: true, data: { attachments: [...] } } nebo { status: 'ok', attachments: [...] }
+        const attachmentsArray = result?.data?.attachments || result?.attachments || [];
+        setAttachments(attachmentsArray);
       } catch (error) {
         console.error('Chyba při načítání příloh faktury:', error);
         setAttachments([]);
