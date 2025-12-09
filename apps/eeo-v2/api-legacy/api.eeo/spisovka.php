@@ -559,21 +559,38 @@ if ($endpoint === 'proxy-file' && $request_method === 'GET') {
         send_error($http_code, 'Soubor nebyl nalezen ve spisovce');
     }
     
-    // Parsování content-type z hlaviček
+    // Parsování content-type a filename z hlaviček
     $content_type = 'application/octet-stream';
+    $original_filename = null;
+    
     if (isset($http_response_header) && is_array($http_response_header)) {
         foreach ($http_response_header as $header_line) {
+            // Content-Type
             if (preg_match('/^Content-Type:\s*([^\r\n]+)/i', $header_line, $matches)) {
                 $content_type = trim($matches[1]);
-                break;
+            }
+            // Content-Disposition (původní název souboru)
+            if (preg_match('/^Content-Disposition:.*filename[*]?=(["\']?)([^"\'\r\n]+)\1/i', $header_line, $matches)) {
+                $original_filename = trim($matches[2]);
+                // Dekódování URL-encoded názvu (např. filename*=UTF-8''nazev.pdf)
+                if (strpos($original_filename, "UTF-8''") === 0) {
+                    $original_filename = urldecode(substr($original_filename, 7));
+                }
             }
         }
     }
     
-    // Odeslat soubor
+    // Odeslat soubor s původním názvem pokud je k dispozici
     header("Content-Type: {$content_type}");
     header("Content-Length: " . strlen($body));
-    header("Content-Disposition: inline");
+    
+    if ($original_filename) {
+        // ✅ Předat původní název souboru klientovi
+        header("X-Original-Filename: " . $original_filename);
+        header("Content-Disposition: inline; filename=\"" . $original_filename . "\"");
+    } else {
+        header("Content-Disposition: inline");
+    }
     
     echo $body;
     exit;
