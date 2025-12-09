@@ -1836,7 +1836,6 @@ export default function InvoiceEvidencePage() {
 
   // 📎 Handler: po úspěšném uploadu přílohy (placeholder - zatím nepoužito)
   const handleAttachmentUploaded = useCallback((uploadedAttachment) => {
-    console.log('✅ Příloha nahrána:', uploadedAttachment);
     // Zde můžeme případně triggernout autosave nebo jiné akce
   }, []);
 
@@ -1873,7 +1872,7 @@ export default function InvoiceEvidencePage() {
     if (!faktura?.fa_datum_vystaveni) missingFields.push('Datum vystavení');
     if (!faktura?.fa_datum_splatnosti) missingFields.push('Datum splatnosti');
     if (!faktura?.fa_castka) missingFields.push('Částka');
-    if (!faktura?.fa_strediska_kod || faktura.fa_strediska_kod.length === 0) missingFields.push('Středisko');
+    // Střediska nejsou povinná
     
     return {
       isValid: missingFields.length === 0,
@@ -1881,6 +1880,54 @@ export default function InvoiceEvidencePage() {
       missingFields
     };
   }, [editingInvoiceId]);
+
+  // 🆕 Handler: Vytvoření faktury v DB (pro temp faktury před uploadem přílohy)
+  const handleCreateInvoiceInDB = useCallback(async (tempFakturaId) => {
+    console.log('🔄 handleCreateInvoiceInDB - vytvářím fakturu v DB před uploadem přílohy', { tempFakturaId });
+
+    try {
+      const apiParams = {
+        token,
+        username,
+        order_id: formData.order_id || null,
+        smlouva_id: formData.smlouva_id || null,
+        fa_cislo_vema: formData.fa_cislo_vema,
+        fa_typ: formData.fa_typ || 'BEZNA',
+        fa_datum_vystaveni: formData.fa_datum_vystaveni,
+        fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
+        fa_datum_doruceni: formData.fa_datum_doruceni || null,
+        fa_castka: formData.fa_castka,
+        fa_poznamka: formData.fa_poznamka || '',
+        fa_dorucena: formData.fa_datum_doruceni ? 1 : 0,
+        fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
+        fa_predana_zam_id: formData.fa_predana_zam_id || null,
+        fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
+        fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null
+      };
+
+      // Vytvoř fakturu bez přílohy
+      const result = await createInvoiceV2(apiParams);
+      
+      console.log('🔍 createInvoiceV2 result:', result);
+      
+      // API vrací {status: 'ok', id: 89} ne {invoice_id: 89}
+      if (!result || (!result.invoice_id && !result.id)) {
+        console.error('❌ Neplatný result z createInvoiceV2:', result);
+        throw new Error('Nepodařilo se vytvořit fakturu v DB');
+      }
+
+      const newInvoiceId = result.invoice_id || result.id;
+      console.log('✅ Faktura vytvořena v DB, ID:', newInvoiceId);
+
+      // Nastav editingInvoiceId, aby se další přílohy uploadovaly k této faktuře
+      setEditingInvoiceId(newInvoiceId);
+
+      return newInvoiceId;
+    } catch (error) {
+      console.error('❌ Chyba při vytváření faktury v DB:', error);
+      throw error;
+    }
+  }, [token, username, formData]);
 
   // 📄 Handler: ISDOC parsing - vyplnění faktury z ISDOC souboru
   const handleISDOCParsed = useCallback((isdocData, isdocSummary) => {
@@ -3267,7 +3314,7 @@ export default function InvoiceEvidencePage() {
               attachments={attachments}
               onAttachmentsChange={handleAttachmentsChange}
               onAttachmentUploaded={handleAttachmentUploaded}
-              onCreateInvoiceInDB={null} // TODO: přidat callback pro vytvoření faktury v DB pokud bude potřeba
+              onCreateInvoiceInDB={handleCreateInvoiceInDB}
             />
 
             {/* ODDĚLUJÍCÍ ČÁRA */}
