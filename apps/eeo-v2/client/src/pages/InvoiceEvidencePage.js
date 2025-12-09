@@ -1841,44 +1841,46 @@ export default function InvoiceEvidencePage() {
   }, []);
 
   // 📎 Validace faktury před uploadem příloh (podle vzoru OrderForm25)
-  const validateInvoiceForAttachments = useCallback((file) => {
-    // Pro nově vytvářené faktury (editingInvoiceId = null) validuj povinná pole
-    if (!editingInvoiceId) {
-      const missingFields = [];
-      
-      // Pokud je file ISDOC, povolit upload i bez vyplněných polí
-      const isISDOC = file && file.name && file.name.toLowerCase().endsWith('.isdoc');
-      
-      if (isISDOC) {
-        // ISDOC soubor - povolit upload, data se vytěží z ISDOC
-        return {
-          isValid: true,
-          isISDOC: true,
-          missingFields: []
-        };
-      }
-      
-      // Běžné soubory (PDF, JPG...) - kontrolovat povinná pole
-      if (!formData.fa_cislo_vema) missingFields.push('Číslo faktury');
-      if (!formData.fa_datum_vystaveni) missingFields.push('Datum vystavení');
-      if (!formData.fa_datum_splatnosti) missingFields.push('Datum splatnosti');
-      if (!formData.fa_castka) missingFields.push('Částka');
-      if (!formData.fa_strediska_kod || formData.fa_strediska_kod.length === 0) missingFields.push('Středisko');
-      
+  // Parametr: faktura objekt (ne file!) - obsahuje data faktury pro validaci
+  // Parametr: file (optional) - soubor pro kontrolu ISDOC
+  const validateInvoiceForAttachments = useCallback((faktura, file) => {
+    // Pro editaci existující faktury - povolit upload bez omezení
+    if (editingInvoiceId) {
       return {
-        isValid: missingFields.length === 0,
+        isValid: true,
         isISDOC: false,
-        missingFields
+        missingFields: []
       };
     }
     
-    // Pro editaci existující faktury - povolit upload bez omezení
+    // Pro nově vytvářené faktury validuj povinná pole
+    const missingFields = [];
+    
+    // Pokud je file ISDOC, povolit upload i bez vyplněných polí
+    const isISDOC = file && file.name && file.name.toLowerCase().endsWith('.isdoc');
+    
+    if (isISDOC) {
+      // ISDOC soubor - povolit upload, data se vytěží z ISDOC
+      return {
+        isValid: true,
+        isISDOC: true,
+        missingFields: []
+      };
+    }
+    
+    // Běžné soubory (PDF, JPG...) - kontrolovat povinná pole faktury
+    if (!faktura?.fa_cislo_vema) missingFields.push('Číslo faktury');
+    if (!faktura?.fa_datum_vystaveni) missingFields.push('Datum vystavení');
+    if (!faktura?.fa_datum_splatnosti) missingFields.push('Datum splatnosti');
+    if (!faktura?.fa_castka) missingFields.push('Částka');
+    if (!faktura?.fa_strediska_kod || faktura.fa_strediska_kod.length === 0) missingFields.push('Středisko');
+    
     return {
-      isValid: true,
+      isValid: missingFields.length === 0,
       isISDOC: false,
-      missingFields: []
+      missingFields
     };
-  }, [formData, editingInvoiceId]);
+  }, [editingInvoiceId]);
 
   // 📄 Handler: ISDOC parsing - vyplnění faktury z ISDOC souboru
   const handleISDOCParsed = useCallback((isdocData, isdocSummary) => {
