@@ -1264,10 +1264,14 @@ const InvoiceAttachmentsCompact = ({
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error('Chyba při stahování souboru');
         
-        const blob = await response.blob();
-        const file = new File([blob], spisovkaFileName, { type: spisovkaFileMime || blob.type });
+        // ✅ Získat původní název souboru z HTTP hlavičky (pokud je k dispozici)
+        const originalFilename = response.headers.get('X-Original-Filename');
+        const finalFilename = originalFilename || spisovkaFileName;
         
-        console.log('✅ Soubor ze spisovky stažen:', spisovkaFileName);
+        const blob = await response.blob();
+        const file = new File([blob], finalFilename, { type: spisovkaFileMime || blob.type });
+        
+        console.log('✅ Soubor ze spisovky stažen:', finalFilename, originalFilename ? '(původní název)' : '(generický název)');
         
         // Zpracovat jako běžný soubor
         await handleFileUpload([file]);
