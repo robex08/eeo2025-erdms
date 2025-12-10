@@ -416,6 +416,28 @@ class DraftManager {
   }
 
   /**
+   * 🧹 Vyčistí všechna metadata
+   */
+  clearMetadata() {
+    if (!this.currentUserId) {
+      return false;
+    }
+
+    try {
+      const userId = this.currentUserId;
+
+      localStorage.removeItem(`order_form_isEditMode_${userId}`);
+      localStorage.removeItem(`order_form_savedOrderId_${userId}`);
+      localStorage.removeItem(`openOrderInConcept-${userId}`);
+
+      return true;
+
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
    * 💾 Uloží UI state (scroll, phase2, sectionState, atd.)
    */
   saveUIState(uiState = {}) {

@@ -15253,9 +15253,9 @@ function OrderForm25() {
   }, []);
 
   const handleCancelOrder = useCallback(async () => {
-    // 🎯 Pokud je objednávka DOKONČENA, zavři rovnou bez dotazu
+    // 🎯 Pokud je objednávka v KONEČNÉM STAVU (DOKONČENA/ZAMÍTNUTA/STORNOVÁNA), zavři rovnou bez dotazu
     // (už je uložená v DB, není co ztratit)
-    if (isOrderCompleted) {
+    if (isWorkflowCompleted) {
       try {
         // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
         
@@ -15263,7 +15263,7 @@ function OrderForm25() {
         isClosingRef.current = true;
         
         // 1. Zablokovat autosave v DraftManager
-        draftManager.setAutosaveEnabled(false, 'Closing completed order');
+        draftManager.setAutosaveEnabled(false, 'Closing completed/rejected/cancelled order');
         
         // 2. Zablokovat autosave přes ref (okamžitá kontrola)
         disableAutosaveRef.current = true;
@@ -15287,9 +15287,6 @@ function OrderForm25() {
           draftManager.setCurrentUser(user_id);
           await draftManager.deleteAllDraftKeys();
         }
-        
-        // 🧹 KRITICKÉ: Vymazat metadata z draftManager
-        draftManager.clearMetadata();
         
         // NOTE: formData.id and sourceOrderIdForUnlock removed - using formData.id
 
@@ -15345,14 +15342,11 @@ function OrderForm25() {
     // Zobraz confirm modal místo toast
     setCancelWarningMessage(warningMessage);
     setShowCancelConfirmModal(true);
-  }, [attachments, isOrderCompleted, user_id, formData.id, token, username, showToast, navigate]);
+  }, [attachments, isWorkflowCompleted, user_id, formData.id, token, username, showToast, navigate]);
 
   const handleCancelConfirm = useCallback(async () => {
     // 🎯 ZJEDNODUŠENÉ ZAVŘENÍ přes DraftManager
     addDebugLog('info', 'CANCEL', 'draftmanager-close', 'Zavírám formulář přes DraftManager');
-    
-    // 🧹 KRITICKÉ: Vymazat metadata z draftManager
-    draftManager.clearMetadata();
 
     try {
       // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
