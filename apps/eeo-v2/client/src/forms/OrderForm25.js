@@ -18,8 +18,6 @@ import { useActivity } from '../context/ActivityContext';
 import { ProgressContext } from '../context/ProgressContext';
 import backgroundTaskService from '../services/backgroundTaskService';
 import ordersCacheService from '../services/ordersCacheService';
-// ❌ DEPRECATED: order25DraftStorageService - použij draftManager místo toho
-// import order25DraftStorageService from '../services/order25DraftStorageService';
 import draftManager from '../services/DraftManager'; // 🎯 CENTRALIZOVANÝ DRAFT MANAGER
 import formDataManager from '../services/FormDataManager'; // 🎯 CENTRALIZOVANÝ DATA MANAGER
 import { useAutosave } from '../hooks/useAutosave'; // 🎯 CENTRALIZOVANÝ AUTOSAVE HOOK
@@ -27,11 +25,6 @@ import { prettyDate, formatDateOnly } from '../utils/format';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
 import {
-  getStrediska25,
-  getFinancovaniZdroj25,
-  getDruhyObjednavky25,
-  // ❌ DEPRECATED: getOrder25, getNextOrderNumber25, createPartialOrder25, updatePartialOrder25 - použij V2 API místo toho
-  // ❌ DEPRECATED: uploadAttachment25, listAttachments25, downloadAttachment25, deleteAttachment25, verifyAttachments25 - použij V2 API místo toho
   setDebugLogger,
   updateAttachment25,
   createDownloadLink25,
@@ -44,7 +37,6 @@ import {
   getTypyFaktur25,
   lockOrder25,
   unlockOrder25
-  // ❌ DEPRECATED: api25orders - přímé volání přes api25orders.post() nahrazeno V2 API funkcemi
 } from '../services/api25orders';
 import {
   getOrderV2,           // ✅ V2 API: GET order by ID
@@ -67,10 +59,8 @@ import {
   deleteInvoiceAttachment,
   prepareDataForAPI,
   normalizeError
-  // ❌ REMOVED: getLPOptionsForItems - lp_options se načítají přímo z enriched objednávky
 } from '../services/apiOrderV2';
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
-// ❌ DEPRECATED: listInvoiceAttachments25, deleteInvoiceAttachment25 - použij V2 API místo toho
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import notificationServiceDual from '../services/notificationService'; // 🆕 Dual-template notifikace
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
@@ -4150,10 +4140,6 @@ function OrderForm25() {
   const [showSmlouvySuggestions, setShowSmlouvySuggestions] = useState(false);
   const [selectedSmlouvaSuggestionIndex, setSelectedSmlouvaSuggestionIndex] = useState(-1); // Index vybrané položky v dropdownu
 
-  // �️ REMOVED: Debug useEffect pro tracking re-renders
-  // Byl většinou zakomentovaný, odstraněn pro čistší kód
-  // Pokud potřebujete debugovat re-renders, použijte React DevTools Profiler
-
   // useEffect pro ESC klávesy v fullscreen režimu
   useEffect(() => {
     if (!isFullscreen) return;
@@ -4170,14 +4156,8 @@ function OrderForm25() {
 
   // ✅ REFACTORED: Číselníky budou definovány až po formController
 
-  // ❌ DEPRECATED: dictionariesReadyPromiseRef - použij areDictionariesReady místo toho
-  // const dictionariesReadyPromiseRef = useRef(dictionaries.readyPromise || null);
-  // const dictionariesReadyResolveRef = useRef(null);
-
   // Stavy pro přílohy
   const [attachments, setAttachments] = useState([]); // Lokální seznam příloh
-  // ✅ REMOVED: prilohyTypyOptions - nyní alias na dictionaries.data.prilohyTypyOptions
-  // ✅ REMOVED: loadingPrilohyTypy - nyní alias na dictionaries.loading.prilohyTypy
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [isCheckingSyncAttachments, setIsCheckingSyncAttachments] = useState(false);
@@ -4486,10 +4466,6 @@ function OrderForm25() {
     };
   };
 
-  // ❌ DEPRECATED: getPhaseThemeInternal a getPhaseProgressInternal
-  // Přesunuty do useWorkflowManager pro eliminaci duplicit
-  // Použij: workflowManager.getPhaseTheme() a workflowManager.getPhaseProgress()
-
   // ✅ Fázování objednávky (8 fází podle workflow)
   // FÁZE 1/8: NOVA - Vytvoření konceptu
   // FÁZE 2/8: ODESLANA_KE_SCHVALENI - Čeká na schválení
@@ -4759,14 +4735,6 @@ function OrderForm25() {
   //   }
   // }, [currentPhase, currentPhaseTheme, mainWorkflowState, formData.id, savedOrderId]);
 
-  // ❌ DEPRECATED: Staré helper funkce přesunuty do useWorkflowManager
-  // parseWorkflowStates() - nyní z workflowManager
-  // hasWorkflowState() - nyní z workflowManager
-  // getCurrentPhase() - nyní z workflowManager
-  // getPhaseProgressInternal() - nahrazeno workflowManager.getPhaseProgress()
-  // getPhaseThemeInternal() - nahrazeno workflowManager.getPhaseTheme()
-
-  // ❌ REMOVED: (formData.id || savedOrderId) - duplicitní state, použij savedOrderId místo toho
   // Určení zda je to nová objednávka - odvozeno z formData.id nebo savedOrderId
   const isNewOrder = useMemo(() => !formData.id && !savedOrderId, [formData.id, savedOrderId]);
 
@@ -4873,7 +4841,6 @@ function OrderForm25() {
   const [lastAutoSave, setLastAutoSave] = useState(null);
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [dataSource, setDataSource] = useState(null); // 'concept', 'database', null
-  // ❌ REMOVED: isDraftLoaded přesunut výš (před broadcastOrderStateRef)
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
   
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
@@ -4925,7 +4892,6 @@ function OrderForm25() {
   const [showUnlockPotvrzeniConfirm, setShowUnlockPotvrzeniConfirm] = useState(false);
   const [showCancelPublishConfirm, setShowCancelPublishConfirm] = useState(false); // Confirm pro zrušení zveřejnění
   const [showUnlockFakturaceConfirm, setShowUnlockFakturaceConfirm] = useState(false);
-  // const [showUnlockVecnaSpravnostConfirm, setShowUnlockVecnaSpravnostConfirm] = useState(false); // ❌ ODSTRANĚNO
   const [showUnlockDokonceniConfirm, setShowUnlockDokonceniConfirm] = useState(false);
   const [showUnlockStornoConfirm, setShowUnlockStornoConfirm] = useState(false);
 
@@ -5771,7 +5737,6 @@ function OrderForm25() {
 
   // Přejmenování pro zpětnou kompatibilitu (různé části kódu používají různé názvy)
   const fakturaTypyPrilohOptions = typyFakturOptions; // Alias
-  // ❌ DEPRECATED: loadingFakturaTypyPriloh - číselníky se načítají v lifecycle, takže vždy false zde
   const loadingFakturaTypyPriloh = false; // Číselníky už jsou načtené když se formulář zobrazuje
 
   // 🚀 CRITICAL FIX: Reset a povolit autosave při změně editOrderId
@@ -5829,9 +5794,7 @@ function OrderForm25() {
 
   // JEDNODUCHÉ WORKFLOW - přímo z DB stavu bez mapování
   const [isConceptSaved, setIsConceptSaved] = useState(false); // Pouze localStorage koncept
-  // ❌ REMOVED: savedOrderId - přesunut výš (před isNewOrder)
   const [isPhase1Unlocked, setIsPhase1Unlocked] = useState(false); // Stav pro odemknutí FÁZE 1
-  // ❌ REMOVED: isPhase3Unlocked - používáme unlockStates z WorkflowManager
 
   // 🧹 Cleanup při unmount - uložit draft před unmount
   useEffect(() => {
@@ -5873,15 +5836,6 @@ function OrderForm25() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 🎯 PRÁZDNÉ dependencies - spustí se JEN při mount/unmount!
-  // ❌ REMOVED: Všechny unlock states přesunuty do useWorkflowManager
-  // const [isFakturaceUnlocked, setIsFakturaceUnlocked] = useState(false);
-  // const [isVecnaSpravnostUnlocked, setIsVecnaSpravnostUnlocked] = useState(false);
-  // const [isDokonceniUnlocked, setIsDokonceniUnlocked] = useState(false);
-  // const [isRegistrUnlocked, setIsRegistrUnlocked] = useState(false);
-  // const [isPotvrzeniUnlocked, setIsPotvrzeniUnlocked] = useState(false);
-
-  // ❌ REMOVED: isChanged přesunut výš (před broadcastOrderStateRef)
-  // ❌ REMOVED: workflowRefreshKey - přesunut výš (před useWorkflowManager)
 
   // 🎯 CENTRÁLNÍ NAČÍTÁNÍ DRAFTU při obnovení stránky (F5)
   // Tento useEffect se spustí když isDraftLoaded=true a není editOrderId v URL
@@ -6019,12 +5973,6 @@ function OrderForm25() {
     return states.includes('SCHVALENA');
   }, [formData.stav_workflow_kod]);
 
-  // ❌ DEPRECATED: getCurrentPhase - nahrazeno workflowManager.getCurrentPhase()
-  // ❌ DEPRECATED: mainWorkflowState - nahrazeno workflowManager.mainWorkflowState
-  // ❌ DEPRECATED: currentPhase - nahrazeno workflowManager.currentPhase
-  // ❌ DEPRECATED: currentPhaseTheme - nahrazeno workflowManager.phaseTheme
-  // Všechny tyto hodnoty jsou nyní dostupné přes workflowManager
-
   const sectionVisibility = getSectionVisibility(mainWorkflowState, currentPhase, isArchived);
 
   // Mapování sekcí na jejich pevné barvy podle typu
@@ -6126,9 +6074,6 @@ function OrderForm25() {
     // Důvod: Přílohy k dokončené/zamítnuté/stornované objednávce by neměly být měnitelné
     return isWorkflowCompleted;
   }, [isWorkflowCompleted]);
-
-  // ❌ REMOVED: unlockStates objekt - workflowManager má vlastní states
-  // Unlock states jsou nyní přímo v workflowManager
 
   // 🎯 NOVÉ: Použít centralizované section states z workflowManager
   // ✅ WorkflowManager vrací { visible, enabled } pro každou sekci (bez unlock states parametru)
@@ -6932,7 +6877,6 @@ function OrderForm25() {
         dodavatel_kontakt_telefon: ''
       }));
 
-      // ❌ REMOVED: Mazání chyb dodavatele - zbytečné
       // Validace probíhá POUZE při Save, live mazání chyb není potřeba
     } else {
       // Pokud NENÍ Pokladna, rozbal sekci Dodavatel (aby byla viditelná)
@@ -9974,7 +9918,6 @@ function OrderForm25() {
         // Označit objednávku jako uloženou DO DB a uložit ID
         if (orderId) {
           setSavedOrderId(orderId);
-          // ❌ REMOVED: setPersistedOrderId - duplicitní state, použij savedOrderId
         }
 
         if (shouldShowProgress) {
@@ -10701,10 +10644,6 @@ function OrderForm25() {
         const hasSchvalena = hasWorkflowState(updatedWorkflowKod, 'SCHVALENA');
         addDebugLog('info', 'UPDATE', 'phase-check', `Má SCHVALENA: ${hasSchvalena}, nová fáze by měla být: ${hasSchvalena ? '2' : '1'}`);
 
-        // 🔒 DŮLEŽITÉ: Zachovat stav isPhase3Unlocked po UPDATE
-        // Zkontrolovat, zda byla Phase 3 před UPDATE odemčena
-        // ❌ REMOVED: isPhase3Unlocked logic - používáme WorkflowManager
-
         // Po úspěšném UPDATE - reset stavů a refresh autosave
         // Reset odemknutí pouze pokud je objednávka skutečně schválená
         if (hasWorkflowState(updatedWorkflowKod, 'SCHVALENA')) {
@@ -10995,8 +10934,6 @@ function OrderForm25() {
       // Připrav formData kopii - ukládá se CELÝ formData včetně individualni_schvaleni a pojistna_udalost_cislo
       const draftFormData = { ...formDataToSave };
 
-      // ❌ DEPRECATED: Starý kód pro zpracování financování - NEPOUŽÍVÁ SE (formData.financovani není objekt)
-      // Nové API používá: zpusob_financovani, lp_kod, cislo_smlouvy, individualni_schvaleni, pojistna_udalost_cislo atd.
       if (typeof draftFormData.financovani === 'object' && draftFormData.financovani !== null) {
         addDebugLog('warning', 'DRAFT', 'deprecated-financovani-block', '⚠️ DEPRECATED blok se spustil - měl by být mrtvý kód!');
         const financovaniObj = {
@@ -11353,11 +11290,6 @@ function OrderForm25() {
       setIsLoadingCiselniky(true); // 🎯 NOVÉ: Začínáme načítat číselníky
       setInitializationError(null);
 
-      // ❌ DEPRECATED: dictionariesReadyPromiseRef - použij areDictionariesReady
-      // dictionariesReadyPromiseRef.current = new Promise((resolve) => {
-      //   dictionariesReadyResolveRef.current = resolve;
-      // });
-
       // Start progress bar
       if (startGlobalProgress) startGlobalProgress();
       if (setGlobalProgress) setGlobalProgress(10);
@@ -11417,17 +11349,12 @@ function OrderForm25() {
       setInitializationError(errorMsg);
       setIsLoadingCiselniky(false); // 🎯 NOVÉ: Chyba při načítání číselníků
 
-      // ❌ DEPRECATED: dictionariesReadyResolveRef - use areDictionariesReady
-      // if (dictionariesReadyResolveRef.current) {
-      //   dictionariesReadyResolveRef.current(false);
-      // }
-
       if (showToast) showToast(errorMsg, { type: 'error' });
       if (failGlobalProgress) failGlobalProgress();
     }
   };
 
-  // Načítání Phase 2 unlock stavu z localStorage po načtení objednávky
+  // ✅ KRITICKÁ OPRAVA: Spustit initializeForm() JEN PŘI MOUNT (useEffect s prázdnými dependencies)
   // POUZE pokud nebylo zamčení už zpracováno při načítání z DB
   useEffect(() => {
     if (formData.id && user_id && formData.stav_workflow_kod && !isPhase3SectionsLockProcessedFromDB) {
@@ -11575,11 +11502,8 @@ function OrderForm25() {
     // // console.log('🚀 MOUNT OrderForm25 - spouštím INIT');
 
     if (token && username) {
-      // ❌ DEPRECATED: initializeForm() zakázán - nyní řídí useFormController
-      // initializeForm();
-    } // else {
-    //   console.warn('⚠️ Token nebo username chybí, čekám...');
-    // }
+      // Inicializace řízená useFormController
+    }
 
     return () => {
       // // console.log('🧹 UNMOUNT OrderForm25 - čistím state');
@@ -12186,11 +12110,7 @@ function OrderForm25() {
 
   // Funkce pro vyčištění validační chyby při ztrátě fokusu
   const handleFieldBlur = useCallback((fieldName, value) => {
-    // ❌ REMOVED: Automatické mazání chyb při blur - způsobuje mizení červených rámečků
-    // Chyby se mají mazat POUZE při nové validaci, ne při každém blur!
-    // if (validationErrors[fieldName] && value) {
-    //   setValidationErrors(prev => {
-    //     const { [fieldName]: removed, ...rest } = prev;
+    // Validace probíhá POUZE při Save
     //     return rest;
     //   });
     // }
@@ -12292,9 +12212,6 @@ function OrderForm25() {
   const handleCurrencyChange = (field, formattedValue) => {
     // Převést formátovanou hodnotu zpět na číslo
     const numericValue = parseCurrency(formattedValue);
-
-    // ❌ REMOVED: Mazání chyby validace - zbytečné
-    // Validace probíhá POUZE při Save, live mazání chyb není potřeba
 
     // Uložit číselnou hodnotu do formData
     // POZOR: Toto způsobuje re-render a resetuje pozici kurzoru!
@@ -14592,9 +14509,6 @@ function OrderForm25() {
       // Pro střediska a LP kódy kontroluj délku pole
       const valueToValidate = (field === 'strediska_kod' || field === 'lp_kod') ? value : value;
       validateField(field, valueToValidate);
-    } else {
-      // ❌ REMOVED: Mazání chyby - zbytečné
-      // Validace probíhá POUZE při Save, live mazání chyb není potřeba
     }
 
     setFormData(prev => {
@@ -16085,7 +15999,6 @@ function OrderForm25() {
     formData.ma_byt_zverejnena,
     formData.dt_zverejneni,
     formData.registr_iddt
-    // ❌ REMOVED: hasTriedToSubmit - způsobovalo race condition!
   ]);
   */
 
@@ -16288,9 +16201,6 @@ function OrderForm25() {
     // Vymazat debug konzoli před uložením
     clearDebugLogs();
     addDebugLog('info', 'SAVE', 'order-save-start', 'Začínám ukládání objednávky...');
-
-    // ❌ REMOVED: setValidationErrors({}) - nečistit chyby před validací!
-    // Validace se provede v saveOrderToAPI() a chyby se nastaví tam
 
     // Zavolej naši API funkci
     await saveOrderToAPI();
@@ -17606,12 +17516,6 @@ function OrderForm25() {
       </LoadingOverlay>
     );
   }
-
-  // ❌ DEPRECATED: Starý loading gate - zakázán, používá staré flagy které se nenastavují
-  // if (isFormLoading) {
-  //   return (
-  //     <LoadingOverlay $visible={true}>
-  //       <LoadingSpinner $visible={true} />
   //       <LoadingMessage $visible={true}>
   //         {isLoadingCiselniky && !isLoadingFormData && 'Načítám číselníky...'}
   //         {isLoadingCiselniky && isLoadingFormData && 'Načítám číselníky a data objednávky...'}
@@ -17649,12 +17553,6 @@ function OrderForm25() {
       </LoadingOverlay>
     );
   }
-
-  // ❌ DEPRECATED: Starý loading overlay - nahrazeno lifecycle.isReady
-  // if (isFormInitializing) {
-  //   return (
-  //     <LoadingOverlay $visible={true}>
-  //       <LoadingSpinner $visible={true} />
   //       <LoadingMessage $visible={true}>Načítám formulář objednávky</LoadingMessage>
   //       <LoadingSubtext $visible={true}>Zpracovávám data z databáze...</LoadingSubtext>
   //     </LoadingOverlay>
@@ -17722,10 +17620,6 @@ function OrderForm25() {
       />
 
       {/* 🎤 Indikátor hlasového nahrávání je v Layout.js - globální pro celou aplikaci */}
-
-      {/* ❌ DEPRECATED: Loading overlay pro částečné operace - ODSTRANĚNO */}
-      {/* Číselníky se načítají v lifecycle fázi, takže tento overlay je zbytečný */}
-      {/* Pokud potřebujeme loading během runtime operací, přidáme specifický indicator */}
 
       {/* Varování při částečné chybě inicializace */}
       {initializationError && (
@@ -23157,12 +23051,6 @@ function OrderForm25() {
                   </div>
                 </div>
               )}
-
-              {/* ❌ SEKCE "DODATEČNÉ DOKUMENTY" ODSTRANĚNA - nahrazena univerzální sekcí "Přílohy k objednávce" */}
-              {/* ❌ SEKCE "VĚCNÁ SPRÁVNOST" ODSTRANĚNA - refaktorováno na per-invoice checkboxy */}
-
-              {/* ✅ TODO: Zde bude nová per-invoice věcná správnost logika (checkboxy u každé faktury) */}
-
 
               {/* ✅ SEKCE: DOKONČENÍ OBJEDNÁVKY - FÁZE 10 */}
               {/* ZOBRAZIT pouze pokud: */}
