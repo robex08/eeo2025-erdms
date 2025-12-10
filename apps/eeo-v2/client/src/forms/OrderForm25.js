@@ -24,9 +24,7 @@ import { useAutosave } from '../hooks/useAutosave'; // 🎯 CENTRALIZOVANÝ AUTO
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
-import {
-  setDebugLogger
-} from '../services/apiDictionaries';
+// NOTE: setDebugLogger removed - was unused (only commented call on line 11445)
 import {
   // ✅ V2 API: Core CRUD operations
   getOrderV2,           // ✅ V2 API: GET order by ID
@@ -16937,8 +16935,11 @@ function OrderForm25() {
           ? `${option.cislo_lp} - ${option.nazev_uctu || 'Bez názvu'}`
           : `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
-        // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek
-        return option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
+        // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek + indikátor majetku
+        const druhLabel = option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
+        const isMajetek = option.atribut_objektu === 1 || option.atribut_objektu === '1';
+        // Přidat (majetek) tag malým písmem jako část labelu
+        return isMajetek ? `${druhLabel}   (majetek)` : druhLabel;
       // Pro Orders25List compatibility
       case 'statusFilter':
         return option.nazev_stavu || option.nazev || option.popis || option.kod_stavu || option.kod || String(option);
@@ -26128,7 +26129,36 @@ const StableCustomSelect = React.memo(({
           </span>
         )}
         <StableSelectValue title={displayValue}>
-          {displayValue}
+          {(() => {
+            // 🏷️ Check if selected option is majetek for druh_objednavky_kod
+            if (field === 'druh_objednavky_kod' && normalizedValue) {
+              const selectedOption = options.find(opt => {
+                const optVal = getOptionValue ? getOptionValue(opt, field) : (opt.id || opt.value || opt.kod_stavu || opt.kod || opt);
+                return optVal == normalizedValue;
+              });
+              if (selectedOption && (selectedOption.atribut_objektu === 1 || selectedOption.atribut_objektu === '1')) {
+                const cleanLabel = displayValue.replace('   (majetek)', '');
+                return (
+                  <>
+                    <span>{cleanLabel}</span>
+                    <span style={{
+                      marginLeft: '8px',
+                      fontSize: '0.75rem',
+                      color: '#dc2626',
+                      fontWeight: '500',
+                      padding: '2px 6px',
+                      backgroundColor: '#fee2e2',
+                      borderRadius: '4px',
+                      border: '1px solid #fca5a5'
+                    }}>
+                      (majetek)
+                    </span>
+                  </>
+                );
+              }
+            }
+            return displayValue;
+          })()}
         </StableSelectValue>
         {isClearable && !disabled && hasValue && (
           <span
@@ -26270,6 +26300,9 @@ const StableCustomSelect = React.memo(({
               const selected = isSelected(option);
               const level = option.level || 0;
               const isHeader = option.isHeader || (level === 0 && !option.value && !option.id);
+              
+              // 🏷️ Check if this is druh_objednavky with majetek flag
+              const isMajetekOption = field === 'druh_objednavky_kod' && (option.atribut_objektu === 1 || option.atribut_objektu === '1');
 
               return (
                 <StableSelectOption
@@ -26360,7 +26393,25 @@ const StableCustomSelect = React.memo(({
                       onChange={() => {}} // Prázdný handler aby nedával warning
                     />
                   )}
-                  <span>{optionLabel}</span>
+                  {isMajetekOption ? (
+                    <>
+                      <span>{optionLabel.replace('   (majetek)', '')}</span>
+                      <span style={{
+                        marginLeft: '8px',
+                        fontSize: '0.75rem',
+                        color: '#dc2626',
+                        fontWeight: '500',
+                        padding: '2px 6px',
+                        backgroundColor: '#fee2e2',
+                        borderRadius: '4px',
+                        border: '1px solid #fca5a5'
+                      }}>
+                        (majetek)
+                      </span>
+                    </>
+                  ) : (
+                    <span>{optionLabel}</span>
+                  )}
                 </StableSelectOption>
               );
             })
