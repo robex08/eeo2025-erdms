@@ -6082,6 +6082,9 @@ function OrderForm25() {
   }, [editOrderId, user_id]); // Spustí se při změně editOrderId
 
   // Automatické rozbalení lokalizačních panelů s vyplněnými hodnotami
+  // VŽDY rozbalit pokud:
+  // 1. Je to majetková položka (atribut_objektu = 1)
+  // 2. Má vyplněná lokalizační data (úsek, budova, místnost, poznámka)
   useEffect(() => {
     if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
       const newPanelStates = {};
@@ -6097,19 +6100,21 @@ function OrderForm25() {
           (polozka.mistnost_kod && polozka.mistnost_kod.trim() !== '') ||
           (polozka.poznamka && polozka.poznamka.trim() !== '');
 
-        // Pokud má data NEBO je materiálová objednávka, rozbal panel
-        if (hasLocationData || isMaterialOrderValue) {
+        // ✅ ROZBALIT pokud:
+        // - Je to majetek (lokalizace je POVINNÁ) → musí být vidět červené rámečky
+        // - Má vyplněná data (aby uživatel viděl co už vyplnil)
+        if (isMaterialOrderValue || hasLocationData) {
           newPanelStates[polozka.id] = true;
         } else {
-          // Pokud NENÍ materiálová objednávka a NEMÁ data, zavři panel
+          // Zavřít pouze pokud NENÍ majetek A NEMÁ data
           newPanelStates[polozka.id] = false;
         }
       });
 
-      // Nastav VŽDY (ne jen když jsou panely k rozbalení) - aby se mohly i zavřít
+      // Nastav VŽDY - aby se panely mohly otevřít i zavřít při změně stavu
       setLokalizacePanelStates(newPanelStates);
     }
-  }, [formData.polozky_objednavky?.length, formData.druh_objednavky_kod]); // Přidán druh_objednavky_kod
+  }, [formData.polozky_objednavky?.length, formData.druh_objednavky_kod, isMaterialOrder])
 
   // Synchronizace smlouvaSearchTerm s formData.cislo_smlouvy při načtení dat
   useEffect(() => {
@@ -15962,7 +15967,6 @@ function OrderForm25() {
           }
           if (!polozka.mistnost_kod || !polozka.mistnost_kod.trim()) {
             errors[`polozka_${index}_mistnost_kod`] = `Položka ${index + 1}: Vyberte místnost - určení lokace je povinné u majetkových položek`;
-            console.log(`❌ Položka ${index + 1}: Chybí místnost`);
           }
         });
       }
@@ -16026,20 +16030,6 @@ function OrderForm25() {
 
     const hasErrors = Object.keys(errors).length > 0;
     
-    // 🐞 DEBUG: Výpis validačních chyb ve fázi 7/8
-    if ((currentPhase === 7 || currentPhase === 8) && hasErrors) {
-      console.log('🔍 VALIDACE ve fázi', currentPhase, '- Nalezené chyby:');
-      console.log('📋 Počet chyb:', Object.keys(errors).length);
-      console.log('📝 Detail chyb:', errors);
-      console.log('🎯 Validační workflow kód:', currentPhase === 1 ? 'NOVA' : mainWorkflowState);
-      console.log('📦 FormData stav:', {
-        stav_stornovano: formData.stav_stornovano,
-        ma_byt_zverejnena: formData.ma_byt_zverejnena,
-        faktury: formData.faktury?.length || 0,
-        polozky: formData.polozky_objednavky?.length || 0
-      });
-    }
-    
     // ⚡ KRITICKÉ: Použít flushSync k okamžitému nastavení validationErrors
     // PŘED otevřením panelů - jinak se panely otevřou ale chyby ještě nebudou v DOM
     flushSync(() => {
@@ -16080,19 +16070,12 @@ function OrderForm25() {
     if (hasErrors) {
       const errorCount = Object.keys(errors).length;
       
-      console.log('🍞 TOAST - zobrazuji chyby:', {
-        errorCount,
-        errorKeys: Object.keys(errors),
-        errors
-      });
-      
       if (formData.stav_stornovano) {
         // Speciální zpráva pro stornování
         showToast && showToast(`Nelze stornovat - zkontrolujte vyznačená pole`, { type: 'error' });
       } else {
         // Strukturovaná chybová zpráva
         const structuredMessage = formatValidationErrors(errors);
-        console.log('🍞 TOAST - formatovaná zpráva:', structuredMessage);
         
         showToast && showToast(structuredMessage, { 
           type: 'error', 
