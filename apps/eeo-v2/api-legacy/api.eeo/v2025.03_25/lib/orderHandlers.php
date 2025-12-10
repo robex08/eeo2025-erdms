@@ -4545,7 +4545,8 @@ function handle_orders25_lock($input, $config, $queries) {
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    // Support both 'id' and 'orderId' for backwards compatibility
+    $order_id = isset($input['id']) ? (int)$input['id'] : (isset($input['orderId']) ? (int)$input['orderId'] : 0);
 
     $token_data = verify_token($token);
     if (!$token_data) {
@@ -4668,11 +4669,16 @@ function handle_orders25_lock($input, $config, $queries) {
  * Endpoint: orders25/unlock
  */
 function handle_orders25_unlock($input, $config, $queries) {
+    error_log('🔓 [UNLOCK HANDLER] START - input keys: ' . json_encode(array_keys($input)));
+    
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    // Support both 'id' and 'orderId' for backwards compatibility
+    $order_id = isset($input['id']) ? (int)$input['id'] : (isset($input['orderId']) ? (int)$input['orderId'] : 0);
     $force_unlock = isset($input['force']) ? (bool)$input['force'] : false;
+    
+    error_log('🔓 [UNLOCK HANDLER] Parsed values - order_id: ' . $order_id . ', username: ' . $request_username . ', force: ' . ($force_unlock ? 'true' : 'false'));
 
     $token_data = verify_token($token);
     if (!$token_data) {
