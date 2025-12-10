@@ -7030,7 +7030,7 @@ function OrderForm25() {
     }));
     // 🔥 KRITICKÉ: Nastavit isChanged při změně faktur
     setIsChanged(true);
-  }, [formData.faktury]);
+  }, []);
 
   // Zamykání se řeší přímo v saveOrderToAPI() po uložení
 
@@ -18842,7 +18842,7 @@ function OrderForm25() {
                 <EmergencyToggleSwitch 
                   checked={formData.mimoradna_udalost || false}
                   disabled={shouldLockPhase1Sections}
-                >
+                  >
                   <input
                     type="checkbox"
                     checked={formData.mimoradna_udalost || false}
@@ -22361,81 +22361,7 @@ function OrderForm25() {
                                   </FakturaInfoIconWrapper>
                                 </div>
                                 <div style={{display: 'flex', gap: '0.5rem'}}>
-                                  {/* Tlačítko přidat další fakturu */}
-                                  <button
-                                    type="button"
-                                    disabled={shouldLockFaktury}
-                                    onClick={() => {
-                                      // Nejdřív uložit aktuálně editovanou fakturu (pokud je editace aktivní)
-                                      if (isEditing) {
-                                        handleUpdateFaktura();
-                                      }
-
-                                      // Vytvořit novou fakturu BEZ auto-vyplnění ceny (uživatel vyplní a ověří sám)
-                                      const dnesniDatum = formatDateForPicker(new Date());
-
-                                      const newFaktura = {
-                                        id: `temp-${Date.now()}`,
-                                        objednavka_id: formData.id,
-                                        fa_datum_doruceni: dnesniDatum, // ✅ Správné pole pro datum
-                                        fa_dorucena: 1, // ✅ Boolean flag
-                                        fa_castka: '', // ❌ NEBUDEME auto-vyplňovat - uživatel ověří sám
-                                        fa_cislo_vema: '',
-                                        fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
-                                        fa_poznamka: '',
-                                        fa_splatnost: '',
-                                        vytvoril_uzivatel_id: user_id,
-                                        vytvoril_jmeno: getUserNameById(user_id),
-                                        dt_vytvoreni: new Date().toISOString(),
-                                        dt_aktualizace: null,
-                                        aktivni: 1,
-                                        _isNew: true,
-                                        // ✅ NOVÉ: Per-invoice věcná správnost
-                                        vecna_spravnost_umisteni_majetku: '',
-                                        vecna_spravnost_poznamka: '',
-                                        vecna_spravnost_potvrzeno: 0
-                                      };
-
-                                      const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
-                                      updateFaktury([...currentFaktury, newFaktura]);
-                                      setEditingFaktura(newFaktura);
-                                      setFakturaFormData({
-                                        fa_datum_doruceni: dnesniDatum, // ✅ Správné pole pro datum
-                                        fa_dorucena: 1, // ✅ Boolean flag
-                                        fa_castka: '', // ❌ NEBUDEME auto-vyplňovat - uživatel ověří sám
-                                        fa_cislo_vema: '',
-                                        fa_strediska_kod: formData.strediska_kod || [],
-                                        fa_poznamka: '',
-                                        fa_splatnost: '',
-                                        // ✅ NOVÉ: Per-invoice věcná správnost
-                                        vecna_spravnost_umisteni_majetku: '',
-                                        vecna_spravnost_poznamka: '',
-                                        vecna_spravnost_potvrzeno: 0
-                                      });
-                                    }}
-                                    title="Přidat další fakturu"
-                                    style={{
-                                      background: shouldLockFaktury ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.2)',
-                                      color: 'white',
-                                      border: '1px solid rgba(255,255,255,0.5)',
-                                      borderRadius: '6px',
-                                      padding: '0.4rem',
-                                      fontSize: '0.875rem',
-                                      fontWeight: '500',
-                                      cursor: shouldLockFaktury ? 'not-allowed' : 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      width: '32px',
-                                      height: '32px',
-                                      opacity: shouldLockFaktury ? 0.6 : 1,
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                  >
-                                    <Plus size={16} />
-                                  </button>
-
-                                  {/* Tlačítko smazat fakturu - umožnit smazání i jedné faktury */}
+                                  {/* Tlačítko smazat fakturu */}
                                   <button
                                     type="button"
                                     disabled={shouldLockFaktury}
@@ -22494,43 +22420,22 @@ function OrderForm25() {
                                 <FormGroup>
                                   <Label required>Datum doručení</Label>
                                   <DatePicker
-                                    fieldName="fa_datum_doruceni"
-                                    value={isEditing ? currentData.fa_datum_doruceni : (faktura.fa_datum_doruceni || formatDateForPicker(new Date()))}
+                                    fieldName={`fa_${index + 1}_datum_doruceni`}
+                                    value={faktura.fa_datum_doruceni ?? (faktura._isNew ? formatDateForPicker(new Date()) : '')}
                                     hasError={!!validationErrors[`faktura_${index + 1}_datum_doruceni`]}
                                     disabled={shouldLockFaktury}
                                     onChange={(value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_datum_doruceni: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_datum_doruceni: value,
-                                              fa_dorucena: 1,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
+                                          ? { 
+                                              ...f, 
+                                              fa_datum_doruceni: value, 
+                                              fa_dorucena: value ? 1 : 0,
+                                              _isNew: false // 🔥 Odstranit _isNew flag při jakékoliv změně
                                             }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
                                     }}
                                     placeholder="Vyberte datum doručení"
                                   />
@@ -22542,42 +22447,16 @@ function OrderForm25() {
                                     <FontAwesomeIcon icon={faHashtag} />
                                     <Input
                                       type="text"
-                                      value={isEditing ? currentData.fa_cislo_vema : (faktura.fa_cislo_vema || '')}
+                                      value={faktura.fa_cislo_vema || ''}
                                       hasError={!!validationErrors[`faktura_${index + 1}_cislo`]}
                                       disabled={shouldLockFaktury}
                                       onChange={(e) => {
-                                        if (!isEditing) {
-                                          handleEditFaktura(faktura);
-                                        }
-                                        setFakturaFormData(prev => ({
-                                          ...prev,
-                                          fa_cislo_vema: e.target.value
-                                        }));
-
-                                        // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                         const updatedFaktury = formData.faktury.map(f =>
                                           f.id === faktura.id
-                                            ? {
-                                                ...f,
-                                                fa_cislo_vema: e.target.value,
-                                                // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                                ...(isEditing ? {
-                                                  fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                  fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                  fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                  fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                  fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                  fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                                } : {})
-                                              }
+                                            ? { ...f, fa_cislo_vema: e.target.value, _isNew: false }
                                             : f
                                         );
                                         updateFaktury(updatedFaktury);
-                                      }}
-                                      onBlur={() => {
-                                        if (isEditing && !faktura._isNew) {
-                                          handleUpdateFaktura();
-                                        }
                                       }}
                                       required
                                       placeholder="12345678"
@@ -22590,42 +22469,16 @@ function OrderForm25() {
                                   <Label required>Částka vč. DPH</Label>
                                   <CurrencyInput
                                     fieldName="fa_castka"
-                                    value={isEditing ? (currentData.fa_castka ?? '') : (faktura.fa_castka ?? '')}
+                                    value={faktura.fa_castka ?? ''}
                                     hasError={!!validationErrors[`faktura_${index + 1}_castka`]}
                                     disabled={shouldLockFaktury}
                                     onChange={(field, value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_castka: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_castka: value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_castka: value, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
                                     }}
                                     placeholder="25000.50"
                                   />
@@ -22636,51 +22489,24 @@ function OrderForm25() {
                                 <FormGroup>
                                   <Label required>Datum splatnosti</Label>
                                   <DatePicker
-                                    fieldName="fa_splatnost"
-                                    value={isEditing ? currentData.fa_splatnost : (() => {
-                                      // 🔧 Priorita: fa_splatnost (FE formát) > fa_datum_splatnosti (DB formát)
-                                      if (faktura.fa_splatnost) return faktura.fa_splatnost;
-                                      if (faktura.fa_datum_splatnosti) {
-                                        // Ořezat čas, vzít jen datum
-                                        return faktura.fa_datum_splatnosti.split(' ')[0];
+                                    fieldName={`fa_${index + 1}_splatnost`}
+                                    value={(() => {
+                                      // 🔥 Po editaci (_isNew: false) ignoruj fa_datum_splatnosti fallback
+                                      if (faktura._isNew === false) {
+                                        return faktura.fa_splatnost ?? '';
                                       }
-                                      return '';
+                                      // Nová faktura - zkus fa_splatnost, pak fa_datum_splatnosti (z DB), pak prázdné
+                                      return faktura.fa_splatnost ?? (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : '');
                                     })()}
                                     hasError={!!validationErrors[`faktura_${index + 1}_splatnost`]}
                                     disabled={shouldLockFaktury}
                                     onChange={(value) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_splatnost: value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_splatnost: value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_splatnost: value, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
                                     }}
                                     placeholder="Vyberte datum splatnosti"
                                   />
@@ -22692,20 +22518,12 @@ function OrderForm25() {
                                     <ClearSelectButton
                                       type="button"
                                       $visible={(() => {
-                                        const currentData = isEditing ? fakturaFormData : faktura;
-                                        const strediska = currentData.fa_strediska_kod || [];
+                                        const strediska = faktura.fa_strediska_kod || [];
                                         return Array.isArray(strediska) && strediska.length > 0;
                                       })()}
                                       onClick={() => {
-                                        if (!isEditing) {
-                                          handleEditFaktura(faktura);
-                                        }
-                                        setFakturaFormData(prev => ({
-                                          ...prev,
-                                          fa_strediska_kod: []
-                                        }));
                                         const updatedFaktury = formData.faktury.map(f =>
-                                          f.id === faktura.id ? { ...f, fa_strediska_kod: [] } : f
+                                          f.id === faktura.id ? { ...f, fa_strediska_kod: [], _isNew: false } : f
                                         );
                                         updateFaktury(updatedFaktury);
                                       }}
@@ -22716,54 +22534,24 @@ function OrderForm25() {
                                   </LabelWithClear>
                                   <StableCustomSelect
                                     value={(() => {
-                                      // 🔧 NORMALIZE: Parse string → array pokud je potřeba
-                                      const rawValue = isEditing
-                                        ? (currentData.fa_strediska_kod || formData.strediska_kod || [])
-                                        : (faktura.fa_strediska_kod || formData.strediska_kod || []);
-
-                                      // Pokud je string (např. "STR01,STR02"), parsuj na array
+                                      const rawValue = faktura.fa_strediska_kod || formData.strediska_kod || [];
                                       if (typeof rawValue === 'string' && rawValue.trim()) {
                                         return rawValue.split(',').map(s => s.trim()).filter(Boolean);
                                       }
-
-                                      // Pokud už je array, vrať ho
                                       return Array.isArray(rawValue) ? rawValue : [];
                                     })()}
                                     disabled={shouldLockFaktury}
                                     onChange={(selectedValues) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-
-                                      // ✅ EXTRAHOVAT JEN STRINGY (kódy) z objektů/stringů
                                       const strediskaKody = Array.isArray(selectedValues)
                                         ? selectedValues.map(item => {
-                                            if (typeof item === 'string') return item; // Už je string
-                                            return item.value || item.kod_stavu || item.id || item; // Extrahuj z objektu
+                                            if (typeof item === 'string') return item;
+                                            return item.value || item.kod_stavu || item.id || item;
                                           })
                                         : [];
 
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_strediska_kod: strediskaKody
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_strediska_kod: strediskaKody,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_poznamka: fakturaFormData.fa_poznamka || f.fa_poznamka
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_strediska_kod: strediskaKody, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
@@ -22784,41 +22572,15 @@ function OrderForm25() {
                                 <FormGroup style={{gridColumn: '1 / -1'}}>
                                   <Label>Poznámka</Label>
                                   <TextArea
-                                    value={isEditing ? currentData.fa_poznamka : (faktura.fa_poznamka || '')}
+                                    value={faktura.fa_poznamka || ''}
                                     disabled={shouldLockFaktury}
                                     onChange={(e) => {
-                                      if (!isEditing) {
-                                        handleEditFaktura(faktura);
-                                      }
-                                      setFakturaFormData(prev => ({
-                                        ...prev,
-                                        fa_poznamka: e.target.value
-                                      }));
-
-                                      // 🔥 OKAMŽITÁ AKTUALIZACE - zachovat všechna existující data
                                       const updatedFaktury = formData.faktury.map(f =>
                                         f.id === faktura.id
-                                          ? {
-                                              ...f,
-                                              fa_poznamka: e.target.value,
-                                              // Zachovat aktuální hodnoty z fakturaFormData pokud je editace aktivní
-                                              ...(isEditing ? {
-                                                fa_datum_doruceni: fakturaFormData.fa_datum_doruceni || f.fa_datum_doruceni,
-                                                fa_dorucena: fakturaFormData.fa_dorucena || f.fa_dorucena,
-                                                fa_cislo_vema: fakturaFormData.fa_cislo_vema || f.fa_cislo_vema,
-                                                fa_castka: fakturaFormData.fa_castka || f.fa_castka,
-                                                fa_splatnost: fakturaFormData.fa_splatnost || f.fa_splatnost,
-                                                fa_strediska_kod: fakturaFormData.fa_strediska_kod || f.fa_strediska_kod
-                                              } : {})
-                                            }
+                                          ? { ...f, fa_poznamka: e.target.value, _isNew: false }
                                           : f
                                       );
                                       updateFaktury(updatedFaktury);
-                                    }}
-                                    onBlur={() => {
-                                      if (isEditing && !faktura._isNew) {
-                                        handleUpdateFaktura();
-                                      }
                                     }}
                                     placeholder="Volitelná poznámka..."
                                     rows={2}
@@ -22900,21 +22662,12 @@ function OrderForm25() {
                                     <FormGroup style={{gridColumn: '1 / -1'}}>
                                       <Label>Umístění majetku</Label>
                                       <Input
-                                        value={isEditing ? (currentData.vecna_spravnost_umisteni_majetku || '') : (faktura.vecna_spravnost_umisteni_majetku || '')}
+                                        value={faktura.vecna_spravnost_umisteni_majetku || ''}
                                         disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
-                                          }
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            vecna_spravnost_umisteni_majetku: e.target.value
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
-                                              ? { ...f, vecna_spravnost_umisteni_majetku: e.target.value }
+                                              ? { ...f, vecna_spravnost_umisteni_majetku: e.target.value, _isNew: false }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
@@ -22931,22 +22684,13 @@ function OrderForm25() {
                                         return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - faktura překračuje MAX cenu)' : ''}</Label>;
                                       })()}
                                       <TextArea
-                                        value={isEditing ? (currentData.vecna_spravnost_poznamka || '') : (faktura.vecna_spravnost_poznamka || '')}
+                                        value={faktura.vecna_spravnost_poznamka || ''}
                                         disabled={shouldLockVecnaSpravnost}
                                         hasError={!!validationErrors[`faktura_${index + 1}_poznamka_vs`]}
                                         onChange={(e) => {
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
-                                          }
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            vecna_spravnost_poznamka: e.target.value
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
-                                              ? { ...f, vecna_spravnost_poznamka: e.target.value }
+                                              ? { ...f, vecna_spravnost_poznamka: e.target.value, _isNew: false }
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
@@ -22983,17 +22727,12 @@ function OrderForm25() {
                                           }}>
                                             <input
                                               type="checkbox"
-                                              checked={isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1)}
+                                              checked={faktura.vecna_spravnost_potvrzeno === 1}
                                               disabled={shouldLockVecnaSpravnost}
                                         onChange={(e) => {
                                           const newValue = e.target.checked ? 1 : 0;
-                                          
-                                          if (!isEditing) {
-                                            handleEditFaktura(faktura);
-                                          }
 
-                                          // 🆕 Při zaškrtnutí nastavit ID uživatele a timestamp
-                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue };
+                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue, _isNew: false };
                                           if (newValue === 1 && user_id && !faktura.potvrdil_vecnou_spravnost_id) {
                                             const now = new Date();
                                             const year = now.getFullYear();
@@ -23009,12 +22748,6 @@ function OrderForm25() {
                                             addDebugLog('info', 'VECNA-FAKTURA', 'metadata-set', `Faktura #${faktura.id}: Nastaveno ID=${user_id}, dt=${localTimestamp}`);
                                           }
 
-                                          setFakturaFormData(prev => ({
-                                            ...prev,
-                                            ...updatedFields
-                                          }));
-
-                                          // Okamžitá aktualizace
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
                                               ? { ...f, ...updatedFields }
@@ -23032,7 +22765,7 @@ function OrderForm25() {
                                       <span style={{ flex: 1 }}>
                                         Potvrzuji věcnou správnost faktury #{index + 1}
                                       </span>
-                                      {((isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1))) && (
+                                      {(faktura.vecna_spravnost_potvrzeno === 1) && (
                                         <span style={{
                                           fontSize: '0.75rem',
                                           color: '#16a34a',
@@ -23137,6 +22870,79 @@ function OrderForm25() {
 
                             </div>
                           )}))}
+
+                          {/* ➕ TLAČÍTKO PŘIDAT DALŠÍ FAKTURU - pod seznamem faktur */}
+                          {!shouldLockFaktury && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const dnesniDatum = formatDateForPicker(new Date());
+                                const newFaktura = {
+                                  id: `temp-${Date.now()}`,
+                                  objednavka_id: formData.id,
+                                  fa_datum_doruceni: dnesniDatum,
+                                  fa_dorucena: 1,
+                                  fa_castka: '',
+                                  fa_cislo_vema: '',
+                                  fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
+                                  fa_poznamka: '',
+                                  fa_splatnost: '',
+                                  vytvoril_uzivatel_id: user_id,
+                                  vytvoril_jmeno: getUserNameById(user_id),
+                                  dt_vytvoreni: new Date().toISOString(),
+                                  dt_aktualizace: null,
+                                  aktivni: 1,
+                                  _isNew: true,
+                                  vecna_spravnost_umisteni_majetku: '',
+                                  vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_potvrzeno: 0
+                                };
+                                const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
+                                updateFaktury([...currentFaktury, newFaktura]);
+                                setEditingFaktura(newFaktura);
+                                setFakturaFormData({
+                                  fa_datum_doruceni: dnesniDatum,
+                                  fa_dorucena: 1,
+                                  fa_castka: '',
+                                  fa_cislo_vema: '',
+                                  fa_strediska_kod: formData.strediska_kod || [],
+                                  fa_poznamka: '',
+                                  fa_splatnost: '',
+                                  vecna_spravnost_umisteni_majetku: '',
+                                  vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_potvrzeno: 0
+                                });
+                              }}
+                              style={{
+                                width: '100%',
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                background: 'transparent',
+                                color: '#3b82f6',
+                                border: '2px dashed #3b82f6',
+                                borderRadius: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.05)';
+                                e.currentTarget.style.borderColor = '#2563eb';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.borderColor = '#3b82f6';
+                              }}
+                            >
+                              <Plus size={18} />
+                              Přidat další fakturu
+                            </button>
+                          )}
                         </div>
                       )}
 
