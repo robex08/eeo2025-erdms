@@ -2029,43 +2029,78 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('orderDraftChange', handler);
   }, [user_id, recalcHasDraft]);
 
-  // 🎯 [DIRECT STATE] Poslouchat OrderForm25 globální stav (window.__orderFormState)
-  // Jednodušší než draft metadata - OrderForm25 přímo říká "edituji objednávku X"
+  // 🎯 [SYNCHRONNÍ MENUBAR] Poslouchat OrderForm25 stav a OKAMŽITĚ aktualizovat MenuBar
+  // PRIORITA: Layout nastavuje MenuBar → OrderForm se načte podle toho
   const pendingResetTimeoutRef = useRef(null);
   
   useEffect(() => {
-    const handler = async (e) => {
+    const handler = (e) => {
       const state = e.detail;
       if (!state) return;
 
-      // 🔧 KRITICKÉ: Pokud dostaneme undefined nebo false pro hasDraft, ZPOŽDĚNÍ před resetem!
-      // OrderForm může unmountovat a okamžitě se remountovat (React strict mode nebo navigace)
-      if (state.hasDraft === undefined || state.hasDraft === false) {
-        
-        // ✅ Zruš předchozí pending reset
+      // 🔥 OKAMŽITÉ nastavení MenuBaru podle stavu z OrderForm25
+      
+      // 1️⃣ EDITACE (má savedOrderId) → MenuBar = "Editace objednávky"
+      if (state.isEditMode && state.orderId) {
         if (pendingResetTimeoutRef.current) {
           clearTimeout(pendingResetTimeoutRef.current);
           pendingResetTimeoutRef.current = null;
         }
         
-        // ✅ Počkej 150ms - pokud přijde nový broadcast s hasDraft=true, reset se zruší
+        setHasDraftOrder(true);
+        setIsOrderEditMode(true);
+        setEditOrderId(state.orderId);
+        setEditOrderNumber(state.orderNumber || '');
+        
+        if (state.currentPhase) {
+          setOrderPhaseInfo({
+            phase: state.currentPhase,
+            isZrusena: state.mainWorkflowState === 'ZRUSENA'
+          });
+        }
+        return;
+      }
+      
+      // 2️⃣ KONCEPT (hasDraft=true, ale BEZ savedOrderId) → MenuBar = "Koncept objednávka"
+      if (state.hasDraft === true && !state.isEditMode) {
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
+        }
+        
+        setHasDraftOrder(true);
+        setIsOrderEditMode(false);
+        setEditOrderId(null);
+        setEditOrderNumber('');
+        setOrderPhaseInfo({ phase: state.currentPhase || 1, isZrusena: false });
+        return;
+      }
+      
+      // 3️⃣ RESET (hasDraft=false nebo undefined) → MenuBar = "Nová objednávka"
+      // POZOR: Zpožděný reset kvůli React remount (strict mode)
+      if (state.hasDraft === false || state.hasDraft === undefined) {
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
+        }
+        
         pendingResetTimeoutRef.current = setTimeout(async () => {
+          // Ověř skutečnou existenci draftu
           if (user_id) {
             try {
               draftManager.setCurrentUser(user_id);
               const actuallyHasDraft = await draftManager.hasDraft();
               
               if (actuallyHasDraft) {
-                // Draft existuje! Ignoruj reset z OrderForm a načti skutečný stav
                 recalcHasDraft();
-                return; // ← STOP zde, neměň stavy
+                return;
               }
             } catch (e) {
               // Pokud selže kontrola, pokračuj s reset
             }
           }
           
-          // Draft potvrzeno neexistuje - resetuj všechny stavy
+          // Draft skutečně neexistuje → RESET
           setHasDraftOrder(false);
           setIsOrderEditMode(false);
           setEditOrderId(null);
@@ -2074,32 +2109,7 @@ const Layout = ({ children }) => {
           pendingResetTimeoutRef.current = null;
         }, 150);
         
-        return; // ← STOP zde, čekáme na timeout
-      }
-      
-      // ✅ Draft existuje (hasDraft=true) - OKAMŽITĚ zruš pending reset a nastav stavy
-      if (pendingResetTimeoutRef.current) {
-        clearTimeout(pendingResetTimeoutRef.current);
-        pendingResetTimeoutRef.current = null;
-      }
-      
-      const hasDraft = true;
-      
-      // Přímo nastav stavy z OrderForm25
-      setHasDraftOrder(hasDraft);
-      setIsOrderEditMode(state.isEditMode);
-      setEditOrderId(state.orderId);
-      setEditOrderNumber(state.orderNumber);
-
-      // Aktualizuj phase info
-      if (state.currentPhase) {
-        setOrderPhaseInfo({
-          phase: state.currentPhase,
-          isZrusena: state.mainWorkflowState === 'ZRUSENA'
-        });
-      } else if (!hasDraft) {
-        // Reset phase info když formulář zavřen
-        setOrderPhaseInfo({ phase: 1, isZrusena: false });
+        return;
       }
     };
 
@@ -2112,13 +2122,12 @@ const Layout = ({ children }) => {
 
     return () => {
       window.removeEventListener('orderFormStateChange', handler);
-      // ✅ Cleanup: Zruš pending reset při unmount
       if (pendingResetTimeoutRef.current) {
         clearTimeout(pendingResetTimeoutRef.current);
         pendingResetTimeoutRef.current = null;
       }
     };
-  }, [user_id, draftManager, recalcHasDraft]);
+  }, [user_id, recalcHasDraft]);
 
   // Recalc když se změní user_id (přihlášení/odhlášení). Už existující vlastní draft se tak znovu označí.
   useEffect(() => {
