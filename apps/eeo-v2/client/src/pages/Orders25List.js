@@ -8665,13 +8665,6 @@ const Orders25List = () => {
       }
 
       // Použij React Router s edit parametrem pro načtení objednávky do editace
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate after locking archived order:', {
-        orderId: orderId,
-        orderNumber: finalEvCislo,
-        isArchived: true,
-        url: `/order-form-25?edit=${orderId}&archivovano=1`,
-        reason: 'Archived order locked successfully, draft created'
-      });
       navigate(`/order-form-25?edit=${orderId}&archivovano=1`);
 
     } catch (error) {

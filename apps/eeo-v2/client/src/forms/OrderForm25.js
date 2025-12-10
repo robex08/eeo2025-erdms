@@ -4786,6 +4786,39 @@ function OrderForm25() {
   // Používá ref pro aktuální hodnoty - vždy dostupná i v async funkcích
   const broadcastOrderStateRef = useRef();
   
+  // 🚀 OKAMŽITÝ BROADCAST při mountu - eliminuje blikání MenuBaru
+  // Spustí se PŘED načtením draftu, nastaví správný stav podle isEditMode
+  useEffect(() => {
+    const metadata = draftManager.getMetadata();
+    const editMode = metadata?.isEditMode === true;
+    const orderId = metadata?.editOrderId || metadata?.formData?.id;
+    const orderNumber = metadata?.openConceptNumber || metadata?.formData?.cislo_objednavky || metadata?.formData?.ev_cislo;
+    
+    // OKAMŽITÝ broadcast správného stavu
+    const initialState = {
+      isEditMode: editMode,
+      isNewOrder: !editMode,
+      orderId: orderId || null,
+      orderNumber: orderNumber || '',
+      currentPhase: 1, // Bude aktualizováno po načtení dat
+      mainWorkflowState: 'NOVA', // Bude aktualizováno po načtení dat
+      hasDraft: false,
+      timestamp: Date.now()
+    };
+    
+    window.__orderFormState = initialState;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: initialState }));
+  }, []); // Prázdné deps = pouze při mountu
+  
+  // 🎯 Ref pro sledování předchozího stavu - eliminuje zbytečné broadcasty
+  const prevStateRef = useRef({
+    isEditMode: false,
+    orderId: null,
+    orderNumber: '',
+    currentPhase: 1,
+    mainWorkflowState: 'NOVA'
+  });
+  
   // 🎯 SPRINT 5: Consolidated Broadcast Effect (4→1 hook)
   // Combines: broadcastRef update, mount broadcast, isChanged broadcast, and key values broadcast
   useEffect(() => {
@@ -4808,9 +4841,30 @@ function OrderForm25() {
       return state;
     };
 
-    // Broadcast if form is initialized
+    // Broadcast pouze pokud se SKUTEČNĚ změnil některý klíčový stav
     if (isDraftLoaded) {
-      broadcastOrderStateRef.current();
+      const currentState = {
+        isEditMode: !isNewOrder,
+        orderId: formData.id,
+        orderNumber: formData.cislo_objednavky || formData.ev_cislo,
+        currentPhase,
+        mainWorkflowState
+      };
+      
+      const prevState = prevStateRef.current;
+      
+      // Porovnat skutečné změny
+      const hasChanged = 
+        currentState.isEditMode !== prevState.isEditMode ||
+        currentState.orderId !== prevState.orderId ||
+        currentState.orderNumber !== prevState.orderNumber ||
+        currentState.currentPhase !== prevState.currentPhase ||
+        currentState.mainWorkflowState !== prevState.mainWorkflowState;
+      
+      if (hasChanged) {
+        broadcastOrderStateRef.current();
+        prevStateRef.current = currentState;
+      }
     }
     
     // Cleanup on unmount
@@ -15301,8 +15355,9 @@ function OrderForm25() {
         
         // NOTE: formData.id and sourceOrderIdForUnlock removed - using formData.id
 
-        // Odemkni objednávku (pokud je editace) - použij formData.id
-        const unlockOrderId = formData.id;
+        // Odemkni objednávku (pokud je editace) - použij editOrderId nebo formData.id
+        // ✅ FIX: editOrderId je stabilnější než formData.id (může být undefined po smazání draftu)
+        const unlockOrderId = editOrderId || formData.id;
         if (unlockOrderId && token && username) {
           try {
             await unlockOrderV2({ token, username, orderId: unlockOrderId });
@@ -15434,7 +15489,9 @@ function OrderForm25() {
       }
 
       // 2. Odemkni objednávku (pokud je editace) - graceful handling
-      const unlockOrderId = formData.id; // NOTE: using formData.id directly (single source of truth)
+      // ✅ FIX: Použít editOrderId místo formData.id (po smazání draftu může být formData prázdné)
+      const unlockOrderId = editOrderId || formData.id;
+      
       if (unlockOrderId && token && username) {
         try {
           await unlockOrderV2({ token, username, orderId: unlockOrderId });

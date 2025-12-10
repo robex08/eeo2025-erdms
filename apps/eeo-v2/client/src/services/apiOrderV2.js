@@ -1880,7 +1880,8 @@ export async function lockOrderV2({ token, username, orderId }) {
     const response = await apiOrderV2.post(
       '/order-v2/lock',
       { 
-        orderId,
+        id: orderId,        // Backend očekává 'id' (primary)
+        orderId: orderId,   // Fallback pro kompatibilitu
         token,
         username
       },
@@ -1901,22 +1902,33 @@ export async function lockOrderV2({ token, username, orderId }) {
  */
 export async function unlockOrderV2({ token, username, orderId, force = false }) {
   try {
+    const payload = { 
+      id: orderId,        // Backend očekává 'id' (primary)
+      orderId: orderId,   // Fallback pro kompatibilitu
+      force,
+      token,
+      username
+    };
+    
     const response = await apiOrderV2.post(
       '/order-v2/unlock',
-      { 
-        id: orderId,  // Backend očekává 'id', ne 'orderId'
-        force,
-        token,
-        username
-      },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${token}`
         }
       }
     );
+    
     return response.data;
   } catch (err) {
+    console.error('❌ Unlock selhal:', {
+      error: err.message,
+      responseData: err.response?.data,
+      responseStatus: err.response?.status,
+      responseHeaders: err.response?.headers
+    });
+    console.error('❌ [UNLOCK DEBUG] Backend error message:', err.response?.data?.err || err.response?.data?.message || 'No error message');
     throw new Error(normalizeError(err));
   }
 }
