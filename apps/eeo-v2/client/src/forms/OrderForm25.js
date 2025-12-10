@@ -4786,7 +4786,10 @@ function OrderForm25() {
   // Používá ref pro aktuální hodnoty - vždy dostupná i v async funkcích
   const broadcastOrderStateRef = useRef();
   
+  // 🎯 SPRINT 5: Consolidated Broadcast Effect (4→1 hook)
+  // Combines: broadcastRef update, mount broadcast, isChanged broadcast, and key values broadcast
   useEffect(() => {
+    // Update broadcast ref function
     broadcastOrderStateRef.current = (overrides = {}) => {
       const state = {
         isEditMode: !isNewOrder,
@@ -4794,7 +4797,7 @@ function OrderForm25() {
         orderNumber: formData.cislo_objednavky || formData.ev_cislo,
         currentPhase,
         mainWorkflowState,
-        hasDraft: isChanged || isDraftLoaded, // 🎯 Indikuje že existuje koncept s změnami
+        hasDraft: isChanged || isDraftLoaded,
         timestamp: Date.now(),
         ...overrides
       };
@@ -4804,21 +4807,14 @@ function OrderForm25() {
       
       return state;
     };
-  }, [isNewOrder, formData.id, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
 
-  // Helper pro volání z async funkcí
-  const broadcastOrderState = (overrides) => {
-    if (broadcastOrderStateRef.current) {
-      return broadcastOrderStateRef.current(overrides);
+    // Broadcast if form is initialized
+    if (isDraftLoaded) {
+      broadcastOrderStateRef.current();
     }
-  };
-
-  // 🎯 [MOUNT] Broadcast při načtení formuláře
-  useEffect(() => {
-    broadcastOrderState();
     
+    // Cleanup on unmount
     return () => {
-      // Cleanup: Reset stavu po 100ms (pokud se nemountla nová instance)
       setTimeout(() => {
         if (!window.__orderFormState || window.__orderFormState.timestamp < Date.now() - 500) {
           const resetState = {
@@ -4835,14 +4831,14 @@ function OrderForm25() {
         }
       }, 100);
     };
-  }, []); // Spustit POUZE při mount/unmount!
+  }, [isNewOrder, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
 
-  // 🎯 [UPDATE] Broadcast při změně isChanged - pro aktualizaci menu
-  useEffect(() => {
-    if (isDraftLoaded) {
-      broadcastOrderState();
+  // Helper pro volání z async funkcí
+  const broadcastOrderState = (overrides) => {
+    if (broadcastOrderStateRef.current) {
+      return broadcastOrderStateRef.current(overrides);
     }
-  }, [isChanged]); // Spustit při změně isChanged
+  };
 
   // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
   const [saveState, setSaveState] = useState({
@@ -4868,6 +4864,15 @@ function OrderForm25() {
       autosaveCallbackRef.current(isAutoSave);
     }
   }, []);
+  
+  // 🎯 AUTOSAVE HOOK - Defined early to be accessible throughout the component
+  // Uses saveState directly instead of aliases to avoid initialization order issues
+  const { triggerAutosave, cancelAutosave } = useAutosave(performSaveDraft, {
+    delay: 3000, // 3 sekundy neaktivity
+    enabled: !saveState.disableAutosave && isDraftLoaded,
+    dependencies: [saveState.disableAutosave, isDraftLoaded, formData.faktury]
+  });
+  
   // 🎤 POZOR: Hlasové rozpoznávání je implementováno GLOBÁLNĚ v Layout.js
   // OrderForm25 NEPOUŽÍVÁ vlastní hook, protože by to způsobovalo konflikty
   // Pokud uživatel chce nahrávat do poznámky formuláře:
@@ -4947,20 +4952,7 @@ function OrderForm25() {
     onConfirm: null
   });
 
-  // 🎯 AUTOSAVE HOOK - faktury jsou teď součástí formData
-  const { triggerAutosave, cancelAutosave } = useAutosave(performSaveDraft, {
-    delay: 3000, // 3 sekundy neaktivity
-    enabled: !disableAutosave && isDraftLoaded,
-    dependencies: [disableAutosave, isDraftLoaded, formData.faktury]
-  });
-
-  // 🎯 [UPDATE] Broadcast při změně klíčových hodnot (isNewOrder, formData.id, formData.id)
-  useEffect(() => {
-    // Broadcast pouze pokud je formulář inicializovaný
-    if (isDraftLoaded) {
-      broadcastOrderState();
-    }
-  }, [isNewOrder, formData.id, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
+  // ✅ SPRINT 5: Broadcast consolidated above (was 4→1 hook)
 
   // 📋 SPRINT 4: Consolidated Template UI State (7→1 hook)
   const [templateUI, setTemplateUI] = useState({
