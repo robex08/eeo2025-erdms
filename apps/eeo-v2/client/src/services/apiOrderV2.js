@@ -1867,3 +1867,175 @@ export async function getLPOptionsForItems(lpIds = [], rok = null, username, tok
     throw new Error(errorMsg);
   }
 }
+
+// ============================================================================
+// 🔒 LOCK/UNLOCK OPERATIONS
+// ============================================================================
+
+/**
+ * Lock order for editing
+ */
+export async function lockOrderV2({ token, username, orderId }) {
+  try {
+    const response = await apiOrderV2.post(
+      '/order-v2/lock',
+      { orderId },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Username': username
+        }
+      }
+    );
+    return response.data;
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+/**
+ * Unlock order after editing
+ */
+export async function unlockOrderV2({ token, username, orderId, force = false }) {
+  try {
+    const response = await apiOrderV2.post(
+      '/order-v2/unlock',
+      { orderId, force },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Username': username
+        }
+      }
+    );
+    return response.data;
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+// ============================================================================
+// 📚 DICTIONARY/REFERENCE DATA
+// ============================================================================
+
+/**
+ * Get attachment types (typy příloh)
+ */
+export async function getTypyPrilohV2({ token, username, aktivni = 1 }) {
+  try {
+    const response = await apiOrderV2.get('/order-v2/typy-priloh', {
+      params: { aktivni },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Username': username
+      }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data || [];
+    }
+    throw new Error('Invalid response from typy-priloh endpoint');
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+/**
+ * Get invoice types (typy faktur)
+ */
+export async function getTypyFakturV2({ token, username, aktivni = 1 }) {
+  try {
+    const response = await apiOrderV2.get('/order-v2/typy-faktur', {
+      params: { aktivni },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Username': username
+      }
+    });
+    
+    if (response.data?.status === 'ok') {
+      return response.data.data || [];
+    }
+    throw new Error('Invalid response from typy-faktur endpoint');
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
+// ============================================================================
+// 🔧 UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Generate unique GUID for attachments
+ */
+export function generateAttachmentGUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Generate system filename
+ */
+export function generateSystemFilename(guid = null) {
+  const timestamp = Date.now();
+  const useGuid = guid || generateAttachmentGUID();
+  return `${timestamp}_${useGuid}`;
+}
+
+/**
+ * Create attachment metadata from file
+ */
+export function createAttachmentMetadata(file) {
+  const guid = generateAttachmentGUID();
+  const systemFilename = generateSystemFilename(guid);
+  
+  return {
+    guid,
+    name: file.name,
+    original_filename: file.name,
+    systemovy_nazev: systemFilename,
+    size: file.size,
+    typ_prilohy: null,
+    description: '',
+    uploaded_at: new Date().toISOString(),
+    uploaded_by: null
+  };
+}
+
+/**
+ * Check if file type is allowed
+ */
+export function isAllowedFileType(filename) {
+  const allowedExtensions = [
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt',
+    'jpg', 'jpeg', 'png', 'gif', 'bmp',
+    'zip', 'rar', '7z',
+    'csv', 'xml', 'json'
+  ];
+  
+  const extension = filename.split('.').pop()?.toLowerCase();
+  return extension && allowedExtensions.includes(extension);
+}
+
+/**
+ * Check if file size is within limit
+ */
+export function isAllowedFileSize(fileSize, maxSizeMB = 10) {
+  const maxBytes = maxSizeMB * 1024 * 1024;
+  return fileSize <= maxBytes;
+}
+
+/**
+ * Format file size for display
+ */
+export function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
