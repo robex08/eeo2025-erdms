@@ -1879,11 +1879,14 @@ export async function lockOrderV2({ token, username, orderId }) {
   try {
     const response = await apiOrderV2.post(
       '/order-v2/lock',
-      { orderId },
+      { 
+        orderId,
+        token,
+        username
+      },
       {
         headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Username': username
+          Authorization: `Bearer ${token}`
         }
       }
     );
@@ -1900,11 +1903,15 @@ export async function unlockOrderV2({ token, username, orderId, force = false })
   try {
     const response = await apiOrderV2.post(
       '/order-v2/unlock',
-      { orderId, force },
+      { 
+        id: orderId,  // Backend očekává 'id', ne 'orderId'
+        force,
+        token,
+        username
+      },
       {
         headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Username': username
+          Authorization: `Bearer ${token}`
         }
       }
     );
@@ -1924,10 +1931,10 @@ export async function unlockOrderV2({ token, username, orderId, force = false })
 export async function getTypyPrilohV2({ token, username, aktivni = 1 }) {
   try {
     const response = await apiOrderV2.get('/order-v2/typy-priloh', {
-      params: { aktivni },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Username': username
+      params: { 
+        aktivni,
+        token,
+        username
       }
     });
     
@@ -1946,10 +1953,10 @@ export async function getTypyPrilohV2({ token, username, aktivni = 1 }) {
 export async function getTypyFakturV2({ token, username, aktivni = 1 }) {
   try {
     const response = await apiOrderV2.get('/order-v2/typy-faktur', {
-      params: { aktivni },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Username': username
+      params: { 
+        aktivni,
+        token,
+        username
       }
     });
     

@@ -6492,6 +6492,9 @@ function OrderForm25() {
             setIsChanged(existingDraft.isChanged || false);
             // NOTE: formData.id removed - formData.id is single source of truth
             setIsDraftLoaded(true);
+            
+            // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
+            setIsEditMode(true);
 
             return; // HOTOVO - draft načten
           }
@@ -6786,14 +6789,12 @@ function OrderForm25() {
           // ✅ PŘIDAT: Explicitně ulož metadata pro EDIT mode
           draftManager.saveMetadata({
             isEditMode: true,
-            formData.id: orderId,
-            editOrderId: orderId,  // ✅ KLÍČOVÉ!
+            editOrderId: orderId,
             openConceptNumber: freshDraft.formData.ev_cislo || freshDraft.formData.cislo_objednavky
           });
 
-            orderId,
-            ev_cislo: freshDraft.formData.ev_cislo || freshDraft.formData.cislo_objednavky
-          });
+          // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
+          setIsEditMode(true);
 
           // 🔄 Aktualizovat MenuBar s načtenou objednávkou
           broadcastOrderState({
@@ -15286,6 +15287,16 @@ function OrderForm25() {
         if (user_id) {
           draftManager.setCurrentUser(user_id);
           await draftManager.deleteAllDraftKeys();
+          
+          // 🔥 EXPLICITNĚ vymazat metadata (isEditMode) - důležité pro MenuBar
+          try {
+            localStorage.removeItem(`order_form_isEditMode_${user_id}`);
+            localStorage.removeItem(`openOrderInConcept-${user_id}`);
+            localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+            localStorage.removeItem(`savedOrderId-${user_id}`);
+          } catch (e) {
+            // ignoruj chybu
+          }
         }
         
         // NOTE: formData.id and sourceOrderIdForUnlock removed - using formData.id
@@ -15303,6 +15314,9 @@ function OrderForm25() {
 
         // Reset MenuBaru
         try {
+          // 🔥 KRITICKÉ: Nastavit isEditMode state na false PŘED broadcastem
+          setIsEditMode(false);
+          
           broadcastDraftDeleted(user_id);
           broadcastOrderState({
             isEditMode: false,
@@ -15407,6 +15421,16 @@ function OrderForm25() {
           await draftManager.deleteAllDraftKeys();
         } else {
         }
+        
+        // 🔥 EXPLICITNĚ vymazat metadata (isEditMode) - důležité pro MenuBar
+        try {
+          localStorage.removeItem(`order_form_isEditMode_${user_id}`);
+          localStorage.removeItem(`openOrderInConcept-${user_id}`);
+          localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
+          localStorage.removeItem(`savedOrderId-${user_id}`);
+        } catch (e) {
+          // ignoruj chybu
+        }
       }
 
       // 2. Odemkni objednávku (pokud je editace) - graceful handling
@@ -15423,6 +15447,9 @@ function OrderForm25() {
 
       // 3. Reset MenuBaru
       try {
+        // 🔥 KRITICKÉ: Nastavit isEditMode state na false PŘED broadcastem
+        setIsEditMode(false);
+        
         broadcastDraftDeleted(user_id);
 
         // Počkej krátce, aby se broadcast stihl zpracovat
