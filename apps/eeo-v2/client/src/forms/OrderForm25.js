@@ -26,19 +26,10 @@ import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, 
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
 import {
   setDebugLogger,
-  updateAttachment25,
-  createDownloadLink25,
-  isAllowedFileType25,
-  isAllowedFileSize25,
-  generateAttachmentGUID25,
-  generateSystemovyNazev25,
-  createAttachmentMetadata25,
-  getTypyPriloh25,
-  getTypyFaktur25,
-  lockOrder25,
-  unlockOrder25
-} from '../services/api25orders';
+  updateAttachmentV2,
+} from '../services/apiDictionaries';
 import {
+  // ✅ V2 API: Core CRUD operations
   getOrderV2,           // ✅ V2 API: GET order by ID
   createOrderV2,        // ✅ V2 API: CREATE order
   updateOrderV2,        // ✅ V2 API: UPDATE order
@@ -57,8 +48,23 @@ import {
   listInvoiceAttachments,
   downloadInvoiceAttachment,
   deleteInvoiceAttachment,
+  // ✅ V2 API: Lock/Unlock
+  lockOrderV2,
+  unlockOrderV2,
+  // ✅ V2 API: Dictionaries
+  getTypyPrilohV2,
+  getTypyFakturV2,
+  // ✅ V2 API: Utilities
+  generateAttachmentGUID,
+  generateSystemFilename,
+  createAttachmentMetadata,
+  isAllowedFileType,
+  isAllowedFileSize,
+  formatFileSize,
+  // ✅ V2 API: Helpers
   prepareDataForAPI,
-  normalizeError
+  normalizeError,
+  updateAttachmentV2
 } from '../services/apiOrderV2';
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
@@ -6290,7 +6296,7 @@ function OrderForm25() {
           } else {
             // Objednávka není zamčená - normální lock
             try {
-              const lockResult = await lockOrder25({ token, username, orderId: editOrderId });
+              const lockResult = await lockOrderV2({ token, username, orderId: editOrderId });
               if (lockResult.success) {
                 // NOTE: unlockOrderIdRef removed - formData.id is used for unlock
                 
@@ -8216,7 +8222,7 @@ function OrderForm25() {
       const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
       if (unlockOrderId && token && username && !skipUnlock) {
         try {
-          await unlockOrder25({ token, username, orderId: unlockOrderId });
+          await unlockOrderV2({ token, username, orderId: unlockOrderId });
         } catch (error) {
           // Ignoruj chybu odemykání
         }
@@ -9596,7 +9602,7 @@ function OrderForm25() {
 
         if (result.lock_info?.locked && !result.lock_info?.locked_by_user_id) {
           try {
-            await unlockOrder25({ token, username, orderId: result.id });
+            await unlockOrderV2({ token, username, orderId: result.id });
             addDebugLog('info', 'SAVE-V2', 'auto-unlock', `Automaticky odemčena objednávka ${result.id} (byla zamčená bez vlastníka)`);
           } catch (unlockError) {
             addDebugLog('warning', 'SAVE-V2', 'auto-unlock-error', `Chyba při odemykání: ${unlockError.message}`);
@@ -12192,12 +12198,12 @@ function OrderForm25() {
     // Přidáme soubory do lokálního stavu pro klasifikaci
     const newFiles = Array.from(files).map((file, index) => {
       // Validace souboru
-      if (!isAllowedFileType25(file.name)) {
+      if (!isAllowedFileType(file.name)) {
         showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, 'error');
         return null;
       }
 
-      if (!isAllowedFileSize25(file.size, 20)) {
+      if (!isAllowedFileSize(file.size, 20)) {
         showToast(`Soubor ${file.name}: Příliš velký (max 20MB)`, 'error');
         return null;
       }
@@ -12208,7 +12214,7 @@ function OrderForm25() {
       }
 
       // Použij Orders25 metadata generátor
-      const metadata = createAttachmentMetadata25(file);
+      const metadata = createAttachmentMetadata(file);
 
       return {
         id: metadata.id,
@@ -12261,12 +12267,12 @@ function OrderForm25() {
     // Přidáme soubory s automatickou klasifikací "JINE"
     const newFiles = Array.from(files).map((file, index) => {
       // Validace souboru
-      if (!isAllowedFileType25(file.name)) {
+      if (!isAllowedFileType(file.name)) {
         showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, { type: 'error' });
         return null;
       }
 
-      if (!isAllowedFileSize25(file.size, 20)) {
+      if (!isAllowedFileSize(file.size, 20)) {
         showToast(`Soubor ${file.name}: Příliš velký (max 20MB)`, { type: 'error' });
         return null;
       }
@@ -12275,7 +12281,7 @@ function OrderForm25() {
       const duplicate = checkDuplicateFileName(file.name);
 
       // Použij Orders25 metadata generátor
-      const metadata = createAttachmentMetadata25(file);
+      const metadata = createAttachmentMetadata(file);
 
       const newFile = {
         id: metadata.id,
@@ -12408,7 +12414,7 @@ function OrderForm25() {
       }
 
       try {
-        const result = await updateAttachment25({
+        const result = await updateAttachmentV2({
           token,
           username,
           objednavka_id: formData.id, // ✅ OPRAVENO: přidán objednavka_id
@@ -13029,8 +13035,14 @@ function OrderForm25() {
       );
 
       // Přímo stáhnout soubor bez dialogů
-      const { createDownloadLink25 } = await import('../services/api25orders');
-      createDownloadLink25(blob, attachment.name);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.name || 'priloha';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       addDebugLog('success', 'ATTACHMENTS', 'download-success',
         `Příloha ${attachment.name} stažena úspěšně`);
@@ -15050,7 +15062,7 @@ function OrderForm25() {
         const unlockOrderId = formData.id;
         if (unlockOrderId && token && username) {
           try {
-            await unlockOrder25({ token, username, orderId: unlockOrderId });
+            await unlockOrderV2({ token, username, orderId: unlockOrderId });
             // 🔒 KRITICKÉ: Zabránit duplicitnímu unlock z useEffect cleanup (již neexistuje)
           } catch (error) {
             // Ignoruj chybu odemykání
@@ -15172,7 +15184,7 @@ function OrderForm25() {
       const unlockOrderId = formData.id; // NOTE: using formData.id directly (single source of truth)
       if (unlockOrderId && token && username) {
         try {
-          await unlockOrder25({ token, username, orderId: unlockOrderId });
+          await unlockOrderV2({ token, username, orderId: unlockOrderId });
           addDebugLog('success', 'CANCEL', 'unlock', `Objednávka ${unlockOrderId} byla odemknuta`);
         } catch (error) {
           addDebugLog('warning', 'CANCEL', 'unlock-error', `Chyba při odemykání: ${error.message} - ignorováno`);
