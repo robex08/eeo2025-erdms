@@ -25,8 +25,7 @@ import { prettyDate, formatDateOnly } from '../utils/format';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
 import {
-  setDebugLogger,
-  updateAttachmentV2,
+  setDebugLogger
 } from '../services/apiDictionaries';
 import {
   // ✅ V2 API: Core CRUD operations
