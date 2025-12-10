@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useContext, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM, { flushSync } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
@@ -92,9 +92,7 @@ import {
 
 // 🎯 NOVÉ: Import refactored hooks pro state management
 import { useFormController, useWorkflowManager } from './OrderForm25/hooks';
-
-// 🚀 PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
-const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
+import { DocxGeneratorModal } from '../components/DocxGeneratorModal';
 
 // Pomocná funkce pro formátování data pro DatePicker (YYYY-MM-DD formát)
 const formatDateForPicker = (date) => {
@@ -4062,12 +4060,43 @@ function OrderForm25() {
   const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
-  // 🎯 Ulož editOrderId do draftManager při prvním načtení z URL
+  // 🔥 OKAMŽITÝ BROADCAST MenuBaru při detekci editId - JEŠTĚ PŘED načítáním dat!
   useEffect(() => {
-    if (editOrderIdFromUrl) {
-      draftManager.saveMetadata({ editOrderId: editOrderIdFromUrl });
+    if (editOrderId) {
+      // Má editId → nastavit MenuBar na "Editace" OKAMŽITĚ!
+      const state = {
+        isEditMode: true,
+        isNewOrder: false,
+        orderId: parseInt(editOrderId),
+        orderNumber: '', // Bude doplněno po načtení
+        currentPhase: 1,
+        mainWorkflowState: 'NOVA',
+        hasDraft: false,
+        timestamp: Date.now()
+      };
+      
+      window.__orderFormState = state;
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
+      
+      // Ulož editOrderId do draftManager
+      draftManager.saveMetadata({ editOrderId: editOrderId });
+    } else {
+      // Není editId → "Nová objednávka"
+      const state = {
+        isEditMode: false,
+        isNewOrder: true,
+        orderId: null,
+        orderNumber: '',
+        currentPhase: 1,
+        mainWorkflowState: 'NOVA',
+        hasDraft: false,
+        timestamp: Date.now()
+      };
+      
+      window.__orderFormState = state;
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
     }
-  }, [editOrderIdFromUrl]);
+  }, [editOrderId]); // Spustí se při změně editOrderId
   
   const archivovanoParam = urlParams.get('archivovano'); // Parametr pro načtení archivovaných objednávek
 
@@ -4813,20 +4842,28 @@ function OrderForm25() {
     return broadcastMenuBarStateRef.current(overrides);
   };
   
-  // 🚀 INICIALIZACE při mountu - nastavit stav podle editId
+  // 🚀 LOADING GATE - čeká na načtení formData.id a pak pošle broadcast
   useEffect(() => {
-    const metadata = draftManager.getMetadata();
-    const hasEditId = !!(metadata?.editOrderId || metadata?.formData?.id);
+    // Čekat dokud není isDraftLoaded = skutečně načteno
+    if (!isDraftLoaded) return;
     
-    broadcastMenuBarState({
-      isEditMode: hasEditId,
-      isNewOrder: !hasEditId,
-      orderId: metadata?.editOrderId || metadata?.formData?.id || null,
-      orderNumber: metadata?.openConceptNumber || metadata?.formData?.cislo_objednavky || metadata?.formData?.ev_cislo || '',
-      currentPhase: 1,
-      mainWorkflowState: 'NOVA',
-      hasDraft: false
-    });
+    // Určit stav podle formData.id (SINGLE SOURCE OF TRUTH)
+    const hasId = !!formData.id;
+    
+    // Poslat broadcast s aktuálním stavem
+    const state = {
+      isEditMode: hasId,
+      isNewOrder: !hasId,
+      orderId: formData.id || null,
+      orderNumber: formData.cislo_objednavky || formData.ev_cislo || '',
+      currentPhase,
+      mainWorkflowState,
+      hasDraft: isChanged,
+      timestamp: Date.now()
+    };
+    
+    window.__orderFormState = state;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
     
     // 🔥 DEINICIALIZACE při unmount - zrušit všechny ID a nastavit "žádná objednávka"
     return () => {
@@ -4842,7 +4879,7 @@ function OrderForm25() {
       };
       window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: window.__orderFormState }));
     };
-  }, []); // POUZE při mount/unmount - ŽÁDNÉ další závislosti!
+  }, [isDraftLoaded, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged]); // ✅ Čeká na isDraftLoaded!
 
   // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
   const [saveState, setSaveState] = useState({
@@ -5677,8 +5714,16 @@ function OrderForm25() {
         
         // ✅ KRITICKÉ: Povolit autosave i pro EDIT mode!
         draftManager.setAutosaveEnabled(true, 'EDIT order initialization');
+        
+        // 🔥 KRITICKÉ: Poslat broadcast MenuBaru - EDIT MODE JE READY!
+        broadcastOrderState({
+          isEditMode: true,
+          isNewOrder: false,
+          orderId: finalData.id || editOrderId,
+          orderNumber: finalData.cislo_objednavky || finalData.ev_cislo || ''
+        });
       }
-  }, [editOrderId, user_id, draftManager, setFormData, setIsEditMode, setIsDraftLoaded, setIsInitialized, autoFillSupplierFromContract, setSupplierAutoFillSource]);
+  }, [editOrderId, user_id, draftManager, setFormData, setIsEditMode, setIsDraftLoaded, setIsInitialized, autoFillSupplierFromContract, setSupplierAutoFillSource, broadcastOrderState]);
 
   // 🎨 HELPER FUNKCE PRO FORMÁTOVANÉ TOASTY
   // Vytváří jednotný vzhled pro všechny toast zprávy s ikonami a barvami
@@ -6131,7 +6176,13 @@ function OrderForm25() {
             setFormData(mergedData);
             setIsChanged(false);
             setIsEditMode(true);
-            // NOTE: formData.id removed - formData.id is single source of truth
+            // 🔥 KRITICKÉ: Poslat broadcast po DB sync
+            broadcastOrderState({
+              isEditMode: true,
+              isNewOrder: false,
+              orderId: syncCheck.dbData.id,
+              orderNumber: syncCheck.dbData.cislo_objednavky || syncCheck.dbData.ev_cislo
+            });
             await draftManager.syncWithDatabase(syncCheck.dbData, syncCheck.dbData.id);
             return;
           }
@@ -6177,7 +6228,13 @@ function OrderForm25() {
 
         if (draftData.formData.id || draftData.formData?.id) {
           setIsEditMode(true);
-          // NOTE: formData.id removed - formData.id is single source of truth
+          // 🔥 KRITICKÉ: Poslat broadcast po načtení draftu s editId
+          broadcastOrderState({
+            isEditMode: true,
+            isNewOrder: false,
+            orderId: draftData.formData.id,
+            orderNumber: draftData.formData.cislo_objednavky || draftData.formData.ev_cislo
+          });
         }
 
       } catch (error) {
@@ -25649,15 +25706,13 @@ function OrderForm25() {
       />
     )}
 
-    {/* 📄 DOCX Generator Modal - Lazy loaded for better performance */}
+    {/* 📄 DOCX Generator Modal */}
     {docxModalOpen && (
-      <Suspense fallback={<div>Načítání DOCX generátoru...</div>}>
-        <DocxGeneratorModal
-          order={docxModalOrder}
-          isOpen={docxModalOpen}
-          onClose={handleDocxModalClose}
-        />
-      </Suspense>
+      <DocxGeneratorModal
+        order={docxModalOrder}
+        isOpen={docxModalOpen}
+        onClose={handleDocxModalClose}
+      />
     )}
 
     {/* 💾 Save Overlay - rozmaže zbytek stránky při ukládání (kromě hlavičky s progress barem) */}

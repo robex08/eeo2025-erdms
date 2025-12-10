@@ -5835,12 +5835,6 @@ const Orders25List = () => {
   // Load data on mount - s kontrolou forceReload z navigation state
   useEffect(() => {
     const shouldForceReload = location.state?.forceReload === true;
-    console.log('🔍 [ORDERS25LIST DEBUG] Location state changed:', {
-      forceReload: shouldForceReload,
-      fullState: location.state,
-      pathname: location.pathname,
-      action: 'Calling loadData with forceReload=' + shouldForceReload
-    });
     loadData(shouldForceReload);
   }, [loadData, location.state?.forceReload]);
 
