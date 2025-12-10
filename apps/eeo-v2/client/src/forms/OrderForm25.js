@@ -4053,15 +4053,16 @@ function OrderForm25() {
   const location = useLocation();
   const urlParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   
-  // 🎯 PERSISTENCE: Čti editOrderId z URL nebo z localStorage
+  // 🎯 PERSISTENCE: Čti editOrderId z URL nebo z draftManager
   const editOrderIdFromUrl = urlParams.get('edit');
-  const editOrderIdFromLS = localStorage.getItem('activeOrderEditId');
+  const metadata = draftManager.getMetadata();
+  const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
-  // 🎯 Ulož editOrderId do localStorage při prvním načtení z URL
+  // 🎯 Ulož editOrderId do draftManager při prvním načtení z URL
   useEffect(() => {
     if (editOrderIdFromUrl) {
-      localStorage.setItem('activeOrderEditId', editOrderIdFromUrl);
+      draftManager.saveMetadata({ editOrderId: editOrderIdFromUrl });
     }
   }, [editOrderIdFromUrl]);
   
@@ -4725,7 +4726,7 @@ function OrderForm25() {
   useEffect(() => {
     if (savedOrderId && !editOrderIdFromUrl) {
       // Pouze pokud NENÍ editOrderId v URL (tj. refresh stránky nebo pokračování v práci)
-      localStorage.setItem('activeOrderEditId', String(savedOrderId));
+      draftManager.saveMetadata({ editOrderId: String(savedOrderId) });
     }
   }, [savedOrderId, editOrderIdFromUrl]);
 
@@ -5211,15 +5212,15 @@ function OrderForm25() {
       if (loadedData?.id) {
         setSavedOrderId(loadedData.id);
         setIsEditMode(true);
-        // 🎯 PERSISTENCE: Ulož editOrderId do localStorage pro refresh
-        localStorage.setItem('activeOrderEditId', String(loadedData.id));
+        // 🎯 PERSISTENCE: Ulož editOrderId do draftManager pro refresh
+        draftManager.saveMetadata({ editOrderId: String(loadedData.id) });
       }
 
       // 🎯 NEBO pokud je editOrderId v URL - OKAMŽITĚ nastavit editMode
       if (editOrderId) {
         setIsEditMode(true);
-        // 🎯 PERSISTENCE: Ulož editOrderId do localStorage pro refresh
-        localStorage.setItem('activeOrderEditId', String(editOrderId));
+        // 🎯 PERSISTENCE: Ulož editOrderId do draftManager pro refresh
+        draftManager.saveMetadata({ editOrderId: String(editOrderId) });
       }
 
       // 🔥 NOVÉ: Načti draft PŘÍMO TADY během inicializace!
@@ -5245,8 +5246,8 @@ function OrderForm25() {
                 setSavedOrderId(draftOrderId);
                 // 🔧 POZNÁMKA: isNewOrder je computed value z useMemo(!formData.id && !savedOrderId)
                 // Nastavením savedOrderId automaticky isNewOrder = false
-                // 🎯 PERSISTENCE: Ulož do localStorage pro refresh
-                localStorage.setItem('activeOrderEditId', String(draftOrderId));
+                // 🎯 PERSISTENCE: Ulož do draftManager pro refresh
+                draftManager.saveMetadata({ editOrderId: String(draftOrderId) });
               }
 
               // ❌ Pokud je draft od JINÉ objednávky, IGNORUJ ho!
@@ -6565,19 +6566,7 @@ function OrderForm25() {
             attachments: []
           };
 
-          // Vyčisti localStorage a ulož fresh draft
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key && (
-              key.startsWith('orderForm25_') ||
-              key.startsWith('order25_draft_') ||  // ORDER25 STANDARD
-              key.startsWith('order25-draft-') ||  // LEGACY cleanup
-              key.startsWith('orderForm25-') ||
-              key.includes('draft') && key.includes('order')
-            )) {
-              localStorage.removeItem(key);
-            }
-          }
+          // Draft cleanup je nyní řešen automaticky přes draftManager
 
           // 🔥 KRITICKÁ OPRAVA: Pokud DB nemá faktury, explicitně nastav prázdné pole
           if (!freshDraft.formData.faktury || freshDraft.formData.faktury.length === 0) {
@@ -15098,15 +15087,8 @@ function OrderForm25() {
           await draftManager.deleteAllDraftKeys();
         }
         
-        // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
-        localStorage.removeItem('activeOrderEditId');
-        
-        // 🧹 Vyčistit i staré formáty (pro jistotu)
-        if (user_id) {
-          localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
-          localStorage.removeItem(`savedOrderId-${user_id}`);
-          localStorage.removeItem(`highlightOrderId-${user_id}`);
-        }
+        // 🧹 KRITICKÉ: Vymazat metadata z draftManager
+        draftManager.clearMetadata();
         
         // 🧹 Resetovat všechny state proměnné související s orderID
         setSavedOrderId(null);
@@ -15171,15 +15153,8 @@ function OrderForm25() {
     // 🎯 ZJEDNODUŠENÉ ZAVŘENÍ přes DraftManager
     addDebugLog('info', 'CANCEL', 'draftmanager-close', 'Zavírám formulář přes DraftManager');
     
-    // 🧹 KRITICKÉ: Vymazat VŠECHNY orderID z localStorage
-    localStorage.removeItem('activeOrderEditId');
-    
-    // 🧹 Vyčistit i staré formáty (pro jistotu)
-    if (user_id) {
-      localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
-      localStorage.removeItem(`savedOrderId-${user_id}`);
-      localStorage.removeItem(`highlightOrderId-${user_id}`);
-    }
+    // 🧹 KRITICKÉ: Vymazat metadata z draftManager
+    draftManager.clearMetadata();
 
     try {
       // 🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
