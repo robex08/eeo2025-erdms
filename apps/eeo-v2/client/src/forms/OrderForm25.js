@@ -4279,11 +4279,8 @@ function OrderForm25() {
       const metadata = draftManager.getMetadata();
 
       if (metadata && metadata.isEditMode === true) {
-        // ✅ PŘIDAT: Načíst i editOrderId
-        if (metadata.editOrderId || metadata.formData.id) {
-          const orderId = metadata.editOrderId || metadata.formData.id;
-          setSavedOrderId(orderId);
-        }
+        // NOTE: setSavedOrderId removed - formData.id is single source of truth
+        // Metadata is used only for editOrderId initialization
       }
     } catch (error) {
     }
@@ -8216,7 +8213,7 @@ function OrderForm25() {
 
     // Odemkni objednávku na pozadí (POKUD NENÍ skipUnlock)
     (async () => {
-      const unlockOrderId = sourceOrderIdForUnlock || orderId;
+      const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
       if (unlockOrderId && token && username && !skipUnlock) {
         try {
           await unlockOrder25({ token, username, orderId: unlockOrderId });
@@ -10920,10 +10917,7 @@ function OrderForm25() {
         ? explicitSavedOrderId
         : (formData.id || (formDataToSave.id ? formDataToSave.id : null));
 
-      // � FIX: Pokud jsme detekovali formData.id z formData.id, aktualizuj state
-      if (!formData.id && effectiveSavedOrderId && formDataToSave.id) {
-        setSavedOrderId(effectiveSavedOrderId);
-      }
+      // NOTE: setSavedOrderId removed - formData.id is single source of truth
 
       // 🔍 DEBUG: formData.id tracking
 
@@ -15104,7 +15098,7 @@ function OrderForm25() {
     // Zobraz confirm modal místo toast
     setCancelWarningMessage(warningMessage);
     setShowCancelConfirmModal(true);
-  }, [attachments, isOrderCompleted, user_id, sourceOrderIdForUnlock, formData.id, token, username, showToast, navigate]);
+  }, [attachments, isOrderCompleted, user_id, formData.id, token, username, showToast, navigate]);
 
   const handleCancelConfirm = useCallback(async () => {
     // 🎯 ZJEDNODUŠENÉ ZAVŘENÍ přes DraftManager
@@ -15231,7 +15225,7 @@ function OrderForm25() {
         navigate('/orders25-list', { state: { forceReload: true } });
       }, 100);
     }
-  }, [user_id, draftManager, sourceOrderIdForUnlock, formData.id, token, username, showToast, navigate]);
+  }, [user_id, draftManager, formData.id, token, username, showToast, navigate]);
 
   const handleCancelCancel = useCallback(() => {
     setShowCancelConfirmModal(false);
