@@ -4780,119 +4780,69 @@ function OrderForm25() {
   // 🎯 Sleduje zda už proběhlo načtení draftu
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
 
-  // �🎯 [GLOBAL STATE] Export stavu pro Layout.js MenuBar
-  // Místo složité logiky s draft metadata - OrderForm25 přímo ví, co edituje!
-  // 🎯 [CENTRALIZOVANÁ FUNKCE] Broadcast stavu do MenuBaru
-  // Používá ref pro aktuální hodnoty - vždy dostupná i v async funkcích
-  const broadcastOrderStateRef = useRef();
+  // 🎯 [CENTRÁLNÍ SPRÁVCE STAVU MENUBARU]
+  // Jedno místo pro inicializaci, update a deinicializaci - HOTOVO, KONEC!
   
-  // 🚀 OKAMŽITÝ BROADCAST při mountu - eliminuje blikání MenuBaru
-  // Spustí se PŘED načtením draftu, nastaví správný stav podle isEditMode
-  useEffect(() => {
-    const metadata = draftManager.getMetadata();
-    const editMode = metadata?.isEditMode === true;
-    const orderId = metadata?.editOrderId || metadata?.formData?.id;
-    const orderNumber = metadata?.openConceptNumber || metadata?.formData?.cislo_objednavky || metadata?.formData?.ev_cislo;
-    
-    // OKAMŽITÝ broadcast správného stavu
-    const initialState = {
-      isEditMode: editMode,
-      isNewOrder: !editMode,
-      orderId: orderId || null,
-      orderNumber: orderNumber || '',
-      currentPhase: 1, // Bude aktualizováno po načtení dat
-      mainWorkflowState: 'NOVA', // Bude aktualizováno po načtení dat
-      hasDraft: false,
+  // Centrální funkce pro broadcast stavu
+  const broadcastMenuBarState = useCallback((state) => {
+    const fullState = {
+      isEditMode: state.isEditMode ?? isEditMode,
+      isNewOrder: state.isNewOrder ?? !isEditMode,
+      orderId: state.orderId ?? formData.id,
+      orderNumber: state.orderNumber ?? (formData.cislo_objednavky || formData.ev_cislo),
+      currentPhase: state.currentPhase ?? currentPhase,
+      mainWorkflowState: state.mainWorkflowState ?? mainWorkflowState,
+      hasDraft: state.hasDraft ?? (isChanged || isDraftLoaded),
       timestamp: Date.now()
     };
     
-    window.__orderFormState = initialState;
-    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: initialState }));
-  }, []); // Prázdné deps = pouze při mountu
-  
-  // 🎯 Ref pro sledování předchozího stavu - eliminuje zbytečné broadcasty
-  const prevStateRef = useRef({
-    isEditMode: false,
-    orderId: null,
-    orderNumber: '',
-    currentPhase: 1,
-    mainWorkflowState: 'NOVA'
-  });
-  
-  // 🎯 SPRINT 5: Consolidated Broadcast Effect (4→1 hook)
-  // Combines: broadcastRef update, mount broadcast, isChanged broadcast, and key values broadcast
-  useEffect(() => {
-    // Update broadcast ref function
-    broadcastOrderStateRef.current = (overrides = {}) => {
-      const state = {
-        isEditMode: !isNewOrder,
-        orderId: formData.id || formData.id,
-        orderNumber: formData.cislo_objednavky || formData.ev_cislo,
-        currentPhase,
-        mainWorkflowState,
-        hasDraft: isChanged || isDraftLoaded,
-        timestamp: Date.now(),
-        ...overrides
-      };
-      
-      window.__orderFormState = state;
-      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
-      
-      return state;
-    };
-
-    // Broadcast pouze pokud se SKUTEČNĚ změnil některý klíčový stav
-    if (isDraftLoaded) {
-      const currentState = {
-        isEditMode: !isNewOrder,
-        orderId: formData.id,
-        orderNumber: formData.cislo_objednavky || formData.ev_cislo,
-        currentPhase,
-        mainWorkflowState
-      };
-      
-      const prevState = prevStateRef.current;
-      
-      // Porovnat skutečné změny
-      const hasChanged = 
-        currentState.isEditMode !== prevState.isEditMode ||
-        currentState.orderId !== prevState.orderId ||
-        currentState.orderNumber !== prevState.orderNumber ||
-        currentState.currentPhase !== prevState.currentPhase ||
-        currentState.mainWorkflowState !== prevState.mainWorkflowState;
-      
-      if (hasChanged) {
-        broadcastOrderStateRef.current();
-        prevStateRef.current = currentState;
-      }
-    }
+    window.__orderFormState = fullState;
+    window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: fullState }));
     
-    // Cleanup on unmount
-    return () => {
-      setTimeout(() => {
-        if (!window.__orderFormState || window.__orderFormState.timestamp < Date.now() - 500) {
-          const resetState = {
-            isEditMode: false,
-            isNewOrder: false,
-            orderId: null,
-            orderNumber: '',
-            currentPhase: 1,
-            mainWorkflowState: 'NOVA',
-            timestamp: Date.now()
-          };
-          window.__orderFormState = resetState;
-          window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: resetState }));
-        }
-      }, 100);
-    };
-  }, [isNewOrder, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
-
+    return fullState;
+  }, [isEditMode, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, isDraftLoaded]);
+  
+  // Ref pro přístup z async funkcí
+  const broadcastMenuBarStateRef = useRef(broadcastMenuBarState);
+  useEffect(() => {
+    broadcastMenuBarStateRef.current = broadcastMenuBarState;
+  }, [broadcastMenuBarState]);
+  
   // Helper pro volání z async funkcí
   const broadcastOrderState = (overrides) => {
-    if (broadcastOrderStateRef.current) {
-      return broadcastOrderStateRef.current(overrides);
-    }
+    return broadcastMenuBarStateRef.current(overrides);
   };
+  
+  // 🚀 INICIALIZACE při mountu - nastavit stav podle editId
+  useEffect(() => {
+    const metadata = draftManager.getMetadata();
+    const hasEditId = !!(metadata?.editOrderId || metadata?.formData?.id);
+    
+    broadcastMenuBarState({
+      isEditMode: hasEditId,
+      isNewOrder: !hasEditId,
+      orderId: metadata?.editOrderId || metadata?.formData?.id || null,
+      orderNumber: metadata?.openConceptNumber || metadata?.formData?.cislo_objednavky || metadata?.formData?.ev_cislo || '',
+      currentPhase: 1,
+      mainWorkflowState: 'NOVA',
+      hasDraft: false
+    });
+    
+    // 🔥 DEINICIALIZACE při unmount - zrušit všechny ID a nastavit "žádná objednávka"
+    return () => {
+      window.__orderFormState = {
+        isEditMode: false,
+        isNewOrder: false,
+        orderId: null,
+        orderNumber: '',
+        currentPhase: 1,
+        mainWorkflowState: 'NOVA',
+        hasDraft: false,
+        timestamp: Date.now()
+      };
+      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: window.__orderFormState }));
+    };
+  }, []); // POUZE při mount/unmount - ŽÁDNÉ další závislosti!
 
   // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
   const [saveState, setSaveState] = useState({
@@ -6849,14 +6799,6 @@ function OrderForm25() {
 
           // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
           setIsEditMode(true);
-
-          // 🔄 Aktualizovat MenuBar s načtenou objednávkou
-          broadcastOrderState({
-            isEditMode: true,
-            isNewOrder: false,
-            orderId: orderId,
-            orderNumber: dbOrder.cislo_objednavky || dbOrder.ev_cislo
-          });
 
           // 🎯 DEBUG LOG - FÁZE 2: Objednávka načtena z URL
           const currentPhaseNum = (() => {
