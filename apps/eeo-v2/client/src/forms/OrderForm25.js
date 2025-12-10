@@ -6083,7 +6083,7 @@ function OrderForm25() {
 
   // Automatické rozbalení lokalizačních panelů s vyplněnými hodnotami
   // VŽDY rozbalit pokud:
-  // 1. Je to majetková položka (atribut_objektu = 1)
+  // 1. Je to majetková položka (atribut_objektu = 1) → POVINNÁ lokalizace
   // 2. Má vyplněná lokalizační data (úsek, budova, místnost, poznámka)
   useEffect(() => {
     if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
@@ -6101,8 +6101,13 @@ function OrderForm25() {
           (polozka.poznamka && polozka.poznamka.trim() !== '');
 
         // ✅ ROZBALIT pokud:
-        // - Je to majetek (lokalizace je POVINNÁ) → musí být vidět červené rámečky
+        // - Je to majetek (lokalizace je POVINNÁ) → musí být vidět červené rámečky při validaci
         // - Má vyplněná data (aby uživatel viděl co už vyplnil)
+        // 
+        // DŮLEŽITÉ: Panel se rozbalí při:
+        // - Načtení objednávky s majetkovými položkami (i když lokalizace není vyplněná)
+        // - Načtení objednávky s vyplněnými lokalizačními daty
+        // - Změně druhu objednávky na majetek
         if (isMaterialOrderValue || hasLocationData) {
           newPanelStates[polozka.id] = true;
         } else {
@@ -6114,7 +6119,20 @@ function OrderForm25() {
       // Nastav VŽDY - aby se panely mohly otevřít i zavřít při změně stavu
       setLokalizacePanelStates(newPanelStates);
     }
-  }, [formData.polozky_objednavky?.length, formData.druh_objednavky_kod, isMaterialOrder])
+  }, [
+    formData.polozky_objednavky?.length, 
+    formData.druh_objednavky_kod, 
+    isMaterialOrder,
+    // ✅ KRITICKÉ: Sledovat i změny v lokalizačních datech položek
+    // Když se načte objednávka z DB, musí se panely rozbalit
+    JSON.stringify(formData.polozky_objednavky?.map(p => ({
+      id: p.id,
+      usek: p.usek_kod,
+      budova: p.budova_kod,
+      mistnost: p.mistnost_kod,
+      poznamka: p.poznamka
+    })))
+  ])
 
   // Synchronizace smlouvaSearchTerm s formData.cislo_smlouvy při načtení dat
   useEffect(() => {
