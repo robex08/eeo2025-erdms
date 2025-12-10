@@ -4060,43 +4060,81 @@ function OrderForm25() {
   const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
   
-  // 🔥 OKAMŽITÝ BROADCAST MenuBaru při detekci editId - JEŠTĚ PŘED načítáním dat!
+  // 🔥 OKAMŽITÝ BROADCAST MenuBaru při mount - podle dostupných dat
   useEffect(() => {
-    if (editOrderId) {
-      // Má editId → nastavit MenuBar na "Editace" OKAMŽITĚ!
+    // 🎯 PRIORITA: Zkontrolovat draft NEJDŘÍV (může mít více informací než URL)
+    const checkInitialState = async () => {
+      let menuBarState = 'NOVA'; // Default
+      let orderId = null;
+      let orderNumber = '';
+      
+      try {
+        if (user_id) {
+          draftManager.setCurrentUser(user_id);
+          
+          // Načíst draft metadata
+          const metadata = draftManager.getMetadata();
+          const hasDraftData = await draftManager.hasDraft();
+          
+          if (hasDraftData) {
+            const draftData = await draftManager.loadDraft();
+            
+            if (draftData && draftData.formData) {
+              // Draft existuje - určit stav podle savedOrderId
+              if (draftData.savedOrderId && draftData.formData.id) {
+                // Má savedOrderId → EDITACE skutečné objednávky
+                menuBarState = 'EDITACE';
+                orderId = draftData.savedOrderId;
+                orderNumber = draftData.formData.cislo_objednavky || draftData.formData.ev_cislo || '';
+              } else {
+                // Nemá savedOrderId → KONCEPT (autosave po první změně)
+                menuBarState = 'KONCEPT';
+                orderId = null;
+                orderNumber = '';
+              }
+            }
+          } else if (editOrderId) {
+            // Nemá draft, ale má editOrderId z URL → načítání EDITACE
+            menuBarState = 'EDITACE';
+            orderId = parseInt(editOrderId);
+            orderNumber = ''; // Bude doplněno po načtení
+            
+            // Ulož editOrderId do draftManager
+            draftManager.saveMetadata({ editOrderId: editOrderId });
+          }
+        } else if (editOrderId) {
+          // Anonymní uživatel s editOrderId
+          menuBarState = 'EDITACE';
+          orderId = parseInt(editOrderId);
+          orderNumber = '';
+        }
+      } catch (error) {
+        // Chyba při kontrole draftu - fallback na URL parametr
+        if (editOrderId) {
+          menuBarState = 'EDITACE';
+          orderId = parseInt(editOrderId);
+          orderNumber = '';
+        }
+      }
+      
+      // 🚀 POSLAT BROADCAST s určeným stavem
       const state = {
-        isEditMode: true,
-        isNewOrder: false,
-        orderId: parseInt(editOrderId),
-        orderNumber: '', // Bude doplněno po načtení
+        isEditMode: menuBarState === 'EDITACE',
+        isNewOrder: menuBarState === 'NOVA',
+        orderId: orderId,
+        orderNumber: orderNumber,
         currentPhase: 1,
         mainWorkflowState: 'NOVA',
-        hasDraft: false,
+        hasDraft: menuBarState !== 'NOVA',
         timestamp: Date.now()
       };
       
       window.__orderFormState = state;
       window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
-      
-      // Ulož editOrderId do draftManager
-      draftManager.saveMetadata({ editOrderId: editOrderId });
-    } else {
-      // Není editId → "Nová objednávka"
-      const state = {
-        isEditMode: false,
-        isNewOrder: true,
-        orderId: null,
-        orderNumber: '',
-        currentPhase: 1,
-        mainWorkflowState: 'NOVA',
-        hasDraft: false,
-        timestamp: Date.now()
-      };
-      
-      window.__orderFormState = state;
-      window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: state }));
-    }
-  }, [editOrderId]); // Spustí se při změně editOrderId
+    };
+    
+    checkInitialState();
+  }, [editOrderId, user_id]); // Spustí se při mount a změně editOrderId
   
   const archivovanoParam = urlParams.get('archivovano'); // Parametr pro načtení archivovaných objednávek
 
@@ -4842,23 +4880,39 @@ function OrderForm25() {
     return broadcastMenuBarStateRef.current(overrides);
   };
   
-  // 🚀 LOADING GATE - čeká na načtení formData.id a pak pošle broadcast
+  // 🚀 SYNCHRONNÍ BROADCAST MenuBaru - reaguje OKAMŽITĚ na změny
   useEffect(() => {
     // Čekat dokud není isDraftLoaded = skutečně načteno
     if (!isDraftLoaded) return;
     
-    // Určit stav podle formData.id (SINGLE SOURCE OF TRUTH)
-    const hasId = !!formData.id;
+    // 🔥 URČIT STAV podle formData.id a editOrderId (SINGLE SOURCE OF TRUTH)
+    const hasRealId = !!formData.id; // DB ID = skutečná objednávka v databázi
+    const hasEditIntent = !!editOrderId; // URL parametr edit=123 = editační záměr
     
-    // Poslat broadcast s aktuálním stavem
+    // ✅ JEDNOZNAČNÁ LOGIKA:
+    // 1. Má DB ID (formData.id) → EDITACE (nezáleží na editOrderId)
+    // 2. Nemá DB ID, ale má změny (isChanged) → KONCEPT
+    // 3. Nemá DB ID ani změny → NOVÁ
+    
+    let menuBarState = 'NOVA'; // Default
+    
+    if (hasRealId) {
+      // Má DB ID → EDITACE
+      menuBarState = 'EDITACE';
+    } else if (isChanged || hasEditIntent) {
+      // Nemá DB ID, ale má změny nebo editační záměr → KONCEPT
+      menuBarState = 'KONCEPT';
+    }
+    
+    // 🚀 POSLAT BROADCAST s jednoznačným stavem
     const state = {
-      isEditMode: hasId,
-      isNewOrder: !hasId,
-      orderId: formData.id || null,
+      isEditMode: menuBarState === 'EDITACE',
+      isNewOrder: menuBarState === 'NOVA',
+      orderId: hasRealId ? formData.id : null,
       orderNumber: formData.cislo_objednavky || formData.ev_cislo || '',
       currentPhase,
       mainWorkflowState,
-      hasDraft: isChanged,
+      hasDraft: menuBarState === 'KONCEPT' || menuBarState === 'EDITACE',
       timestamp: Date.now()
     };
     
@@ -4879,7 +4933,7 @@ function OrderForm25() {
       };
       window.dispatchEvent(new CustomEvent('orderFormStateChange', { detail: window.__orderFormState }));
     };
-  }, [isDraftLoaded, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged]); // ✅ Čeká na isDraftLoaded!
+  }, [isDraftLoaded, formData.id, formData.cislo_objednavky, formData.ev_cislo, currentPhase, mainWorkflowState, isChanged, editOrderId]); // ✅ Reaguje na všechny relevantní změny!
 
   // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
   const [saveState, setSaveState] = useState({
@@ -11160,9 +11214,23 @@ function OrderForm25() {
       // Zkontroluj existující draft pro firstSaveDate
       const existingDraft = await draftManager.hasDraft();
       let firstSaveDate = null;
+      
+      // 🔥 KRITICKÉ: Detekce první autosave (NOVA → KONCEPT)
+      const isFirstAutosave = !existingDraft && isAutoSave;
 
-      if (!existingDraft && isAutoSave) {
+      if (isFirstAutosave) {
         firstSaveDate = new Date().toISOString();
+        
+        // 🚀 BROADCAST: Přechod NOVA → KONCEPT při první změně!
+        broadcastOrderState({
+          isEditMode: false,
+          isNewOrder: false, // Už není nová, má koncept
+          orderId: null,
+          orderNumber: '',
+          hasDraft: true, // ← KLÍČOVÉ: Koncept existuje!
+          currentPhase: currentPhase,
+          mainWorkflowState: mainWorkflowState
+        });
       } else if (existingDraft) {
         try {
           const existing = await draftManager.loadDraft();
