@@ -4133,16 +4133,22 @@ function OrderForm25() {
   // Fullscreen režim
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 💰 State pro zbývající částky LP a smluv
-  const [lpDetails, setLpDetails] = useState({}); // { lp_id: { zbyva_skutecne, celkovy_limit, ... } }
-  const [loadingLpDetails, setLoadingLpDetails] = useState({}); // { lp_id: true/false }
-  const [smlouvyList, setSmlouvyList] = useState([]); // Seznam všech smluv pro autocomplete
-  const [loadingSmlouvyList, setLoadingSmlouvyList] = useState(false);
-  const [smlouvaDetail, setSmlouvaDetail] = useState(null); // Detail vybrané smlouvy
-  const [loadingSmlouvaDetail, setLoadingSmlouvaDetail] = useState(false);
-  const [smlouvaSearchTerm, setSmlouvaSearchTerm] = useState(''); // Vyhledávací term pro smlouvy
-  const [showSmlouvySuggestions, setShowSmlouvySuggestions] = useState(false);
-  const [selectedSmlouvaSuggestionIndex, setSelectedSmlouvaSuggestionIndex] = useState(-1); // Index vybrané položky v dropdownu
+  // 💰 SPRINT 4: Consolidated LP Details State (2→1 hook)
+  const [lpDetailsState, setLpDetailsState] = useState({
+    details: {}, // { lp_id: { zbyva_skutecne, celkovy_limit, ... } }
+    loading: {} // { lp_id: true/false }
+  });
+  
+  // 📋 SPRINT 4: Consolidated Smlouvy (Contracts) State (6→1 hook)
+  const [smlouvyState, setSmlouvyState] = useState({
+    list: [], // Seznam všech smluv pro autocomplete
+    loadingList: false,
+    detail: null, // Detail vybrané smlouvy
+    loadingDetail: false,
+    searchTerm: '', // Vyhledávací term pro smlouvy
+    showSuggestions: false,
+    selectedSuggestionIndex: -1 // Index vybrané položky v dropdownu
+  });
 
   // useEffect pro ESC klávesy v fullscreen režimu
   useEffect(() => {
@@ -4162,75 +4168,89 @@ function OrderForm25() {
 
   // Stavy pro přílohy
   const [attachments, setAttachments] = useState([]); // Lokální seznam příloh
-  const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [isCheckingSyncAttachments, setIsCheckingSyncAttachments] = useState(false);
-
-  // State pro confirm dialog mazání příloh
-  const [showDeleteAttachmentDialog, setShowDeleteAttachmentDialog] = useState(false);
-  const [attachmentToDelete, setAttachmentToDelete] = useState(null);
   
-  // State pro confirm dialog "Vymazat všechny přílohy"
-  const [showDeleteAllAttachmentsDialog, setShowDeleteAllAttachmentsDialog] = useState(false);
+  // 📎 SPRINT 4: Consolidated Attachment UI State (6→1 hook)
+  const [attachmentUI, setAttachmentUI] = useState({
+    uploading: false,
+    dragOver: false,
+    checkingSync: false,
+    showDeleteDialog: false,
+    deleteTarget: null,
+    showDeleteAllDialog: false
+  });
 
-  // State pro nové dialogy
-  const [showSupplierSearchDialog, setShowSupplierSearchDialog] = useState(false);
-  const [aresPopupOpen, setAresPopupOpen] = useState(false);
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
-  const [supplierSearchResults, setSupplierSearchResults] = useState([]);
-  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false);
-  const [allSupplierContacts, setAllSupplierContacts] = useState([]); // Všechny kontakty načtené jednou
-  const [aresSearch, setAresSearch] = useState('');
-  const [aresResults, setAresResults] = useState([]);
-  const [loadingAres, setLoadingAres] = useState(false);
-  const [savingToLocal, setSavingToLocal] = useState(null); // ID záznamu který se ukládá
-  const [aresScopeInfo, setAresScopeInfo] = useState({}); // { ico: { existsInPersonal, existsInUsek, existsInGlobal } }
-  const [aresSelectedScope, setAresSelectedScope] = useState('personal'); // Vybraný scope pro ARES dialog
-  const [aresSelectedUseky, setAresSelectedUseky] = useState([]); // Vybrané úseky pro ARES scope 'usek'
+  // 🔍 SPRINT 4: Consolidated Supplier Search State (5→1 hook)
+  const [supplierSearch, setSupplierSearch] = useState({
+    showDialog: false,
+    searchTerm: '',
+    results: [],
+    loading: false,
+    allContacts: [] // Všechny kontakty načtené jednou
+  });
+  
+  // 🏢 SPRINT 4: Consolidated ARES State (8→1 hook)
+  const [aresState, setAresState] = useState({
+    popupOpen: false,
+    search: '',
+    results: [],
+    loading: false,
+    savingToLocal: null, // ID záznamu který se ukládá
+    scopeInfo: {}, // { ico: { existsInPersonal, existsInUsek, existsInGlobal } }
+    selectedScope: 'personal', // Vybraný scope pro ARES dialog
+    selectedUseky: [] // Vybrané úseky pro ARES scope 'usek'
+  });
 
-  // 🏢 Úseky pro scope selector - načítají se z API
-  const [availableUseky, setAvailableUseky] = useState([]);
-  const [usekyLoading, setUsekyLoading] = useState(false);
+  // 🏢 SPRINT 4: Consolidated Useky State (2→1 hook)
+  const [usekyState, setUsekyState] = useState({
+    available: [],
+    loading: false
+  });
 
-  // State pro automatické vyhledávání IČO
-  const [showIcoCheck, setShowIcoCheck] = useState(false);
+  // 🔍 SPRINT 4: Consolidated ICO Check State (4→1 hook)
+  const [icoCheckState, setIcoCheckState] = useState({
+    show: false,
+    status: null, // null, 'checking', 'found-local', 'found-ares', 'not-found'
+    data: null,
+    isOperation: false
+  });
 
-  // State pro progress indikátor po uložení
-  const [showSaveProgress, setShowSaveProgress] = useState(false);
-  const [saveProgress, setSaveProgress] = useState(0);
-  const [saveProgressText, setSaveProgressText] = useState('');
-  const [icoCheckStatus, setIcoCheckStatus] = useState(null); // null, 'checking', 'found-local', 'found-ares', 'not-found'
+  // 📊 SPRINT 4: Consolidated Save Progress State (3→1 hook)
+  const [saveProgressState, setSaveProgressState] = useState({
+    show: false,
+    progress: 0,
+    text: ''
+  });
 
   // 🔒 State pro odemykání FÁZE 3 SEKCÍ (Dodavatel → Stav odeslání)
   // ⚠️ POZNÁMKA: Financování je součástí FÁZE 1-2, ne FÁZE 3!
   const [isPhase3SectionsLocked, setIsPhase3SectionsLocked] = useState(false);
   const [isPhase3SectionsUnlocked, setIsPhase3SectionsUnlocked] = useState(false); // Výchozí stav - zamčeno
   const [isPhase3SectionsLockProcessedFromDB, setIsPhase3SectionsLockProcessedFromDB] = useState(false); // Flag že zamčení bylo zpracováno při načtení z DB
-  const [icoCheckData, setIcoCheckData] = useState(null);
-  const [isIcoOperation, setIsIcoOperation] = useState(false);
 
   // State pro sledování stavu sbalení/rozbalení sekcí
   const [areSectionsCollapsed, setAreSectionsCollapsed] = useState(false);
 
-  // 🎯 State pro "Přidat do adresáře" dialog
-  const [showSupplierAddDialog, setShowSupplierAddDialog] = useState(false);
-  const [existingSupplierCheck, setExistingSupplierCheck] = useState(null); // Výsledek detekce dodavatele v DB
-  const [supplierAutoFillSource, setSupplierAutoFillSource] = useState(null); // Zdroj automatického vyplnění dodavatele (local/ares/smlouva)
+  // 🎯 SPRINT 4: Consolidated Supplier Dialog State (3→1 hook)
+  const [supplierDialog, setSupplierDialog] = useState({
+    showAddDialog: false,
+    existingCheck: null, // Výsledek detekce dodavatele v DB
+    autoFillSource: null // Zdroj automatického vyplnění dodavatele (local/ares/smlouva)
+  });
 
-  // 🎯 State pro DOCX generátor modal
-  const [docxModalOpen, setDocxModalOpen] = useState(false);
-  const [docxModalOrder, setDocxModalOrder] = useState(null);
+  // 🎯 SPRINT 4: Consolidated DOCX Modal State (2→1 hook)
+  const [docxModal, setDocxModal] = useState({
+    open: false,
+    orderData: null
+  });
 
-  // 🎯 NOVÉ STAVY PRO ŘEŠENÍ RACE CONDITION
-  // Stav načítání číselníků (selecty, dropdown options)
-  const [isLoadingCiselniky, setIsLoadingCiselniky] = useState(true);
-  // Stav načítání dat formuláře (editace objednávky)
-  const [isLoadingFormData, setIsLoadingFormData] = useState(false);
-
-  // Celkový loading stav pro inicializaci formuláře
-  const [isFormInitializing, setIsFormInitializing] = useState(true);
-  const [initializationError, setInitializationError] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false); // ✅ Flag pro dokončenou inicializaci
+  // 🎯 SPRINT 4: Consolidated Loading State (5→1 hook)
+  const [loadingState, setLoadingState] = useState({
+    ciselniky: true, // Načítání číselníků (selecty, dropdown options)
+    formData: false, // Načítání dat formuláře (editace objednávky)
+    initializing: true, // Celkový loading stav pro inicializaci
+    initialized: false, // ✅ Flag pro dokončenou inicializaci
+    error: null // Chyba při inicializaci
+  });
 
   // 🔐 isEditMode - persistuje v localStorage pro správné MenuBar zobrazení
   // NIKDY se nesmí ztratit po F5 refresh!
@@ -4824,14 +4844,16 @@ function OrderForm25() {
     }
   }, [isChanged]); // Spustit při změně isChanged
 
-  // Loading state pro tlačítka
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [disableAutosave, setDisableAutosave] = useState(false); // ❌ ZAKÁZAT autosave po úspěšném uložení
+  // 💾 SPRINT 4: Consolidated Save State (6→1 hook)
+  const [saveState, setSaveState] = useState({
+    saving: false,
+    savingDraft: false,
+    disableAutosave: false, // ❌ ZAKÁZAT autosave po úspěšném uložení
+    lastAutoSave: null,
+    autoSaving: false,
+    dataSource: null // 'concept', 'database', null
+  });
   const disableAutosaveRef = useRef(false); // 🚀 REF pro OKAMŽITOU kontrolu (bez async delay)
-  const [lastAutoSave, setLastAutoSave] = useState(null);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
-  const [dataSource, setDataSource] = useState(null); // 'concept', 'database', null
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
   
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
@@ -4859,44 +4881,50 @@ function OrderForm25() {
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [cancelWarningMessage, setCancelWarningMessage] = useState('');
 
-  // Stavy pro správu šablon (převzato z OrderFormComponent)
-  const [savedTemplates, setSavedTemplates] = useState([]); // [{ name, data, ts }]
-  const [serverTemplates, setServerTemplates] = useState([]); // array of { name, data, ts, type, id, user_id }
-  const [templatesFetchStatus, setTemplatesFetchStatus] = useState({ status: null, error: null });
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [showTemplateSaveModal, setShowTemplateSaveModal] = useState(false);
-  const [templateName, setTemplateName] = useState('');
-  const [templateType, setTemplateType] = useState('po'); // 'po', 'details', 'mixed'
-  const [templateSaveChecked, setTemplateSaveChecked] = useState(false);
-  const [saveMode, setSaveMode] = useState('new'); // 'new', 'update', 'merge'
-  const [selectedTargetTemplate, setSelectedTargetTemplate] = useState(null); // celý template objekt
-  const [selectedTargetTemplateTs, setSelectedTargetTemplateTs] = useState(null);
-  const [showDeleteTemplateConfirm, setShowDeleteTemplateConfirm] = useState(false);
-  const [templatePendingDelete, setTemplatePendingDelete] = useState(null);
+  // 📋 SPRINT 4: Consolidated Template State (13→1 hook)
+  const [templateState, setTemplateState] = useState({
+    saved: [], // [{ name, data, ts }]
+    server: [], // array of { name, data, ts, type, id, user_id }
+    fetchStatus: { status: null, error: null },
+    loading: false,
+    showSaveModal: false,
+    name: '',
+    type: 'po', // 'po', 'details', 'mixed'
+    saveChecked: false,
+    saveMode: 'new', // 'new', 'update', 'merge'
+    selectedTarget: null, // celý template objekt
+    selectedTargetTs: null,
+    showDeleteConfirm: false,
+    pendingDelete: null
+  });
 
-  // 🔓 Unlock Confirm Dialogs
-  const [showUnlockPhase1Confirm, setShowUnlockPhase1Confirm] = useState(false);
-  const [showUnlockPhase2Confirm, setShowUnlockPhase2Confirm] = useState(false);
-  const [showUnlockPhase3Confirm, setShowUnlockPhase3Confirm] = useState(false);
-  const [showUnlockRegistrConfirm, setShowUnlockRegistrConfirm] = useState(false);
-  const [showUnlockPotvrzeniConfirm, setShowUnlockPotvrzeniConfirm] = useState(false);
-  const [showCancelPublishConfirm, setShowCancelPublishConfirm] = useState(false); // Confirm pro zrušení zveřejnění
-  const [showUnlockFakturaceConfirm, setShowUnlockFakturaceConfirm] = useState(false);
-  const [showUnlockDokonceniConfirm, setShowUnlockDokonceniConfirm] = useState(false);
-  const [showUnlockStornoConfirm, setShowUnlockStornoConfirm] = useState(false);
+  // 🔓 SPRINT 4: Consolidated Unlock Confirm Dialogs (9→1 hook)
+  const [unlockDialogs, setUnlockDialogs] = useState({
+    phase1: false,
+    phase2: false,
+    phase3: false,
+    registr: false,
+    potvrzeni: false,
+    cancelPublish: false, // Confirm pro zrušení zveřejnění
+    fakturace: false,
+    dokonceni: false,
+    storno: false
+  });
 
-  // 💰 FAKTURY - Nyní jsou součástí formData.faktury (jako polozky_objednavky)
-  const [fakturyLoading, setFakturyLoading] = useState(false);
-  const [showAddFakturaForm, setShowAddFakturaForm] = useState(false);
-  const [editingFaktura, setEditingFaktura] = useState(null); // Faktura being edited
-  const [fakturaFormData, setFakturaFormData] = useState({
-    fa_datum_doruceni: formatDateForPicker(new Date()), // ✅ Správné pole pro datum
-    fa_dorucena: 1, // ✅ Boolean flag (0/1)
-    fa_castka: '',
-    fa_cislo_vema: '',
-    fa_strediska_kod: [], // ✅ Správný název pole pro střediska
-    fa_poznamka: '',
-    fa_splatnost: ''
+  // 💰 SPRINT 4: Consolidated Faktury (Invoice) State (4→1 hook)
+  const [fakturyState, setFakturyState] = useState({
+    loading: false,
+    showAddForm: false,
+    editing: null, // Faktura being edited
+    formData: {
+      fa_datum_doruceni: formatDateForPicker(new Date()), // ✅ Správné pole pro datum
+      fa_dorucena: 1, // ✅ Boolean flag (0/1)
+      fa_castka: '',
+      fa_cislo_vema: '',
+      fa_strediska_kod: [], // ✅ Správný název pole pro střediska
+      fa_poznamka: '',
+      fa_splatnost: ''
+    }
   });
 
   // 📎 PŘÍLOHY FAKTUR - už řešeno samostatnou komponentou InvoiceAttachmentsCompact
@@ -4934,15 +4962,16 @@ function OrderForm25() {
     }
   }, [isNewOrder, formData.id, formData.id, formData.cislo_objednavky, formData.ev_cislo, isDraftLoaded]);
 
-  const [templateActionsLog, setTemplateActionsLog] = useState([]);
-  const [hoveredPreviewKey, setHoveredPreviewKey] = useState(null);
-  const [previewModalData, setPreviewModalData] = useState(null); // {template, data}
-
-  // States pro editaci názvů šablon
-  const [editingTemplateId, setEditingTemplateId] = useState(null);
-  const [editingTemplateName, setEditingTemplateName] = useState('');
-  const [showSearchPredefs, setShowSearchPredefs] = useState(false);
-  const [searchPredefs, setSearchPredefs] = useState('');
+  // 📋 SPRINT 4: Consolidated Template UI State (7→1 hook)
+  const [templateUI, setTemplateUI] = useState({
+    actionsLog: [],
+    hoveredPreviewKey: null,
+    previewModalData: null, // {template, data}
+    editingId: null,
+    editingName: '',
+    showSearchPredefs: false,
+    searchPredefs: ''
+  });
   const searchInputRef = useRef(null);
 
   // Validační chyby - state pro označení červených polí
@@ -4951,15 +4980,232 @@ function OrderForm25() {
   
 
 
-  // State pro rozkládací lokalizační panely u položek
-  const [lokalizacePanelStates, setLokalizacePanelStates] = useState({});
-
-  // 🎯 LP options pro dropdown v položkách objednávky
-  const [lpOptionsForItems, setLpOptionsForItems] = useState([]);
-  const [lpOptionsLoading, setLpOptionsLoading] = useState(false);
+  // 🗂️ SPRINT 4: Consolidated LP (lokalizace) States (4→2 hooks)
+  const [lokalizacePanelStates, setLokalizacePanelStates] = useState({}); // Rozkládací panely u položek
   
-  // 💰 LP stavy z API (limit, čerpáno, zbývá) - pro přesné zobrazení čerpání
-  const [lpStavy, setLpStavy] = useState({});
+  const [lpState, setLpState] = useState({
+    options: [], // LP options pro dropdown v položkách objednávky
+    loading: false,
+    financovani: {} // 💰 LP stavy z API (limit, čerpáno, zbývá) - pro přesné zobrazení čerpání
+  });
+
+  // 🔄 SPRINT 4: Backward Compatibility Aliases - ALL STATES (defined AFTER all useState declarations)
+  // This ensures no "Cannot access before initialization" errors
+  
+  // Supplier Search Aliases
+  const showSupplierSearchDialog = supplierSearch.showDialog;
+  const setShowSupplierSearchDialog = (val) => setSupplierSearch(s => ({...s, showDialog: val}));
+  const supplierSearchTerm = supplierSearch.searchTerm;
+  const setSupplierSearchTerm = (val) => setSupplierSearch(s => ({...s, searchTerm: val}));
+  const supplierSearchResults = supplierSearch.results;
+  const setSupplierSearchResults = (val) => setSupplierSearch(s => ({...s, results: val}));
+  const supplierSearchLoading = supplierSearch.loading;
+  const setSupplierSearchLoading = (val) => setSupplierSearch(s => ({...s, loading: val}));
+  const allSupplierContacts = supplierSearch.allContacts;
+  const setAllSupplierContacts = (val) => setSupplierSearch(s => ({...s, allContacts: val}));
+  
+  // ARES State Aliases
+  const aresPopupOpen = aresState.popupOpen;
+  const setAresPopupOpen = (val) => setAresState(s => ({...s, popupOpen: val}));
+  const aresSearch = aresState.search;
+  const setAresSearch = (val) => setAresState(s => ({...s, search: val}));
+  const aresResults = aresState.results;
+  const setAresResults = (val) => setAresState(s => ({...s, results: val}));
+  const loadingAres = aresState.loading;
+  const setLoadingAres = (val) => setAresState(s => ({...s, loading: val}));
+  const savingToLocal = aresState.savingToLocal;
+  const setSavingToLocal = (val) => setAresState(s => ({...s, savingToLocal: val}));
+  const aresScopeInfo = aresState.scopeInfo;
+  const setAresScopeInfo = (val) => setAresState(s => ({...s, scopeInfo: val}));
+  const aresSelectedScope = aresState.selectedScope;
+  const setAresSelectedScope = (val) => setAresState(s => ({...s, selectedScope: val}));
+  const aresSelectedUseky = aresState.selectedUseky;
+  const setAresSelectedUseky = (val) => setAresState(s => ({...s, selectedUseky: val}));
+  
+  // Useky State Aliases
+  const availableUseky = usekyState.available;
+  const setAvailableUseky = (val) => setUsekyState(s => ({...s, available: val}));
+  const usekyLoading = usekyState.loading;
+  const setUsekyLoading = (val) => setUsekyState(s => ({...s, loading: val}));
+  
+  // ICO Check State Aliases
+  const showIcoCheck = icoCheckState.show;
+  const setShowIcoCheck = (val) => setIcoCheckState(s => ({...s, show: val}));
+  const icoCheckStatus = icoCheckState.status;
+  const setIcoCheckStatus = (val) => setIcoCheckState(s => ({...s, status: val}));
+  const icoCheckData = icoCheckState.data;
+  const setIcoCheckData = (val) => setIcoCheckState(s => ({...s, data: val}));
+  const isIcoOperation = icoCheckState.isOperation;
+  const setIsIcoOperation = (val) => setIcoCheckState(s => ({...s, isOperation: val}));
+  
+  // Save Progress State Aliases
+  const showSaveProgress = saveProgressState.show;
+  const setShowSaveProgress = (val) => setSaveProgressState(s => ({...s, show: val}));
+  const saveProgress = saveProgressState.progress;
+  const setSaveProgress = (val) => setSaveProgressState(s => ({...s, progress: val}));
+  const saveProgressText = saveProgressState.text;
+  const setSaveProgressText = (val) => setSaveProgressState(s => ({...s, text: val}));
+  
+  // Attachment UI Aliases
+  const uploadingFiles = attachmentUI.uploading;
+  const setUploadingFiles = (val) => setAttachmentUI(s => ({...s, uploading: val}));
+  const dragOver = attachmentUI.dragOver;
+  const setDragOver = (val) => setAttachmentUI(s => ({...s, dragOver: val}));
+  const isCheckingSyncAttachments = attachmentUI.checkingSync;
+  const setIsCheckingSyncAttachments = (val) => setAttachmentUI(s => ({...s, checkingSync: val}));
+  const showDeleteAttachmentDialog = attachmentUI.showDeleteDialog;
+  const setShowDeleteAttachmentDialog = (val) => setAttachmentUI(s => ({...s, showDeleteDialog: val}));
+  const attachmentToDelete = attachmentUI.deleteTarget;
+  const setAttachmentToDelete = (val) => setAttachmentUI(s => ({...s, deleteTarget: val}));
+  const showDeleteAllAttachmentsDialog = attachmentUI.showDeleteAllDialog;
+  const setShowDeleteAllAttachmentsDialog = (val) => setAttachmentUI(s => ({...s, showDeleteAllDialog: val}));
+  
+  // Supplier Dialog Aliases
+  const showSupplierAddDialog = supplierDialog.showAddDialog;
+  const setShowSupplierAddDialog = (val) => setSupplierDialog(s => ({...s, showAddDialog: val}));
+  const existingSupplierCheck = supplierDialog.existingCheck;
+  const setExistingSupplierCheck = (val) => setSupplierDialog(s => ({...s, existingCheck: val}));
+  const supplierAutoFillSource = supplierDialog.autoFillSource;
+  const setSupplierAutoFillSource = (val) => setSupplierDialog(s => ({...s, autoFillSource: val}));
+  
+  // DOCX Modal Aliases
+  const docxModalOpen = docxModal.open;
+  const setDocxModalOpen = (val) => setDocxModal(s => ({...s, open: val}));
+  const docxModalOrder = docxModal.orderData;
+  const setDocxModalOrder = (val) => setDocxModal(s => ({...s, orderData: val}));
+  
+  // Loading State Aliases
+  const isLoadingCiselniky = loadingState.ciselniky;
+  const setIsLoadingCiselniky = (val) => setLoadingState(s => ({...s, ciselniky: val}));
+  const isLoadingFormData = loadingState.formData;
+  const setIsLoadingFormData = (val) => setLoadingState(s => ({...s, formData: val}));
+  const isFormInitializing = loadingState.initializing;
+  const setIsFormInitializing = (val) => setLoadingState(s => ({...s, initializing: val}));
+  const isInitialized = loadingState.initialized;
+  const setIsInitialized = (val) => setLoadingState(s => ({...s, initialized: val}));
+  const initializationError = loadingState.error;
+  const setInitializationError = (val) => setLoadingState(s => ({...s, error: val}));
+  
+  // Save State Aliases
+  const isSaving = saveState.saving;
+  const setIsSaving = (val) => setSaveState(s => ({...s, saving: val}));
+  const isSavingDraft = saveState.savingDraft;
+  const setIsSavingDraft = (val) => setSaveState(s => ({...s, savingDraft: val}));
+  const disableAutosave = saveState.disableAutosave;
+  const setDisableAutosave = (val) => {
+    setSaveState(s => ({...s, disableAutosave: val}));
+    disableAutosaveRef.current = val; // Sync ref
+  };
+  const lastAutoSave = saveState.lastAutoSave;
+  const setLastAutoSave = (val) => setSaveState(s => ({...s, lastAutoSave: val}));
+  const isAutoSaving = saveState.autoSaving;
+  const setIsAutoSaving = (val) => setSaveState(s => ({...s, autoSaving: val}));
+  const dataSource = saveState.dataSource;
+  const setDataSource = (val) => setSaveState(s => ({...s, dataSource: val}));
+  
+  // LP Details Aliases
+  const lpDetails = lpDetailsState.details;
+  const setLpDetails = (val) => setLpDetailsState(s => ({...s, details: val}));
+  const loadingLpDetails = lpDetailsState.loading;
+  const setLoadingLpDetails = (val) => setLpDetailsState(s => ({...s, loading: val}));
+  
+  // Smlouvy (Contracts) Aliases
+  const smlouvyList = smlouvyState.list;
+  const setSmlouvyList = (val) => setSmlouvyState(s => ({...s, list: val}));
+  const loadingSmlouvyList = smlouvyState.loadingList;
+  const setLoadingSmlouvyList = (val) => setSmlouvyState(s => ({...s, loadingList: val}));
+  const smlouvaDetail = smlouvyState.detail;
+  const setSmlouvaDetail = (val) => setSmlouvyState(s => ({...s, detail: val}));
+  const loadingSmlouvaDetail = smlouvyState.loadingDetail;
+  const setLoadingSmlouvaDetail = (val) => setSmlouvyState(s => ({...s, loadingDetail: val}));
+  const smlouvaSearchTerm = smlouvyState.searchTerm;
+  const setSmlouvaSearchTerm = (val) => setSmlouvyState(s => ({...s, searchTerm: val}));
+  const showSmlouvySuggestions = smlouvyState.showSuggestions;
+  const setShowSmlouvySuggestions = (val) => setSmlouvyState(s => ({...s, showSuggestions: val}));
+  const selectedSmlouvaSuggestionIndex = smlouvyState.selectedSuggestionIndex;
+  const setSelectedSmlouvaSuggestionIndex = (val) => setSmlouvyState(s => ({...s, selectedSuggestionIndex: val}));
+  
+  // Template State Aliases
+  const savedTemplates = templateState.saved;
+  const setSavedTemplates = (val) => setTemplateState(s => ({...s, saved: val}));
+  const serverTemplates = templateState.server;
+  const setServerTemplates = (val) => setTemplateState(s => ({...s, server: val}));
+  const templatesFetchStatus = templateState.fetchStatus;
+  const setTemplatesFetchStatus = (val) => setTemplateState(s => ({...s, fetchStatus: val}));
+  const templatesLoading = templateState.loading;
+  const setTemplatesLoading = (val) => setTemplateState(s => ({...s, loading: val}));
+  const showTemplateSaveModal = templateState.showSaveModal;
+  const setShowTemplateSaveModal = (val) => setTemplateState(s => ({...s, showSaveModal: val}));
+  const templateName = templateState.name;
+  const setTemplateName = (val) => setTemplateState(s => ({...s, name: val}));
+  const templateType = templateState.type;
+  const setTemplateType = (val) => setTemplateState(s => ({...s, type: val}));
+  const templateSaveChecked = templateState.saveChecked;
+  const setTemplateSaveChecked = (val) => setTemplateState(s => ({...s, saveChecked: val}));
+  const saveMode = templateState.saveMode;
+  const setSaveMode = (val) => setTemplateState(s => ({...s, saveMode: val}));
+  const selectedTargetTemplate = templateState.selectedTarget;
+  const setSelectedTargetTemplate = (val) => setTemplateState(s => ({...s, selectedTarget: val}));
+  const selectedTargetTemplateTs = templateState.selectedTargetTs;
+  const setSelectedTargetTemplateTs = (val) => setTemplateState(s => ({...s, selectedTargetTs: val}));
+  const showDeleteTemplateConfirm = templateState.showDeleteConfirm;
+  const setShowDeleteTemplateConfirm = (val) => setTemplateState(s => ({...s, showDeleteConfirm: val}));
+  const templatePendingDelete = templateState.pendingDelete;
+  const setTemplatePendingDelete = (val) => setTemplateState(s => ({...s, pendingDelete: val}));
+  
+  // Unlock Dialogs Aliases
+  const showUnlockPhase1Confirm = unlockDialogs.phase1;
+  const setShowUnlockPhase1Confirm = (val) => setUnlockDialogs(s => ({...s, phase1: val}));
+  const showUnlockPhase2Confirm = unlockDialogs.phase2;
+  const setShowUnlockPhase2Confirm = (val) => setUnlockDialogs(s => ({...s, phase2: val}));
+  const showUnlockPhase3Confirm = unlockDialogs.phase3;
+  const setShowUnlockPhase3Confirm = (val) => setUnlockDialogs(s => ({...s, phase3: val}));
+  const showUnlockRegistrConfirm = unlockDialogs.registr;
+  const setShowUnlockRegistrConfirm = (val) => setUnlockDialogs(s => ({...s, registr: val}));
+  const showUnlockPotvrzeniConfirm = unlockDialogs.potvrzeni;
+  const setShowUnlockPotvrzeniConfirm = (val) => setUnlockDialogs(s => ({...s, potvrzeni: val}));
+  const showCancelPublishConfirm = unlockDialogs.cancelPublish;
+  const setShowCancelPublishConfirm = (val) => setUnlockDialogs(s => ({...s, cancelPublish: val}));
+  const showUnlockFakturaceConfirm = unlockDialogs.fakturace;
+  const setShowUnlockFakturaceConfirm = (val) => setUnlockDialogs(s => ({...s, fakturace: val}));
+  const showUnlockDokonceniConfirm = unlockDialogs.dokonceni;
+  const setShowUnlockDokonceniConfirm = (val) => setUnlockDialogs(s => ({...s, dokonceni: val}));
+  const showUnlockStornoConfirm = unlockDialogs.storno;
+  const setShowUnlockStornoConfirm = (val) => setUnlockDialogs(s => ({...s, storno: val}));
+  
+  // Faktury (Invoice) State Aliases
+  const fakturyLoading = fakturyState.loading;
+  const setFakturyLoading = (val) => setFakturyState(s => ({...s, loading: val}));
+  const showAddFakturaForm = fakturyState.showAddForm;
+  const setShowAddFakturaForm = (val) => setFakturyState(s => ({...s, showAddForm: val}));
+  const editingFaktura = fakturyState.editing;
+  const setEditingFaktura = (val) => setFakturyState(s => ({...s, editing: val}));
+  const fakturaFormData = fakturyState.formData;
+  const setFakturaFormData = (val) => setFakturyState(s => ({...s, formData: val}));
+  
+  // Template UI Aliases
+  const templateActionsLog = templateUI.actionsLog;
+  const setTemplateActionsLog = (val) => setTemplateUI(s => ({...s, actionsLog: val}));
+  const hoveredPreviewKey = templateUI.hoveredPreviewKey;
+  const setHoveredPreviewKey = (val) => setTemplateUI(s => ({...s, hoveredPreviewKey: val}));
+  const previewModalData = templateUI.previewModalData;
+  const setPreviewModalData = (val) => setTemplateUI(s => ({...s, previewModalData: val}));
+  const editingTemplateId = templateUI.editingId;
+  const setEditingTemplateId = (val) => setTemplateUI(s => ({...s, editingId: val}));
+  const editingTemplateName = templateUI.editingName;
+  const setEditingTemplateName = (val) => setTemplateUI(s => ({...s, editingName: val}));
+  const showSearchPredefs = templateUI.showSearchPredefs;
+  const setShowSearchPredefs = (val) => setTemplateUI(s => ({...s, showSearchPredefs: val}));
+  const searchPredefs = templateUI.searchPredefs;
+  const setSearchPredefs = (val) => setTemplateUI(s => ({...s, searchPredefs: val}));
+  
+  // LP State Aliases
+  const lpOptionsForItems = lpState.options;
+  const setLpOptionsForItems = (val) => setLpState(s => ({...s, options: val}));
+  const lpOptionsLoading = lpState.loading;
+  const setLpOptionsLoading = (val) => setLpState(s => ({...s, loading: val}));
+  const lpStavy = lpState.financovani;
+  const setLpStavy = (val) => setLpState(s => ({...s, financovani: val}));
 
   // 🎯 LP options se načítají automaticky v enriched objednávce z backendu
   // Viz handleDataLoaded() kde se extrahují z response.lp_options
