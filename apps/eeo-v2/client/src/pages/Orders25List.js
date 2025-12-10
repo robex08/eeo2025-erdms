@@ -3476,9 +3476,10 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
   // 🔍 Focus na vyhledávací pole při otevření
   React.useEffect(() => {
     if (isOpen && searchInputRef.current) {
-      setTimeout(() => {
+      // ✅ OPTIMALIZACE: requestAnimationFrame místo setTimeout
+      requestAnimationFrame(() => {
         searchInputRef.current?.focus();
-      }, 100);
+      });
     }
   }, [isOpen]);
 
@@ -5122,9 +5123,8 @@ const Orders25List = () => {
       if (!orderId || !token || !username) return;
 
       try {
-        // Načti aktualizovanou objednávku z DB
-        const { getOrder25 } = require('../services/apiOrderV2');
-        const response = await getOrder25({ token, username, orderId });
+        // ✅ V2 API: Načti aktualizovanou objednávku z DB
+        const response = await getOrderV2(orderId, token, username, true);
         
         if (response && response.data) {
           const updatedOrder = response.data;
@@ -5835,6 +5835,12 @@ const Orders25List = () => {
   // Load data on mount - s kontrolou forceReload z navigation state
   useEffect(() => {
     const shouldForceReload = location.state?.forceReload === true;
+    console.log('🔍 [ORDERS25LIST DEBUG] Location state changed:', {
+      forceReload: shouldForceReload,
+      fullState: location.state,
+      pathname: location.pathname,
+      action: 'Calling loadData with forceReload=' + shouldForceReload
+    });
     loadData(shouldForceReload);
   }, [loadData, location.state?.forceReload]);
 
@@ -5855,13 +5861,13 @@ const Orders25List = () => {
       lastMessageTimestamp = now;
 
       if (message.type === BROADCAST_TYPES.ORDER_SAVED || message.type === BROADCAST_TYPES.DRAFT_DELETED) {
-        // Debounce loadData - prevent excessive reloads from multiple messages
-        // Chrome violation: 'message' handler took 50-200ms due to heavy loadData()
+        // 🚀 PERFORMANCE: Debounce loadData - prevent excessive reloads from multiple messages
+        // Chrome violation fixed: Increased debounce to 1000ms to prevent handler violations
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           loadData();
           debounceTimer = null;
-        }, 500); // 500ms debounce (zvýšeno z 300ms pro větší stabilitu)
+        }, 1000); // 1000ms debounce (zvýšeno pro performance)
       }
     });
 
@@ -6408,17 +6414,13 @@ const Orders25List = () => {
     
     // Use LOCAL index to get order from filteredDataRef (current page data)
     const order = filteredDataRef.current[orderIndex];
-    
-    console.log('🎯 Action:', action, 'Local Index:', orderIndex, 'Order ID:', orderId, 'Order:', order);
 
     if (!order) {
-      console.error('❌ Order not found at local index', orderIndex, 'Total items:', filteredDataRef.current?.length);
       return;
     }
 
     // Use refs to call handlers (populated after they're defined)
     const handlers = handlersRef.current;
-    console.log('🎯 Handlers:', handlers);
     switch (action) {
       case 'edit':
         handlers.handleEdit?.(order);
@@ -6436,7 +6438,6 @@ const Orders25List = () => {
         handlers.handleCreateInvoice?.(order);
         break;
       case 'delete':
-        console.log('🎯 Calling handleDelete');
         handlers.handleDelete?.(order);
         break;
     }
@@ -7771,11 +7772,11 @@ const Orders25List = () => {
         showArchived,
         selectedYear,
         selectedMonth,
-        canViewAllOrders: permissions?.canViewAll,
+        canViewAllOrders: permissionsRef.current?.canViewAll,
         currentUserId
       }
     }));
-  }, [filteredData, showArchived, selectedYear, selectedMonth, permissions, currentUserId]);
+  }, [filteredData, showArchived, selectedYear, selectedMonth, currentUserId, getOrderSystemStatus]);
 
   // 📍 SCROLL STATE: Obnov rozbalené objednávky AŽ když je filteredData ready
   useEffect(() => {
@@ -8212,6 +8213,12 @@ const Orders25List = () => {
 
     // ✅ KONCEPT - pokračovat v tvorbě nové objednávky (není v DB)
     if (order.isDraft && !order.objednavka_id) {
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to concept:', {
+        orderId: order.id,
+        isDraft: order.isDraft,
+        url: '/order-form-25?mode=concept',
+        reason: 'Continuing draft (not in DB yet)'
+      });
       navigate(`/order-form-25?mode=concept`);
       return;
     }
@@ -8229,6 +8236,12 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to edit (with draft):', {
+        orderId: order.objednavka_id,
+        hasLocalDraftChanges: order.hasLocalDraftChanges,
+        url: `/order-form-25?edit=${order.objednavka_id}`,
+        reason: 'Continuing edit with local changes'
+      });
       navigate(`/order-form-25?edit=${order.objednavka_id}`);
       return;
     }
@@ -8346,6 +8359,12 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate from row (draft matches):', {
+        orderId: order.id,
+        isDraftForThisOrder: true,
+        url: `/order-form-25?edit=${order.id}`,
+        reason: 'Draft belongs to this order - no reload needed'
+      });
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       // NEMAZAT draft, NENAČÍTAT znovu z DB
       navigate(`/order-form-25?edit=${order.id}`);
@@ -8439,6 +8458,13 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate from archived modal (draft matches):', {
+        orderId: orderToEdit.id,
+        isDraftForThisOrder: true,
+        isArchived: true,
+        url: `/order-form-25?edit=${orderToEdit.id}&archivovano=1`,
+        reason: 'Draft belongs to this archived order - no reload needed'
+      });
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       navigate(`/order-form-25?edit=${orderToEdit.id}&archivovano=1`);
       return;
@@ -8639,6 +8665,13 @@ const Orders25List = () => {
       }
 
       // Použij React Router s edit parametrem pro načtení objednávky do editace
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate after locking archived order:', {
+        orderId: orderId,
+        orderNumber: finalEvCislo,
+        isArchived: true,
+        url: `/order-form-25?edit=${orderId}&archivovano=1`,
+        reason: 'Archived order locked successfully, draft created'
+      });
       navigate(`/order-form-25?edit=${orderId}&archivovano=1`);
 
     } catch (error) {
@@ -8736,6 +8769,10 @@ const Orders25List = () => {
       setShowEditConfirmModal(true);
     } else {
       // Rovnou přesměruj na prázdný formulář
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to new order (direct):', {
+        url: '/order-form-25',
+        reason: 'No existing draft - creating new order'
+      });
       navigate('/order-form-25');
     }
   };
@@ -8759,9 +8796,19 @@ const Orders25List = () => {
     
     if (isOnOrderForm) {
       // Jsme na formuláři - použij window.location pro hard reload
+      console.log('🔍 [ORDERS25LIST DEBUG] Hard reload to new order:', {
+        url: '/order-form-25',
+        method: 'window.location.href',
+        reason: 'Already on form - forcing hard reload after draft deletion'
+      });
       window.location.href = '/order-form-25';
     } else {
       // Nejsme na formuláři - normální navigate
+      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to new order (after confirm):', {
+        url: '/order-form-25',
+        method: 'navigate',
+        reason: 'Not on form - normal navigate after draft deletion'
+      });
       navigate('/order-form-25');
     }
   };
@@ -8938,8 +8985,6 @@ const Orders25List = () => {
   }, []);
 
   const handleDelete = useCallback((order) => {
-    console.log('🗑️ handleDelete called with order:', order);
-    console.log('🗑️ canDelete:', canDelete(order));
     if (!canDelete(order)) {
       showToast('Nemáte oprávnění smazat tuto objednávku', { type: 'warning' });
       return;
@@ -9596,19 +9641,6 @@ const Orders25List = () => {
     };
     
     const separator = delimiterMap[userSettings?.exportCsvDelimiter || 'semicolon'] || ';';
-    
-    // 🐛 DEBUG: Zkontroluj první 3 řádky exportu
-    console.log('🔍 CSV Export DEBUG:');
-    console.log('Celkem řádků:', exportData.length);
-    console.log('Separator:', separator === '\t' ? 'TAB' : separator);
-    console.log('První 3 řádky:', exportData.slice(0, 3).map((row, idx) => ({
-      index: idx,
-      id: row['ID'],
-      cislo: row['Číslo objednávky'],
-      predmet: row['Předmět'],
-      stav: row['Stav objednávky'],
-      cena: row['Celková cena s DPH']
-    })));
     
     // Připrav data pro náhled a zobraz modal
     const columnCount = Object.keys(exportData[0] || {}).length;

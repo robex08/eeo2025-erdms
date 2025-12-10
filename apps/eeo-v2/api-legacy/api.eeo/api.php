@@ -2606,6 +2606,17 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/order-v2/unlock - odemknuti objednavky
+        if (preg_match('/^order-v2\/unlock$/', $endpoint, $matches)) {
+            if ($request_method === 'POST') {
+                handle_orders25_unlock($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
         // === ORDER V2 ATTACHMENT ENDPOINTS ===
         
         // POST /api.eeo/order-v2/attachments/list - seznam VSECH priloh objednavek

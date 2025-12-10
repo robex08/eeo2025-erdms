@@ -196,6 +196,33 @@ const CalendarBtn = styled.button`
   margin-right: 0.25rem;
   transform: translateY(2px);
 `;
+
+// 🎯 OPTIMALIZACE: Samostatná komponenta pro čas - re-renderuje se pouze ona
+const LiveDateTime = React.memo(() => {
+  const [currentDateTime, setCurrentDateTime] = useState({
+    date: formatDateOnly(new Date()),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentDateTime({
+        date: formatDateOnly(new Date()),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }, 60000); // ✅ Aktualizace každou MINUTU (ne každých 10s)
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      <DateLine>{currentDateTime.date}</DateLine>
+      <TimeLine>{currentDateTime.time}</TimeLine>
+    </>
+  );
+});
+
 // (Removed unused Menu styled component)
 const MenuLeft = styled.div`
   display: flex;
@@ -1858,6 +1885,21 @@ const Layout = ({ children }) => {
   const [editOrderNumber, setEditOrderNumber] = useState('');
   const [orderPhaseInfo, setOrderPhaseInfo] = useState({ phase: 1, isZrusena: false });
 
+  // 🔍 DEBUG: Logovat pouze při změně hodnot (ne při každém renderu)
+  const prevMenuBarState = useRef({ hasDraftOrder: false, isOrderEditMode: false, editOrderId: null, editOrderNumber: '' });
+  useEffect(() => {
+    const current = { hasDraftOrder, isOrderEditMode, editOrderId, editOrderNumber };
+    const prev = prevMenuBarState.current;
+    
+    if (prev.hasDraftOrder !== current.hasDraftOrder ||
+        prev.isOrderEditMode !== current.isOrderEditMode ||
+        prev.editOrderId !== current.editOrderId ||
+        prev.editOrderNumber !== current.editOrderNumber) {
+      
+      prevMenuBarState.current = current;
+    }
+  }, [hasDraftOrder, isOrderEditMode, editOrderId, editOrderNumber]);
+
   // Helper pro opakované vyhodnocení (při loginu, user_id změně, eventech)
   const recalcHasDraft = useCallback(async () => {
     try {
@@ -1989,33 +2031,59 @@ const Layout = ({ children }) => {
 
   // 🎯 [DIRECT STATE] Poslouchat OrderForm25 globální stav (window.__orderFormState)
   // Jednodušší než draft metadata - OrderForm25 přímo říká "edituji objednávku X"
+  const pendingResetTimeoutRef = useRef(null);
+  
   useEffect(() => {
     const handler = async (e) => {
       const state = e.detail;
       if (!state) return;
 
-      // 🔧 FIX: Použij state.hasDraft z OrderForm25 (obsahuje info o isChanged)
-      // Pokud není hasDraft v state, fallback na původní logiku
-      const hasDraft = state.hasDraft !== undefined 
-        ? state.hasDraft 
-        : (state.isNewOrder === true || (state.orderId !== null && state.orderId !== undefined));
-      
-      // 🔧 KRITICKÉ: Pokud dostaneme reset (hasDraft=false), VERIFIKUJ v localStorage
-      // Může se stát že OrderForm25 unmount (navigace pryč), ale draft stále existuje!
-      if (!hasDraft && user_id) {
-        try {
-          draftManager.setCurrentUser(user_id);
-          const actuallyHasDraft = await draftManager.hasDraft();
-          
-          if (actuallyHasDraft) {
-            // Draft existuje! Ignoruj reset a načti draft
-            recalcHasDraft();
-            return;
-          }
-        } catch (e) {
-          // Pokud selže kontrola, pokračuj s reset
+      // 🔧 KRITICKÉ: Pokud dostaneme undefined nebo false pro hasDraft, ZPOŽDĚNÍ před resetem!
+      // OrderForm může unmountovat a okamžitě se remountovat (React strict mode nebo navigace)
+      if (state.hasDraft === undefined || state.hasDraft === false) {
+        
+        // ✅ Zruš předchozí pending reset
+        if (pendingResetTimeoutRef.current) {
+          clearTimeout(pendingResetTimeoutRef.current);
+          pendingResetTimeoutRef.current = null;
         }
+        
+        // ✅ Počkej 150ms - pokud přijde nový broadcast s hasDraft=true, reset se zruší
+        pendingResetTimeoutRef.current = setTimeout(async () => {
+          if (user_id) {
+            try {
+              draftManager.setCurrentUser(user_id);
+              const actuallyHasDraft = await draftManager.hasDraft();
+              
+              if (actuallyHasDraft) {
+                // Draft existuje! Ignoruj reset z OrderForm a načti skutečný stav
+                recalcHasDraft();
+                return; // ← STOP zde, neměň stavy
+              }
+            } catch (e) {
+              // Pokud selže kontrola, pokračuj s reset
+            }
+          }
+          
+          // Draft potvrzeno neexistuje - resetuj všechny stavy
+          setHasDraftOrder(false);
+          setIsOrderEditMode(false);
+          setEditOrderId(null);
+          setEditOrderNumber('');
+          setOrderPhaseInfo({ phase: 1, isZrusena: false });
+          pendingResetTimeoutRef.current = null;
+        }, 150);
+        
+        return; // ← STOP zde, čekáme na timeout
       }
+      
+      // ✅ Draft existuje (hasDraft=true) - OKAMŽITĚ zruš pending reset a nastav stavy
+      if (pendingResetTimeoutRef.current) {
+        clearTimeout(pendingResetTimeoutRef.current);
+        pendingResetTimeoutRef.current = null;
+      }
+      
+      const hasDraft = true;
       
       // Přímo nastav stavy z OrderForm25
       setHasDraftOrder(hasDraft);
@@ -2042,7 +2110,14 @@ const Layout = ({ children }) => {
       handler({ detail: window.__orderFormState });
     }
 
-    return () => window.removeEventListener('orderFormStateChange', handler);
+    return () => {
+      window.removeEventListener('orderFormStateChange', handler);
+      // ✅ Cleanup: Zruš pending reset při unmount
+      if (pendingResetTimeoutRef.current) {
+        clearTimeout(pendingResetTimeoutRef.current);
+        pendingResetTimeoutRef.current = null;
+      }
+    };
   }, [user_id, draftManager, recalcHasDraft]);
 
   // Recalc když se změní user_id (přihlášení/odhlášení). Už existující vlastní draft se tak znovu označí.
@@ -2062,21 +2137,7 @@ const Layout = ({ children }) => {
     }
   }, [isLoggedIn, recalcHasDraft]);
 
-  const [currentDateTime, setCurrentDateTime] = useState({
-    date: formatDateOnly(new Date()),
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Remove seconds
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentDateTime({
-        date: formatDateOnly(new Date()),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // Remove seconds
-      });
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, []);
+  // ✅ ODSTRANĚNO: currentDateTime state přesunut do LiveDateTime komponenty
 
   const handleLogoutClick = async () => {
     // Zavřít všechny panely před odhlášením
@@ -2434,8 +2495,7 @@ const Layout = ({ children }) => {
                   </CalendarBtn>
                 </>
               )}
-              <DateLine>{currentDateTime.date}</DateLine>
-              <TimeLine>{currentDateTime.time}</TimeLine>
+              <LiveDateTime />
             </DateTimeBlock>
             {isLoggedIn && (
               <CalendarPanel

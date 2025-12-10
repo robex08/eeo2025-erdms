@@ -1,4 +1,5 @@
 import React, { useState, useContext, useEffect, useRef, useCallback, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -2156,13 +2157,13 @@ const CashBookPage = () => {
 
     setCashBookEntries(prev => [...prev, newEntry]);
 
-    // Nastav fokus na description input pro nový řádek
-    setTimeout(() => {
+    // ✅ OPTIMALIZACE: requestAnimationFrame pro focus (browser-friendly)
+    requestAnimationFrame(() => {
       const descriptionInput = document.querySelector(`input[data-entry-id="${newId}"][data-field="description"]`);
       if (descriptionInput) {
         descriptionInput.focus();
       }
-    }, 100);
+    });
 
     return newId;
   };
@@ -2216,25 +2217,26 @@ const CashBookPage = () => {
 
       if (isEmpty) {
         // Prázdný řádek - jen přesuň focus na "Obsah zápisu"
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           const descriptionInput = document.querySelector(`input[data-entry-id="${editingEntry.id}"][data-field="description"]`);
           if (descriptionInput) {
             descriptionInput.focus();
           }
-        }, 10);
+        });
       } else {
         // Řádek má nějaký obsah - ulož ho a přidej nový
 
-        // Ukonči editaci všech řádků (automaticky se uloží)
-        setCashBookEntries(prev =>
-          prev.map(entry => ({ ...entry, isEditing: false }))
-        );
+        // ✅ OPTIMALIZACE: Synchronní update pomocí flushSync
+        ReactDOM.flushSync(() => {
+          // Ukonči editaci všech řádků (automaticky se uloží)
+          setCashBookEntries(prev =>
+            prev.map(entry => ({ ...entry, isEditing: false }))
+          );
+        });
 
-        // Počkej než se state aktualizuje a uloží, pak přidej nový řádek
-        setTimeout(() => {
-          autoSave(); // Explicitně ulož
-          addNewEntry();
-        }, 50);
+        // Okamžitě ulož a přidej nový řádek
+        autoSave();
+        addNewEntry();
       }
     } else {
       // Žádný řádek není editován, rovnou přidej nový
@@ -3201,18 +3203,16 @@ const CashBookPage = () => {
           // ✅ NOVĚ: Ulož aktuální řádek do DB (stejně jako Shift+Enter)
           await stopEditing(editingEntry.id);
 
-          // Počkej na dokončení uložení, pak přidej nový řádek
-          setTimeout(() => {
-            addNewEntry();
+          // ✅ OPTIMALIZACE: Okamžitě přidej nový řádek
+          addNewEntry();
 
-            // Focus na první pole nového řádku (datum)
-            setTimeout(() => {
-              const firstInput = document.querySelector('.entry-row:last-child input');
-              if (firstInput) {
-                firstInput.focus();
-              }
-            }, 50);
-          }, 100);
+          // Focus na první pole nového řádku pomocí RAF
+          requestAnimationFrame(() => {
+            const firstInput = document.querySelector('.entry-row:last-child input');
+            if (firstInput) {
+              firstInput.focus();
+            }
+          });
         } else {
           // Žádný řádek není editován, rovnou přidej nový
           addNewEntry();
