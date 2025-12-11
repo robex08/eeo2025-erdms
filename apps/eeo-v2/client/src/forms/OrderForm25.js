@@ -6065,79 +6065,6 @@ function OrderForm25() {
   const fakturaTypyPrilohOptions = typyFakturOptions; // Alias
   const loadingFakturaTypyPriloh = false; // Číselníky už jsou načtené když se formulář zobrazuje
 
-  // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
-  // MUSÍ být AŽ PO definici approvers (řádek ~6088)
-  const filteredLpKodyOptions = React.useMemo(() => {
-    // Pokud není vybraný příkazce, vrátit všechny LP kódy
-    if (!formData.prikazce_id) {
-      return lpKodyOptions;
-    }
-
-    // Najít vybraného příkazce v seznamu approvers
-    const selectedPrikazce = approvers.find(user => 
-      (user.id || user.user_id) === parseInt(formData.prikazce_id)
-    );
-
-    // Pokud příkazce nenalezen, vrátit všechny LP kódy
-    if (!selectedPrikazce) {
-      console.warn('⚠️ Příkazce nenalezen v approvers!');
-      return lpKodyOptions;
-    }
-
-    // Získat usek_id příkazce (už by měl být v response z API)
-    const prikazceUsekId = selectedPrikazce.usek_id;
-    
-    if (!prikazceUsekId) {
-      console.warn('⚠️ Příkazce nemá usek_id:', selectedPrikazce);
-      return lpKodyOptions;
-    }
-
-    // Aktuální datum pro kontrolu platnosti
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalizovat na půlnoc
-
-    // Filtrovat LP kódy podle usek_id a platnosti
-    const filtered = lpKodyOptions.filter(lp => {
-      // 1. Kontrola úseku
-      const lpUsekId = lp.usek_id || lp.usek;
-      if (!lpUsekId || String(lpUsekId) !== String(prikazceUsekId)) {
-        return false;
-      }
-
-      // 2. Kontrola platnosti (platne_od / platne_do)
-      const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
-      const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
-
-      // Normalizovat datumy na půlnoc
-      if (platneOd) platneOd.setHours(0, 0, 0, 0);
-      if (platneDo) platneDo.setHours(0, 0, 0, 0);
-
-      // LP musí být platné DNES
-      // - pokud má platne_od, musí být <= today
-      // - pokud má platne_do, musí být >= today
-      const jeAktivni = 
-        (!platneOd || platneOd <= today) && 
-        (!platneDo || platneDo >= today);
-
-      return jeAktivni;
-    });
-
-    console.log('🎯 LP filtrování:', {
-      prikazce: `${selectedPrikazce.jmeno} ${selectedPrikazce.prijmeni}`,
-      prikazceUsekId,
-      dnesniDatum: today.toISOString().split('T')[0],
-      vsechnyLP: lpKodyOptions.length,
-      filtrovaneLP: filtered.length,
-      filtrovaneKody: filtered.map(lp => ({
-        kod: lp.cislo_lp || lp.kod,
-        platneOd: lp.platne_od,
-        platneDo: lp.platne_do
-      }))
-    });
-
-    return filtered;
-  }, [formData.prikazce_id, lpKodyOptions, approvers]);
-
   // 🚀 CRITICAL FIX: Reset a povolit autosave při změně editOrderId
   useEffect(() => {
     const isNewOrder = !editOrderId;
@@ -6494,6 +6421,103 @@ function OrderForm25() {
   const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
   const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
+
+  // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
+  // MUSÍ být AŽ PO definici isSuperAdmin a approvers!
+  const filteredLpKodyOptions = React.useMemo(() => {
+    // Pokud není vybraný příkazce, vrátit všechny LP kódy
+    if (!formData.prikazce_id) {
+      return lpKodyOptions;
+    }
+
+    // Najít vybraného příkazce v seznamu approvers
+    const selectedPrikazce = approvers.find(user => 
+      (user.id || user.user_id) === parseInt(formData.prikazce_id)
+    );
+
+    // Pokud příkazce nenalezen, vrátit všechny LP kódy
+    if (!selectedPrikazce) {
+      console.warn('⚠️ Příkazce nenalezen v approvers!');
+      return lpKodyOptions;
+    }
+
+    // 🔓 VÝJIMKA: Pokud je VYBRANÝ PŘÍKAZCE SUPERADMIN → zobrazit VŠECHNY LP kódy
+    // (kontrolujeme roli VYBRANÉHO příkazce, ne přihlášeného uživatele!)
+    // Najít příkazce v allUsers (kde jsou role)
+    const prikazceWithRoles = allUsers.find(u => 
+      (u.id || u.user_id) === parseInt(formData.prikazce_id)
+    );
+    const prikazceIsSuperAdmin = prikazceWithRoles?.roles?.some(role => role.kod_role === 'SUPERADMIN');
+    
+    if (prikazceIsSuperAdmin) {
+      // Stále aplikovat filtr platnosti
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      console.log('🔓 Příkazce je SUPERADMIN → zobrazuji všechny LP kódy (s filtrem platnosti)');
+      
+      return lpKodyOptions.filter(lp => {
+        const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
+        const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
+        if (platneOd) platneOd.setHours(0, 0, 0, 0);
+        if (platneDo) platneDo.setHours(0, 0, 0, 0);
+        return (!platneOd || platneOd <= today) && (!platneDo || platneDo >= today);
+      });
+    }
+
+    // Získat usek_id příkazce (už by měl být v response z API)
+    const prikazceUsekId = selectedPrikazce.usek_id;
+    
+    if (!prikazceUsekId) {
+      console.warn('⚠️ Příkazce nemá usek_id:', selectedPrikazce);
+      return lpKodyOptions;
+    }
+
+    // Aktuální datum pro kontrolu platnosti
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizovat na půlnoc
+
+    // Filtrovat LP kódy podle usek_id a platnosti
+    const filtered = lpKodyOptions.filter(lp => {
+      // 1. Kontrola úseku
+      const lpUsekId = lp.usek_id || lp.usek;
+      if (!lpUsekId || String(lpUsekId) !== String(prikazceUsekId)) {
+        return false;
+      }
+
+      // 2. Kontrola platnosti (platne_od / platne_do)
+      const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
+      const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
+
+      // Normalizovat datumy na půlnoc
+      if (platneOd) platneOd.setHours(0, 0, 0, 0);
+      if (platneDo) platneDo.setHours(0, 0, 0, 0);
+
+      // LP musí být platné DNES
+      // - pokud má platne_od, musí být <= today
+      // - pokud má platne_do, musí být >= today
+      const jeAktivni = 
+        (!platneOd || platneOd <= today) && 
+        (!platneDo || platneDo >= today);
+
+      return jeAktivni;
+    });
+
+    console.log('🎯 LP filtrování:', {
+      prikazce: `${selectedPrikazce.jmeno} ${selectedPrikazce.prijmeni}`,
+      prikazceUsekId,
+      dnesniDatum: today.toISOString().split('T')[0],
+      vsechnyLP: lpKodyOptions.length,
+      filtrovaneLP: filtered.length,
+      filtrovaneKody: filtered.map(lp => ({
+        kod: lp.cislo_lp || lp.kod,
+        platneOd: lp.platne_od,
+        platneDo: lp.platne_do
+      }))
+    });
+
+    return filtered;
+  }, [formData.prikazce_id, lpKodyOptions, approvers, allUsers]);
 
   // 🔒 WORKFLOW LOCKING - isWorkflowCompleted, isWorkflowRejected, isWorkflowCancelled
   // přicházejí z workflowManager. WorkflowManager řídí zamykání CENTRÁLNĚ přes isWorkflowCompleted.
@@ -19211,7 +19235,20 @@ function OrderForm25() {
                       onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
                       onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
                       options={filteredLpKodyOptions}
-                      placeholder={formData.prikazce_id ? "Vyberte LP kódy..." : "Nejprve vyberte příkazce"}
+                      placeholder={(() => {
+                        if (!formData.prikazce_id) return "Nejprve vyberte příkazce";
+                        if (filteredLpKodyOptions.length === 0) return "Žádné dostupné LP kódy";
+                        
+                        // Zobrazit prvních 4-5 LP kódů
+                        const maxShow = 5;
+                        const lpCodes = filteredLpKodyOptions
+                          .slice(0, maxShow)
+                          .map(lp => lp.cislo_lp || lp.kod)
+                          .join(', ');
+                        
+                        const hasMore = filteredLpKodyOptions.length > maxShow;
+                        return hasMore ? `např. ${lpCodes}, ...` : `např. ${lpCodes}`;
+                      })()}
                       field="lp_kod"
                       loading={false}
                       loadingText=""
