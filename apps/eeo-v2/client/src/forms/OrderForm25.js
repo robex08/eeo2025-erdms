@@ -6065,6 +6065,79 @@ function OrderForm25() {
   const fakturaTypyPrilohOptions = typyFakturOptions; // Alias
   const loadingFakturaTypyPriloh = false; // Číselníky už jsou načtené když se formulář zobrazuje
 
+  // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
+  // MUSÍ být AŽ PO definici approvers (řádek ~6088)
+  const filteredLpKodyOptions = React.useMemo(() => {
+    // Pokud není vybraný příkazce, vrátit všechny LP kódy
+    if (!formData.prikazce_id) {
+      return lpKodyOptions;
+    }
+
+    // Najít vybraného příkazce v seznamu approvers
+    const selectedPrikazce = approvers.find(user => 
+      (user.id || user.user_id) === parseInt(formData.prikazce_id)
+    );
+
+    // Pokud příkazce nenalezen, vrátit všechny LP kódy
+    if (!selectedPrikazce) {
+      console.warn('⚠️ Příkazce nenalezen v approvers!');
+      return lpKodyOptions;
+    }
+
+    // Získat usek_id příkazce (už by měl být v response z API)
+    const prikazceUsekId = selectedPrikazce.usek_id;
+    
+    if (!prikazceUsekId) {
+      console.warn('⚠️ Příkazce nemá usek_id:', selectedPrikazce);
+      return lpKodyOptions;
+    }
+
+    // Aktuální datum pro kontrolu platnosti
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizovat na půlnoc
+
+    // Filtrovat LP kódy podle usek_id a platnosti
+    const filtered = lpKodyOptions.filter(lp => {
+      // 1. Kontrola úseku
+      const lpUsekId = lp.usek_id || lp.usek;
+      if (!lpUsekId || String(lpUsekId) !== String(prikazceUsekId)) {
+        return false;
+      }
+
+      // 2. Kontrola platnosti (platne_od / platne_do)
+      const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
+      const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
+
+      // Normalizovat datumy na půlnoc
+      if (platneOd) platneOd.setHours(0, 0, 0, 0);
+      if (platneDo) platneDo.setHours(0, 0, 0, 0);
+
+      // LP musí být platné DNES
+      // - pokud má platne_od, musí být <= today
+      // - pokud má platne_do, musí být >= today
+      const jeAktivni = 
+        (!platneOd || platneOd <= today) && 
+        (!platneDo || platneDo >= today);
+
+      return jeAktivni;
+    });
+
+    console.log('🎯 LP filtrování:', {
+      prikazce: `${selectedPrikazce.jmeno} ${selectedPrikazce.prijmeni}`,
+      prikazceUsekId,
+      dnesniDatum: today.toISOString().split('T')[0],
+      vsechnyLP: lpKodyOptions.length,
+      filtrovaneLP: filtered.length,
+      filtrovaneKody: filtered.map(lp => ({
+        kod: lp.cislo_lp || lp.kod,
+        platneOd: lp.platne_od,
+        platneDo: lp.platne_do
+      }))
+    });
+
+    return filtered;
+  }, [formData.prikazce_id, lpKodyOptions, approvers]);
+
   // 🚀 CRITICAL FIX: Reset a povolit autosave při změně editOrderId
   useEffect(() => {
     const isNewOrder = !editOrderId;
@@ -12269,6 +12342,35 @@ function OrderForm25() {
     }
   }, [formData.ev_cislo, formData.zpusob_financovani, financovaniOptions, formData.individualni_schvaleni]);
 
+  // 🎯 Automatické vymazání LP kódů při změně příkazce
+  useEffect(() => {
+    // Pouze pokud jsou vybrané nějaké LP kódy
+    if (!formData.lp_kod || !Array.isArray(formData.lp_kod) || formData.lp_kod.length === 0) {
+      return;
+    }
+
+    // Zkontrolovat, zda vybrané LP kódy odpovídají novému filtru
+    const selectedLpIds = formData.lp_kod;
+    const validLpIds = filteredLpKodyOptions.map(lp => lp.id || lp.kod);
+
+    // Pokud nějaké vybrané LP již není ve filtru, vymazat všechny LP kódy
+    const hasInvalidLp = selectedLpIds.some(lpId => !validLpIds.includes(lpId));
+
+    if (hasInvalidLp) {
+      console.log('🗑️ Mazání LP kódů po změně příkazce:', {
+        puvodniLP: selectedLpIds,
+        platneLP: validLpIds
+      });
+
+      setFormData(prev => ({
+        ...prev,
+        lp_kod: []
+      }));
+
+      showToast('LP kódy byly vymazány - příkazce má jiný úsek', 'info');
+    }
+  }, [formData.prikazce_id, filteredLpKodyOptions]); // Spustí se při změně příkazce nebo filtrovaných LP
+
   // 📄 Automatické načtení detailu smlouvy při změně čísla smlouvy
   useEffect(() => {
     if (formData.cislo_smlouvy && formData.cislo_smlouvy.trim()) {
@@ -17300,7 +17402,8 @@ function OrderForm25() {
           return 'Neznámý';
         }
         const fullName = `${option.titul_pred ? option.titul_pred + ' ' : ''}${option.jmeno || ''} ${option.prijmeni || ''}${option.titul_za ? ', ' + option.titul_za : ''}`.replace(/\s+/g, ' ').trim();
-        return fullName || 'Neznámý';
+        const usekSuffix = option.usek_zkr ? ` (${option.usek_zkr})` : '';
+        return (fullName || 'Neznámý') + usekSuffix;
       case 'strediska':
       case 'strediska_kod':
         // Pro hierarchické střediska použij label (už obsahuje odsazení)
@@ -19107,13 +19210,13 @@ function OrderForm25() {
                       value={formData.lp_kod || []}
                       onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
                       onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
-                      options={lpKodyOptions}
-                      placeholder="Vyberte LP kódy..."
+                      options={filteredLpKodyOptions}
+                      placeholder={formData.prikazce_id ? "Vyberte LP kódy..." : "Nejprve vyberte příkazce"}
                       field="lp_kod"
                       loading={false}
                       loadingText=""
                       icon={<Hash />}
-                      disabled={shouldLockFinancovaniSection}
+                      disabled={shouldLockFinancovaniSection || !formData.prikazce_id}
                       hasError={!!validationErrors.lp_kod}
                       required={true}
                       multiple={true}

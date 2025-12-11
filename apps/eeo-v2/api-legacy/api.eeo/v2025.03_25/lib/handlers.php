@@ -199,8 +199,10 @@ function handle_users_approvers($input, $config, $queries) {
         // Get users with ORDER APPROVE permission
         $stmt = $db->prepare("
             SELECT DISTINCT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za,
-                   CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as cele_jmeno
+                   CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as cele_jmeno,
+                   u.usek_id, us.usek_zkr
             FROM ".TABLE_UZIVATELE." u
+            LEFT JOIN ".TABLE_USEKY." us ON u.usek_id = us.id
             JOIN ".TABLE_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
             JOIN ".TABLE_ROLE_PRAVA." rp ON ur.role_id = rp.role_id
             JOIN ".TABLE_PRAVA." p ON rp.pravo_id = p.id
