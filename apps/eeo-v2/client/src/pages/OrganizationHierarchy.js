@@ -1619,6 +1619,20 @@ const OrganizationHierarchy = () => {
             };
           });
           
+          // Funkce pro určení barvy vztahu podle typu
+          const getEdgeColor = (relationType) => {
+            if (relationType.includes('template')) {
+              return '#f59e0b'; // Oranžová pro notifikační šablony
+            } else if (relationType.includes('location')) {
+              return '#ec4899'; // Růžová pro lokality
+            } else if (relationType.includes('department')) {
+              return '#8b5cf6'; // Fialová pro útvary
+            } else if (relationType === 'user-user') {
+              return '#3b82f6'; // Modrá pro uživatel-uživatel
+            }
+            return '#667eea'; // Výchozí modrá
+          };
+
           // Konvertovat relations na ReactFlow edges
           const flowEdges = apiRelations.map((rel, index) => {
             // Najít source a target nodes podle typu vztahu
@@ -1662,14 +1676,22 @@ const OrganizationHierarchy = () => {
               targetNode.position = rel.position_2;
             }
             
+            const edgeColor = getEdgeColor(relType);
+            
             return {
               id: `rel-${rel.id || index}`,
               source: sourceNode.id,
               target: targetNode.id,
               type: 'smoothstep',
               animated: true,
-              markerEnd: { type: MarkerType.ArrowClosed },
-              style: { stroke: '#667eea', strokeWidth: 3 },
+              markerEnd: { 
+                type: MarkerType.ArrowClosed,
+                color: edgeColor 
+              },
+              style: { 
+                stroke: edgeColor, 
+                strokeWidth: 3 
+              },
               data: {
                 level: rel.level,
                 visibility: rel.visibility,
@@ -1708,14 +1730,46 @@ const OrganizationHierarchy = () => {
   }, []);
 
   const onConnect = useCallback((params) => {
+    // Určit typ vztahu a barvu podle source a target nodes
+    const sourceNode = nodes.find(n => n.id === params.source);
+    const targetNode = nodes.find(n => n.id === params.target);
+    
+    let relationType = 'user-user';
+    if (sourceNode && targetNode) {
+      const sourceType = sourceNode.data?.type || 'user';
+      const targetType = targetNode.data?.type || 'user';
+      relationType = `${sourceType}-${targetType}`;
+    }
+    
+    // Určit barvu podle typu
+    let edgeColor = '#667eea'; // výchozí
+    if (relationType.includes('template')) {
+      edgeColor = '#f59e0b'; // Oranžová pro notifikace
+    } else if (relationType.includes('location')) {
+      edgeColor = '#ec4899'; // Růžová pro lokality
+    } else if (relationType.includes('department')) {
+      edgeColor = '#8b5cf6'; // Fialová pro útvary
+    } else if (relationType === 'user-user') {
+      edgeColor = '#3b82f6'; // Modrá pro uživatel-uživatel
+    }
+    
     setEdges((eds) => addEdge({
       ...params,
       type: 'smoothstep',
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { stroke: '#667eea', strokeWidth: 3 }
+      markerEnd: { 
+        type: MarkerType.ArrowClosed,
+        color: edgeColor 
+      },
+      style: { 
+        stroke: edgeColor, 
+        strokeWidth: 3 
+      },
+      data: {
+        type: relationType
+      }
     }, eds));
-  }, []);
+  }, [nodes]);
 
   const onNodeClick = useCallback((event, node) => {
     // Pokud není CTRL/CMD, zobrazit detail panel (single selection)
@@ -3456,7 +3510,7 @@ const OrganizationHierarchy = () => {
         <Header>
           <Title>
             <FontAwesomeIcon icon={faSitemap} />
-            Workflow & Notifikace
+            Systém workflow a notifikací
           </Title>
         </Header>
         <div style={{ 
@@ -3482,7 +3536,7 @@ const OrganizationHierarchy = () => {
         <Header>
           <Title>
             <FontAwesomeIcon icon={faSitemap} />
-            Workflow & Notifikace
+            Systém workflow a notifikací
           </Title>
         </Header>
         <div style={{ 
@@ -3507,7 +3561,7 @@ const OrganizationHierarchy = () => {
       <Header>
         <Title>
           <FontAwesomeIcon icon={faSitemap} />
-          Workflow & Notifikace
+          Systém workflow a notifikací
         </Title>
         <HeaderActions>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '280px' }}>
@@ -3595,14 +3649,75 @@ const OrganizationHierarchy = () => {
         </HeaderActions>
       </Header>
 
+      {/* Legenda barev vztahů */}
+      <div style={{
+        padding: '8px 16px',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%)',
+        borderBottom: '2px solid #e0e6ed',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '20px',
+        fontSize: '0.8rem',
+        flexWrap: 'wrap'
+      }}>
+        <span style={{ fontWeight: 700, color: '#475569' }}>Legenda vztahů:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '30px', height: '3px', background: '#3b82f6', borderRadius: '2px' }}></div>
+          <span style={{ color: '#1e40af' }}>Uživatel → Uživatel</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '30px', height: '3px', background: '#ec4899', borderRadius: '2px' }}></div>
+          <span style={{ color: '#be185d' }}>Lokalita</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '30px', height: '3px', background: '#8b5cf6', borderRadius: '2px' }}></div>
+          <span style={{ color: '#6d28d9' }}>Útvar</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '30px', height: '3px', background: '#f59e0b', borderRadius: '2px' }}></div>
+          <span style={{ color: '#d97706' }}>Notifikace</span>
+        </div>
+      </div>
+
       <MainContent>
         <Sidebar>
             <SidebarHeader>
               <SidebarTitle>
                 <FontAwesomeIcon icon={faLayerGroup} />
-                Přehled sekcí workflow
+                Přehled položek workflow
               </SidebarTitle>
             </SidebarHeader>
+
+            {/* Globální search box - vyhledává ve všech sekcích najednou */}
+            <SearchBox>
+              <SearchIcon>
+                <FontAwesomeIcon icon={faSearch} />
+              </SearchIcon>
+              <SearchInput
+                placeholder="Hledat ve všech sekcích..."
+                value={searchUsers}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchUsers(value);
+                  setSearchLocations(value);
+                  setSearchDepartments(value);
+                  setSearchTemplates(value);
+                }}
+              />
+              {searchUsers && (
+                <SearchClearButton
+                  onClick={() => {
+                    setSearchUsers('');
+                    setSearchLocations('');
+                    setSearchDepartments('');
+                    setSearchTemplates('');
+                  }}
+                  title="Vymazat vyhledávání ve všech sekcích"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </SearchClearButton>
+              )}
+            </SearchBox>
 
             <SidebarContent>
               <CollapsibleSection>
