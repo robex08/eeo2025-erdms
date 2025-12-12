@@ -1,0 +1,156 @@
+import React from 'react';
+import styled from '@emotion/styled';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSitemap, faUsers, faChartLine } from '@fortawesome/free-solid-svg-icons';
+
+const PageContainer = styled.div`
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+`;
+
+const ContentBox = styled.div`
+  background: white;
+  border-radius: 1.5rem;
+  padding: 4rem 3rem;
+  max-width: 700px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  text-align: center;
+`;
+
+const IconWrapper = styled.div`
+  font-size: 5rem;
+  color: ${({theme}) => theme.colors.primary};
+  margin-bottom: 2rem;
+  animation: pulse 2s ease-in-out infinite;
+  
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.05);
+      opacity: 0.8;
+    }
+  }
+`;
+
+const Title = styled.h1`
+  font-size: 2.5rem;
+  color: ${({theme}) => theme.colors.primary};
+  margin-bottom: 1rem;
+  font-weight: 700;
+`;
+
+const Subtitle = styled.p`
+  font-size: 1.2rem;
+  color: #666;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+`;
+
+const FeaturesBox = styled.div`
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 2rem;
+  border-radius: 1rem;
+  margin-top: 2rem;
+  text-align: left;
+`;
+
+const FeatureTitle = styled.h3`
+  font-size: 1.3rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const FeatureList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  
+  li {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1rem;
+    
+    &:last-child {
+      border-bottom: none;
+    }
+    
+    svg {
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+  }
+`;
+
+const StatusBadge = styled.div`
+  display: inline-block;
+  background: #fbbf24;
+  color: #78350f;
+  padding: 0.5rem 1.5rem;
+  border-radius: 2rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+`;
+
+const OrganizationHierarchy = () => {
+  return (
+    <PageContainer>
+      <ContentBox>
+        <IconWrapper>
+          <FontAwesomeIcon icon={faSitemap} />
+        </IconWrapper>
+        <Title>Organizační řád</Title>
+        <Subtitle>
+          Správa hierarchie zaměstnanců a organizační struktury společnosti.
+        </Subtitle>
+        
+        <StatusBadge>🚧 Ve vývoji</StatusBadge>
+        
+        <FeaturesBox>
+          <FeatureTitle>
+            <FontAwesomeIcon icon={faChartLine} />
+            Připravované funkce
+          </FeatureTitle>
+          <FeatureList>
+            <li>
+              <FontAwesomeIcon icon={faUsers} />
+              <span>Správa vztahů nadřízený-podřízený</span>
+            </li>
+            <li>
+              <FontAwesomeIcon icon={faSitemap} />
+              <span>Vizualizace organizační struktury</span>
+            </li>
+            <li>
+              <FontAwesomeIcon icon={faUsers} />
+              <span>Přehled hierarchie podle úseků</span>
+            </li>
+            <li>
+              <FontAwesomeIcon icon={faChartLine} />
+              <span>Historie změn v hierarchii</span>
+            </li>
+            <li>
+              <FontAwesomeIcon icon={faUsers} />
+              <span>Časově omezené vztahy (zastupování)</span>
+            </li>
+          </FeatureList>
+        </FeaturesBox>
+      </ContentBox>
+    </PageContainer>
+  );
+};
+
+export default OrganizationHierarchy;

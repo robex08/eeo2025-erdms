@@ -40,6 +40,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
@@ -406,6 +407,7 @@ function App() {
                 {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
                 {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
                 {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/app-settings" element={<AppSettings />} />}
+                {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                 {isLoggedIn && hasPermission && hasPermission('CONTACT_READ') && <Route path="/address-book" element={<AddressBookPage />} />}
                 {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                 {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}

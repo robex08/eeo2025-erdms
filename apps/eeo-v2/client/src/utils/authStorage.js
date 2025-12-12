@@ -80,6 +80,10 @@ export const saveAuthData = {
           if (process.env.NODE_ENV === 'development') {
             // console.log('🔒 User data zašifrována a uložena');
           }
+          // Uložit username samostatně pro snadný přístup (nezašifrovaný)
+          if (userData.username) {
+            localStorage.setItem('username', userData.username);
+          }
           return;
         }
       }
@@ -88,9 +92,17 @@ export const saveAuthData = {
       if (process.env.NODE_ENV === 'development') {
         // console.log('⚠️ User data uložena NEŠIFROVANĚ (fallback)');
       }
+      // Uložit username samostatně pro snadný přístup
+      if (userData.username) {
+        localStorage.setItem('username', userData.username);
+      }
     } catch (error) {
       // Fallback
       localStorage.setItem(PERSISTENT_KEYS.USER, JSON.stringify(userData));
+      // Uložit username samostatně pro snadný přístup
+      if (userData.username) {
+        localStorage.setItem('username', userData.username);
+      }
     }
   },
 
