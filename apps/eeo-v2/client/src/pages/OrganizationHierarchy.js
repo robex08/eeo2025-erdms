@@ -2067,11 +2067,75 @@ const OrganizationHierarchy = () => {
       metadata: {
         sourceName: sourceNode?.data?.name || 'Neznamy',
         targetName: targetNode?.data?.name || 'Neznamy',
-        sourceType: sourceNode?.data?.metadata?.type || 'user',
-        targetType: targetNode?.data?.metadata?.type || 'user'
+        sourceType: sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user',
+        targetType: targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user'
       }
     });
   }, [nodes]);
+  
+  // Helper funkce pro určení typu vztahu
+  const getRelationshipTypeInfo = useCallback((sourceType, targetType) => {
+    const types = {
+      'user-user': {
+        label: 'Uživatel → Uživatel',
+        icon: '👤→👤',
+        description: 'Klasický nadřízený-podřízený vztah',
+        sourceLabel: 'Nadřízený (získává práva)',
+        targetLabel: 'Podřízený (sdílí data)',
+        showScope: true,
+        showExtended: true,
+        showModules: true,
+        explanation: (source, target) => `${source} získá práva vidět data od ${target} podle nastavení rozsahu a modulů.`
+      },
+      'location-user': {
+        label: 'Lokalita → Uživatel',
+        icon: '📍→👤',
+        description: 'Všichni uživatelé z lokality sdílí data nadřízenému',
+        sourceLabel: 'Lokalita (zdroj dat)',
+        targetLabel: 'Nadřízený uživatel (získává data)',
+        showScope: false, // Scope je implicitně LOCATION
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `${target} získá práva vidět data od VŠECH uživatelů v lokalitě ${source}.`
+      },
+      'user-location': {
+        label: 'Uživatel → Lokalita',
+        icon: '👤→📍',
+        description: 'Nadřízený vidí všechny uživatele v lokalitě',
+        sourceLabel: 'Nadřízený uživatel (získává práva)',
+        targetLabel: 'Lokalita (zdroj dat)',
+        showScope: false, // Scope je implicitně LOCATION
+        showExtended: true,
+        showModules: true,
+        explanation: (source, target) => `${source} získá práva vidět data od VŠECH uživatelů v lokalitě ${target}.`
+      },
+      'department-user': {
+        label: 'Úsek → Uživatel',
+        icon: '🏢→👤',
+        description: 'Všichni uživatelé z úseku sdílí data nadřízenému',
+        sourceLabel: 'Úsek (zdroj dat)',
+        targetLabel: 'Nadřízený uživatel (získává data)',
+        showScope: false, // Scope je implicitně TEAM
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `${target} získá práva vidět data od VŠECH uživatelů v úseku ${source}.`
+      },
+      'user-department': {
+        label: 'Uživatel → Úsek',
+        icon: '👤→🏢',
+        description: 'Nadřízený vidí všechny uživatele v úseku',
+        sourceLabel: 'Nadřízený uživatel (získává práva)',
+        targetLabel: 'Úsek (zdroj dat)',
+        showScope: false, // Scope je implicitně TEAM
+        showExtended: true,
+        showModules: true,
+        explanation: (source, target) => `${source} získá práva vidět data od VŠECH uživatelů v úseku ${target}.`
+      }
+    };
+    
+    const key = `${sourceType}-${targetType}`;
+    return types[key] || types['user-user']; // Fallback na user-user
+  }, []);
 
   // Handler pro automatické uložení layout pozic po přetažení uzlu
   const onNodeDragStop = useCallback(async (event, node) => {
@@ -5043,13 +5107,41 @@ const OrganizationHierarchy = () => {
                   const targetNode = nodes.find(n => n.id === selectedEdge.target);
                   return (
                   <>
+                    {/* Typ vztahu badge */}
+                    <div style={{
+                      marginBottom: '16px',
+                      padding: '10px',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      boxShadow: '0 2px 8px rgba(102,126,234,0.3)'
+                    }}>
+                      {(() => {
+                        const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                        const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                        const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
+                        return `${relationInfo.icon} ${relationInfo.label}`;
+                      })()}
+                    </div>
+                    
                     <FormGroup>
-                      <Label>Nadřízený (získává práva)</Label>
-                      <Input value={sourceNode?.data?.name || 'N/A'} readOnly style={{ fontWeight: '600', color: '#059669' }} />
+                      <Label>{(() => {
+                        const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                        const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                        return getRelationshipTypeInfo(sourceType, targetType).sourceLabel;
+                      })()}</Label>
+                      <Input value={sourceNode?.data?.label || sourceNode?.data?.name || 'Neznámý'} readOnly style={{ fontWeight: '600', color: '#059669' }} />
                     </FormGroup>
                     <FormGroup>
-                      <Label>Podřízený (sdílí svá data)</Label>
-                      <Input value={targetNode?.data?.name || 'N/A'} readOnly style={{ fontWeight: '600', color: '#3b82f6' }} />
+                      <Label>{(() => {
+                        const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                        const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                        return getRelationshipTypeInfo(sourceType, targetType).targetLabel;
+                      })()}</Label>
+                      <Input value={targetNode?.data?.label || targetNode?.data?.name || 'Neznámý'} readOnly style={{ fontWeight: '600', color: '#3b82f6' }} />
                     </FormGroup>
                     
                     {/* Vysvětlení logiky vztahu */}
