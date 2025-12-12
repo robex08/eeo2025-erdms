@@ -15,6 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { CustomSelect } from '../components/CustomSelect';
 import dagre from 'dagre';
 import { graphlib } from 'dagre';
 import { loadAuthData } from '../utils/authStorage';
@@ -48,6 +49,13 @@ window.console.error = (...args) => {
   }
   resizeObserverErr(...args);
 };
+
+// Potlačit ResizeObserver error i v error handleru
+window.addEventListener('error', (e) => {
+  if (e.message?.includes?.('ResizeObserver loop completed')) {
+    e.stopImmediatePropagation();
+  }
+});
 
 // Styled Components
 const Container = styled.div`
@@ -1290,11 +1298,48 @@ const OrganizationHierarchy = () => {
   // Sledování Shift klávesy pro změnu kurzoru
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   
+  // Helper funkce pro CustomSelect
+  const toggleSelect = useCallback((fieldName) => {
+    setSelectStates(prev => ({
+      ...prev,
+      [fieldName]: !prev[fieldName]
+    }));
+  }, []);
+  
+  const closeAllSelects = useCallback(() => {
+    setSelectStates({});
+  }, []);
+  
+  const filterOptions = useCallback((options, searchTerm, fieldName) => {
+    if (!searchTerm) return options;
+    const normalized = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return options.filter(option => {
+      const label = option.name || option.label || option.nazev || String(option);
+      const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return normalizedLabel.includes(normalized);
+    });
+  }, []);
+  
+  const getOptionLabel = useCallback((option, fieldName) => {
+    if (fieldName === 'extendedLocations' || fieldName === 'extendedDepartments') {
+      return option.name + (option.code ? ` (${option.code})` : '');
+    }
+    if (fieldName === 'notificationTypes') {
+      return option.name || option.label || String(option);
+    }
+    return option.name || option.label || option.nazev || String(option);
+  }, []);
+  
   // Detail panel data - rozsirene useky
   const [selectedExtendedDepartments, setSelectedExtendedDepartments] = useState([]);
   
   // Detail panel data - kombinace lokalita+utvar
   const [selectedCombinations, setSelectedCombinations] = useState([]);
+  
+  // State management pro CustomSelect komponenty (multiselect)
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+  const [touchedSelectFields, setTouchedSelectFields] = useState({});
   
   // Profily organizacnich radu
   const [profiles, setProfiles] = useState([]);
@@ -4708,6 +4753,141 @@ const OrganizationHierarchy = () => {
                     </FormGroup>
                   </>
                 )}
+                
+                {/* Sekce: Aktuální vztahy v diagramu - pouze pro node */}
+                {selectedNode && (
+                  <div style={{ 
+                    marginTop: '24px', 
+                    padding: '12px', 
+                    background: '#f0f9ff', 
+                    border: '2px solid #3b82f6',
+                    borderRadius: '8px' 
+                  }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        marginBottom: '12px',
+                        fontWeight: '600',
+                        color: '#1e40af',
+                        fontSize: '0.9rem'
+                      }}>
+                        <FontAwesomeIcon icon={faSitemap} />
+                        Aktuální vztahy v diagramu
+                      </div>
+                      
+                      {(() => {
+                        // Najdi nadřízené (šipky směřující DO tohoto nodu)
+                        const supervisors = edges
+                          .filter(e => e.target === selectedNode.id)
+                          .map(e => {
+                            const sourceNode = nodes.find(n => n.id === e.source);
+                            return {
+                              name: sourceNode?.data?.name || 'Neznámý',
+                              edgeId: e.id,
+                              type: e.data?.relationshipType || 'prime'
+                            };
+                          });
+                        
+                        // Najdi podřízené (šipky směřující Z tohoto nodu)
+                        const subordinates = edges
+                          .filter(e => e.source === selectedNode.id)
+                          .map(e => {
+                            const targetNode = nodes.find(n => n.id === e.target);
+                            return {
+                              name: targetNode?.data?.name || 'Neznámý',
+                              edgeId: e.id,
+                              type: e.data?.relationshipType || 'prime'
+                            };
+                          });
+                        
+                        return (
+                          <>
+                            <div style={{ marginBottom: '12px' }}>
+                              <strong style={{ fontSize: '0.8rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                                ⬆️ Nadřízení ({supervisors.length})
+                              </strong>
+                              {supervisors.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {supervisors.map((sup, i) => (
+                                    <div key={i} style={{ 
+                                      padding: '6px 10px', 
+                                      background: '#dbeafe',
+                                      borderRadius: '4px',
+                                      fontSize: '0.8rem',
+                                      color: '#1e40af',
+                                      fontWeight: '500',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onClick={() => {
+                                      // Kliknutím vyber tento edge
+                                      const edge = edges.find(e => e.id === sup.edgeId);
+                                      if (edge) {
+                                        setSelectedEdge(edge);
+                                        setSelectedNode(null);
+                                      }
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#bfdbfe'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#dbeafe'}
+                                    title="Klikněte pro zobrazení detailu vztahu">
+                                      {sup.name}
+                                      {sup.type === 'zastupovani' && ' (zastupování)'}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                  Nemá nadřízeného v diagramu
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div>
+                              <strong style={{ fontSize: '0.8rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                                ⬇️ Podřízení ({subordinates.length})
+                              </strong>
+                              {subordinates.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {subordinates.map((sub, i) => (
+                                    <div key={i} style={{ 
+                                      padding: '6px 10px', 
+                                      background: '#dbeafe',
+                                      borderRadius: '4px',
+                                      fontSize: '0.8rem',
+                                      color: '#1e40af',
+                                      fontWeight: '500',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onClick={() => {
+                                      // Kliknutím vyber tento edge
+                                      const edge = edges.find(e => e.id === sub.edgeId);
+                                      if (edge) {
+                                        setSelectedEdge(edge);
+                                        setSelectedNode(null);
+                                      }
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#bfdbfe'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#dbeafe'}
+                                    title="Klikněte pro zobrazení detailu vztahu">
+                                      {sub.name}
+                                      {sub.type === 'zastupovani' && ' (zastupování)'}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                                  Nemá podřízené v diagramu
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                )}
+                
                 {selectedEdge && (
                   <>
                     <FormGroup>
@@ -4718,17 +4898,20 @@ const OrganizationHierarchy = () => {
                       <Label>Podřízený</Label>
                       <Input value={selectedEdge.metadata?.targetName || 'N/A'} readOnly />
                     </FormGroup>
+                    
+                    <FormGroup>
+                      <Label>Typ vztahu</Label>
+                      <Select>
+                        <option value="prime">Přímý nadřízený</option>
+                        <option value="zastupovani">Zastupování</option>
+                        <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
+                        <option value="rozsirene" disabled style={{ color: '#9ca3af' }}>Rozšířené oprávnění (TODO)</option>
+                      </Select>
+                    </FormGroup>
                   </>
                 )}
-                <FormGroup>
-                  <Label>Typ vztahu</Label>
-                  <Select>
-                    <option value="prime">Přímý nadřízený</option>
-                    <option value="zastupovani">Zastupování</option>
-                    <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
-                    <option value="rozsirene" disabled style={{ color: '#9ca3af' }}>Rozšířené oprávnění (TODO)</option>
-                  </Select>
-                </FormGroup>
+                
+                {selectedEdge && (
                 <FormGroup>
                   <Label>
                     Rozsah viditelnosti (Scope)
@@ -4760,6 +4943,7 @@ const OrganizationHierarchy = () => {
                     </ul>
                   </div>
                 </FormGroup>
+                )}
               </DetailSection>
 
               <Divider />
@@ -4877,39 +5061,25 @@ const OrganizationHierarchy = () => {
                   <FontAwesomeIcon icon={faMapMarkerAlt} />
                   Rozšířené lokality
                 </DetailSectionTitle>
-                <TagList>
-                  {selectedExtendedLocations.map((locationId) => {
-                    const location = allLocations.find(l => l.id === locationId);
-                    return location ? (
-                      <Tag key={locationId}>
-                        {location.name}
-                        <button onClick={() => {
-                          setSelectedExtendedLocations(prev => prev.filter(id => id !== locationId));
-                        }}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </button>
-                      </Tag>
-                    ) : null;
-                  })}
-                </TagList>
-                <FormGroup style={{ marginTop: '12px' }}>
-                  <Select onChange={(e) => {
-                    const locationId = e.target.value;
-                    if (locationId && !selectedExtendedLocations.includes(locationId)) {
-                      setSelectedExtendedLocations(prev => [...prev, locationId]);
-                    }
-                    e.target.value = '';
-                  }}>
-                    <option value="">-- Vyberte lokalitu --</option>
-                    {allLocations
-                      .filter(loc => !selectedExtendedLocations.includes(loc.id))
-                      .map(loc => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name} {loc.code ? `(${loc.code})` : ''}
-                        </option>
-                      ))
-                    }
-                  </Select>
+                <FormGroup>
+                  <CustomSelect
+                    value={selectedExtendedLocations}
+                    onChange={(newValues) => setSelectedExtendedLocations(newValues)}
+                    options={allLocations}
+                    placeholder="Vyberte lokality..."
+                    field="extendedLocations"
+                    multiple={true}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                    hasTriedToSubmit={false}
+                  />
                 </FormGroup>
               </DetailSection>
 
@@ -4920,39 +5090,25 @@ const OrganizationHierarchy = () => {
                   <FontAwesomeIcon icon={faBuilding} />
                   Rozšířené úseky
                 </DetailSectionTitle>
-                <TagList>
-                  {selectedExtendedDepartments.map((deptId) => {
-                    const dept = allDepartments.find(d => d.id === deptId);
-                    return dept ? (
-                      <Tag key={deptId}>
-                        {dept.name}
-                        <button onClick={() => {
-                          setSelectedExtendedDepartments(prev => prev.filter(id => id !== deptId));
-                        }}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </button>
-                      </Tag>
-                    ) : null;
-                  })}
-                </TagList>
-                <FormGroup style={{ marginTop: '12px' }}>
-                  <Select onChange={(e) => {
-                    const deptId = e.target.value;
-                    if (deptId && !selectedExtendedDepartments.includes(deptId)) {
-                      setSelectedExtendedDepartments(prev => [...prev, deptId]);
-                    }
-                    e.target.value = '';
-                  }}>
-                    <option value="">-- Vyberte úsek --</option>
-                    {allDepartments
-                      .filter(dept => !selectedExtendedDepartments.includes(dept.id))
-                      .map(dept => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name} {dept.code ? `(${dept.code})` : ''}
-                        </option>
-                      ))
-                    }
-                  </Select>
+                <FormGroup>
+                  <CustomSelect
+                    value={selectedExtendedDepartments}
+                    onChange={(newValues) => setSelectedExtendedDepartments(newValues)}
+                    options={allDepartments}
+                    placeholder="Vyberte úseky..."
+                    field="extendedDepartments"
+                    multiple={true}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                    hasTriedToSubmit={false}
+                  />
                 </FormGroup>
               </DetailSection>
 
@@ -5068,41 +5224,24 @@ const OrganizationHierarchy = () => {
                 </CheckboxGroup>
                 <FormGroup style={{ marginTop: '16px' }}>
                   <Label>Typy událostí</Label>
-                  <TagList>
-                    {selectedNotificationTypes.map((typeId) => {
-                      const notifType = notificationTypes.find(nt => nt.id === typeId);
-                      return notifType ? (
-                        <Tag key={typeId}>
-                          {notifType.name}
-                          <button onClick={() => {
-                            setSelectedNotificationTypes(prev => prev.filter(id => id !== typeId));
-                          }}>
-                            <FontAwesomeIcon icon={faTimes} />
-                          </button>
-                        </Tag>
-                      ) : null;
-                    })}
-                  </TagList>
-                  <Select 
-                    style={{ marginTop: '12px', width: '100%' }}
-                    onChange={(e) => {
-                      const typeId = e.target.value;
-                      if (typeId && !selectedNotificationTypes.includes(typeId)) {
-                        setSelectedNotificationTypes(prev => [...prev, typeId]);
-                      }
-                      e.target.value = '';
-                    }}
-                  >
-                    <option value="">-- Vyberte typ události --</option>
-                    {notificationTypes
-                      .filter(nt => !selectedNotificationTypes.includes(nt.id))
-                      .map(nt => (
-                        <option key={nt.id} value={nt.id}>
-                          {nt.name}
-                        </option>
-                      ))
-                    }
-                  </Select>
+                  <CustomSelect
+                    value={selectedNotificationTypes}
+                    onChange={(newValues) => setSelectedNotificationTypes(newValues)}
+                    options={notificationTypes}
+                    placeholder="Vyberte typy událostí..."
+                    field="notificationTypes"
+                    multiple={true}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                    hasTriedToSubmit={false}
+                  />
                 </FormGroup>
               </DetailSection>
 
