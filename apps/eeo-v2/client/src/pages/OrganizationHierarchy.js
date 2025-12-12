@@ -1225,12 +1225,21 @@ const nodeTypes = {
 // Main Component
 const OrganizationHierarchy = () => {
   const reactFlowWrapper = useRef(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [expandedSections, setExpandedSections] = useState({
-    users: true,
-    locations: false,
-    departments: false,
-    notificationTemplates: false
+  
+  // Search terms pro každou sekci (načíst z LS)
+  const [searchUsers, setSearchUsers] = useState(() => localStorage.getItem('hierarchy_search_users') || '');
+  const [searchLocations, setSearchLocations] = useState(() => localStorage.getItem('hierarchy_search_locations') || '');
+  const [searchDepartments, setSearchDepartments] = useState(() => localStorage.getItem('hierarchy_search_departments') || '');
+  const [searchTemplates, setSearchTemplates] = useState(() => localStorage.getItem('hierarchy_search_templates') || '');
+  
+  const [expandedSections, setExpandedSections] = useState(() => {
+    const saved = localStorage.getItem('hierarchy_expanded_sections');
+    return saved ? JSON.parse(saved) : {
+      users: true,
+      locations: false,
+      departments: false,
+      notificationTemplates: false
+    };
   });
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
@@ -1336,9 +1345,36 @@ const OrganizationHierarchy = () => {
   const LS_NODES_KEY = 'hierarchy_draft_nodes';
   const LS_EDGES_KEY = 'hierarchy_draft_edges';
   const LS_TIMESTAMP_KEY = 'hierarchy_draft_timestamp';
+  const LS_SEARCH_USERS = 'hierarchy_search_users';
+  const LS_SEARCH_LOCATIONS = 'hierarchy_search_locations';
+  const LS_SEARCH_DEPARTMENTS = 'hierarchy_search_departments';
+  const LS_SEARCH_TEMPLATES = 'hierarchy_search_templates';
+  const LS_EXPANDED_SECTIONS = 'hierarchy_expanded_sections';
 
   // State pro sledování, zda byl draft načten
   const [hasDraft, setHasDraft] = useState(false);
+
+  // Auto-save search terms do localStorage
+  useEffect(() => {
+    localStorage.setItem('hierarchy_search_users', searchUsers);
+  }, [searchUsers]);
+  
+  useEffect(() => {
+    localStorage.setItem('hierarchy_search_locations', searchLocations);
+  }, [searchLocations]);
+  
+  useEffect(() => {
+    localStorage.setItem('hierarchy_search_departments', searchDepartments);
+  }, [searchDepartments]);
+  
+  useEffect(() => {
+    localStorage.setItem('hierarchy_search_templates', searchTemplates);
+  }, [searchTemplates]);
+  
+  // Auto-save expanded sections do localStorage
+  useEffect(() => {
+    localStorage.setItem('hierarchy_expanded_sections', JSON.stringify(expandedSections));
+  }, [expandedSections]);
 
   // Auto-save do localStorage při změně nodes/edges
   useEffect(() => {
@@ -3394,24 +3430,24 @@ const OrganizationHierarchy = () => {
   };
 
   const filteredUsers = allUsers.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.location.toLowerCase().includes(searchTerm.toLowerCase())
+    u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    u.position.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    u.location.toLowerCase().includes(searchUsers.toLowerCase())
   );
 
   const filteredLocations = allLocations.filter(loc =>
-    loc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.code.toLowerCase().includes(searchTerm.toLowerCase())
+    loc.name.toLowerCase().includes(searchLocations.toLowerCase()) ||
+    loc.code.toLowerCase().includes(searchLocations.toLowerCase())
   );
 
   const filteredDepartments = allDepartments.filter(dept =>
-    dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dept.code.toLowerCase().includes(searchTerm.toLowerCase())
+    dept.name.toLowerCase().includes(searchDepartments.toLowerCase()) ||
+    dept.code.toLowerCase().includes(searchDepartments.toLowerCase())
   );
 
   const filteredNotificationTemplates = allNotificationTemplates.filter(template =>
-    template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (template.description && template.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    template.name.toLowerCase().includes(searchTemplates.toLowerCase()) ||
+    (template.description && template.description.toLowerCase().includes(searchTemplates.toLowerCase()))
   );
 
   if (loading) {
@@ -3420,7 +3456,7 @@ const OrganizationHierarchy = () => {
         <Header>
           <Title>
             <FontAwesomeIcon icon={faSitemap} />
-            Organizační řád
+            Workflow & Notifikace
           </Title>
         </Header>
         <div style={{ 
@@ -3446,7 +3482,7 @@ const OrganizationHierarchy = () => {
         <Header>
           <Title>
             <FontAwesomeIcon icon={faSitemap} />
-            Organizační řád
+            Workflow & Notifikace
           </Title>
         </Header>
         <div style={{ 
@@ -3471,7 +3507,7 @@ const OrganizationHierarchy = () => {
       <Header>
         <Title>
           <FontAwesomeIcon icon={faSitemap} />
-          Organizační řád
+          Workflow & Notifikace
         </Title>
         <HeaderActions>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '280px' }}>
@@ -3563,29 +3599,10 @@ const OrganizationHierarchy = () => {
         <Sidebar>
             <SidebarHeader>
               <SidebarTitle>
-                <FontAwesomeIcon icon={faUsers} />
-                Uživatelé & Lokality
+                <FontAwesomeIcon icon={faLayerGroup} />
+                Přehled sekcí workflow
               </SidebarTitle>
             </SidebarHeader>
-
-            <SearchBox>
-              <SearchIcon>
-                <FontAwesomeIcon icon={faSearch} />
-              </SearchIcon>
-              <SearchInput
-                placeholder="Hledat ve všech sekcích..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <SearchClearButton
-                  onClick={() => setSearchTerm('')}
-                  title="Vymazat hledání"
-                >
-                  <FontAwesomeIcon icon={faTimes} />
-                </SearchClearButton>
-              )}
-            </SearchBox>
 
             <SidebarContent>
               <CollapsibleSection>
@@ -3603,6 +3620,28 @@ const OrganizationHierarchy = () => {
                   )}
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.users}>
+                  {/* Search box pro uživatele */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat uživatele..."
+                        value={searchUsers}
+                        onChange={(e) => setSearchUsers(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchUsers && (
+                        <SearchClearButton
+                          onClick={() => setSearchUsers('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
                     <button
                       onClick={(e) => {
@@ -3696,6 +3735,28 @@ const OrganizationHierarchy = () => {
                   )}
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.locations}>
+                  {/* Search box pro lokality */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat lokalitu..."
+                        value={searchLocations}
+                        onChange={(e) => setSearchLocations(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchLocations && (
+                        <SearchClearButton
+                          onClick={() => setSearchLocations('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
                     <button
                       onClick={(e) => {
@@ -3789,6 +3850,28 @@ const OrganizationHierarchy = () => {
                   )}
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.departments}>
+                  {/* Search box pro útvary */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat útvar..."
+                        value={searchDepartments}
+                        onChange={(e) => setSearchDepartments(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchDepartments && (
+                        <SearchClearButton
+                          onClick={() => setSearchDepartments('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
                     <button
                       onClick={(e) => {
@@ -3883,6 +3966,28 @@ const OrganizationHierarchy = () => {
                   )}
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.notificationTemplates}>
+                  {/* Search box pro notifikační šablony */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat šablonu..."
+                        value={searchTemplates}
+                        onChange={(e) => setSearchTemplates(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchTemplates && (
+                        <SearchClearButton
+                          onClick={() => setSearchTemplates('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
                     <button
                       onClick={(e) => {

@@ -2651,7 +2651,7 @@ const Layout = ({ children }) => {
                       to="/organization-hierarchy" 
                       onClick={() => setAdminMenuOpen(false)}
                     >
-                      <FontAwesomeIcon icon={faSitemap} /> Organizační řád
+                      <FontAwesomeIcon icon={faSitemap} /> Systém workflow a notifikací
                     </MenuDropdownItem>
                     <MenuDropdownItem 
                       to="/app-settings" 
