@@ -307,6 +307,22 @@ if (($endpoint === 'api.php' || $endpoint === '' || $endpoint === 'api.eeo') && 
     }
 }
 
+// Create PDO connection for handlers that need it
+try {
+    $pdo = new PDO(
+        "mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4",
+        $config['username'],
+        $config['password'],
+        array(
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        )
+    );
+} catch (PDOException $e) {
+    error_log("PDO connection failed: " . $e->getMessage());
+    $pdo = null;
+}
+
 // Routing podle endpointu
 switch ($endpoint) {
     case 'login':
@@ -845,6 +861,73 @@ switch ($endpoint) {
             $response = handle_hierarchy_remove_relation($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+
+    // ============ ORGANIZAČNÍ HIERARCHIE - NOVÉ ENDPOINTY ============
+    case 'hierarchy/users':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_users_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/locations':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_locations_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/departments':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_departments_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/structure':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/save':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_save($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/notification-types':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_notification_types($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
             http_response_code(405);
             echo json_encode(array('error' => 'Method not allowed'));

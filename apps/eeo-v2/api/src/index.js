@@ -102,9 +102,11 @@ if (process.env.NODE_ENV === 'development') {
 // Routes
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
+const hierarchyRoutes = require('./routes/hierarchy');
 
 app.use('/api/eeo/auth', authRoutes);
 app.use('/api/eeo/entra', entraRoutes);
+app.use('/api/eeo/hierarchy', hierarchyRoutes);
 
 // 404 handler
 app.use((req, res) => {
