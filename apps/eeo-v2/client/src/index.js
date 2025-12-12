@@ -11,6 +11,13 @@ import { AuthProvider } from './context/AuthContext'; // Import AuthProvider
 import { DebugProvider } from './context/DebugContext'; // Import DebugProvider
 import { ProgressProvider } from './context/ProgressContext';
 
+// Suppress ResizeObserver errors (benign browser timing issue)
+window.addEventListener('error', e => {
+  if (e.message === 'ResizeObserver loop completed with undelivered notifications.') {
+    e.stopImmediatePropagation();
+  }
+});
+
 // Create MUI theme
 const muiTheme = createTheme({
   palette: {

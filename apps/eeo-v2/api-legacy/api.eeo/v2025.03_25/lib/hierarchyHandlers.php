@@ -616,6 +616,11 @@ function handle_hierarchy_users_list($data, $pdo) {
                 (isset($row['prijmeni'][0]) ? $row['prijmeni'][0] : '')
             );
             
+            // Načíst role uživatele z 25_uzivatele_role
+            $roleStmt = $pdo->prepare("SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = ?");
+            $roleStmt->execute(array($row['id']));
+            $userRoles = $roleStmt->fetchAll(PDO::FETCH_COLUMN);
+            
             $users[] = array(
                 'id' => (string)$row['id'],
                 'name' => trim($row['jmeno'] . ' ' . $row['prijmeni']),
@@ -624,7 +629,8 @@ function handle_hierarchy_users_list($data, $pdo) {
                 'department' => $row['usek'] ?: 'Neuvedeno',
                 'departmentCode' => $row['usek_zkr'] ?: '',
                 'initials' => $initials ?: '?',
-                'email' => $row['email']
+                'email' => $row['email'],
+                'roles' => array_map('intval', $userRoles) // Pole ID rolí
             );
         }
         

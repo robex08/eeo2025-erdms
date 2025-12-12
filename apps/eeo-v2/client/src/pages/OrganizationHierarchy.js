@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
 import styled from '@emotion/styled';
 import ReactFlow, {
   MiniMap,
@@ -19,6 +19,7 @@ import { CustomSelect } from '../components/CustomSelect';
 import dagre from 'dagre';
 import { graphlib } from 'dagre';
 import { loadAuthData } from '../utils/authStorage';
+import { ToastContext } from '../context/ToastContext';
 import { 
   faSitemap, 
   faUsers, 
@@ -31,6 +32,7 @@ import {
   faChevronDown,
   faChevronRight,
   faUserTie,
+  faUserShield,
   faBuilding,
   faEnvelope,
   faSave,
@@ -1056,11 +1058,12 @@ const HelpExample = styled.div`
 
 // Custom Node Component
 const CustomNode = ({ data, selected }) => {
-  // Rozlišit typ node (user, location, department, template)
+  // Rozlišit typ node (user, location, department, template, role)
   const isTemplate = data.type === 'template';
+  const isRole = data.type === 'role';
   const isLocation = data.type === 'location';
   const isDepartment = data.type === 'department';
-  const isUser = !isLocation && !isDepartment && !isTemplate;
+  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole;
   
   // Pro template nodes - jen zelený výstupní bod
   if (isTemplate) {
@@ -1123,6 +1126,89 @@ const CustomNode = ({ data, selected }) => {
               fontWeight: 500
             }}>
               {data.position}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Pro role nodes - fialový node s ikonou štítu
+  if (isRole) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: selected 
+          ? 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)'
+          : 'white',
+        border: `3px solid ${selected ? '#8b5cf6' : '#8b5cf6'}`,
+        minWidth: '200px',
+        boxShadow: selected 
+          ? '0 6px 16px rgba(139, 92, 246, 0.4)'
+          : '0 2px 8px rgba(139, 92, 246, 0.15)',
+        transition: 'all 0.2s',
+        position: 'relative',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+      }}>
+        {/* Source handle - role může vysílat notifikace/práva */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{
+            width: '16px',
+            height: '16px',
+            background: '#10b981',
+            border: '3px solid white',
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.5)',
+            cursor: 'crosshair',
+            right: '-10px'
+          }}
+        />
+        {/* Target handle - role přijímá uživatele */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={{
+            width: '16px',
+            height: '16px',
+            background: '#ef4444',
+            border: '3px solid white',
+            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.5)',
+            cursor: 'crosshair',
+            left: '-10px'
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.3rem',
+            boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)',
+            color: 'white'
+          }}>
+            🛡️
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: '#6d28d9',
+              fontSize: '0.85rem',
+              marginBottom: '2px'
+            }}>
+              {data.name}
+            </div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#8b5cf6',
+              fontWeight: 500
+            }}>
+              {data.metadata?.userCount ? `👥 ${data.metadata.userCount} uživatelů` : 'Role'}
             </div>
           </div>
         </div>
@@ -1336,9 +1422,11 @@ const nodeTypes = {
 // Main Component
 const OrganizationHierarchy = () => {
   const reactFlowWrapper = useRef(null);
+  const { showToast } = useContext(ToastContext);
   
   // Search terms pro každou sekci (načíst z LS)
   const [searchUsers, setSearchUsers] = useState(() => localStorage.getItem('hierarchy_search_users') || '');
+  const [searchRoles, setSearchRoles] = useState(() => localStorage.getItem('hierarchy_search_roles') || '');
   const [searchLocations, setSearchLocations] = useState(() => localStorage.getItem('hierarchy_search_locations') || '');
   const [searchDepartments, setSearchDepartments] = useState(() => localStorage.getItem('hierarchy_search_departments') || '');
   const [searchTemplates, setSearchTemplates] = useState(() => localStorage.getItem('hierarchy_search_templates') || '');
@@ -1347,6 +1435,7 @@ const OrganizationHierarchy = () => {
     const saved = localStorage.getItem('hierarchy_expanded_sections');
     return saved ? JSON.parse(saved) : {
       users: true,
+      roles: false,
       locations: false,
       departments: false,
       notificationTemplates: false
@@ -1365,6 +1454,7 @@ const OrganizationHierarchy = () => {
 
   // Data from API
   const [allUsers, setAllUsers] = useState([]);
+  const [allRoles, setAllRoles] = useState([]);
   const [allLocations, setAllLocations] = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
   const [notificationTypes, setNotificationTypes] = useState([]);
@@ -1503,6 +1593,7 @@ const OrganizationHierarchy = () => {
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
+  const [selectedRoles, setSelectedRoles] = useState(new Set());
   const [selectedLocations, setSelectedLocations] = useState(new Set());
   const [selectedDepartments, setSelectedDepartments] = useState(new Set());
   const [selectedNotificationTemplates, setSelectedNotificationTemplates] = useState(new Set());
@@ -1743,8 +1834,9 @@ const OrganizationHierarchy = () => {
         };
 
         // 3. Paralelní načtení všech dat z API
-        const [usersData, locationsData, departmentsData, profilesData, structureData, notifTypesData, templatesData] = await Promise.all([
+        const [usersData, rolesData, locationsData, departmentsData, profilesData, structureData, notifTypesData, templatesData] = await Promise.all([
           fetchData('hierarchy/users'),
+          fetchData('ciselniky/role/list'),
           fetchData('hierarchy/locations'),
           fetchData('hierarchy/departments'),
           fetchData('hierarchy/profiles/list'),
@@ -1753,7 +1845,24 @@ const OrganizationHierarchy = () => {
           fetchData('notifications/templates/list')
         ]);
 
-        setAllUsers(usersData.data || []);
+        const users = usersData.data || [];
+        const roles = rolesData.data || [];
+        
+        // Spočítat počet uživatelů pro každou roli (z pole user.roles)
+        const rolesWithUserCount = roles.map(role => {
+          const userCount = users.filter(user => {
+            // Kontrola, jestli uživatel má tuto roli přiřazenou (user.roles je pole ID)
+            return user.roles && Array.isArray(user.roles) && user.roles.includes(role.id);
+          }).length;
+          
+          return {
+            ...role,
+            userCount: userCount
+          };
+        });
+        
+        setAllUsers(users);
+        setAllRoles(rolesWithUserCount);
         setAllLocations(locationsData.data || []);
         setAllDepartments(departmentsData.data || []);
         setNotificationTypes(notifTypesData.data || []);
@@ -1835,6 +1944,18 @@ const OrganizationHierarchy = () => {
                   template: node.name
                 }
               };
+            } else if (node.type === 'role') {
+              nodeId = `role-${node.roleId}-${timestamp}-${index}`;
+              nodeData = {
+                roleId: node.roleId,
+                name: node.name,
+                type: 'role',
+                metadata: {
+                  type: 'role',
+                  popis: node.popis || '',
+                  userCount: node.userCount || 0
+                }
+              };
             }
             
             return {
@@ -1849,6 +1970,8 @@ const OrganizationHierarchy = () => {
           const getEdgeColor = (relationType) => {
             if (relationType.includes('template')) {
               return '#f59e0b'; // Oranžová pro notifikační šablony
+            } else if (relationType.includes('role')) {
+              return '#8b5cf6'; // Fialová pro role
             } else if (relationType.includes('location')) {
               return '#92400e'; // Tmavě hnědá pro lokality
             } else if (relationType.includes('department')) {
@@ -1856,7 +1979,7 @@ const OrganizationHierarchy = () => {
             } else if (relationType === 'user-user') {
               return '#3b82f6'; // Modrá pro uživatel-uživatel
             }
-            return '#667eea'; // Výchozí modrá
+            return '#3b82f6'; // Výchozí modrá
           };
 
           // Konvertovat relations na ReactFlow edges
@@ -1870,6 +1993,8 @@ const OrganizationHierarchy = () => {
             // Najít source node
             if (sourceType === 'user') {
               sourceNode = flowNodes.find(n => n.data.userId === String(rel.user_id_1));
+            } else if (sourceType === 'role') {
+              sourceNode = flowNodes.find(n => n.data.roleId === rel.role_id);
             } else if (sourceType === 'location') {
               sourceNode = flowNodes.find(n => n.data.locationId === rel.lokalita_id);
             } else if (sourceType === 'department') {
@@ -1881,6 +2006,8 @@ const OrganizationHierarchy = () => {
             // Najít target node
             if (targetType === 'user') {
               targetNode = flowNodes.find(n => n.data.userId === String(rel.user_id_2 || rel.user_id_1));
+            } else if (targetType === 'role') {
+              targetNode = flowNodes.find(n => n.data.roleId === rel.role_id);
             } else if (targetType === 'location') {
               targetNode = flowNodes.find(n => n.data.locationId === rel.lokalita_id);
             } else if (targetType === 'department') {
@@ -1967,16 +2094,18 @@ const OrganizationHierarchy = () => {
       relationType = `${sourceType}-${targetType}`;
     }
     
-    // Určit barvu podle typu
-    let edgeColor = '#667eea'; // výchozí
+    // Určit barvu podle typu (podle legendy)
+    let edgeColor = '#3b82f6'; // výchozí modrá
     if (relationType.includes('template')) {
-      edgeColor = '#ea580c'; // Tmavší oranžová pro notifikace
+      edgeColor = '#f59e0b'; // Oranžová pro notifikace (podle legendy)
+    } else if (relationType.includes('role')) {
+      edgeColor = '#8b5cf6'; // Fialová pro role (podle legendy)
     } else if (relationType.includes('location')) {
-      edgeColor = '#10b981'; // Zelená pro lokality
+      edgeColor = '#92400e'; // Tmavě hnědá pro lokality (podle legendy)
     } else if (relationType.includes('department')) {
-      edgeColor = '#059669'; // Tmavě zelená pro útvary
+      edgeColor = '#059669'; // Tmavě zelená pro úseky (podle legendy)
     } else if (relationType === 'user-user') {
-      edgeColor = '#3b82f6'; // Modrá pro uživatel-uživatel
+      edgeColor = '#3b82f6'; // Modrá pro uživatel-uživatel (podle legendy)
     }
     
     setEdges((eds) => addEdge({
@@ -1996,6 +2125,42 @@ const OrganizationHierarchy = () => {
       }
     }, eds));
   }, [nodes]);
+
+  // Aktualizovat počty uživatelů u rolí, lokalit a úseků po změně edges
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const nodeType = node.data?.type;
+        
+        // Počítat pouze pro role, lokality a úseky
+        if (nodeType === 'role' || nodeType === 'location' || nodeType === 'department') {
+          // Najít všechny edges směřující k tomuto nodu (target)
+          const connectedEdges = edges.filter(e => e.target === node.id);
+          
+          // Spočítat unikátní uživatele připojené k tomuto nodu
+          const connectedUserNodes = connectedEdges
+            .map(e => nodes.find(n => n.id === e.source))
+            .filter(n => n?.data?.type === 'user');
+          
+          const userCount = connectedUserNodes.length;
+          
+          // Aktualizovat metadata s počtem
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              metadata: {
+                ...node.data.metadata,
+                userCount: userCount
+              }
+            }
+          };
+        }
+        
+        return node;
+      })
+    );
+  }, [edges, nodes.length]); // Závislost na edges a počtu nodes (ne na nodes samotných, aby se zabránilo nekonečné smyčce)
 
   const onNodeClick = useCallback((event, node) => {
     // Pokud není CTRL/CMD, zobrazit detail panel (single selection)
@@ -2130,6 +2295,72 @@ const OrganizationHierarchy = () => {
         showExtended: true,
         showModules: true,
         explanation: (source, target) => `${source} získá práva vidět data od VŠECH uživatelů v úseku ${target}.`
+      },
+      'template-user': {
+        label: 'Notifikační šablona → Uživatel',
+        icon: '📧→👤',
+        description: 'Uživatel bude dostávat notifikace z této šablony',
+        sourceLabel: 'Notifikační šablona',
+        targetLabel: 'Příjemce (uživatel)',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `${target} bude dostávat notifikace typu "${source}".`
+      },
+      'template-location': {
+        label: 'Notifikační šablona → Lokalita',
+        icon: '📧→📍',
+        description: 'Všichni uživatelé v lokalitě budou dostávat notifikace',
+        sourceLabel: 'Notifikační šablona',
+        targetLabel: 'Příjemci (lokalita)',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `VŠICHNI uživatelé v lokalitě ${target} budou dostávat notifikace typu "${source}".`
+      },
+      'template-department': {
+        label: 'Notifikační šablona → Úsek',
+        icon: '📧→🏢',
+        description: 'Všichni uživatelé v úseku budou dostávat notifikace',
+        sourceLabel: 'Notifikační šablona',
+        targetLabel: 'Příjemci (úsek)',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `VŠICHNI uživatelé v úseku ${target} budou dostávat notifikace typu "${source}".`
+      },
+      'user-role': {
+        label: 'Uživatel → Role',
+        icon: '👤→🛡️',
+        description: 'Uživatel získává oprávnění z role',
+        sourceLabel: 'Uživatel (příjemce práv)',
+        targetLabel: 'Role (zdroj oprávnění)',
+        showScope: false,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `${source} má přiřazenou roli ${target} a získává z ní oprávnění pro moduly.`
+      },
+      'role-user': {
+        label: 'Role → Uživatel',
+        icon: '🛡️→👤',
+        description: 'Role přiřazuje oprávnění uživateli',
+        sourceLabel: 'Role (zdroj oprávnění)',
+        targetLabel: 'Uživatel (příjemce práv)',
+        showScope: false,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `Role ${source} přiřazuje oprávnění uživateli ${target}.`
+      },
+      'template-role': {
+        label: 'Notifikační šablona → Role',
+        icon: '📧→🛡️',
+        description: 'Všichni uživatelé s rolí budou dostávat notifikace',
+        sourceLabel: 'Notifikační šablona',
+        targetLabel: 'Příjemci (role)',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `VŠICHNI uživatelé s rolí ${target} budou dostávat notifikace typu "${source}".`
       }
     };
     
@@ -2193,6 +2424,18 @@ const OrganizationHierarchy = () => {
         newSet.delete(deptId);
       } else {
         newSet.add(deptId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleRoleSelection = (roleId) => {
+    setSelectedRoles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(roleId)) {
+        newSet.delete(roleId);
+      } else {
+        newSet.add(roleId);
       }
       return newSet;
     });
@@ -2431,8 +2674,41 @@ const OrganizationHierarchy = () => {
       return;
     }
     
+    // Zpracování role - přidat jako node
+    if (dragId.startsWith('role-')) {
+      const roleId = parseInt(dragId.replace('role-', ''), 10);
+      const role = allRoles.find(r => r.id === roleId);
+      
+      if (role) {
+        const nodeId = `role-${roleId}-${Date.now()}`;
+        
+        const newNode = {
+          id: nodeId,
+          type: 'custom',
+          position,
+          data: {
+            type: 'role',
+            roleId: roleId,
+            name: role.nazev_role,
+            label: role.nazev_role,
+            metadata: {
+              type: 'role',
+              popis: role.popis || '',
+              orders: role.orders || 0,
+              invoices: role.invoices || 0,
+              cashbook: role.cashbook || 0
+            }
+          }
+        };
+        
+        setNodes((nds) => [...nds, newNode]);
+        console.log(`✅ Added role node: ${role.nazev_role}`, newNode);
+      }
+      return;
+    }
+    
     // Zpracování uživatele
-    if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-')) {
+    if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-') && !dragId.startsWith('role-')) {
       const user = allUsers.find(u => u.id === dragId);
       
       if (user) {
@@ -3666,6 +3942,8 @@ const OrganizationHierarchy = () => {
           relation.usek_id = parseInt(sourceNode.data.departmentId);
         } else if (sourceType === 'template') {
           relation.template_id = parseInt(sourceNode.data.templateId);
+        } else if (sourceType === 'role') {
+          relation.role_id = parseInt(sourceNode.data.roleId);
         }
         
         if (targetType === 'user') {
@@ -3676,6 +3954,8 @@ const OrganizationHierarchy = () => {
           relation.usek_id = parseInt(targetNode.data.departmentId);
         } else if (targetType === 'template') {
           relation.template_id = parseInt(targetNode.data.templateId);
+        } else if (targetType === 'role') {
+          relation.role_id = parseInt(targetNode.data.roleId);
         }
         
         console.log('✅ Relation:', relation);
@@ -3722,20 +4002,11 @@ const OrganizationHierarchy = () => {
         localStorage.removeItem(LS_TIMESTAMP_KEY);
         setHasDraft(false);
         
-        setDialog({
-          show: true,
-          type: 'success',
-          icon: '✅',
-          title: 'Hierarchie uspesne ulozena!',
-          message: 'Data byla ulozena do databaze.\nDraft byl automaticky vymazan z localStorage.',
-          stats: {
-            'Ulozenych uzlu': nodes.length,
-            'Ulozenych vztahu': edges.length
-          },
-          onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
-          confirmText: 'OK',
-          cancelText: null
-        });
+        // Zobrazit toast notifikaci místo dialogu
+        showToast(
+          `✅ Hierarchie úspěšně uložena! Uloženo ${nodes.length} uzlů a ${edges.length} vztahů.`,
+          { type: 'success', timeout: 5000 }
+        );
       } else {
         console.error('❌ SAVE Failed:', result.error, result.details);
         throw new Error(result.error || 'Neznama chyba');
@@ -3757,51 +4028,32 @@ const OrganizationHierarchy = () => {
 
   const handleDeleteNode = async () => {
     if (selectedNode) {
-      // Najít všechny hrany spojené s tímto uzlem
-      const relatedEdges = edges.filter(e => 
-        e.source === selectedNode.id || e.target === selectedNode.id
-      );
-
-      // Smazat vztahy z DB pomocí hierarchy/remove
-      try {
-        const token = await loadAuthData.token();
-        const userData = await loadAuthData.user();
-        const username = userData?.username || localStorage.getItem('username');
-        const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
-        
-        for (const edge of relatedEdges) {
-          await fetch(`${apiBase}/hierarchy/remove`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              token,
-              username,
-              nadrizeny_id: edge.source,
-              podrizeny_id: edge.target
-            })
-          });
-        }
-      } catch (err) {
-        console.error('Delete error:', err);
-        setDialog({
-          show: true,
-          type: 'alert',
-          icon: '⚠️',
-          title: 'Chyba při mazání',
-          message: err.message,
-          onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
-          confirmText: 'OK',
-          cancelText: null
-        });
-      }
-
-      // Odstranit z UI
+      console.log('🗑️ Deleting node:', selectedNode.id);
+      
+      // Odstranit node a všechny související hrany z UI (optimistic update)
       setNodes((nds) => nds.filter(n => n.id !== selectedNode.id));
       setEdges((eds) => eds.filter(e => e.source !== selectedNode.id && e.target !== selectedNode.id));
       setSelectedNode(null);
       setShowDetailPanel(false);
+      
+      // Poznámka: Skutečné mazání z DB proběhne při dalším uložení (handleSave)
+      // V2 systém ukládá celou hierarchii najednou, ne jednotlivé nodes
+      console.log('✅ Node removed from UI (will be deleted from DB on next save)');
+    }
+  };
+
+  const handleDeleteEdge = async () => {
+    if (selectedEdge) {
+      console.log('🗑️ Deleting edge:', selectedEdge);
+      
+      // Odstranit z UI okamžitě (optimistic update)
+      setEdges((eds) => eds.filter(e => e.id !== selectedEdge.id));
+      setSelectedEdge(null);
+      setShowDetailPanel(false);
+      
+      // Poznámka: Skutečné mazání z DB proběhne při dalším uložení (handleSave)
+      // V2 systém ukládá celou hierarchii najednou, ne jednotlivé vztahy
+      console.log('✅ Edge removed from UI (will be deleted from DB on next save)');
     }
   };
 
@@ -3809,6 +4061,11 @@ const OrganizationHierarchy = () => {
     u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
     u.position.toLowerCase().includes(searchUsers.toLowerCase()) ||
     u.location.toLowerCase().includes(searchUsers.toLowerCase())
+  );
+
+  const filteredRoles = allRoles.filter(role =>
+    role.nazev_role.toLowerCase().includes(searchRoles.toLowerCase()) ||
+    (role.popis && role.popis.toLowerCase().includes(searchRoles.toLowerCase()))
   );
 
   const filteredLocations = allLocations.filter(loc =>
@@ -3985,19 +4242,23 @@ const OrganizationHierarchy = () => {
         <span style={{ fontWeight: 700, color: '#475569' }}>Legenda vztahů:</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div style={{ width: '30px', height: '3px', background: '#3b82f6', borderRadius: '2px' }}></div>
-          <span style={{ color: '#1e40af' }}>Uživatel → Uživatel</span>
+          <span style={{ color: '#1e40af' }}>Uživatel</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '30px', height: '3px', background: '#10b981', borderRadius: '2px' }}></div>
-          <span style={{ color: '#047857' }}>Lokalita</span>
+          <div style={{ width: '30px', height: '3px', background: '#92400e', borderRadius: '2px' }}></div>
+          <span style={{ color: '#78350f' }}>Lokalita</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div style={{ width: '30px', height: '3px', background: '#059669', borderRadius: '2px' }}></div>
-          <span style={{ color: '#065f46' }}>Útvar</span>
+          <span style={{ color: '#065f46' }}>Úsek</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '30px', height: '3px', background: '#ea580c', borderRadius: '2px' }}></div>
-          <span style={{ color: '#c2410c' }}>Notifikace</span>
+          <div style={{ width: '30px', height: '3px', background: '#f59e0b', borderRadius: '2px' }}></div>
+          <span style={{ color: '#d97706' }}>Notifikace</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ width: '30px', height: '3px', background: '#8b5cf6', borderRadius: '2px' }}></div>
+          <span style={{ color: '#6d28d9' }}>Role</span>
         </div>
       </div>
 
@@ -4151,6 +4412,114 @@ const OrganizationHierarchy = () => {
                                     {user.position} • {user.location}
                                   </UserMeta>
                         </UserInfo>
+                      </UserItem>
+                    ))}
+                  </div>
+                </SectionContent>
+              </CollapsibleSection>
+
+              {/* SEKCE: ROLE */}
+              <CollapsibleSection>
+                <SectionHeader 
+                  expanded={expandedSections.roles}
+                  onClick={() => toggleSection('roles')}
+                >
+                  <FontAwesomeIcon icon={expandedSections.roles ? faChevronDown : faChevronRight} />
+                  <FontAwesomeIcon icon={faUserShield} />
+                  ROLE ({filteredRoles.length})
+                </SectionHeader>
+                <SectionContent expanded={expandedSections.roles}>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat roli..."
+                        value={searchRoles}
+                        onChange={(e) => setSearchRoles(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchRoles && (
+                        <SearchClearButton
+                          onClick={() => setSearchRoles('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                    <button
+                      onClick={() => {
+                        if (selectedRoles.size === filteredRoles.length) {
+                          setSelectedRoles(new Set());
+                        } else {
+                          setSelectedRoles(new Set(filteredRoles.map(r => r.id)));
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        marginTop: '8px',
+                        padding: '6px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e0e6ed',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        color: '#475569',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
+                      onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
+                    >
+                      {selectedRoles.size === filteredRoles.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                    </button>
+                  </div>
+                  <div>
+                    {filteredRoles.map((role) => (
+                      <UserItem
+                        key={`role-${role.id}`}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', `role-${role.id}`);
+                          setDraggedItem(`role-${role.id}`);
+                        }}
+                        onDragEnd={() => setDraggedItem(null)}
+                        style={{
+                          background: selectedRoles.has(role.id) ? '#f5f3ff' : 'white',
+                          borderColor: selectedRoles.has(role.id) ? '#8b5cf6' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.has(role.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleRoleSelection(role.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer',
+                            accentColor: '#8b5cf6',
+                            flexShrink: 0
+                          }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                          <FontAwesomeIcon icon={faUserShield} style={{ color: '#8b5cf6', fontSize: '1.1rem' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: '#6d28d9' }}>
+                              {role.nazev_role}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#8b5cf6', marginTop: '2px' }}>
+                              {role.userCount || 0} uživatelů{role.popis ? ` • ${role.popis}` : ''}
+                            </div>
+                          </div>
+                        </div>
                       </UserItem>
                     ))}
                   </div>
@@ -4935,7 +5304,349 @@ const OrganizationHierarchy = () => {
                   <FontAwesomeIcon icon={faUserTie} />
                   Základní informace
                 </DetailSectionTitle>
-                {selectedNode && (
+                
+                {/* NOTIFIKAČNÍ ŠABLONA */}
+                {selectedNode && selectedNode.data.type === 'template' && (
+                  <>
+                    <FormGroup>
+                      <Label>Název šablony</Label>
+                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
+                    </FormGroup>
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: '#fef3c7',
+                      border: '2px solid #f59e0b',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#92400e'
+                    }}>
+                      <strong>📧 Co tato šablona definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Kterému <strong>uživateli</strong> se notifikace pošle</li>
+                        <li>Zda má uživatel <strong>notifikace zapnuté</strong></li>
+                        <li>Zda má uživatel <strong>roli/práva</strong> pro příjem notifikace</li>
+                        <li>Scope viditelnosti může určovat, zda notifikaci dostane</li>
+                      </ul>
+                    </div>
+                    
+                    {/* Zobrazení přiřazení - ke komu vede šipka */}
+                    {(() => {
+                      const recipients = edges
+                        .filter(e => e.source === selectedNode.id)
+                        .map(e => {
+                          const targetNode = nodes.find(n => n.id === e.target);
+                          return {
+                            id: targetNode?.id,
+                            name: targetNode?.data?.label || targetNode?.data?.name || 'Neznámý',
+                            type: targetNode?.data?.type || 'user',
+                            edgeId: e.id
+                          };
+                        });
+                      
+                      return (
+                        <div style={{ 
+                          marginTop: '16px', 
+                          padding: '12px', 
+                          background: '#f0f9ff', 
+                          border: '2px solid #3b82f6',
+                          borderRadius: '8px' 
+                        }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            marginBottom: '12px',
+                            fontWeight: '600',
+                            color: '#1e40af',
+                            fontSize: '0.9rem'
+                          }}>
+                            <FontAwesomeIcon icon={faBell} />
+                            Notifikace je přiřazena na:
+                          </div>
+                          
+                          {recipients.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {recipients.map((recipient, i) => {
+                                let icon = '👤';
+                                let bgColor = '#dbeafe';
+                                let textColor = '#1e40af';
+                                
+                                if (recipient.type === 'location') {
+                                  icon = '📍';
+                                  bgColor = '#d1fae5';
+                                  textColor = '#065f46';
+                                } else if (recipient.type === 'department') {
+                                  icon = '🏢';
+                                  bgColor = '#dbeafe';
+                                  textColor = '#1e40af';
+                                }
+                                
+                                return (
+                                  <div key={i} style={{ 
+                                    padding: '8px 12px', 
+                                    background: bgColor,
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    color: textColor,
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                  }}
+                                  onClick={() => {
+                                    const node = nodes.find(n => n.id === recipient.id);
+                                    if (node) {
+                                      setSelectedNode(node);
+                                      setSelectedEdge(null);
+                                    }
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                  title="Klikněte pro zobrazení detailu">
+                                    <span style={{ fontSize: '1.1rem' }}>{icon}</span>
+                                    <span>{recipient.name}</span>
+                                    {recipient.type === 'location' && <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>(lokalita)</span>}
+                                    {recipient.type === 'department' && <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>(úsek)</span>}
+                                    {recipient.type === 'user' && <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>(uživatel)</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              Šablona zatím není přiřazena k žádnému uživateli, lokalitě ani úseku
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+                
+                {/* LOKALITA NODE */}
+                {selectedNode && selectedNode.data.type === 'location' && (
+                  <>
+                    <FormGroup>
+                      <Label>Název lokality</Label>
+                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
+                    </FormGroup>
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: '#f0fdf4',
+                      border: '2px solid #10b981',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#065f46'
+                    }}>
+                      <strong>📍 Co lokalita definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Rozšíření <strong>viditelnosti</strong> v rámci lokality</li>
+                        <li>Určuje <strong>scope</strong> pro data (objednávky, faktury, pokladna)</li>
+                        <li>Může mít dodatečná <strong>práva</strong> vázaná na lokalitu</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+                
+                {/* ÚSEK NODE */}
+                {selectedNode && selectedNode.data.type === 'department' && (
+                  <>
+                    <FormGroup>
+                      <Label>Název úseku</Label>
+                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
+                    </FormGroup>
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: '#eff6ff',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#1e40af'
+                    }}>
+                      <strong>🏢 Co úsek definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Rozšíření <strong>viditelnosti</strong> v rámci úseku</li>
+                        <li>Určuje <strong>scope</strong> pro data (objednávky, faktury, pokladna)</li>
+                        <li>Může mít dodatečná <strong>práva</strong> vázaná na úsek</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+                
+                {/* ROLE NODE */}
+                {selectedNode && selectedNode.data.type === 'role' && (
+                  <>
+                    <FormGroup>
+                      <Label>Název role</Label>
+                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
+                    </FormGroup>
+                    {selectedNode.data.metadata?.popis && (
+                      <FormGroup>
+                        <Label>Popis</Label>
+                        <Input value={selectedNode.data.metadata.popis} readOnly />
+                      </FormGroup>
+                    )}
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: '#f5f3ff',
+                      border: '2px solid #8b5cf6',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#6b21a8'
+                    }}>
+                      <strong>🛡️ Co role definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Sadu <strong>oprávnění</strong> pro moduly (objednávky, faktury, pokladna)</li>
+                        <li>Přiřazení <strong>uživatelům</strong> pro dědění práv</li>
+                        <li>Možnost přijímat <strong>notifikace</strong> pro celou roli</li>
+                      </ul>
+                    </div>
+                    
+                    {/* Zobrazení přiřazených uživatelů */}
+                    {(() => {
+                      const assignedUsers = edges
+                        .filter(e => e.target === selectedNode.id)
+                        .map(e => {
+                          const sourceNode = nodes.find(n => n.id === e.source);
+                          return {
+                            id: sourceNode?.id,
+                            name: sourceNode?.data?.label || sourceNode?.data?.name || 'Neznámý',
+                            position: sourceNode?.data?.position || '',
+                            edgeId: e.id
+                          };
+                        });
+                      
+                      return (
+                        <div style={{ 
+                          marginTop: '16px', 
+                          padding: '12px', 
+                          background: '#eff6ff', 
+                          border: '2px solid #3b82f6',
+                          borderRadius: '8px' 
+                        }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            marginBottom: '12px',
+                            fontWeight: '600',
+                            color: '#1e40af',
+                            fontSize: '0.9rem'
+                          }}>
+                            <FontAwesomeIcon icon={faUsers} />
+                            Uživatelé s touto rolí ({assignedUsers.length})
+                          </div>
+                          
+                          {assignedUsers.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {assignedUsers.map((user, i) => (
+                                <div key={i} style={{ 
+                                  padding: '8px 12px', 
+                                  background: '#dbeafe',
+                                  borderRadius: '6px',
+                                  fontSize: '0.85rem',
+                                  color: '#1e40af',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '2px'
+                                }}
+                                onClick={() => {
+                                  const node = nodes.find(n => n.id === user.id);
+                                  if (node) {
+                                    setSelectedNode(node);
+                                    setSelectedEdge(null);
+                                  }
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                title="Klikněte pro zobrazení detailu uživatele">
+                                  <span style={{ fontSize: '1rem' }}>👤 {user.name}</span>
+                                  {user.position && <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>{user.position}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              Role zatím není přiřazena žádnému uživateli
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* Oprávnění modulů role */}
+                    <div style={{ 
+                      marginTop: '16px', 
+                      padding: '12px', 
+                      background: '#fef3c7', 
+                      border: '2px solid #f59e0b',
+                      borderRadius: '8px' 
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        marginBottom: '12px',
+                        fontWeight: '600',
+                        color: '#92400e',
+                        fontSize: '0.9rem'
+                      }}>
+                        <FontAwesomeIcon icon={faUserShield} />
+                        Oprávnění modulů
+                      </div>
+                      
+                      <div style={{ fontSize: '0.8rem', color: '#92400e', marginBottom: '10px' }}>
+                        Tato role má přístup k následujícím modulům:
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {(() => {
+                          // Najít roli v allRoles podle roleId
+                          const role = allRoles.find(r => r.id === selectedNode.data.roleId);
+                          const modules = role?.modules || { orders: false, invoices: false, cashbook: false };
+                          
+                          return ['orders', 'invoices', 'cashbook'].map(module => {
+                            const hasPermission = modules[module] === true || modules[module] === 1;
+                            const moduleNames = {
+                              orders: '📦 Objednávky',
+                              invoices: '📄 Faktury',
+                              cashbook: '💰 Pokladna'
+                            };
+                            
+                            return (
+                              <div key={module} style={{ 
+                                padding: '8px 12px', 
+                                background: hasPermission ? '#d1fae5' : '#fee2e2',
+                                borderRadius: '6px',
+                                fontSize: '0.85rem',
+                                color: hasPermission ? '#065f46' : '#991b1b',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                <span style={{ fontSize: '1.2rem' }}>{hasPermission ? '✅' : '❌'}</span>
+                                <span>{moduleNames[module]}</span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </>
+                )}
+                
+                {/* UŽIVATELSKÝ NODE */}
+                {selectedNode && (!selectedNode.data.type || selectedNode.data.type === 'user') && (
                   <>
                     <FormGroup>
                       <Label>Uživatel</Label>
@@ -4968,8 +5679,8 @@ const OrganizationHierarchy = () => {
                   </>
                 )}
                 
-                {/* Sekce: Aktuální vztahy v diagramu - pouze pro node */}
-                {selectedNode && (
+                {/* Sekce: Aktuální vztahy v diagramu - pouze pro USER node */}
+                {selectedNode && (!selectedNode.data.type || selectedNode.data.type === 'user') && (
                   <div style={{ 
                     marginTop: '24px', 
                     padding: '12px', 
@@ -5163,15 +5874,26 @@ const OrganizationHierarchy = () => {
                       </div>
                     </div>
                     
-                    <FormGroup>
-                      <Label>Typ vztahu</Label>
-                      <Select value={relationshipType} onChange={(e) => setRelationshipType(e.target.value)}>
-                        <option value="prime">Přímý nadřízený</option>
-                        <option value="zastupovani">Zastupování</option>
-                        <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
-                        <option value="rozsirene" disabled style={{ color: '#9ca3af' }}>Rozšířené oprávnění (TODO)</option>
-                      </Select>
-                    </FormGroup>
+                    {/* Typ vztahu - zobraz JEN pro user-user vztahy */}
+                    {(() => {
+                      const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                      const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                      
+                      if (sourceType === 'user' && targetType === 'user') {
+                        return (
+                          <FormGroup>
+                            <Label>Typ vztahu</Label>
+                            <Select value={relationshipType} onChange={(e) => setRelationshipType(e.target.value)}>
+                              <option value="prime">Přímý nadřízený</option>
+                              <option value="zastupovani">Zastupování</option>
+                              <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
+                              <option value="rozsirene" disabled style={{ color: '#9ca3af' }}>Rozšířené oprávnění (TODO)</option>
+                            </Select>
+                          </FormGroup>
+                        );
+                      }
+                      return null;
+                    })()}
                   </>
                   );
                 })()}
@@ -5179,6 +5901,13 @@ const OrganizationHierarchy = () => {
                 {selectedEdge && (() => {
                   const sourceNode = nodes.find(n => n.id === selectedEdge.source);
                   const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                  const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                  const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                  const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
+                  
+                  // Zobraz scope jen když má smysl (ne pro notifikace)
+                  if (!relationInfo.showScope) return null;
+                  
                   return (
                 <FormGroup>
                   <Label>
@@ -5215,6 +5944,18 @@ const OrganizationHierarchy = () => {
                 })()}
               </DetailSection>
 
+              {/* Sekce Oprávnění pro moduly - POUZE pro edge (vztahy) kde má smysl */}
+              {selectedEdge && (() => {
+                const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
+                
+                if (!relationInfo.showModules) return null;
+                
+                return (
+              <>
               <Divider />
 
               <DetailSection>
@@ -5413,7 +6154,22 @@ const OrganizationHierarchy = () => {
                   (např. <code style={{ background: '#fef3c7', padding: '2px 4px', borderRadius: '3px' }}>ORDER_EDIT_OWN</code>).
                 </div>
               </DetailSection>
+              </>
+                );
+              })()}
 
+              {/* Sekce Rozšířené lokality/úseky - POUZE pro edge (vztahy) kde má smysl */}
+              {selectedEdge && (() => {
+                const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
+                
+                if (!relationInfo.showExtended) return null;
+                
+                return (
+              <>
               <Divider />
 
               <DetailSection>
@@ -5562,7 +6318,13 @@ const OrganizationHierarchy = () => {
                   </button>
                 </CombinationAddRow>
               </DetailSection>
+              </>
+                );
+              })()}
 
+              {/* Sekce Notifikace - POUZE pro edge (vztahy) */}
+              {selectedEdge && (
+              <>
               <Divider />
 
               <DetailSection>
@@ -5612,8 +6374,8 @@ const OrganizationHierarchy = () => {
                   />
                 </FormGroup>
               </DetailSection>
-
-              <Divider />
+              </>
+              )}
 
               {/* Sekce notifikací - zobraz jen když edge obsahuje template */}
               {selectedEdge && (() => {
@@ -5701,7 +6463,7 @@ const OrganizationHierarchy = () => {
                   Uložit změny
                 </Button>
                 <button
-                  onClick={handleDeleteNode}
+                  onClick={selectedNode ? handleDeleteNode : handleDeleteEdge}
                   style={{
                     width: '100%',
                     padding: '10px 16px',
@@ -5730,7 +6492,7 @@ const OrganizationHierarchy = () => {
                   }}
                 >
                   <FontAwesomeIcon icon={faTrash} />
-                  <span>Odstranit vztah</span>
+                  <span>{selectedNode ? 'Odstranit uzel' : 'Odstranit vztah'}</span>
                 </button>
               </DetailSection>
             </DetailContent>

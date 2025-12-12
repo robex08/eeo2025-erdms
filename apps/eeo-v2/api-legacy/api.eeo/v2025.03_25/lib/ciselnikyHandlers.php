@@ -1691,11 +1691,47 @@ function handle_ciselniky_role_list($input, $config, $queries) {
         
         $stmt = $db->prepare($sql);
         $stmt->execute();
-        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pro každou roli načíst práva
+        foreach ($roles as &$role) {
+            $pravaStmt = $db->prepare("
+                SELECT p.kod_prava, p.popis
+                FROM 25_role_prava rp
+                JOIN 25_prava p ON rp.pravo_id = p.id
+                WHERE rp.role_id = ? AND rp.aktivni = 1
+            ");
+            $pravaStmt->execute(array($role['id']));
+            $prava = $pravaStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Analyzovat práva a určit přístup k modulům
+            $hasOrderAccess = false;
+            $hasInvoiceAccess = false;
+            $hasCashbookAccess = false;
+            
+            foreach ($prava as $pravo) {
+                if (strpos($pravo['kod_prava'], 'ORDER_') === 0) {
+                    $hasOrderAccess = true;
+                }
+                if (strpos($pravo['kod_prava'], 'INVOICE_') === 0) {
+                    $hasInvoiceAccess = true;
+                }
+                if (strpos($pravo['kod_prava'], 'CASHBOOK_') === 0) {
+                    $hasCashbookAccess = true;
+                }
+            }
+            
+            $role['prava'] = $prava;
+            $role['modules'] = array(
+                'orders' => $hasOrderAccess,
+                'invoices' => $hasInvoiceAccess,
+                'cashbook' => $hasCashbookAccess
+            );
+        }
 
         echo json_encode(array(
             'status' => 'ok',
-            'data' => $data
+            'data' => $roles
         ));
         
     } catch (Exception $e) {
