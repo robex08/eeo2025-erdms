@@ -71,12 +71,12 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'app-settings', label: 'Nastavení aplikace' });
   }
   
-  // ORGANIZAČNÍ ŘÁD - pouze pro SUPERADMIN/ADMINISTRATOR
+  // SYSTÉM WORKFLOW A NOTIFIKACÍ - pouze pro SUPERADMIN/ADMINISTRATOR
   const isAdminForOrgHierarchy = userDetail?.roles && userDetail.roles.some(role => 
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   );
   if (isAdminForOrgHierarchy) {
-    sections.push({ value: 'organization-hierarchy', label: 'Organizační řád' });
+    sections.push({ value: 'organization-hierarchy', label: 'Systém workflow a notifikací' });
   }
   
   // POKLADNA - Cash Book - Admin/SuperAdmin NEBO jakékoliv CASH_BOOK oprávnění
