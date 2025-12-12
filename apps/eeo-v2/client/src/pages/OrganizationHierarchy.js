@@ -45,6 +45,7 @@ const Container = styled.div`
   display: flex;
   flex-direction: column;
   background: #f5f7fa;
+  margin-top: -1em; /* Kompenzace padding-top z Layout Content */
 `;
 
 const Header = styled.div`
@@ -1311,13 +1312,20 @@ const OrganizationHierarchy = () => {
     
     const dragId = draggedItem;
     
-    // Použij ReactFlow's project method pro správný přepočet souřadnic
+    // ReactFlow's project() metoda přímo přijímá clientX/clientY a sama přepočítá zoom+pan
+    // Není potřeba nic odečítat, project() to dělá interně
     const position = reactFlowInstance.project({
       x: event.clientX,
       y: event.clientY,
     });
     
-    console.log('📦 Drop:', { dragId, position, clientX: event.clientX, clientY: event.clientY });
+    console.log('📦 Drop:', { 
+      dragId, 
+      position, 
+      clientX: event.clientX, 
+      clientY: event.clientY,
+      viewport: reactFlowInstance.getViewport()
+    });
     
     // Zpracování uživatele
     if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-')) {
