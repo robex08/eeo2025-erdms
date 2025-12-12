@@ -1442,29 +1442,9 @@ const Layout = ({ children }) => {
   const analyticsButtonRef = useRef(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
-  // Aktualizace pozice dropdownu - Administrace
-  useEffect(() => {
-    if (adminMenuOpen && adminButtonRef.current) {
-      const rect = adminButtonRef.current.getBoundingClientRect();
-      setAdminDropdownPosition({
-        top: rect.bottom + 5,
-        left: rect.left,
-        width: rect.width
-      });
-    }
-  }, [adminMenuOpen]);
+  // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
-  // Aktualizace pozice dropdownu - Manažerské analýzy
-  useEffect(() => {
-    if (analyticsMenuOpen && analyticsButtonRef.current) {
-      const rect = analyticsButtonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 5,
-        left: rect.left,
-        width: rect.width
-      });
-    }
-  }, [analyticsMenuOpen]);
+  // Pozice dropdownu pro Manažerské analýzy se počítá synchronně v onClick handleru
 
   // Zavřít submenu při kliku mimo - Administrace
   useEffect(() => {
@@ -2621,7 +2601,17 @@ const Layout = ({ children }) => {
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={adminButtonRef}
-                  onClick={() => setAdminMenuOpen(!adminMenuOpen)}
+                  onClick={() => {
+                    if (!adminMenuOpen && adminButtonRef.current) {
+                      const rect = adminButtonRef.current.getBoundingClientRect();
+                      setAdminDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setAdminMenuOpen(!adminMenuOpen);
+                  }}
                   data-open={adminMenuOpen}
                 >
                   <FontAwesomeIcon icon={faCog} /> Administrace
@@ -2698,7 +2688,17 @@ const Layout = ({ children }) => {
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
-                  onClick={() => setAnalyticsMenuOpen(!analyticsMenuOpen)}
+                  onClick={() => {
+                    if (!analyticsMenuOpen && analyticsButtonRef.current) {
+                      const rect = analyticsButtonRef.current.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + 5,
+                        left: rect.left,
+                        width: rect.width
+                      });
+                    }
+                    setAnalyticsMenuOpen(!analyticsMenuOpen);
+                  }}
                   data-open={analyticsMenuOpen}
                 >
                   <FontAwesomeIcon icon={faChartBar} /> Manažerské analýzy
