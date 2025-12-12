@@ -40,6 +40,15 @@ import {
   faLayerGroup
 } from '@fortawesome/free-solid-svg-icons';
 
+// Potlačit neškodnou ResizeObserver chybu (běžné u ReactFlow)
+const resizeObserverErr = window.console.error;
+window.console.error = (...args) => {
+  if (args[0]?.includes?.('ResizeObserver loop completed')) {
+    return; // Ignorovat tuto konkrétní chybu
+  }
+  resizeObserverErr(...args);
+};
+
 // Styled Components
 const Container = styled.div`
   height: 100%;
@@ -349,9 +358,9 @@ const UserItem = styled.div`
   box-shadow: ${props => props.isDragging ? '0 8px 24px rgba(102, 126, 234, 0.3)' : '0 1px 3px rgba(0,0,0,0.05)'};
 
   &:hover {
-    border-color: #667eea;
+    border-color: #3b82f6;
     transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
   }
 
   &:active {
@@ -363,7 +372,7 @@ const UserAvatar = styled.div`
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #fff;
   display: flex;
   align-items: center;
@@ -371,7 +380,7 @@ const UserAvatar = styled.div`
   font-weight: 700;
   font-size: 0.85rem;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 `;
 
 const UserInfo = styled.div`
@@ -410,26 +419,28 @@ const LocationIcon = styled.div`
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #92400e 0%, #78350f 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1rem;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(146, 64, 14, 0.3);
 `;
 
 const DepartmentIcon = styled.div`
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1rem;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
 `;
 
 const CanvasArea = styled.div`
@@ -958,13 +969,13 @@ const CustomNode = ({ data, selected }) => {
         padding: '12px 16px',
         borderRadius: '8px',
         background: selected 
-          ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
-          : '#fef3c7',
-        border: `2px solid ${selected ? '#f59e0b' : '#fbbf24'}`,
+          ? 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)'
+          : 'white',
+        border: `3px solid ${selected ? '#f59e0b' : '#f59e0b'}`,
         minWidth: '200px',
         boxShadow: selected 
           ? '0 6px 16px rgba(245, 158, 11, 0.4)'
-          : '0 2px 8px rgba(0,0,0,0.1)',
+          : '0 2px 8px rgba(245, 158, 11, 0.15)',
         transition: 'all 0.2s',
         position: 'relative',
         transform: selected ? 'scale(1.05)' : 'scale(1)',
@@ -1026,13 +1037,13 @@ const CustomNode = ({ data, selected }) => {
         padding: '12px 16px',
         borderRadius: '8px',
         background: selected 
-          ? (isLocation ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%)')
-          : (isLocation ? '#fef3c7' : '#ddd6fe'),
-        border: `2px solid ${selected ? (isLocation ? '#f59e0b' : '#8b5cf6') : (isLocation ? '#fbbf24' : '#a78bfa')}`,
+          ? (isLocation ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)')
+          : 'white',
+        border: `3px solid ${selected ? (isLocation ? '#92400e' : '#059669') : (isLocation ? '#92400e' : '#059669')}`,
         minWidth: '160px',
         boxShadow: selected 
-          ? `0 6px 16px ${isLocation ? 'rgba(245, 158, 11, 0.4)' : 'rgba(139, 92, 246, 0.4)'}`
-          : '0 2px 8px rgba(0,0,0,0.1)',
+          ? `0 6px 16px ${isLocation ? 'rgba(146, 64, 14, 0.4)' : 'rgba(5, 150, 105, 0.4)'}`
+          : `0 2px 8px ${isLocation ? 'rgba(146, 64, 14, 0.15)' : 'rgba(5, 150, 105, 0.15)'}`,
         transition: 'all 0.2s',
         position: 'relative',
         transform: selected ? 'scale(1.05)' : 'scale(1)',
@@ -1044,9 +1055,9 @@ const CustomNode = ({ data, selected }) => {
           style={{
             width: '14px',
             height: '14px',
-            background: isLocation ? '#f59e0b' : '#8b5cf6',
+            background: isLocation ? '#92400e' : '#059669',
             border: '2px solid white',
-            boxShadow: `0 2px 6px ${isLocation ? 'rgba(245, 158, 11, 0.4)' : 'rgba(139, 92, 246, 0.4)'}`,
+            boxShadow: `0 2px 6px ${isLocation ? 'rgba(146, 64, 14, 0.4)' : 'rgba(5, 150, 105, 0.4)'}`,
             cursor: 'crosshair'
           }}
         />
@@ -1056,9 +1067,9 @@ const CustomNode = ({ data, selected }) => {
           style={{
             width: '14px',
             height: '14px',
-            background: isLocation ? '#f59e0b' : '#8b5cf6',
+            background: isLocation ? '#92400e' : '#059669',
             border: '2px solid white',
-            boxShadow: `0 2px 6px ${isLocation ? 'rgba(245, 158, 11, 0.4)' : 'rgba(139, 92, 246, 0.4)'}`,
+            boxShadow: `0 2px 6px ${isLocation ? 'rgba(146, 64, 14, 0.4)' : 'rgba(5, 150, 105, 0.4)'}`,
             cursor: 'crosshair'
           }}
         />
@@ -1066,13 +1077,13 @@ const CustomNode = ({ data, selected }) => {
           <FontAwesomeIcon 
             icon={isLocation ? faMapMarkerAlt : faUserTie} 
             style={{ 
-              color: isLocation ? '#f59e0b' : '#8b5cf6',
+              color: isLocation ? '#92400e' : '#059669',
               fontSize: '1.1rem'
             }} 
           />
           <div style={{ 
             fontWeight: 700, 
-            color: isLocation ? '#78350f' : '#5b21b6',
+            color: '#2c3e50',
             fontSize: '0.9rem'
           }}>
             {data.name}
@@ -1087,12 +1098,12 @@ const CustomNode = ({ data, selected }) => {
     <div style={{
       padding: '14px',
       borderRadius: '12px',
-      background: selected ? 'linear-gradient(135deg, #e0e7ff 0%, #f5f3ff 100%)' : 'white',
-      border: `3px solid ${selected ? '#667eea' : '#e0e6ed'}`,
+      background: selected ? 'linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%)' : 'white',
+      border: `3px solid ${selected ? '#3b82f6' : '#3b82f6'}`,
       minWidth: '220px',
       boxShadow: selected 
-        ? '0 8px 24px rgba(102, 126, 234, 0.5), 0 0 0 2px #a5b4fc' 
-        : '0 4px 12px rgba(0,0,0,0.1)',
+        ? '0 8px 24px rgba(59, 130, 246, 0.5), 0 0 0 2px #93c5fd' 
+        : '0 4px 12px rgba(59, 130, 246, 0.15)',
       transition: 'all 0.2s',
       position: 'relative',
       transform: selected ? 'scale(1.02)' : 'scale(1)'
@@ -1104,9 +1115,9 @@ const CustomNode = ({ data, selected }) => {
         style={{
           width: '16px',
           height: '16px',
-          background: '#667eea',
+          background: '#3b82f6',
           border: '3px solid white',
-          boxShadow: '0 2px 8px rgba(102, 126, 234, 0.4)',
+          boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)',
           cursor: 'crosshair'
         }}
       />
@@ -1624,9 +1635,9 @@ const OrganizationHierarchy = () => {
             if (relationType.includes('template')) {
               return '#f59e0b'; // Oranžová pro notifikační šablony
             } else if (relationType.includes('location')) {
-              return '#ec4899'; // Růžová pro lokality
+              return '#92400e'; // Tmavě hnědá pro lokality
             } else if (relationType.includes('department')) {
-              return '#8b5cf6'; // Fialová pro útvary
+              return '#059669'; // Tmavě zelená pro útvary
             } else if (relationType === 'user-user') {
               return '#3b82f6'; // Modrá pro uživatel-uživatel
             }
@@ -1744,11 +1755,11 @@ const OrganizationHierarchy = () => {
     // Určit barvu podle typu
     let edgeColor = '#667eea'; // výchozí
     if (relationType.includes('template')) {
-      edgeColor = '#f59e0b'; // Oranžová pro notifikace
+      edgeColor = '#ea580c'; // Tmavší oranžová pro notifikace
     } else if (relationType.includes('location')) {
-      edgeColor = '#ec4899'; // Růžová pro lokality
+      edgeColor = '#10b981'; // Zelená pro lokality
     } else if (relationType.includes('department')) {
-      edgeColor = '#8b5cf6'; // Fialová pro útvary
+      edgeColor = '#059669'; // Tmavě zelená pro útvary
     } else if (relationType === 'user-user') {
       edgeColor = '#3b82f6'; // Modrá pro uživatel-uživatel
     }
@@ -1963,61 +1974,72 @@ const OrganizationHierarchy = () => {
       }
     });
 
-    // Přidat uživatele z vybraných lokalit (povolujeme duplicity)
-    selectedLocations.forEach(locationId => {
+    // Přidat vybrané lokality jako samostatné nodes
+    selectedLocations.forEach((locationId, locIndex) => {
       const location = allLocations.find(l => l.id === locationId);
       if (location) {
-        const usersInLocation = allUsers.filter(u => u.location === location.name);
-        usersInLocation.forEach((user, userIndex) => {
-          newNodes.push({
-            id: `user-${user.id}-${timestamp}-loc${locationId}-${userIndex}`,
-            type: 'custom',
-            position: {
-              x: 100 + (index % 5) * 250,
-              y: 100 + Math.floor(index / 5) * 180
-            },
-            data: {
-              userId: user.id, // Původní user ID
-              name: user.name,
-              position: user.position,
-              initials: user.initials,
-              metadata: {
-                location: user.location,
-                department: user.department
-              }
-            }
-          });
-          index++;
+        newNodes.push({
+          id: `location-${locationId}-${timestamp}-${locIndex}`,
+          type: 'custom',
+          position: {
+            x: 100 + (index % 5) * 250,
+            y: 100 + Math.floor(index / 5) * 180
+          },
+          data: {
+            type: 'location',
+            locationId: locationId,
+            name: location.name
+          }
         });
+        index++;
       }
     });
 
-    // Přidat uživatele z vybraných útvarů (povolujeme duplicity)
-    selectedDepartments.forEach(deptId => {
+    // Přidat vybrané útvary jako samostatné nodes
+    selectedDepartments.forEach((deptId, deptIndex) => {
       const department = allDepartments.find(d => d.id === deptId);
       if (department) {
-        const usersInDept = allUsers.filter(u => u.department === department.name);
-        usersInDept.forEach((user, userIndex) => {
-          newNodes.push({
-            id: `user-${user.id}-${timestamp}-dept${deptId}-${userIndex}`,
-            type: 'custom',
-            position: {
-              x: 100 + (index % 5) * 250,
-              y: 100 + Math.floor(index / 5) * 180
-            },
-            data: {
-              userId: user.id, // Původní user ID
-              name: user.name,
-              position: user.position,
-              initials: user.initials,
-              metadata: {
-                location: user.location,
-                department: user.department
-              }
-            }
-          });
-          index++;
+        newNodes.push({
+          id: `department-${deptId}-${timestamp}-${deptIndex}`,
+          type: 'custom',
+          position: {
+            x: 100 + (index % 5) * 250,
+            y: 100 + Math.floor(index / 5) * 180
+          },
+          data: {
+            type: 'department',
+            departmentId: deptId,
+            name: department.name
+          }
         });
+        index++;
+      }
+    });
+
+    // Přidat vybrané notifikační šablony jako samostatné nodes
+    selectedNotificationTemplates.forEach((templateId, tplIndex) => {
+      const template = allNotificationTemplates.find(t => t.id === templateId);
+      if (template) {
+        newNodes.push({
+          id: `template-${templateId}-${timestamp}-${tplIndex}`,
+          type: 'custom',
+          position: {
+            x: 100 + (index % 5) * 250,
+            y: 100 + Math.floor(index / 5) * 180
+          },
+          data: {
+            type: 'template',
+            templateId: templateId,
+            name: template.name,
+            position: 'Notifikační šablona',
+            initials: '🔔',
+            metadata: {
+              type: 'template',
+              template: template.name
+            }
+          }
+        });
+        index++;
       }
     });
 
@@ -3666,16 +3688,16 @@ const OrganizationHierarchy = () => {
           <span style={{ color: '#1e40af' }}>Uživatel → Uživatel</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '30px', height: '3px', background: '#ec4899', borderRadius: '2px' }}></div>
-          <span style={{ color: '#be185d' }}>Lokalita</span>
+          <div style={{ width: '30px', height: '3px', background: '#10b981', borderRadius: '2px' }}></div>
+          <span style={{ color: '#047857' }}>Lokalita</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '30px', height: '3px', background: '#8b5cf6', borderRadius: '2px' }}></div>
-          <span style={{ color: '#6d28d9' }}>Útvar</span>
+          <div style={{ width: '30px', height: '3px', background: '#059669', borderRadius: '2px' }}></div>
+          <span style={{ color: '#065f46' }}>Útvar</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '30px', height: '3px', background: '#f59e0b', borderRadius: '2px' }}></div>
-          <span style={{ color: '#d97706' }}>Notifikace</span>
+          <div style={{ width: '30px', height: '3px', background: '#ea580c', borderRadius: '2px' }}></div>
+          <span style={{ color: '#c2410c' }}>Notifikace</span>
         </div>
       </div>
 
@@ -4172,6 +4194,21 @@ const OrganizationHierarchy = () => {
                             marginTop: '2px'
                           }}
                         />
+                        <div style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '1rem',
+                          flexShrink: 0,
+                          boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)'
+                        }}>
+                          <FontAwesomeIcon icon={faBell} />
+                        </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ 
                             fontWeight: '600', 
@@ -4403,12 +4440,20 @@ const OrganizationHierarchy = () => {
                     <Background color="#cbd5e1" gap={20} size={1} />
                     <Controls />
                     <MiniMap 
-                      nodeColor="#667eea"
+                      nodeColor={(node) => {
+                        if (node.data?.type === 'template') return '#f59e0b'; // Oranžová pro šablony
+                        if (node.data?.type === 'location') return '#92400e'; // Tmavě hnědá pro lokality
+                        if (node.data?.type === 'department') return '#059669'; // Tmavě zelená pro útvary
+                        return '#3b82f6'; // Modrá pro uživatele
+                      }}
                       maskColor="rgba(245, 247, 250, 0.8)"
+                      pannable={true}
+                      zoomable={true}
                       style={{
                         background: 'white',
                         border: '1px solid #e0e6ed',
-                        borderRadius: '8px'
+                        borderRadius: '8px',
+                        cursor: 'pointer'
                       }}
                     />
                     {showHelp ? (
