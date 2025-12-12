@@ -61,6 +61,37 @@ CREATE TABLE IF NOT EXISTS 25_hierarchie_vztahy (
     viditelnost_lp TINYINT(1) DEFAULT 0 COMMENT 'Vidí likvidační protokoly (deprecated)',
     
     -- ========================================================================
+    -- ÚROVEŇ PRÁV PRO KAŽDÝ MODUL (co nadřízený MŮŽE DĚLAT se záznamy)
+    -- ========================================================================
+    uroven_prav_objednavky ENUM(
+        'READ_ONLY',            -- Vidí záznamy, nemůže editovat
+        'READ_WRITE',           -- Může editovat záznamy
+        'READ_WRITE_DELETE',    -- Plný přístup včetně mazání
+        'INHERIT'               -- Dědí stejná práva jako podřízený
+    ) DEFAULT 'READ_ONLY' COMMENT 'Jaká práva má nadřízený k objednávkám podřízeného',
+    
+    uroven_prav_faktury ENUM(
+        'READ_ONLY',
+        'READ_WRITE',
+        'READ_WRITE_DELETE',
+        'INHERIT'
+    ) DEFAULT 'READ_ONLY' COMMENT 'Jaká práva má nadřízený k fakturám podřízeného',
+    
+    uroven_prav_smlouvy ENUM(
+        'READ_ONLY',
+        'READ_WRITE',
+        'READ_WRITE_DELETE',
+        'INHERIT'
+    ) DEFAULT 'READ_ONLY' COMMENT 'Jaká práva má nadřízený ke smlouvám podřízeného',
+    
+    uroven_prav_pokladna ENUM(
+        'READ_ONLY',
+        'READ_WRITE',
+        'READ_WRITE_DELETE',
+        'INHERIT'
+    ) DEFAULT 'READ_ONLY' COMMENT 'Jaká práva má nadřízený k pokladně podřízeného',
+    
+    -- ========================================================================
     -- ROZŠÍŘENÁ OPRÁVNĚNÍ (navíc k základnímu vztahu)
     -- ========================================================================
     rozsirene_lokality JSON NULL COMMENT '[12, 15, 18] - pole ID lokalit, navíc k základnímu scope',
@@ -102,10 +133,13 @@ COMMENT='Workflow hierarchie - vztahy mezi uživateli, lokalitami a úseky';
 
 -- PŘÍKLAD 1: Černohorský je nadřízený Holovského
 -- -------------------------------------------------
+-- Holovský (THP) má právo CREATE + EDIT vlastní objednávky
+-- Černohorský (nadřízený) dostane READ_ONLY - vidí objednávky, nemůže editovat
 INSERT INTO 25_hierarchie_vztahy (
     profil_id, typ_vztahu, user_id_1, user_id_2,
     druh_vztahu, scope,
     viditelnost_objednavky, viditelnost_faktury, viditelnost_pokladna,
+    uroven_prav_objednavky, uroven_prav_faktury, uroven_prav_pokladna,
     pozice_node_1, pozice_node_2
 ) VALUES (
     1,              -- profil_id (výchozí profil)
@@ -116,7 +150,10 @@ INSERT INTO 25_hierarchie_vztahy (
     'TEAM',         -- Černohorský uvidí celý IT úsek Holovského
     1,              -- Vidí objednávky ✅
     1,              -- Vidí faktury ✅
-    1,              -- Vidí pokladnu ✅ (read-only díky pokladna_readonly=1)
+    1,              -- Vidí pokladnu ✅
+    'READ_ONLY',    -- Černohorský vidí objednávky, ale NEMŮŽE je editovat
+    'READ_WRITE',   -- Černohorský může editovat faktury
+    'READ_ONLY',    -- Pokladna jen pro čtení
     '{"x": 200, "y": 100}',  -- Pozice Černohorského na canvasu
     '{"x": 200, "y": 300}'   -- Pozice Holovského na canvasu
 );
