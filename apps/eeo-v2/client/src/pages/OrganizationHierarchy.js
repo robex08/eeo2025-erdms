@@ -228,7 +228,7 @@ const SearchBox = styled.div`
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 8px 12px 8px 36px;
+  padding: 8px 32px 8px 36px;
   border: 1px solid #e0e6ed;
   border-radius: 8px;
   background: #f8fafc;
@@ -249,6 +249,32 @@ const SearchIcon = styled.div`
   left: 28px;
   top: 22px;
   color: #94a3b8;
+`;
+
+const SearchClearButton = styled.button`
+  position: absolute;
+  right: 24px;
+  top: 20px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: #e2e8f0;
+    color: #475569;
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
 `;
 
 const SidebarContent = styled.div`
@@ -409,6 +435,21 @@ const CanvasArea = styled.div`
   flex: 1;
   position: relative;
   background: #f5f7fa;
+  
+  /* Crosshair kurzor pro multi-select drag */
+  .react-flow__pane {
+    cursor: crosshair !important;
+  }
+  
+  /* Pointer kurzor při hover nad nodem */
+  .react-flow__node {
+    cursor: pointer !important;
+  }
+  
+  /* Grab kurzor při pan (prostřední tlačítko) */
+  &.panning .react-flow__pane {
+    cursor: grab !important;
+  }
 `;
 
 const DetailPanel = styled.div`
@@ -1158,7 +1199,7 @@ const OrganizationHierarchy = () => {
   };
 
   const selectAllLocations = () => {
-    setSelectedLocations(new Set(allLocations.map(l => l.id)));
+    setSelectedLocations(new Set(filteredLocations.map(l => l.id)));
   };
 
   const deselectAllLocations = () => {
@@ -1166,7 +1207,7 @@ const OrganizationHierarchy = () => {
   };
 
   const selectAllDepartments = () => {
-    setSelectedDepartments(new Set(allDepartments.map(d => d.id)));
+    setSelectedDepartments(new Set(filteredDepartments.map(d => d.id)));
   };
 
   const deselectAllDepartments = () => {
@@ -1186,7 +1227,7 @@ const OrganizationHierarchy = () => {
   };
 
   const selectAllNotificationTemplates = () => {
-    setSelectedNotificationTemplates(new Set(allNotificationTemplates.map(t => t.id)));
+    setSelectedNotificationTemplates(new Set(filteredNotificationTemplates.map(t => t.id)));
   };
 
   const deselectAllNotificationTemplates = () => {
@@ -1312,11 +1353,23 @@ const OrganizationHierarchy = () => {
     
     const dragId = draggedItem;
     
-    // ReactFlow's project() metoda přímo přijímá clientX/clientY a sama přepočítá zoom+pan
-    // Není potřeba nic odečítat, project() to dělá interně
+    // Najdi ReactFlow wrapper (.react-flow) a získej jeho pozici
+    const reactFlowElement = event.currentTarget.querySelector('.react-flow');
+    if (!reactFlowElement) {
+      console.error('⚠️ ReactFlow element not found');
+      return;
+    }
+    
+    const reactFlowBounds = reactFlowElement.getBoundingClientRect();
+    
+    // Vypočítej pozici relativní k ReactFlow wrapperu
+    // Odečti polovinu šířky/výšky nodu, aby kurzor byl přibližně ve středu karty
+    const nodeWidth = 220;  // Přibližná šířka custom node
+    const nodeHeight = 80;  // Přibližná výška custom node
+    
     const position = reactFlowInstance.project({
-      x: event.clientX,
-      y: event.clientY,
+      x: event.clientX - reactFlowBounds.left - nodeWidth / 2,
+      y: event.clientY - reactFlowBounds.top - nodeHeight / 2,
     });
     
     console.log('📦 Drop:', { 
@@ -1324,6 +1377,7 @@ const OrganizationHierarchy = () => {
       position, 
       clientX: event.clientX, 
       clientY: event.clientY,
+      bounds: { left: reactFlowBounds.left, top: reactFlowBounds.top },
       viewport: reactFlowInstance.getViewport()
     });
     
@@ -1432,16 +1486,16 @@ const OrganizationHierarchy = () => {
   };
 
   const handleAutoGenerateHierarchy = () => {
-    // Kontrola zda jsou vybrané položky
-    const totalSelected = selectedUsers.size + selectedLocations.size + selectedDepartments.size;
+    // Kontrola zda jsou vybrané nody na ploše
+    const selectedNodes = nodes.filter(n => n.selected);
     
-    if (totalSelected === 0) {
+    if (selectedNodes.length === 0) {
       setDialog({
         show: true,
         type: 'alert',
         icon: '⚠️',
-        title: 'Žádné položky nevybrány',
-        message: 'Pro vytvoření AI hierarchie musíte nejprve vybrat uživatele, lokality nebo útvary ze seznamu vlevo.\n\nPoužijte checkboxy pro výběr položek.',
+        title: 'Žádné položky nevybrány na ploše',
+        message: 'Pro vytvoření AI hierarchie musíte nejprve vybrat nody na ploše.\n\nPoužijte:\n• Táhněte myší pro výběr oblasti (crosshair kurzor)\n• CTRL+klik pro individuální výběr\n• SHIFT+klik pro rozsah',
         onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
         confirmText: 'OK',
         cancelText: null
@@ -1449,8 +1503,8 @@ const OrganizationHierarchy = () => {
       return;
     }
 
-    // Generovat hierarchii pouze z vybraných položek
-    generateHierarchyFromSelected();
+    // Generovat hierarchii pouze z vybraných nodů na ploše
+    generateHierarchyFromSelectedNodes(selectedNodes);
   };
 
   // Automatické rozložení grafu pomocí dagre
@@ -1825,6 +1879,104 @@ const OrganizationHierarchy = () => {
         '─────────': '─────',
         'Celkem uzlů': layoutedNodes.length,
         'Celkem vztahů': layoutedEdges.length
+      },
+      onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
+      confirmText: 'OK',
+      cancelText: null
+    });
+  };
+
+  // Nová funkce pro práci s vybranými nody na ploše
+  const generateHierarchyFromSelectedNodes = (selectedNodes) => {
+    console.log('🤖 AI: Reorganizing hierarchy from SELECTED NODES on canvas...', selectedNodes.length);
+
+    if (selectedNodes.length === 0) return;
+
+    // Analyzovat role z vybraných nodů
+    const director = selectedNodes.find(n => {
+      const pos = n.data.position?.toLowerCase() || '';
+      return pos === 'ředitel' || pos === 'ředitelka';
+    });
+    
+    const deputies = selectedNodes.filter(n => 
+      n.data.position?.toLowerCase().includes('náměstek')
+    );
+    
+    const heads = selectedNodes.filter(n => 
+      n.data.position?.toLowerCase().includes('vedoucí')
+    );
+    
+    const others = selectedNodes.filter(n => 
+      !n.data.position?.toLowerCase().includes('ředitel') &&
+      !n.data.position?.toLowerCase().includes('náměstek') &&
+      !n.data.position?.toLowerCase().includes('vedoucí')
+    );
+
+    // Vytvo\u0159 nové edges podle hierarchie
+    const newEdges = [];
+    const timestamp = Date.now();
+
+    // Náměstci -> Ředitel
+    if (director) {
+      deputies.forEach(deputy => {
+        newEdges.push({
+          id: `e-${director.id}-${deputy.id}-${timestamp}`,
+          source: director.id,
+          target: deputy.id,
+          type: 'smoothstep',
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#667eea', strokeWidth: 3 }
+        });
+      });
+
+      // Vedoucí -> Ředitel nebo Náměstek (podle útvaru)
+      heads.forEach(head => {
+        const deputyWithSameDept = deputies.find(d => 
+          d.data.metadata?.department === head.data.metadata?.department
+        );
+        
+        const sourceNode = deputyWithSameDept || director;
+        newEdges.push({
+          id: `e-${sourceNode.id}-${head.id}-${timestamp}`,
+          source: sourceNode.id,
+          target: head.id,
+          type: 'smoothstep',
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#667eea', strokeWidth: 3 }
+        });
+      });
+    }
+
+    // Odstranit staré edges mezi vybranými nody
+    const selectedNodeIds = new Set(selectedNodes.map(n => n.id));
+    const filteredEdges = edges.filter(e => 
+      !selectedNodeIds.has(e.source) || !selectedNodeIds.has(e.target)
+    );
+
+    // Přidat nové edges
+    const updatedEdges = [...filteredEdges, ...newEdges];
+    
+    // Aplikovat layout
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, updatedEdges, 'TB');
+    
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+
+    setDialog({
+      show: true,
+      type: 'success',
+      icon: '✅',
+      title: 'Hierarchie reorganizována!',
+      message: `Vybrané nody (${selectedNodes.length}) byly reorganizovány podle rolí.\nZkontrolujte strukturu a případně upravte.`,
+      stats: {
+        'Ředitel': director ? '1' : '0',
+        'Náměstci': deputies.length,
+        'Vedoucí': heads.length,
+        'Ostatní': others.length,
+        '─────────': '─────',
+        'Nové vztahy': newEdges.length
       },
       onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
       confirmText: 'OK',
@@ -2273,6 +2425,21 @@ const OrganizationHierarchy = () => {
     u.location.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredLocations = allLocations.filter(loc =>
+    loc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    loc.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredDepartments = allDepartments.filter(dept =>
+    dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dept.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredNotificationTemplates = allNotificationTemplates.filter(template =>
+    template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (template.description && template.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   if (loading) {
     return (
       <Container>
@@ -2399,10 +2566,18 @@ const OrganizationHierarchy = () => {
                 <FontAwesomeIcon icon={faSearch} />
               </SearchIcon>
               <SearchInput
-                placeholder="Hledat uživatele..."
+                placeholder="Hledat ve všech sekcích..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+              {searchTerm && (
+                <SearchClearButton
+                  onClick={() => setSearchTerm('')}
+                  title="Vymazat hledání"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </SearchClearButton>
+              )}
             </SearchBox>
 
             <SidebarContent>
@@ -2506,7 +2681,7 @@ const OrganizationHierarchy = () => {
                 >
                   <FontAwesomeIcon icon={expandedSections.locations ? faChevronDown : faChevronRight} />
                   <FontAwesomeIcon icon={faMapMarkerAlt} />
-                  LOKALITY ({allLocations.length})
+                  LOKALITY ({filteredLocations.length})
                   {selectedLocations.size > 0 && (
                     <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#f5576c', fontWeight: 'bold' }}>
                       {selectedLocations.size} vybráno
@@ -2518,7 +2693,7 @@ const OrganizationHierarchy = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (selectedLocations.size === allLocations.length) {
+                        if (selectedLocations.size === filteredLocations.length) {
                           deselectAllLocations();
                         } else {
                           selectAllLocations();
@@ -2539,11 +2714,11 @@ const OrganizationHierarchy = () => {
                       onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
                       onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
                     >
-                      {selectedLocations.size === allLocations.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                      {selectedLocations.size === filteredLocations.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
                   <div>
-                    {allLocations.map((loc) => (
+                    {filteredLocations.map((loc) => (
                       <LocationItem
                         key={loc.id}
                         draggable
@@ -2598,7 +2773,7 @@ const OrganizationHierarchy = () => {
                 >
                   <FontAwesomeIcon icon={expandedSections.departments ? faChevronDown : faChevronRight} />
                   <FontAwesomeIcon icon={faUserTie} />
-                  ÚSEKY ({allDepartments.length})
+                  ÚSEKY ({filteredDepartments.length})
                   {selectedDepartments.size > 0 && (
                     <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#00f2fe', fontWeight: 'bold' }}>
                       {selectedDepartments.size} vybráno
@@ -2610,7 +2785,7 @@ const OrganizationHierarchy = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (selectedDepartments.size === allDepartments.length) {
+                        if (selectedDepartments.size === filteredDepartments.length) {
                           deselectAllDepartments();
                         } else {
                           selectAllDepartments();
@@ -2631,11 +2806,11 @@ const OrganizationHierarchy = () => {
                       onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
                       onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
                     >
-                      {selectedDepartments.size === allDepartments.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                      {selectedDepartments.size === filteredDepartments.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
                   <div>
-                    {allDepartments.map((dept) => (
+                    {filteredDepartments.map((dept) => (
                       <LocationItem
                         key={dept.id}
                         draggable
@@ -2691,7 +2866,7 @@ const OrganizationHierarchy = () => {
                 >
                   <FontAwesomeIcon icon={expandedSections.notificationTemplates ? faChevronDown : faChevronRight} />
                   <FontAwesomeIcon icon={faBell} />
-                  NOTIFIKAČNÍ ŠABLONY ({allNotificationTemplates.length})
+                  NOTIFIKAČNÍ ŠABLONY ({filteredNotificationTemplates.length})
                   {selectedNotificationTemplates.size > 0 && (
                     <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#f59e0b', fontWeight: 'bold' }}>
                       {selectedNotificationTemplates.size} vybráno
@@ -2703,7 +2878,7 @@ const OrganizationHierarchy = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (selectedNotificationTemplates.size === allNotificationTemplates.length) {
+                        if (selectedNotificationTemplates.size === filteredNotificationTemplates.length) {
                           deselectAllNotificationTemplates();
                         } else {
                           selectAllNotificationTemplates();
@@ -2724,11 +2899,11 @@ const OrganizationHierarchy = () => {
                       onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
                       onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
                     >
-                      {selectedNotificationTemplates.size === allNotificationTemplates.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                      {selectedNotificationTemplates.size === filteredNotificationTemplates.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
                   <div>
-                    {allNotificationTemplates.map((template) => (
+                    {filteredNotificationTemplates.map((template) => (
                       <div
                         key={template.id}
                         style={{
@@ -2939,6 +3114,11 @@ const OrganizationHierarchy = () => {
               nodeTypes={nodeTypes}
               fitView
               attributionPosition="bottom-left"
+              selectionOnDrag={true}
+              panOnDrag={[1, 2]}
+              selectionMode="partial"
+              multiSelectionKeyCode="Control"
+              selectNodesOnDrag={false}
             >
                     <Background color="#cbd5e1" gap={20} size={1} />
                     <Controls />
