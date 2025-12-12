@@ -945,11 +945,80 @@ const DialogStats = styled.div`
 
 // Custom Node Component
 const CustomNode = ({ data, selected }) => {
-  // Rozlišit typ node (user, location, department)
+  // Rozlišit typ node (user, location, department, template)
+  const isTemplate = data.type === 'template';
   const isLocation = data.type === 'location';
   const isDepartment = data.type === 'department';
-  const isUser = !isLocation && !isDepartment;
+  const isUser = !isLocation && !isDepartment && !isTemplate;
   
+  // Pro template nodes - jen zelený výstupní bod
+  if (isTemplate) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: selected 
+          ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
+          : '#fef3c7',
+        border: `2px solid ${selected ? '#f59e0b' : '#fbbf24'}`,
+        minWidth: '200px',
+        boxShadow: selected 
+          ? '0 6px 16px rgba(245, 158, 11, 0.4)'
+          : '0 2px 8px rgba(0,0,0,0.1)',
+        transition: 'all 0.2s',
+        position: 'relative',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+      }}>
+        {/* Jen zelený source handle - šablona vysílá notifikace */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{
+            width: '16px',
+            height: '16px',
+            background: '#10b981',
+            border: '3px solid white',
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.5)',
+            cursor: 'crosshair',
+            right: '-10px'
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.3rem',
+            boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+          }}>
+            🔔
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: '#78350f',
+              fontSize: '0.85rem',
+              marginBottom: '2px'
+            }}>
+              {data.name}
+            </div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#92400e',
+              fontWeight: 500
+            }}>
+              {data.position}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Pro location/department nodes - zjednodušená vizualizace
   if (isLocation || isDepartment) {
     return (
@@ -1184,6 +1253,8 @@ const OrganizationHierarchy = () => {
   // Detail panel data - rozsirene lokality a notifikace pro vybrany vztah
   const [selectedExtendedLocations, setSelectedExtendedLocations] = useState([]);
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
+  const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
+  const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
   
   // Detail panel data - rozsirene useky
   const [selectedExtendedDepartments, setSelectedExtendedDepartments] = useState([]);
@@ -1214,7 +1285,9 @@ const OrganizationHierarchy = () => {
                 },
                 notifications: {
                   ...(e.data?.notifications || {}),
-                  types: selectedNotificationTypes
+                  types: selectedNotificationTypes,
+                  email: notificationEmailEnabled,
+                  inapp: notificationInAppEnabled
                 }
               }
             };
@@ -1223,7 +1296,7 @@ const OrganizationHierarchy = () => {
         })
       );
     }
-  }, [selectedExtendedLocations, selectedExtendedDepartments, selectedCombinations, selectedNotificationTypes, selectedEdge]);
+  }, [selectedExtendedLocations, selectedExtendedDepartments, selectedCombinations, selectedNotificationTypes, notificationEmailEnabled, notificationInAppEnabled, selectedEdge]);
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -1638,6 +1711,10 @@ const OrganizationHierarchy = () => {
     // Nacist rozsirene useky z edge data
     const extendedDepts = edge.data?.extended?.departments || edge.data?.permissions?.extended?.departments || [];
     setSelectedExtendedDepartments(extendedDepts);
+    
+    // Nacist notifikacni nastaveni z edge data
+    setNotificationEmailEnabled(edge.data?.notifications?.email || false);
+    setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
     
     // Nacist kombinace lokalita+utvar z edge data
     const combos = edge.data?.extended?.combinations || edge.data?.permissions?.extended?.combinations || [];
@@ -4624,6 +4701,86 @@ const OrganizationHierarchy = () => {
               </DetailSection>
 
               <Divider />
+
+              {/* Sekce notifikací - zobraz jen když edge obsahuje template */}
+              {selectedEdge && (() => {
+                const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                const isTemplateEdge = sourceNode?.data?.type === 'template' || targetNode?.data?.type === 'template';
+                
+                if (!isTemplateEdge) return null;
+                
+                return (
+                  <>
+                    <DetailSection>
+                      <DetailSectionTitle>
+                        <FontAwesomeIcon icon={faBell} />
+                        Nastavení notifikací
+                      </DetailSectionTitle>
+                      <div style={{ 
+                        padding: '12px', 
+                        background: '#fef3c7', 
+                        borderRadius: '6px',
+                        marginBottom: '12px',
+                        border: '1px solid #fbbf24'
+                      }}>
+                        <div style={{ fontSize: '0.8rem', color: '#78350f', fontWeight: 500 }}>
+                          🔔 <strong>{sourceNode?.data?.type === 'template' ? sourceNode.data.name : targetNode.data.name}</strong>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '4px' }}>
+                          Bude odesílána: {targetNode?.data?.type === 'template' ? sourceNode.data.name : targetNode.data.name}
+                        </div>
+                      </div>
+                      
+                      <CheckboxGroup>
+                        <CheckboxLabel>
+                          <input 
+                            type="checkbox" 
+                            checked={notificationEmailEnabled}
+                            onChange={(e) => setNotificationEmailEnabled(e.target.checked)}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FontAwesomeIcon icon={faEnvelope} style={{ color: '#667eea' }} />
+                            <span>Poslat emailem</span>
+                          </div>
+                        </CheckboxLabel>
+                        <CheckboxLabel>
+                          <input 
+                            type="checkbox" 
+                            checked={notificationInAppEnabled}
+                            onChange={(e) => setNotificationInAppEnabled(e.target.checked)}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FontAwesomeIcon icon={faBell} style={{ color: '#f5576c' }} />
+                            <span>Zobrazit ve zvonečku (in-app)</span>
+                          </div>
+                        </CheckboxLabel>
+                      </CheckboxGroup>
+                      
+                      <div style={{ 
+                        marginTop: '12px',
+                        padding: '10px',
+                        background: '#f0fdf4',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        color: '#166534',
+                        border: '1px solid #86efac'
+                      }}>
+                        <strong>ℹ️ Hierarchie rozhodování:</strong>
+                        <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                          <li>Globální nastavení aplikace</li>
+                          <li>Nastavení tohoto vztahu (zde)</li>
+                          <li>Uživatelské preference v profilu</li>
+                        </ol>
+                        <div style={{ marginTop: '6px', fontSize: '0.7rem', color: '#15803d' }}>
+                          Notifikace se odešle pouze když jsou všechny 3 úrovně povoleny.
+                        </div>
+                      </div>
+                    </DetailSection>
+                    <Divider />
+                  </>
+                );
+              })()}
 
               <DetailSection>
                 <Button primary style={{ width: '100%', marginBottom: '10px' }}>
