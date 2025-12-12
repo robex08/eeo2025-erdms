@@ -4698,7 +4698,7 @@ const OrganizationHierarchy = () => {
                     </FormGroup>
                     <FormGroup>
                       <Label style={{ color: '#10b981' }}>
-                        🏢 Výchozí útvar (z DB)
+                        🏢 Výchozí úsek (z DB)
                       </Label>
                       <Input 
                         value={selectedNode.data.metadata?.department || 'Neuvedeno'} 
@@ -4725,17 +4725,40 @@ const OrganizationHierarchy = () => {
                   <Select>
                     <option value="prime">Přímý nadřízený</option>
                     <option value="zastupovani">Zastupování</option>
-                    <option value="delegovani">Delegování</option>
-                    <option value="rozsirene">Rozšířené oprávnění</option>
+                    <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
+                    <option value="rozsirene" disabled style={{ color: '#9ca3af' }}>Rozšířené oprávnění (TODO)</option>
                   </Select>
                 </FormGroup>
                 <FormGroup>
-                  <Label>Úroveň oprávnění</Label>
+                  <Label>
+                    Rozsah viditelnosti (Scope)
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal', marginLeft: '8px' }}>
+                      - co uživatel uvidí?
+                    </span>
+                  </Label>
                   <Select>
-                    <option value="1">Základní - pouze zobrazení</option>
-                    <option value="2">Rozšířené - editace</option>
-                    <option value="3">Plné - schvalování</option>
+                    <option value="OWN">🔒 OWN - Jen své vlastní záznamy</option>
+                    <option value="TEAM">👥 TEAM - Záznamy svého úseku</option>
+                    <option value="LOCATION">📍 LOCATION - Vše v rámci lokality</option>
+                    <option value="ALL">🌐 ALL - Vše (admin přístup)</option>
                   </Select>
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    color: '#475569'
+                  }}>
+                    <strong>Vysvětlení:</strong>
+                    <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                      <li><strong>OWN:</strong> Vidí jen své záznamy (vlastní objednávky/faktury)</li>
+                      <li><strong>TEAM:</strong> Vidí záznamy celého úseku</li>
+                      <li><strong>LOCATION:</strong> Vidí vše v rámci lokality (např. všechny úseky v Berouně)</li>
+                      <li><strong>ALL:</strong> Vidí všechny záznamy v systému (nadřazený přístup)</li>
+                    </ul>
+                  </div>
                 </FormGroup>
               </DetailSection>
 
@@ -4744,34 +4767,107 @@ const OrganizationHierarchy = () => {
               <DetailSection>
                 <DetailSectionTitle>
                   <FontAwesomeIcon icon={faEye} />
-                  Viditelnost modulů
+                  Oprávnění pro moduly (workflow)
                 </DetailSectionTitle>
+                
+                {/* Info box s vysvětlením */}
+                <div style={{
+                  padding: '12px',
+                  background: '#f0f9ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  color: '#1e40af',
+                  marginBottom: '16px'
+                }}>
+                  <strong>ℹ️ Jak to funguje:</strong>
+                  <div style={{ marginTop: '6px', fontSize: '0.8rem', color: '#3b82f6' }}>
+                    Vztah rozšíří viditelnost dat podle lokalit a úseků.
+                    Uživatel MUSÍ mít základní právo (roli) pro přístup k modulu.
+                  </div>
+                </div>
+                
                 <CheckboxGroup>
+                  {/* AKTIVNÍ MODULY - s workflow podporou */}
                   <CheckboxLabel>
                     <input type="checkbox" defaultChecked />
-                    Objednávky
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <span>📋 <strong>Objednávky</strong></span>
+                      <span style={{ fontSize: '0.75rem', color: '#10b981', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        AKTIVNÍ
+                      </span>
+                    </div>
                   </CheckboxLabel>
+                  
                   <CheckboxLabel>
                     <input type="checkbox" defaultChecked />
-                    Faktury
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <span>🧾 <strong>Faktury</strong></span>
+                      <span style={{ fontSize: '0.75rem', color: '#10b981', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        AKTIVNÍ
+                      </span>
+                    </div>
                   </CheckboxLabel>
-                  <CheckboxLabel>
-                    <input type="checkbox" />
-                    Smlouvy
-                  </CheckboxLabel>
-                  <CheckboxLabel>
-                    <input type="checkbox" />
-                    Pokladna
-                  </CheckboxLabel>
-                  <CheckboxLabel>
-                    <input type="checkbox" />
-                    Uživatelé
-                  </CheckboxLabel>
-                  <CheckboxLabel>
-                    <input type="checkbox" />
-                    Likvidační protokoly
-                  </CheckboxLabel>
+                  
+                  <div style={{ marginLeft: '0px', paddingLeft: '0px' }}>
+                    <CheckboxLabel>
+                      <input type="checkbox" />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                        <span>💰 <strong>Pokladna</strong></span>
+                        <span style={{ fontSize: '0.75rem', color: '#f59e0b', background: '#fef3c7', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          ČÁSTEČNĚ
+                        </span>
+                      </div>
+                    </CheckboxLabel>
+                    {/* Sub-option pro pokladnu */}
+                    <div style={{ marginLeft: '32px', marginTop: '6px', marginBottom: '6px' }}>
+                      <CheckboxLabel style={{ fontSize: '0.85rem', padding: '4px 8px' }}>
+                        <input type="checkbox" />
+                        <span style={{ color: '#64748b' }}>📖 Jen pro čtení (read-only)</span>
+                      </CheckboxLabel>
+                    </div>
+                  </div>
+                  
+                  {/* NEAKTIVNÍ MODULY - zatím bez workflow */}
+                  <div style={{
+                    marginTop: '12px',
+                    paddingTop: '12px',
+                    borderTop: '1px dashed #e5e7eb'
+                  }}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: '#6b7280',
+                      marginBottom: '8px',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      Plánované moduly (TODO):
+                    </div>
+                    
+                    <CheckboxLabel style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                      <input type="checkbox" disabled />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📄 Smlouvy</span>
+                        <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>(připravujeme)</span>
+                      </div>
+                    </CheckboxLabel>
+                  </div>
                 </CheckboxGroup>
+                
+                {/* Poznámka o právech */}
+                <div style={{
+                  marginTop: '12px',
+                  padding: '10px',
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  color: '#92400e'
+                }}>
+                  <strong>⚠️ Důležité:</strong> Vztah funguje jen pokud má uživatel globální právo
+                  (např. <code style={{ background: '#fef3c7', padding: '2px 4px', borderRadius: '3px' }}>ORDER_EDIT_OWN</code>).
+                </div>
               </DetailSection>
 
               <Divider />
@@ -4822,7 +4918,7 @@ const OrganizationHierarchy = () => {
               <DetailSection>
                 <DetailSectionTitle>
                   <FontAwesomeIcon icon={faBuilding} />
-                  Rozsirene utvary
+                  Rozšířené úseky
                 </DetailSectionTitle>
                 <TagList>
                   {selectedExtendedDepartments.map((deptId) => {
@@ -4847,7 +4943,7 @@ const OrganizationHierarchy = () => {
                     }
                     e.target.value = '';
                   }}>
-                    <option value="">-- Vyberte utvar --</option>
+                    <option value="">-- Vyberte úsek --</option>
                     {allDepartments
                       .filter(dept => !selectedExtendedDepartments.includes(dept.id))
                       .map(dept => (
@@ -4865,17 +4961,17 @@ const OrganizationHierarchy = () => {
               <DetailSection>
                 <DetailSectionTitle>
                   <FontAwesomeIcon icon={faLayerGroup} />
-                  Kombinace lokalita + utvar
+                  Kombinace lokalita + úsek
                 </DetailSectionTitle>
                 <p style={{ fontSize: '0.85rem', color: '#6c757d', marginBottom: '12px' }}>
-                  Specificke kombinace lokalita+utvar (AND logika). Napr. "jen IT z Berouna".
+                  Specifické kombinace lokalita+úsek (AND logika). Např. "jen IT z Berouna".
                 </p>
                 {selectedCombinations.length > 0 ? (
                   <CombinationTable>
                     <thead>
                       <tr>
                         <th>Lokalita</th>
-                        <th>Utvar</th>
+                        <th>Úsek</th>
                         <th style={{ width: '40px' }}></th>
                       </tr>
                     </thead>
@@ -4917,9 +5013,9 @@ const OrganizationHierarchy = () => {
                     </Select>
                   </FormGroup>
                   <FormGroup style={{ marginBottom: 0 }}>
-                    <Label>Utvar</Label>
+                    <Label>Úsek</Label>
                     <Select id="combo-department-select">
-                      <option value="">-- Vyberte utvar --</option>
+                      <option value="">-- Vyberte úsek --</option>
                       {allDepartments.map(dept => (
                         <option key={dept.id} value={dept.id}>
                           {dept.name} {dept.code ? `(${dept.code})` : ''}
