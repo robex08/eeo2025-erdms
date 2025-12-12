@@ -39,14 +39,14 @@ function handle_hierarchy_save_v2($data, $pdo) {
             $sql = "
                 INSERT INTO ".TABLE_HIERARCHIE_VZTAHY." (
                     profil_id, typ_vztahu,
-                    user_id_1, user_id_2, lokalita_id, usek_id, template_id,
+                    user_id_1, user_id_2, lokalita_id, usek_id, template_id, role_id,
                     pozice_node_1, pozice_node_2,
                     uroven_opravneni,
                     viditelnost_objednavky, viditelnost_faktury, viditelnost_smlouvy,
                     viditelnost_pokladna, viditelnost_uzivatele, viditelnost_lp,
                     notifikace_email, notifikace_inapp, notifikace_typy,
                     upravil_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ";
             
             $stmt = $pdo->prepare($sql);
@@ -60,6 +60,7 @@ function handle_hierarchy_save_v2($data, $pdo) {
                     isset($rel['lokalita_id']) ? (int)$rel['lokalita_id'] : null,
                     isset($rel['usek_id']) ? (int)$rel['usek_id'] : null,
                     isset($rel['template_id']) ? (int)$rel['template_id'] : null,
+                    isset($rel['role_id']) ? (int)$rel['role_id'] : null,
                     json_encode(isset($rel['position_1']) ? $rel['position_1'] : null),
                     json_encode(isset($rel['position_2']) ? $rel['position_2'] : null),
                     isset($rel['level']) ? (int)$rel['level'] : 1,
@@ -123,6 +124,7 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 v.user_id_2,
                 v.lokalita_id,
                 v.usek_id,
+                v.role_id,
                 v.pozice_node_1,
                 v.pozice_node_2,
                 v.uroven_opravneni,
@@ -154,7 +156,9 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 l.nazev as lokalita_nazev,
                 us.usek_nazev as usek_nazev,
                 v.template_id,
-                t.name as template_name
+                t.name as template_name,
+                r.nazev_role as role_nazev,
+                r.Popis as role_popis
             FROM ".TABLE_HIERARCHIE_VZTAHY." v
             LEFT JOIN ".TABLE_UZIVATELE." u1 ON v.user_id_1 = u1.id
             LEFT JOIN ".TABLE_POZICE." p1 ON u1.pozice_id = p1.id
@@ -167,6 +171,7 @@ function handle_hierarchy_structure_v2($data, $pdo) {
             LEFT JOIN ".TABLE_LOKALITY." l ON v.lokalita_id = l.id
             LEFT JOIN ".TABLE_USEKY." us ON v.usek_id = us.id
             LEFT JOIN ".TABLE_NOTIFICATION_TEMPLATES." t ON v.template_id = t.id
+            LEFT JOIN 25_role r ON v.role_id = r.id
             WHERE v.profil_id = ? AND v.aktivni = 1
         ";
         
@@ -274,6 +279,21 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                     );
                     $nodeIds[$nodeId] = true;
                 }
+            } elseif ($type1 === 'role' && $row['role_id']) {
+                $nodeId = 'role-' . $row['role_id'];
+                $relation['node_1'] = $nodeId;
+                $relation['role_id'] = (int)$row['role_id'];
+                
+                if (!isset($nodeIds[$nodeId])) {
+                    $nodes[] = array(
+                        'id' => $nodeId,
+                        'type' => 'role',
+                        'roleId' => (int)$row['role_id'],
+                        'name' => $row['role_nazev'],
+                        'popis' => $row['role_popis'] ?: ''
+                    );
+                    $nodeIds[$nodeId] = true;
+                }
             }
             
             // Určit node_2 podle typu vztahu
@@ -349,6 +369,23 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                         'type' => 'template',
                         'templateId' => (int)$row['template_id'],
                         'name' => $row['template_name']
+                    );
+                    $nodeIds[$nodeId] = true;
+                }
+            } elseif ($type2 === 'role' && $row['role_id']) {
+                $nodeId = 'role-' . $row['role_id'];
+                $relation['node_2'] = $nodeId;
+                if (!isset($relation['role_id'])) {
+                    $relation['role_id'] = (int)$row['role_id'];
+                }
+                
+                if (!isset($nodeIds[$nodeId])) {
+                    $nodes[] = array(
+                        'id' => $nodeId,
+                        'type' => 'role',
+                        'roleId' => (int)$row['role_id'],
+                        'name' => $row['role_nazev'],
+                        'popis' => $row['role_popis'] ?: ''
                     );
                     $nodeIds[$nodeId] = true;
                 }
