@@ -56,6 +56,8 @@ const Container = styled.div`
   flex-direction: column;
   background: #f5f7fa;
   margin-top: -1em; /* Kompenzace padding-top z Layout Content */
+  user-select: none;
+  -webkit-user-select: none;
 `;
 
 const Header = styled.div`
@@ -67,6 +69,7 @@ const Header = styled.div`
   align-items: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
   flex-shrink: 0;
+  user-select: none;
 `;
 
 const Title = styled.h1`
@@ -213,6 +216,7 @@ const Sidebar = styled.div`
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  user-select: none;
 `;
 
 const SidebarHeader = styled.div`
@@ -447,16 +451,10 @@ const CanvasArea = styled.div`
   flex: 1;
   position: relative;
   background: #f5f7fa;
-  
-  /* Výchozí pointer kurzor pro pan */
-  .react-flow__pane {
-    cursor: default !important;
-  }
-  
-  /* Grab kurzor při drag panování */
-  .react-flow__pane:active {
-    cursor: grab !important;
-  }
+  user-select: none; /* Zakázat výběr textu v celé canvas oblasti */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   
   /* Pointer kurzor při hover nad nodem nebo edge */
   .react-flow__node,
@@ -464,9 +462,22 @@ const CanvasArea = styled.div`
     cursor: pointer !important;
   }
   
-  /* Crosshair při SHIFT (selection mode) */
-  .react-flow.selection-mode .react-flow__pane {
+  /* Crosshair při SHIFT (selection mode) - NEJVYŠŠÍ PRIORITA */
+  &.selection-mode .react-flow__pane,
+  &.selection-mode .react-flow__pane:hover,
+  &.selection-mode .react-flow__pane:active,
+  &.selection-mode .react-flow__pane:focus {
     cursor: crosshair !important;
+  }
+  
+  /* Výchozí grab kurzor pro pan - JEN pokud NENÍ selection mode */
+  &:not(.selection-mode) .react-flow__pane {
+    cursor: grab !important;
+  }
+  
+  /* Grabbing kurzor při aktivním panování - JEN pokud NENÍ selection mode */
+  &:not(.selection-mode) .react-flow__pane:active {
+    cursor: grabbing !important;
   }
   
   /* Styl pro výběrový obdélník (box-select) */
@@ -1276,6 +1287,9 @@ const OrganizationHierarchy = () => {
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
   const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
   
+  // Sledování Shift klávesy pro změnu kurzoru
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+  
   // Detail panel data - rozsirene useky
   const [selectedExtendedDepartments, setSelectedExtendedDepartments] = useState([]);
   
@@ -1458,6 +1472,36 @@ const OrganizationHierarchy = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleDeleteSelected]);
+
+  // Shift key listener pro změnu kurzoru na crosshair při selection mode
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Shift' && !isShiftPressed) {
+        setIsShiftPressed(true);
+      }
+    };
+
+    const handleKeyUp = (event) => {
+      if (event.key === 'Shift') {
+        setIsShiftPressed(false);
+      }
+    };
+
+    // Reset při ztrátě focusu (např. ALT+TAB)
+    const handleBlur = () => {
+      setIsShiftPressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [isShiftPressed]);
 
   // Load data from API
   useEffect(() => {
@@ -4385,6 +4429,7 @@ const OrganizationHierarchy = () => {
           <CanvasArea
             onDrop={onReactFlowDrop}
             onDragOver={onReactFlowDragOver}
+            className={isShiftPressed ? 'selection-mode' : ''}
           >
             <ReactFlow
               nodes={nodes}
@@ -4399,8 +4444,8 @@ const OrganizationHierarchy = () => {
               nodeTypes={nodeTypes}
               fitView
               attributionPosition="bottom-left"
-              selectionOnDrag={true}
-              panOnDrag={[1, 2]}
+              selectionOnDrag
+              panOnDrag
               panOnScroll={true}
               zoomOnScroll={true}
               zoomOnDoubleClick={false}
