@@ -38,13 +38,16 @@ import {
   faEdit,
   faEye,
   faEyeSlash,
-  faLayerGroup
+  faLayerGroup,
+  faInfoCircle
 } from '@fortawesome/free-solid-svg-icons';
 
 // Potlačit neškodnou ResizeObserver chybu (běžné u ReactFlow)
 const resizeObserverErr = window.console.error;
 window.console.error = (...args) => {
-  if (args[0]?.includes?.('ResizeObserver loop completed')) {
+  const errorMsg = typeof args[0] === 'string' ? args[0] : args[0]?.message || '';
+  if (errorMsg.includes('ResizeObserver loop completed') || 
+      errorMsg.includes('ResizeObserver loop limit exceeded')) {
     return; // Ignorovat tuto konkrétní chybu
   }
   resizeObserverErr(...args);
@@ -52,10 +55,13 @@ window.console.error = (...args) => {
 
 // Potlačit ResizeObserver error i v error handleru
 window.addEventListener('error', (e) => {
-  if (e.message?.includes?.('ResizeObserver loop completed')) {
+  if (e.message?.includes?.('ResizeObserver loop completed') ||
+      e.message?.includes?.('ResizeObserver loop limit exceeded') ||
+      e.message?.includes?.('undelivered notifications')) {
     e.stopImmediatePropagation();
+    e.preventDefault();
   }
-});
+}, true);
 
 // Styled Components
 const Container = styled.div`
@@ -547,6 +553,27 @@ const CloseButton = styled.button`
   }
 `;
 
+const InfoButton = styled.button`
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: 16px;
+
+  &:hover {
+    background: rgba(255,255,255,0.3);
+  }
+`;
+
 const DetailContent = styled.div`
   flex: 1;
   overflow-y: auto;
@@ -973,6 +1000,60 @@ const DialogStats = styled.div`
   }
 `;
 
+const HelpModalContent = styled.div`
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 0 4px;
+`;
+
+const HelpSection = styled.div`
+  margin-bottom: 24px;
+  
+  h3 {
+    color: #2c3e50;
+    font-size: 1.1rem;
+    margin: 0 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  p {
+    color: #64748b;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0 0 8px 0;
+  }
+  
+  code {
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #667eea;
+  }
+`;
+
+const HelpExample = styled.div`
+  background: #f8fafc;
+  border-left: 3px solid #667eea;
+  padding: 12px;
+  border-radius: 4px;
+  margin: 8px 0;
+  font-size: 0.9rem;
+  
+  strong {
+    color: #2c3e50;
+    display: block;
+    margin-bottom: 4px;
+  }
+  
+  span {
+    color: #64748b;
+  }
+`;
+
 // Custom Node Component
 const CustomNode = ({ data, selected }) => {
   // Rozlišit typ node (user, location, department, template)
@@ -1299,6 +1380,14 @@ const OrganizationHierarchy = () => {
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
   const [relationshipScope, setRelationshipScope] = useState('OWN'); // OWN, TEAM, LOCATION, ALL
   
+  // Detail panel data - úroveň práv pro nadřízeného
+  const [permissionLevel, setPermissionLevel] = useState({
+    orders: 'READ_ONLY',       // READ_ONLY, READ_WRITE, READ_WRITE_DELETE, INHERIT
+    invoices: 'READ_ONLY',
+    contracts: 'READ_ONLY',
+    cashbook: 'READ_ONLY'
+  });
+  
   // Detail panel data - viditelnost modulu
   const [moduleVisibility, setModuleVisibility] = useState({
     orders: true,
@@ -1360,7 +1449,7 @@ const OrganizationHierarchy = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileDialogMode, setProfileDialogMode] = useState('save'); // 'save' or 'saveAs'
   
-  // Auto-save rozsirenych lokalit, useku, kombinaci, notifikaci, typu vztahu, scope a modulu do edge
+  // Auto-save rozsirenych lokalit, useku, kombinaci, notifikaci, typu vztahu, scope, modulu a permission level do edge
   React.useEffect(() => {
     if (selectedEdge) {
       setEdges((eds) =>
@@ -1376,6 +1465,8 @@ const OrganizationHierarchy = () => {
                 scope: relationshipScope,
                 // Viditelnost modulu (pro DB)
                 modules: moduleVisibility,
+                // Úroveň práv pro každý modul (pro DB)
+                permissionLevel: permissionLevel,
                 // Rozsirene lokality/useky/kombinace
                 extended: {
                   locations: selectedExtendedLocations,
@@ -1406,6 +1497,7 @@ const OrganizationHierarchy = () => {
     relationshipType,
     relationshipScope,
     moduleVisibility,
+    permissionLevel,
     selectedEdge
   ]);
   
@@ -1428,6 +1520,8 @@ const OrganizationHierarchy = () => {
     const saved = localStorage.getItem('hierarchy_help_collapsed');
     return saved ? saved === 'false' : true; // Default: zobrazit
   });
+  
+  const [showDetailHelpModal, setShowDetailHelpModal] = useState(false);
   
   // Custom dialog state
   const [dialog, setDialog] = useState({
@@ -1949,6 +2043,14 @@ const OrganizationHierarchy = () => {
       contracts: edge.data?.modules?.contracts || false,
       cashbook: edge.data?.modules?.cashbook !== false,
       cashbookReadonly: edge.data?.modules?.cashbookReadonly !== false
+    });
+    
+    // Nacist uroven prav z edge data
+    setPermissionLevel({
+      orders: edge.data?.permissionLevel?.orders || 'READ_ONLY',
+      invoices: edge.data?.permissionLevel?.invoices || 'READ_ONLY',
+      contracts: edge.data?.permissionLevel?.contracts || 'READ_ONLY',
+      cashbook: edge.data?.permissionLevel?.cashbook || 'READ_ONLY'
     });
     
     // Nacist kombinace lokalita+utvar z edge data
@@ -4745,6 +4847,9 @@ const OrganizationHierarchy = () => {
                 <FontAwesomeIcon icon={faEdit} />
                 {selectedNode ? 'Detail uzlu' : 'Detail vztahu'}
               </DetailHeaderTitle>
+              <InfoButton onClick={() => setShowDetailHelpModal(true)}>
+                <FontAwesomeIcon icon={faInfoCircle} />
+              </InfoButton>
               <CloseButton onClick={() => {
                 setShowDetailPanel(false);
                 setSelectedNode(null);
@@ -5058,6 +5163,29 @@ const OrganizationHierarchy = () => {
                       </span>
                     </div>
                   </CheckboxLabel>
+                  {moduleVisibility.orders && (
+                    <div style={{ marginLeft: '32px', marginTop: '6px', marginBottom: '12px' }}>
+                      <label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Úroveň práv pro nadřízeného:</label>
+                      <select
+                        value={permissionLevel.orders}
+                        onChange={(e) => setPermissionLevel(prev => ({ ...prev, orders: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          background: 'white'
+                        }}
+                      >
+                        <option value="READ_ONLY">👁️ Jen čtení (vidí záznamy)</option>
+                        <option value="READ_WRITE">✏️ Čtení + Editace</option>
+                        <option value="READ_WRITE_DELETE">🗑️ Plný přístup (i mazání)</option>
+                        <option value="INHERIT">🔗 Dědit práva podřízeného</option>
+                      </select>
+                    </div>
+                  )}
                   
                   <CheckboxLabel>
                     <input 
@@ -5072,6 +5200,29 @@ const OrganizationHierarchy = () => {
                       </span>
                     </div>
                   </CheckboxLabel>
+                  {moduleVisibility.invoices && (
+                    <div style={{ marginLeft: '32px', marginTop: '6px', marginBottom: '12px' }}>
+                      <label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Úroveň práv pro nadřízeného:</label>
+                      <select
+                        value={permissionLevel.invoices}
+                        onChange={(e) => setPermissionLevel(prev => ({ ...prev, invoices: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          background: 'white'
+                        }}
+                      >
+                        <option value="READ_ONLY">👁️ Jen čtení (vidí záznamy)</option>
+                        <option value="READ_WRITE">✏️ Čtení + Editace</option>
+                        <option value="READ_WRITE_DELETE">🗑️ Plný přístup (i mazání)</option>
+                        <option value="INHERIT">🔗 Dědit práva podřízeného</option>
+                      </select>
+                    </div>
+                  )}
                   
                   <div style={{ marginLeft: '0px', paddingLeft: '0px' }}>
                     <CheckboxLabel>
@@ -5099,6 +5250,29 @@ const OrganizationHierarchy = () => {
                         <span style={{ color: '#64748b' }}>📖 Jen pro čtení (read-only)</span>
                       </CheckboxLabel>
                     </div>
+                    {moduleVisibility.cashbook && (
+                      <div style={{ marginLeft: '32px', marginTop: '6px', marginBottom: '12px' }}>
+                        <label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Úroveň práv pro nadřízeného:</label>
+                        <select
+                          value={permissionLevel.cashbook}
+                          onChange={(e) => setPermissionLevel(prev => ({ ...prev, cashbook: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            background: 'white'
+                          }}
+                        >
+                          <option value="READ_ONLY">👁️ Jen čtení (vidí záznamy)</option>
+                          <option value="READ_WRITE">✏️ Čtení + Editace</option>
+                          <option value="READ_WRITE_DELETE">🗑️ Plný přístup (i mazání)</option>
+                          <option value="INHERIT">🔗 Dědit práva podřízeného</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                   
                   {/* NEAKTIVNÍ MODULY - zatím bez workflow */}
@@ -5496,6 +5670,124 @@ const OrganizationHierarchy = () => {
               )}
               <DialogButton primary onClick={dialog.onConfirm}>
                 {dialog.confirmText}
+              </DialogButton>
+            </DialogActions>
+          </DialogBox>
+        </DialogOverlay>
+      )}
+
+      {/* Detail Help Modal */}
+      {showDetailHelpModal && (
+        <DialogOverlay onClick={(e) => {
+          // Zavřít pouze při kliknutí na overlay, ne na dialogBox
+          if (e.target === e.currentTarget) {
+            setShowDetailHelpModal(false);
+          }
+        }}>
+          <DialogBox onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <DialogIcon>💡</DialogIcon>
+            <DialogTitle>
+              {selectedNode ? 'Nápověda k detailu uzlu' : 'Nápověda k detailu vztahu'}
+            </DialogTitle>
+            <HelpModalContent>
+              {selectedNode ? (
+                // Node help
+                <>
+                  <HelpSection>
+                    <h3>📋 {selectedNode.data?.label}</h3>
+                    <p>Panel zobrazuje vztahy tohoto uzlu v diagramu:</p>
+                    <p style={{ marginTop: '8px' }}>
+                      <strong>⬆️ Nadřízení</strong> - komu tento uzel podléhá<br/>
+                      <strong>⬇️ Podřízení</strong> - kdo tomuto uzlu podléhá
+                    </p>
+                  </HelpSection>
+
+                  <HelpSection>
+                    <h3>💾 Ukládání</h3>
+                    <p>
+                      Změny se automaticky ukládají do <code>localStorage</code>. Pro trvalé uložení do DB použijte 
+                      tlačítko <strong>"💾 Uložit do DB"</strong>.
+                    </p>
+                  </HelpSection>
+                </>
+              ) : (
+                // Edge help
+                <>
+                  <HelpSection>
+                    <h3>🔗 {(() => {
+                      const sourceNode = nodes.find(n => n.id === selectedEdge?.source);
+                      const targetNode = nodes.find(n => n.id === selectedEdge?.target);
+                      return `${sourceNode?.data?.label || '?'} → ${targetNode?.data?.label || '?'}`;
+                    })()}</h3>
+                    <p><strong>Nadřízený získává práva vidět data od Podřízeného</strong> podle nastavení.</p>
+                  </HelpSection>
+
+                  <HelpSection>
+                    <h3>🎯 Rozsah ({relationshipScope})</h3>
+                    <p>
+                      <code>OWN</code> - vlastní záznamy podřízeného<br/>
+                      <code>TEAM</code> - celý úsek podřízeného<br/>
+                      <code>LOCATION</code> - celá lokalita podřízeného<br/>
+                      <code>ALL</code> - kompletní přístup
+                    </p>
+                  </HelpSection>
+
+                  <HelpSection>
+                    <h3>🔐 Úroveň práv</h3>
+                    <p>Určuje, CO může nadřízený dělat se záznamy podřízeného:</p>
+                    <HelpExample>
+                      <strong>Příklad:</strong>
+                      <span>
+                        Holovský (THP) má právo <code>CREATE + EDIT</code> vlastní objednávky.<br/>
+                        Černhorský je nadřízený s úrovní <code>READ_ONLY</code>.<br/>
+                        → Černhorský <strong>vidí</strong> Holovského objednávky, ale <strong>nemůže je editovat</strong>.
+                      </span>
+                    </HelpExample>
+                    <p style={{ marginTop: '12px', fontSize: '0.85rem' }}>
+                      <code>READ_ONLY</code> - vidí záznamy, nemůže editovat<br/>
+                      <code>READ_WRITE</code> - může editovat záznamy<br/>
+                      <code>READ_WRITE_DELETE</code> - plný přístup včetně mazání<br/>
+                      <code>INHERIT</code> - dědí stejná práva jako podřízený
+                    </p>
+                    {(moduleVisibility.orders || moduleVisibility.invoices || moduleVisibility.cashbook) && (
+                      <div style={{ marginTop: '8px', padding: '8px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #86efac' }}>
+                        <strong style={{ fontSize: '0.85rem', color: '#166534' }}>Aktuální nastavení:</strong>
+                        <div style={{ fontSize: '0.8rem', color: '#166534', marginTop: '4px' }}>
+                          {moduleVisibility.orders && `📋 Objednávky: ${permissionLevel.orders}`}<br/>
+                          {moduleVisibility.invoices && `🧾 Faktury: ${permissionLevel.invoices}`}<br/>
+                          {moduleVisibility.cashbook && `💰 Pokladna: ${permissionLevel.cashbook}`}
+                        </div>
+                      </div>
+                    )}
+                  </HelpSection>
+
+                  <HelpSection>
+                    <h3>📦 Rozšířená oprávnění</h3>
+                    <p>
+                      <strong>Lokality/Úseky:</strong> Nadřízený vidí data i z dalších míst mimo základní vztah.<br/>
+                      <strong>Notifikace:</strong> {notificationEmailEnabled ? 'Email ✓' : 'Email ✗'} {notificationInAppEnabled ? 'In-app ✓' : 'In-app ✗'}
+                    </p>
+                  </HelpSection>
+
+                  <HelpSection>
+                    <h3>💡 Kompletní příklad</h3>
+                    <HelpExample>
+                      <span style={{ fontSize: '0.85rem' }}>
+                        <strong>Situace:</strong> Petr je nadřízený Jana.<br/>
+                        <strong>Nastavení:</strong> TEAM scope, modul Objednávky, úroveň READ_ONLY<br/><br/>
+                        <strong>Výsledek:</strong><br/>
+                        → Petr <strong>vidí všechny objednávky</strong> z Janova úseku (i od kolegů)<br/>
+                        → Petr <strong>nemůže editovat</strong> tyto objednávky (jen číst)<br/>
+                        → Pokud Jan má právo vytvářet, Petr to právo <strong>nedostane</strong>
+                      </span>
+                    </HelpExample>
+                  </HelpSection>
+                </>
+              )}
+            </HelpModalContent>
+            <DialogActions style={{ marginTop: '20px' }}>
+              <DialogButton primary onClick={() => setShowDetailHelpModal(false)}>
+                Rozumím
               </DialogButton>
             </DialogActions>
           </DialogBox>
