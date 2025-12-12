@@ -18,6 +18,9 @@ define('TABLE_USEKY', '25_useky');
 define('TABLE_UZIVATELE', '25_uzivatele');
 define('TABLE_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
 define('TABLE_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
+define('TABLE_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
+define('TABLE_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+define('TABLE_NOTIFICATION_TEMPLATES', '25_notification_templates');
 define('TABLE_UZIVATELE_ROLE', '25_uzivatele_role');
 define('TABLE_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
