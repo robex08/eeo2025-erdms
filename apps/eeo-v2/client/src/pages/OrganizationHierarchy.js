@@ -1295,6 +1295,19 @@ const OrganizationHierarchy = () => {
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
   const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
   
+  // Detail panel data - druh vztahu a scope
+  const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
+  const [relationshipScope, setRelationshipScope] = useState('OWN'); // OWN, TEAM, LOCATION, ALL
+  
+  // Detail panel data - viditelnost modulu
+  const [moduleVisibility, setModuleVisibility] = useState({
+    orders: true,
+    invoices: true,
+    contracts: false,
+    cashbook: true,
+    cashbookReadonly: true
+  });
+  
   // Sledování Shift klávesy pro změnu kurzoru
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   
@@ -1347,7 +1360,7 @@ const OrganizationHierarchy = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileDialogMode, setProfileDialogMode] = useState('save'); // 'save' or 'saveAs'
   
-  // Auto-save rozsirenych lokalit, useku, kombinaci a notifikaci do edge
+  // Auto-save rozsirenych lokalit, useku, kombinaci, notifikaci, typu vztahu, scope a modulu do edge
   React.useEffect(() => {
     if (selectedEdge) {
       setEdges((eds) =>
@@ -1357,11 +1370,19 @@ const OrganizationHierarchy = () => {
               ...e,
               data: {
                 ...e.data,
+                // Druh vztahu a scope (pro DB)
+                relationshipType: relationshipType,
+                druh_vztahu: relationshipType, // alias pro DB
+                scope: relationshipScope,
+                // Viditelnost modulu (pro DB)
+                modules: moduleVisibility,
+                // Rozsirene lokality/useky/kombinace
                 extended: {
                   locations: selectedExtendedLocations,
                   departments: selectedExtendedDepartments,
                   combinations: selectedCombinations
                 },
+                // Notifikace
                 notifications: {
                   ...(e.data?.notifications || {}),
                   types: selectedNotificationTypes,
@@ -1375,7 +1396,18 @@ const OrganizationHierarchy = () => {
         })
       );
     }
-  }, [selectedExtendedLocations, selectedExtendedDepartments, selectedCombinations, selectedNotificationTypes, notificationEmailEnabled, notificationInAppEnabled, selectedEdge]);
+  }, [
+    selectedExtendedLocations, 
+    selectedExtendedDepartments, 
+    selectedCombinations, 
+    selectedNotificationTypes, 
+    notificationEmailEnabled, 
+    notificationInAppEnabled,
+    relationshipType,
+    relationshipScope,
+    moduleVisibility,
+    selectedEdge
+  ]);
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -1905,6 +1937,19 @@ const OrganizationHierarchy = () => {
     // Nacist notifikacni nastaveni z edge data
     setNotificationEmailEnabled(edge.data?.notifications?.email || false);
     setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
+    
+    // Nacist druh vztahu a scope z edge data
+    setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
+    setRelationshipScope(edge.data?.scope || 'OWN');
+    
+    // Nacist viditelnost modulu z edge data
+    setModuleVisibility({
+      orders: edge.data?.modules?.orders !== false,
+      invoices: edge.data?.modules?.invoices !== false,
+      contracts: edge.data?.modules?.contracts || false,
+      cashbook: edge.data?.modules?.cashbook !== false,
+      cashbookReadonly: edge.data?.modules?.cashbookReadonly !== false
+    });
     
     // Nacist kombinace lokalita+utvar z edge data
     const combos = edge.data?.extended?.combinations || edge.data?.permissions?.extended?.combinations || [];
@@ -4923,7 +4968,7 @@ const OrganizationHierarchy = () => {
                     
                     <FormGroup>
                       <Label>Typ vztahu</Label>
-                      <Select>
+                      <Select value={relationshipType} onChange={(e) => setRelationshipType(e.target.value)}>
                         <option value="prime">Přímý nadřízený</option>
                         <option value="zastupovani">Zastupování</option>
                         <option value="delegovani" disabled style={{ color: '#9ca3af' }}>Delegování (TODO)</option>
@@ -4945,7 +4990,7 @@ const OrganizationHierarchy = () => {
                       → co uvidí {sourceNode?.data?.name?.split(' ')[0] || 'nadřízený'}?
                     </span>
                   </Label>
-                  <Select>
+                  <Select value={relationshipScope} onChange={(e) => setRelationshipScope(e.target.value)}>
                     <option value="OWN">🔒 OWN - Jen své vlastní záznamy</option>
                     <option value="TEAM">👥 TEAM - Záznamy svého úseku</option>
                     <option value="LOCATION">📍 LOCATION - Vše v rámci lokality</option>
@@ -5001,7 +5046,11 @@ const OrganizationHierarchy = () => {
                 <CheckboxGroup>
                   {/* AKTIVNÍ MODULY - s workflow podporou */}
                   <CheckboxLabel>
-                    <input type="checkbox" defaultChecked />
+                    <input 
+                      type="checkbox" 
+                      checked={moduleVisibility.orders}
+                      onChange={(e) => setModuleVisibility(prev => ({ ...prev, orders: e.target.checked }))}
+                    />
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                       <span>📋 <strong>Objednávky</strong></span>
                       <span style={{ fontSize: '0.75rem', color: '#10b981', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
@@ -5011,7 +5060,11 @@ const OrganizationHierarchy = () => {
                   </CheckboxLabel>
                   
                   <CheckboxLabel>
-                    <input type="checkbox" defaultChecked />
+                    <input 
+                      type="checkbox" 
+                      checked={moduleVisibility.invoices}
+                      onChange={(e) => setModuleVisibility(prev => ({ ...prev, invoices: e.target.checked }))}
+                    />
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                       <span>🧾 <strong>Faktury</strong></span>
                       <span style={{ fontSize: '0.75rem', color: '#10b981', background: '#f0fdf4', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
@@ -5022,7 +5075,11 @@ const OrganizationHierarchy = () => {
                   
                   <div style={{ marginLeft: '0px', paddingLeft: '0px' }}>
                     <CheckboxLabel>
-                      <input type="checkbox" />
+                      <input 
+                        type="checkbox"
+                        checked={moduleVisibility.cashbook}
+                        onChange={(e) => setModuleVisibility(prev => ({ ...prev, cashbook: e.target.checked }))}
+                      />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                         <span>💰 <strong>Pokladna</strong></span>
                         <span style={{ fontSize: '0.75rem', color: '#f59e0b', background: '#fef3c7', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
@@ -5033,7 +5090,12 @@ const OrganizationHierarchy = () => {
                     {/* Sub-option pro pokladnu */}
                     <div style={{ marginLeft: '32px', marginTop: '6px', marginBottom: '6px' }}>
                       <CheckboxLabel style={{ fontSize: '0.85rem', padding: '4px 8px' }}>
-                        <input type="checkbox" />
+                        <input 
+                          type="checkbox"
+                          checked={moduleVisibility.cashbookReadonly}
+                          onChange={(e) => setModuleVisibility(prev => ({ ...prev, cashbookReadonly: e.target.checked }))}
+                          disabled={!moduleVisibility.cashbook}
+                        />
                         <span style={{ color: '#64748b' }}>📖 Jen pro čtení (read-only)</span>
                       </CheckboxLabel>
                     </div>
@@ -5057,7 +5119,12 @@ const OrganizationHierarchy = () => {
                     </div>
                     
                     <CheckboxLabel style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-                      <input type="checkbox" disabled />
+                      <input 
+                        type="checkbox" 
+                        disabled
+                        checked={moduleVisibility.contracts}
+                        onChange={(e) => setModuleVisibility(prev => ({ ...prev, contracts: e.target.checked }))}
+                      />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span>📄 Smlouvy</span>
                         <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>(připravujeme)</span>
@@ -5239,12 +5306,20 @@ const OrganizationHierarchy = () => {
                 </DetailSectionTitle>
                 <CheckboxGroup>
                   <CheckboxLabel>
-                    <input type="checkbox" defaultChecked />
+                    <input 
+                      type="checkbox" 
+                      checked={notificationEmailEnabled}
+                      onChange={(e) => setNotificationEmailEnabled(e.target.checked)}
+                    />
                     <FontAwesomeIcon icon={faEnvelope} style={{ marginRight: '4px' }} />
                     E-mail notifikace
                   </CheckboxLabel>
                   <CheckboxLabel>
-                    <input type="checkbox" defaultChecked />
+                    <input 
+                      type="checkbox" 
+                      checked={notificationInAppEnabled}
+                      onChange={(e) => setNotificationInAppEnabled(e.target.checked)}
+                    />
                     <FontAwesomeIcon icon={faBell} style={{ marginRight: '4px' }} />
                     In-app notifikace
                   </CheckboxLabel>
