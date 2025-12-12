@@ -4888,16 +4888,38 @@ const OrganizationHierarchy = () => {
                     </div>
                 )}
                 
-                {selectedEdge && (
+                {selectedEdge && (() => {
+                  const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                  const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                  return (
                   <>
                     <FormGroup>
-                      <Label>Nadřízený</Label>
-                      <Input value={selectedEdge.metadata?.sourceName || 'N/A'} readOnly />
+                      <Label>Nadřízený (získává práva)</Label>
+                      <Input value={sourceNode?.data?.name || 'N/A'} readOnly style={{ fontWeight: '600', color: '#059669' }} />
                     </FormGroup>
                     <FormGroup>
-                      <Label>Podřízený</Label>
-                      <Input value={selectedEdge.metadata?.targetName || 'N/A'} readOnly />
+                      <Label>Podřízený (sdílí svá data)</Label>
+                      <Input value={targetNode?.data?.name || 'N/A'} readOnly style={{ fontWeight: '600', color: '#3b82f6' }} />
                     </FormGroup>
+                    
+                    {/* Vysvětlení logiky vztahu */}
+                    <div style={{
+                      marginTop: '16px',
+                      marginBottom: '16px',
+                      padding: '12px',
+                      background: '#f0fdf4',
+                      border: '2px solid #86efac',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#15803d'
+                    }}>
+                      <strong>💡 Jak to funguje:</strong>
+                      <div style={{ marginTop: '8px', fontSize: '0.8rem', lineHeight: '1.6' }}>
+                        <strong>{sourceNode?.data?.name?.split(' ')[0] || 'Nadřízený'}</strong> získá práva vidět data od <strong>{targetNode?.data?.name?.split(' ')[0] || 'podřízeného'}</strong>.<br/>
+                        <strong>Rozsah</strong> a <strong>Moduly</strong> určují, co přesně uvidí (objednávky/faktury/pokladnu).<br/>
+                        <strong>Rozšířené lokality/úseky</strong> přidávají další data mimo základní vztah.
+                      </div>
+                    </div>
                     
                     <FormGroup>
                       <Label>Typ vztahu</Label>
@@ -4909,14 +4931,18 @@ const OrganizationHierarchy = () => {
                       </Select>
                     </FormGroup>
                   </>
-                )}
+                  );
+                })()}
                 
-                {selectedEdge && (
+                {selectedEdge && (() => {
+                  const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                  const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                  return (
                 <FormGroup>
                   <Label>
                     Rozsah viditelnosti (Scope)
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal', marginLeft: '8px' }}>
-                      - co uživatel uvidí?
+                    <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '600', marginLeft: '8px' }}>
+                      → co uvidí {sourceNode?.data?.name?.split(' ')[0] || 'nadřízený'}?
                     </span>
                   </Label>
                   <Select>
@@ -4943,7 +4969,8 @@ const OrganizationHierarchy = () => {
                     </ul>
                   </div>
                 </FormGroup>
-                )}
+                  );
+                })()}
               </DetailSection>
 
               <Divider />
