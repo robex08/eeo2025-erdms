@@ -903,7 +903,8 @@ switch ($endpoint) {
     
     case 'hierarchy/structure':
         if ($request_method === 'POST') {
-            $response = handle_hierarchy_structure($input, $pdo);
+            require_once __DIR__ . '/' . VERSION . '/lib/hierarchyHandlers_v2.php';
+            $response = handle_hierarchy_structure_v2($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
@@ -914,7 +915,8 @@ switch ($endpoint) {
     
     case 'hierarchy/save':
         if ($request_method === 'POST') {
-            $response = handle_hierarchy_save($input, $pdo);
+            require_once __DIR__ . '/' . VERSION . '/lib/hierarchyHandlers_v2.php';
+            $response = handle_hierarchy_save_v2($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
@@ -926,6 +928,50 @@ switch ($endpoint) {
     case 'hierarchy/notification-types':
         if ($request_method === 'POST') {
             $response = handle_hierarchy_notification_types($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/list':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/create':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_create($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/set-active':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_set_active($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/delete':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_delete($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {

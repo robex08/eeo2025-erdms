@@ -783,10 +783,19 @@ function handle_hierarchy_structure($data, $pdo) {
         return array('success' => false, 'error' => 'Username z tokenu neodpovídá username z požadavku');
     }
     
+    $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : null;
+    
+    // Pokud není zadán profil_id, načti aktivní profil
+    if ($profilId === null) {
+        $stmt = $pdo->query("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $activeProfile = $stmt->fetch(PDO::FETCH_ASSOC);
+        $profilId = $activeProfile ? (int)$activeProfile['id'] : 1;
+    }
+    
     try {
-        // Načtení uživatelů
+        // Načtení pouze uživatelů, kteří mají vztahy v daném profilu
         $sql_users = "
-            SELECT 
+            SELECT DISTINCT
                 u.id,
                 u.jmeno,
                 u.prijmeni,
@@ -799,9 +808,15 @@ function handle_hierarchy_structure($data, $pdo) {
             LEFT JOIN 25_useky us ON u.usek_id = us.id
             LEFT JOIN 25_pozice p ON u.pozice_id = p.id
             WHERE u.aktivni = 1
+            AND u.id IN (
+                SELECT DISTINCT nadrizeny_id FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND nadrizeny_id IS NOT NULL
+                UNION
+                SELECT DISTINCT podrizeny_id FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND podrizeny_id IS NOT NULL
+            )
         ";
         
-        $stmt = $pdo->query($sql_users);
+        $stmt = $pdo->prepare($sql_users);
+        $stmt->execute(array($profilId, $profilId));
         $nodes = array();
         
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -829,7 +844,7 @@ function handle_hierarchy_structure($data, $pdo) {
             );
         }
         
-        // Načtení vztahů
+        // Načtení vztahů s pozicemi
         $sql_relationships = "
             SELECT 
                 h.nadrizeny_id,
@@ -847,23 +862,72 @@ function handle_hierarchy_structure($data, $pdo) {
                 h.notifikace_typy,
                 h.rozsirene_lokality,
                 h.rozsirene_useky,
+                h.rozsirene_kombinace,
+                h.layout_pozice,
                 h.dt_od,
                 h.dt_do,
                 h.aktivni
             FROM 25_uzivatele_hierarchie h
             WHERE h.aktivni = 1
+              AND h.profil_id = ?
               AND (h.dt_od IS NULL OR h.dt_od <= CURDATE())
               AND (h.dt_do IS NULL OR h.dt_do >= CURDATE())
         ";
         
-        $stmt = $pdo->query($sql_relationships);
+        $stmt = $pdo->prepare($sql_relationships);
+        $stmt->execute(array($profilId));
         $edges = array();
         
+        $stmt = $pdo->prepare($sql_relationships);
+        $stmt->execute(array($profilId));
+        $edges = array();
+        
+        // Sbíráme ID lokalit a útvarů pro pozdější načtení
+        $locationIds = array();
+        $departmentIds = array();
+        
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Dekódovat rozšířené oprávnění
+            $extLocations = $row['rozsirene_lokality'] ? json_decode($row['rozsirene_lokality'], true) : array();
+            $extDepartments = $row['rozsirene_useky'] ? json_decode($row['rozsirene_useky'], true) : array();
+            
+            // Sbírat ID lokalit a útvarů
+            if (!empty($extLocations) && is_array($extLocations)) {
+                foreach ($extLocations as $locId) {
+                    $locationIds[(string)$locId] = true;
+                }
+            }
+            if (!empty($extDepartments) && is_array($extDepartments)) {
+                foreach ($extDepartments as $deptId) {
+                    $departmentIds[(string)$deptId] = true;
+                }
+            }
+            
+            // Upravit source/target podle rozšířených oprávnění
+            $source = (string)$row['nadrizeny_id'];
+            $target = (string)$row['podrizeny_id'];
+            
+            // Pokud nadrizeny_id je NULL a máme lokality, jedná se o location → user
+            if (empty($row['nadrizeny_id']) && !empty($extLocations) && is_array($extLocations)) {
+                $source = 'location-' . $extLocations[0];
+            }
+            // Pokud nadrizeny_id je NULL a máme útvary, jedná se o department → user
+            else if (empty($row['nadrizeny_id']) && !empty($extDepartments) && is_array($extDepartments)) {
+                $source = 'department-' . $extDepartments[0];
+            }
+            
+            // Pokud podrizeny_id je NULL a máme lokality, jedná se o user → location
+            if (empty($row['podrizeny_id']) && !empty($extLocations) && is_array($extLocations)) {
+                $target = 'location-' . $extLocations[0];
+            }
+            // Pokud podrizeny_id je NULL a máme útvary, jedná se o user → department
+            else if (empty($row['podrizeny_id']) && !empty($extDepartments) && is_array($extDepartments)) {
+                $target = 'department-' . $extDepartments[0];
+            }
+            
             $edges[] = array(
-                'id' => 'e' . $row['nadrizeny_id'] . '-' . $row['podrizeny_id'],
-                'source' => (string)$row['nadrizeny_id'],
-                'target' => (string)$row['podrizeny_id'],
+                'source' => $source,
+                'target' => $target,
                 'type' => $row['typ_vztahu'] ?: 'prime',
                 'permissions' => array(
                     'level' => (int)$row['uroven_opravneni'],
@@ -881,8 +945,9 @@ function handle_hierarchy_structure($data, $pdo) {
                         'types' => $row['notifikace_typy'] ? json_decode($row['notifikace_typy'], true) : array()
                     ),
                     'extended' => array(
-                        'locations' => $row['rozsirene_lokality'] ? json_decode($row['rozsirene_lokality'], true) : array(),
-                        'departments' => $row['rozsirene_useky'] ? json_decode($row['rozsirene_useky'], true) : array()
+                        'locations' => $extLocations,
+                        'departments' => $extDepartments,
+                        'combinations' => $row['rozsirene_kombinace'] ? json_decode($row['rozsirene_kombinace'], true) : array()
                     )
                 ),
                 'validity' => array(
@@ -890,6 +955,87 @@ function handle_hierarchy_structure($data, $pdo) {
                     'to' => $row['dt_do']
                 )
             );
+        }
+        
+        // Načíst lokality z DB a vytvořit location nodes
+        if (!empty($locationIds)) {
+            $locationIdsArray = array_keys($locationIds);
+            $placeholders = implode(',', array_fill(0, count($locationIdsArray), '?'));
+            $sqlLocations = "SELECT id, nazev FROM 25_lokality WHERE id IN ($placeholders) AND aktivni = 1";
+            $stmtLoc = $pdo->prepare($sqlLocations);
+            $stmtLoc->execute($locationIdsArray);
+            
+            while ($locRow = $stmtLoc->fetch(PDO::FETCH_ASSOC)) {
+                $nodes[] = array(
+                    'id' => 'location-' . $locRow['id'],
+                    'name' => mb_convert_encoding($locRow['nazev'], 'UTF-8', 'UTF-8'),
+                    'type' => 'location',
+                    'metadata' => array(
+                        'locationId' => (int)$locRow['id']
+                    )
+                );
+            }
+        }
+        
+        // Načíst útvary z DB a vytvořit department nodes
+        if (!empty($departmentIds)) {
+            $departmentIdsArray = array_keys($departmentIds);
+            $placeholders = implode(',', array_fill(0, count($departmentIdsArray), '?'));
+            $sqlDepartments = "SELECT id, usek_nazev FROM 25_useky WHERE id IN ($placeholders) AND aktivni = 1";
+            $stmtDept = $pdo->prepare($sqlDepartments);
+            $stmtDept->execute($departmentIdsArray);
+            
+            while ($deptRow = $stmtDept->fetch(PDO::FETCH_ASSOC)) {
+                $nodes[] = array(
+                    'id' => 'department-' . $deptRow['id'],
+                    'name' => mb_convert_encoding($deptRow['usek_nazev'], 'UTF-8', 'UTF-8'),
+                    'type' => 'department',
+                    'metadata' => array(
+                        'departmentId' => (int)$deptRow['id']
+                    )
+                );
+            }
+        }
+        
+        // Načíst pozice z DB a přidat je do nodes
+        $posStmt = $pdo->prepare("SELECT nadrizeny_id, podrizeny_id, layout_pozice, rozsirene_lokality, rozsirene_useky FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND layout_pozice IS NOT NULL");
+        $posStmt->execute(array($profilId));
+        $nodePositions = array();
+        while ($posRow = $posStmt->fetch(PDO::FETCH_ASSOC)) {
+            if ($posRow['layout_pozice']) {
+                $layoutData = json_decode($posRow['layout_pozice'], true);
+                $extLoc = $posRow['rozsirene_lokality'] ? json_decode($posRow['rozsirene_lokality'], true) : array();
+                $extDept = $posRow['rozsirene_useky'] ? json_decode($posRow['rozsirene_useky'], true) : array();
+                
+                if (isset($layoutData['source'])) {
+                    // Zjistit správné ID podle extended permissions
+                    $sourceId = (string)$posRow['nadrizeny_id'];
+                    if (empty($posRow['nadrizeny_id']) && !empty($extLoc) && is_array($extLoc)) {
+                        $sourceId = 'location-' . $extLoc[0];
+                    } else if (empty($posRow['nadrizeny_id']) && !empty($extDept) && is_array($extDept)) {
+                        $sourceId = 'department-' . $extDept[0];
+                    }
+                    $nodePositions[$sourceId] = $layoutData['source'];
+                }
+                
+                if (isset($layoutData['target'])) {
+                    // Zjistit správné ID podle extended permissions
+                    $targetId = (string)$posRow['podrizeny_id'];
+                    if (empty($posRow['podrizeny_id']) && !empty($extLoc) && is_array($extLoc)) {
+                        $targetId = 'location-' . $extLoc[0];
+                    } else if (empty($posRow['podrizeny_id']) && !empty($extDept) && is_array($extDept)) {
+                        $targetId = 'department-' . $extDept[0];
+                    }
+                    $nodePositions[$targetId] = $layoutData['target'];
+                }
+            }
+        }
+        
+        // Přidat layoutPosition do nodes
+        for ($i = 0; $i < count($nodes); $i++) {
+            if (isset($nodePositions[$nodes[$i]['id']])) {
+                $nodes[$i]['layoutPosition'] = $nodePositions[$nodes[$i]['id']];
+            }
         }
         
         return array(
@@ -905,31 +1051,23 @@ function handle_hierarchy_structure($data, $pdo) {
         );
         
     } catch (PDOException $e) {
-        error_log("Database error in handle_hierarchy_structure: " . $e->getMessage());
-        return array('success' => false, 'error' => 'Chyba při načítání hierarchické struktury', 'details' => $e->getMessage());
+        error_log("HIERARCHY STRUCTURE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri nacitani hierarchie', 'details' => $e->getMessage());
     }
 }
 
-/**
- * Uloží hierarchickou strukturu
- */
 function handle_hierarchy_save($data, $pdo) {
-    // Kontrola autentifikace - stejný pattern jako handle_users_list()
+    // Kontrola autentifikace - standardni pattern
     $token = isset($data['token']) ? $data['token'] : '';
     $request_username = isset($data['username']) ? $data['username'] : '';
     
     $token_data = verify_token($token, $pdo);
     if (!$token_data) {
-        return array('success' => false, 'error' => 'Neplatný nebo chybějící token');
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
     }
     
     if ($token_data['username'] !== $request_username) {
-        return array('success' => false, 'error' => 'Username z tokenu neodpovídá username z požadavku');
-    }
-    
-    // Kontrola admin oprávnění
-    if (!has_permission($token_data['id'], 'HIERARCHY_MANAGE', $pdo)) {
-        return array('success' => false, 'error' => 'Nemáte oprávnění ke správě hierarchie');
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
     }
     
     try {
@@ -938,28 +1076,37 @@ function handle_hierarchy_save($data, $pdo) {
         $nodes = isset($data['nodes']) ? $data['nodes'] : array();
         $edges = isset($data['edges']) ? $data['edges'] : array();
         $userId = $token_data['id'];
+        $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : 1;
         
-        // Deaktivovat všechny současné vztahy
+        // Smazat všechny vztahy v daném profilu (DELETE strategie)
         $stmt = $pdo->prepare("
-            UPDATE 25_uzivatele_hierarchie 
-            SET aktivni = 0, 
-                upravil_user_id = ?,
-                dt_upraveno = NOW()
-            WHERE aktivni = 1
+            DELETE FROM 25_uzivatele_hierarchie 
+            WHERE profil_id = ?
         ");
-        $stmt->execute(array($userId));
+        $stmt->execute(array($profilId));
+        
+        // Vytvořit mapu pozic pro každý uzel (userId -> position)
+        // Frontend posílá node['id'] = userId, takže použijeme to přímo
+        $nodePositions = array();
+        if (isset($nodes) && !empty($nodes)) {
+            foreach ($nodes as $node) {
+                if (isset($node['id']) && isset($node['position'])) {
+                    $nodePositions[(string)$node['id']] = $node['position'];
+                }
+            }
+        }
         
         // Vložit nové vztahy
         if (!empty($edges)) {
             $sql = "
                 INSERT INTO 25_uzivatele_hierarchie (
-                    nadrizeny_id, podrizeny_id, typ_vztahu, uroven_opravneni,
+                    nadrizeny_id, podrizeny_id, profil_id, typ_vztahu, uroven_opravneni,
                     viditelnost_objednavky, viditelnost_faktury, viditelnost_smlouvy,
                     viditelnost_pokladna, viditelnost_uzivatele, viditelnost_lp,
                     notifikace_email, notifikace_inapp, notifikace_typy,
-                    rozsirene_lokality, rozsirene_useky,
-                    dt_od, dt_do, aktivni, upravil_user_id, dt_vytvoreni
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
+                    rozsirene_lokality, rozsirene_useky, rozsirene_kombinace,
+                    layout_pozice, aktivni, upravil_user_id, dt_vytvoreni
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
             ";
             
             $stmt = $pdo->prepare($sql);
@@ -971,9 +1118,31 @@ function handle_hierarchy_save($data, $pdo) {
                 $extended = isset($permissions['extended']) ? $permissions['extended'] : array();
                 $validity = isset($edge['validity']) ? $edge['validity'] : array();
                 
+                // Zpracování source a target - mohou být NULL pro rozšířené vztahy
+                $sourceId = isset($edge['source']) && $edge['source'] !== null ? (int)$edge['source'] : null;
+                $targetId = isset($edge['target']) && $edge['target'] !== null ? (int)$edge['target'] : null;
+                
+                // Zkombinovat pozice source a target uzlů pro tento vztah
+                $sourcePos = null;
+                $targetPos = null;
+                if ($sourceId !== null) {
+                    $sourceKey = (string)$sourceId;
+                    $sourcePos = isset($nodePositions[$sourceKey]) ? $nodePositions[$sourceKey] : null;
+                }
+                if ($targetId !== null) {
+                    $targetKey = (string)$targetId;
+                    $targetPos = isset($nodePositions[$targetKey]) ? $nodePositions[$targetKey] : null;
+                }
+                
+                $layoutPoziceData = array(
+                    'source' => $sourcePos,
+                    'target' => $targetPos
+                );
+                
                 $stmt->execute(array(
-                    (int)$edge['source'],
-                    (int)$edge['target'],
+                    $sourceId,
+                    $targetId,
+                    $profilId,
                     isset($edge['type']) ? $edge['type'] : 'prime',
                     isset($permissions['level']) ? (int)$permissions['level'] : 1,
                     isset($visibility['objednavky']) ? (int)$visibility['objednavky'] : 0,
@@ -987,8 +1156,8 @@ function handle_hierarchy_save($data, $pdo) {
                     json_encode(isset($notifications['types']) ? $notifications['types'] : array()),
                     json_encode(isset($extended['locations']) ? $extended['locations'] : array()),
                     json_encode(isset($extended['departments']) ? $extended['departments'] : array()),
-                    isset($validity['from']) ? $validity['from'] : null,
-                    isset($validity['to']) ? $validity['to'] : null,
+                    json_encode(isset($extended['combinations']) ? $extended['combinations'] : array()),
+                    json_encode($layoutPoziceData),
                     $userId
                 ));
             }
@@ -998,7 +1167,7 @@ function handle_hierarchy_save($data, $pdo) {
         
         return array(
             'success' => true,
-            'message' => 'Hierarchie úspěšně uložena',
+            'message' => 'Hierarchie uspesne ulozena',
             'saved' => array(
                 'relationships' => count($edges)
             )
@@ -1006,8 +1175,12 @@ function handle_hierarchy_save($data, $pdo) {
         
     } catch (PDOException $e) {
         $pdo->rollBack();
-        error_log("Database error in handle_hierarchy_save: " . $e->getMessage());
-        return array('success' => false, 'error' => 'Chyba při ukládání hierarchie', 'details' => $e->getMessage());
+        error_log("HIERARCHY SAVE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri ukladani hierarchie', 'details' => $e->getMessage());
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        error_log("HIERARCHY SAVE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri ukladani hierarchie', 'details' => $e->getMessage());
     }
 }
 
@@ -1029,24 +1202,237 @@ function handle_hierarchy_notification_types($data, $pdo) {
     }
     
     $notificationTypes = array(
-        array('id' => 'order_created', 'name' => 'Nová objednávka', 'category' => 'orders'),
-        array('id' => 'order_approved', 'name' => 'Schválená objednávka', 'category' => 'orders'),
-        array('id' => 'order_rejected', 'name' => 'Zamítnutá objednávka', 'category' => 'orders'),
-        array('id' => 'invoice_created', 'name' => 'Nová faktura', 'category' => 'invoices'),
-        array('id' => 'invoice_approved', 'name' => 'Schválená faktura', 'category' => 'invoices'),
-        array('id' => 'invoice_paid', 'name' => 'Zaplacená faktura', 'category' => 'invoices'),
-        array('id' => 'contract_expiring', 'name' => 'Vypršení smlouvy', 'category' => 'contracts'),
-        array('id' => 'contract_created', 'name' => 'Nová smlouva', 'category' => 'contracts'),
-        array('id' => 'budget_warning', 'name' => 'Upozornění na rozpočet', 'category' => 'finance'),
-        array('id' => 'approval_required', 'name' => 'Vyžaduje schválení', 'category' => 'general'),
-        array('id' => 'mention', 'name' => 'Zmínka v komentáři', 'category' => 'general'),
-        array('id' => 'task_assigned', 'name' => 'Přiřazený úkol', 'category' => 'general')
+        array('id' => 'order_created', 'name' => 'Nova objednavka', 'category' => 'orders'),
+        array('id' => 'order_approved', 'name' => 'Schvalena objednavka', 'category' => 'orders'),
+        array('id' => 'order_rejected', 'name' => 'Zamitnuta objednavka', 'category' => 'orders'),
+        array('id' => 'invoice_created', 'name' => 'Nova faktura', 'category' => 'invoices'),
+        array('id' => 'invoice_approved', 'name' => 'Schvalena faktura', 'category' => 'invoices'),
+        array('id' => 'invoice_paid', 'name' => 'Zaplacena faktura', 'category' => 'invoices'),
+        array('id' => 'contract_expiring', 'name' => 'Vyprseni smlouvy', 'category' => 'contracts'),
+        array('id' => 'contract_created', 'name' => 'Nova smlouva', 'category' => 'contracts'),
+        array('id' => 'budget_warning', 'name' => 'Upozorneni na rozpocet', 'category' => 'finance'),
+        array('id' => 'approval_required', 'name' => 'Vyzaduje schvaleni', 'category' => 'general'),
+        array('id' => 'mention', 'name' => 'Zminka v komentari', 'category' => 'general'),
+        array('id' => 'task_assigned', 'name' => 'Prirazeny ukol', 'category' => 'general')
     );
     
     return array(
         'success' => true,
         'data' => $notificationTypes
     );
+}
+
+/**
+ * Seznam profilů organizačních řádů
+ */
+function handle_hierarchy_profiles_list($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    try {
+        $stmt = $pdo->query("
+            SELECT 
+                p.id,
+                p.nazev,
+                p.popis,
+                p.aktivni,
+                p.dt_vytvoreno,
+                p.dt_upraveno,
+                u.jmeno,
+                u.prijmeni,
+                (SELECT COUNT(*) FROM 25_uzivatele_hierarchie h WHERE h.profil_id = p.id) as vztahu_count
+            FROM 25_hierarchie_profily p
+            LEFT JOIN 25_uzivatele u ON p.vytvoril_user_id = u.id
+            ORDER BY p.aktivni DESC, p.nazev ASC
+        ");
+        
+        $profiles = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $profiles[] = array(
+                'id' => (int)$row['id'],
+                'name' => $row['nazev'],
+                'description' => $row['popis'],
+                'isActive' => (bool)$row['aktivni'],
+                'createdAt' => $row['dt_vytvoreno'],
+                'updatedAt' => $row['dt_upraveno'],
+                'createdBy' => $row['jmeno'] ? trim($row['jmeno'] . ' ' . $row['prijmeni']) : null,
+                'relationshipsCount' => (int)$row['vztahu_count']
+            );
+        }
+        
+        return array('success' => true, 'data' => $profiles);
+        
+    } catch (PDOException $e) {
+        error_log("PROFILES LIST ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri nacitani profilu');
+    }
+}
+
+/**
+ * Vytvoření nového profilu (Save As)
+ */
+function handle_hierarchy_profiles_create($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $nazev = isset($data['name']) ? trim($data['name']) : '';
+    $popis = isset($data['description']) ? trim($data['description']) : '';
+    $setActive = isset($data['set_active']) ? (bool)$data['set_active'] : false;
+    
+    if (empty($nazev)) {
+        return array('success' => false, 'error' => 'Nazev profilu je povinny');
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Zkontrolovat zda profil s tímto názvem již existuje
+        $stmt = $pdo->prepare("SELECT id FROM 25_hierarchie_profily WHERE nazev = ?");
+        $stmt->execute(array($nazev));
+        if ($stmt->fetch()) {
+            return array('success' => false, 'error' => 'Profil s timto nazvem jiz existuje', 'code' => 'PROFILE_EXISTS');
+        }
+        
+        // Deaktivovat všechny profily pokud nastavujeme tento jako aktivní
+        if ($setActive) {
+            $pdo->exec("UPDATE 25_hierarchie_profily SET aktivni = 0");
+        }
+        
+        // Vytvořit nový profil
+        $stmt = $pdo->prepare("
+            INSERT INTO 25_hierarchie_profily (nazev, popis, aktivni, vytvoril_user_id)
+            VALUES (?, ?, ?, ?)
+        ");
+        $stmt->execute(array($nazev, $popis, $setActive ? 1 : 0, $token_data['id']));
+        
+        $newProfilId = $pdo->lastInsertId();
+        
+        $pdo->commit();
+        
+        return array(
+            'success' => true,
+            'message' => 'Profil uspesne vytvoren',
+            'profile_id' => (int)$newProfilId
+        );
+        
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        error_log("PROFILE CREATE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri vytvareni profilu');
+    }
+}
+
+/**
+ * Smazání profilu
+ */
+function handle_hierarchy_profiles_delete($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : 0;
+    
+    if ($profilId <= 0) {
+        return array('success' => false, 'error' => 'Neplatne profile_id');
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Zkontrolovat, zda není poslední profil
+        $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM 25_hierarchie_profily");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row['cnt'] <= 1) {
+            $pdo->rollBack();
+            return array('success' => false, 'error' => 'Nelze smazat posledni profil');
+        }
+        
+        // Smazat všechny vztahy v profilu
+        $stmt = $pdo->prepare("DELETE FROM 25_uzivatele_hierarchie WHERE profil_id = ?");
+        $stmt->execute(array($profilId));
+        
+        // Smazat profil
+        $stmt = $pdo->prepare("DELETE FROM 25_hierarchie_profily WHERE id = ?");
+        $stmt->execute(array($profilId));
+        
+        $pdo->commit();
+        
+        return array('success' => true, 'message' => 'Profil uspesne smazan');
+        
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        error_log("DELETE PROFILE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri mazani profilu');
+    }
+}
+
+/**
+ * Nastavení aktivního profilu
+ */
+function handle_hierarchy_profiles_set_active($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : 0;
+    
+    if ($profilId <= 0) {
+        return array('success' => false, 'error' => 'Neplatne profile_id');
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Deaktivovat všechny
+        $pdo->exec("UPDATE 25_hierarchie_profily SET aktivni = 0");
+        
+        // Aktivovat vybraný
+        $stmt = $pdo->prepare("UPDATE 25_hierarchie_profily SET aktivni = 1 WHERE id = ?");
+        $stmt->execute(array($profilId));
+        
+        $pdo->commit();
+        
+        return array('success' => true, 'message' => 'Aktivni profil nastaven');
+        
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        error_log("SET ACTIVE PROFILE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri nastaveni aktivniho profilu');
+    }
 }
 
 ?>
