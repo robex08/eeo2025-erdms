@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import styled from '@emotion/styled';
 import ReactFlow, {
   MiniMap,
@@ -10,10 +10,10 @@ import ReactFlow, {
   MarkerType,
   Panel,
   Handle,
-  Position
+  Position,
+  useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import dagre from 'dagre';
 import { graphlib } from 'dagre';
@@ -41,7 +41,7 @@ import {
 
 // Styled Components
 const Container = styled.div`
-  height: calc(100vh - 60px);
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: #f5f7fa;
@@ -55,6 +55,7 @@ const Header = styled.div`
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  flex-shrink: 0;
 `;
 
 const Title = styled.h1`
@@ -194,12 +195,13 @@ const MainContent = styled.div`
 `;
 
 const Sidebar = styled.div`
-  width: 320px;
+  width: 400px;
   background: white;
   border-right: 1px solid #e0e6ed;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 `;
 
 const SidebarHeader = styled.div`
@@ -252,6 +254,7 @@ const SidebarContent = styled.div`
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  padding-bottom: 80px; /* Prostor pro fixní patičku */
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -300,9 +303,7 @@ const SectionHeader = styled.div`
 const SectionContent = styled.div`
   margin-top: 4px;
   padding-left: 8px;
-  max-height: ${props => props.expanded ? '1000px' : '0'};
-  overflow: hidden;
-  transition: max-height 0.3s ease;
+  display: ${props => props.expanded ? 'block' : 'none'};
 `;
 
 const UserItem = styled.div`
@@ -821,6 +822,7 @@ const nodeTypes = {
 
 // Main Component
 const OrganizationHierarchy = () => {
+  const reactFlowWrapper = useRef(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedSections, setExpandedSections] = useState({
     users: true,
@@ -837,6 +839,7 @@ const OrganizationHierarchy = () => {
   // React Flow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [reactFlowInstance, setReactFlowInstance] = useState(null);
 
   // Data from API
   const [allUsers, setAllUsers] = useState([]);
@@ -1193,19 +1196,21 @@ const OrganizationHierarchy = () => {
   const addSelectedToCanvas = () => {
     const newNodes = [];
     let index = nodes.length;
+    const timestamp = Date.now();
 
-    // Přidat vybrané uživatele
-    selectedUsers.forEach(userId => {
+    // Přidat vybrané uživatele (povolujeme duplicity)
+    selectedUsers.forEach((userId, userIndex) => {
       const user = allUsers.find(u => u.id === userId);
-      if (user && !nodes.find(n => n.id === userId)) {
+      if (user) {
         newNodes.push({
-          id: userId,
+          id: `user-${userId}-${timestamp}-${userIndex}`,
           type: 'custom',
           position: {
             x: 100 + (index % 5) * 250,
             y: 100 + Math.floor(index / 5) * 180
           },
           data: {
+            userId: userId, // Původní user ID
             name: user.name,
             position: user.position,
             initials: user.initials,
@@ -1219,62 +1224,60 @@ const OrganizationHierarchy = () => {
       }
     });
 
-    // Přidat uživatele z vybraných lokalit
+    // Přidat uživatele z vybraných lokalit (povolujeme duplicity)
     selectedLocations.forEach(locationId => {
       const location = allLocations.find(l => l.id === locationId);
       if (location) {
         const usersInLocation = allUsers.filter(u => u.location === location.name);
-        usersInLocation.forEach(user => {
-          if (!nodes.find(n => n.id === user.id) && !newNodes.find(n => n.id === user.id)) {
-            newNodes.push({
-              id: user.id,
-              type: 'custom',
-              position: {
-                x: 100 + (index % 5) * 250,
-                y: 100 + Math.floor(index / 5) * 180
-              },
-              data: {
-                name: user.name,
-                position: user.position,
-                initials: user.initials,
-                metadata: {
-                  location: user.location,
-                  department: user.department
-                }
+        usersInLocation.forEach((user, userIndex) => {
+          newNodes.push({
+            id: `user-${user.id}-${timestamp}-loc${locationId}-${userIndex}`,
+            type: 'custom',
+            position: {
+              x: 100 + (index % 5) * 250,
+              y: 100 + Math.floor(index / 5) * 180
+            },
+            data: {
+              userId: user.id, // Původní user ID
+              name: user.name,
+              position: user.position,
+              initials: user.initials,
+              metadata: {
+                location: user.location,
+                department: user.department
               }
-            });
-            index++;
-          }
+            }
+          });
+          index++;
         });
       }
     });
 
-    // Přidat uživatele z vybraných útvarů
+    // Přidat uživatele z vybraných útvarů (povolujeme duplicity)
     selectedDepartments.forEach(deptId => {
       const department = allDepartments.find(d => d.id === deptId);
       if (department) {
         const usersInDept = allUsers.filter(u => u.department === department.name);
-        usersInDept.forEach(user => {
-          if (!nodes.find(n => n.id === user.id) && !newNodes.find(n => n.id === user.id)) {
-            newNodes.push({
-              id: user.id,
-              type: 'custom',
-              position: {
-                x: 100 + (index % 5) * 250,
-                y: 100 + Math.floor(index / 5) * 180
-              },
-              data: {
-                name: user.name,
-                position: user.position,
-                initials: user.initials,
-                metadata: {
-                  location: user.location,
-                  department: user.department
-                }
+        usersInDept.forEach((user, userIndex) => {
+          newNodes.push({
+            id: `user-${user.id}-${timestamp}-dept${deptId}-${userIndex}`,
+            type: 'custom',
+            position: {
+              x: 100 + (index % 5) * 250,
+              y: 100 + Math.floor(index / 5) * 180
+            },
+            data: {
+              userId: user.id, // Původní user ID
+              name: user.name,
+              position: user.position,
+              initials: user.initials,
+              metadata: {
+                location: user.location,
+                department: user.department
               }
-            });
-            index++;
-          }
+            }
+          });
+          index++;
         });
       }
     });
@@ -1290,41 +1293,46 @@ const OrganizationHierarchy = () => {
     }
   };
 
-  // Store dragged item info for ReactFlow drop
+  // Store dragged item info for HTML5 drag & drop
   const [draggedItem, setDraggedItem] = React.useState(null);
-
-  const onDragStart = (start) => {
-    setDraggedItem(start.draggableId);
-  };
-
-  const onDragEnd = (result) => {
-    setDraggedItem(null);
-    // react-beautiful-dnd handling is disabled for canvas
-    // We use ReactFlow's onDrop instead
-  };
 
   const onReactFlowDrop = (event) => {
     event.preventDefault();
     
-    if (!draggedItem) return;
+    if (!draggedItem) {
+      console.log('⚠️ No dragged item');
+      return;
+    }
+    
+    if (!reactFlowInstance) {
+      console.log('⚠️ ReactFlow instance not ready');
+      return;
+    }
     
     const dragId = draggedItem;
-    const reactFlowBounds = event.target.getBoundingClientRect();
-    const position = {
-      x: event.clientX - reactFlowBounds.left - 100,
-      y: event.clientY - reactFlowBounds.top - 50
-    };
+    
+    // Použij ReactFlow's project method pro správný přepočet souřadnic
+    const position = reactFlowInstance.project({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    
+    console.log('📦 Drop:', { dragId, position, clientX: event.clientX, clientY: event.clientY });
     
     // Zpracování uživatele
     if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-')) {
       const user = allUsers.find(u => u.id === dragId);
       
       if (user) {
+        // Generuj unikátní ID pro node (povoluje duplicity stejného uživatele)
+        const nodeId = `user-${dragId}-${Date.now()}`;
+        
         const newNode = {
-          id: dragId,
+          id: nodeId,
           type: 'custom',
           position,
           data: {
+            userId: dragId, // Původní user ID pro propojení s DB
             name: user.name,
             position: user.position,
             initials: user.initials,
@@ -1335,11 +1343,7 @@ const OrganizationHierarchy = () => {
           }
         };
         
-        setNodes((nds) => {
-          const exists = nds.find(n => n.id === dragId);
-          if (exists) return nds;
-          return [...nds, newNode];
-        });
+        setNodes((nds) => [...nds, newNode]);
       }
       return;
     }
@@ -1354,14 +1358,16 @@ const OrganizationHierarchy = () => {
         
         console.log(`📍 Dropping location: ${location.name} with ${usersInLocation.length} users`);
         
+        const timestamp = Date.now();
         const newNodes = usersInLocation.map((user, i) => ({
-          id: user.id,
+          id: `user-${user.id}-${timestamp}-${i}`,
           type: 'custom',
           position: { 
             x: position.x + (i % 3) * 250, 
             y: position.y + Math.floor(i / 3) * 180 
           },
           data: {
+            userId: user.id, // Původní user ID
             name: user.name,
             position: user.position,
             initials: user.initials,
@@ -1372,11 +1378,7 @@ const OrganizationHierarchy = () => {
           }
         }));
         
-        setNodes((nds) => {
-          const existingIds = new Set(nds.map(n => n.id));
-          const toAdd = newNodes.filter(n => !existingIds.has(n.id));
-          return [...nds, ...toAdd];
-        });
+        setNodes((nds) => [...nds, ...newNodes]);
       }
       return;
     }
@@ -1391,14 +1393,16 @@ const OrganizationHierarchy = () => {
         
         console.log(`🏢 Dropping department: ${department.name} with ${usersInDept.length} users`);
         
+        const timestamp = Date.now();
         const newNodes = usersInDept.map((user, i) => ({
-          id: user.id,
+          id: `user-${user.id}-${timestamp}-${i}`,
           type: 'custom',
           position: { 
             x: position.x + (i % 3) * 250, 
             y: position.y + Math.floor(i / 3) * 180 
           },
           data: {
+            userId: user.id, // Původní user ID
             name: user.name,
             position: user.position,
             initials: user.initials,
@@ -1409,11 +1413,7 @@ const OrganizationHierarchy = () => {
           }
         }));
         
-        setNodes((nds) => {
-          const existingIds = new Set(nds.map(n => n.id));
-          const toAdd = newNodes.filter(n => !existingIds.has(n.id));
-          return [...nds, ...toAdd];
-        });
+        setNodes((nds) => [...nds, ...newNodes]);
       }
     }
   };
@@ -1424,13 +1424,16 @@ const OrganizationHierarchy = () => {
   };
 
   const handleAutoGenerateHierarchy = () => {
-    if (!allUsers || allUsers.length === 0) {
+    // Kontrola zda jsou vybrané položky
+    const totalSelected = selectedUsers.size + selectedLocations.size + selectedDepartments.size;
+    
+    if (totalSelected === 0) {
       setDialog({
         show: true,
         type: 'alert',
         icon: '⚠️',
-        title: 'Chybí data',
-        message: 'Nejsou načteni žádní uživatelé!\n\nPočkejte na dokončení načítání dat z API.',
+        title: 'Žádné položky nevybrány',
+        message: 'Pro vytvoření AI hierarchie musíte nejprve vybrat uživatele, lokality nebo útvary ze seznamu vlevo.\n\nPoužijte checkboxy pro výběr položek.',
         onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
         confirmText: 'OK',
         cancelText: null
@@ -1438,9 +1441,8 @@ const OrganizationHierarchy = () => {
       return;
     }
 
-    // Pokud existují vztahy z DB, použít je + aplikovat layout
-    // Pokud ne, vygenerovat nové podle AI logiky
-    generateHierarchy();
+    // Generovat hierarchii pouze z vybraných položek
+    generateHierarchyFromSelected();
   };
 
   // Automatické rozložení grafu pomocí dagre
@@ -1528,6 +1530,298 @@ const OrganizationHierarchy = () => {
     
     // Vrátit pouze pokud je skóre > 0 (aspoň nějaká shoda)
     return bestScore > 0 ? bestMatch : null;
+  };
+
+  const generateHierarchyFromSelected = () => {
+    console.log('🤖 AI: Generating hierarchy from SELECTED items only...');
+
+    // Získat všechny vybrané uživatele
+    let selectedUsersList = [];
+    
+    // Přidat přímo vybrané uživatele
+    selectedUsers.forEach(userId => {
+      const user = allUsers.find(u => u.id === userId);
+      if (user) selectedUsersList.push(user);
+    });
+    
+    // Přidat uživatele z vybraných lokalit
+    selectedLocations.forEach(locationId => {
+      const location = allLocations.find(l => l.id === locationId);
+      if (location) {
+        const usersInLocation = allUsers.filter(u => u.location === location.name);
+        usersInLocation.forEach(user => {
+          if (!selectedUsersList.find(u => u.id === user.id)) {
+            selectedUsersList.push(user);
+          }
+        });
+      }
+    });
+    
+    // Přidat uživatele z vybraných útvarů
+    selectedDepartments.forEach(deptId => {
+      const department = allDepartments.find(d => d.id === deptId);
+      if (department) {
+        const usersInDept = allUsers.filter(u => u.department === department.name);
+        usersInDept.forEach(user => {
+          if (!selectedUsersList.find(u => u.id === user.id)) {
+            selectedUsersList.push(user);
+          }
+        });
+      }
+    });
+
+    if (selectedUsersList.length === 0) {
+      setDialog({
+        show: true,
+        type: 'alert',
+        icon: '⚠️',
+        title: 'Žádní uživatelé',
+        message: 'Ve vybraných položkách nejsou žádní uživatelé.',
+        onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
+        confirmText: 'OK',
+        cancelText: null
+      });
+      return;
+    }
+
+    console.log(`🤖 AI: Working with ${selectedUsersList.length} selected users`);
+
+    // Analyzovat role z vybraných uživatelů
+    const director = selectedUsersList.find(u => {
+      const pos = u.position?.toLowerCase() || '';
+      return pos === 'ředitel' || pos === 'ředitelka';
+    });
+    
+    const deputies = selectedUsersList.filter(u => 
+      u.position?.toLowerCase().includes('náměstek')
+    );
+    
+    const directorHeads = selectedUsersList.filter(u => {
+      const pos = u.position?.toLowerCase() || '';
+      const dept = u.department?.toLowerCase() || '';
+      return pos.includes('vedoucí') && (dept.includes('ředitel') || pos.includes('ředitel'));
+    });
+    
+    const heads = selectedUsersList.filter(u => {
+      const pos = u.position?.toLowerCase() || '';
+      const dept = u.department?.toLowerCase() || '';
+      return pos.includes('vedoucí') && !dept.includes('ředitel') && !pos.includes('ředitel');
+    });
+    
+    const others = selectedUsersList.filter(u => {
+      const pos = u.position?.toLowerCase() || '';
+      return !pos.includes('ředitel') &&
+             !pos.includes('náměstek') &&
+             !pos.includes('vedoucí');
+    });
+
+    // Vytvořit nodes a edges
+    const newNodes = [];
+    const newEdges = [];
+    const timestamp = Date.now();
+
+    // Ředitel
+    if (director) {
+      newNodes.push({
+        id: `user-${director.id}-${timestamp}-0`,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: {
+          userId: director.id,
+          name: director.name,
+          position: director.position,
+          initials: director.initials,
+          metadata: {
+            location: director.location,
+            department: director.department
+          }
+        }
+      });
+    }
+
+    // Náměstci
+    deputies.forEach((deputy, i) => {
+      const nodeId = `user-${deputy.id}-${timestamp}-${i + 1}`;
+      newNodes.push({
+        id: nodeId,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: {
+          userId: deputy.id,
+          name: deputy.name,
+          position: deputy.position,
+          initials: deputy.initials,
+          metadata: {
+            location: deputy.location,
+            department: deputy.department
+          }
+        }
+      });
+
+      if (director) {
+        newEdges.push({
+          id: `e-${newNodes[0].id}-${nodeId}`,
+          source: newNodes[0].id,
+          target: nodeId,
+          type: 'smoothstep',
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#667eea', strokeWidth: 3 }
+        });
+      }
+    });
+
+    // Vedoucí úseku ředitele
+    let nodeIndex = 1 + deputies.length;
+    directorHeads.forEach((head, i) => {
+      const nodeId = `user-${head.id}-${timestamp}-${nodeIndex + i}`;
+      newNodes.push({
+        id: nodeId,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: {
+          userId: head.id,
+          name: head.name,
+          position: head.position,
+          initials: head.initials,
+          metadata: {
+            location: head.location,
+            department: head.department
+          }
+        }
+      });
+
+      if (director) {
+        newEdges.push({
+          id: `e-${newNodes[0].id}-${nodeId}`,
+          source: newNodes[0].id,
+          target: nodeId,
+          type: 'smoothstep',
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#667eea', strokeWidth: 3 }
+        });
+      }
+    });
+
+    // Ostatní vedoucí
+    nodeIndex += directorHeads.length;
+    heads.forEach((head, i) => {
+      const nodeId = `user-${head.id}-${timestamp}-${nodeIndex + i}`;
+      newNodes.push({
+        id: nodeId,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: {
+          userId: head.id,
+          name: head.name,
+          position: head.position,
+          initials: head.initials,
+          metadata: {
+            location: head.location,
+            department: head.department
+          }
+        }
+      });
+
+      // Připojit k náměstkovi se stejným útvarem
+      const deputyWithSameDept = deputies.find(d => d.department === head.department);
+      if (deputyWithSameDept) {
+        const deputyNode = newNodes.find(n => n.data.userId === deputyWithSameDept.id);
+        if (deputyNode) {
+          newEdges.push({
+            id: `e-${deputyNode.id}-${nodeId}`,
+            source: deputyNode.id,
+            target: nodeId,
+            type: 'smoothstep',
+            animated: true,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            style: { stroke: '#667eea', strokeWidth: 3 }
+          });
+        }
+      } else if (director) {
+        // Fallback na ředitele
+        newEdges.push({
+          id: `e-${newNodes[0].id}-${nodeId}`,
+          source: newNodes[0].id,
+          target: nodeId,
+          type: 'smoothstep',
+          animated: true,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#667eea', strokeWidth: 3 }
+        });
+      }
+    });
+
+    // Ostatní zaměstnanci
+    nodeIndex += heads.length;
+    others.forEach((user, i) => {
+      const nodeId = `user-${user.id}-${timestamp}-${nodeIndex + i}`;
+      newNodes.push({
+        id: nodeId,
+        type: 'custom',
+        position: { x: 0, y: 0 },
+        data: {
+          userId: user.id,
+          name: user.name,
+          position: user.position,
+          initials: user.initials,
+          metadata: {
+            location: user.location,
+            department: user.department
+          }
+        }
+      });
+
+      // Připojit k vedoucímu stejného útvaru
+      const headWithSameDept = heads.find(h => h.department === user.department);
+      if (headWithSameDept) {
+        const headNode = newNodes.find(n => n.data.userId === headWithSameDept.id);
+        if (headNode) {
+          newEdges.push({
+            id: `e-${headNode.id}-${nodeId}`,
+            source: headNode.id,
+            target: nodeId,
+            type: 'smoothstep',
+            animated: true,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            style: { stroke: '#667eea', strokeWidth: 3 }
+          });
+        }
+      }
+    });
+
+    // Aplikovat layout
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(newNodes, newEdges, 'TB');
+    
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+
+    // Vyčistit výběr
+    setSelectedUsers(new Set());
+    setSelectedLocations(new Set());
+    setSelectedDepartments(new Set());
+
+    setDialog({
+      show: true,
+      type: 'success',
+      icon: '✅',
+      title: 'AI Hierarchie vytvořena!',
+      message: 'Hierarchie byla automaticky vygenerována z vybraných položek.\nZkontrolujte strukturu a případně upravte.\nNezapomeňte uložit!',
+      stats: {
+        'Ředitel': director ? '1' : '0',
+        'Náměstci': deputies.length,
+        'Vedoucí úseku ředitele': directorHeads.length,
+        'Vedoucí ostatních úseků': heads.length,
+        'Ostatní': others.length,
+        '─────────': '─────',
+        'Celkem uzlů': layoutedNodes.length,
+        'Celkem vztahů': layoutedEdges.length
+      },
+      onConfirm: () => setDialog(prev => ({ ...prev, show: false })),
+      confirmText: 'OK',
+      cancelText: null
+    });
   };
 
   const generateHierarchy = () => {
@@ -1854,7 +2148,7 @@ const OrganizationHierarchy = () => {
           token,
           username,
           nodes: nodes.map(n => ({
-            id: n.id,
+            id: n.data.userId || n.id, // Použít userId pokud existuje (duplicitní nodes)
             position: n.position,
             data: n.data
           })),
@@ -1862,6 +2156,8 @@ const OrganizationHierarchy = () => {
             id: e.id,
             source: e.source,
             target: e.target,
+            sourceUserId: nodes.find(n => n.id === e.source)?.data?.userId, // Pro duplicity
+            targetUserId: nodes.find(n => n.id === e.target)?.data?.userId, // Pro duplicity
             type: e.data?.type || 'prime',
             permissions: e.data || {}
           }))
@@ -2053,7 +2349,7 @@ const OrganizationHierarchy = () => {
           )}
           <Button onClick={handleAutoGenerateHierarchy} disabled={loading || allUsers.length === 0}>
             <span style={{ fontSize: '1.1rem', marginRight: '4px' }}>🤖</span>
-            AI Struktura
+            AI Asistent
           </Button>
           <Button 
             onClick={() => {
@@ -2082,8 +2378,7 @@ const OrganizationHierarchy = () => {
       </Header>
 
       <MainContent>
-        <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <Sidebar>
+        <Sidebar>
             <SidebarHeader>
               <SidebarTitle>
                 <FontAwesomeIcon icon={faUsers} />
@@ -2146,23 +2441,27 @@ const OrganizationHierarchy = () => {
                       {selectedUsers.size === filteredUsers.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
-                  <Droppable droppableId="users">
-                    {(provided) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps}>
-                        {filteredUsers.map((user, index) => (
-                          <Draggable key={user.id} draggableId={user.id} index={index}>
-                            {(provided, snapshot) => (
-                              <UserItem
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                isDragging={snapshot.isDragging}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  background: selectedUsers.has(user.id) ? '#ede9fe' : 'white',
-                                  borderColor: selectedUsers.has(user.id) ? '#8b5cf6' : '#e0e6ed'
-                                }}
-                              >
+                  <div>
+                    {filteredUsers.map((user) => (
+                      <UserItem
+                        key={user.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', user.id);
+                          setDraggedItem(user.id);
+                          console.log('👉 Drag start:', user.id, user.name);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedItem(null);
+                          console.log('🚩 Drag end');
+                        }}
+                        style={{
+                          background: selectedUsers.has(user.id) ? '#ede9fe' : 'white',
+                          borderColor: selectedUsers.has(user.id) ? '#8b5cf6' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
                                 <input
                                   type="checkbox"
                                   checked={selectedUsers.has(user.id)}
@@ -2185,15 +2484,10 @@ const OrganizationHierarchy = () => {
                                   <UserMeta>
                                     {user.position} • {user.location}
                                   </UserMeta>
-                                </UserInfo>
-                              </UserItem>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
+                        </UserInfo>
+                      </UserItem>
+                    ))}
+                  </div>
                 </SectionContent>
               </CollapsibleSection>
 
@@ -2240,23 +2534,26 @@ const OrganizationHierarchy = () => {
                       {selectedLocations.size === allLocations.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
-                  <Droppable droppableId="locations">
-                    {(provided) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps}>
-                        {allLocations.map((loc, index) => (
-                          <Draggable key={`loc-${loc.id}`} draggableId={`loc-${loc.id}`} index={index}>
-                            {(provided, snapshot) => (
-                              <LocationItem
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                isDragging={snapshot.isDragging}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  background: selectedLocations.has(loc.id) ? '#fef3c7' : 'white',
-                                  borderColor: selectedLocations.has(loc.id) ? '#fbbf24' : '#e0e6ed'
-                                }}
-                              >
+                  <div>
+                    {allLocations.map((loc) => (
+                      <LocationItem
+                        key={loc.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', `loc-${loc.id}`);
+                          setDraggedItem(`loc-${loc.id}`);
+                          console.log('👉 Drag start location:', loc.id, loc.name);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedItem(null);
+                        }}
+                        style={{
+                          background: selectedLocations.has(loc.id) ? '#fef3c7' : 'white',
+                          borderColor: selectedLocations.has(loc.id) ? '#fbbf24' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
                                 <input
                                   type="checkbox"
                                   checked={selectedLocations.has(loc.id)}
@@ -2276,18 +2573,13 @@ const OrganizationHierarchy = () => {
                                 <LocationIcon>
                                   <FontAwesomeIcon icon={faBuilding} />
                                 </LocationIcon>
-                                <UserInfo>
-                                  <UserName>{loc.name}</UserName>
-                                  <UserMeta>{loc.userCount} uživatelů • {loc.code}</UserMeta>
-                                </UserInfo>
-                              </LocationItem>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
+                        <UserInfo>
+                          <UserName>{loc.name}</UserName>
+                          <UserMeta>{loc.userCount} uživatelů • {loc.code}</UserMeta>
+                        </UserInfo>
+                      </LocationItem>
+                    ))}
+                  </div>
                 </SectionContent>
               </CollapsibleSection>
 
@@ -2334,23 +2626,26 @@ const OrganizationHierarchy = () => {
                       {selectedDepartments.size === allDepartments.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
-                  <Droppable droppableId="departments">
-                    {(provided) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps}>
-                        {allDepartments.map((dept, index) => (
-                          <Draggable key={`dept-${dept.id}`} draggableId={`dept-${dept.id}`} index={index}>
-                            {(provided, snapshot) => (
-                              <LocationItem
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                isDragging={snapshot.isDragging}
-                                style={{
-                                  ...provided.draggableProps.style,
-                                  background: selectedDepartments.has(dept.id) ? '#dbeafe' : 'white',
-                                  borderColor: selectedDepartments.has(dept.id) ? '#60a5fa' : '#e0e6ed'
-                                }}
-                              >
+                  <div>
+                    {allDepartments.map((dept) => (
+                      <LocationItem
+                        key={dept.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', `dept-${dept.id}`);
+                          setDraggedItem(`dept-${dept.id}`);
+                          console.log('👉 Drag start department:', dept.id, dept.name);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedItem(null);
+                        }}
+                        style={{
+                          background: selectedDepartments.has(dept.id) ? '#dbeafe' : 'white',
+                          borderColor: selectedDepartments.has(dept.id) ? '#60a5fa' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
                                 <input
                                   type="checkbox"
                                   checked={selectedDepartments.has(dept.id)}
@@ -2370,18 +2665,13 @@ const OrganizationHierarchy = () => {
                                 <DepartmentIcon>
                                   <FontAwesomeIcon icon={faUserTie} />
                                 </DepartmentIcon>
-                                <UserInfo>
-                                  <UserName>{dept.name}</UserName>
-                                  <UserMeta>{dept.userCount} uživatelů • {dept.code}</UserMeta>
-                                </UserInfo>
-                              </LocationItem>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
+                        <UserInfo>
+                          <UserName>{dept.name}</UserName>
+                          <UserMeta>{dept.userCount} uživatelů • {dept.code}</UserMeta>
+                        </UserInfo>
+                      </LocationItem>
+                    ))}
+                  </div>
                 </SectionContent>
               </CollapsibleSection>
 
@@ -2429,7 +2719,7 @@ const OrganizationHierarchy = () => {
                       {selectedNotificationTemplates.size === allNotificationTemplates.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
                     </button>
                   </div>
-                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  <div>
                     {allNotificationTemplates.map((template) => (
                       <div
                         key={template.id}
@@ -2504,20 +2794,15 @@ const OrganizationHierarchy = () => {
               </CollapsibleSection>
             </SidebarContent>
 
-            {/* Akční tlačítka */}
-            <div style={{
-              padding: '16px',
-              borderTop: '2px solid #e0e6ed',
-              background: 'linear-gradient(180deg, #f8fafc 0%, white 100%)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px'
-            }}>
-              {/* Tlačítko pro přidání vybraných */}
-              {(selectedUsers.size > 0 || selectedLocations.size > 0 || selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && (
-                <>
-                  <button
-                    onClick={addSelectedToCanvas}
+            {/* Akční tlačítka - Přidat vybrané */}
+            {(selectedUsers.size > 0 || selectedLocations.size > 0 || selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && (
+              <div style={{
+                padding: '16px',
+                borderTop: '2px solid #e0e6ed',
+                background: 'linear-gradient(180deg, #f8fafc 0%, white 100%)'
+              }}>
+                <button
+                  onClick={addSelectedToCanvas}
                     style={{
                       width: '100%',
                       padding: '12px 16px',
@@ -2545,95 +2830,108 @@ const OrganizationHierarchy = () => {
                     }}
                   >
                     <FontAwesomeIcon icon={faPlus} />
-                    <span>
-                      Přidat vybrané ({selectedUsers.size + selectedLocations.size + selectedDepartments.size + selectedNotificationTemplates.size})
-                    </span>
-                  </button>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: '#64748b',
-                    textAlign: 'center'
-                  }}>
-                    {selectedUsers.size > 0 && `${selectedUsers.size} uživatelů`}
-                    {selectedUsers.size > 0 && (selectedLocations.size > 0 || selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && ' • '}
-                    {selectedLocations.size > 0 && `${selectedLocations.size} lokalit`}
-                    {selectedLocations.size > 0 && (selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && ' • '}
-                    {selectedDepartments.size > 0 && `${selectedDepartments.size} útvarů`}
-                    {selectedDepartments.size > 0 && selectedNotificationTemplates.size > 0 && ' • '}
-                    {selectedNotificationTemplates.size > 0 && `${selectedNotificationTemplates.size} šablon`}
-                  </div>
-                </>
-              )}
+                  <span>
+                    Přidat vybrané ({selectedUsers.size + selectedLocations.size + selectedDepartments.size + selectedNotificationTemplates.size})
+                  </span>
+                </button>
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: '#64748b',
+                  textAlign: 'center'
+                }}>
+                  {selectedUsers.size > 0 && `${selectedUsers.size} uživatelů`}
+                  {selectedUsers.size > 0 && (selectedLocations.size > 0 || selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && ' • '}
+                  {selectedLocations.size > 0 && `${selectedLocations.size} lokalit`}
+                  {selectedLocations.size > 0 && (selectedDepartments.size > 0 || selectedNotificationTemplates.size > 0) && ' • '}
+                  {selectedDepartments.size > 0 && `${selectedDepartments.size} útvarů`}
+                  {selectedDepartments.size > 0 && selectedNotificationTemplates.size > 0 && ' • '}
+                  {selectedNotificationTemplates.size > 0 && `${selectedNotificationTemplates.size} šablon`}
+                </div>
+              </div>
+            )}
 
-              {/* Tlačítko pro reset plochy */}
-              {nodes.length > 0 && (
-                <button
-                  onClick={() => {
-                    setConfirmDialog({
-                      isOpen: true,
-                      title: 'Resetovat plochu',
-                      message: 'Opravdu chcete smazat celou plochu a začít znovu od začátku? Tato akce je nevratná.',
-                      onConfirm: () => {
-                        setNodes([]);
-                        setEdges([]);
-                        localStorage.removeItem('hierarchy_draft_nodes');
-                        localStorage.removeItem('hierarchy_draft_edges');
-                        localStorage.removeItem('hierarchy_draft_timestamp');
-                        setHasDraft(false);
-                        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
-                      }
-                    });
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    background: 'white',
-                    color: '#dc2626',
-                    border: '2px solid #fecaca',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
+            {/* Fixní patička - Reset plochy (vždy viditelná) */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: '12px 16px',
+              background: 'white',
+              borderTop: '2px solid #e0e6ed',
+              boxShadow: '0 -4px 12px rgba(0,0,0,0.05)',
+              zIndex: 10
+            }}>
+              <button
+                onClick={() => {
+                  setConfirmDialog({
+                    isOpen: true,
+                    title: 'Resetovat plochu',
+                    message: 'Opravdu chcete smazat celou plochu a začít znovu od začátku? Tato akce je nevratná.',
+                    onConfirm: () => {
+                      setNodes([]);
+                      setEdges([]);
+                      localStorage.removeItem('hierarchy_draft_nodes');
+                      localStorage.removeItem('hierarchy_draft_edges');
+                      localStorage.removeItem('hierarchy_draft_timestamp');
+                      setHasDraft(false);
+                      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+                    }
+                  });
+                }}
+                disabled={nodes.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  background: nodes.length === 0 ? '#f1f5f9' : 'white',
+                  color: nodes.length === 0 ? '#94a3b8' : '#dc2626',
+                  border: `2px solid ${nodes.length === 0 ? '#e2e8f0' : '#fecaca'}`,
+                  borderRadius: '8px',
+                  cursor: nodes.length === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (nodes.length > 0) {
                     e.target.style.background = '#fef2f2';
                     e.target.style.borderColor = '#dc2626';
-                  }}
-                  onMouseLeave={(e) => {
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (nodes.length > 0) {
                     e.target.style.background = 'white';
                     e.target.style.borderColor = '#fecaca';
-                  }}
-                >
-                  <FontAwesomeIcon icon={faTrash} />
-                  <span>Resetovat plochu</span>
-                </button>
-              )}
+                  }
+                }}
+              >
+                <FontAwesomeIcon icon={faTrash} />
+                <span>Resetovat plochu</span>
+              </button>
             </div>
           </Sidebar>
 
-          <CanvasArea>
-            <Droppable droppableId="canvas">
-              {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps} style={{ width: '100%', height: '100%' }}>
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
-                    onNodeClick={onNodeClick}
-                    onEdgeClick={onEdgeClick}
-                    onDrop={onReactFlowDrop}
-                    onDragOver={onReactFlowDragOver}
-                    nodeTypes={nodeTypes}
-                    fitView
-                    attributionPosition="bottom-left"
-                  >
+          <CanvasArea
+            onDrop={onReactFlowDrop}
+            onDragOver={onReactFlowDragOver}
+          >
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onEdgeClick={onEdgeClick}
+              onInit={setReactFlowInstance}
+              nodeTypes={nodeTypes}
+              fitView
+              attributionPosition="bottom-left"
+            >
                     <Background color="#cbd5e1" gap={20} size={1} />
                     <Controls />
                     <MiniMap 
@@ -2781,13 +3079,8 @@ const OrganizationHierarchy = () => {
                         </span>
                       </Panel>
                     )}
-                  </ReactFlow>
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
+            </ReactFlow>
           </CanvasArea>
-        </DragDropContext>
 
         {showDetailPanel && (selectedNode || selectedEdge) && (
           <DetailPanel>
