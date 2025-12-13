@@ -41,6 +41,7 @@ const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
+const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
@@ -63,6 +64,63 @@ function LogoutRedirectListener({ isLoggedIn }) {
   }, [isLoggedIn, navigate, location.pathname]);
 
   return null;
+}
+
+// 🛠️ Maintenance mode wrapper - zobrazí MaintenancePage PŘED layoutem
+function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
+  const [maintenanceMode, setMaintenanceMode] = React.useState(false);
+  const [checking, setChecking] = React.useState(true);
+  
+  const isSuperAdmin = React.useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
+  }, [userDetail]);
+  
+  useEffect(() => {
+    const checkMaintenance = async () => {
+      try {
+        const { checkMaintenanceMode } = await import('./services/globalSettingsApi');
+        const isMaintenanceActive = await checkMaintenanceMode();
+        setMaintenanceMode(isMaintenanceActive);
+      } catch (error) {
+        console.error('Chyba při kontrole maintenance mode:', error);
+        setMaintenanceMode(false);
+      } finally {
+        setChecking(false);
+      }
+    };
+    
+    if (isLoggedIn) {
+      checkMaintenance();
+      
+      // Kontrola každých 30 sekund
+      const interval = setInterval(checkMaintenance, 30000);
+      
+      return () => clearInterval(interval);
+    } else {
+      setChecking(false);
+    }
+  }, [isLoggedIn]);
+  
+  // Pokud stále kontrolujeme, zobrazíme loading
+  if (checking) {
+    return (
+      <Suspense fallback={null}>
+        <SplashScreen message="Kontrola stavu systému..." />
+      </Suspense>
+    );
+  }
+  
+  // Pokud je údržba aktivní a uživatel NENÍ SUPERADMIN a JE přihlášen
+  if (maintenanceMode && isLoggedIn && !isSuperAdmin) {
+    return (
+      <Suspense fallback={null}>
+        <MaintenancePage />
+      </Suspense>
+    );
+  }
+  
+  // Jinak zobrazíme normální aplikaci
+  return children;
 }
 
 // Simple helper component for last route restoration
@@ -107,18 +165,21 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
           if (userSettings?.vychozi_sekce_po_prihlaseni) {
             // ✅ SPRÁVNÉ MAPOVÁNÍ: Podle availableSections.js
             const sectionMap = {
-              'addressbook': '/address-book',
+              'address-book': '/address-book',
+              'contacts': '/contacts',
               'dictionaries': '/dictionaries',
               'debug': '/debug',
-              'suppliers': '/address-book', // Dodavatelé jsou v adresáři
+              'suppliers': '/address-book', // Dodavatelé jsou v adresáři (alias)
               'notifications': '/notifications',
               'orders-old': '/orders', // Staré objednávky před 2026
-              'reports': '/reports', // Reporty
-              'statistics': '/statistics', // Statistiky
-              'cashbook': '/cash-book',
+              'reports': '/reports',
+              'statistics': '/statistics',
+              'app-settings': '/app-settings',
+              'organization-hierarchy': '/organization-hierarchy',
+              'cash-book': '/cash-book',
               'profile': '/profile',
-              'orders': '/orders25-list', // Seznam objednávek 2025+
-              'invoices': '/invoices25-list', // Faktury 2025+
+              'orders25-list': '/orders25-list',
+              'invoices25-list': '/invoices25-list',
               'users': '/users'
             };
             
@@ -379,49 +440,51 @@ function App() {
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <AppShell>
-          <Layout>
-            {/* Logout redirect listener */}
-            <LogoutRedirectListener isLoggedIn={isLoggedIn} />
-            {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
-            <RestoreLastRoute isLoggedIn={isLoggedIn} userId={userId} user={user} hasPermission={hasPermission} userDetail={userDetail} />
-            <Suspense fallback={<div style={{display:'none'}}></div>}>
-              <Routes>
-                {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}
-                <Route
-                  path="/login"
-                  element={isLoggedIn ? <Navigate to="/" replace /> : <Login />}
-                />
-                {/* Root route "/" is handled by RestoreLastRoute component */}
-                {isLoggedIn && <Route path="/" element={<div style={{display:'none'}} />} />}
+        <MaintenanceModeWrapper isLoggedIn={isLoggedIn} userDetail={userDetail}>
+          <AppShell>
+            <Layout>
+              {/* Logout redirect listener */}
+              <LogoutRedirectListener isLoggedIn={isLoggedIn} />
+              {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
+              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={userId} user={user} hasPermission={hasPermission} userDetail={userDetail} />
+              <Suspense fallback={<div style={{display:'none'}}></div>}>
+                <Routes>
+                  {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}
+                  <Route
+                    path="/login"
+                    element={isLoggedIn ? <Navigate to="/" replace /> : <Login />}
+                  />
+                  {/* Root route "/" is handled by RestoreLastRoute component */}
+                  {isLoggedIn && <Route path="/" element={<div style={{display:'none'}} />} />}
 
-                {isLoggedIn && <Route path="/orders" element={<Orders />} />}
+                  {isLoggedIn && <Route path="/orders" element={<Orders />} />}
 
-                {isLoggedIn && <Route path="/orders25-list" element={<Orders25List />} />}
-                {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
-                {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
-                {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}
-                {isLoggedIn && hasPermission && (hasPermission('USER_VIEW') || hasPermission('USER_MANAGE')) && <Route path="/users" element={<Users />} />}
-                {isLoggedIn && hasPermission && (hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE')) && <Route path="/dictionaries" element={<DictionariesNew />} />}
-                {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
-                {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
-                {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
-                {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/app-settings" element={<AppSettings />} />}
-                {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
-                {isLoggedIn && hasPermission && hasPermission('CONTACT_READ') && <Route path="/address-book" element={<AddressBookPage />} />}
-                {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
-                {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
-                {isLoggedIn && <Route path="/about" element={<About />} />}
-                {isLoggedIn && <Route path="/change-password" element={<ChangePasswordPage />} />}
-                {isLoggedIn && <Route path="/notifications" element={<NotificationsPage />} />}
-                {isLoggedIn && <Route path="/cash-book" element={<CashBookPage />} />}
-                {isLoggedIn && hasPermission && hasPermission('SUPERADMIN') && <Route path="/debug" element={<DebugPanel />} />}
-                {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-notifications" element={<NotificationTestPanel />} />}
-                {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-order-v2" element={<OrderV2TestPanel />} />}
-              </Routes>
-            </Suspense>
-          </Layout>
-        </AppShell>
+                  {isLoggedIn && <Route path="/orders25-list" element={<Orders25List />} />}
+                  {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
+                  {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
+                  {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}
+                  {isLoggedIn && hasPermission && (hasPermission('USER_VIEW') || hasPermission('USER_MANAGE')) && <Route path="/users" element={<Users />} />}
+                  {isLoggedIn && hasPermission && (hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE')) && <Route path="/dictionaries" element={<DictionariesNew />} />}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
+                  {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
+                  {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/app-settings" element={<AppSettings />} />}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
+                  {isLoggedIn && hasPermission && hasPermission('CONTACT_READ') && <Route path="/address-book" element={<AddressBookPage />} />}
+                  {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
+                  {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
+                  {isLoggedIn && <Route path="/about" element={<About />} />}
+                  {isLoggedIn && <Route path="/change-password" element={<ChangePasswordPage />} />}
+                  {isLoggedIn && <Route path="/notifications" element={<NotificationsPage />} />}
+                  {isLoggedIn && <Route path="/cash-book" element={<CashBookPage />} />}
+                  {isLoggedIn && hasPermission && hasPermission('SUPERADMIN') && <Route path="/debug" element={<DebugPanel />} />}
+                  {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-notifications" element={<NotificationTestPanel />} />}
+                  {isLoggedIn && process.env.NODE_ENV === 'development' && <Route path="/test-order-v2" element={<OrderV2TestPanel />} />}
+                </Routes>
+              </Suspense>
+            </Layout>
+          </AppShell>
+        </MaintenanceModeWrapper>
       </Router>
     </ActivityProvider>
   );

@@ -1419,10 +1419,23 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
-// Main Component
+// Main Component with error boundary for hot-reload issues
 const OrganizationHierarchy = () => {
   const reactFlowWrapper = useRef(null);
   const { showToast } = useContext(ToastContext);
+  const [hasError, setHasError] = useState(false);
+  
+  // Catch ReactFlow hot-reload errors
+  useEffect(() => {
+    const handleError = (event) => {
+      if (event.message?.includes('useNodesState') || event.message?.includes('useEdgesState')) {
+        console.warn('ReactFlow HMR error - refresh needed');
+        setHasError(true);
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
   
   // Search terms pro každou sekci (načíst z LS)
   const [searchUsers, setSearchUsers] = useState(() => localStorage.getItem('hierarchy_search_users') || '');
@@ -4082,6 +4095,48 @@ const OrganizationHierarchy = () => {
     template.name.toLowerCase().includes(searchTemplates.toLowerCase()) ||
     (template.description && template.description.toLowerCase().includes(searchTemplates.toLowerCase()))
   );
+
+  // Hot-reload error fallback
+  if (hasError) {
+    return (
+      <Container>
+        <Header>
+          <Title>
+            <FontAwesomeIcon icon={faSitemap} />
+            Systém workflow a notifikací
+          </Title>
+        </Header>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          height: '100%',
+          color: '#f59e0b',
+          fontSize: '1.1rem'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+            <div style={{ marginBottom: '1rem' }}>Hot-reload chyba detekována</div>
+            <button 
+              onClick={() => window.location.reload()} 
+              style={{
+                padding: '12px 24px',
+                background: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: '600'
+              }}
+            >
+              Obnovit stránku (F5)
+            </button>
+          </div>
+        </div>
+      </Container>
+    );
+  }
 
   if (loading) {
     return (

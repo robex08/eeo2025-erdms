@@ -1,0 +1,433 @@
+<?php
+/**
+ * API Handlers pro globální nastavení systému
+ * Pattern: POST /global-settings s token a username v body
+ * 
+ * @package EEO API v2025.03_25
+ */
+
+/**
+ * POST /global-settings
+ * Načte nebo uloží globální nastavení podle operation v inputu
+ */
+function handle_global_settings($input, $db) {
+    // Autentizace
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+    
+    $user_id = $auth_result['id'];
+    
+    // Určit operaci
+    $operation = isset($input['operation']) ? $input['operation'] : 'get';
+    
+    // Pro čtení (get) nemusí být admin, pro save musí
+    if ($operation === 'save') {
+        // Kontrola oprávnění - pouze Admin nebo SuperAdmin
+        $sql = "
+            SELECT DISTINCT r.kod_role
+            FROM 25_role r
+            JOIN 25_uzivatele_role ur ON r.id = ur.role_id
+            WHERE ur.uzivatel_id = :user_id
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $isAdmin = false;
+        $isSuperAdmin = false;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if ($row['kod_role'] === 'SUPERADMIN') {
+                $isSuperAdmin = true;
+                $isAdmin = true;
+                break;
+            }
+            if ($row['kod_role'] === 'ADMINISTRATOR') {
+                $isAdmin = true;
+            }
+        }
+        
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Přístup odepřen'));
+            return;
+        }
+        
+        // Uložit nastavení
+        handle_save_settings($db, isset($input['settings']) ? $input['settings'] : array(), $isSuperAdmin);
+    } else {
+        // Načíst nastavení - dostupné pro všechny přihlášené uživatele
+        handle_get_settings($db);
+    }
+}
+
+/**
+ * Načte nastavení z DB
+ */
+function handle_get_settings($db) {
+    try {
+        $stmt = $db->prepare("SELECT klic, hodnota FROM 25a_nastaveni_globalni");
+        $stmt->execute();
+        
+        $settings = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $settings[$row['klic']] = $row['hodnota'];
+        }
+        
+        // Převod na boolean kde je potřeba
+        $result = array(
+            'notifications_enabled' => ($settings['notifications_enabled'] ?? '1') === '1',
+            'notifications_bell_enabled' => ($settings['notifications_inapp_enabled'] ?? '1') === '1',
+            'notifications_email_enabled' => ($settings['notifications_email_enabled'] ?? '1') === '1',
+            'hierarchy_enabled' => ($settings['hierarchy_enabled'] ?? '0') === '1',
+            'hierarchy_logic' => $settings['hierarchy_logic'] ?? 'OR',
+            'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
+            'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.'
+        );
+        
+        http_response_code(200);
+        echo json_encode(array('status' => 'ok', 'data' => $result));
+    } catch (Exception $e) {
+        error_log("Chyba při načítání nastavení: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání nastavení'));
+    }
+}
+
+/**
+ * Uloží nastavení do DB
+ */
+function handle_save_settings($db, $settings, $isSuperAdmin) {
+    try {
+        // Kontrola oprávnění pro maintenance_mode
+        if (isset($settings['maintenance_mode']) && !$isSuperAdmin) {
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN může měnit maintenance_mode'));
+            return;
+        }
+        
+        // Mapování frontend -> DB klíčů
+        $mapping = array(
+            'notifications_enabled' => 'notifications_enabled',
+            'notifications_bell_enabled' => 'notifications_inapp_enabled',
+            'notifications_email_enabled' => 'notifications_email_enabled',
+            'hierarchy_enabled' => 'hierarchy_enabled',
+            'hierarchy_logic' => 'hierarchy_logic',
+            'maintenance_mode' => 'maintenance_mode',
+            'maintenance_message' => 'maintenance_message'
+        );
+        
+        $db->beginTransaction();
+        
+        foreach ($mapping as $frontKey => $dbKey) {
+            if (!isset($settings[$frontKey])) continue;
+            
+            $value = $settings[$frontKey];
+            
+            // Převod boolean na string
+            if (is_bool($value)) {
+                $value = $value ? '1' : '0';
+            }
+            
+            // INSERT nebo UPDATE
+            $sql = "
+                INSERT INTO 25a_nastaveni_globalni (klic, hodnota, vytvoreno) 
+                VALUES (:klic, :hodnota, NOW())
+                ON DUPLICATE KEY UPDATE hodnota = :hodnota, aktualizovano = NOW()
+            ";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->bindParam(':klic', $dbKey, PDO::PARAM_STR);
+            $stmt->bindParam(':hodnota', $value, PDO::PARAM_STR);
+            $stmt->execute();
+        }
+        
+        $db->commit();
+        
+        http_response_code(200);
+        echo json_encode(array('status' => 'ok', 'message' => 'Nastavení uloženo'));
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        error_log("Chyba při ukládání nastavení: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při ukládání nastavení'));
+    }
+}
+
+// STARÝ KÓD - SMAZAT
+function handle_global_settings_get_OLD($db, $token_user_id) {
+    try {
+        // Zkontroluj oprávnění - pouze Admin nebo SuperAdmin
+        $userRoles = getUserRolesForSettings($token_user_id, $db);
+        
+        $isAdmin = false;
+        foreach ($userRoles as $role) {
+            if ($role['kod_role'] === 'SUPERADMIN' || $role['kod_role'] === 'ADMINISTRATOR') {
+                $isAdmin = true;
+                break;
+            }
+        }
+        
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode([
+                'error' => 'forbidden',
+                'message' => 'Přístup odepřen. Pouze administrátoři mohou zobrazit globální nastavení.'
+            ]);
+            return;
+        }
+        
+        $settingsModel = new GlobalSettingsModel($db);
+        $allSettings = $settingsModel->getAllSettings();
+        
+        // Převést na strukturu pro frontend
+        $settings = [
+            'notifications_enabled' => ($allSettings['notifications_enabled']['hodnota'] ?? '1') === '1',
+            'notifications_bell_enabled' => ($allSettings['notifications_bell_enabled']['hodnota'] ?? '1') === '1',
+            'notifications_email_enabled' => ($allSettings['notifications_email_enabled']['hodnota'] ?? '1') === '1',
+            'hierarchy_enabled' => ($allSettings['hierarchy_enabled']['hodnota'] ?? '0') === '1',
+            'hierarchy_profile_id' => $allSettings['hierarchy_profile_id']['hodnota'] !== 'NULL' && $allSettings['hierarchy_profile_id']['hodnota'] !== null ? (int)$allSettings['hierarchy_profile_id']['hodnota'] : null,
+            'hierarchy_logic' => $allSettings['hierarchy_logic']['hodnota'] ?? 'OR',
+            'maintenance_mode' => ($allSettings['maintenance_mode']['hodnota'] ?? '0') === '1',
+            'maintenance_message' => $allSettings['maintenance_message']['hodnota'] ?? 'Systém je momentálně v údržbě. Omlouváme se za komplikace.'
+        ];
+        
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'data' => $settings
+        ]);
+        
+    } catch (Exception $e) {
+        error_log('Chyba při načítání globálního nastavení: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'server_error',
+            'message' => 'Chyba při načítání globálního nastavení'
+        ]);
+    }
+}
+
+/**
+ * POST /global-settings
+ * Uloží globální nastavení
+ */
+function handle_global_settings_save($db, $token_user_id, $data) {
+    try {
+        // Zkontroluj oprávnění - pouze Admin nebo SuperAdmin
+        $userRoles = getUserRolesForSettings($token_user_id, $db);
+        
+        $isAdmin = false;
+        $isSuperAdmin = false;
+        foreach ($userRoles as $role) {
+            if ($role['kod_role'] === 'SUPERADMIN') {
+                $isSuperAdmin = true;
+                $isAdmin = true;
+                break;
+            }
+            if ($role['kod_role'] === 'ADMINISTRATOR') {
+                $isAdmin = true;
+            }
+        }
+        
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode([
+                'error' => 'forbidden',
+                'message' => 'Přístup odepřen. Pouze administrátoři mohou měnit globální nastavení.'
+            ]);
+            return;
+        }
+        
+        // Kontrola maintenance mode - pouze SUPERADMIN může měnit
+        if (isset($data['maintenance_mode']) && !$isSuperAdmin) {
+            http_response_code(403);
+            echo json_encode([
+                'error' => 'forbidden',
+                'message' => 'Pouze SUPERADMIN může měnit režim údržby.'
+            ]);
+            return;
+        }
+        
+        $settingsModel = new GlobalSettingsModel($db);
+        
+        // Uložit jednotlivá nastavení
+        $keysToSave = [
+            'notifications_enabled' => 'boolean',
+            'notifications_bell_enabled' => 'boolean',
+            'notifications_email_enabled' => 'boolean',
+            'hierarchy_enabled' => 'boolean',
+            'hierarchy_profile_id' => 'integer',
+            'hierarchy_logic' => 'string',
+            'maintenance_mode' => 'boolean',
+            'maintenance_message' => 'string'
+        ];
+        
+        foreach ($keysToSave as $key => $type) {
+            if (!isset($data[$key])) continue;
+            
+            $value = $data[$key];
+            
+            // Převést na string pro DB
+            if ($type === 'boolean') {
+                $value = $value ? '1' : '0';
+            } elseif ($type === 'integer') {
+                $value = $value !== null ? (string)$value : 'NULL';
+            } else {
+                $value = (string)$value;
+            }
+            
+            $settingsModel->setSetting($key, $value);
+        }
+        
+        // Logování změn
+        error_log("Globální nastavení změněno uživatelem ID: $token_user_id");
+        
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Globální nastavení bylo úspěšně uloženo'
+        ]);
+        
+    } catch (Exception $e) {
+        error_log('Chyba při ukládání globálního nastavení: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'server_error',
+            'message' => 'Chyba při ukládání globálního nastavení'
+        ]);
+    }
+}
+
+/**
+ * GET /global-settings/:key
+ * Načte jedno konkrétní nastavení podle klíče
+ */
+function handle_global_settings_get_single($db, $token_user_id, $key) {
+    try {
+        // Zkontroluj oprávnění - pouze Admin nebo SuperAdmin
+        $userRoles = getUserRolesForSettings($token_user_id, $db);
+        
+        $isAdmin = false;
+        foreach ($userRoles as $role) {
+            if ($role['kod_role'] === 'SUPERADMIN' || $role['kod_role'] === 'ADMINISTRATOR') {
+                $isAdmin = true;
+                break;
+            }
+        }
+        
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode([
+                'error' => 'forbidden',
+                'message' => 'Přístup odepřen'
+            ]);
+            return;
+        }
+        
+        $settingsModel = new GlobalSettingsModel($db);
+        $value = $settingsModel->getSetting($key);
+        
+        if ($value === null) {
+            http_response_code(404);
+            echo json_encode([
+                'error' => 'not_found',
+                'message' => 'Nastavení nebylo nalezeno'
+            ]);
+            return;
+        }
+        
+        // Převést hodnotu podle typu
+        $typedValue = $value;
+        if ($value === '1' || $value === '0') {
+            $typedValue = $value === '1';
+        } elseif (is_numeric($value) && $value !== 'NULL') {
+            $typedValue = (int)$value;
+        } elseif ($value === 'NULL') {
+            $typedValue = null;
+        }
+        
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'key' => $key,
+            'value' => $typedValue
+        ]);
+        
+    } catch (Exception $e) {
+        error_log('Chyba při načítání nastavení: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'server_error',
+            'message' => 'Chyba při načítání nastavení'
+        ]);
+    }
+}
+
+/**
+ * GET /maintenance-status
+ * Kontrola údržbového režimu - dostupné i bez autentizace
+ */
+function handle_maintenance_status_check($db) {
+    try {
+        $settingsModel = new GlobalSettingsModel($db);
+        $maintenanceMode = $settingsModel->getSetting('maintenance_mode');
+        
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'maintenance_mode' => $maintenanceMode === '1'
+        ]);
+        
+    } catch (Exception $e) {
+        error_log('Chyba při kontrole maintenance mode: ' . $e->getMessage());
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'maintenance_mode' => false
+        ]);
+    }
+}
+
+/**
+ * POST /maintenance-message
+ * Načte údržbovou zprávu - dostupné pro přihlášené uživatele
+ */
+function handle_maintenance_message($input, $db) {
+    // Autentizace - pouze ověří že je přihlášený
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token, $db);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+    
+    try {
+        $stmt = $db->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'maintenance_message'");
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $message = $row ? $row['hodnota'] : 'Systém je momentálně v údržbě. Omlouváme se za komplikace.';
+        
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => $message
+        ));
+    } catch (Exception $e) {
+        error_log("Chyba při načítání údržbové zprávy: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání zprávy'));
+    }
+}
