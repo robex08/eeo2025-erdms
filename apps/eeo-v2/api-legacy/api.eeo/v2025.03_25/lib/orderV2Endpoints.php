@@ -103,6 +103,19 @@ function handle_order_v2_get($input, $config, $queries) {
             return;
         }
         
+        // 🌲 HIERARCHIE WORKFLOW: Zkontrolovat, zda uživatel může vidět tuto objednávku
+        require_once __DIR__ . '/hierarchyOrderFilters.php';
+        
+        if (!canUserViewOrder($current_user_id, $numeric_order_id, $db)) {
+            error_log("Order V2 GET: User $current_user_id cannot view order $numeric_order_id (hierarchy restriction)");
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu'
+            ));
+            return;
+        }
+        
         // Volitelný enrichment (pokud parametr enriched=1)
         $is_enriched = false;
         if (isset($input['enriched']) && $input['enriched'] == 1) {
@@ -305,6 +318,23 @@ function handle_order_v2_list($input, $config, $queries) {
         
         // Filter: aktivni objednávky (vždy)
         $whereConditions[] = "o.aktivni = 1";
+        
+        // 🌲 HIERARCHIE WORKFLOW: Aplikovat hierarchii PŘED role-based filtering
+        // ============================================================================
+        // Důležité: Hierarchie má PRIORITU nad standardními právy!
+        // Může rozšířit i omezit viditelnost dat podle organizačního řádu.
+        // ============================================================================
+        require_once __DIR__ . '/hierarchyOrderFilters.php';
+        
+        $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
+        if ($hierarchyFilter !== null) {
+            // Hierarchie je aktivní a uživatel není immune
+            $whereConditions[] = $hierarchyFilter;
+            error_log("Order V2 LIST: ✅ HIERARCHY filter applied for user $current_user_id");
+        } else {
+            error_log("Order V2 LIST: ℹ️  HIERARCHY filter NOT applied (disabled, no profile, or user is immune)");
+        }
+        // ============================================================================
         
         // � KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
         $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
