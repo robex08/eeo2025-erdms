@@ -1430,6 +1430,9 @@ const Layout = ({ children }) => {
   // RSS vtipy: kompletně odstraněno (na žádost uživatele)
   const { mode, toggle } = useThemeMode();
 
+  // State pro hierarchii info
+  const [hierarchyInfo, setHierarchyInfo] = useState(null);
+
   // State pro submenu - Administrace
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const adminMenuRef = useRef(null);
@@ -1557,6 +1560,48 @@ const Layout = ({ children }) => {
   const [calculatorActive, setCalculatorActive] = useState(false);
   const [calculatorLastResult, setCalculatorLastResult] = useState(null);
   const [calculatorLastExpression, setCalculatorLastExpression] = useState(null);
+
+  // Hierarchy status for ADMINI role (zobrazení v hlavičce)
+  const [hierarchyEnabled, setHierarchyEnabled] = useState(false);
+  
+  // Check if user is ADMINI (not ADMINISTRATOR or SUPERADMIN)
+  const isAdmini = useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
+  }, [userDetail]);
+  
+  // Načíst stav hierarchie při loginu - pro ADMINI zobrazit stav, pro ostatní načíst profil ID
+  useEffect(() => {
+    if (!isLoggedIn || !token || !user?.username) return;
+    
+    const loadHierarchyStatus = async () => {
+      try {
+        const { getGlobalSettings } = await import('../services/globalSettingsApi');
+        const settings = await getGlobalSettings(token, user.username);
+        
+        setHierarchyEnabled(settings.hierarchy_enabled || false);
+        
+        // Nastavit info o hierarchii pro hlavičku
+        if (settings.hierarchy_enabled && settings.hierarchy_profile_id) {
+          setHierarchyInfo({
+            profileId: settings.hierarchy_profile_id,
+            enabled: true
+          });
+        } else {
+          setHierarchyInfo({ enabled: false });
+        }
+      } catch (error) {
+        console.error('Chyba při načítání stavu hierarchie:', error);
+        setHierarchyEnabled(false);
+        setHierarchyInfo(null);
+      }
+    };
+    
+    loadHierarchyStatus();
+    
+    // Refresh každých 30 sekund
+    const interval = setInterval(loadHierarchyStatus, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, token, user?.username]);
 
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
@@ -2435,6 +2480,9 @@ const Layout = ({ children }) => {
               Systém správy a workflow objednávek
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
                 {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
+                {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
+                  <span style={{ color: '#10b981', fontWeight: '700' }}>.H{hierarchyInfo.profileId}</span>
+                )}
               </sup>
             </HeaderTitle>
             {isLoggedIn && (
