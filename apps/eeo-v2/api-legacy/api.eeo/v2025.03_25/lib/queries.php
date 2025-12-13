@@ -499,11 +499,11 @@ $queries['uzivatele_org_data_by_username'] = "
 $queries['uzivatele_insert'] = "INSERT INTO " . TABLE_UZIVATELE . " (
     username, password_hash, jmeno, prijmeni, titul_pred, titul_za, 
     email, telefon, usek_id, lokalita_id, pozice_id, organizace_id,
-    aktivni, dt_vytvoreni, dt_aktualizace
+    aktivni, dt_vytvoreni, dt_aktualizace, dt_posledni_aktivita
 ) VALUES (
     :username, :password_hash, :jmeno, :prijmeni, :titul_pred, :titul_za,
     :email, :telefon, :usek_id, :lokalita_id, :pozice_id, :organizace_id,
-    :aktivni, NOW(), NOW()
+    :aktivni, NOW(), NOW(), NOW()
 )";
 
 // Update user by ID
