@@ -21,6 +21,7 @@ require_once __DIR__ . '/OrderV2Handler.php';
 require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
 require_once __DIR__ . '/smlouvyHandlers.php';
+require_once __DIR__ . '/hierarchyOrderFilters.php';
 
 /**
  * GET /api/order-v2/{id}
@@ -32,19 +33,10 @@ function handle_order_v2_get($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $order_id = isset($input['id']) ? $input['id'] : null;
     
-    // Connect to database for token verification
-    $db = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-    if ($db->connect_error) {
-        http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Database connection failed'));
-        return;
-    }
-    
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
-        $db->close();
         return;
     }
     
@@ -106,27 +98,28 @@ function handle_order_v2_get($input, $config, $queries) {
         // 🌲 HIERARCHIE WORKFLOW: Zkontrolovat, zda uživatel může vidět tuto objednávku
         require_once __DIR__ . '/hierarchyOrderFilters.php';
         
-        if (!canUserViewOrder($numeric_order_id, $current_user_id, $db)) {
+        // Vytvoř PDO spojení pro hierarchy check a enrichment
+        $pdo = get_db($config);
+        
+        if (!canUserViewOrder($numeric_order_id, $current_user_id, $pdo)) {
             error_log("Order V2 GET: User $current_user_id cannot view order $numeric_order_id (hierarchy restriction)");
             http_response_code(403);
             echo json_encode(array(
                 'status' => 'error', 
                 'message' => 'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu'
             ));
-            $db->close();
             return;
         }
         
         // Volitelný enrichment (pokud parametr enriched=1)
         $is_enriched = false;
         if (isset($input['enriched']) && $input['enriched'] == 1) {
-            $db = get_db($config);
-            enrichOrderWithItems($db, $order);
-            enrichOrderWithInvoices($db, $order);
-            enrichOrderWithCodebooks($db, $order);
-            enrichOrderFinancovani($db, $order);
-            enrichOrderRegistrSmluv($db, $order);
-            enrichOrderWithWorkflowUsers($db, $order);
+            enrichOrderWithItems($pdo, $order);
+            enrichOrderWithInvoices($pdo, $order);
+            enrichOrderWithCodebooks($pdo, $order);
+            enrichOrderFinancovani($pdo, $order);
+            enrichOrderRegistrSmluv($pdo, $order);
+            enrichOrderWithWorkflowUsers($pdo, $order);
             
             $is_enriched = true;
         }
@@ -320,20 +313,20 @@ function handle_order_v2_list($input, $config, $queries) {
         // Filter: aktivni objednávky (vždy)
         $whereConditions[] = "o.aktivni = 1";
         
-        // 🌲 HIERARCHIE WORKFLOW: Aplikovat hierarchii PŘED role-based filtering
+        // 🌲 HIERARCHIE WORKFLOW: REPLACES role-based filter
         // ============================================================================
-        // Důležité: Hierarchie má PRIORITU nad standardními právy!
-        // Může rozšířit i omezit viditelnost dat podle organizačního řádu.
-        // ============================================================================
-        require_once __DIR__ . '/hierarchyOrderFilters.php';
-        
+        error_log("🔍 TEST: Before calling applyHierarchyFilterToOrders");
+        global $HIERARCHY_DEBUG_INFO; // 🔥 Načti debug info z funkce
         $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
+        error_log("🔍 TEST: After calling applyHierarchyFilterToOrders, result=" . ($hierarchyFilter === null ? 'NULL' : $hierarchyFilter));
+        
+        $hierarchyApplied = false; // 🔥 Flag pro skip role-based filtru
         if ($hierarchyFilter !== null) {
-            // Hierarchie je aktivní a uživatel není immune
             $whereConditions[] = $hierarchyFilter;
-            error_log("Order V2 LIST: ✅ HIERARCHY filter applied for user $current_user_id");
+            $hierarchyApplied = true; // 🔥 Hierarchie NAHRAZUJE role-based filter
+            error_log("✅ TEST: HIERARCHY filter APPLIED - will SKIP role-based filter");
         } else {
-            error_log("Order V2 LIST: ℹ️  HIERARCHY filter NOT applied (disabled, no profile, or user is immune)");
+            error_log("ℹ️ TEST: HIERARCHY filter NOT applied - will use role-based filter");
         }
         // ============================================================================
         
@@ -444,26 +437,32 @@ function handle_order_v2_list($input, $config, $queries) {
             
         } else {
             // 🔥 Běžný uživatel (ORDER_READ_OWN) - aplikuj 12-role WHERE filter
-            error_log("Order V2 LIST: Regular user (ORDER_READ_OWN) - applying role-based filter for user ID: $current_user_id");
+            // POKUD NENÍ HIERARCHIE! (hierarchie ji nahrazuje)
             
-            // Multi-role WHERE podmínka podle všech 12 user ID polí
-            $roleBasedCondition = "(
-                o.uzivatel_id = :role_user_id
-                OR o.objednatel_id = :role_user_id
-                OR o.garant_uzivatel_id = :role_user_id
-                OR o.schvalovatel_id = :role_user_id
-                OR o.prikazce_id = :role_user_id
-                OR o.uzivatel_akt_id = :role_user_id
-                OR o.odesilatel_id = :role_user_id
-                OR o.dodavatel_potvrdil_id = :role_user_id
-                OR o.zverejnil_id = :role_user_id
-                OR o.fakturant_id = :role_user_id
-                OR o.dokoncil_id = :role_user_id
-                OR o.potvrdil_vecnou_spravnost_id = :role_user_id
-            )";
-            
-            $whereConditions[] = $roleBasedCondition;
-            $params['role_user_id'] = $current_user_id;
+            if (!$hierarchyApplied) {
+                error_log("Order V2 LIST: Regular user (ORDER_READ_OWN) - applying role-based filter for user ID: $current_user_id");
+                
+                // Multi-role WHERE podmínka podle všech 12 user ID polí
+                $roleBasedCondition = "(
+                    o.uzivatel_id = :role_user_id
+                    OR o.objednatel_id = :role_user_id
+                    OR o.garant_uzivatel_id = :role_user_id
+                    OR o.schvalovatel_id = :role_user_id
+                    OR o.prikazce_id = :role_user_id
+                    OR o.uzivatel_akt_id = :role_user_id
+                    OR o.odesilatel_id = :role_user_id
+                    OR o.dodavatel_potvrdil_id = :role_user_id
+                    OR o.zverejnil_id = :role_user_id
+                    OR o.fakturant_id = :role_user_id
+                    OR o.dokoncil_id = :role_user_id
+                    OR o.potvrdil_vecnou_spravnost_id = :role_user_id
+                )";
+                
+                $whereConditions[] = $roleBasedCondition;
+                $params['role_user_id'] = $current_user_id;
+            } else {
+                error_log("Order V2 LIST: Regular user - SKIPPING role-based filter (hierarchy REPLACES it)");
+            }
             
             // Běžný user: archivované jen pokud archivovano=1
             if (!$includeArchived) {
@@ -494,6 +493,13 @@ function handle_order_v2_list($input, $config, $queries) {
         if (!empty($whereConditions)) {
             $whereClause = 'WHERE ' . implode(' AND ', $whereConditions);
         }
+        
+        // 🔥 DEBUG: Add WHERE to global debug for frontend
+        if (!isset($HIERARCHY_DEBUG_INFO)) {
+            $HIERARCHY_DEBUG_INFO = array();
+        }
+        $HIERARCHY_DEBUG_INFO['backend_where_clause'] = $whereClause;
+        $HIERARCHY_DEBUG_INFO['backend_params'] = $params;
         
         error_log("Order V2 LIST: DB connection OK");
         error_log("Order V2 LIST: Table name = " . get_orders_table_name());
@@ -668,6 +674,9 @@ function handle_order_v2_list($input, $config, $queries) {
             error_log("Order V2 LIST: Timestamp error: " . $timestampEx->getMessage());
         }
         
+        // 🔥 Přidej hierarchy debug info do response
+        global $HIERARCHY_DEBUG_INFO;
+        
         echo json_encode(array(
             'status' => 'ok',
             'data' => $standardizedOrders,
@@ -698,7 +707,9 @@ function handle_order_v2_list($input, $config, $queries) {
                     'debug_in_array_order_old' => in_array('ORDER_OLD', $user_permissions),
                     'debug_in_array_order_read_all' => in_array('ORDER_READ_ALL', $user_permissions),
                     'debug_permissions_count' => count($user_permissions)
-                )
+                ),
+                // 🔥 HIERARCHY DEBUG INFO - viditelné v F12 konzoli
+                'hierarchy_debug' => $HIERARCHY_DEBUG_INFO ?? array('not_available' => true)
             )
         ));
         

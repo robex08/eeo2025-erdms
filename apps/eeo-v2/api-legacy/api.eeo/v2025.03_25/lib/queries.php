@@ -17,7 +17,8 @@ define('TABLE_ROLE_PRAVA', '25_role_prava');
 define('TABLE_USEKY', '25_useky');
 define('TABLE_UZIVATELE', '25_uzivatele');
 define('TABLE_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
-define('TABLE_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
+// DEPRECATED: Old hierarchy table removed 13.12.2025 - use TABLE_HIERARCHIE_VZTAHY instead
+define('TABLE_UZIVATELE_HIERARCHIE', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_PROFILY', '25_hierarchie_profily');
 define('TABLE_NOTIFICATION_TEMPLATES', '25_notification_templates');
@@ -1071,73 +1072,15 @@ $queries['chat_online_status_mark_offline'] = "
 ";
 
 // ============ HIERARCHIE UŽIVATELŮ ============
-$queries['hierarchy_get_subordinates'] = "
-    SELECT 
-        h.podrizeny_id,
-        h.dt_od,
-        h.dt_do,
-        h.aktivni,
-        h.poznamka,
-        u.username,
-        u.jmeno,
-        u.prijmeni,
-        u.titul_pred,
-        u.titul_za,
-        u.email,
-        p.nazev_pozice,
-        o.nazev as organizace_nazev,
-        us.usek_nazev
-    FROM 25_uzivatele_hierarchie h
-    JOIN 25_uzivatele u ON h.podrizeny_id = u.id
-    LEFT JOIN pozice p ON u.pozice_id = p.id
-    LEFT JOIN organizace o ON u.organizace_id = o.id  
-    LEFT JOIN useky us ON u.usek_id = us.id
-    WHERE h.nadrizeny_id = :nadrizeny_id
-    AND h.aktivni = 1
-    AND (h.dt_do IS NULL OR h.dt_do >= CURDATE())
-    ORDER BY u.prijmeni, u.jmeno
-";
-
-$queries['hierarchy_get_superiors'] = "
-    SELECT 
-        h.nadrizeny_id,
-        h.dt_od,
-        h.dt_do,
-        h.aktivni,
-        h.poznamka,
-        u.username,
-        u.jmeno,
-        u.prijmeni,
-        u.titul_pred,
-        u.titul_za,
-        u.email,
-        p.nazev_pozice,
-        o.nazev as organizace_nazev,
-        us.usek_nazev
-    FROM 25_uzivatele_hierarchie h
-    JOIN 25_uzivatele u ON h.nadrizeny_id = u.id
-    LEFT JOIN pozice p ON u.pozice_id = p.id
-    LEFT JOIN organizace o ON u.organizace_id = o.id
-    LEFT JOIN useky us ON u.usek_id = us.id
-    WHERE h.podrizeny_id = :podrizeny_id
-    AND h.aktivni = 1
-    AND (h.dt_do IS NULL OR h.dt_do >= CURDATE())
-    ORDER BY u.prijmeni, u.jmeno
-";
-
-$queries['hierarchy_add_relation'] = "
-    INSERT INTO 25_uzivatele_hierarchie 
-    (nadrizeny_id, podrizeny_id, dt_od, dt_do, aktivni, poznamka, dt_vytvoreni)
-    VALUES (:nadrizeny_id, :podrizeny_id, :dt_od, :dt_do, :aktivni, :poznamka, NOW())
-";
-
-$queries['hierarchy_remove_relation'] = "
-    UPDATE 25_uzivatele_hierarchie 
-    SET aktivni = 0, dt_do = CURDATE()
-    WHERE nadrizeny_id = :nadrizeny_id 
-    AND podrizeny_id = :podrizeny_id
-    AND aktivni = 1
-";
+// ============ DEPRECATED: STARÁ HIERARCHIE (25_uzivatele_hierarchie) ============
+// Tyto queries byly odstraněny 13.12.2025 - tabulka již neexistuje
+// Nová hierarchie používá 25_hierarchie_vztahy a hierarchyHandlers_v2.php
+/*
+$queries['hierarchy_get_subordinates'] = "..."; // REMOVED
+$queries['hierarchy_get_superiors'] = "..."; // REMOVED  
+$queries['hierarchy_add_relation'] = "..."; // REMOVED
+$queries['hierarchy_remove_relation'] = "..."; // REMOVED
+*/
 
 // ============ ZASTUPOVÁNÍ UŽIVATELŮ ============
 $queries['substitution_get_active'] = "
@@ -1310,17 +1253,18 @@ $queries['user_detail_full'] = "
         o.email as organizace_email,
         o.telefon as organizace_telefon,
         
-        -- Nadrizeny (object)
-        nadrizeny.id as nadrizeny_id,
-        CONCAT_WS(' ', nadrizeny.titul_pred, nadrizeny.jmeno, nadrizeny.prijmeni, nadrizeny.titul_za) as nadrizeny_cely_jmeno
+        -- Nadrizeny (object) - temporarily NULL after removing old hierarchy
+        NULL as nadrizeny_id,
+        NULL as nadrizeny_cely_jmeno
         
     FROM " . TABLE_UZIVATELE . " u
     LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
     LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
     LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
     LEFT JOIN " . TABLE_ORGANIZACE . " o ON u.organizace_id = o.id
-    LEFT JOIN " . TABLE_UZIVATELE_HIERARCHIE . " h ON u.id = h.podrizeny_id
-    LEFT JOIN " . TABLE_UZIVATELE . " nadrizeny ON h.nadrizeny_id = nadrizeny.id AND nadrizeny.aktivni = 1
+    -- REMOVED: Old hierarchy table (25_uzivatele_hierarchie) - nadrizeny field temporarily NULL
+    -- LEFT JOIN " . TABLE_UZIVATELE_HIERARCHIE . " h ON u.id = h.podrizeny_id
+    -- LEFT JOIN " . TABLE_UZIVATELE . " nadrizeny ON h.nadrizeny_id = nadrizeny.id AND nadrizeny.aktivni = 1
     WHERE u.id = :user_id
     LIMIT 1
 ";

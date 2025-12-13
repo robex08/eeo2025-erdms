@@ -1,7 +1,15 @@
 <?php
 // v2025.03_25/lib/hierarchyHandlers.php
 
-// ============ HIERARCHIE UŽIVATELŮ ============
+// ============================================================================================================
+// DEPRECATED: Tento soubor obsahuje ZASTARALÉ funkce pro původní hierarchii (25_uzivatele_hierarchie)
+// Tabulka 25_uzivatele_hierarchie byla SMAZÁNA 13.12.2025
+// 
+// NOVÉ API pro hierarchii: viz hierarchyHandlers_v2.php (používá 25_hierarchie_vztahy)
+// Tyto funkce jsou ponechány pouze pro zpětnou kompatibilitu s legacy endpointy, které už se nepoužívají
+// ============================================================================================================
+
+// ============ HIERARCHIE UŽIVATELŮ (DEPRECATED) ============
 
 function handle_hierarchy_subordinates($data, $pdo) {
     global $queries;
@@ -815,9 +823,9 @@ function handle_hierarchy_structure($data, $pdo) {
             LEFT JOIN 25_pozice p ON u.pozice_id = p.id
             WHERE u.aktivni = 1
             AND u.id IN (
-                SELECT DISTINCT nadrizeny_id FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND nadrizeny_id IS NOT NULL
+                SELECT DISTINCT user_id_1 FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_1 IS NOT NULL
                 UNION
-                SELECT DISTINCT podrizeny_id FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND podrizeny_id IS NOT NULL
+                SELECT DISTINCT user_id_2 FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_2 IS NOT NULL
             )
         ";
         
@@ -1255,7 +1263,7 @@ function handle_hierarchy_profiles_list($data, $pdo) {
                 p.dt_upraveno,
                 u.jmeno,
                 u.prijmeni,
-                (SELECT COUNT(*) FROM 25_uzivatele_hierarchie h WHERE h.profil_id = p.id) as vztahu_count
+                (SELECT COUNT(*) FROM 25_hierarchie_vztahy hz WHERE hz.profil_id = p.id AND hz.aktivni = 1) as vztahu_count
             FROM 25_hierarchie_profily p
             LEFT JOIN 25_uzivatele u ON p.vytvoril_user_id = u.id
             ORDER BY p.aktivni DESC, p.nazev ASC
@@ -1380,7 +1388,7 @@ function handle_hierarchy_profiles_delete($data, $pdo) {
         }
         
         // Smazat všechny vztahy v profilu
-        $stmt = $pdo->prepare("DELETE FROM 25_uzivatele_hierarchie WHERE profil_id = ?");
+        $stmt = $pdo->prepare("DELETE FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ?");
         $stmt->execute(array($profilId));
         
         // Smazat profil
@@ -1438,6 +1446,42 @@ function handle_hierarchy_profiles_set_active($data, $pdo) {
         $pdo->rollBack();
         error_log("SET ACTIVE PROFILE ERROR: " . $e->getMessage());
         return array('success' => false, 'error' => 'Chyba pri nastaveni aktivniho profilu');
+    }
+}
+
+/**
+ * Toggle aktivního stavu profilu (enable/disable)
+ */
+function handle_hierarchy_profiles_toggle_active($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : 0;
+    $isActive = isset($data['is_active']) ? (int)$data['is_active'] : 0;
+    
+    if ($profilId <= 0) {
+        return array('success' => false, 'error' => 'Neplatne profile_id');
+    }
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE 25_hierarchie_profily SET aktivni = ? WHERE id = ?");
+        $stmt->execute(array($isActive, $profilId));
+        
+        $statusText = $isActive ? 'aktivovan' : 'deaktivovan';
+        return array('success' => true, 'message' => "Profil byl $statusText");
+        
+    } catch (PDOException $e) {
+        error_log("TOGGLE PROFILE ACTIVE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri zmene stavu profilu');
     }
 }
 

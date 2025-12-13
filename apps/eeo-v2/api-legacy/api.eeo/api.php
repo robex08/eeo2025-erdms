@@ -1001,6 +1001,17 @@ switch ($endpoint) {
         }
         break;
     
+    case 'hierarchy/profiles/toggle-active':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_toggle_active($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
     case 'hierarchy/profiles/delete':
         if ($request_method === 'POST') {
             $response = handle_hierarchy_profiles_delete($input, $pdo);
@@ -4540,14 +4551,14 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $db = get_db($config);
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $vytvoril_user_id = isset($input['user_id']) ? (int)$input['user_id'] : null;
@@ -4556,16 +4567,20 @@ switch ($endpoint) {
                 if (!$vytvoril_user_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr user_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
                 // Načíst usek_id uživatele pro flag je_z_meho_useku
                 $user_usek_id = null;
-                $sql_user = "SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = $vytvoril_user_id LIMIT 1";
-                $result_user = mysqli_query($conn, $sql_user);
-                if ($result_user && $user_row = mysqli_fetch_assoc($result_user)) {
-                    $user_usek_id = (int)$user_row['usek_id'];
+                try {
+                    $stmt = $db->prepare("SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1");
+                    $stmt->execute(['user_id' => $vytvoril_user_id]);
+                    $user_row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($user_row) {
+                        $user_usek_id = (int)$user_row['usek_id'];
+                    }
+                } catch (Exception $e) {
+                    // non-fatal
                 }
                 
                 // KROK 0: Načíst všechna LP metadata z agregační tabulky
@@ -4581,11 +4596,18 @@ switch ($endpoint) {
                         us.usek_nazev
                     FROM " . TBL_LP_CERPANI . " c
                     LEFT JOIN 25_useky us ON c.usek_id = us.id
-                    WHERE c.rok = $rok
+                    WHERE c.rok = :rok
                 ";
-                $result_all_lp = mysqli_query($conn, $sql_all_lp);
-                while ($lp_row = mysqli_fetch_assoc($result_all_lp)) {
-                    $lp_metadata[$lp_row['cislo_lp']] = $lp_row;
+                try {
+                    $stmt = $db->prepare($sql_all_lp);
+                    $stmt->execute(['rok' => $rok]);
+                    while ($lp_row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $lp_metadata[$lp_row['cislo_lp']] = $lp_row;
+                    }
+                    // Pokud žádná LP metadata nejsou, je to OK - user prostě nemá LP
+                } catch (Exception $e) {
+                    error_log("LP metadata query error: " . $e->getMessage());
+                    // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
                 // KROK 1: Najít všechny objednávky kde se uživatele týká (objednatel, garant, vytvořil)
@@ -4599,35 +4621,37 @@ switch ($endpoint) {
                         obj.dt_vytvoreni
                     FROM " . TBL_OBJEDNAVKY . " obj
                     WHERE (
-                        obj.uzivatel_id = $vytvoril_user_id 
-                        OR obj.garant_uzivatel_id = $vytvoril_user_id
+                        obj.uzivatel_id = :user_id1
+                        OR obj.garant_uzivatel_id = :user_id2
                     )
                     AND obj.financovani IS NOT NULL
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                    AND YEAR(obj.dt_vytvoreni) = $rok
+                    AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
                     ORDER BY obj.dt_vytvoreni DESC
                 ";
                 
-                $result_orders = mysqli_query($conn, $sql_orders);
-                
-                if (!$result_orders) {
-                    http_response_code(500);
-                    echo json_encode(array(
-                        'status' => 'error',
-                        'message' => 'SQL error',
-                        'error' => mysqli_error($conn)
-                    ));
-                    $conn->close();
-                    break;
+                try {
+                    $stmt = $db->prepare($sql_orders);
+                    $stmt->execute([
+                        'user_id1' => $vytvoril_user_id,
+                        'user_id2' => $vytvoril_user_id,
+                        'rok' => $rok
+                    ]);
+                    $result_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    // Pokud user nemá objednávky, je to OK - vrátíme prázdné pole
+                } catch (Exception $e) {
+                    error_log("LP orders query error for user $vytvoril_user_id: " . $e->getMessage());
+                    // Pokračuj s prázdným polem - není to fatální chyba
+                    $result_orders = array();
                 }
                 
                 // KROK 2: Agregovat čerpání podle LP
                 $lp_cerpani = array(); // cislo_lp => data
                 $objednavky_list = array();
                 
-                while ($order = mysqli_fetch_assoc($result_orders)) {
+                foreach ($result_orders as $order) {
                     $financovani = json_decode($order['financovani'], true);
                     
                     if (!$financovani || $financovani['typ'] !== 'LP' || !isset($financovani['lp_kody'])) {
@@ -4646,30 +4670,39 @@ switch ($endpoint) {
                     $rezervace_podil = $je_schvalena ? ((float)$order['max_cena_s_dph'] / $pocet_lp) : 0;
                     
                     // Načíst faktury pro skutečnost
-                    $sql_invoices = "
-                        SELECT SUM(fa_castka) as suma_faktur
-                        FROM " . TBL_FAKTURY . "
-                        WHERE objednavka_id = {$order['id']}
-                        AND aktivni = 1
-                    ";
-                    $result_invoices = mysqli_query($conn, $sql_invoices);
-                    $invoices_row = mysqli_fetch_assoc($result_invoices);
-                    $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
-                    $skutecne_podil = $suma_faktur / $pocet_lp;
+                    try {
+                        $stmt_inv = $db->prepare("
+                            SELECT SUM(fa_castka) as suma_faktur
+                            FROM " . TBL_FAKTURY . "
+                            WHERE objednavka_id = :order_id
+                            AND aktivni = 1
+                        ");
+                        $stmt_inv->execute(['order_id' => $order['id']]);
+                        $invoices_row = $stmt_inv->fetch(PDO::FETCH_ASSOC);
+                        $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
+                        $skutecne_podil = $suma_faktur / $pocet_lp;
+                    } catch (Exception $e) {
+                        $suma_faktur = 0;
+                        $skutecne_podil = 0;
+                    }
                     
                     // Načíst položky objednávky pro předpoklad (POUZE pokud není faktura)
                     $predpoklad_podil = 0;
                     if ($je_schvalena && $suma_faktur == 0) {
-                        $sql_items = "
-                            SELECT SUM(cena_s_dph) as suma_polozek
-                            FROM " . TBL_OBJEDNAVKY_POLOZKY . "
-                            WHERE objednavka_id = {$order['id']}
-                            AND aktivni = 1
-                        ";
-                        $result_items = mysqli_query($conn, $sql_items);
-                        $items_row = mysqli_fetch_assoc($result_items);
-                        $suma_polozek = $items_row ? (float)$items_row['suma_polozek'] : 0;
-                        $predpoklad_podil = $suma_polozek / $pocet_lp;
+                        try {
+                            $stmt_items = $db->prepare("
+                                SELECT SUM(cena_s_dph) as suma_polozek
+                                FROM " . TBL_OBJEDNAVKY_POLOZKY . "
+                                WHERE objednavka_id = :order_id
+                                AND aktivni = 1
+                            ");
+                            $stmt_items->execute(['order_id' => $order['id']]);
+                            $items_row = $stmt_items->fetch(PDO::FETCH_ASSOC);
+                            $suma_polozek = $items_row ? (float)$items_row['suma_polozek'] : 0;
+                            $predpoklad_podil = $suma_polozek / $pocet_lp;
+                        } catch (Exception $e) {
+                            $predpoklad_podil = 0;
+                        }
                     }
                     
                     // Přidat k objednávkám
@@ -4687,9 +4720,13 @@ switch ($endpoint) {
                     foreach ($lp_ids as $lp_id) {
                         // Načíst cislo_lp z master tabulky
                         $lp_id_int = (int)$lp_id;
-                        $sql_lp_kod = "SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = $lp_id_int LIMIT 1";
-                        $result_lp_kod = mysqli_query($conn, $sql_lp_kod);
-                        $lp_kod_row = mysqli_fetch_assoc($result_lp_kod);
+                        try {
+                            $stmt_lp = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :lp_id LIMIT 1");
+                            $stmt_lp->execute(['lp_id' => $lp_id_int]);
+                            $lp_kod_row = $stmt_lp->fetch(PDO::FETCH_ASSOC);
+                        } catch (Exception $e) {
+                            continue;
+                        }
                         
                         if (!$lp_kod_row) continue;
                         
@@ -4744,22 +4781,19 @@ switch ($endpoint) {
                 
                 // KROK 3: Detekovat čerpání z pokladny (pokud uživatel pokladnu má)
                 foreach ($lp_cerpani as $cislo_lp => $data) {
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                    
-                    $sql_pokladna = "
-                        SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-                        FROM " . TBL_POKLADNI_KNIHY . " pkn
-                        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
-                        WHERE pol.lp_kod = '$cislo_lp_safe'
-                        AND pkn.rok = $rok
-                        AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
-                    ";
-                    
-                    $result_pokl = mysqli_query($conn, $sql_pokladna);
-                    if ($result_pokl) {
-                        $pokl_row = mysqli_fetch_assoc($result_pokl);
+                    try {
+                        $stmt_pokl = $db->prepare("
+                            SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
+                            FROM " . TBL_POKLADNI_KNIHY . " pkn
+                            JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
+                            WHERE pol.lp_kod = :lp_kod
+                            AND pkn.rok = :rok
+                            AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
+                        ");
+                        $stmt_pokl->execute(['lp_kod' => $cislo_lp, 'rok' => $rok]);
+                        $pokl_row = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
                         $lp_cerpani[$cislo_lp]['moje_pokladna'] = (float)$pokl_row['cerpano_pokl'];
-                    } else {
+                    } catch (Exception $e) {
                         $lp_cerpani[$cislo_lp]['moje_pokladna'] = 0;
                     }
                 }
@@ -4790,7 +4824,7 @@ switch ($endpoint) {
                         'objednavky' => $objednavky_list
                     ),
                     'meta' => array(
-                        'version' => 'v3.0',
+                        'version' => 'v3.0-PDO',
                         'tri_typy_cerpani' => true,
                         'user_id' => $vytvoril_user_id,
                         'rok' => $rok,
@@ -4799,8 +4833,6 @@ switch ($endpoint) {
                         'timestamp' => date('Y-m-d H:i:s')
                     )
                 ));
-                
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
