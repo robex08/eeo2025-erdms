@@ -2374,6 +2374,50 @@ const OrganizationHierarchy = () => {
         showExtended: false,
         showModules: false,
         explanation: (source, target) => `VŠICHNI uživatelé s rolí ${target} budou dostávat notifikace typu "${source}".`
+      },
+      'department-role': {
+        label: 'Úsek → Role',
+        icon: '🏢→🛡️',
+        description: 'Uživatelé s danou rolí v úseku získávají viditelnost dat',
+        sourceLabel: 'Úsek (zdroj dat)',
+        targetLabel: 'Role (získává práva)',
+        showScope: true,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `Všichni uživatelé s rolí ${target} získají práva vidět data z úseku ${source}.`
+      },
+      'role-department': {
+        label: 'Role → Úsek',
+        icon: '🛡️→🏢',
+        description: 'Role získává viditelnost dat z úseku',
+        sourceLabel: 'Role (získává práva)',
+        targetLabel: 'Úsek (zdroj dat)',
+        showScope: true,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `Uživatelé s rolí ${source} získají práva vidět data z úseku ${target}.`
+      },
+      'location-role': {
+        label: 'Lokalita → Role',
+        icon: '📍→🛡️',
+        description: 'Uživatelé s danou rolí v lokalitě získávají viditelnost dat',
+        sourceLabel: 'Lokalita (zdroj dat)',
+        targetLabel: 'Role (získává práva)',
+        showScope: true,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `Všichni uživatelé s rolí ${target} získají práva vidět data z lokality ${source}.`
+      },
+      'role-location': {
+        label: 'Role → Lokalita',
+        icon: '🛡️→📍',
+        description: 'Role získává viditelnost dat z lokality',
+        sourceLabel: 'Role (získává práva)',
+        targetLabel: 'Lokalita (zdroj dat)',
+        showScope: true,
+        showExtended: false,
+        showModules: true,
+        explanation: (source, target) => `Uživatelé s rolí ${source} získají práva vidět data z lokality ${target}.`
       }
     };
     
@@ -5871,6 +5915,21 @@ const OrganizationHierarchy = () => {
                 {selectedEdge && (() => {
                   const sourceNode = nodes.find(n => n.id === selectedEdge.source);
                   const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                  
+                  // DEBUG: Log node types
+                  console.log('🔍 Edge detail - Source node:', {
+                    id: sourceNode?.id,
+                    dataType: sourceNode?.data?.type,
+                    metadataType: sourceNode?.data?.metadata?.type,
+                    name: sourceNode?.data?.name
+                  });
+                  console.log('🔍 Edge detail - Target node:', {
+                    id: targetNode?.id,
+                    dataType: targetNode?.data?.type,
+                    metadataType: targetNode?.data?.metadata?.type,
+                    name: targetNode?.data?.name
+                  });
+                  
                   return (
                   <>
                     {/* Typ vztahu badge */}
@@ -5888,6 +5947,7 @@ const OrganizationHierarchy = () => {
                       {(() => {
                         const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
                         const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                        console.log('🔍 Detected types:', { sourceType, targetType });
                         const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
                         return `${relationInfo.icon} ${relationInfo.label}`;
                       })()}
