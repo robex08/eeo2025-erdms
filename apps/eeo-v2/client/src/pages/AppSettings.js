@@ -301,6 +301,7 @@ const AppSettings = () => {
     notifications_bell_enabled: true,
     notifications_email_enabled: true,
     hierarchy_enabled: false,
+    hierarchy_profile_id: null,
     maintenance_mode: false,
     maintenance_message: 'Systém je momentálně v údržbě. Omlouváme se za komplikace.'
   });
@@ -309,6 +310,7 @@ const AppSettings = () => {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [originalSettings, setOriginalSettings] = useState({});
+  const [hierarchyProfiles, setHierarchyProfiles] = useState([]);
   
   const isSuperAdmin = useMemo(() => {
     return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
@@ -316,6 +318,7 @@ const AppSettings = () => {
   
   useEffect(() => {
     loadSettings();
+    loadHierarchyProfiles();
   }, []);
   
   useEffect(() => {
@@ -340,6 +343,17 @@ const AppSettings = () => {
       showToast('Chyba při načítání globálního nastavení', { type: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const loadHierarchyProfiles = async () => {
+    try {
+      const { getHierarchyProfiles } = await import('../services/hierarchyProfilesApi');
+      const profiles = await getHierarchyProfiles(token, username);
+      setHierarchyProfiles(profiles);
+    } catch (error) {
+      console.error('Chyba při načítání profilů hierarchie:', error);
+      // Tichá chyba - profily nejsou kritické pro načtení stránky
     }
   };
   
@@ -513,6 +527,34 @@ const AppSettings = () => {
             
             {settings.hierarchy_enabled && (
               <>
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faSitemap} />
+                      Aktivní profil hierarchie
+                    </SettingLabel>
+                    <SettingDescription>
+                      Vyberte profil organizačního řádu, který bude aktivní pro celý systém. Změna profilu ovlivní viditelnost dat pro všechny uživatele.
+                    </SettingDescription>
+                    <Select
+                      value={settings.hierarchy_profile_id || ''}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        hierarchy_profile_id: e.target.value ? parseInt(e.target.value) : null
+                      }))}
+                      disabled={!settings.hierarchy_enabled}
+                      style={{marginTop: '0.75rem'}}
+                    >
+                      <option value="">-- Vyberte profil --</option>
+                      {hierarchyProfiles.map(profile => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name} {profile.isActive ? '(aktivní)' : ''} - {profile.relationshipsCount} vztahů
+                        </option>
+                      ))}
+                    </Select>
+                  </SettingInfo>
+                </SettingRow>
+                
                 <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
                   <SettingInfo>
                     <SettingLabel>

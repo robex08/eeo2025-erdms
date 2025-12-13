@@ -87,6 +87,7 @@ function handle_get_settings($db) {
             'notifications_bell_enabled' => ($settings['notifications_inapp_enabled'] ?? '1') === '1',
             'notifications_email_enabled' => ($settings['notifications_email_enabled'] ?? '1') === '1',
             'hierarchy_enabled' => ($settings['hierarchy_enabled'] ?? '0') === '1',
+            'hierarchy_profile_id' => isset($settings['hierarchy_profile_id']) && $settings['hierarchy_profile_id'] !== 'NULL' && $settings['hierarchy_profile_id'] !== null ? (int)$settings['hierarchy_profile_id'] : null,
             'hierarchy_logic' => $settings['hierarchy_logic'] ?? 'OR',
             'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
             'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.'
