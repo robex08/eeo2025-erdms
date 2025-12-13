@@ -11,16 +11,18 @@
 export const getAvailableSections = (hasPermission, userDetail) => {
   const sections = [];
   
+  // Helper pro kontrolu admin role
+  const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+  );
+  
   // ADRESÁŘ - CONTACT_MANAGE
   if (hasPermission && hasPermission('CONTACT_MANAGE')) {
-    sections.push({ value: 'addressbook', label: 'Adresář' });
+    sections.push({ value: 'address-book', label: 'Adresář' });
   }
   
   // KONTAKTY - PHONEBOOK_VIEW nebo ADMIN
-  const isAdminForContacts = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
-  if (isAdminForContacts || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) {
+  if (isAdmin || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) {
     sections.push({ value: 'contacts', label: 'Kontakty' });
   }
   
@@ -34,54 +36,40 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'debug', label: 'Debug panel' });
   }
   
-  // DODAVATELÉ - CONTACT_MANAGE (podle menu v Layout)
-  if (hasPermission && hasPermission('CONTACT_MANAGE')) {
-    sections.push({ value: 'suppliers', label: 'Dodavatelé' });
-  }
+  // DODAVATELÉ - všichni přihlášení (není podmínka v Layout)
+  sections.push({ value: 'suppliers', label: 'Dodavatelé' });
   
-  // NOTIFIKACE - zatím všichni (není v Layout podmínka)
+  // NOTIFIKACE - všichni přihlášení (není podmínka v Layout)
   sections.push({ value: 'notifications', label: 'Notifikace' });
   
-  // OBJEDNÁVKY PŘED 2026 - ORDER_MANAGE (pro starý systém)
-  if (hasPermission && hasPermission('ORDER_MANAGE')) {
+  // OBJEDNÁVKY PŘED 2026 - ORDER_MANAGE nebo ORDER_OLD
+  if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD'))) {
     sections.push({ value: 'orders-old', label: 'Objednávky před 2026' });
   }
   
-  // REPORTY - pouze pro SUPERADMIN/ADMINISTRATOR (práva ještě nejsou v DB)
-  const isAdminForReports = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
-  if (isAdminForReports) {
+  // REPORTY - pouze pro ADMIN (v menu Layout je to hasAdminRole())
+  if (isAdmin) {
     sections.push({ value: 'reports', label: 'Reporty' });
   }
   
-  // STATISTIKY - pouze pro SUPERADMIN/ADMINISTRATOR (práva ještě nejsou v DB)
-  const isAdminForStats = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
-  if (isAdminForStats) {
+  // STATISTIKY - pouze pro ADMIN (v menu Layout je to hasAdminRole())
+  if (isAdmin) {
     sections.push({ value: 'statistics', label: 'Statistiky' });
   }
   
-  // NASTAVENÍ APLIKACE - pouze pro SUPERADMIN/ADMINISTRATOR
-  const isAdminForSettings = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
-  if (isAdminForSettings) {
+  // NASTAVENÍ APLIKACE - pouze pro ADMIN
+  if (isAdmin) {
     sections.push({ value: 'app-settings', label: 'Nastavení aplikace' });
   }
   
-  // SYSTÉM WORKFLOW A NOTIFIKACÍ - pouze pro SUPERADMIN/ADMINISTRATOR
-  const isAdminForOrgHierarchy = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
-  if (isAdminForOrgHierarchy) {
+  // SYSTÉM WORKFLOW A NOTIFIKACÍ (HIERARCHIE) - pouze pro ADMIN
+  if (isAdmin) {
     sections.push({ value: 'organization-hierarchy', label: 'Systém workflow a notifikací' });
   }
   
-  // POKLADNA - Cash Book - Admin/SuperAdmin NEBO jakékoliv CASH_BOOK oprávnění
+  // POKLADNA - Admin/SuperAdmin NEBO jakékolé CASH_BOOK oprávnění
   const isCashBookAllowed = 
-    (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) ||
+    isAdmin ||
     (hasPermission && (
       hasPermission('CASH_BOOK_MANAGE') ||
       hasPermission('CASH_BOOK_READ_ALL') ||
@@ -96,7 +84,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     ));
   
   if (isCashBookAllowed) {
-    sections.push({ value: 'cashbook', label: 'Pokladní kniha' });
+    sections.push({ value: 'cash-book', label: 'Pokladní kniha' });
   }
   
   // PROFIL UŽIVATELE - vždy dostupný pro všechny přihlášené
@@ -104,12 +92,12 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   
   // OBJEDNÁVKY - ORDER_MANAGE nebo ORDER_2025
   if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025'))) {
-    sections.push({ value: 'orders', label: 'Seznam objednávek' });
+    sections.push({ value: 'orders25-list', label: 'Přehled objednávek' });
   }
   
-  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
-  if (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW'))) {
-    sections.push({ value: 'invoices', label: 'Přehled faktur' });
+  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW (v Layout je to INVOICE_MANAGE)
+  if (isAdmin || (hasPermission && hasPermission('INVOICE_MANAGE'))) {
+    sections.push({ value: 'invoices25-list', label: 'Přehled faktur' });
   }
   
   // UŽIVATELÉ - USER_VIEW nebo USER_MANAGE
