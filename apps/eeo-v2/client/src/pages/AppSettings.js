@@ -358,6 +358,12 @@ const AppSettings = () => {
   };
   
   const handleSave = async () => {
+    // Validace: pokud je hierarchie povolena, musí být vybrán profil
+    if (settings.hierarchy_enabled && !settings.hierarchy_profile_id) {
+      showToast('Při zapnuté hierarchii musíte vybrat aktivní profil', { type: 'error' });
+      return;
+    }
+    
     setSaving(true);
     try {
       const { saveGlobalSettings } = await import('../services/globalSettingsApi');
