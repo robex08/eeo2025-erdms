@@ -218,18 +218,44 @@ function nactiUzivatelNastaveni($db, $uzivatel_id) {
             );
         }
         
-        // Uživatel nemá nastavení - vrať null (frontend použije výchozí)
+        // Uživatel nemá nastavení - VYTVOŘ DEFAULT a vlož do DB
+        error_log("User $uzivatel_id nemá nastavení - vytvářím default záznam");
+        
+        $default_nastaveni = array(
+            'theme' => 'light',
+            'language' => 'cs',
+            'notifications' => array(
+                'email' => true,
+                'inapp' => true
+            ),
+            'dashboard' => array(
+                'widgets' => array()
+            )
+        );
+        
+        // Ulož default do DB
+        try {
+            ulozUzivatelNastaveni($db, $uzivatel_id, $default_nastaveni);
+            error_log("Default nastavení úspěšně uloženo pro uživatele $uzivatel_id");
+        } catch (Exception $e) {
+            error_log("Nepodařilo se uložit default nastavení pro uživatele $uzivatel_id: " . $e->getMessage());
+        }
+        
+        // Vrať default nastavení
         return array(
-            'nastaveni' => null,
+            'nastaveni' => $default_nastaveni,
             'verze' => '1.0',
-            'upraveno' => null
+            'upraveno' => date('Y-m-d H:i:s')
         );
     } catch (PDOException $e) {
         error_log("Chyba při načítání nastavení uživatele $uzivatel_id: " . $e->getMessage());
         
-        // Při chybě vrať null
+        // Při chybě vrať minimální default (ale NEUKLADEJ do DB)
         return array(
-            'nastaveni' => null,
+            'nastaveni' => array(
+                'theme' => 'light',
+                'language' => 'cs'
+            ),
             'verze' => '1.0',
             'upraveno' => null
         );

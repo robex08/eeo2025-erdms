@@ -120,6 +120,7 @@ function handle_save_settings($db, $settings, $isSuperAdmin) {
             'notifications_bell_enabled' => 'notifications_inapp_enabled',
             'notifications_email_enabled' => 'notifications_email_enabled',
             'hierarchy_enabled' => 'hierarchy_enabled',
+            'hierarchy_profile_id' => 'hierarchy_profile_id',
             'hierarchy_logic' => 'hierarchy_logic',
             'maintenance_mode' => 'maintenance_mode',
             'maintenance_message' => 'maintenance_message'

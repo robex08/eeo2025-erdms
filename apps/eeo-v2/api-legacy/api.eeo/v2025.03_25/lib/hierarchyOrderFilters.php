@@ -16,15 +16,17 @@
  * @version 2.0 - Opraveno dle skutečné DB struktury
  */
 
-require_once __DIR__ . '/dbconfig.php';
+// Note: dbconfig.php is already included in orderV2Endpoints.php
 
 /**
  * Zkontroluje, zda je hierarchie workflow aktivní
  * 
- * @param mysqli $db Database connection
+ * @param PDO $db Database connection
  * @return array ['enabled' => bool, 'profile_id' => int|null, 'logic' => string]
  */
 function getHierarchySettings($db) {
+    error_log("🔍 HIERARCHY DEBUG: Loading settings from 25a_nastaveni_globalni");
+    
     // Načítání jednotlivých nastavení z key-value tabulky
     $query = "
         SELECT klic, hodnota
@@ -32,9 +34,11 @@ function getHierarchySettings($db) {
         WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id', 'hierarchy_logic')
     ";
     
-    $result = $db->query($query);
-    if (!$result) {
-        error_log("HIERARCHY ERROR: Failed to load settings: " . $db->error);
+    try {
+        $stmt = $db->query($query);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("❌ HIERARCHY ERROR: Failed to load settings: " . $e->getMessage());
         return [
             'enabled' => false,
             'profile_id' => null,
@@ -48,7 +52,8 @@ function getHierarchySettings($db) {
         'logic' => 'OR'
     ];
     
-    while ($row = $result->fetch_assoc()) {
+    foreach ($rows as $row) {
+        error_log("🔍 HIERARCHY DEBUG: Setting loaded - {$row['klic']} = {$row['hodnota']}");
         switch ($row['klic']) {
             case 'hierarchy_enabled':
                 $settings['enabled'] = (int)$row['hodnota'] === 1;
@@ -64,6 +69,10 @@ function getHierarchySettings($db) {
         }
     }
     
+    error_log("✅ HIERARCHY DEBUG: Final settings - enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
+              ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
+              ", logic=" . $settings['logic']);
+    
     return $settings;
 }
 
@@ -72,33 +81,36 @@ function getHierarchySettings($db) {
  * (= hierarchie se na něj nevztahuje)
  * 
  * @param int $userId User ID
- * @param mysqli $db Database connection
+ * @param PDO $db Database connection
  * @return bool
  */
 function isUserHierarchyImmune($userId, $db) {
+    error_log("🔍 HIERARCHY DEBUG: Checking HIERARCHY_IMMUNE for user $userId");
+    
     // Check práv přes role uživatele (HIERARCHY_IMMUNE je přiřazeno k rolím SUPERADMIN/ADMINISTRATOR)
     $queryRoles = "
         SELECT COUNT(*) as cnt
         FROM 25_uzivatele_role ur
         INNER JOIN 25_role_prava rp ON rp.role_id = ur.role_id
         INNER JOIN 25_prava p ON p.id = rp.pravo_id
-        WHERE ur.uzivatel_id = ?
+        WHERE ur.uzivatel_id = :userId
           AND p.kod_prava = 'HIERARCHY_IMMUNE'
           AND p.aktivni = 1
     ";
     
-    $stmt = $db->prepare($queryRoles);
-    if (!$stmt) {
-        error_log("HIERARCHY ERROR: Failed to prepare role immune check query: " . $db->error);
+    try {
+        $stmt = $db->prepare($queryRoles);
+        $stmt->execute(['userId' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $isImmune = $row['cnt'] > 0;
+        error_log("✅ HIERARCHY DEBUG: User $userId is " . ($isImmune ? "IMMUNE" : "NOT immune"));
+        
+        return $isImmune;
+    } catch (PDOException $e) {
+        error_log("HIERARCHY ERROR: Failed to check immune status: " . $e->getMessage());
         return false;
     }
-    
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    
-    return $row['cnt'] > 0;
 }
 
 /**
@@ -106,33 +118,70 @@ function isUserHierarchyImmune($userId, $db) {
  * Vrací WHERE podmínku nebo NULL (= žádná filtrace)
  * 
  * @param int $userId User ID
- * @param mysqli $db Database connection
+ * @param PDO $db Database connection
  * @return string|null SQL WHERE podmínka nebo NULL
  */
 function applyHierarchyFilterToOrders($userId, $db) {
+    global $HIERARCHY_DEBUG_INFO; // 🔥 GLOBAL pro JSON response v F12
+    
+    $HIERARCHY_DEBUG_INFO = array(
+        'called' => true,
+        'user_id' => $userId,
+        'config' => array(),
+        'relationships' => array(),
+        'visible_entities' => array(),
+        'filter_generated' => false,
+        'filter_preview' => null,
+        'immune' => false
+    );
+    
+    error_log("════════════════════════════════════════════════════════");
+    error_log("🚀 HIERARCHY DEBUG: applyHierarchyFilterToOrders() START");
+    error_log("   User ID: $userId");
+    error_log("════════════════════════════════════════════════════════");
+    
     // 1. Načti nastavení hierarchie
     $settings = getHierarchySettings($db);
     
+    // 🔥 Ulož config do debug info
+    $HIERARCHY_DEBUG_INFO['config'] = array(
+        'enabled' => $settings['enabled'],
+        'profile_id' => $settings['profile_id'],
+        'logic' => $settings['logic']
+    );
+    error_log("📋 HIERARCHY CONFIG: enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
+              ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
+              ", logic=" . $settings['logic']);
+    
     if (!$settings['enabled']) {
-        error_log("HIERARCHY: Disabled globally - no filter");
+        error_log("❌ HIERARCHY DISABLED - skipping filter");
+        $HIERARCHY_DEBUG_INFO['reason'] = 'disabled';
         return null;
     }
     
     if (!$settings['profile_id']) {
-        error_log("HIERARCHY: No profile selected - no filter");
+        error_log("❌ NO PROFILE SELECTED - skipping filter");
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_profile';
         return null;
     }
     
+    error_log("✅ Hierarchy ENABLED, profile=" . $settings['profile_id']);
+    
     // 2. Check HIERARCHY_IMMUNE
     if (isUserHierarchyImmune($userId, $db)) {
-        error_log("HIERARCHY: User $userId is IMMUNE - no filter");
+        error_log("🛡️ User $userId is IMMUNE - skipping filter");
+        $HIERARCHY_DEBUG_INFO['immune'] = true;
+        $HIERARCHY_DEBUG_INFO['reason'] = 'user_immune';
         return null;
     }
+    
+    error_log("✅ User is NOT immune - will apply hierarchy filter");
     
     // 3. Načti všechny hierarchické vztahy uživatele
     $profileId = $settings['profile_id'];
     $logic = $settings['logic'];
     
+    // ✅ SPRÁVNÁ QUERY: Všechny sloupce existují v DB
     $query = "
         SELECT 
             hz.typ_vztahu,
@@ -140,41 +189,54 @@ function applyHierarchyFilterToOrders($userId, $db) {
             hz.user_id_2,
             hz.lokalita_id,
             hz.usek_id,
-            hz.role_id,
-            hz.viditelnost_objednavky
+            hz.role_id
         FROM 25_hierarchie_vztahy hz
-        WHERE hz.profil_id = ?
+        WHERE hz.profil_id = :profileId
           AND hz.aktivni = 1
           AND hz.viditelnost_objednavky = 1
           AND (
-              hz.user_id_1 = ? 
-              OR hz.user_id_2 = ?
-              OR hz.role_id IN (SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = ?)
+              hz.user_id_1 = :userId1
+              OR hz.user_id_2 = :userId2
+              OR (hz.role_id IS NOT NULL AND hz.role_id IN (
+                  SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId3
+              ))
           )
     ";
     
-    $stmt = $db->prepare($query);
-    if (!$stmt) {
-        error_log("HIERARCHY ERROR: Failed to prepare relationships query: " . $db->error);
+    error_log("🔍 HIERARCHY DEBUG: Loading relationships for user $userId, profile $profileId");
+    
+    try {
+        $stmt = $db->prepare($query);
+        $stmt->execute([
+            'profileId' => $profileId,
+            'userId1' => $userId,
+            'userId2' => $userId,
+            'userId3' => $userId
+        ]);
+        
+        $relationships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 🔥 Ulož do debug info
+        $HIERARCHY_DEBUG_INFO['relationships'] = $relationships;
+        $HIERARCHY_DEBUG_INFO['relationships_count'] = count($relationships);
+        
+    } catch (PDOException $e) {
+        error_log("❌ HIERARCHY ERROR: Failed to load relationships: " . $e->getMessage());
+        $HIERARCHY_DEBUG_INFO['error'] = $e->getMessage();
         return null;
     }
     
-    $stmt->bind_param('iiii', $profileId, $userId, $userId, $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $relationships = [];
-    while ($row = $result->fetch_assoc()) {
-        $relationships[] = $row;
-    }
-    
     if (empty($relationships)) {
-        // Uživatel nemá žádné hierarchické vztahy → nevidí NIC
-        error_log("HIERARCHY: User $userId has NO relationships in profile $profileId - showing NOTHING");
-        return "1 = 0"; // Podmínka která nikdy není pravdivá
+        // Uživatel nemá žádné hierarchické vztahy → nevidí NIC (pokud je hierarchie zapnutá)
+        error_log("❌ User $userId has NO relationships in profile $profileId");
+        error_log("⛔ BLOCKING ALL ORDERS (1=0)");
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_relationships';
+        $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = '1 = 0 (BLOCK ALL)';
+        return "1 = 0"; // Blokuj všechny objednávky
     }
     
-    error_log("HIERARCHY: User $userId has " . count($relationships) . " relationships in profile $profileId");
+    error_log("✅ Found " . count($relationships) . " relationships for user $userId in profile $profileId");
     
     // 4. Sestavení WHERE podmínky
     $visibleUserIds = [$userId]; // Uživatel vidí vždy sebe
@@ -183,6 +245,11 @@ function applyHierarchyFilterToOrders($userId, $db) {
     
     foreach ($relationships as $rel) {
         $typVztahu = $rel['typ_vztahu'];
+        
+        error_log("🔍 HIERARCHY DEBUG: Processing relationship type='$typVztahu', lokalita_id=" . 
+                  ($rel['lokalita_id'] ?? 'NULL') . ", usek_id=" . 
+                  ($rel['usek_id'] ?? 'NULL') . ", role_id=" . 
+                  ($rel['role_id'] ?? 'NULL'));
         
         // Extrahuj entity podle typu vztahu
         switch ($typVztahu) {
@@ -212,6 +279,25 @@ function applyHierarchyFilterToOrders($userId, $db) {
                 }
                 break;
                 
+            case 'role-location':
+            case 'location-role':
+                // Uživatel s danou rolí vidí celou lokalitu
+                // Role už byla ověřena v WHERE podmínce dotazu
+                if ($rel['lokalita_id']) {
+                    $visibleLokality[] = (int)$rel['lokalita_id'];
+                    error_log("✅ HIERARCHY DEBUG: Added lokalita_id={$rel['lokalita_id']} via role-location");
+                }
+                break;
+                
+            case 'role-department':
+            case 'department-role':
+                // Uživatel s danou rolí vidí celý úsek
+                if ($rel['usek_id']) {
+                    $visibleUskyIds[] = (int)$rel['usek_id'];
+                    error_log("✅ HIERARCHY DEBUG: Added usek_id={$rel['usek_id']} via role-department");
+                }
+                break;
+                
             // Můžeme přidat další typy podle potřeby
         }
     }
@@ -221,31 +307,67 @@ function applyHierarchyFilterToOrders($userId, $db) {
     $visibleUskyIds = array_unique($visibleUskyIds);
     $visibleLokality = array_unique($visibleLokality);
     
-    error_log("HIERARCHY: Visible entities - Users: " . count($visibleUserIds) . 
-              ", Useky: " . count($visibleUskyIds) . 
-              ", Lokality: " . count($visibleLokality));
+    // 🔥 Ulož visible entities do debug info
+    $HIERARCHY_DEBUG_INFO['visible_entities'] = array(
+        'users' => $visibleUserIds,
+        'useky' => $visibleUskyIds,
+        'lokality' => $visibleLokality,
+        'users_count' => count($visibleUserIds),
+        'useky_count' => count($visibleUskyIds),
+        'lokality_count' => count($visibleLokality)
+    );
+    
+    error_log("════════════════════════════════════════════════════════");
+    error_log("📊 VISIBLE ENTITIES:");
+    error_log("   👥 Users: " . count($visibleUserIds) . " → [" . implode(', ', $visibleUserIds) . "]");
+    error_log("   🏢 Useky: " . count($visibleUskyIds) . " → [" . implode(', ', $visibleUskyIds) . "]");
+    error_log("   📍 Lokality: " . count($visibleLokality) . " → [" . implode(', ', $visibleLokality) . "]");
+    error_log("════════════════════════════════════════════════════════");
     
     // 5. Sestavení WHERE podmínky
+    // DŮLEŽITÉ: Objednávky NEMAJÍ přímo lokalita_id/usek_id!
+    // Musíme filtrovat přes zúčastněné uživatele (objednatel, uzivatel, garant, atd.)
     $conditions = [];
     
     if (!empty($visibleUserIds)) {
-        $userIdsList = implode(',', $visibleUserIds);
-        $conditions[] = "o.uzivatel_id IN ($userIdsList)";
+        $userIdsList = implode(',', array_map('intval', $visibleUserIds));
+        // Hierarchie filtruje pouze přes 3 klíčové role
+        $conditions[] = "(
+            o.uzivatel_id IN ($userIdsList)
+            OR o.objednatel_id IN ($userIdsList)
+            OR o.garant_uzivatel_id IN ($userIdsList)
+        )";
     }
     
     if (!empty($visibleUskyIds)) {
-        $uskyIdsList = implode(',', $visibleUskyIds);
-        $conditions[] = "o.usek_id IN ($uskyIdsList)";
+        $uskyIdsList = implode(',', array_map('intval', $visibleUskyIds));
+        // Objednávky přes uživatele z daných úseků
+        $conditions[] = "(
+            o.uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
+            OR o.objednatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
+            OR o.garant_uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
+        )";
     }
     
     if (!empty($visibleLokality)) {
-        $lokalityList = implode(',', $visibleLokality);
-        $conditions[] = "o.lokalita_id IN ($lokalityList)";
+        $lokalityList = implode(',', array_map('intval', $visibleLokality));
+        // Objednávky přes uživatele z daných lokalit
+        $conditions[] = "(
+            o.uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
+            OR o.objednatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
+            OR o.garant_uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
+        )";
     }
     
     if (empty($conditions)) {
         // Žádné podmínky → nevidí nic
-        error_log("HIERARCHY WARNING: No filter conditions generated - showing NOTHING");
+        error_log("❌ NO CONDITIONS GENERATED");
+        error_log("⛔ BLOCKING ALL ORDERS (1=0)");
+        
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_conditions';
+        $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = '1 = 0 (BLOCK ALL - no conditions)';
+        
         return "1 = 0";
     }
     
@@ -253,12 +375,27 @@ function applyHierarchyFilterToOrders($userId, $db) {
     if ($logic === 'AND') {
         // AND logika: musí splňovat VŠECHNY podmínky
         $whereClause = "(" . implode(" AND ", $conditions) . ")";
-        error_log("HIERARCHY: Using AND logic (restrictive): $whereClause");
+        error_log("🔗 Using AND logic (restrictive)");
     } else {
         // OR logika (výchozí): stačí splnit JEDNU podmínku
         $whereClause = "(" . implode(" OR ", $conditions) . ")";
-        error_log("HIERARCHY: Using OR logic (permissive): $whereClause");
+        error_log("🔗 Using OR logic (permissive)");
     }
+    
+    // 🔥 Ulož WHERE clause do debug info
+    $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
+    $HIERARCHY_DEBUG_INFO['filter_logic'] = $logic;
+    $HIERARCHY_DEBUG_INFO['filter_conditions_count'] = count($conditions);
+    $HIERARCHY_DEBUG_INFO['filter_length'] = strlen($whereClause);
+    $HIERARCHY_DEBUG_INFO['filter_preview'] = substr($whereClause, 0, 200) . (strlen($whereClause) > 200 ? '...' : '');
+    $HIERARCHY_DEBUG_INFO['filter_full'] = $whereClause; // 🔥 FULL pro debug
+    
+    error_log("════════════════════════════════════════════════════════");
+    error_log("✅ FINAL WHERE CLAUSE:");
+    error_log("   Length: " . strlen($whereClause) . " chars");
+    error_log("   Conditions: " . count($conditions));
+    error_log("   Preview: " . substr($whereClause, 0, 300));
+    error_log("════════════════════════════════════════════════════════");
     
     return $whereClause;
 }
@@ -269,7 +406,7 @@ function applyHierarchyFilterToOrders($userId, $db) {
  * 
  * @param int $orderId Order ID
  * @param int $userId User ID
- * @param mysqli $db Database connection
+ * @param PDO $db Database connection
  * @return bool
  */
 function canUserViewOrder($orderId, $userId, $db) {
@@ -286,70 +423,99 @@ function canUserViewOrder($orderId, $userId, $db) {
         return true;
     }
     
-    // 3. Načti objednávku
+    // 3. Načti objednávku s 3 KLÍČOVÝMI ROLEMI (uzivatel, objednatel, garant)
+    // Hierarchie filtruje pouze přes 3 klíčové role - ostatní účastníci workflow jsou irelevantní
     $query = "
-        SELECT uzivatel_id, usek_id, lokalita_id
-        FROM 25a_objednavky
-        WHERE id = ? AND aktivni = 1
+        SELECT 
+            o.id,
+            o.uzivatel_id,
+            o.objednatel_id,
+            o.garant_uzivatel_id
+        FROM 25a_objednavky o
+        WHERE o.id = :orderId AND o.aktivni = 1
     ";
     
-    $stmt = $db->prepare($query);
-    if (!$stmt) {
-        error_log("HIERARCHY ERROR: Failed to prepare order query: " . $db->error);
+    try {
+        $stmt = $db->prepare($query);
+        $stmt->execute(['orderId' => $orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            return false; // Objednávka neexistuje
+        }
+    } catch (PDOException $e) {
+        error_log("HIERARCHY ERROR: Failed to load order: " . $e->getMessage());
         return false;
     }
     
-    $stmt->bind_param('i', $orderId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($result->num_rows === 0) {
-        return false; // Objednávka neexistuje
-    }
-    
-    $order = $result->fetch_assoc();
-    
     // 4. Zkontroluj hierarchické vztahy
+    // Musíme zjistit, zda některý ze zúčastněných uživatelů splňuje hierarchické podmínky
     $profileId = $settings['profile_id'];
     
+    // POUZE 3 KLÍČOVÉ ROLE (uzivatel, objednatel, garant)
+    $participantIds = array_filter([
+        $order['uzivatel_id'],
+        $order['objednatel_id'],
+        $order['garant_uzivatel_id']
+    ]);
+    
+    if (empty($participantIds)) {
+        return false; // Žádní zúčastnění uživatelé
+    }
+    
+    // Pro bezpečnost: použijeme placeholdery pro každý participantId
+    $participantPlaceholders = [];
+    $participantParams = [];
+    foreach ($participantIds as $idx => $participantId) {
+        $key = "participant{$idx}";
+        $participantPlaceholders[] = ":{$key}";
+        $participantParams[$key] = (int)$participantId;
+    }
+    $participantIdsStr = implode(',', $participantPlaceholders);
+    
+    // Zkontrolujeme, zda uživatel má hierarchický vztah k některému z účastníků
     $checkQuery = "
         SELECT COUNT(*) as cnt
         FROM 25_hierarchie_vztahy hz
-        WHERE hz.profil_id = ?
+        WHERE hz.profil_id = :profileId
           AND hz.aktivni = 1
           AND hz.viditelnost_objednavky = 1
           AND (
-              (hz.user_id_1 = ? OR hz.user_id_2 = ?)
-              OR hz.role_id IN (SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = ?)
+              -- Uživatel má vztah přes svou roli nebo direct vztah
+              (hz.user_id_1 = :userId1 OR hz.user_id_2 = :userId2)
+              OR hz.role_id IN (SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId3)
           )
           AND (
-              (hz.typ_vztahu LIKE '%user%' AND (hz.user_id_1 = ? OR hz.user_id_2 = ?))
-              OR (hz.typ_vztahu LIKE '%department%' AND hz.usek_id = ?)
-              OR (hz.typ_vztahu LIKE '%location%' AND hz.lokalita_id = ?)
+              -- A tento vztah pokrývá některého z účastníků objednávky
+              (hz.typ_vztahu LIKE '%user%' AND (hz.user_id_1 IN ($participantIdsStr) OR hz.user_id_2 IN ($participantIdsStr)))
+              OR (hz.typ_vztahu LIKE '%department%' AND hz.usek_id IN (
+                  SELECT usek_id FROM 25_uzivatele WHERE id IN ($participantIdsStr)
+              ))
+              OR (hz.typ_vztahu LIKE '%location%' AND hz.lokalita_id IN (
+                  SELECT lokalita_id FROM 25_uzivatele WHERE id IN ($participantIdsStr)
+              ))
           )
     ";
     
-    $stmt2 = $db->prepare($checkQuery);
-    if (!$stmt2) {
-        error_log("HIERARCHY ERROR: Failed to prepare visibility check query: " . $db->error);
+    try {
+        $params = array_merge([
+            'profileId' => $profileId,
+            'userId1' => $userId,
+            'userId2' => $userId,
+            'userId3' => $userId
+        ], $participantParams);
+        
+        $stmt = $db->prepare($checkQuery);
+        $stmt->execute($params);
+        
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $canView = $row['cnt'] > 0;
+        
+        error_log("HIERARCHY: User $userId " . ($canView ? "CAN" : "CANNOT") . " view order $orderId");
+        
+        return $canView;
+    } catch (PDOException $e) {
+        error_log("HIERARCHY ERROR: Failed to check visibility: " . $e->getMessage());
         return false;
     }
-    
-    $stmt2->bind_param('iiiiiiii', 
-        $profileId, 
-        $userId, $userId, $userId,
-        $order['uzivatel_id'], $order['uzivatel_id'],
-        $order['usek_id'],
-        $order['lokalita_id']
-    );
-    
-    $stmt2->execute();
-    $result2 = $stmt2->get_result();
-    $row = $result2->fetch_assoc();
-    
-    $canView = $row['cnt'] > 0;
-    
-    error_log("HIERARCHY: User $userId " . ($canView ? "CAN" : "CANNOT") . " view order $orderId");
-    
-    return $canView;
 }
