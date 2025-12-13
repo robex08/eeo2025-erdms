@@ -9,7 +9,7 @@
  * @version 1.0
  */
 
-import { API_BASE_URL, API_VERSION } from '../config/api';
+import { getGlobalSettings } from './globalSettingsApi';
 
 /**
  * Načte nastavení hierarchie z global_settings
@@ -20,33 +20,12 @@ import { API_BASE_URL, API_VERSION } from '../config/api';
  */
 export const getHierarchySettings = async (token, username) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/global-settings`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const settings = await getGlobalSettings(token, username);
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.status === 'ok' && data.data) {
-      return {
-        enabled: Boolean(data.data.hierarchy_enabled),
-        profile_id: data.data.hierarchy_profile_id || null,
-        logic: data.data.hierarchy_logic || 'OR'
-      };
-    }
-    
-    // Fallback - hierarchie vypnuta
     return {
-      enabled: false,
-      profile_id: null,
-      logic: 'OR'
+      enabled: Boolean(settings.hierarchy_enabled),
+      profile_id: settings.hierarchy_profile_id || null,
+      logic: settings.hierarchy_logic || 'OR'
     };
     
   } catch (error) {
