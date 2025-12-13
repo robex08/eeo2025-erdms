@@ -83,7 +83,8 @@ function handle_hierarchy_save_v2($data, $pdo) {
         return array(
             'success' => true,
             'message' => 'Hierarchie ulozena',
-            'saved_relations' => count($relations)
+            'saved_relations' => count($relations),
+            'profile_id' => $profilId
         );
         
     } catch (PDOException $e) {
