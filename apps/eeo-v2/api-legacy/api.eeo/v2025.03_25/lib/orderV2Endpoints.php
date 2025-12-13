@@ -106,13 +106,14 @@ function handle_order_v2_get($input, $config, $queries) {
         // 🌲 HIERARCHIE WORKFLOW: Zkontrolovat, zda uživatel může vidět tuto objednávku
         require_once __DIR__ . '/hierarchyOrderFilters.php';
         
-        if (!canUserViewOrder($current_user_id, $numeric_order_id, $db)) {
+        if (!canUserViewOrder($numeric_order_id, $current_user_id, $db)) {
             error_log("Order V2 GET: User $current_user_id cannot view order $numeric_order_id (hierarchy restriction)");
             http_response_code(403);
             echo json_encode(array(
                 'status' => 'error', 
                 'message' => 'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu'
             ));
+            $db->close();
             return;
         }
         
