@@ -1069,4 +1069,257 @@ function getCerpaniPodleUseku($conn, $usek_id, $rok = null) {
     );
 }
 
+/**
+ * PDO VERZE: Přepočítá agregované čerpání pro konkrétní LP podle ID
+ * 
+ * @param PDO $pdo Databázové spojení (PDO)
+ * @param int $lp_id ID LP z tabulky 25_limitovane_prisliby
+ * @return bool Úspěch operace
+ */
+function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
+    $lp_id = (int)$lp_id;
+    
+    try {
+        // KROK 1: Získat metadata o LP
+        $sql_meta = "
+            SELECT 
+                lp.id as lp_id,
+                lp.cislo_lp,
+                lp.kategorie,
+                lp.usek_id,
+                lp.user_id,
+                YEAR(MIN(lp.platne_od)) as rok,
+                SUM(lp.vyse_financniho_kryti) as celkovy_limit,
+                MIN(lp.cislo_uctu) as cislo_uctu,
+                MIN(lp.nazev_uctu) as nazev_uctu,
+                COUNT(*) as pocet_zaznamu,
+                (COUNT(*) > 1) as ma_navyseni,
+                MIN(lp.platne_od) as nejstarsi_platnost,
+                MAX(lp.platne_do) as nejnovejsi_platnost
+            FROM 25_limitovane_prisliby lp
+            WHERE lp.id = :lp_id
+            GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id
+            LIMIT 1
+        ";
+        
+        $stmt = $pdo->prepare($sql_meta);
+        $stmt->execute([':lp_id' => $lp_id]);
+        $meta = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$meta) {
+            error_log("prepocetCerpaniPodleIdLP_PDO: LP ID '$lp_id' neexistuje");
+            return false;
+        }
+        
+        // KROK 2: REZERVACE
+        $sql_rezervace = "
+            SELECT 
+                obj.id,
+                obj.max_cena_s_dph,
+                obj.financovani
+            FROM 25a_objednavky obj
+            WHERE obj.financovani IS NOT NULL
+            AND obj.financovani != ''
+            AND obj.financovani LIKE '%\"typ\":\"LP\"%'
+            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND DATE(obj.dt_vytvoreni) BETWEEN :od AND :do
+        ";
+        
+        $stmt = $pdo->prepare($sql_rezervace);
+        $stmt->execute([
+            ':od' => $meta['nejstarsi_platnost'],
+            ':do' => $meta['nejnovejsi_platnost']
+        ]);
+        
+        $rezervovano = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $financovani = json_decode($row['financovani'], true);
+            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
+                $lp_ids_int = array_map('intval', $financovani['lp_kody']);
+                if (in_array($lp_id, $lp_ids_int)) {
+                    $pocet_lp = count($financovani['lp_kody']);
+                    $rezervovano += $pocet_lp > 0 ? ((float)$row['max_cena_s_dph'] / $pocet_lp) : 0;
+                }
+            }
+        }
+        
+        // KROK 3: PŘEDPOKLAD
+        $sql_predpoklad = "
+            SELECT 
+                obj.id,
+                obj.financovani,
+                SUM(pol.cena_s_dph) as suma_cena
+            FROM 25a_objednavky obj
+            INNER JOIN 25a_objednavky_polozky pol ON obj.id = pol.objednavka_id
+            WHERE obj.financovani IS NOT NULL
+            AND obj.financovani != ''
+            AND obj.financovani LIKE '%\"typ\":\"LP\"%'
+            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND DATE(obj.dt_vytvoreni) BETWEEN :od AND :do
+            GROUP BY obj.id, obj.financovani
+        ";
+        
+        $stmt = $pdo->prepare($sql_predpoklad);
+        $stmt->execute([
+            ':od' => $meta['nejstarsi_platnost'],
+            ':do' => $meta['nejnovejsi_platnost']
+        ]);
+        
+        $predpokladane_cerpani = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $financovani = json_decode($row['financovani'], true);
+            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
+                $lp_ids_int = array_map('intval', $financovani['lp_kody']);
+                if (in_array($lp_id, $lp_ids_int)) {
+                    $pocet_lp = count($financovani['lp_kody']);
+                    $predpokladane_cerpani += $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
+                }
+            }
+        }
+        
+        // KROK 4: SKUTEČNOST
+        $sql_fakturovano = "
+            SELECT 
+                obj.id,
+                obj.financovani,
+                SUM(fakt.fa_castka) as suma_faktur
+            FROM 25a_objednavky obj
+            INNER JOIN 25a_objednavky_faktury fakt ON obj.id = fakt.objednavka_id
+            WHERE obj.financovani IS NOT NULL
+            AND obj.financovani != ''
+            AND obj.financovani LIKE '%\"typ\":\"LP\"%'
+            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND DATE(obj.dt_vytvoreni) BETWEEN :od AND :do
+            GROUP BY obj.id, obj.financovani
+        ";
+        
+        $stmt = $pdo->prepare($sql_fakturovano);
+        $stmt->execute([
+            ':od' => $meta['nejstarsi_platnost'],
+            ':do' => $meta['nejnovejsi_platnost']
+        ]);
+        
+        $fakturovano = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $financovani = json_decode($row['financovani'], true);
+            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
+                $lp_ids_int = array_map('intval', $financovani['lp_kody']);
+                if (in_array($lp_id, $lp_ids_int)) {
+                    $pocet_lp = count($financovani['lp_kody']);
+                    $fakturovano += $pocet_lp > 0 ? ((float)$row['suma_faktur'] / $pocet_lp) : 0;
+                }
+            }
+        }
+        
+        // KROK 5: Čerpání z pokladny
+        $sql_pokladna = "
+            SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
+            FROM 25a_pokladni_knihy p
+            JOIN 25a_pokladni_polozky pol ON p.id = pol.pokladni_kniha_id
+            WHERE pol.lp_kod = :cislo_lp
+            AND p.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
+            AND p.rok = :rok
+        ";
+        
+        $stmt = $pdo->prepare($sql_pokladna);
+        $stmt->execute([
+            ':cislo_lp' => $meta['cislo_lp'],
+            ':rok' => $meta['rok']
+        ]);
+        
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cerpano_pokladna = (float)($row['cerpano_pokl'] ?? 0);
+        
+        $skutecne_cerpano = $fakturovano + $cerpano_pokladna;
+        
+        // KROK 6: Vypočítat zůstatky a procenta
+        $celkovy_limit = (float)($meta['celkovy_limit'] ?? 0);
+        $rezervovano = (float)($rezervovano ?? 0);
+        $predpokladane_cerpani = (float)($predpokladane_cerpani ?? 0);
+        $skutecne_cerpano = (float)($skutecne_cerpano ?? 0);
+        
+        $zbyva_rezervace = $celkovy_limit - $rezervovano;
+        $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
+        $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
+        
+        $procento_rezervace = $celkovy_limit > 0 ? min(999.99, round(($rezervovano / $celkovy_limit) * 100, 2)) : 0.00;
+        $procento_predpoklad = $celkovy_limit > 0 ? min(999.99, round(($predpokladane_cerpani / $celkovy_limit) * 100, 2)) : 0.00;
+        $procento_skutecne = $celkovy_limit > 0 ? min(999.99, round(($skutecne_cerpano / $celkovy_limit) * 100, 2)) : 0.00;
+        
+        // KROK 7: Upsert
+        $sql_upsert = "
+            INSERT INTO 25_limitovane_prisliby_cerpani 
+            (cislo_lp, kategorie, usek_id, user_id, rok, 
+             celkovy_limit, rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
+             zbyva_rezervace, zbyva_predpoklad, zbyva_skutecne,
+             procento_rezervace, procento_predpoklad, procento_skutecne,
+             pocet_zaznamu, ma_navyseni, posledni_prepocet)
+            VALUES (
+                :cislo_lp, :kategorie, :usek_id, :user_id, :rok,
+                :celkovy_limit, :rezervovano, :predpokladane_cerpani, :skutecne_cerpano, :cerpano_pokladna,
+                :zbyva_rezervace, :zbyva_predpoklad, :zbyva_skutecne,
+                :procento_rezervace, :procento_predpoklad, :procento_skutecne,
+                :pocet_zaznamu, :ma_navyseni, NOW()
+            )
+            ON DUPLICATE KEY UPDATE
+                celkovy_limit = :celkovy_limit2,
+                rezervovano = :rezervovano2,
+                predpokladane_cerpani = :predpokladane_cerpani2,
+                skutecne_cerpano = :skutecne_cerpano2,
+                cerpano_pokladna = :cerpano_pokladna2,
+                zbyva_rezervace = :zbyva_rezervace2,
+                zbyva_predpoklad = :zbyva_predpoklad2,
+                zbyva_skutecne = :zbyva_skutecne2,
+                procento_rezervace = :procento_rezervace2,
+                procento_predpoklad = :procento_predpoklad2,
+                procento_skutecne = :procento_skutecne2,
+                pocet_zaznamu = :pocet_zaznamu2,
+                ma_navyseni = :ma_navyseni2,
+                posledni_prepocet = NOW()
+        ";
+        
+        $stmt = $pdo->prepare($sql_upsert);
+        $stmt->execute([
+            ':cislo_lp' => $meta['cislo_lp'],
+            ':kategorie' => $meta['kategorie'],
+            ':usek_id' => $meta['usek_id'],
+            ':user_id' => $meta['user_id'],
+            ':rok' => $meta['rok'],
+            ':celkovy_limit' => $celkovy_limit,
+            ':rezervovano' => $rezervovano,
+            ':predpokladane_cerpani' => $predpokladane_cerpani,
+            ':skutecne_cerpano' => $skutecne_cerpano,
+            ':cerpano_pokladna' => $cerpano_pokladna,
+            ':zbyva_rezervace' => $zbyva_rezervace,
+            ':zbyva_predpoklad' => $zbyva_predpoklad,
+            ':zbyva_skutecne' => $zbyva_skutecne,
+            ':procento_rezervace' => $procento_rezervace,
+            ':procento_predpoklad' => $procento_predpoklad,
+            ':procento_skutecne' => $procento_skutecne,
+            ':pocet_zaznamu' => $meta['pocet_zaznamu'],
+            ':ma_navyseni' => $meta['ma_navyseni'],
+            // ON DUPLICATE KEY UPDATE parameters
+            ':celkovy_limit2' => $celkovy_limit,
+            ':rezervovano2' => $rezervovano,
+            ':predpokladane_cerpani2' => $predpokladane_cerpani,
+            ':skutecne_cerpano2' => $skutecne_cerpano,
+            ':cerpano_pokladna2' => $cerpano_pokladna,
+            ':zbyva_rezervace2' => $zbyva_rezervace,
+            ':zbyva_predpoklad2' => $zbyva_predpoklad,
+            ':zbyva_skutecne2' => $zbyva_skutecne,
+            ':procento_rezervace2' => $procento_rezervace,
+            ':procento_predpoklad2' => $procento_predpoklad,
+            ':procento_skutecne2' => $procento_skutecne,
+            ':pocet_zaznamu2' => $meta['pocet_zaznamu'],
+            ':ma_navyseni2' => $meta['ma_navyseni']
+        ]);
+        
+        return true;
+        
+    } catch (PDOException $e) {
+        error_log("prepocetCerpaniPodleIdLP_PDO ERROR: " . $e->getMessage());
+        return false;
+    }
+}
+
 ?>

@@ -1361,23 +1361,10 @@ function handle_order_v2_update($input, $config, $queries) {
         // === PO COMMITU: Přepočty a načtení dat ===
         // Tyto operace jsou už mimo transakci, takže případná chyba nezpůsobí rollback
         
-        // Přepočítat LP kódy (s novým mysqli spojením)
+        // Přepočítat LP kódy (použít existující PDO spojení)
         if (!empty($lp_codes)) {
-            $mysqli_conn = new mysqli(
-                $config['host'],
-                $config['username'],
-                $config['password'],
-                $config['database']
-            );
-            
-            if (!$mysqli_conn->connect_error) {
-                $mysqli_conn->set_charset('utf8');
-                
-                foreach ($lp_codes as $lp_id) {
-                    prepocetCerpaniPodleIdLP($mysqli_conn, $lp_id);
-                }
-                
-                $mysqli_conn->close();
+            foreach ($lp_codes as $lp_id) {
+                prepocetCerpaniPodleIdLP_PDO($db, $lp_id);
             }
         }
         
