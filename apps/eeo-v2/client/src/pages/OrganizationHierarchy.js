@@ -650,15 +650,8 @@ const ProfileSelectWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: stretch;
-  background: white;
-  border: 1px solid #e0e6ed;
-  border-radius: 6px;
-  transition: all 0.2s;
-  
-  &:focus-within {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
+  flex: 1;
+  gap: 0;
 `;
 
 const ProfileSelect = styled.select`
@@ -690,10 +683,10 @@ const ProfileSelectArrow = styled.div`
 `;
 
 const ProfileDeleteButton = styled.button`
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  border-left: 1px solid #e0e6ed;
+  padding: 0 12px;
+  background: white;
+  border: 1px solid #e0e6ed;
+  border-left: none;
   color: ${props => props.disabled ? '#cbd5e1' : '#dc2626'};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   font-size: 1rem;
@@ -701,8 +694,9 @@ const ProfileDeleteButton = styled.button`
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  border-radius: 0 5px 5px 0;
-  min-width: 42px;
+  border-radius: 0 6px 6px 0;
+  min-width: 44px;
+  height: 40px;
   
   &:hover:not(:disabled) {
     background: #fee2e2;
@@ -1645,6 +1639,7 @@ const OrganizationHierarchy = () => {
   const LS_NODES_KEY = 'hierarchy_draft_nodes';
   const LS_EDGES_KEY = 'hierarchy_draft_edges';
   const LS_TIMESTAMP_KEY = 'hierarchy_draft_timestamp';
+  const LS_PROFILE_KEY = 'hierarchy_selected_profile';
   const LS_SEARCH_USERS = 'hierarchy_search_users';
   const LS_SEARCH_LOCATIONS = 'hierarchy_search_locations';
   const LS_SEARCH_DEPARTMENTS = 'hierarchy_search_departments';
@@ -1884,10 +1879,28 @@ const OrganizationHierarchy = () => {
         // Nastavit profily a najít aktivní
         const profilesList = profilesData.data || [];
         setProfiles(profilesList);
-        const activeProfile = profilesList.find(p => p.isActive) || profilesList[0];
-        setCurrentProfile(activeProfile || null);
         
-        console.log('📋 Profiles loaded:', profilesList.length, 'Active:', activeProfile?.name);
+        // Pokusit se načíst vybraný profil z LocalStorage
+        const savedProfileId = localStorage.getItem(LS_PROFILE_KEY);
+        let selectedProfile = null;
+        
+        if (savedProfileId) {
+          selectedProfile = profilesList.find(p => p.id === parseInt(savedProfileId));
+        }
+        
+        // Pokud není uložený profil nebo neexistuje, použít aktivní
+        if (!selectedProfile) {
+          selectedProfile = profilesList.find(p => p.isActive) || profilesList[0];
+        }
+        
+        setCurrentProfile(selectedProfile || null);
+        
+        // Uložit vybraný profil do LocalStorage
+        if (selectedProfile) {
+          localStorage.setItem(LS_PROFILE_KEY, selectedProfile.id.toString());
+        }
+        
+        console.log('📋 Profiles loaded:', profilesList.length, 'Selected:', selectedProfile?.name);
         console.log('🔍 Draft status:', { draftLoaded, hasStructureData: !!structureData.data });
         console.log('📥 Structure data:', structureData);
         
@@ -2418,6 +2431,17 @@ const OrganizationHierarchy = () => {
         showExtended: false,
         showModules: true,
         explanation: (source, target) => `Uživatelé s rolí ${source} získají práva vidět data z lokality ${target}.`
+      },
+      'role-role': {
+        label: 'Role → Role',
+        icon: '🛡️→🛡️',
+        description: 'Hierarchický vztah mezi rolemi (nadřízená → podřízená)',
+        sourceLabel: 'Nadřízená role (získává práva)',
+        targetLabel: 'Podřízená role (sdílí data)',
+        showScope: true,
+        showExtended: true,
+        showModules: true,
+        explanation: (source, target) => `${source} získá práva vidět data od uživatelů s rolí ${target}. Rozsah a Moduly určují, co přesně uvidí (objednávky/faktury/pokladnu).`
       }
     };
     
@@ -3795,6 +3819,10 @@ const OrganizationHierarchy = () => {
     }
     
     setCurrentProfile(profile);
+    
+    // Uložit vybraný profil do LocalStorage
+    localStorage.setItem(LS_PROFILE_KEY, profileId.toString());
+    
     console.log('📂 Loading profile:', profile.name, 'ID:', profileId);
     
     // Nacist strukturu pro vybrany profil
@@ -3807,55 +3835,103 @@ const OrganizationHierarchy = () => {
       const response = await fetch(`${apiBase}/hierarchy/structure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, username, profile_id: profileId })
+        body: JSON.stringify({ token, username, profilId: profileId })
       });
       
       const result = await response.json();
       console.log('📥 Profile structure response:', result);
       
       if (result.success && result.data) {
-        const { nodes: apiNodes, edges: apiEdges } = result.data;
+        // API vrací V2 formát s nodes a relations
+        const apiNodes = result.data.nodes || [];
+        const apiRelations = result.data.relations || [];
         
-        if (apiNodes.length === 0 && apiEdges.length === 0) {
+        if (!apiRelations || apiRelations.length === 0) {
           setNodes([]);
           setEdges([]);
           console.log('📭 Empty profile loaded');
         } else {
-          // Transformovat nody z API do React Flow formatu
+          console.log('📦 Received nodes:', apiNodes.length, 'relations:', apiRelations.length);
+          
+          // Nejdřív načíst pozice z relations (každý relation má position_1 a position_2)
+          const nodePositions = new Map();
+          apiRelations.forEach(rel => {
+            // Position pro node_1
+            if (rel.node_1 && rel.position_1) {
+              nodePositions.set(rel.node_1, rel.position_1);
+            }
+            // Position pro node_2
+            if (rel.node_2 && rel.position_2) {
+              nodePositions.set(rel.node_2, rel.position_2);
+            }
+          });
+          
+          console.log('📍 Loaded positions for', nodePositions.size, 'nodes');
+          
+          // Konvertovat backend nodes do ReactFlow formátu s uloženými pozicemi
           const nodeIdMap = {};
           const transformedNodes = apiNodes.map((node, index) => {
-            const nodeId = `user-${node.id}-${Date.now()}-${index}`;
-            nodeIdMap[node.id] = nodeId;
+            const reactFlowId = `${node.type}-${node.userId || node.roleId || node.departmentId || node.locationId || node.templateId}-${Date.now()}-${index}`;
+            nodeIdMap[node.id] = reactFlowId; // Mapování backend ID -> ReactFlow ID
             
-            // Použít uloženou pozici nebo default
-            const position = node.layoutPosition || { 
-              x: index * 250, 
-              y: 0 
-            };
+            // Načíst uloženou pozici nebo použít default
+            const savedPosition = nodePositions.get(node.id);
+            const position = savedPosition || { x: index * 250, y: 0 };
             
             return {
-              id: nodeId,
+              id: reactFlowId,
               type: 'custom',
               position: position,
               data: {
-                userId: node.id,
+                type: node.type,
                 name: node.name,
-                position: node.position,
+                userId: node.userId,
+                roleId: node.roleId,
+                departmentId: node.departmentId,
+                locationId: node.locationId,
+                templateId: node.templateId,
+                position: node.position, // Pro uživatele (pracovní pozice)
                 initials: node.initials,
-                metadata: node.metadata
+                metadata: node.metadata || {},
+                popis: node.popis // Pro role
               }
             };
           });
           
-          // Transformovat edges s pouzitim nodeIdMap
-          const transformedEdges = apiEdges.map(edge => ({
-            id: edge.id,
-            source: nodeIdMap[edge.source] || edge.source,
-            target: nodeIdMap[edge.target] || edge.target,
-            type: 'default',
-            animated: false,
-            data: edge.permissions
-          }));
+          console.log('🔄 Node mapping created:', nodeIdMap);
+          
+          // Konvertovat relations na edges - backend vrací node_1 a node_2 jako stringy
+          const transformedEdges = apiRelations.map((rel, idx) => {
+            // Backend vrací node_1 a node_2 jako 'user-123', 'role-5' atd.
+            const sourceId = nodeIdMap[rel.node_1];
+            const targetId = nodeIdMap[rel.node_2];
+            
+            if (!sourceId || !targetId) {
+              console.warn('⚠️ Missing source or target mapping for relation:', {
+                relation: rel,
+                node_1: rel.node_1,
+                node_2: rel.node_2,
+                sourceId,
+                targetId,
+                availableKeys: Object.keys(nodeIdMap)
+              });
+              return null;
+            }
+            
+            return {
+              id: `rel-${rel.id || idx}`,
+              source: sourceId,
+              target: targetId,
+              type: 'smoothstep',
+              animated: true,
+              data: {
+                level: rel.level,
+                visibility: rel.visibility,
+                notifications: rel.notifications,
+                type: rel.type
+              }
+            };
+          }).filter(e => e !== null);
           
           setNodes(transformedNodes);
           setEdges(transformedEdges);
@@ -4059,6 +4135,16 @@ const OrganizationHierarchy = () => {
         localStorage.removeItem(LS_TIMESTAMP_KEY);
         setHasDraft(false);
         
+        // Automaticky přepnout na uložený profil a uložit do LocalStorage
+        if (result.profile_id && result.profile_id !== currentProfile?.id) {
+          const savedProfile = profiles.find(p => p.id === result.profile_id);
+          if (savedProfile) {
+            setCurrentProfile(savedProfile);
+            localStorage.setItem(LS_PROFILE_KEY, savedProfile.id.toString());
+            console.log('🔄 Automaticky přepnuto na profil:', savedProfile.name);
+          }
+        }
+        
         // Zobrazit toast notifikaci místo dialogu
         showToast(
           `✅ Hierarchie úspěšně uložena! Uloženo ${nodes.length} uzlů a ${edges.length} vztahů.`,
@@ -4237,40 +4323,11 @@ const OrganizationHierarchy = () => {
   return (
     <Container>
       <Header>
-        <Title>
-          <FontAwesomeIcon icon={faSitemap} />
-          Systém workflow a notifikací
-        </Title>
-        <HeaderActions>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '280px' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
-              Profil:
-            </label>
-            <ProfileSelectWrapper>
-              <ProfileSelect 
-                value={currentProfile?.id || ''} 
-                onChange={(e) => handleProfileChange(e.target.value)}
-              >
-                {profiles.map(profile => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name} {profile.isActive ? '⭐' : ''}
-                    {profile.relationshipsCount > 0 ? ` (${profile.relationshipsCount})` : ''}
-                  </option>
-                ))}
-              </ProfileSelect>
-              <ProfileSelectArrow>▼</ProfileSelectArrow>
-              <ProfileDeleteButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteProfile();
-                }}
-                disabled={!currentProfile || profiles.length <= 1}
-                title={profiles.length <= 1 ? 'Nelze smazat poslední profil' : 'Smazat aktuální profil'}
-              >
-                🗑️
-              </ProfileDeleteButton>
-            </ProfileSelectWrapper>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Title>
+            <FontAwesomeIcon icon={faSitemap} />
+            Systém workflow a notifikací
+          </Title>
           {(nodes.length > 0 || edges.length > 0) && (
             <div style={{
               display: 'flex',
@@ -4293,6 +4350,38 @@ const OrganizationHierarchy = () => {
               </span>
             </div>
           )}
+        </div>
+        <HeaderActions>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '320px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
+              Profil:
+            </label>
+            <ProfileSelectWrapper>
+              <ProfileSelect
+                value={currentProfile?.id || ''}
+                onChange={(e) => handleProfileChange(e.target.value)}
+              >
+                {profiles.map(profile => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                    {profile.isActive ? ' ⭐' : ''}
+                    {profile.relationshipsCount > 0 ? ` (${profile.relationshipsCount})` : ''}
+                  </option>
+                ))}
+              </ProfileSelect>
+              <ProfileSelectArrow>▼</ProfileSelectArrow>
+              <ProfileDeleteButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteProfile();
+                }}
+                disabled={!currentProfile || profiles.length <= 1}
+                title={profiles.length <= 1 ? 'Nelze smazat poslední profil' : 'Smazat aktuální profil'}
+              >
+                🗑️
+              </ProfileDeleteButton>
+            </ProfileSelectWrapper>
+          </div>
           <Button onClick={handleAutoGenerateHierarchy} disabled={loading || allUsers.length === 0}>
             <span style={{ fontSize: '1.1rem', marginRight: '4px' }}>🤖</span>
             AI Asistent
