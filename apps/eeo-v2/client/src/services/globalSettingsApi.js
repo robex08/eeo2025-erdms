@@ -13,6 +13,9 @@ const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace
  */
 export const getGlobalSettings = async (token, username) => {
   try {
+    // 🔥 DEBUG: Výpis přihlášeného uživatele
+    console.log('👤 getGlobalSettings() called for user:', username);
+    
     const response = await fetch(`${API_BASE_URL}/global-settings`, {
       method: 'POST',
       headers: {
@@ -30,7 +33,23 @@ export const getGlobalSettings = async (token, username) => {
     }
     
     const result = await response.json();
-    return result.data || result;
+    const data = result.data || result;
+    
+    // 🔥 HIERARCHY DEBUG: Console výpis
+    console.group('🌲 HIERARCHY CONFIG (Global Settings)');
+    console.log('✅ Loaded from API');
+    console.log('Hierarchy Enabled:', data.hierarchy_enabled ? '✅ YES' : '❌ NO');
+    console.log('Hierarchy Profile ID:', data.hierarchy_profile_id || '⚠️ NULL');
+    console.log('Hierarchy Logic:', data.hierarchy_logic || 'OR (default)');
+    if (data.hierarchy_enabled && !data.hierarchy_profile_id) {
+      console.warn('⚠️ WARNING: Hierarchy enabled but NO PROFILE selected!');
+    }
+    if (data.hierarchy_enabled && data.hierarchy_profile_id) {
+      console.log('🎯 Hierarchy is ACTIVE with profile:', data.hierarchy_profile_id);
+    }
+    console.groupEnd();
+    
+    return data;
     
   } catch (error) {
     console.error('Chyba při načítání globálního nastavení:', error);
@@ -47,17 +66,24 @@ export const getGlobalSettings = async (token, username) => {
  */
 export const saveGlobalSettings = async (settings, token, username) => {
   try {
+    const payload = {
+      token,
+      username,
+      operation: 'save',
+      settings
+    };
+    
+    console.group('💾 SAVE GLOBAL SETTINGS');
+    console.log('Settings to save:', settings);
+    console.log('Full payload:', payload);
+    console.groupEnd();
+    
     const response = await fetch(`${API_BASE_URL}/global-settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        token,
-        username,
-        operation: 'save',
-        settings
-      })
+      body: JSON.stringify(payload)
     });
     
     if (!response.ok) {

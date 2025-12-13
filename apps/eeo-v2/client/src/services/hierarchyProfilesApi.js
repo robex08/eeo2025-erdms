@@ -43,7 +43,48 @@ export const getHierarchyProfiles = async (token, username) => {
 };
 
 /**
- * Nastaví aktivní profil hierarchie
+ * Toggle aktivního stavu profilu (enable/disable)
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {number} profileId - ID profilu
+ * @param {boolean} isActive - Nový stav (true = aktivní, false = neaktivní)
+ * @returns {Promise<Object>} Response z API
+ */
+export const setProfileActive = async (token, username, profileId, isActive) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/hierarchy/profiles/toggle-active`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        profile_id: profileId,
+        is_active: isActive ? 1 : 0
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Chyba při změně stavu profilu');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Chyba při změně stavu profilu:', error);
+    throw error;
+  }
+};
+
+/**
+ * Nastaví aktivní profil hierarchie (starý endpoint - možná deprecated)
  * @param {number} profileId - ID profilu k aktivaci
  * @param {string} token - Auth token
  * @param {string} username - Username

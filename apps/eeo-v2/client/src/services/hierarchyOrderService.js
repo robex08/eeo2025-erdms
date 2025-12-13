@@ -41,55 +41,36 @@ export const getHierarchySettings = async (token, username) => {
 };
 
 /**
+ * Načte stav hierarchie pro uživatele (alias pro getHierarchySettings)
+ * 
+ * @param {number} userId User ID (nepoužíváno, zachováno pro BC)
+ * @param {string} token Auth token
+ * @param {string} username Username
+ * @returns {Promise<{enabled: boolean, profile_id: number|null, logic: string}>}
+ */
+export const getHierarchyStatus = async (userId, token, username) => {
+  return await getHierarchySettings(token, username);
+};
+
+/**
  * Zkontroluje, zda má uživatel právo HIERARCHY_IMMUNE
  * 
+ * @deprecated Backend kontroluje HIERARCHY_IMMUNE automaticky
  * @param {number} userId User ID
  * @param {string} token Auth token
  * @param {string} username Username
  * @returns {Promise<boolean>}
  */
 export const checkUserHierarchyImmunity = async (userId, token, username) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/user/${userId}/permissions`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    if (!response.ok) {
-      // Pokud endpoint neexistuje nebo chyba, předpokládáme že NENÍ immune
-      console.warn('⚠️ Endpoint pro kontrolu oprávnění není dostupný');
-      return false;
-    }
-    
-    const data = await response.json();
-    
-    if (data.status === 'ok' && Array.isArray(data.permissions)) {
-      // Zkontroluj, zda je v seznamu HIERARCHY_IMMUNE
-      return data.permissions.some(perm => 
-        perm === 'HIERARCHY_IMMUNE' || 
-        perm.kod_prava === 'HIERARCHY_IMMUNE' ||
-        perm.code === 'HIERARCHY_IMMUNE'
-      );
-    }
-    
-    return false;
-    
-  } catch (error) {
-    console.error('❌ Chyba při kontrole HIERARCHY_IMMUNE:', error);
-    return false;
-  }
+  // Backend kontroluje automaticky - vracíme false (bezpečný default)
+  console.warn('⚠️ checkUserHierarchyImmunity je deprecated - backend kontroluje automaticky');
+  return false;
 };
 
 /**
  * Zkontroluje, zda může uživatel vidět konkrétní objednávku
- * (Frontend check - backend provádí autoritativní kontrolu)
  * 
- * POZNÁMKA: Tato funkce je pouze indikativní! 
- * Backend provádí skutečnou kontrolu při načítání objednávky.
- * 
+ * @deprecated Backend kontroluje automaticky při GET /order-v2/{id}
  * @param {number} orderId Order ID
  * @param {number} userId User ID
  * @param {string} token Auth token
@@ -97,80 +78,9 @@ export const checkUserHierarchyImmunity = async (userId, token, username) => {
  * @returns {Promise<{canView: boolean, reason?: string}>}
  */
 export const checkOrderVisibility = async (orderId, userId, token, username) => {
-  // Frontend nemá dostatek informací pro plnou kontrolu
-  // Spoléháme na backend - pokud API vrátí 403, objednávka není viditelná
-  
-  try {
-    // Zkus načíst objednávku - pokud projde, je viditelná
-    const response = await fetch(`${API_BASE_URL}/${API_VERSION}/order-v2/${orderId}?token=${token}&username=${username}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.status === 403) {
-      // Backend zamítl přístup
-      return {
-        canView: false,
-        reason: 'hierarchy_restriction'
-      };
-    }
-    
-    if (response.status === 404) {
-      return {
-        canView: false,
-        reason: 'not_found'
-      };
-    }
-    
-    if (!response.ok) {
-      return {
-        canView: false,
-        reason: 'error'
-      };
-    }
-    
-    return {
-      canView: true
-    };
-    
-  } catch (error) {
-    console.error('❌ Chyba při kontrole viditelnosti objednávky:', error);
-    return {
-      canView: false,
-      reason: 'error'
-    };
-  }
-};
-
-/**
- * Získá informaci o aktivním profilu hierarchie
- * 
- * @param {string} token Auth token
- * @param {string} username Username
- * @returns {Promise<{id: number, name: string}|null>}
- */
-export const getActiveHierarchyProfile = async (token, username) => {
-  try {
-    const settings = await getHierarchySettings(token, username);
-    
-    if (!settings.enabled || !settings.profile_id) {
-      return null;
-    }
-    
-    // Načti detail profilu
-    const { getHierarchyProfiles } = await import('./hierarchyProfilesApi');
-    const profiles = await getHierarchyProfiles(token, username);
-    
-    const activeProfile = profiles.find(p => p.id === settings.profile_id);
-    
-    return activeProfile || null;
-    
-  } catch (error) {
-    console.error('❌ Chyba při načítání aktivního profilu hierarchie:', error);
-    return null;
-  }
+  // Backend kontroluje automaticky při GET request
+  console.warn('⚠️ checkOrderVisibility je deprecated - backend kontroluje automaticky');
+  return { canView: true, reason: 'Backend kontroluje automaticky' };
 };
 
 /**
@@ -187,59 +97,10 @@ export const getHierarchyLogicDescription = (logic) => {
   return 'Liberální (NEBO) - uživatel vidí data pokud splňuje alespoň jednu úroveň hierarchie';
 };
 
-/**
- * Zkontroluje stav hierarchie pro aktuálního uživatele
- * Vrací kompletní informace pro zobrazení v UI
- * 
- * @param {number} userId User ID
- * @param {string} token Auth token
- * @param {string} username Username
- * @returns {Promise<{
- *   hierarchyEnabled: boolean,
- *   isImmune: boolean,
- *   profileId: number|null,
- *   profileName: string|null,
- *   logic: string,
- *   logicDescription: string
- * }>}
- */
-export const getHierarchyStatus = async (userId, token, username) => {
-  try {
-    const [settings, isImmune, activeProfile] = await Promise.all([
-      getHierarchySettings(token, username),
-      checkUserHierarchyImmunity(userId, token, username),
-      getActiveHierarchyProfile(token, username)
-    ]);
-    
-    return {
-      hierarchyEnabled: settings.enabled,
-      isImmune: isImmune,
-      profileId: settings.profile_id,
-      profileName: activeProfile?.name || null,
-      logic: settings.logic,
-      logicDescription: getHierarchyLogicDescription(settings.logic)
-    };
-    
-  } catch (error) {
-    console.error('❌ Chyba při načítání stavu hierarchie:', error);
-    
-    // Safe fallback
-    return {
-      hierarchyEnabled: false,
-      isImmune: false,
-      profileId: null,
-      profileName: null,
-      logic: 'OR',
-      logicDescription: getHierarchyLogicDescription('OR')
-    };
-  }
-};
-
 export default {
   getHierarchySettings,
+  getHierarchyStatus,
   checkUserHierarchyImmunity,
   checkOrderVisibility,
-  getActiveHierarchyProfile,
-  getHierarchyLogicDescription,
-  getHierarchyStatus
+  getHierarchyLogicDescription
 };

@@ -696,6 +696,9 @@ export async function deleteOrderV2(orderId, token, username, hardDelete = false
  */
 export async function listOrdersV2(filters = {}, token, username, returnFullResponse = false, enriched = true) {
   try {
+    // 🔥 DEBUG: Výpis přihlášeného uživatele
+    console.log('👤 listOrdersV2() called for user:', username);
+    
     // 🚀 VŽDY používej enriched endpoint pro kompletní data
     const endpoint = '/order-v2/list-enriched';
 
@@ -705,10 +708,90 @@ export async function listOrdersV2(filters = {}, token, username, returnFullResp
       ...filters
     };
 
+    // 🔥 DEBUG: Výpis request payload
+    console.group('📤 REQUEST PAYLOAD');
+    console.log('Filters:', filters);
+    console.log('Full payload:', requestPayload);
+    console.groupEnd();
+
     const response = await apiOrderV2.post(endpoint, requestPayload);
 
     const result = validateAPIResponse(response, 'listOrdersV2');
-    const orders = result.data || [];
+    
+    // 🔥 SAFE: Ensure data is always an array
+    const orders = Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []);
+
+    // 🔥 RESPONSE META: Console výpis
+    if (result.meta) {
+      console.group('📊 RESPONSE META');
+      console.log('Total orders:', result.meta.pagination?.total || 0);
+      console.log('Returned orders:', orders.length);
+      console.log('Pagination:', result.meta.pagination);
+      console.log('Filters applied:', result.meta.filters_applied);
+      console.groupEnd();
+    } else {
+      console.warn('⚠️ No meta in response!');
+    }
+
+    // 🔥 HIERARCHY DEBUG: Console výpis
+    if (result.meta?.hierarchy_debug) {
+      const hd = result.meta.hierarchy_debug;
+      
+      // Skip if hierarchy data is incomplete
+      if (!hd || typeof hd !== 'object') {
+        console.warn('⚠️ Invalid hierarchy_debug data:', hd);
+        return returnFullResponse ? result : orders;
+      }
+      
+      console.group('🌲 HIERARCHY DEBUG');
+      console.log('✅ Called:', hd.called);
+      console.log('👤 User ID:', hd.user_id);
+      
+      if (hd.config) {
+        console.group('⚙️ Config');
+        console.log('Enabled:', hd.config.enabled ? '✅ YES' : '❌ NO');
+        console.log('Profile ID:', hd.config.profile_id || 'NULL');
+        console.log('Logic:', hd.config.logic);
+        console.groupEnd();
+      }
+      
+      if (hd.relationships_count !== undefined) {
+        console.log('🔗 Relationships:', hd.relationships_count);
+        if (hd.relationships && hd.relationships.length > 0) {
+          console.table(hd.relationships);
+        }
+      }
+      
+      if (hd.visible_entities) {
+        console.group('👁️ Visible Entities');
+        console.log('Users:', hd.visible_entities.users_count, '→', hd.visible_entities.users);
+        console.log('Useky:', hd.visible_entities.useky_count, '→', hd.visible_entities.useky);
+        console.log('Lokality:', hd.visible_entities.lokality_count, '→', hd.visible_entities.lokality);
+        console.groupEnd();
+      }
+      
+      if (hd.filter_generated) {
+        console.group('🔍 Generated Filter');
+        console.log('Logic:', hd.filter_logic);
+        console.log('Conditions:', hd.filter_conditions_count);
+        console.log('Length:', hd.filter_length, 'chars');
+        console.log('Preview:', hd.filter_preview);
+        if (hd.filter_full) {
+          console.log('Full WHERE:', hd.filter_full);
+        }
+        console.groupEnd();
+      }
+      
+      if (hd.reason) {
+        console.warn('⚠️ Reason:', hd.reason);
+      }
+      
+      if (hd.immune) {
+        console.log('🛡️ User is IMMUNE - hierarchy not applied');
+      }
+      
+      console.groupEnd();
+    }
 
     // If returnFullResponse is true, return the entire response (for debugging/testing)
     if (returnFullResponse) {

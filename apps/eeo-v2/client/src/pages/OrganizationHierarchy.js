@@ -44,6 +44,9 @@ import {
   faInfoCircle
 } from '@fortawesome/free-solid-svg-icons';
 
+// API Configuration
+const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+
 // Potlačit neškodnou ResizeObserver chybu (běžné u ReactFlow)
 const resizeObserverErr = window.console.error;
 window.console.error = (...args) => {
@@ -647,64 +650,75 @@ const Input = styled.input`
 `;
 
 const ProfileSelectWrapper = styled.div`
-  position: relative;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 8px;
   flex: 1;
-  gap: 0;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 2px;
+  transition: all 0.2s;
+  
+  &:focus-within {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  &:hover {
+    border-color: #d1d5db;
+  }
 `;
 
 const ProfileSelect = styled.select`
   flex: 1;
-  padding: 8px 16px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
-  color: #2c3e50;
-  font-size: 0.9rem;
-  cursor: pointer;
+  color: #111827;
+  font-size: 0.875rem;
   font-weight: 500;
+  cursor: pointer;
   outline: none;
   appearance: none;
-  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 20px;
+  padding-right: 36px;
   
   option {
-    padding: 8px;
+    padding: 10px;
+    font-size: 0.875rem;
   }
 `;
 
 const ProfileSelectArrow = styled.div`
-  position: absolute;
-  right: 45px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #64748b;
-  font-size: 0.7rem;
+  display: none;
 `;
 
 const ProfileDeleteButton = styled.button`
-  padding: 0 12px;
-  background: white;
-  border: 1px solid #e0e6ed;
-  border-left: none;
-  color: ${props => props.disabled ? '#cbd5e1' : '#dc2626'};
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: ${props => props.disabled ? '#d1d5db' : '#6b7280'};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
-  font-size: 1rem;
+  font-size: 0.875rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
-  border-radius: 0 6px 6px 0;
-  min-width: 44px;
-  height: 40px;
+  transition: all 0.15s;
+  border-radius: 6px;
+  min-width: 32px;
+  height: 32px;
   
   &:hover:not(:disabled) {
-    background: #fee2e2;
-    color: #b91c1c;
+    background: #f9fafb;
+    border-color: #d1d5db;
   }
   
   &:active:not(:disabled) {
-    background: #fecaca;
+    background: #f3f4f6;
   }
 `;
 
@@ -1841,14 +1855,13 @@ const OrganizationHierarchy = () => {
           return response.json();
         };
 
-        // 3. Paralelní načtení všech dat z API
-        const [usersData, rolesData, locationsData, departmentsData, profilesData, structureData, notifTypesData, templatesData] = await Promise.all([
+        // 3. Paralelní načtení dat (BEZ struktury - tu načteme až po zjištění profilu)
+        const [usersData, rolesData, locationsData, departmentsData, profilesData, notifTypesData, templatesData] = await Promise.all([
           fetchData('hierarchy/users'),
           fetchData('ciselniky/role/list'),
           fetchData('hierarchy/locations'),
           fetchData('hierarchy/departments'),
           fetchData('hierarchy/profiles/list'),
-          fetchData('hierarchy/structure'),
           fetchData('hierarchy/notification-types'),
           fetchData('notifications/templates/list')
         ]);
@@ -1880,29 +1893,52 @@ const OrganizationHierarchy = () => {
         const profilesList = profilesData.data || [];
         setProfiles(profilesList);
         
-        // Pokusit se načíst vybraný profil z LocalStorage
-        const savedProfileId = localStorage.getItem(LS_PROFILE_KEY);
+        // 🔥 PRIORITA: Načíst z Global Settings (DB) - to je zdroj pravdy!
         let selectedProfile = null;
         
-        if (savedProfileId) {
-          selectedProfile = profilesList.find(p => p.id === parseInt(savedProfileId));
+        // 1. Zkus načíst z global settings API
+        try {
+          const { getGlobalSettings } = await import('../services/globalSettingsApi');
+          const globalSettings = await getGlobalSettings(token, username);
+          
+          if (globalSettings.hierarchy_profile_id) {
+            selectedProfile = profilesList.find(p => p.id === parseInt(globalSettings.hierarchy_profile_id));
+            console.log('✅ Loaded profile from Global Settings (DB):', selectedProfile?.name, 'ID:', globalSettings.hierarchy_profile_id);
+          }
+        } catch (err) {
+          console.warn('⚠️ Failed to load profile from Global Settings:', err);
         }
         
-        // Pokud není uložený profil nebo neexistuje, použít aktivní
+        // 2. Fallback: Použít aktivní profil
         if (!selectedProfile) {
           selectedProfile = profilesList.find(p => p.isActive) || profilesList[0];
+          console.log('⚠️ Using fallback profile (active or first):', selectedProfile?.name);
         }
         
         setCurrentProfile(selectedProfile || null);
         
-        // Uložit vybraný profil do LocalStorage
+        console.log('📋 Profiles loaded:', profilesList.length, 'Selected:', selectedProfile?.name, 'ID:', selectedProfile?.id);
+        
+        // 🔥 TEĎ načíst strukturu s profilId
+        let structureData = { success: true, data: { nodes: [], relations: [] } };
         if (selectedProfile) {
-          localStorage.setItem(LS_PROFILE_KEY, selectedProfile.id.toString());
+          console.log('📥 Loading structure for profile:', selectedProfile.id);
+          structureData = await fetch(`${API_BASE_URL}/hierarchy/structure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, username, profilId: selectedProfile.id })
+          }).then(r => r.json());
         }
         
-        console.log('📋 Profiles loaded:', profilesList.length, 'Selected:', selectedProfile?.name);
         console.log('🔍 Draft status:', { draftLoaded, hasStructureData: !!structureData.data });
         console.log('📥 Structure data:', structureData);
+        
+        // 🔥 DEBUG: Detailní výpis struktury
+        console.log('🔍 structureData.data:', structureData?.data);
+        console.log('🔍 structureData.data.nodes:', structureData?.data?.nodes);
+        console.log('🔍 structureData.data.relations:', structureData?.data?.relations);
+        console.log('🔍 nodes length:', structureData?.data?.nodes?.length);
+        console.log('🔍 relations length:', structureData?.data?.relations?.length);
         
         // DŮLEŽITÉ: Pokud je draft, ale struktura z API má data, preferovat API data
         // Draft je jen pro dočasné změny, ne pro perzistentní uložení
@@ -1918,11 +1954,23 @@ const OrganizationHierarchy = () => {
           console.log('📥 V2 Loading hierarchy from API');
           console.log('📊 V2 API Response:', structureData);
           
+          // 🔥 DEBUG: Výpis celé struktury
+          console.log('🔍 Structure data full:', structureData);
+          console.log('🔍 Structure data.data:', structureData?.data);
+          console.log('🔍 Structure data.data.nodes:', structureData?.data?.nodes);
+          console.log('🔍 Structure data.data.relations:', structureData?.data?.relations);
+          
           // V2 API vrací { nodes, relations } místo { nodes, edges }
-          const apiNodes = structureData.data.nodes || [];
-          const apiRelations = structureData.data.relations || [];
+          const apiNodes = Array.isArray(structureData?.data?.nodes) ? structureData.data.nodes : [];
+          const apiRelations = Array.isArray(structureData?.data?.relations) ? structureData.data.relations : [];
           
           console.log('📦 V2 Received from API:', apiNodes.length, 'nodes,', apiRelations.length, 'relations');
+          
+          if (apiNodes.length === 0 && apiRelations.length === 0) {
+            console.warn('⚠️ Empty structure data from API - will exit early');
+            setLoading(false);
+            return;
+          }
 
           const timestamp = Date.now();
           
@@ -2057,6 +2105,10 @@ const OrganizationHierarchy = () => {
             
             const edgeColor = getEdgeColor(relType);
             
+            // Mapovat level zpět na scope: 1=OWN, 2=TEAM, 3=LOCATION, 4=ALL
+            const levelToScope = { 1: 'OWN', 2: 'TEAM', 3: 'LOCATION', 4: 'ALL' };
+            const edgeScope = levelToScope[rel.level] || 'OWN';
+            
             return {
               id: `rel-${rel.id || index}`,
               source: sourceNode.id,
@@ -2073,6 +2125,7 @@ const OrganizationHierarchy = () => {
               },
               data: {
                 level: rel.level,
+                scope: edgeScope,
                 visibility: rel.visibility,
                 notifications: rel.notifications,
                 type: relType
@@ -2107,6 +2160,34 @@ const OrganizationHierarchy = () => {
 
     loadHierarchyData();
   }, []);
+
+  // 🔥 Auto-reload při změně profilu
+  useEffect(() => {
+    if (currentProfile && currentProfile.id) {
+      console.log('🔄 Profile changed to:', currentProfile.id, currentProfile.name);
+      
+      // Reload by triggering the main load - just clear nodes/edges
+      // Main useEffect will reload on mount
+      setNodes([]);
+      setEdges([]);
+      setLoading(true);
+      
+      // Note: Actual reload happens in main useEffect on []
+      // This just signals UI that we're loading
+      setTimeout(() => setLoading(false), 500);
+    }
+  }, [currentProfile?.id]);
+
+  // 🔥 Auto-fit graf po načtení nodes
+  useEffect(() => {
+    if (nodes.length > 0 && reactFlowInstance) {
+      // Počkat na render a pak fitView
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+        console.log('📐 Auto-fit applied for', nodes.length, 'nodes');
+      }, 100);
+    }
+  }, [nodes.length, reactFlowInstance]);
 
   const onConnect = useCallback((params) => {
     // Určit typ vztahu a barvu podle source a target nodes
@@ -2227,13 +2308,15 @@ const OrganizationHierarchy = () => {
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
-    // Nacist viditelnost modulu z edge data
+    // Nacist viditelnost modulu z edge data (zkontrolovat modules i visibility)
     setModuleVisibility({
-      orders: edge.data?.modules?.orders !== false,
-      invoices: edge.data?.modules?.invoices !== false,
-      contracts: edge.data?.modules?.contracts || false,
-      cashbook: edge.data?.modules?.cashbook !== false,
-      cashbookReadonly: edge.data?.modules?.cashbookReadonly !== false
+      orders: edge.data?.modules?.orders ?? edge.data?.visibility?.objednavky ?? false,
+      invoices: edge.data?.modules?.invoices ?? edge.data?.visibility?.faktury ?? false,
+      contracts: edge.data?.modules?.contracts ?? edge.data?.visibility?.smlouvy ?? false,
+      cashbook: edge.data?.modules?.cashbook ?? edge.data?.visibility?.pokladna ?? false,
+      cashbookReadonly: edge.data?.modules?.cashbookReadonly ?? false,
+      users: edge.data?.modules?.users ?? edge.data?.visibility?.uzivatele ?? false,
+      lp: edge.data?.modules?.lp ?? edge.data?.visibility?.lp ?? false
     });
     
     // Nacist uroven prav z edge data
@@ -3802,6 +3885,34 @@ const OrganizationHierarchy = () => {
     });
   };
   
+  const handleToggleProfileActive = async () => {
+    if (!currentProfile) return;
+    
+    const newActiveState = !currentProfile.isActive;
+    const action = newActiveState ? 'aktivovat' : 'deaktivovat';
+    
+    try {
+      const token = await loadAuthData.token();
+      const userData = await loadAuthData.user();
+      const username = userData?.username || localStorage.getItem('username');
+      
+      const { setProfileActive } = await import('../services/hierarchyProfilesApi');
+      await setProfileActive(token, username, currentProfile.id, newActiveState);
+      
+      // Aktualizovat lokální stav
+      setProfiles(profiles.map(p => 
+        p.id === currentProfile.id ? { ...p, isActive: newActiveState } : p
+      ));
+      setCurrentProfile({ ...currentProfile, isActive: newActiveState });
+      
+      const statusText = newActiveState ? 'aktivován (viditelný v AppSettings)' : 'deaktivován (skrytý v AppSettings)';
+      console.log(`✅ Profil "${currentProfile.name}" byl ${statusText}`);
+    } catch (error) {
+      console.error(`Chyba při pokusu ${action} profil:`, error);
+      alert(`Nepodařilo se ${action} profil: ${error.message}`);
+    }
+  };
+  
   const handleProfileChange = async (profileId) => {
     console.log('🔄 handleProfileChange called with profileId:', profileId);
     const profile = profiles.find(p => p.id === parseInt(profileId));
@@ -4046,18 +4157,23 @@ const OrganizationHierarchy = () => {
         const targetType = getNodeType(targetNode);
         
         // Vytvořit vztah podle typu
+        // Mapovat scope na level: OWN=1, TEAM=2, LOCATION=3, ALL=4
+        const scopeToLevel = { 'OWN': 1, 'TEAM': 2, 'LOCATION': 3, 'ALL': 4 };
+        const edgeScope = edge.data?.scope || 'OWN';
+        const edgeLevel = scopeToLevel[edgeScope] || edge.data?.level || 1;
+        
         const relation = {
           type: `${sourceType}-${targetType}`, // 'user-user', 'location-user', etc.
           position_1: sourceNode.position,
           position_2: targetNode.position,
-          level: edge.data?.level || 1,
-          visibility: edge.data?.visibility || {
-            objednavky: false,
-            faktury: false,
-            smlouvy: false,
-            pokladna: false,
-            uzivatele: false,
-            lp: false
+          level: edgeLevel,
+          visibility: {
+            objednavky: edge.data?.modules?.orders || edge.data?.visibility?.objednavky || false,
+            faktury: edge.data?.modules?.invoices || edge.data?.visibility?.faktury || false,
+            smlouvy: edge.data?.modules?.contracts || edge.data?.visibility?.smlouvy || false,
+            pokladna: edge.data?.modules?.cashbook || edge.data?.visibility?.pokladna || false,
+            uzivatele: edge.data?.modules?.users || edge.data?.visibility?.uzivatele || false,
+            lp: edge.data?.modules?.lp || edge.data?.visibility?.lp || false
           },
           notifications: edge.data?.notifications || {
             email: false,
@@ -4364,12 +4480,28 @@ const OrganizationHierarchy = () => {
                 {profiles.map(profile => (
                   <option key={profile.id} value={profile.id}>
                     {profile.name}
-                    {profile.isActive ? ' ⭐' : ''}
+                    {profile.isActive ? ' ✅' : ' ⚪'}
                     {profile.relationshipsCount > 0 ? ` (${profile.relationshipsCount})` : ''}
                   </option>
                 ))}
               </ProfileSelect>
               <ProfileSelectArrow>▼</ProfileSelectArrow>
+              <ProfileDeleteButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleProfileActive();
+                }}
+                disabled={!currentProfile}
+                title={currentProfile?.isActive ? 'Deaktivovat profil (skryje se v AppSettings)' : 'Aktivovat profil (zobrazí se v AppSettings)'}
+                style={{ 
+                  background: currentProfile?.isActive ? '#10b981' : '#6b7280',
+                  marginRight: '4px',
+                  fontSize: '0.85rem',
+                  padding: '4px 8px'
+                }}
+              >
+                {currentProfile?.isActive ? '✓' : '○'}
+              </ProfileDeleteButton>
               <ProfileDeleteButton
                 onClick={(e) => {
                   e.stopPropagation();
@@ -6662,7 +6794,14 @@ const OrganizationHierarchy = () => {
               })()}
 
               <DetailSection>
-                <Button primary style={{ width: '100%', marginBottom: '10px' }}>
+                <Button 
+                  primary 
+                  style={{ width: '100%', marginBottom: '10px' }}
+                  onClick={() => {
+                    // Změny se ukládají automaticky přes useEffect, jen zobrazit potvrzení
+                    showToast('✅ Detail vztahu uložen do konceptu', { type: 'success', timeout: 3000 });
+                  }}
+                >
                   <FontAwesomeIcon icon={faSave} />
                   Uložit změny
                 </Button>
