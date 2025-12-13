@@ -6233,6 +6233,10 @@ function OrderForm25() {
                 const response = await getOrderV2(orderId, token, username);
                 return response?.data || null;
               } catch (error) {
+                // 🌲 HIERARCHIE: Pokud backend vrátil 403, nemáme právo
+                if (error?.status === 403 || error?.response?.status === 403) {
+                  console.warn('⛔ HIERARCHY: Přístup k objednávce zamítnut hierarchií');
+                }
                 return null;
               }
             }
@@ -6737,7 +6741,24 @@ function OrderForm25() {
           // Pokud draft neexistuje, načti z databáze
 
           // ✅ V2 API: Načti objednávku s enriched daty
-          const dbOrder = await getOrderV2(editOrderId, token, username, true);
+          let dbOrder;
+          try {
+            dbOrder = await getOrderV2(editOrderId, token, username, true);
+          } catch (error) {
+            // 🌲 HIERARCHIE: Zachyť 403 error (hierarchie zamítla přístup)
+            if (error?.status === 403 || error?.response?.status === 403) {
+              showToast?.(
+                'Nemáte oprávnění k zobrazení této objednávky podle aktuálního organizačního řádu',
+                { type: 'error' }
+              );
+              navigate('/orders25-list', { replace: true });
+              return;
+            }
+            
+            // Jiná chyba
+            showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });
+            return;
+          }
 
           if (!dbOrder) {
             showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });

@@ -42,6 +42,16 @@ export const AuthProvider = ({ children }) => {
   const [user_id, setUserId] = useState(null); // Ensure user_id is part of the context
   const [userDetail, setUserDetail] = useState(null); // Ulož detail uživatele
   const [userPermissions, setUserPermissions] = useState([]); // array of normalized permission codes
+  
+  // 🌲 HIERARCHIE WORKFLOW: Stav hierarchie pro aktuálního uživatele
+  const [hierarchyStatus, setHierarchyStatus] = useState({
+    hierarchyEnabled: false,
+    isImmune: false,
+    profileId: null,
+    profileName: null,
+    logic: 'OR',
+    logicDescription: ''
+  });
 
   const login = async (username, password) => {
     try {
@@ -112,6 +122,15 @@ export const AuthProvider = ({ children }) => {
       // 🔐 TRIGGER LOGIN STATE: Nastavit isLoggedIn = true AŽ PO načtení userSettings
       // Tím zajistíme, že App.js useEffect najde aktuální data v localStorage
       setIsLoggedIn(true);
+
+      // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
+      try {
+        const { getHierarchyStatus } = await import('../services/hierarchyOrderService');
+        const status = await getHierarchyStatus(loginData.id, loginData.token, loginData.username);
+        setHierarchyStatus(status);
+      } catch (error) {
+        console.warn('⚠️ Chyba při načítání stavu hierarchie (použije se výchozí):', error);
+      }
 
       // ✅ BROADCAST: Oznámit ostatním záložkám, že došlo k přihlášení
       broadcastLogin(loginData.id, loginData.username);
@@ -699,7 +718,25 @@ export const AuthProvider = ({ children }) => {
   const username = user?.username || null;
 
   return (
-    <AuthContext.Provider value={{ user, username, token, isLoggedIn, login, logout, error, fullName, setToken, loading, user_id, userDetail, userPermissions, hasPermission, hasAdminRole, refreshUserDetail }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      username, 
+      token, 
+      isLoggedIn, 
+      login, 
+      logout, 
+      error, 
+      fullName, 
+      setToken, 
+      loading, 
+      user_id, 
+      userDetail, 
+      userPermissions, 
+      hasPermission, 
+      hasAdminRole, 
+      refreshUserDetail,
+      hierarchyStatus // 🌲 HIERARCHIE WORKFLOW
+    }}>
       {children}
     </AuthContext.Provider>
   );
