@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { useTheme } from '../../hooks/useTheme';
+import useThemeMode from '../../theme/useThemeMode';
 import MobileHeader from './MobileHeader';
 import MobileMenu from './MobileMenu';
 import mobileDataService from '../../services/mobileDataService';
@@ -24,8 +24,9 @@ import './MobileDashboard.css';
  * 🎨 Podporuje light/dark mode dle system preference
  */
 function MobileDashboard() {
-  const { user: authUser, userDetail } = useContext(AuthContext);
-  const { theme } = useTheme(); // 🎨 Detekce system theme (light/dark)
+  const { user: authUser, userDetail, token, username } = useContext(AuthContext);
+  // ✅ Inicializace theme mode - zapne detekci system preference
+  useThemeMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({
@@ -35,6 +36,7 @@ function MobileDashboard() {
     notifications: null
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   // Sestavíme user objekt pro kompatibilitu
   const user = authUser ? {
@@ -46,7 +48,7 @@ function MobileDashboard() {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+  }, [selectedYear]);
 
   const loadInitialData = async () => {
     try {
@@ -61,15 +63,37 @@ function MobileDashboard() {
 
   const loadDashboardData = async () => {
     try {
-      const result = await mobileDataService.getAllMobileData();
+      // Pokud nemáme token, zobraz prázdná data
+      if (!token || !username) {
+        console.error('[MobileDashboard] ❌ No token/username - cannot load data!');
+        setData({
+          orders: null,
+          invoices: null,
+          cashbook: null,
+          notifications: { unread: 0 }
+        });
+        return;
+      }
+
+      console.log('[MobileDashboard] Loading real data for year:', selectedYear, 'token:', token ? 'present' : 'MISSING', 'username:', username);
+
+      // Načti ostrá data s tokenem
+      const result = await mobileDataService.getAllMobileData({ 
+        token, 
+        username,
+        year: selectedYear 
+      });
+      
+      console.log('[MobileDashboard] Result received:', result);
+      console.log('[MobileDashboard] Data sources:', result.meta?.dataSource);
       
       if (result.success) {
         setData(result.data);
+      } else {
+        console.error('[MobileDashboard] Result not successful:', result);
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('MobileDashboard load error:', error);
-      }
+      console.error('[MobileDashboard] Load error:', error);
     }
   };
 
@@ -88,13 +112,9 @@ function MobileDashboard() {
     }).format(amount);
   };
 
+  // Během načítání nic nevracíme - SplashScreen zůstane viditelný
   if (loading) {
-    return (
-      <div className="mobile-dashboard-loading">
-        <div className="spinner-circle"></div>
-        <p>Načítání...</p>
-      </div>
-    );
+    return null;
   }
 
   // Notifikace - počet nepřečtených
@@ -172,48 +192,50 @@ function MobileDashboard() {
     }
   }
 
-  // Widgety pro faktury - stavy + typy
+  // Widgety pro faktury - STAVY (zaplacení)
   // ✅ IKONY z desktop modulu
-  const invoiceWidgets = [];
+  const invoiceStatusWidgets = [];
+  const invoiceTypeWidgets = [];
+  
   if (data.invoices) {
-    // Stavy zaplací
+    // === STAVY ZAPLACENÍ ===
     if (data.invoices.paid?.count > 0) {
-      invoiceWidgets.push({
+      invoiceStatusWidgets.push({
         id: 'invoices-paid',
         title: 'Zaplaceno',
         count: data.invoices.paid.count,
         amount: data.invoices.paid.amount,
-        icon: faCheckCircle, // ✅ STEJNÁ ikona jako desktop Invoices25List.js
+        icon: faCheckCircle,
         color: 'green',
-        category: 'invoices'
+        category: 'invoices-status'
       });
     }
     if (data.invoices.unpaid?.count > 0) {
-      invoiceWidgets.push({
+      invoiceStatusWidgets.push({
         id: 'invoices-unpaid',
         title: 'Nezaplaceno',
         count: data.invoices.unpaid.count,
         amount: data.invoices.unpaid.amount,
-        icon: faHourglassHalf, // ✅ STEJNÁ ikona jako desktop Invoices25List.js
+        icon: faHourglassHalf,
         color: 'orange',
-        category: 'invoices'
+        category: 'invoices-status'
       });
     }
     if (data.invoices.overdue?.count > 0) {
-      invoiceWidgets.push({
+      invoiceStatusWidgets.push({
         id: 'invoices-overdue',
         title: 'Po splatnosti',
         count: data.invoices.overdue.count,
         amount: data.invoices.overdue.amount,
-        icon: faExclamationTriangle, // ✅ STEJNÁ ikona jako desktop Invoices25List.js
+        icon: faExclamationTriangle,
         color: 'red',
-        category: 'invoices'
+        category: 'invoices-status'
       });
     }
     
-    // Typy faktur - všech 5 typů z číselníku
+    // === TYPY FAKTUR ===
     if (data.invoices.regular?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-regular',
         title: 'Běžná',
         count: data.invoices.regular.count,
@@ -224,7 +246,7 @@ function MobileDashboard() {
       });
     }
     if (data.invoices.advance?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-advance',
         title: 'Zálohová',
         count: data.invoices.advance.count,
@@ -235,7 +257,7 @@ function MobileDashboard() {
       });
     }
     if (data.invoices.corrective?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-corrective',
         title: 'Opravná',
         count: data.invoices.corrective.count,
@@ -246,7 +268,7 @@ function MobileDashboard() {
       });
     }
     if (data.invoices.proforma?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-proforma',
         title: 'Proforma',
         count: data.invoices.proforma.count,
@@ -257,7 +279,7 @@ function MobileDashboard() {
       });
     }
     if (data.invoices.creditNote?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-creditnote',
         title: 'Dobropis',
         count: data.invoices.creditNote.count,
@@ -269,7 +291,7 @@ function MobileDashboard() {
     }
     // ✅ Bez přiřazení (bez obj. ANI smlouvy)
     if (data.invoices.withoutAssignment?.count > 0) {
-      invoiceWidgets.push({
+      invoiceTypeWidgets.push({
         id: 'invoices-without-assignment',
         title: 'Bez přiřazení',
         count: data.invoices.withoutAssignment.count,
@@ -281,14 +303,53 @@ function MobileDashboard() {
     }
   }
 
-  // Widget pro pokladnu
-  const cashbookWidget = data.cashbook && data.cashbook.count > 0 ? {
+  // Widget pro pokladnu (pokud má uživatel více pokladen, zobrazí dropdown)
+  const cashbookWidgets = [];
+  if (data.cashbook && data.cashbook.pokladny && data.cashbook.pokladny.length > 0) {
+    const pokladny = data.cashbook.pokladny;
+    
+    // Pokud má uživatel více než 1 pokladnu, vytvoř widget pro každou
+    if (pokladny.length > 1) {
+      pokladny.forEach(pokladna => {
+        if (pokladna.aktivni && pokladna.pocet_zaznamu > 0) {
+          cashbookWidgets.push({
+            id: `cashbook-${pokladna.id}`,
+            title: `Pokladna ${pokladna.cislo_pokladny}`,
+            subtitle: pokladna.nazev || '',
+            count: pokladna.pocet_zaznamu,
+            amount: pokladna.koncovy_stav,
+            icon: getStatusIcon('nova'),
+            color: 'purple',
+            category: 'cashbook'
+          });
+        }
+      });
+    } else if (pokladny.length === 1) {
+      // Pokud má jen 1 pokladnu, zobraz ji jako jeden widget
+      const pokladna = pokladny[0];
+      if (pokladna.aktivni) {
+        cashbookWidgets.push({
+          id: 'cashbook',
+          title: 'Pokladna',
+          count: pokladna.pocet_zaznamu,
+          subtitle: 'Záznamy v měsíci',
+          amount: pokladna.koncovy_stav,
+          icon: getStatusIcon('nova'),
+          color: 'purple',
+          category: 'cashbook'
+        });
+      }
+    }
+  }
+  
+  // Pro zpětnou kompatibilitu - pokud cashbook nemá strukturu pokladny[], použij staré API
+  const cashbookWidget = cashbookWidgets.length === 0 && data.cashbook && data.cashbook.count > 0 ? {
     id: 'cashbook',
     title: 'Pokladna',
     count: data.cashbook.count,
     subtitle: 'Záznamy v měsíci',
     amount: data.cashbook.balance,
-    icon: getStatusIcon('nova'), // 📝 Desktop: faPlay (nový záznam)
+    icon: getStatusIcon('nova'),
     color: 'purple',
     category: 'cashbook'
   } : null;
@@ -339,11 +400,11 @@ function MobileDashboard() {
           </section>
         )}
 
-        {/* Sekce faktury */}
-        {invoiceWidgets.length > 0 && (
+        {/* Sekce faktury - STAVY */}
+        {invoiceStatusWidgets.length > 0 && (
           <section className="mobile-widget-section">
             <div className="mobile-section-header">
-              <h2>Faktury</h2>
+              <h2>Faktury - stavy</h2>
               <div className="mobile-section-summary">
                 {data.invoices.total > 0 && (
                   <>
@@ -356,7 +417,21 @@ function MobileDashboard() {
               </div>
             </div>
             <div className="mobile-widget-grid">
-              {invoiceWidgets.map(widget => (
+              {invoiceStatusWidgets.map(widget => (
+                <WidgetCard key={widget.id} widget={widget} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Sekce faktury - TYPY */}
+        {invoiceTypeWidgets.length > 0 && (
+          <section className="mobile-widget-section">
+            <div className="mobile-section-header">
+              <h2>Faktury - typy</h2>
+            </div>
+            <div className="mobile-widget-grid">
+              {invoiceTypeWidgets.map(widget => (
                 <WidgetCard key={widget.id} widget={widget} />
               ))}
             </div>
@@ -364,7 +439,7 @@ function MobileDashboard() {
         )}
 
         {/* Sekce pokladna */}
-        {cashbookWidget && (
+        {(cashbookWidgets.length > 0 || cashbookWidget) && (
           <section className="mobile-widget-section">
             <div className="mobile-section-header">
               <h2>Pokladna</h2>
@@ -373,13 +448,20 @@ function MobileDashboard() {
               </div>
             </div>
             <div className="mobile-widget-grid">
-              <WidgetCard widget={cashbookWidget} />
+              {/* Zobraz buď jednotlivé pokladny nebo souhrnný widget */}
+              {cashbookWidgets.length > 0 ? (
+                cashbookWidgets.map(widget => (
+                  <WidgetCard key={widget.id} widget={widget} />
+                ))
+              ) : (
+                cashbookWidget && <WidgetCard widget={cashbookWidget} />
+              )}
             </div>
           </section>
         )}
 
         {/* Prázdný stav */}
-        {orderWidgets.length === 0 && invoiceWidgets.length === 0 && !cashbookWidget && (
+        {orderWidgets.length === 0 && invoiceStatusWidgets.length === 0 && invoiceTypeWidgets.length === 0 && cashbookWidgets.length === 0 && !cashbookWidget && (
           <div className="mobile-empty-state">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
@@ -421,27 +503,27 @@ function WidgetCard({ widget }) {
 
   return (
     <div className={`mobile-widget-card ${widget.color}`}>
-      <div className="mobile-widget-icon">
-        {/* ✅ FontAwesome ikony z desktop modulu */}
-        <FontAwesomeIcon icon={widget.icon} />
-      </div>
-      <div className="mobile-widget-content">
-        {/* Zobraz count jako hlavní číslo */}
+      {/* Horní řada: Číslo + Ikona */}
+      <div className="mobile-widget-header">
         {widget.count !== null && widget.count !== undefined && (
           <div className="mobile-widget-count">{widget.count}</div>
         )}
-        
-        <div className="mobile-widget-title">{widget.title}</div>
-        
-        {widget.subtitle && (
-          <div className="mobile-widget-subtitle">{widget.subtitle}</div>
-        )}
-        
-        {/* Zobraz amount jako sekundární info pod titulem */}
-        {widget.amount !== null && widget.amount !== undefined && (
-          <div className="mobile-widget-amount">{formatCurrency(widget.amount)}</div>
-        )}
+        <div className="mobile-widget-icon">
+          <FontAwesomeIcon icon={widget.icon} />
+        </div>
       </div>
+      
+      {/* Název stavu */}
+      <div className="mobile-widget-title">{widget.title}</div>
+      
+      {widget.subtitle && (
+        <div className="mobile-widget-subtitle">{widget.subtitle}</div>
+      )}
+      
+      {/* Částka (pokud existuje) */}
+      {widget.amount !== null && widget.amount !== undefined && (
+        <div className="mobile-widget-amount">{formatCurrency(widget.amount)}</div>
+      )}
     </div>
   );
 }

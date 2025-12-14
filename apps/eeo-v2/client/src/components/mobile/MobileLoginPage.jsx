@@ -1,10 +1,11 @@
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
-import { useTheme } from '../../hooks/useTheme';
+import useThemeMode from '../../theme/useThemeMode';
 import { User, Lock } from 'lucide-react';
-import logoZZS from '../../assets/logo-ZZS.png';
 import './MobileLoginPage.css';
+
+const logoZZS = '/eeo-v2/logo-ZZS.png';
 
 /**
  * 📱 Zjednodušená mobilní přihlašovací stránka
@@ -13,7 +14,8 @@ import './MobileLoginPage.css';
 function MobileLoginPage() {
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
-  const { theme } = useTheme(); // 🎨 Detekce system theme
+  // ✅ Inicializace theme mode - zapne detekci system preference
+  useThemeMode();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
