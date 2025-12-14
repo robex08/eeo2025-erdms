@@ -2255,8 +2255,16 @@ const Users = () => {
           username,
           id: user.id
         });
+        console.log('🔍 handleEditUser - userDetail z API:', userDetail);
+        console.log('🔍 handleEditUser - usek_id:', userDetail?.usek_id);
+        console.log('🔍 handleEditUser - usek:', userDetail?.usek);
+        console.log('🔍 handleEditUser - lokalita_id:', userDetail?.lokalita_id);
+        console.log('🔍 handleEditUser - lokalita:', userDetail?.lokalita);
+        console.log('🔍 handleEditUser - organizace_id:', userDetail?.organizace_id);
+        console.log('🔍 handleEditUser - organizace:', userDetail?.organizace);
       } catch (apiError) {
         // API detail selhal, použije se fallback data
+        console.error('❌ handleEditUser - API error:', apiError);
       }
 
       // POKUS 2: Pokud API nevrátilo ID pole, najdi uživatele v rawApiData
