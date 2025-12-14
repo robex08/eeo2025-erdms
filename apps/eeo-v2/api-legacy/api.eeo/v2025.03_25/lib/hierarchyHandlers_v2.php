@@ -41,12 +41,14 @@ function handle_hierarchy_save_v2($data, $pdo) {
                     profil_id, typ_vztahu,
                     user_id_1, user_id_2, lokalita_id, usek_id, template_id, role_id,
                     pozice_node_1, pozice_node_2,
-                    uroven_opravneni,
+                    uroven_opravneni, druh_vztahu,
                     viditelnost_objednavky, viditelnost_faktury, viditelnost_smlouvy,
                     viditelnost_pokladna, viditelnost_uzivatele, viditelnost_lp,
-                    notifikace_email, notifikace_inapp, notifikace_typy,
+                    modules, permission_level, extended_data,
+                    notifikace_email, notifikace_inapp, notifikace_typy, notifikace_recipient_role,
+                    node_settings,
                     upravil_user_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ";
             
             $stmt = $pdo->prepare($sql);
@@ -64,15 +66,21 @@ function handle_hierarchy_save_v2($data, $pdo) {
                     json_encode(isset($rel['position_1']) ? $rel['position_1'] : null),
                     json_encode(isset($rel['position_2']) ? $rel['position_2'] : null),
                     isset($rel['level']) ? (int)$rel['level'] : 1,
+                    isset($rel['relationshipType']) ? $rel['relationshipType'] : (isset($rel['druh_vztahu']) ? $rel['druh_vztahu'] : 'prime'),
                     isset($rel['visibility']['objednavky']) ? (int)$rel['visibility']['objednavky'] : 0,
                     isset($rel['visibility']['faktury']) ? (int)$rel['visibility']['faktury'] : 0,
                     isset($rel['visibility']['smlouvy']) ? (int)$rel['visibility']['smlouvy'] : 0,
                     isset($rel['visibility']['pokladna']) ? (int)$rel['visibility']['pokladna'] : 0,
                     isset($rel['visibility']['uzivatele']) ? (int)$rel['visibility']['uzivatele'] : 0,
                     isset($rel['visibility']['lp']) ? (int)$rel['visibility']['lp'] : 0,
+                    json_encode(isset($rel['modules']) ? $rel['modules'] : array()),
+                    json_encode(isset($rel['permissionLevel']) ? $rel['permissionLevel'] : array()),
+                    json_encode(isset($rel['extended']) ? $rel['extended'] : array()),
                     isset($rel['notifications']['email']) ? (int)$rel['notifications']['email'] : 0,
                     isset($rel['notifications']['inapp']) ? (int)$rel['notifications']['inapp'] : 0,
                     json_encode(isset($rel['notifications']['types']) ? $rel['notifications']['types'] : array()),
+                    isset($rel['notifications']['recipientRole']) ? $rel['notifications']['recipientRole'] : 'APPROVAL',
+                    json_encode(isset($rel['node_settings']) ? $rel['node_settings'] : array()),
                     $userId
                 ));
             }
@@ -135,9 +143,15 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 v.viditelnost_pokladna,
                 v.viditelnost_uzivatele,
                 v.viditelnost_lp,
+                v.druh_vztahu,
+                v.modules,
+                v.permission_level,
+                v.extended_data,
                 v.notifikace_email,
                 v.notifikace_inapp,
                 v.notifikace_typy,
+                v.notifikace_recipient_role,
+                v.node_settings,
                 u1.jmeno as user1_jmeno,
                 u1.prijmeni as user1_prijmeni,
                 u1.pozice_id as user1_pozice_id,
@@ -189,6 +203,8 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 'id' => $row['id'],
                 'type' => $row['typ_vztahu'],
                 'level' => (int)$row['uroven_opravneni'],
+                'relationshipType' => $row['druh_vztahu'] ?: 'prime',
+                'druh_vztahu' => $row['druh_vztahu'] ?: 'prime',
                 'visibility' => array(
                     'objednavky' => (bool)$row['viditelnost_objednavky'],
                     'faktury' => (bool)$row['viditelnost_faktury'],
@@ -197,11 +213,20 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                     'uzivatele' => (bool)$row['viditelnost_uzivatele'],
                     'lp' => (bool)$row['viditelnost_lp']
                 ),
+                'modules' => $row['modules'] ? json_decode($row['modules'], true) : array(),
+                'permissionLevel' => $row['permission_level'] ? json_decode($row['permission_level'], true) : array(),
+                'extended' => $row['extended_data'] ? json_decode($row['extended_data'], true) : array(
+                    'locations' => array(),
+                    'departments' => array(),
+                    'combinations' => array()
+                ),
                 'notifications' => array(
                     'email' => (bool)$row['notifikace_email'],
                     'inapp' => (bool)$row['notifikace_inapp'],
-                    'types' => $row['notifikace_typy'] ? json_decode($row['notifikace_typy'], true) : array()
+                    'types' => $row['notifikace_typy'] ? json_decode($row['notifikace_typy'], true) : array(),
+                    'recipientRole' => $row['notifikace_recipient_role'] ?: 'APPROVAL'
                 ),
+                'node_settings' => $row['node_settings'] ? json_decode($row['node_settings'], true) : array(),
                 'node_1' => null,
                 'node_2' => null,
                 'position_1' => $row['pozice_node_1'] ? json_decode($row['pozice_node_1'], true) : null,
