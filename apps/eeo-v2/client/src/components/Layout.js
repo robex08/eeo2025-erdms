@@ -1569,7 +1569,7 @@ const Layout = ({ children }) => {
     return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
   }, [userDetail]);
   
-  // Načíst stav hierarchie při loginu - pro ADMINI zobrazit stav, pro ostatní načíst profil ID
+  // Načíst stav hierarchie při loginu - JEDNOU, bez intervalu (hierarchie se nemění za běhu)
   useEffect(() => {
     if (!isLoggedIn || !token || !user?.username) return;
     
@@ -1596,11 +1596,14 @@ const Layout = ({ children }) => {
       }
     };
     
+    // Načíst JEDNOU při přihlášení, žádný interval
     loadHierarchyStatus();
     
-    // Refresh každých 5 minut (hierarchie se nemění často)
-    const interval = setInterval(loadHierarchyStatus, 300000);
-    return () => clearInterval(interval);
+    // Cleanup při odhlášení
+    return () => {
+      setHierarchyEnabled(false);
+      setHierarchyInfo(null);
+    };
   }, [isLoggedIn, token, user?.username]);
 
   // Notes recording state (pro floating button)
