@@ -3,7 +3,9 @@ import { AuthContext } from '../../context/AuthContext';
 import useThemeMode from '../../theme/useThemeMode';
 import MobileHeader from './MobileHeader';
 import MobileMenu from './MobileMenu';
+import SplashScreen from '../SplashScreen';
 import mobileDataService from '../../services/mobileDataService';
+import { fetchActiveUsersWithStats } from '../../services/api2auth';
 import { getStatusIcon } from '../../utils/iconMapping';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -37,6 +39,7 @@ function MobileDashboard() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [activeUsers, setActiveUsers] = useState([]);
 
   // Sestavíme user objekt pro kompatibilitu
   const user = authUser ? {
@@ -45,6 +48,25 @@ function MobileDashboard() {
     mail: userDetail?.email || '',
     upn: authUser.username
   } : null;
+
+  // Kontrola admin funkce role
+  const isAdmin = userDetail?.roles?.some(role => 
+    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+  ) || false;
+
+  // Scroll s offsetem pro fixní hlavičku (60px) + nav bar (48px) + 8px mezera = 116px
+  const scrollToSection = (sectionName) => {
+    const element = document.querySelector(`[data-section="${sectionName}"]`);
+    if (element) {
+      const remInPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const extraSpace = 0.5 * remInPx; // 0.5em v pixelech
+      const offsetTop = element.offsetTop - 108 - extraSpace;
+      window.scrollTo({
+        top: offsetTop,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   useEffect(() => {
     loadInitialData();
@@ -58,6 +80,17 @@ function MobileDashboard() {
       console.error('Failed to load initial data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadActiveUsers = async () => {
+    if (!token || !username || !isAdmin) return;
+    
+    try {
+      const users = await fetchActiveUsersWithStats({ token, username });
+      setActiveUsers(users || []);
+    } catch (error) {
+      console.error('[MobileDashboard] Error loading active users:', error);
     }
   };
 
@@ -89,6 +122,10 @@ function MobileDashboard() {
       
       if (result.success) {
         setData(result.data);
+        // Načti aktivní uživatele pro adminy
+        if (isAdmin) {
+          await loadActiveUsers();
+        }
       } else {
         console.error('[MobileDashboard] Result not successful:', result);
       }
@@ -112,9 +149,9 @@ function MobileDashboard() {
     }).format(amount);
   };
 
-  // Během načítání nic nevracíme - SplashScreen zůstane viditelný
+  // Během načítání zobrazíme SplashScreen
   if (loading) {
-    return null;
+    return <SplashScreen message={refreshing ? "Obnovuji data..." : "Načítám dashboard..."} />;
   }
 
   // Notifikace - počet nepřečtených
@@ -364,6 +401,36 @@ function MobileDashboard() {
         user={user}
       />
 
+      {/* Fixní rychlá navigace */}
+      <nav className="mobile-quick-nav">
+        {isAdmin && activeUsers.length > 0 && (
+          <button 
+            className="mobile-quick-nav-btn"
+            onClick={() => scrollToSection('users')}
+          >
+            USR
+          </button>
+        )}
+        <button 
+          className="mobile-quick-nav-btn"
+          onClick={() => scrollToSection('orders')}
+        >
+          OBJ
+        </button>
+        <button 
+          className="mobile-quick-nav-btn"
+          onClick={() => scrollToSection('invoices')}
+        >
+          FA
+        </button>
+        <button 
+          className="mobile-quick-nav-btn"
+          onClick={() => scrollToSection('cashbook')}
+        >
+          POKL
+        </button>
+      </nav>
+
       <main className="mobile-dashboard-content">
         {/* Pull to refresh indicator */}
         {refreshing && (
@@ -373,9 +440,105 @@ function MobileDashboard() {
           </div>
         )}
 
+        {/* 👥 AKTIVNÍ UŽIVATELÉ - Pouze pro ADMIN */}
+        {isAdmin && activeUsers.length > 0 && (
+          <section data-section="users" className="mobile-widget-section">
+            <div className="mobile-section-header">
+              <h2>Aktivní uživatelé</h2>
+              <div className="mobile-section-summary">
+                <span className="mobile-summary-count">{activeUsers.length} online</span>
+              </div>
+            </div>
+            
+            {/* Jedna velká dlaždice se seznamem */}
+            <div className="mobile-users-card">
+              {/* Detail prvních 5 uživatelů */}
+              <div className="mobile-users-list">
+                {activeUsers.slice(0, 5).map((user, index) => {
+                  const now = new Date();
+                  const activityTime = new Date(user.dt_posledni_aktivita);
+                  const diffSec = Math.floor((now - activityTime) / 1000);
+                  const diffMin = Math.floor(diffSec / 60);
+                  
+                  // Formátování času
+                  let timeText = '';
+                  if (diffSec < 60) {
+                    timeText = `${diffSec}s`;
+                  } else if (diffMin < 60) {
+                    timeText = `${diffMin}m`;
+                  } else {
+                    const hours = Math.floor(diffMin / 60);
+                    timeText = `${hours}h`;
+                  }
+                  
+                  // Status color
+                  const statusColor = diffSec < 270 ? '#22c55e' : diffSec < 300 ? '#f59e0b' : '#ef4444';
+                  
+                  // Formátování data a času
+                  const dateTimeText = activityTime.toLocaleString('cs-CZ', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                  
+                  // Formátování statistik
+                  const stats = user.stats || {};
+                  const statsText = [];
+                  if (stats.objednavky > 0) statsText.push(`OBJ: ${stats.objednavky}`);
+                  if (stats.faktury > 0) statsText.push(`FA: ${stats.faktury}`);
+                  if (stats.pokladna_zustatek !== null) {
+                    const zustatek = new Intl.NumberFormat('cs-CZ', {
+                      style: 'currency',
+                      currency: 'CZK',
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0
+                    }).format(stats.pokladna_zustatek);
+                    statsText.push(`POKL: ${zustatek}`);
+                  }
+                  
+                  return (
+                    <div key={index} className="mobile-user-item">
+                      <div 
+                        className="mobile-user-status" 
+                        style={{ background: statusColor }}
+                      />
+                      <div className="mobile-user-info">
+                        <div className="mobile-user-row">
+                          <span className="mobile-user-name">{user.cele_jmeno || user.username}</span>
+                          <span className="mobile-user-time">{dateTimeText} ({timeText})</span>
+                        </div>
+                        {statsText.length > 0 && (
+                          <span className="mobile-user-stats">({statsText.join(', ')})</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Zbytek jako prostý seznam */}
+              {activeUsers.length > 5 && (
+                <div className="mobile-users-more">
+                  <div className="mobile-users-more-title">
+                    +{activeUsers.length - 5} dalších aktivních
+                  </div>
+                  <div className="mobile-users-more-list">
+                    {activeUsers.slice(5).map((user, index) => (
+                      <span key={index} className="mobile-users-more-name">
+                        {user.cele_jmeno || user.username}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Sekce objednávky */}
         {orderWidgets.length > 0 && (
-          <section className="mobile-widget-section">
+          <section data-section="orders" className="mobile-widget-section">
             <div className="mobile-section-header">
               <h2>Objednávky</h2>
               <div className="mobile-section-summary">
@@ -399,7 +562,7 @@ function MobileDashboard() {
 
         {/* Sekce faktury - STAVY */}
         {invoiceStatusWidgets.length > 0 && (
-          <section className="mobile-widget-section">
+          <section data-section="invoices" className="mobile-widget-section">
             <div className="mobile-section-header">
               <h2>Faktury - stavy</h2>
               <div className="mobile-section-summary">
@@ -437,7 +600,7 @@ function MobileDashboard() {
 
         {/* Sekce pokladna - speciální 2x2 grid */}
         {cashbookData.length > 0 && (
-          <section className="mobile-widget-section">
+          <section data-section="cashbook" className="mobile-widget-section">
             <div className="mobile-section-header">
               <h2>Pokladna</h2>
               <div className="mobile-section-summary">
@@ -460,18 +623,21 @@ function MobileDashboard() {
           </div>
         )}
 
-        {/* Tlačítko pro obnovení */}
+      </main>
+
+      {/* Fixní patička s tlačítkem obnovit */}
+      <footer className="mobile-footer">
         <button 
-          className="mobile-refresh-btn"
+          className="mobile-footer-refresh-btn"
           onClick={handleManualRefresh}
           disabled={refreshing}
         >
-          <svg viewBox="0 0 24 24" fill="currentColor">
+          <svg viewBox="0 0 24 24" fill="currentColor" className={refreshing ? 'spinning' : ''}>
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
           </svg>
-          <span>Obnovit data</span>
+          <span>{refreshing ? 'Obnovuji...' : 'Obnovit data'}</span>
         </button>
-      </main>
+      </footer>
     </div>
   );
 }

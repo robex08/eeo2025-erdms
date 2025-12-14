@@ -5,6 +5,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Zabránění bílému blikání při načítání - gradient jako u splash screen */
+  background: linear-gradient(135deg, #1f2a57 0%, #2c3e7a 100%);
 }
 
 code {
