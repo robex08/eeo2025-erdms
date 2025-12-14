@@ -821,3 +821,193 @@ GROUP BY channel;
 **Připravil:** GitHub Copilot  
 **Datum:** 14. prosince 2025  
 **Status:** 🟡 DRAFT - Čeká na review a diskuzi
+
+---
+
+## 📝 IMPLEMENTAČNÍ POZNÁMKY (14.12.2025)
+
+### ✅ Hotovo v Organizační Hierarchii
+
+**Frontend (`OrganizationHierarchy.js`):**
+
+1. **Template Node - 3 varianty šablon:**
+   - `normalVariant` - HTML šablona pro normální stav (🟠 oranžová)
+   - `urgentVariant` - HTML šablona pro urgentní stav (🔴 červená)
+   - `infoVariant` - HTML šablona pro informační oznámení (🟢 zelená) - **NOVÉ**
+   - `previewVariant` - Aktuálně zobrazená varianta v náhledu
+
+2. **Edge Notification Settings:**
+   - `recipientRole`: `'APPROVAL' | 'INFO' | 'BOTH'` (dříve bylo: APPROVER_NORMAL/URGENT/SUBMITTER)
+   - `email`: boolean - poslat email?
+   - `inapp`: boolean - zobrazit in-app notifikaci?
+   - `types`: array - typy událostí (zatím prázdné, čeká na implementaci)
+
+3. **Auto-save do localStorage:**
+   - ✅ Nodes a edges se ukládají při každé změně
+   - ✅ Template varianty (všechny 3) se auto-save do node.data
+   - ✅ Notification settings se auto-save do edge.data
+   - ✅ Keys: `hierarchy_draft_nodes`, `hierarchy_draft_edges`, `hierarchy_draft_timestamp`
+
+4. **Manuální ULOZIT do DB:**
+   - ✅ `handleSave()` ukládá `relations` s `notifications` objektem
+   - ✅ `nodeSettings` ukládá všechny 3 template varianty (`normalVariant`, `urgentVariant`, `infoVariant`)
+   - ✅ Načítání z DB: template varianty se načítají z `node.settings`
+   - ✅ API endpoint: `POST /api.eeo/hierarchy/save`
+
+### ⏳ TODO - Backend PHP API
+
+**KRITICKÉ - Před implementací notifikačního centra:**
+
+1. **Event Type Registry** - Chybí kompletně
+   - Vytvořit tabulku `notification_events`
+   - Definovat všechny event typy (ORDER_CREATED, INVOICE_DUE_SOON, atd.)
+   - API pro načtení event typů do frontendu
+   - **Priorita: HIGH**
+
+2. **Template Variant Resolution Logic** - Logika neexistuje
+   - Backend funkce `resolveTemplateVariant(event, recipient, edge)`
+   - Určení: je příjemce APPROVER nebo SUBMITTER?
+   - Výběr varianty podle urgentnosti + role
+   - **Priorita: HIGH**
+
+3. **Notification Queue System** - Zcela chybí
+   - Tabulka `notification_queue`
+   - Cron job pro processing queue
+   - Retry logic pro failed deliveries
+   - **Priorita: HIGH**
+
+4. **Endpoint pro trigger notifikace:**
+   - `POST /api/notifications/trigger`
+   - Input: `{ event_type, entity_id, triggered_by_user_id }`
+   - Logika: Načíst org. hierarchii → najít matching edges → vytvořit queue items
+   - **Priorita: HIGH**
+
+5. **Hierarchie API - rozšíření:**
+   - `/api.eeo/hierarchy/save` už ukládá `notifications` objekt ✅
+   - Ale NEUKLÁDÁ se `recipientRole` separátně do DB sloupce
+   - Přidat sloupec `recipient_role` do `hierarchy_relations`?
+   - Nebo nechat v JSON `notifications`?
+   - **Rozhodnout strategii!**
+
+### 🎯 Implementační Workflow
+
+**Krok 1: Backend Event System**
+```sql
+-- Vytvořit tabulky
+CREATE TABLE notification_events (...);
+CREATE TABLE notification_queue (...);
+CREATE TABLE notification_delivery_log (...);
+```
+
+**Krok 2: Propojení s Org. Hierarchií**
+```php
+// V hierarchy/save.php - ověřit, že notifications se ukládá správně
+// Otestovat načítání: node.settings.infoVariant
+// Otestovat načítání: edge.data.notifications.recipientRole
+```
+
+**Krok 3: Event Triggering**
+```php
+// Při vytvoření objednávky:
+NotificationService::trigger([
+  'event_type' => 'ORDER_CREATED',
+  'entity_id' => $orderId,
+  'triggered_by_user_id' => $userId
+]);
+
+// NotificationService::trigger() pak:
+// 1. Načte org. hierarchii pro $userId
+// 2. Najde všechny edges s template nodes
+// 3. Filtruje podle recipientRole (APPROVAL/INFO/BOTH)
+// 4. Resolve template variant (normal/urgent/info)
+// 5. Vloží do notification_queue
+```
+
+**Krok 4: Queue Processing**
+```php
+// Cron job: * * * * * php cli/process-notification-queue.php
+// 1. Načte PENDING notifications (LIMIT 100, ORDER BY priority DESC)
+// 2. Pro každou: odešle email, vloží in-app, loguje delivery
+// 3. Update status: SENT / FAILED
+// 4. Retry logic: max 3x with exponential backoff
+```
+
+### 🔴 KRITICKÉ BODY K DISKUZI
+
+1. **Event Types - Kde definovat?**
+   - ❓ DB tabulka `notification_events` + cache?
+   - ❓ Nebo PHP enum/config soubor?
+   - ❓ Nebo frontend + backend synchronizace?
+
+2. **Recipient Role Resolution:**
+   - ❓ Jak určit, jestli je user APPROVER vs SUBMITTER?
+   - ❓ Podle workflow stavu objednávky?
+   - ❓ Podle hierarchického vztahu?
+
+3. **Urgentnost - Kdo určuje?**
+   - ✅ Urgentnost určí událost v procesu (ORDER_URGENT)
+   - ✅ EDGE pouze definuje, jestli je to APPROVAL nebo INFO
+   - ❓ Ale jak se to mapuje na template varianty?
+
+4. **Edge Event Types:**
+   - Frontend má `edge.data.notifications.types: []`
+   - ❓ Má se to použít jako filter? (jen určité eventy posílat?)
+   - ❓ Nebo je to pro budoucí rozšíření?
+
+5. **WebSocket vs Polling:**
+   - ❓ Real-time notifikace přes WebSocket?
+   - ❓ Nebo stačí polling (každých 30s)?
+   - ❓ Infrastruktura pro WebSocket?
+
+### 📋 CHECKLISTY PRO PŘÍŠTÍ SESSION
+
+**Před začátkem implementace notifikačního centra:**
+- [ ] Rozhodnout: DB tabulky vs JSON storage pro event types
+- [ ] Rozhodnout: WebSocket vs Polling
+- [ ] Rozhodnout: Cron interval (1min? 30s?)
+- [ ] Review MD dokumentu s týmem
+- [ ] Schválit architekturu
+- [ ] Vytvořit tickets v issue trackeru
+
+**Testování po implementaci:**
+- [ ] Test: Vytvořit objednávku → trigger notifikaci
+- [ ] Test: Notifikace dorazí správnému příjemci
+- [ ] Test: Správná template varianta (normal/urgent/info)
+- [ ] Test: Email doručení
+- [ ] Test: In-app notifikace zobrazena
+- [ ] Test: Retry logic při selhání
+- [ ] Test: Org. hierarchie změna → notifikace se správně přesměrují
+
+### 💡 RYCHLÉ REFERENCE
+
+**Soubory k editaci při implementaci:**
+- Frontend: `/apps/eeo-v2/client/src/pages/OrganizationHierarchy.js` ✅ DONE
+- Backend Save: `/api.eeo/hierarchy/save` (PHP) - ověřit notifications save
+- Backend Load: `/api.eeo/hierarchy/load` (PHP) - ověřit notifications load
+- Notification Service: `/api.eeo/notifications/trigger` (PHP) - VYTVOŘIT NOVÉ
+- Queue Processor: `/api.eeo/cli/process-notification-queue.php` - VYTVOŘIT NOVÉ
+- Event Registry: `/api.eeo/config/notification-events.php` - VYTVOŘIT NOVÉ
+
+**DB tabulky:**
+```sql
+-- Existující (rozšířit):
+hierarchy_relations.notifications JSON  -- ✅ už ukládá recipientRole
+
+-- Nové (vytvořit):
+notification_events
+notification_queue
+notification_delivery_log
+```
+
+---
+
+**Poznámka:** Organizational hierarchy frontend je **HOTOVÝ**. Nyní čeká na backend implementaci notifikačního systému podle architektury v tomto dokumentu.
+
+**Next Steps:** Review → Diskuze → Schválení → Implementace Fáze 1 (Backend Infrastructure)
+
+---
+
+**Připravil:** GitHub Copilot  
+**Datum:** 14. prosince 2025  
+**Status:** 🟡 DRAFT - Čeká na review a diskuzi  
+**Poslední update poznámek:** 14. prosince 2025 16:30
