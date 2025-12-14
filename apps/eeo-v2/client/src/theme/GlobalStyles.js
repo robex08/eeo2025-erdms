@@ -63,16 +63,7 @@ export const GlobalStyles = () => (
       text-rendering: optimizeLegibility;
       font-feature-settings: "liga", "kern";
     }
-  body { margin:0; background-color:#f0f0f0; color:#333; transition: background-color .25s ease,color .25s ease; }
-
-    html[data-theme='dark'] body {
-      background:#0f172a;
-      color:#e2e8f0;
-    }
-
-    html[data-theme='dark'] .header { background-color:#1e293b; }
-    html[data-theme='dark'] .logout-button { background-color:#dc2626; }
-    html[data-theme='dark'] .logout-button:hover { background-color:#b91c1c; }
+  body { margin:0; background-color:#f0f0f0; color:#333; }
 
     code { font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace; }
 
@@ -83,7 +74,6 @@ export const GlobalStyles = () => (
     .App { display:flex; flex-direction:column; min-height:100vh; }
 
     /* Historické utility (ponechány pro případ, že někde ještě existuje className) */
-    .header { display:flex; justify-content:space-between; align-items:center; padding:10px 20px; background-color:#202d65; color:#fff; }
     .user-info { font-size:16px; font-weight:bold; }
     .logout-button { background-color:#ff4d4d; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; }
     .logout-button:hover { background-color:#e60000; }
@@ -91,7 +81,6 @@ export const GlobalStyles = () => (
     /* Unified page title + nav link sizing (moved from Layout) */
     nav a, nav button { font-size: var(--app-menu-link-size); font-weight: var(--app-menu-link-weight); }
     .page-title { font-size:1.40rem; font-weight:600; line-height:1.18; margin:0 0 0.9rem; letter-spacing:.35px; font-family:var(--app-font-family); }
-    [data-mode='dark'] .page-title { color:#f1f5f9; }
     main h1 { font-size: 1.4rem; font-weight:600; line-height:1.2; margin:0 0 0.85rem; letter-spacing:0.25px; }
     main h2 { font-size: 1.1rem; font-weight:600; line-height:1.25; margin:1.5rem 0 0.6rem; }
     main h3 { font-size: 1rem; font-weight:600; line-height:1.3; margin:1.2rem 0 0.5rem; }

@@ -21,7 +21,6 @@ import styled from '@emotion/styled';
 // Extracted floating panels
 import { TodoPanel, NotesPanel, ChatPanel } from './panels';
 import { formatDateOnly, prettyDate } from '../utils/format';
-import useThemeMode from '../theme/useThemeMode'; // theme toggle button removed
 import { useFloatingPanels } from '../hooks/useFloatingPanels';
 import { useGlobalVoiceRecognition } from '../hooks/useGlobalVoiceRecognition';
 import { useTodoAlarms } from '../hooks/useTodoAlarms';
@@ -156,10 +155,6 @@ const Header = styled.header(({ theme }) => `
   box-sizing: border-box;
   flex-shrink: 0;
   transition: background .3s ease;
-
-  &[data-mode='dark'] {
-    background:${theme.colors.darkBg};
-  }
 `);
 const HeaderLeft = styled.div`
   display: flex;
@@ -1428,7 +1423,6 @@ const NotificationBellWrapper = ({ userId }) => {
 
 const Layout = ({ children }) => {
   // RSS vtipy: kompletně odstraněno (na žádost uživatele)
-  const { mode, toggle } = useThemeMode();
 
   // State pro hierarchii info
   const [hierarchyInfo, setHierarchyInfo] = useState(null);
@@ -1525,12 +1519,6 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  // Alt + D toggle
-  useEffect(()=>{
-    const handler = (e) => { if (e.altKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); toggle(); } };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [toggle]);
   const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token } = useContext(AuthContext); // Přidán user_id pro filtrování draftu
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
@@ -2475,7 +2463,7 @@ const Layout = ({ children }) => {
     font-weight: 700 !important;
   }
       `} />
-  <Header data-mode={mode} data-auth={isLoggedIn ? '1':'0'}>
+  <Header data-auth={isLoggedIn ? '1':'0'}>
         <HeaderLeft>
           <HeaderLogo src={ASSETS.LOGO_ZZS_MAIN} alt="ZZS Středočeského kraje" />
           <div>
@@ -2489,7 +2477,7 @@ const Layout = ({ children }) => {
               </sup>
             </HeaderTitle>
             {isLoggedIn && (
-              <p style={{ margin: 0, fontSize: '.72rem', letterSpacing: '.35px', fontWeight: 500, fontStyle: 'normal', color: '#ffffff', opacity: 0.95 }}>
+              <p style={{ margin: 0, fontSize: '.85rem', letterSpacing: '.35px', fontWeight: 500, fontStyle: 'normal', color: '#ffffff', opacity: 0.95 }}>
                 {process.env.REACT_ORG_NAME || 'Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace'}
               </p>
             )}
