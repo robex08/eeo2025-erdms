@@ -1,0 +1,823 @@
+# Centrální Notifikační Centrum - Analýza a Návrh
+
+**Datum:** 14. prosince 2025  
+**Verze:** 1.0  
+**Status:** DRAFT - Připraveno k diskuzi
+
+---
+
+## 📋 EXECUTIVE SUMMARY
+
+Tento dokument analyzuje současný stav notifikačního systému v ERDMS a navrhuje architekturu **centrálního notifikačního centra**, které sjednotí a zefektivní zasílání všech typů notifikací v aplikaci.
+
+### Klíčové cíle:
+1. ✅ Sjednocení notifikačních kanálů (email, in-app, SMS, push)
+2. ✅ Centralizace logiky pro šablony a varianty
+3. ✅ Podpora workflow-based notifikací definovaných v org. hierarchii
+4. ✅ Real-time notifikace s queue systémem
+5. ✅ Audit trail a monitoring doručení
+
+---
+
+## 🔍 SOUČASNÝ STAV - ANALÝZA
+
+### 1. Organizační Hierarchie - Notifikační Workflow
+
+#### Aktuální Implementace v `OrganizationHierarchy.js`
+
+**Struktura NODE (Template):**
+```javascript
+{
+  type: 'template',
+  templateId: number,
+  name: string,
+  data: {
+    normalVariant: string,      // HTML šablona pro normální stav (🟠)
+    urgentVariant: string,       // HTML šablona pro urgentní stav (🔴)
+    infoVariant: string,         // HTML šablona pro info oznámení (🟢)
+    previewVariant: string       // Aktuálně zobrazená varianta v náhledu
+  }
+}
+```
+
+**Struktura EDGE (Connection):**
+```javascript
+{
+  source: nodeId,
+  target: nodeId,
+  data: {
+    notifications: {
+      email: boolean,            // Posílat email?
+      inapp: boolean,            // Zobrazit in-app notifikaci?
+      recipientRole: string,     // 'APPROVAL' | 'INFO' | 'BOTH'
+      types: []                  // Typy událostí (TODO)
+    },
+    scope: 'OWN' | 'TEAM' | 'LOCATION' | 'ALL',
+    modules: {
+      orders: boolean,
+      invoices: boolean,
+      contracts: boolean,
+      cashbook: boolean
+    }
+  }
+}
+```
+
+#### Současné Problémy:
+
+1. ❌ **Chybí definice událostí (events)**
+   - NODE definuje šablony, ale nejsou navázané na konkrétní události
+   - Není jasné, kdy se má použít normalVariant vs urgentVariant vs infoVariant
+
+2. ❌ **Neúplná logika recipient role**
+   - `recipientRole` je v EDGE, ale backend neví, jak to použít
+   - Chybí mapování: kdy je někdo SCHVALOVATEL vs AUTOR
+
+3. ❌ **Žádné propojení s backend workflow**
+   - Frontend definuje strukturu, ale backend nemá API pro vyhodnocení
+   - Není endpoint pro "pošli notifikaci podle hierarchie"
+
+4. ❌ **Duplicitní data mezi nodes a edges**
+   - Template varianty jsou v NODE.data
+   - Ale vztahy jsou v EDGE.data
+   - Při ukládání se musí synchronizovat
+
+5. ❌ **Chybí event typing system**
+   - Jaké události systém podporuje?
+   - Objednávka vytvořena / schválena / zamítnuta / urgentní?
+   - Faktura vytvořena / splatná / po splatnosti?
+
+---
+
+## 🎯 NÁVRH ARCHITEKTURY
+
+### A. Centrální Notifikační Service (Backend)
+
+#### Komponenty:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│          CENTRÁLNÍ NOTIFIKAČNÍ CENTRUM                  │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌───────────────────┐      ┌────────────────────┐    │
+│  │  Event Bus        │─────▶│  Notification      │    │
+│  │  (RabbitMQ/Redis) │      │  Router            │    │
+│  └───────────────────┘      └────────────────────┘    │
+│           ▲                          │                 │
+│           │                          ▼                 │
+│  ┌────────┴─────────┐      ┌────────────────────┐    │
+│  │ Event Emitters   │      │  Template Engine   │    │
+│  │ (Orders/Invoices)│      │  (HTML/Email/SMS)  │    │
+│  └──────────────────┘      └────────────────────┘    │
+│                                      │                 │
+│                                      ▼                 │
+│                            ┌────────────────────┐    │
+│                            │ Delivery Channels  │    │
+│                            │ • Email (SMTP)     │    │
+│                            │ • In-App (WebSocket)│   │
+│                            │ • SMS (Twilio)     │    │
+│                            │ • Push (Firebase)  │    │
+│                            └────────────────────┘    │
+│                                                         │
+│  ┌───────────────────────────────────────────────┐    │
+│  │  Audit & Monitoring                           │    │
+│  │  • Delivery status tracking                   │    │
+│  │  • Failed delivery retry queue                │    │
+│  │  • Analytics & reporting                      │    │
+│  └───────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+### B. Event Type Definition System
+
+#### 1. Definice Event Typů
+
+```javascript
+// Centrální registr událostí
+const EVENT_TYPES = {
+  // === OBJEDNÁVKY ===
+  ORDER_CREATED: {
+    code: 'ORDER_CREATED',
+    name: 'Objednávka vytvořena',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVER', 'INFO'],
+    defaultChannel: ['email', 'inapp']
+  },
+  ORDER_SUBMITTED: {
+    code: 'ORDER_SUBMITTED',
+    name: 'Objednávka odeslána ke schválení',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVER'],
+    defaultChannel: ['email', 'inapp']
+  },
+  ORDER_APPROVED: {
+    code: 'ORDER_APPROVED',
+    name: 'Objednávka schválena',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['SUBMITTER', 'INFO'],
+    defaultChannel: ['email', 'inapp']
+  },
+  ORDER_REJECTED: {
+    code: 'ORDER_REJECTED',
+    name: 'Objednávka zamítnuta',
+    category: 'orders',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['SUBMITTER'],
+    defaultChannel: ['email', 'inapp']
+  },
+  ORDER_URGENT: {
+    code: 'ORDER_URGENT',
+    name: 'Objednávka urgentní',
+    category: 'orders',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['APPROVER'],
+    defaultChannel: ['email', 'inapp', 'sms']
+  },
+  
+  // === FAKTURY ===
+  INVOICE_CREATED: {
+    code: 'INVOICE_CREATED',
+    name: 'Faktura vytvořena',
+    category: 'invoices',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVER', 'INFO']
+  },
+  INVOICE_DUE_SOON: {
+    code: 'INVOICE_DUE_SOON',
+    name: 'Faktura brzy po splatnosti',
+    category: 'invoices',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['APPROVER', 'INFO']
+  },
+  INVOICE_OVERDUE: {
+    code: 'INVOICE_OVERDUE',
+    name: 'Faktura po splatnosti',
+    category: 'invoices',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['APPROVER']
+  },
+  
+  // === SMLOUVY ===
+  CONTRACT_EXPIRING: {
+    code: 'CONTRACT_EXPIRING',
+    name: 'Smlouva brzy vyprší',
+    category: 'contracts',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['APPROVER', 'INFO']
+  },
+  
+  // === POKLADNA ===
+  CASHBOOK_LOW_BALANCE: {
+    code: 'CASHBOOK_LOW_BALANCE',
+    name: 'Nízký zůstatek v pokladně',
+    category: 'cashbook',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['APPROVER', 'INFO']
+  }
+};
+```
+
+---
+
+### C. Template Variant Resolution Logic
+
+#### Pravidla pro výběr šablony:
+
+```javascript
+function resolveTemplateVariant(event, recipient, edge) {
+  const eventUrgency = EVENT_TYPES[event.type].urgencyLevel; // 'NORMAL' | 'URGENT'
+  const recipientRole = edge.notifications.recipientRole;    // 'APPROVAL' | 'INFO' | 'BOTH'
+  const eventRecipientRoles = EVENT_TYPES[event.type].recipientRoles; // ['APPROVER', 'SUBMITTER', ...]
+  
+  // Krok 1: Určit, jakou roli má příjemce v této události
+  let actualRole = 'INFO';
+  if (eventRecipientRoles.includes('APPROVER') && recipientRole === 'APPROVAL') {
+    actualRole = 'APPROVER';
+  } else if (eventRecipientRoles.includes('SUBMITTER')) {
+    actualRole = 'SUBMITTER';
+  }
+  
+  // Krok 2: Vybrat správnou variantu podle role a urgentnosti
+  const templateNode = edge.sourceNode; // nebo targetNode podle směru
+  
+  if (actualRole === 'SUBMITTER') {
+    return templateNode.data.infoVariant; // Zelená - jen info pro autora
+  }
+  
+  if (actualRole === 'APPROVER') {
+    if (eventUrgency === 'URGENT') {
+      return templateNode.data.urgentVariant; // Červená - urgentní schválení
+    } else {
+      return templateNode.data.normalVariant; // Oranžová - běžné schválení
+    }
+  }
+  
+  // Default fallback
+  return templateNode.data.normalVariant;
+}
+```
+
+---
+
+### D. Database Schema
+
+#### 1. Nová tabulka: `notification_events`
+
+```sql
+CREATE TABLE notification_events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(50) UNIQUE NOT NULL,           -- 'ORDER_CREATED', 'INVOICE_DUE_SOON', ...
+  name VARCHAR(255) NOT NULL,                  -- 'Objednávka vytvořena'
+  category VARCHAR(50) NOT NULL,               -- 'orders', 'invoices', 'contracts', 'cashbook'
+  urgency_level ENUM('NORMAL', 'URGENT') DEFAULT 'NORMAL',
+  recipient_roles JSON,                        -- ['APPROVER', 'SUBMITTER', 'INFO']
+  default_channels JSON,                       -- ['email', 'inapp']
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### 2. Rozšíření tabulky: `hierarchy_relations`
+
+```sql
+ALTER TABLE hierarchy_relations ADD COLUMN notifications JSON AFTER visibility;
+
+-- Příklad JSON struktury:
+{
+  "email": true,
+  "inapp": true,
+  "recipientRole": "APPROVAL",
+  "eventTypes": ["ORDER_CREATED", "ORDER_SUBMITTED", "ORDER_URGENT"]
+}
+```
+
+#### 3. Nová tabulka: `notification_queue`
+
+```sql
+CREATE TABLE notification_queue (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  event_type VARCHAR(50) NOT NULL,             -- 'ORDER_CREATED'
+  entity_type VARCHAR(50) NOT NULL,            -- 'order', 'invoice'
+  entity_id INT NOT NULL,                      -- ID objednávky/faktury
+  recipient_user_id INT NOT NULL,
+  recipient_role ENUM('APPROVER', 'SUBMITTER', 'INFO'),
+  template_variant VARCHAR(50),                -- 'normalVariant', 'urgentVariant', 'infoVariant'
+  channels JSON,                               -- ['email', 'inapp']
+  status ENUM('PENDING', 'SENT', 'FAILED', 'CANCELLED') DEFAULT 'PENDING',
+  priority INT DEFAULT 0,
+  scheduled_at TIMESTAMP NULL,
+  sent_at TIMESTAMP NULL,
+  failed_at TIMESTAMP NULL,
+  retry_count INT DEFAULT 0,
+  error_message TEXT NULL,
+  metadata JSON,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  INDEX idx_status_priority (status, priority),
+  INDEX idx_recipient (recipient_user_id),
+  INDEX idx_entity (entity_type, entity_id)
+);
+```
+
+#### 4. Nová tabulka: `notification_delivery_log`
+
+```sql
+CREATE TABLE notification_delivery_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  notification_queue_id INT NOT NULL,
+  channel VARCHAR(20) NOT NULL,                -- 'email', 'inapp', 'sms'
+  status ENUM('SUCCESS', 'FAILED') NOT NULL,
+  delivered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  response_data JSON,                          -- SMTP response, API response, etc.
+  error_message TEXT NULL,
+  
+  FOREIGN KEY (notification_queue_id) REFERENCES notification_queue(id) ON DELETE CASCADE
+);
+```
+
+---
+
+### E. API Endpoints (Backend PHP)
+
+#### 1. Event Triggering API
+
+```php
+POST /api/notifications/trigger
+
+Body:
+{
+  "event_type": "ORDER_CREATED",
+  "entity_type": "order",
+  "entity_id": 12345,
+  "triggered_by_user_id": 42,
+  "metadata": {
+    "order_number": "OBJ-2025-001",
+    "amount": 25000,
+    "supplier": "ABC s.r.o."
+  }
+}
+
+Response:
+{
+  "success": true,
+  "queued_notifications": 5,
+  "notification_ids": [101, 102, 103, 104, 105]
+}
+```
+
+**Backend logika:**
+1. Načíst org. hierarchii pro `triggered_by_user_id`
+2. Najít všechny EDGES s template nodes
+3. Filtrovat podle `notifications.eventTypes` (pokud je definováno)
+4. Pro každý matching edge:
+   - Určit příjemce (source/target podle směru)
+   - Resolve template variant podle urgency + recipient role
+   - Vložit do `notification_queue`
+
+---
+
+#### 2. Manual Notification Send
+
+```php
+POST /api/notifications/send
+
+Body:
+{
+  "recipient_user_ids": [42, 43, 44],
+  "template_id": 5,
+  "variant": "normalVariant",
+  "channels": ["email", "inapp"],
+  "subject": "Test notifikace",
+  "metadata": {
+    "custom_field": "value"
+  }
+}
+
+Response:
+{
+  "success": true,
+  "queued_notifications": 3
+}
+```
+
+---
+
+#### 3. Notification Queue Processing
+
+```php
+GET /api/notifications/process-queue?limit=50
+
+Response:
+{
+  "success": true,
+  "processed": 12,
+  "sent": 10,
+  "failed": 2
+}
+```
+
+**Cron job:**
+```bash
+# Každou minutu
+* * * * * curl http://localhost/api/notifications/process-queue?limit=100
+```
+
+---
+
+#### 4. User Notification Center (Frontend API)
+
+```php
+GET /api/notifications/user/list?status=unread&limit=20
+
+Response:
+{
+  "notifications": [
+    {
+      "id": 101,
+      "event_type": "ORDER_CREATED",
+      "title": "Nová objednávka OBJ-2025-001",
+      "message": "Byla vytvořena nová objednávka ve výši 25 000 Kč",
+      "priority": "normal",
+      "is_read": false,
+      "created_at": "2025-12-14T10:30:00Z",
+      "entity": {
+        "type": "order",
+        "id": 12345,
+        "url": "/orders/12345"
+      }
+    }
+  ],
+  "total": 42,
+  "unread_count": 15
+}
+
+POST /api/notifications/user/mark-read
+Body: { "notification_ids": [101, 102] }
+
+DELETE /api/notifications/user/clear-all
+```
+
+---
+
+### F. Frontend Components
+
+#### 1. Notification Bell Component
+
+```jsx
+// components/NotificationBell.jsx
+<NotificationBell 
+  unreadCount={15}
+  onNotificationClick={(notif) => navigate(notif.entity.url)}
+  onMarkAllRead={() => markAllAsRead()}
+  onClearAll={() => clearAllNotifications()}
+/>
+```
+
+#### 2. Notification Center Page
+
+```jsx
+// pages/NotificationCenter.jsx
+<NotificationCenter 
+  filters={{
+    status: ['unread', 'read'],
+    category: ['orders', 'invoices'],
+    dateRange: [startDate, endDate]
+  }}
+  onFilterChange={handleFilterChange}
+/>
+```
+
+#### 3. In-App Toast Notifications
+
+```jsx
+// Real-time WebSocket notifications
+useEffect(() => {
+  const ws = new WebSocket('ws://localhost:8080/notifications');
+  
+  ws.onmessage = (event) => {
+    const notification = JSON.parse(event.data);
+    showToast({
+      title: notification.title,
+      message: notification.message,
+      type: notification.priority === 'urgent' ? 'error' : 'info',
+      duration: 5000
+    });
+  };
+}, []);
+```
+
+---
+
+## 🔧 IMPLEMENTAČNÍ PLÁN
+
+### Fáze 1: Backend Infrastructure (Týden 1-2)
+
+- [ ] Vytvořit DB schema (notification_events, notification_queue, notification_delivery_log)
+- [ ] Implementovat Event Type Registry
+- [ ] Implementovat Notification Router
+- [ ] Vytvořit Template Engine pro HTML/email rendering
+- [ ] Implementovat Queue Processor (cron job)
+- [ ] API endpoint: `/api/notifications/trigger`
+- [ ] API endpoint: `/api/notifications/process-queue`
+
+### Fáze 2: Organizational Hierarchy Integration (Týden 2-3)
+
+- [ ] Rozšířit `hierarchy_relations` o `notifications` JSON column
+- [ ] Implementovat logiku pro resolution recipients podle hierarchie
+- [ ] Implementovat Template Variant Resolution Logic
+- [ ] Napojit event triggering na org. hierarchii
+- [ ] Frontend: Přidat event type selector do EDGE detail panel
+- [ ] Frontend: Zobrazit preview notification flow v hierarchii
+
+### Fáze 3: Delivery Channels (Týden 3-4)
+
+- [ ] Email delivery (SMTP)
+- [ ] In-App delivery (DB + WebSocket)
+- [ ] SMS delivery (Twilio API) - optional
+- [ ] Push notifications (Firebase) - optional
+- [ ] Implementovat retry logiku pro failed deliveries
+- [ ] Delivery status tracking a logging
+
+### Fáze 4: Frontend User Notification Center (Týden 4-5)
+
+- [ ] NotificationBell component s unread count
+- [ ] NotificationCenter page s filtrováním
+- [ ] Real-time WebSocket notifications
+- [ ] Toast notifications pro in-app alerts
+- [ ] API: `/api/notifications/user/list`
+- [ ] API: `/api/notifications/user/mark-read`
+- [ ] API: `/api/notifications/user/clear-all`
+
+### Fáze 5: Integration & Testing (Týden 5-6)
+
+- [ ] Napojit ORDER workflow na notification system
+- [ ] Napojit INVOICE workflow na notification system
+- [ ] Napojit CONTRACT expiration alerts
+- [ ] Napojit CASHBOOK low balance alerts
+- [ ] End-to-end testing
+- [ ] Performance testing (queue processing speed)
+- [ ] Load testing (1000+ notifications)
+
+---
+
+## 📊 DATOVÉ TOKY
+
+### Příklad: Vytvoření objednávky
+
+```
+1. User vytvoří objednávku
+   ↓
+2. Backend: POST /api/orders/create
+   ↓
+3. Order saved → Trigger event
+   ↓
+4. POST /api/notifications/trigger
+   Body: { event_type: 'ORDER_CREATED', entity_id: 12345 }
+   ↓
+5. Notification Router:
+   - Načte org. hierarchii pro user_id
+   - Najde všechny matching edges (template nodes)
+   - Filtruje podle event_type (pokud je v edge.notifications.eventTypes)
+   ↓
+6. Pro každý edge:
+   - Určí příjemce (target node)
+   - Resolve template variant (normal/urgent/info)
+   - Vloží do notification_queue
+   ↓
+7. Cron job: process-queue
+   - Načte PENDING notifikace (ORDER BY priority DESC, created_at ASC)
+   - Pro každou notifikaci:
+     ↓
+     7a. Email channel:
+         - Render HTML template
+         - Odeslat přes SMTP
+         - Log do notification_delivery_log
+     ↓
+     7b. In-App channel:
+         - Vložit do user_notifications table
+         - Odeslat přes WebSocket (pokud je user online)
+         - Log do notification_delivery_log
+   ↓
+8. Frontend:
+   - WebSocket: onmessage → showToast()
+   - NotificationBell: update unread count
+   - User klikne na notifikaci → navigate to /orders/12345
+```
+
+---
+
+## 🎨 UI/UX MOCKUP
+
+### Notification Bell (Header)
+
+```
+┌─────────────────────────────────────────────┐
+│  Logo    [Search...]    🔔 (15)   User ▼   │
+└─────────────────────────────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────────┐
+              │ 🔔 Notifikace        (15)│
+              ├──────────────────────────┤
+              │ 🟠 Nová objednávka       │
+              │    OBJ-2025-001          │
+              │    před 5 minutami       │
+              ├──────────────────────────┤
+              │ 🔴 Urgentní schválení    │
+              │    OBJ-2025-002          │
+              │    před 10 minutami      │
+              ├──────────────────────────┤
+              │ 🟢 Objednávka schválena  │
+              │    OBJ-2025-003          │
+              │    před hodinou          │
+              ├──────────────────────────┤
+              │ [Označit vše přečtené]   │
+              │ [Zobrazit všechny]       │
+              └──────────────────────────┘
+```
+
+### Notification Center Page
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  🔔 Notifikační centrum                    (15 nepřečtených)│
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Filtry: [Nepřečtené ▼] [Objednávky ▼] [Tento týden ▼]│
+│                                                         │
+│  ┌────────────────────────────────────────────────┐   │
+│  │ 🟠 Nová objednávka OBJ-2025-001                │   │
+│  │    Byla vytvořena nová objednávka ve výši      │   │
+│  │    25 000 Kč od ABC s.r.o.                     │   │
+│  │    📅 14.12.2025 10:30  |  [Zobrazit] [Smazat] │   │
+│  └────────────────────────────────────────────────┘   │
+│                                                         │
+│  ┌────────────────────────────────────────────────┐   │
+│  │ 🔴 Urgentní schválení OBJ-2025-002             │   │
+│  │    Objednávka vyžaduje okamžité schválení!     │   │
+│  │    📅 14.12.2025 10:20  |  [Zobrazit] [Smazat] │   │
+│  └────────────────────────────────────────────────┘   │
+│                                                         │
+│  [Načíst další...]                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 PRIORITIZACE
+
+### HIGH Priority (Must Have)
+
+1. ✅ Event Type Registry
+2. ✅ Notification Queue System
+3. ✅ Email Delivery
+4. ✅ In-App Delivery
+5. ✅ Organizational Hierarchy Integration
+6. ✅ Template Variant Resolution
+7. ✅ Frontend Notification Bell
+8. ✅ API: trigger, process-queue, user/list
+
+### MEDIUM Priority (Should Have)
+
+1. 🔶 WebSocket real-time notifications
+2. 🔶 Notification Center Page (full UI)
+3. 🔶 Advanced filtering & search
+4. 🔶 Retry logic for failed deliveries
+5. 🔶 Delivery status tracking
+6. 🔶 Analytics & reporting dashboard
+
+### LOW Priority (Nice to Have)
+
+1. 🔹 SMS delivery (Twilio)
+2. 🔹 Push notifications (Firebase)
+3. 🔹 Custom notification sounds
+4. 🔹 Do Not Disturb schedules
+5. 🔹 Notification preferences per user
+6. 🔹 Email digest (daily/weekly summary)
+
+---
+
+## 📈 METRIKY A MONITORING
+
+### Key Performance Indicators (KPIs)
+
+1. **Delivery Success Rate**: `sent / (sent + failed)`
+2. **Average Delivery Time**: Time from queue to delivery
+3. **Queue Size**: Current pending notifications
+4. **Failed Delivery Rate**: `failed / total`
+5. **Retry Success Rate**: `retry_success / total_retries`
+6. **User Engagement**: Click-through rate on in-app notifications
+
+### Monitoring Dashboard
+
+```sql
+-- Real-time queue status
+SELECT 
+  status,
+  COUNT(*) as count,
+  AVG(TIMESTAMPDIFF(SECOND, created_at, CURRENT_TIMESTAMP)) as avg_age_seconds
+FROM notification_queue
+GROUP BY status;
+
+-- Delivery success rate by channel
+SELECT 
+  channel,
+  COUNT(*) as total,
+  SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success,
+  ROUND(100.0 * SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate
+FROM notification_delivery_log
+WHERE delivered_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+GROUP BY channel;
+```
+
+---
+
+## ⚠️ RIZIKA A MITIGACE
+
+### Riziko 1: Email Delivery Failures (High)
+**Mitigace:**
+- Implementovat retry logic (3x with exponential backoff)
+- Backup SMTP server
+- Queue monitoring & alerts
+
+### Riziko 2: Queue Bottleneck (Medium)
+**Mitigace:**
+- Horizontal scaling (multiple queue processors)
+- Priority queue (urgent notifications first)
+- Rate limiting per user
+
+### Riziko 3: WebSocket Connection Issues (Medium)
+**Mitigace:**
+- Fallback to polling
+- Reconnection logic
+- Store notifications in DB for offline users
+
+### Riziko 4: Template Rendering Performance (Low)
+**Mitigace:**
+- Cache rendered templates
+- Pre-render common templates
+- Async rendering
+
+---
+
+## 📝 OTEVŘENÉ OTÁZKY K DISKUZI
+
+1. **Event Types**: Potřebujeme ještě další typy událostí?
+2. **Recipient Role**: Je `APPROVAL | INFO | BOTH` dostatečné?
+3. **Urgency**: Máme jen `NORMAL | URGENT` nebo i `LOW | CRITICAL`?
+4. **Channels**: Priorita SMS a Push notifikací?
+5. **WebSocket**: Použít Socket.io nebo nativní WebSocket?
+6. **Queue**: Redis vs MySQL pro notification queue?
+7. **Template Engine**: Blade templates nebo Twig?
+8. **Cron**: Jak často spouštět queue processor? (každou minutu? 30s?)
+9. **Retention**: Jak dlouho ukládat doručené notifikace? (30 dní? 90 dní?)
+10. **Permissions**: Potřebujeme per-user notification preferences?
+
+---
+
+## 📚 TECHNOLOGIE STACK
+
+### Backend
+- **PHP 8.1+** - Core API
+- **Laravel/Symfony** - Framework (pokud se používá)
+- **MySQL 8.0** - Database
+- **Redis** - Queue (optional, alternativa k DB queue)
+- **RabbitMQ** - Message bus (optional, pro složitější flows)
+
+### Frontend
+- **React 18** - UI framework
+- **WebSocket** - Real-time notifications
+- **React Query** - Data fetching & caching
+- **Zustand/Redux** - State management
+
+### Delivery
+- **PHPMailer / Symfony Mailer** - Email sending
+- **Twilio** - SMS (optional)
+- **Firebase Cloud Messaging** - Push notifications (optional)
+
+### Monitoring
+- **Grafana** - Dashboards
+- **Prometheus** - Metrics
+- **Sentry** - Error tracking
+
+---
+
+## ✅ NEXT STEPS
+
+1. **Diskuze s týmem** - Review tohoto návrhu
+2. **Schválení architektury** - Final decision
+3. **Vytvoření tickets** - Pro každou fázi implementace
+4. **Kick-off meeting** - Fáze 1 implementace
+5. **Sprint planning** - Rozdělit work na 2-week sprints
+
+---
+
+**Připravil:** GitHub Copilot  
+**Datum:** 14. prosince 2025  
+**Status:** 🟡 DRAFT - Čeká na review a diskuzi
