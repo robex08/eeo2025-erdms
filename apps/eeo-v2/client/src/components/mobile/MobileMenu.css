@@ -1,0 +1,269 @@
+/* Overlay pozadí */
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+  z-index: 200;
+  /* Zajištění, že overlay nebude blokovat scroll když je zavřené */
+  pointer-events: none;
+}
+
+.mobile-menu-overlay.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Menu panel */
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  right: -100%;
+  bottom: 0;
+  width: 280px;
+  max-width: 85%;
+  background: white;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+  transition: right 0.3s ease-out;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-menu.open {
+  right: 0;
+}
+
+/* Header menu */
+.mobile-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.mobile-menu-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.mobile-menu-close {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.mobile-menu-close:active {
+  background: #e5e7eb;
+}
+
+.mobile-menu-close svg {
+  width: 24px;
+  height: 24px;
+  color: #6b7280;
+}
+
+/* Obsah menu */
+.mobile-menu-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Info o uživateli */
+.mobile-menu-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.mobile-menu-user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.mobile-menu-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-menu-user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-menu-user-email {
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Navigace */
+.mobile-menu-nav {
+  padding: 8px 0;
+  flex: 1;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: #374151;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background 0.2s;
+  border: none;
+  width: 100%;
+  background: none;
+  cursor: pointer;
+}
+
+.mobile-menu-item:active {
+  background: #f3f4f6;
+}
+
+.mobile-menu-item svg {
+  width: 22px;
+  height: 22px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+/* Footer s odhlášením */
+.mobile-menu-footer {
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.mobile-menu-logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mobile-menu-logout:active {
+  background: #dc2626;
+}
+
+.mobile-menu-logout svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ============================================
+   🌙 DARK MODE - Mobilní Menu
+   ============================================ */
+
+[data-mobile-theme="dark"] .mobile-menu-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-mobile-theme="dark"] .mobile-menu {
+  background: #1f2937;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-mobile-theme="dark"] .mobile-menu-header {
+  background: #111827;
+  border-bottom-color: #374151;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-header h3 {
+  color: #f9fafb;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-close:active {
+  background: #374151;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-close svg {
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-user {
+  border-bottom-color: #374151;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-user-avatar {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+}
+
+[data-mobile-theme="dark"] .mobile-menu-user-name {
+  color: #f9fafb;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-user-email {
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-item {
+  color: #e5e7eb;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-item:active {
+  background: #111827;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-item svg {
+  color: #9ca3af;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-footer {
+  border-top-color: #374151;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-logout {
+  background: #dc2626;
+}
+
+[data-mobile-theme="dark"] .mobile-menu-logout:active {
+  background: #b91c1c;
+}

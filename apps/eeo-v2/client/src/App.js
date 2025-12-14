@@ -16,6 +16,9 @@ import { setupEncryptionDebug } from './utils/encryptionUtils';
 import { initSecurityMeasures } from './utils/securityImprovements';
 import ordersCacheService from './services/ordersCacheService';
 import { getCacheConfig } from './config/cacheConfig';
+import useDevice from './hooks/useDevice';
+const MobileLoginPage = lazy(() => import('./components/mobile/MobileLoginPage'));
+const MobileDashboard = lazy(() => import('./components/mobile/MobileDashboard'));
 const Login = lazy(() => import('./pages/Login'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Users = lazy(() => import('./pages/Users'));
@@ -229,6 +232,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
 }
 
 function App() {
+  const { isMobile } = useDevice();
   const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, userId, user } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, userId, user from AuthContext
   const { showToast } = useContext(ToastContext) || {};
   const bgTasksContext = useBgTasksContext();
@@ -437,6 +441,22 @@ function App() {
     );
   }
 
+  // 📱 MOBILE VERSION: Pokud je zařízení mobilní, zobrazí se mobilní verze
+  if (isMobile) {
+    return (
+      <Router basename={process.env.PUBLIC_URL || ''}>
+        <Suspense fallback={<div>Načítání...</div>}>
+          {!isLoggedIn ? (
+            <MobileLoginPage />
+          ) : (
+            <MobileDashboard />
+          )}
+        </Suspense>
+      </Router>
+    );
+  }
+
+  // 🖥️ DESKTOP VERSION
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
       <Router basename={process.env.PUBLIC_URL || ''}>

@@ -1,0 +1,227 @@
+.mobile-login-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  padding: 24px;
+}
+
+.mobile-login-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+
+/* Header s logem */
+.mobile-login-header {
+  text-align: center;
+}
+
+.mobile-login-logo {
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 16px;
+  background: white;
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mobile-login-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.mobile-login-org {
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+}
+
+.mobile-login-org-type {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Název aplikace */
+.mobile-login-app {
+  text-align: center;
+}
+
+.mobile-login-app h2 {
+  color: white;
+  font-size: 36px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  letter-spacing: 2px;
+}
+
+.mobile-login-app p {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Chybová zpráva */
+.mobile-login-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+  padding: 14px 16px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 400px;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-login-error svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+/* Formulář */
+.mobile-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Input group */
+.mobile-login-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-login-icon {
+  position: absolute;
+  left: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+.mobile-login-input-group input {
+  width: 100%;
+  padding: 14px 14px 14px 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  color: white;
+  font-size: 15px;
+  transition: all 0.2s;
+}
+
+.mobile-login-input-group input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.mobile-login-input-group input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.mobile-login-input-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Tlačítko přihlášení */
+.mobile-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 24px;
+  background: white;
+  color: #1e3a8a;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+
+.mobile-login-btn:active:not(:disabled) {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
+
+/* Footer */
+.mobile-login-footer {
+  text-align: center;
+  padding: 16px 0;
+}
+
+.mobile-login-footer p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Velmi úzké displeje */
+@media (max-width: 360px) {
+  .mobile-login-app h2 {
+    font-size: 32px;
+  }
+  
+  .mobile-login-btn {
+    font-size: 15px;
+    padding: 14px 20px;
+  }
+}
+
+/* Landscape orientace na mobilech */
+@media (max-height: 600px) and (orientation: landscape) {
+  .mobile-login-content {
+    gap: 20px;
+  }
+  
+  .mobile-login-logo {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .mobile-login-app h2 {
+    font-size: 28px;
+  }
+}
+
+/* ============================================
+   🌙 DARK MODE - Mobilní Login
+   ============================================ */
+
+[data-mobile-theme="dark"] .mobile-login-container {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+[data-mobile-theme="dark"] .mobile-login-logo {
+  background: rgba(255, 255, 255, 0.1);
+}
