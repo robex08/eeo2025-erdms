@@ -408,7 +408,7 @@ function MobileDashboard() {
             className="mobile-quick-nav-btn"
             onClick={() => scrollToSection('users')}
           >
-            USR
+            UZI
           </button>
         )}
         <button 
@@ -421,13 +421,13 @@ function MobileDashboard() {
           className="mobile-quick-nav-btn"
           onClick={() => scrollToSection('invoices')}
         >
-          FA
+          FAK
         </button>
         <button 
           className="mobile-quick-nav-btn"
           onClick={() => scrollToSection('cashbook')}
         >
-          POKL
+          POK
         </button>
       </nav>
 
