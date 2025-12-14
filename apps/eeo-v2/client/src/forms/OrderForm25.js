@@ -10914,24 +10914,33 @@ function OrderForm25() {
 
         addDebugLog('success', 'UPDATE', 'formdata-updated', `FormData aktualizován: workflow=${updatedWorkflowKod}, strediska=${parsedUpdateData.strediska_kod.join(', ')}`);
         
-        // 🎯 NAČÍST LP OPTIONS z enriched response (z financovani.lp_nazvy)
-        if (result.financovani?.lp_nazvy && Array.isArray(result.financovani.lp_nazvy)) {
-          const lpOptions = result.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
-            .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+        // 🎯 OPRAVA: RELOAD objednávky po UPDATE pro získání enriched dat (včetně financovani.lp_nazvy)
+        // Backend UPDATE nevrací enriched financování → musíme zavolat GET s enriched=true
+        try {
+          const freshOrderData = await getOrderV2(formData.id, token, username, true); // enriched=true
           
-          setLpOptionsForItems(lpOptions);
-          addDebugLog('success', 'UPDATE', 'lp-options-loaded', `LP options načteny z financovani.lp_nazvy: ${lpOptions.length}`);
+          if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
+            const lpOptions = freshOrderData.financovani.lp_nazvy
+              .map(lp => ({
+                id: lp.id,
+                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                nazev: lp.nazev || 'Bez názvu',
+                kategorie: lp.kategorie,
+                limit: lp.limit || lp.celkovy_limit,
+                cerpano: lp.cerpano || lp.skutecne_cerpano,
+                zbyva: lp.zbyva || lp.zbyva_skutecne,
+                rok: lp.rok,
+                label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
+              }))
+              .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+            
+            setLpOptionsForItems(lpOptions);
+            addDebugLog('success', 'UPDATE', 'lp-options-reloaded', `LP options načteny z GET po UPDATE: ${lpOptions.length}`);
+          } else {
+            addDebugLog('warning', 'UPDATE', 'lp-options-missing', 'Enriched data neobsahují financovani.lp_nazvy');
+          }
+        } catch (reloadError) {
+          addDebugLog('error', 'UPDATE', 'lp-options-reload-failed', `Chyba při reload LP options: ${reloadError.message}`);
         }
 
         // 📊 Přepočet čerpání smlouvy (pokud je smlouva vybraná a objednávka ve fázi 7-8)

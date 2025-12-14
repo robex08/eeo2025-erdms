@@ -895,36 +895,36 @@ const UserManagementModal = ({
     }
   }, [isOpen, token, user]);
 
-  // Pre-fill data v edit mode - ALE AŽ KDYŽ JSOU NAČTENÉ ČÍSELNÍKY!
+  // Pre-fill data v edit mode - ROVNOU bez čekání na číselníky!
   useEffect(() => {
-    // Pro edit mode čekáme, až budou číselníky načtené (useky.length > 0 jako indikátor)
-    if (isOpen && mode === 'edit' && userData && !loadingData && useky.length > 0) {
+    // Při edit mode rovnou inicializuj formData z userData (CustomSelect si najde hodnoty sám)
+    if (isOpen && mode === 'edit' && userData) {
       // Debug pouze pokud jsou problémy
       // console.log('🔍 UserManagementModal - userData:', userData);
 
-      // EXTRAHUJ ID z různých formátů dat - VŽDY PŘEVEĎ NA STRING!
+      // EXTRAHUJ ID z různých formátů dat - CustomSelect potřebuje NUMBER pro strict comparison!
       const extractedIds = {
         // Úsek - může být usek_id přímo nebo vnořený objekt usek.id
-        usek_id: String(userData.usek_id || userData.usek?.id || ''),
+        usek_id: userData.usek_id || userData.usek?.id || null,
 
         // Lokalita - může být lokalita_id přímo, vnořený objekt lokalita.id, nebo najdeme podle názvu
-        lokalita_id: String(userData.lokalita_id ||
+        lokalita_id: userData.lokalita_id ||
           userData.lokalita?.id ||
           (userData.lokalita_nazev ?
             lokality.find(l => l.nazev === userData.lokalita_nazev)?.id
-            : '') || ''),
+            : null) || null,
 
         // Pozice - může být pozice_id přímo, vnořený objekt pozice.id, nebo najdeme podle názvu
-        pozice_id: String(userData.pozice_id ||
+        pozice_id: userData.pozice_id ||
           userData.pozice?.id ||
           (userData.nazev_pozice ?
             pozice.find(p => p.nazev_pozice === userData.nazev_pozice)?.id
-            : '') || ''),
+            : null) || null,
 
         // Organizace - může být organizace_id přímo nebo vnořený objekt organizace.id
-        organizace_id: String(userData.organizace_id ||
+        organizace_id: userData.organizace_id ||
           userData.organizace?.id ||
-          '')
+          null
       };
 
       // Zpracuj role - najdi ID podle nazev_role v načtených rolích
@@ -1012,7 +1012,7 @@ const UserManagementModal = ({
       setSuccessMessage('');
       setErrorMessage('');
     }
-  }, [isOpen, mode, userData, loadingData, useky]);
+  }, [isOpen, mode, userData]);
 
   const loadReferenceData = async () => {
     setLoadingData(true);
