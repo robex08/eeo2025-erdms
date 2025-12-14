@@ -2187,8 +2187,28 @@ const OrganizationHierarchy = () => {
               data: {
                 level: rel.level,
                 scope: edgeScope,
-                visibility: rel.visibility,
-                notifications: rel.notifications,
+                // Typ vztahu
+                relationshipType: rel.relationshipType || rel.druh_vztahu || 'prime',
+                druh_vztahu: rel.relationshipType || rel.druh_vztahu || 'prime',
+                // Viditelnost a moduly
+                visibility: rel.visibility || {},
+                modules: rel.modules || {},
+                // Úroveň práv
+                permissionLevel: rel.permissionLevel || {},
+                // Rozšířené lokality/útvary/kombinace
+                extended: rel.extended || {
+                  locations: [],
+                  departments: [],
+                  combinations: []
+                },
+                // Notifikace
+                notifications: rel.notifications || {
+                  email: false,
+                  inapp: true,
+                  types: [],
+                  recipientRole: 'APPROVAL'
+                },
+                // Typ vztahu pro React Flow
                 type: relType
               }
             };
@@ -4234,6 +4254,10 @@ const OrganizationHierarchy = () => {
           position_1: sourceNode.position,
           position_2: targetNode.position,
           level: edgeLevel,
+          // Typ vztahu (prime, zastupovani, delegovani, rozsirene)
+          relationshipType: edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime',
+          druh_vztahu: edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime', // Alias pro DB
+          // Viditelnost modulů
           visibility: {
             objednavky: edge.data?.modules?.orders || edge.data?.visibility?.objednavky || false,
             faktury: edge.data?.modules?.invoices || edge.data?.visibility?.faktury || false,
@@ -4242,10 +4266,22 @@ const OrganizationHierarchy = () => {
             uzivatele: edge.data?.modules?.users || edge.data?.visibility?.uzivatele || false,
             lp: edge.data?.modules?.lp || edge.data?.visibility?.lp || false
           },
+          // Moduly (duplikát pro zpětnou kompatibilitu)
+          modules: edge.data?.modules || {},
+          // Úroveň práv pro každý modul
+          permissionLevel: edge.data?.permissionLevel || {},
+          // Rozšířené lokality/útvary/kombinace
+          extended: edge.data?.extended || {
+            locations: [],
+            departments: [],
+            combinations: []
+          },
+          // Notifikace
           notifications: edge.data?.notifications || {
             email: false,
             inapp: false,
-            types: []
+            types: [],
+            recipientRole: 'APPROVAL'
           },
           // Node settings (template variants, atd.)
           node_settings: {
