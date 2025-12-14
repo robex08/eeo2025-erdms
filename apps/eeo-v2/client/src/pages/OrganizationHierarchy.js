@@ -2069,6 +2069,11 @@ const OrganizationHierarchy = () => {
                 position: 'Notifikační šablona',
                 initials: '🔔',
                 type: 'template',
+                // Načíst template varianty z node.settings (pokud existují)
+                normalVariant: node.settings?.normalVariant || '',
+                urgentVariant: node.settings?.urgentVariant || '',
+                infoVariant: node.settings?.infoVariant || '',
+                previewVariant: node.settings?.previewVariant || '',
                 metadata: {
                   type: 'template',
                   template: node.name
@@ -4247,11 +4252,13 @@ const OrganizationHierarchy = () => {
             source: {
               normalVariant: sourceNode.data?.normalVariant || null,
               urgentVariant: sourceNode.data?.urgentVariant || null,
+              infoVariant: sourceNode.data?.infoVariant || null,
               previewVariant: sourceNode.data?.previewVariant || null
             },
             target: {
               normalVariant: targetNode.data?.normalVariant || null,
               urgentVariant: targetNode.data?.urgentVariant || null,
+              infoVariant: targetNode.data?.infoVariant || null,
               previewVariant: targetNode.data?.previewVariant || null
             }
           }
@@ -4299,6 +4306,7 @@ const OrganizationHierarchy = () => {
         settings: {
           normalVariant: node.data?.normalVariant || null,
           urgentVariant: node.data?.urgentVariant || null,
+          infoVariant: node.data?.infoVariant || null,
           previewVariant: node.data?.previewVariant || null
         }
       }));
