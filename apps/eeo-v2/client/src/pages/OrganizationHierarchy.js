@@ -41,7 +41,8 @@ import {
   faEye,
   faEyeSlash,
   faLayerGroup,
-  faInfoCircle
+  faInfoCircle,
+  faExpand
 } from '@fortawesome/free-solid-svg-icons';
 
 // API Configuration
@@ -595,6 +596,27 @@ const DetailContent = styled.div`
   &::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 3px;
+  }
+  
+  /* Scrollbar pro email preview */
+  .email-preview-body {
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 4px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+      
+      &:hover {
+        background: #94a3b8;
+      }
+    }
   }
 `;
 
@@ -1486,10 +1508,17 @@ const OrganizationHierarchy = () => {
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
   const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
+  const [notificationRecipientRole, setNotificationRecipientRole] = useState('APPROVAL'); // APPROVER_NORMAL, APPROVER_URGENT, SUBMITTER
   
   // Detail panel data - druh vztahu a scope
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
   const [relationshipScope, setRelationshipScope] = useState('OWN'); // OWN, TEAM, LOCATION, ALL
+  
+  // Detail panel data - template varianty
+  const [templateNormalVariant, setTemplateNormalVariant] = useState('');
+  const [templateUrgentVariant, setTemplateUrgentVariant] = useState('');
+  const [templateInfoVariant, setTemplateInfoVariant] = useState('');
+  const [templatePreviewVariant, setTemplatePreviewVariant] = useState('');
   
   // Detail panel data - úroveň práv pro nadřízeného
   const [permissionLevel, setPermissionLevel] = useState({
@@ -1589,7 +1618,8 @@ const OrganizationHierarchy = () => {
                   ...(e.data?.notifications || {}),
                   types: selectedNotificationTypes,
                   email: notificationEmailEnabled,
-                  inapp: notificationInAppEnabled
+                  inapp: notificationInAppEnabled,
+                  recipientRole: notificationRecipientRole
                 }
               }
             };
@@ -1605,12 +1635,36 @@ const OrganizationHierarchy = () => {
     selectedNotificationTypes, 
     notificationEmailEnabled, 
     notificationInAppEnabled,
+    notificationRecipientRole,
     relationshipType,
     relationshipScope,
     moduleVisibility,
     permissionLevel,
     selectedEdge
   ]);
+  
+  // Auto-save template variant do node
+  React.useEffect(() => {
+    if (selectedNode && selectedNode.data?.type === 'template') {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === selectedNode.id) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                normalVariant: templateNormalVariant,
+                urgentVariant: templateUrgentVariant,
+                infoVariant: templateInfoVariant,
+                previewVariant: templatePreviewVariant
+              }
+            };
+          }
+          return n;
+        })
+      );
+    }
+  }, [templateNormalVariant, templateUrgentVariant, templateInfoVariant, templatePreviewVariant, selectedNode]);
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -1634,6 +1688,8 @@ const OrganizationHierarchy = () => {
   });
   
   const [showDetailHelpModal, setShowDetailHelpModal] = useState(false);
+  const [showFullscreenEmailModal, setShowFullscreenEmailModal] = useState(false);
+  const [fullscreenEmailData, setFullscreenEmailData] = useState(null);
   
   // Custom dialog state
   const [dialog, setDialog] = useState({
@@ -2265,8 +2321,7 @@ const OrganizationHierarchy = () => {
         }
         
         return node;
-      })
-    );
+      }));
   }, [edges, nodes.length]); // Závislost na edges a počtu nodes (ne na nodes samotných, aby se zabránilo nekonečné smyčce)
 
   const onNodeClick = useCallback((event, node) => {
@@ -2275,6 +2330,14 @@ const OrganizationHierarchy = () => {
       setSelectedNode(node);
       setSelectedEdge(null);
       setShowDetailPanel(true);
+      
+      // Načíst template varianty pokud je to template node
+      if (node.data?.type === 'template') {
+        setTemplateNormalVariant(node.data.normalVariant || '');
+        setTemplateUrgentVariant(node.data.urgentVariant || '');
+        setTemplateInfoVariant(node.data.infoVariant || '');
+        setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || '');
+      }
     } else {
       // Multi-select - skrýt detail panel
       setShowDetailPanel(false);
@@ -2303,8 +2366,7 @@ const OrganizationHierarchy = () => {
     // Nacist notifikacni nastaveni z edge data
     setNotificationEmailEnabled(edge.data?.notifications?.email || false);
     setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
-    
-    // Nacist druh vztahu a scope z edge data
+      setNotificationRecipientRole(edge.data?.notifications?.recipientRole || 'APPROVAL');    // Nacist druh vztahu a scope z edge data
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -4179,6 +4241,19 @@ const OrganizationHierarchy = () => {
             email: false,
             inapp: false,
             types: []
+          },
+          // Node settings (template variants, atd.)
+          node_settings: {
+            source: {
+              normalVariant: sourceNode.data?.normalVariant || null,
+              urgentVariant: sourceNode.data?.urgentVariant || null,
+              previewVariant: sourceNode.data?.previewVariant || null
+            },
+            target: {
+              normalVariant: targetNode.data?.normalVariant || null,
+              urgentVariant: targetNode.data?.urgentVariant || null,
+              previewVariant: targetNode.data?.previewVariant || null
+            }
           }
         };
         
@@ -4211,11 +4286,29 @@ const OrganizationHierarchy = () => {
         relations.push(relation);
       }
       
+      // Extrahovat node settings pro samostatné ukládání
+      const nodeSettings = nodes.map(node => ({
+        id: node.id,
+        type: node.data?.type || 'user',
+        userId: node.data?.userId || null,
+        locationId: node.data?.locationId || null,
+        departmentId: node.data?.departmentId || null,
+        templateId: node.data?.templateId || null,
+        roleId: node.data?.roleId || null,
+        position: node.position,
+        settings: {
+          normalVariant: node.data?.normalVariant || null,
+          urgentVariant: node.data?.urgentVariant || null,
+          previewVariant: node.data?.previewVariant || null
+        }
+      }));
+      
       const payload = {
         token,
         username,
         profile_id: profileId,
-        relations: relations
+        relations: relations,
+        nodes: nodeSettings  // Přidáno pro ukládání node-specific settings
       };
       
       console.log('📊 V2 SAVE START - Current state:', {
@@ -4438,6 +4531,22 @@ const OrganizationHierarchy = () => {
 
   return (
     <Container>
+      {/* Custom scrollbar pro email preview */}
+      <style>{`
+        .email-preview-body::-webkit-scrollbar {
+          width: 8px;
+        }
+        .email-preview-body::-webkit-scrollbar-track {
+          background: #f9fafb;
+        }
+        .email-preview-body::-webkit-scrollbar-thumb {
+          background: #d1d5db;
+          border-radius: 4px;
+        }
+        .email-preview-body::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+      `}</style>
       <Header>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Title>
@@ -5632,6 +5741,615 @@ const OrganizationHierarchy = () => {
                       <Label>Název šablony</Label>
                       <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
                     </FormGroup>
+                    
+                    {/* NASTAVENÍ HTML ŠABLON PRO NORMÁLNÍ A MIMOŘÁDNÝ STAV */}
+                    {(() => {
+                      const template = allNotificationTemplates.find(t => t.id === selectedNode.data.templateId);
+                      if (!template) return null;
+                      
+                      // Parser všech variant z email_body podle <!-- RECIPIENT: TYPE -->
+                      const parseAllVariants = (emailBody) => {
+                        if (!emailBody) return [];
+                        
+                        const variants = [];
+                        const variantTypes = [
+                          { type: 'APPROVER_NORMAL', icon: '🟠', name: 'Schvalovatel (oranžová - normální)' },
+                          { type: 'APPROVER_URGENT', icon: '🔴', name: 'Schvalovatel (červená - urgentní)' },
+                          { type: 'SUBMITTER', icon: '🟢', name: 'Autor objednávky (zelená - info)' }
+                        ];
+                        
+                        variantTypes.forEach(variantDef => {
+                          const marker = `<!-- RECIPIENT: ${variantDef.type} -->`;
+                          if (emailBody.includes(marker)) {
+                            variants.push({
+                              type: variantDef.type,
+                              icon: variantDef.icon,
+                              name: variantDef.name
+                            });
+                          }
+                        });
+                        
+                        return variants;
+                      };
+                      
+                      const availableVariants = parseAllVariants(template.email_body);
+                      
+                      // Určení výchozích hodnot
+                      const defaultVariant = availableVariants.length > 0 ? availableVariants[0].type : '';
+                      
+                      if (availableVariants.length === 0) {
+                        return (
+                          <div style={{
+                            padding: '12px',
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: '6px',
+                            color: '#991b1b',
+                            fontSize: '0.85rem'
+                          }}>
+                            ⚠️ <strong>Varování:</strong> Email šablona neobsahuje žádné varianty
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <>
+                          {/* VÝBĚR HTML ŠABLONY PRO NORMÁLNÍ STAV */}
+                          <FormGroup>
+                            <Label>
+                              HTML šablona pro NORMÁLNÍ stav
+                              <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                            </Label>
+                            <select
+                              value={templateNormalVariant || defaultVariant}
+                              onChange={(e) => setTemplateNormalVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                border: '2px solid #e0e6ed',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: '500'
+                              }}
+                            >
+                              {availableVariants.map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              color: '#64748b', 
+                              marginTop: '4px',
+                              fontStyle: 'italic'
+                            }}>
+                              Tato HTML varianta se použije pro běžné případy (např. oranžová)
+                            </div>
+                          </FormGroup>
+                          
+                          {/* VÝBĚR HTML ŠABLONY PRO MIMOŘÁDNÝ STAV */}
+                          <FormGroup>
+                            <Label>
+                              HTML šablona pro MIMOŘÁDNÝ stav
+                              <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                            </Label>
+                            <select
+                              value={templateUrgentVariant || defaultVariant}
+                              onChange={(e) => setTemplateUrgentVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                border: '2px solid #e0e6ed',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: '500'
+                              }}
+                            >
+                              {availableVariants.map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              color: '#64748b', 
+                              marginTop: '4px',
+                              fontStyle: 'italic'
+                            }}>
+                              Tato HTML varianta se použije pro urgentní/mimořádné případy (např. červená)
+                            </div>
+                          </FormGroup>
+                          
+                          {/* VÝBĚR HTML ŠABLONY PRO INFORMAČNÍ OZNÁMENÍ */}
+                          <FormGroup>
+                            <Label>
+                              HTML šablona pro INFORMAČNÍ oznámení
+                              <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                            </Label>
+                            <select
+                              value={templateInfoVariant || defaultVariant}
+                              onChange={(e) => setTemplateInfoVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                border: '2px solid #e0e6ed',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: '500'
+                              }}
+                            >
+                              {availableVariants.map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              color: '#64748b', 
+                              marginTop: '4px',
+                              fontStyle: 'italic'
+                            }}>
+                              Tato HTML varianta se použije pro čistě informační notifikace (např. zelená)
+                            </div>
+                          </FormGroup>
+                          
+                          {/* INFO BOX */}
+                          <div style={{
+                            padding: '10px 12px',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            color: '#1e40af',
+                            marginTop: '8px'
+                          }}>
+                            <strong>💡 Jak to funguje:</strong>
+                            <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px', lineHeight: '1.5' }}>
+                              <li>Můžete definovat 3 různé HTML varianty pro různé situace</li>
+                              <li>Doporučení: Normální = <span style={{color: '#f59e0b', fontWeight: 'bold'}}>🟠 oranžová</span>, Urgentní = <span style={{color: '#dc2626', fontWeight: 'bold'}}>🔴 červená</span>, Info = <span style={{color: '#10b981', fontWeight: 'bold'}}>🟢 zelená</span></li>
+                              <li>Backend automaticky vybere správnou podle události a typu příjemce (definuje se v EDGE)</li>
+                              <li>EDGE (šipka) určuje typ notifikace: schválení, info, nebo oboje</li>
+                            </ul>
+                          </div>
+                          
+                          {/* VÝBĚR PRO NÁHLED */}
+                          <FormGroup style={{ marginTop: '16px' }}>
+                            <Label>
+                              Varianta pro náhled níže
+                            </Label>
+                            <select
+                              value={templatePreviewVariant || templateNormalVariant || defaultVariant}
+                              onChange={(e) => setTemplatePreviewVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                border: '2px solid #cbd5e1',
+                                borderRadius: '6px',
+                                fontSize: '0.85rem',
+                                background: '#f8fafc',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {availableVariants.map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              color: '#64748b', 
+                              marginTop: '4px',
+                              fontStyle: 'italic'
+                            }}>
+                              ⚙️ Toto ovládá pouze náhled emailu níže (nemá vliv na odesílání)
+                            </div>
+                          </FormGroup>
+                        </>
+                      );
+                    })()}
+                    
+                    {/* PREVIEW NOTIFIKACE */}
+                    {(() => {
+                      const template = allNotificationTemplates.find(t => t.id === selectedNode.data.templateId);
+                      
+                      if (!template) return null;
+                      
+                      // 🎭 MOCK DATA pro náhled - kompletní seznam všech možných placeholderů
+                      const mockData = {
+                        // Základní údaje objednávky
+                        order_number: 'O-2025-00142',
+                        order_id: '142',
+                        ev_cislo: 'O-2025-00142',
+                        cislo_objednavky: 'O-2025-00142',
+                        
+                        // Stav a data
+                        status: 'Ke schválení',
+                        old_status: 'Nová',
+                        new_status: 'Ke schválení',
+                        datum_vytvoreni: '14.12.2025',
+                        datum_pozadavku: '14.12.2025',
+                        datum_zmeny: '14.12.2025 15:30',
+                        
+                        // Předmět - všechny varianty
+                        predmet: 'Nákup kancelářského vybavení pro oddělení IT',
+                        order_subject: 'Nákup kancelářského vybavení pro oddělení IT',
+                        subject: 'Nákup kancelářského vybavení pro oddělení IT',
+                        
+                        // Ceny
+                        cena_celkem: '45 670 Kč',
+                        cena_bez_dph: '37 743 Kč',
+                        cena_s_dph: '45 670 Kč',
+                        max_price_with_dph: '50 000 Kč',
+                        
+                        // Dodavatel
+                        dodavatel: 'ALZA.cz s.r.o.',
+                        supplier_name: 'ALZA.cz s.r.o.',
+                        supplier: 'ALZA.cz s.r.o.',
+                        
+                        // Žadatel/Požadovatel
+                        pozadovatel_jmeno: 'Jan Novák',
+                        pozadovatel_email: 'jan.novak@example.com',
+                        pozadovatel: 'Jan Novák',
+                        requester_name: 'Jan Novák',
+                        requester_email: 'jan.novak@example.com',
+                        
+                        // Schvalovatel
+                        schvalovatel_jmeno: 'Ing. Petr Svoboda',
+                        schvalovatel_email: 'petr.svoboda@example.com',
+                        approver_name: 'Ing. Petr Svoboda',
+                        approver_email: 'petr.svoboda@example.com',
+                        
+                        // Akce a uživatel akce
+                        action_user_name: 'Jan Novák',
+                        action_performed_by: 'Jan Novák',
+                        action_date: '14.12.2025 15:30',
+                        
+                        // URL a odkazy
+                        url_objednavky: 'https://eeo.example.com/order-form-25?edit=142',
+                        order_url: 'https://eeo.example.com/order-form-25?edit=142',
+                        url: 'https://eeo.example.com/order-form-25?edit=142',
+                        
+                        // Poznámky a důvody
+                        poznamka: 'Nutné schválit do konce týdne kvůli slevové akci',
+                        reason: 'Změna schvalování dle interních směrnic',
+                        comment: 'Žádné další poznámky',
+                        
+                        // Obecné
+                        user_name: 'Jan Novák',
+                        user_email: 'jan.novak@example.com',
+                        recipient_name: 'Ing. Petr Svoboda',
+                        
+                        // Datum a čas
+                        date: '14.12.2025',
+                        time: '15:30',
+                        datetime: '14.12.2025 15:30'
+                      };
+                      
+                      // Funkce pro nahrazení placeholderů mock daty (podporuje {key} i {{key}})
+                      const replacePlaceholders = (text) => {
+                        if (!text) return text;
+                        let result = text;
+                        Object.keys(mockData).forEach(key => {
+                          // Nahradit {key} i {{key}}
+                          const regex1 = new RegExp(`\\{${key}\\}`, 'g');
+                          const regex2 = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                          result = result.replace(regex1, mockData[key]);
+                          result = result.replace(regex2, mockData[key]);
+                        });
+                        return result;
+                      };
+                      
+                      return (
+                        <>
+                          {/* Preview In-App Notifikace - STEJNÝ STYL JAKO ZVONĚČEK */}
+                          {(template.app_title || template.app_message) && (
+                            <div style={{ marginTop: '16px' }}>
+                              <Label style={{ marginBottom: '8px', display: 'block' }}>
+                                <FontAwesomeIcon icon={faBell} style={{ marginRight: '6px', color: '#f5576c' }} />
+                                Náhled In-App notifikace (zvoněček)
+                              </Label>
+                              {/* Simulace NotificationItem ze zvonečku */}
+                              <div style={{
+                                padding: '16px',
+                                borderLeft: '4px solid #3b82f6',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                gap: '12px',
+                                alignItems: 'start',
+                                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                                borderRadius: '8px',
+                                border: '1px solid #93c5fd'
+                              }}>
+                                {/* Ikona notifikace */}
+                                <div style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  borderRadius: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '20px',
+                                  flexShrink: 0,
+                                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                  color: 'white',
+                                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                                }}>
+                                  ℹ️
+                                </div>
+                                
+                                {/* Content */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  {/* Title - TUČNÝ */}
+                                  <div style={{
+                                    fontWeight: 700,
+                                    color: '#111827',
+                                    fontSize: '14px',
+                                    lineHeight: 1.4,
+                                    marginBottom: '4px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical'
+                                  }}>
+                                    {replacePlaceholders(template.app_title) || 'Schválena: O-1958/75030926/2025/IT'}
+                                  </div>
+                                  
+                                  {/* Message */}
+                                  {template.app_message && (
+                                    <div style={{
+                                      fontSize: '13px',
+                                      color: '#6b7280',
+                                      lineHeight: 1.5,
+                                      marginBottom: '6px',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical'
+                                    }}>
+                                      {replacePlaceholders(template.app_message)}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Meta - čas + uživatel */}
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    fontSize: '12px',
+                                    color: '#9ca3af',
+                                    marginTop: '6px'
+                                  }}>
+                                    {/* Čas */}
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      🕐 Před 1 h
+                                    </span>
+                                    {/* Uživatel */}
+                                    <span style={{
+                                      background: '#f3e8ff',
+                                      color: '#6b21a8',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 500
+                                    }}>
+                                      👤 {mockData.action_performed_by || 'Jan Novák'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{
+                                marginTop: '6px',
+                                fontSize: '0.7rem',
+                                color: '#64748b',
+                                fontStyle: 'italic'
+                              }}>
+                                💡 Přesně toto uvidí uživatel ve zvonečku • Mock data pro ukázku
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Preview Email Notifikace - KOMPLETNÍ NÁHLED s MOCK daty */}
+                          <div style={{ marginTop: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <Label style={{ marginBottom: '0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FontAwesomeIcon icon={faEnvelope} style={{ marginRight: '6px', color: '#667eea' }} />
+                                Náhled Email šablony
+                                {(() => {
+                                  const variantType = templatePreviewVariant || templateNormalVariant || 'APPROVER_NORMAL';
+                                  const variantLabels = {
+                                    'APPROVER_NORMAL': '🟠',
+                                    'APPROVER_URGENT': '🔴',
+                                    'SUBMITTER': '🟢',
+                                    'DEFAULT': '📋'
+                                  };
+                                  return (
+                                    <span style={{
+                                      padding: '4px 10px',
+                                      background: '#f3f4f6',
+                                      borderRadius: '6px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600',
+                                      color: '#374151'
+                                    }}>
+                                      {variantLabels[variantType] || '📋'} {
+                                        variantType === 'APPROVER_NORMAL' ? 'Normální' :
+                                        variantType === 'APPROVER_URGENT' ? 'Mimořádný' :
+                                        variantType === 'SUBMITTER' ? 'Autor' :
+                                        'Výchozí'
+                                      }
+                                    </span>
+                                  );
+                                })()}
+                              </Label>
+                              <button
+                                onClick={() => {
+                                  setFullscreenEmailData({
+                                    template,
+                                    mockData,
+                                    replacePlaceholders,
+                                    selectedVariantType: templatePreviewVariant || templateNormalVariant || 'APPROVER_NORMAL'
+                                  });
+                                  setShowFullscreenEmailModal(true);
+                                }}
+                                style={{
+                                  padding: '8px',
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer',
+                                  fontSize: '1rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '36px',
+                                  height: '36px',
+                                  transition: 'all 0.2s',
+                                  boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'translateY(-2px) scale(1.05)';
+                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+                                }}
+                                title="Otevřít fullscreen náhled"
+                              >
+                                <FontAwesomeIcon icon={faExpand} />
+                              </button>
+                            </div>
+                            <div style={{
+                              border: '2px solid #667eea',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              background: 'white',
+                              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.15)'
+                            }}>
+                              {/* Email Header */}
+                              <div style={{
+                                padding: '16px 20px',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                fontSize: '0.85rem'
+                              }}>
+                                <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <strong style={{ fontSize: '0.9rem' }}>📧 Email Preview</strong>
+                                </div>
+                                <div style={{ marginBottom: '6px', opacity: 0.95 }}>
+                                  <strong>Předmět:</strong> {replacePlaceholders(template.email_subject || 'Bez předmětu')}
+                                </div>
+                                <div style={{ marginBottom: '6px', opacity: 0.95 }}>
+                                  <strong>Odesílatel:</strong> EEO Systém &lt;noreply@eeo.cz&gt;
+                                </div>
+                                <div style={{ opacity: 0.95 }}>
+                                  <strong>Příjemce:</strong> {mockData.recipient_name || mockData.user_name} &lt;{mockData.user_email}&gt;
+                                </div>
+                              </div>
+                              {/* Email Body - KOMPLETNÍ SCROLLOVATELNÝ náhled - ZMENŠENO */}
+                              <div style={{
+                                padding: '12px',
+                                fontSize: '0.5rem',
+                                lineHeight: '1.3',
+                                color: '#1f2937',
+                                maxHeight: '500px',
+                                minHeight: '200px',
+                                overflowY: 'auto',
+                                overflowX: 'hidden',
+                                background: '#ffffff',
+                                zoom: '0.6',
+                                transformOrigin: 'top left'
+                              }}
+                              className="email-preview-body"
+                              >
+                                <div 
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: replacePlaceholders(
+                                      (() => {
+                                        // Extrakce správné varianty podle výběru v templatePreviewVariant
+                                        const selectedVariantType = templatePreviewVariant || templateNormalVariant || 'APPROVER_NORMAL';
+                                        const emailBody = template.email_body || '<p style="color: #9ca3af; font-style: italic;">Email tělo není definováno v šabloně</p>';
+                                        
+                                        // Pokud není delimiter, vrať celý email_body
+                                        if (!emailBody.includes('<!-- RECIPIENT:')) {
+                                          return emailBody;
+                                        }
+                                        
+                                        // Extrahuj specifickou variantu
+                                        const delimiter = `<!-- RECIPIENT: ${selectedVariantType} -->`;
+                                        const startPos = emailBody.indexOf(delimiter);
+                                        
+                                        if (startPos === -1) {
+                                          return emailBody; // Fallback
+                                        }
+                                        
+                                        // Najdi začátek HTML (po delimiteru)
+                                        let htmlStart = startPos + delimiter.length;
+                                        
+                                        // Najdi konec (další delimiter nebo konec stringu)
+                                        const otherDelimiters = ['APPROVER_NORMAL', 'APPROVER_URGENT', 'SUBMITTER']
+                                          .filter(d => d !== selectedVariantType)
+                                          .map(d => `<!-- RECIPIENT: ${d} -->`);
+                                        
+                                        let htmlEnd = emailBody.length;
+                                        for (const otherDelimiter of otherDelimiters) {
+                                          const pos = emailBody.indexOf(otherDelimiter, htmlStart);
+                                          if (pos !== -1 && pos < htmlEnd) {
+                                            htmlEnd = pos;
+                                          }
+                                        }
+                                        
+                                        return emailBody.substring(htmlStart, htmlEnd).trim();
+                                      })()
+                                    ).replace(/\n/g, '<br />')
+                                  }} 
+                                />
+                              </div>
+                              {/* Email Footer */}
+                              <div style={{
+                                padding: '12px 20px',
+                                background: '#f9fafb',
+                                borderTop: '1px solid #e5e7eb',
+                                fontSize: '0.75rem',
+                                color: '#6b7280',
+                                textAlign: 'center'
+                              }}>
+                                📅 {mockData.datetime} • 🔔 Automatická notifikace z EEO systému
+                              </div>
+                            </div>
+                            <div style={{
+                              marginTop: '8px',
+                              padding: '8px 12px',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              color: '#1e40af',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}>
+                              <span>💡</span>
+                              <span>Plně scrollovatelný náhled HTML šablony s nahrazenými placeholdery mock daty</span>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    
                     <div style={{
                       marginTop: '12px',
                       padding: '12px',
@@ -6234,6 +6952,7 @@ const OrganizationHierarchy = () => {
                   );
                 })()}
                 
+                {/* Sekce Základní vlastnosti vztahu - POUZE pro edge */}
                 {selectedEdge && (() => {
                   const sourceNode = nodes.find(n => n.id === selectedEdge.source);
                   const targetNode = nodes.find(n => n.id === selectedEdge.target);
@@ -6658,61 +7377,6 @@ const OrganizationHierarchy = () => {
                 );
               })()}
 
-              {/* Sekce Notifikace - POUZE pro edge (vztahy) */}
-              {selectedEdge && (
-              <>
-              <Divider />
-
-              <DetailSection>
-                <DetailSectionTitle>
-                  <FontAwesomeIcon icon={faBell} />
-                  Notifikace
-                </DetailSectionTitle>
-                <CheckboxGroup>
-                  <CheckboxLabel>
-                    <input 
-                      type="checkbox" 
-                      checked={notificationEmailEnabled}
-                      onChange={(e) => setNotificationEmailEnabled(e.target.checked)}
-                    />
-                    <FontAwesomeIcon icon={faEnvelope} style={{ marginRight: '4px' }} />
-                    E-mail notifikace
-                  </CheckboxLabel>
-                  <CheckboxLabel>
-                    <input 
-                      type="checkbox" 
-                      checked={notificationInAppEnabled}
-                      onChange={(e) => setNotificationInAppEnabled(e.target.checked)}
-                    />
-                    <FontAwesomeIcon icon={faBell} style={{ marginRight: '4px' }} />
-                    In-app notifikace
-                  </CheckboxLabel>
-                </CheckboxGroup>
-                <FormGroup style={{ marginTop: '16px' }}>
-                  <Label>Typy událostí</Label>
-                  <CustomSelect
-                    value={selectedNotificationTypes}
-                    onChange={(newValues) => setSelectedNotificationTypes(newValues)}
-                    options={notificationTypes}
-                    placeholder="Vyberte typy událostí..."
-                    field="notificationTypes"
-                    multiple={true}
-                    selectStates={selectStates}
-                    setSelectStates={setSelectStates}
-                    searchStates={searchStates}
-                    setSearchStates={setSearchStates}
-                    touchedSelectFields={touchedSelectFields}
-                    setTouchedSelectFields={setTouchedSelectFields}
-                    toggleSelect={toggleSelect}
-                    filterOptions={filterOptions}
-                    getOptionLabel={getOptionLabel}
-                    hasTriedToSubmit={false}
-                  />
-                </FormGroup>
-              </DetailSection>
-              </>
-              )}
-
               {/* Sekce notifikací - zobraz jen když edge obsahuje template */}
               {selectedEdge && (() => {
                 const sourceNode = nodes.find(n => n.id === selectedEdge.source);
@@ -6720,6 +7384,9 @@ const OrganizationHierarchy = () => {
                 const isTemplateEdge = sourceNode?.data?.type === 'template' || targetNode?.data?.type === 'template';
                 
                 if (!isTemplateEdge) return null;
+                
+                // Najdi template node
+                const templateNode = sourceNode?.data?.type === 'template' ? sourceNode : targetNode;
                 
                 return (
                   <>
@@ -6736,12 +7403,46 @@ const OrganizationHierarchy = () => {
                         border: '1px solid #fbbf24'
                       }}>
                         <div style={{ fontSize: '0.8rem', color: '#78350f', fontWeight: 500 }}>
-                          🔔 <strong>{sourceNode?.data?.type === 'template' ? sourceNode.data.name : targetNode.data.name}</strong>
+                          🔔 <strong>{templateNode?.data?.name}</strong>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '4px' }}>
                           Bude odesílána: {targetNode?.data?.type === 'template' ? sourceNode.data.name : targetNode.data.name}
                         </div>
+                        <div style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#92400e', 
+                          marginTop: '6px',
+                          fontStyle: 'italic',
+                          paddingTop: '6px',
+                          borderTop: '1px solid #fbbf24'
+                        }}>
+                          💡 Variantu HTML emailu vyberte v detailu notifikačního uzlu (klikněte na uzel)
+                        </div>
                       </div>
+                      
+                      {/* Typ notifikace pro příjemce */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <Label>
+                          Typ notifikace pro příjemce
+                          <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                        </Label>
+                        <Select 
+                          value={notificationRecipientRole} 
+                          onChange={(e) => setNotificationRecipientRole(e.target.value)}
+                        >
+                          <option value="APPROVAL">🟠 Požadavek na schválení</option>
+                          <option value="INFO">🟢 Informační oznámení</option>
+                          <option value="BOTH">🔵 Oboje (schválení + info)</option>
+                        </Select>
+                        <div style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#64748b', 
+                          marginTop: '6px',
+                          fontStyle: 'italic'
+                        }}>
+                          💡 Urgentnost určí až událost v procesu. Zde jen definujete charakter notifikace.
+                        </div>
+                      </FormGroup>
                       
                       <CheckboxGroup>
                         <CheckboxLabel>
@@ -6793,18 +7494,11 @@ const OrganizationHierarchy = () => {
                 );
               })()}
 
+              {/* Akční tlačítka - zobrazit vždy když je vybraný node nebo edge */}
+              {(selectedNode || selectedEdge) && (
               <DetailSection>
-                <Button 
-                  primary 
-                  style={{ width: '100%', marginBottom: '10px' }}
-                  onClick={() => {
-                    // Změny se ukládají automaticky přes useEffect, jen zobrazit potvrzení
-                    showToast('✅ Detail vztahu uložen do konceptu', { type: 'success', timeout: 3000 });
-                  }}
-                >
-                  <FontAwesomeIcon icon={faSave} />
-                  Uložit změny
-                </Button>
+                {/* Tlačítko 'Uložit změny' odstraněno - změny se ukládají automaticky přes useEffect */}
+                {/* Finální uložení do DB proběhne přes hlavní tlačítko ULOŽIT / ULOŽIT JAKO v headeru */}
                 <button
                   onClick={selectedNode ? handleDeleteNode : handleDeleteEdge}
                   style={{
@@ -6838,6 +7532,7 @@ const OrganizationHierarchy = () => {
                   <span>{selectedNode ? 'Odstranit uzel' : 'Odstranit vztah'}</span>
                 </button>
               </DetailSection>
+              )}
             </DetailContent>
           </DetailPanel>
         )}
@@ -7028,6 +7723,18 @@ const OrganizationHierarchy = () => {
           existingProfiles={profiles}
         />
       )}
+      
+      {/* Fullscreen Email Modal */}
+      {showFullscreenEmailModal && (
+        <FullscreenEmailModal
+          isOpen={showFullscreenEmailModal}
+          onClose={() => {
+            setShowFullscreenEmailModal(false);
+            setFullscreenEmailData(null);
+          }}
+          emailData={fullscreenEmailData}
+        />
+      )}
     </Container>
   );
 };
@@ -7147,6 +7854,200 @@ const ProfileDialog = ({ mode, onClose, onSave, existingProfiles }) => {
         </DialogActions>
       </DialogBox>
     </DialogOverlay>
+  );
+};
+
+// Fullscreen Email Modal Component
+const FullscreenEmailModal = ({ isOpen, onClose, emailData }) => {
+  if (!isOpen || !emailData) return null;
+  
+  const { template, mockData, replacePlaceholders, selectedVariantType } = emailData;
+  
+  // Funkce pro extrakci správné varianty z email_body
+  const extractEmailVariant = (emailBody, variantType) => {
+    if (!emailBody) return emailBody;
+    
+    // Pokud je DEFAULT nebo není delimiter, vrať celý email_body
+    if (variantType === 'DEFAULT' || !emailBody.includes('<!-- RECIPIENT:')) {
+      return emailBody;
+    }
+    
+    // Extrahuj specifickou variantu
+    const delimiter = `<!-- RECIPIENT: ${variantType} -->`;
+    const startPos = emailBody.indexOf(delimiter);
+    
+    if (startPos === -1) {
+      return emailBody; // Fallback
+    }
+    
+    // Najdi začátek HTML (po delimiteru)
+    let htmlStart = startPos + delimiter.length;
+    
+    // Najdi konec (další delimiter nebo konec stringu)
+    const otherDelimiters = ['APPROVER_NORMAL', 'APPROVER_URGENT', 'SUBMITTER']
+      .filter(d => d !== variantType)
+      .map(d => `<!-- RECIPIENT: ${d} -->`);
+    
+    let htmlEnd = emailBody.length;
+    for (const otherDelimiter of otherDelimiters) {
+      const pos = emailBody.indexOf(otherDelimiter, htmlStart);
+      if (pos !== -1 && pos < htmlEnd) {
+        htmlEnd = pos;
+      }
+    }
+    
+    return emailBody.substring(htmlStart, htmlEnd).trim();
+  };
+  
+  const emailBodyToDisplay = extractEmailVariant(template.email_body, selectedVariantType || 'DEFAULT');
+  
+  return (
+    <ModalOverlay onClick={onClose} style={{ zIndex: 20000 }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'white',
+          borderRadius: '12px',
+          width: '98vw',
+          maxWidth: '1400px',
+          height: '75vh',
+          maxHeight: 'calc(100vh - 140px)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.4)',
+          margin: '30px auto'
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '16px 24px',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderRadius: '12px 12px 0 0',
+          flexShrink: 0
+        }}>
+          <div>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <FontAwesomeIcon icon={faEnvelope} />
+              Email Šablona
+              {selectedVariantType && selectedVariantType !== 'DEFAULT' && (() => {
+                const variantIcons = {
+                  'APPROVER_NORMAL': '🔴',
+                  'APPROVER_URGENT': '🟠',
+                  'SUBMITTER': '🟢'
+                };
+                return variantIcons[selectedVariantType] || '';
+              })()}
+            </h2>
+            <div style={{ fontSize: '0.85rem', opacity: 0.95 }}>
+              <strong>Šablona:</strong> {template.name || 'Bez názvu'}
+              {selectedVariantType && selectedVariantType !== 'DEFAULT' && (
+                <>
+                  {' • '}
+                  <strong>Varianta:</strong> {
+                    selectedVariantType === 'APPROVER_NORMAL' ? 'Schvalovatel (normální)' :
+                    selectedVariantType === 'APPROVER_URGENT' ? 'Schvalovatel (mimořádný)' :
+                    selectedVariantType === 'SUBMITTER' ? 'Autor objednávky' :
+                    selectedVariantType
+                  }
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              width: '40px',
+              height: '40px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.5rem',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+          >
+            <FontAwesomeIcon icon={faTimes} />
+          </button>
+        </div>
+        
+        {/* Email Preview - IFRAME S JEDNÍM SCROLLEM */}
+        <div style={{
+          flex: 1,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white'
+        }}>
+          {/* Email Header */}
+          <div style={{
+            padding: '20px 30px',
+            borderBottom: '1px solid #e5e7eb',
+            background: '#fafbfc',
+            flexShrink: 0
+          }}>
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#111827', lineHeight: '1.4' }}>
+                {replacePlaceholders(template.email_subject || 'Bez předmětu')}
+              </div>
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px' }}>
+              <strong style={{ color: '#374151' }}>Od:</strong> EEO Systém &lt;noreply@eeo.cz&gt;
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+              <strong style={{ color: '#374151' }}>Komu:</strong> {mockData.recipient_name || mockData.user_name} &lt;{mockData.user_email}&gt;
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: '8px' }}>
+              {mockData.datetime}
+            </div>
+          </div>
+          
+          {/* Email Body - IFRAME BEZ VLASTNÍHO SCROLLU */}
+          <iframe
+            title="Email Preview"
+            style={{
+              width: '100%',
+              flex: 1,
+              border: 'none',
+              background: 'white',
+              overflow: 'hidden'
+            }}
+            srcDoc={`
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                  html, body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: Arial, sans-serif;
+                    background: #f9fafb;
+                    overflow: visible;
+                    height: auto;
+                  }
+                </style>
+              </head>
+              <body>
+                ${replacePlaceholders(emailBodyToDisplay || '<p style="color: #9ca3af; font-style: italic;">Email tělo není definováno v šabloně</p>')}
+              </body>
+              </html>
+            `}
+          />
+        </div>
+      </div>
+    </ModalOverlay>
   );
 };
 
