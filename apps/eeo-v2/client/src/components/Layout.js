@@ -1598,8 +1598,8 @@ const Layout = ({ children }) => {
     
     loadHierarchyStatus();
     
-    // Refresh každých 30 sekund
-    const interval = setInterval(loadHierarchyStatus, 30000);
+    // Refresh každých 5 minut (hierarchie se nemění často)
+    const interval = setInterval(loadHierarchyStatus, 300000);
     return () => clearInterval(interval);
   }, [isLoggedIn, token, user?.username]);
 
