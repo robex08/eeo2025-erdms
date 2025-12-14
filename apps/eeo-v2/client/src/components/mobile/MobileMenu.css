@@ -166,6 +166,69 @@
   flex-shrink: 0;
 }
 
+/* Sekce */
+.mobile-menu-section {
+  padding: 20px 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.mobile-menu-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* Theme přepínač */
+.mobile-menu-theme-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-menu-theme-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  color: #111827;
+}
+
+.mobile-menu-theme-btn svg {
+  width: 20px;
+  height: 20px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.mobile-menu-theme-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.mobile-menu-theme-btn.active svg {
+  color: white;
+}
+
+.mobile-menu-theme-btn:active {
+  transform: scale(0.98);
+}
+
+.mobile-menu-theme-current {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 /* Footer s odhlášením */
 .mobile-menu-footer {
   padding: 16px;
@@ -202,68 +265,96 @@
    🌙 DARK MODE - Mobilní Menu
    ============================================ */
 
-[data-mobile-theme="dark"] .mobile-menu-overlay {
+[data-theme="dark"] .mobile-menu-overlay {
   background: rgba(0, 0, 0, 0.7);
 }
 
-[data-mobile-theme="dark"] .mobile-menu {
+[data-theme="dark"] .mobile-menu {
   background: #1f2937;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
 }
 
-[data-mobile-theme="dark"] .mobile-menu-header {
+[data-theme="dark"] .mobile-menu-header {
   background: #111827;
   border-bottom-color: #374151;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-header h3 {
+[data-theme="dark"] .mobile-menu-header h3 {
   color: #f9fafb;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-close:active {
+[data-theme="dark"] .mobile-menu-close:active {
   background: #374151;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-close svg {
+[data-theme="dark"] .mobile-menu-close svg {
   color: #9ca3af;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-user {
+[data-theme="dark"] .mobile-menu-user {
   border-bottom-color: #374151;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-user-avatar {
+[data-theme="dark"] .mobile-menu-user-avatar {
   background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
 }
 
-[data-mobile-theme="dark"] .mobile-menu-user-name {
+[data-theme="dark"] .mobile-menu-user-name {
   color: #f9fafb;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-user-email {
+[data-theme="dark"] .mobile-menu-user-email {
   color: #9ca3af;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-item {
+[data-theme="dark"] .mobile-menu-item {
   color: #e5e7eb;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-item:active {
+[data-theme="dark"] .mobile-menu-item:active {
   background: #111827;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-item svg {
+[data-theme="dark"] .mobile-menu-item svg {
   color: #9ca3af;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-footer {
+[data-theme="dark"] .mobile-menu-section {
   border-top-color: #374151;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-logout {
+[data-theme="dark"] .mobile-menu-section-title {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .mobile-menu-theme-btn {
+  background: #111827;
+  border-color: #374151;
+  color: #e5e7eb;
+}
+
+[data-theme="dark"] .mobile-menu-theme-btn svg {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .mobile-menu-theme-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+[data-theme="dark"] .mobile-menu-theme-btn.active svg {
+  color: white;
+}
+
+[data-theme="dark"] .mobile-menu-footer {
+  border-top-color: #374151;
+}
+
+[data-theme="dark"] .mobile-menu-logout {
   background: #dc2626;
 }
 
-[data-mobile-theme="dark"] .mobile-menu-logout:active {
+[data-theme="dark"] .mobile-menu-logout:active {
   background: #b91c1c;
 }

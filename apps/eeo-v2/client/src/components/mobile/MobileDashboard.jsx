@@ -25,8 +25,8 @@ import './MobileDashboard.css';
  */
 function MobileDashboard() {
   const { user: authUser, userDetail, token, username } = useContext(AuthContext);
-  // ✅ Inicializace theme mode - zapne detekci system preference
-  useThemeMode();
+  // ✅ Inicializace theme mode - automatická detekce systémového režimu + ruční přepínač v menu
+  const { mode } = useThemeMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({
@@ -97,7 +97,7 @@ function MobileDashboard() {
     }
   };
 
-  const handleRefresh = async () => {
+  const handleManualRefresh = async () => {
     setRefreshing(true);
     await loadDashboardData();
     setRefreshing(false);
@@ -120,21 +120,21 @@ function MobileDashboard() {
   // Notifikace - počet nepřečtených
   const notificationCount = data.notifications?.unread || 0;
 
-  // Sestavení widgetů pro objednávky (zobrazovat JEN když count > 0)
+  // Sestavení widgetů pro objednávky
   // ✅ IKONY z desktop modulu (Orders25List.js + iconMapping.js)
   const orderWidgets = [];
   if (data.orders) {
-    if (data.orders.pending?.count > 0) {
-      orderWidgets.push({
-        id: 'orders-pending',
-        title: 'Ke schválení',
-        count: data.orders.pending.count,
-        amount: data.orders.pending.amount,
-        icon: getStatusIcon('ke_schvaleni'), // ⏳ Desktop: faHourglassHalf
-        color: 'orange',
-        category: 'orders'
-      });
-    }
+    // KE SCHVÁLENÍ - vždy zobrazit (i když 0)
+    orderWidgets.push({
+      id: 'orders-pending',
+      title: 'Ke schválení',
+      count: data.orders.pending?.count || 0,
+      amount: data.orders.pending?.amount || 0,
+      icon: getStatusIcon('ke_schvaleni'), // ⏳ Desktop: faHourglassHalf
+      color: 'orange',
+      category: 'orders'
+    });
+    
     if (data.orders.approved?.count > 0) {
       orderWidgets.push({
         id: 'orders-approved',
@@ -146,17 +146,42 @@ function MobileDashboard() {
         category: 'orders'
       });
     }
-    if (data.orders.inProgress?.count > 0) {
+    
+    // MÁ BÝT ZVEŘEJNĚNA - vždy zobrazit (i když 0)
+    orderWidgets.push({
+      id: 'orders-ma-byt-zverejnena',
+      title: 'Má být zveřejněna',
+      count: data.orders.maBytZverejnena?.count || 0,
+      amount: data.orders.maBytZverejnena?.amount || 0,
+      icon: getStatusIcon('k_uverejneni_do_registru'), // Desktop icon
+      color: 'teal',
+      category: 'orders'
+    });
+    
+    // UVEŘEJNĚNÁ - vždy zobrazit (i když 0)
+    orderWidgets.push({
+      id: 'orders-uverejnena',
+      title: 'Uveřejněná',
+      count: data.orders.uverejnena?.count || 0,
+      amount: data.orders.uverejnena?.amount || 0,
+      icon: getStatusIcon('uverejnena'), // Desktop icon
+      color: 'blue',
+      category: 'orders'
+    });
+    
+    // VĚCNÁ SPRÁVNOST
+    if (data.orders.vecnaSpravnost?.count > 0) {
       orderWidgets.push({
-        id: 'orders-progress',
-        title: 'V realizaci',
-        count: data.orders.inProgress.count,
-        amount: data.orders.inProgress.amount,
-        icon: getStatusIcon('rozpracovana'), // 🕐 Desktop: faClock
-        color: 'blue',
+        id: 'orders-vecna-spravnost',
+        title: 'Věcná správnost',
+        count: data.orders.vecnaSpravnost.count,
+        amount: data.orders.vecnaSpravnost.amount,
+        icon: getStatusIcon('vecna_spravnost'), // Desktop icon
+        color: 'purple',
         category: 'orders'
       });
     }
+    
     if (data.orders.completed?.count > 0) {
       orderWidgets.push({
         id: 'orders-completed',
@@ -303,56 +328,28 @@ function MobileDashboard() {
     }
   }
 
-  // Widget pro pokladnu (pokud má uživatel více pokladen, zobrazí dropdown)
-  const cashbookWidgets = [];
+  // Pokladny - speciální komponenta s 2x2 gridem
+  const cashbookData = [];
   if (data.cashbook && data.cashbook.pokladny && data.cashbook.pokladny.length > 0) {
     const pokladny = data.cashbook.pokladny;
     
-    // Pokud má uživatel více než 1 pokladnu, vytvoř widget pro každou
-    if (pokladny.length > 1) {
-      pokladny.forEach(pokladna => {
-        if (pokladna.aktivni && pokladna.pocet_zaznamu > 0) {
-          cashbookWidgets.push({
-            id: `cashbook-${pokladna.id}`,
-            title: `Pokladna ${pokladna.cislo_pokladny}`,
-            subtitle: pokladna.nazev || '',
-            count: pokladna.pocet_zaznamu,
-            amount: pokladna.koncovy_stav,
-            icon: getStatusIcon('nova'),
-            color: 'purple',
-            category: 'cashbook'
-          });
-        }
-      });
-    } else if (pokladny.length === 1) {
-      // Pokud má jen 1 pokladnu, zobraz ji jako jeden widget
-      const pokladna = pokladny[0];
+    pokladny.forEach(pokladna => {
       if (pokladna.aktivni) {
-        cashbookWidgets.push({
-          id: 'cashbook',
-          title: 'Pokladna',
-          count: pokladna.pocet_zaznamu,
-          subtitle: 'Záznamy v měsíci',
-          amount: pokladna.koncovy_stav,
-          icon: getStatusIcon('nova'),
-          color: 'purple',
-          category: 'cashbook'
+        cashbookData.push({
+          id: pokladna.id,
+          cislo: pokladna.cislo_pokladny,
+          nazev: pokladna.nazev || '',
+          zaznamy: pokladna.pocet_zaznamu || 0,
+          prevod: pokladna.prevod || 0,
+          zustatek: pokladna.koncovy_stav || 0,
+          prijmy: pokladna.prijmy_pocet || 0,
+          prijmyCastka: pokladna.prijmy_castka || 0,
+          vydaje: pokladna.vydaje_pocet || 0,
+          vydajeCastka: pokladna.vydaje_castka || 0
         });
       }
-    }
+    });
   }
-  
-  // Pro zpětnou kompatibilitu - pokud cashbook nemá strukturu pokladny[], použij staré API
-  const cashbookWidget = cashbookWidgets.length === 0 && data.cashbook && data.cashbook.count > 0 ? {
-    id: 'cashbook',
-    title: 'Pokladna',
-    count: data.cashbook.count,
-    subtitle: 'Záznamy v měsíci',
-    amount: data.cashbook.balance,
-    icon: getStatusIcon('nova'),
-    color: 'purple',
-    category: 'cashbook'
-  } : null;
 
   return (
     <div className="mobile-dashboard">
@@ -438,8 +435,8 @@ function MobileDashboard() {
           </section>
         )}
 
-        {/* Sekce pokladna */}
-        {(cashbookWidgets.length > 0 || cashbookWidget) && (
+        {/* Sekce pokladna - speciální 2x2 grid */}
+        {cashbookData.length > 0 && (
           <section className="mobile-widget-section">
             <div className="mobile-section-header">
               <h2>Pokladna</h2>
@@ -447,21 +444,14 @@ function MobileDashboard() {
                 <span className="mobile-summary-count">Aktuální měsíc</span>
               </div>
             </div>
-            <div className="mobile-widget-grid">
-              {/* Zobraz buď jednotlivé pokladny nebo souhrnný widget */}
-              {cashbookWidgets.length > 0 ? (
-                cashbookWidgets.map(widget => (
-                  <WidgetCard key={widget.id} widget={widget} />
-                ))
-              ) : (
-                cashbookWidget && <WidgetCard widget={cashbookWidget} />
-              )}
-            </div>
+            {cashbookData.map(pokladna => (
+              <CashbookCard key={pokladna.id} cashbook={pokladna} formatCurrency={formatCurrency} />
+            ))}
           </section>
         )}
 
         {/* Prázdný stav */}
-        {orderWidgets.length === 0 && invoiceStatusWidgets.length === 0 && invoiceTypeWidgets.length === 0 && cashbookWidgets.length === 0 && !cashbookWidget && (
+        {orderWidgets.length === 0 && invoiceStatusWidgets.length === 0 && invoiceTypeWidgets.length === 0 && cashbookData.length === 0 && (
           <div className="mobile-empty-state">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
@@ -473,7 +463,7 @@ function MobileDashboard() {
         {/* Tlačítko pro obnovení */}
         <button 
           className="mobile-refresh-btn"
-          onClick={handleRefresh}
+          onClick={handleManualRefresh}
           disabled={refreshing}
         >
           <svg viewBox="0 0 24 24" fill="currentColor">
@@ -513,17 +503,58 @@ function WidgetCard({ widget }) {
         </div>
       </div>
       
-      {/* Název stavu */}
-      <div className="mobile-widget-title">{widget.title}</div>
-      
+      {/* Název stavu a částka - bez mezery */}
+      <div className="mobile-widget-info">
+        <div className="mobile-widget-title">{widget.title}</div>
+        {widget.amount !== null && widget.amount !== undefined && (
+          <div className="mobile-widget-amount">{formatCurrency(widget.amount)}</div>
+        )}
+      </div>
       {widget.subtitle && (
         <div className="mobile-widget-subtitle">{widget.subtitle}</div>
       )}
-      
-      {/* Částka (pokud existuje) */}
-      {widget.amount !== null && widget.amount !== undefined && (
-        <div className="mobile-widget-amount">{formatCurrency(widget.amount)}</div>
+    </div>
+  );
+}
+
+/**
+ * Speciální komponenta pro pokladnu - 2x2 grid s přehledem
+ */
+function CashbookCard({ cashbook, formatCurrency }) {
+  const title = cashbook.cislo ? `Pokladna ${cashbook.cislo}` : 'Pokladna';
+  
+  return (
+    <div className="mobile-cashbook-card">
+      {cashbook.nazev && (
+        <div className="mobile-cashbook-title">{title} - {cashbook.nazev}</div>
       )}
+      <div className="mobile-cashbook-grid">
+        {/* Převod */}
+        <div className="mobile-cashbook-item">
+          <div className="mobile-cashbook-label">Převod</div>
+          <div className="mobile-cashbook-value">{formatCurrency(cashbook.prevod)}</div>
+        </div>
+        
+        {/* Zůstatek */}
+        <div className="mobile-cashbook-item highlight">
+          <div className="mobile-cashbook-label">Zůstatek</div>
+          <div className="mobile-cashbook-value">{formatCurrency(cashbook.zustatek)}</div>
+        </div>
+        
+        {/* Příjmy */}
+        <div className="mobile-cashbook-item">
+          <div className="mobile-cashbook-label">Příjmy</div>
+          <div className="mobile-cashbook-count">{cashbook.prijmy} ks</div>
+          <div className="mobile-cashbook-amount">{formatCurrency(cashbook.prijmyCastka)}</div>
+        </div>
+        
+        {/* Výdaje */}
+        <div className="mobile-cashbook-item">
+          <div className="mobile-cashbook-label">Výdaje</div>
+          <div className="mobile-cashbook-count">{cashbook.vydaje} ks</div>
+          <div className="mobile-cashbook-amount">{formatCurrency(cashbook.vydajeCastka)}</div>
+        </div>
+      </div>
     </div>
   );
 }

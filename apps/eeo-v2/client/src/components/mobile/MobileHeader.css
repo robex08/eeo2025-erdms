@@ -167,15 +167,15 @@
    🌙 DARK MODE - Mobilní Header
    ============================================ */
 
-[data-mobile-theme="dark"] .mobile-header {
+[data-theme="dark"] .mobile-header {
   background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-[data-mobile-theme="dark"] .mobile-logo {
+[data-theme="dark"] .mobile-logo {
   background: rgba(255, 255, 255, 0.1);
 }
 
-[data-mobile-theme="dark"] .mobile-notification-badge {
+[data-theme="dark"] .mobile-notification-badge {
   border-color: #334155;
 }
