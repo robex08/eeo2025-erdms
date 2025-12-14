@@ -841,18 +841,40 @@ GROUP BY channel;
    - `email`: boolean - poslat email?
    - `inapp`: boolean - zobrazit in-app notifikaci?
    - `types`: array - typy událostí (zatím prázdné, čeká na implementaci)
+   - **NOVĚ také**: `relationshipType`, `modules`, `permissionLevel`, `extended` (kombinace lokalit/útvarů)
 
 3. **Auto-save do localStorage:**
    - ✅ Nodes a edges se ukládají při každé změně
    - ✅ Template varianty (všechny 3) se auto-save do node.data
    - ✅ Notification settings se auto-save do edge.data
+   - ✅ **Všechna edge data** (relationshipType, modules, permissionLevel, extended) se auto-save
    - ✅ Keys: `hierarchy_draft_nodes`, `hierarchy_draft_edges`, `hierarchy_draft_timestamp`
 
 4. **Manuální ULOZIT do DB:**
-   - ✅ `handleSave()` ukládá `relations` s `notifications` objektem
-   - ✅ `nodeSettings` ukládá všechny 3 template varianty (`normalVariant`, `urgentVariant`, `infoVariant`)
-   - ✅ Načítání z DB: template varianty se načítají z `node.settings`
+   - ✅ `handleSave()` ukládá `relations` s kompletními daty
+   - ✅ **Edge data**: relationshipType, modules, permissionLevel, extended, notifications
+   - ✅ **Node settings**: všechny 3 template varianty (normalVariant, urgentVariant, infoVariant)
+   - ✅ Načítání z DB: všechna data se správně deserializují zpět do edge.data a node.data
    - ✅ API endpoint: `POST /api.eeo/hierarchy/save`
+
+**Backend (`hierarchyHandlers_v2.php`):**
+
+5. **DB Persistence - kompletní:**
+   - ✅ Tabulka `25_hierarchie_vztahy` obsahuje sloupce:
+     - `druh_vztahu` ENUM('prime', 'zastupovani', 'delegovani', 'rozsirene')
+     - `modules` JSON - viditelnost modulů
+     - `permission_level` JSON - úroveň práv pro každý modul
+     - `extended_data` JSON - rozšířené kombinace lokalit/útvarů
+     - `notifikace_recipient_role` ENUM('APPROVAL', 'INFO', 'BOTH')
+     - `node_settings` JSON - template varianty pro source/target nodes
+   - ✅ INSERT: Ukládá všechna nová pole do DB
+   - ✅ SELECT: Načítá všechna pole včetně JSON deserializace
+   - ✅ Load z DB: Edge.data obsahuje všechna potřebná data po F5 refresh
+
+**Verze: 1.89** (14.12.2025)
+- Fix: Edge data persistence do DB (relationshipType, modules, permissionLevel, extended)
+- Fix: Template variants save/load z DB
+- Fix: Po F5 se nyní načítají správné hodnoty z DB místo výchozích
 
 ### ⏳ TODO - Backend PHP API
 
