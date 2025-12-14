@@ -1216,7 +1216,7 @@ const Invoices25List = () => {
     paidAmount: 0,      // Částka zaplacených
     unpaidAmount: 0,    // Částka nezaplacených
     overdueAmount: 0,   // Částka po splatnosti
-    withoutOrder: 0,    // Faktury bez přiřazené objednávky
+    withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0       // Moje faktury (jen pro admin/invoice_manage)
   });
 
@@ -1563,7 +1563,7 @@ const Invoices25List = () => {
         // BE vrací kompletní statistiky za celý filtr
         
         // Lokální počítání jen pro položky, které BE nevrací v statistikách
-        const withoutOrderCount = transformedInvoices.filter(inv => !inv.objednavka_id).length;
+        const withoutOrderCount = transformedInvoices.filter(inv => !inv.objednavka_id && !inv.smlouva_id).length;
         const myInvoicesCount = user_id 
           ? transformedInvoices.filter(inv => inv.vytvoril_uzivatel_id === user_id).length
           : 0;
@@ -1598,8 +1598,8 @@ const Invoices25List = () => {
             acc.overdueAmount += inv.castka;
           }
           
-          // Faktury bez objednávky
-          if (!inv.objednavka_id) {
+          // Faktury bez přiřazení (bez obj. ANI smlouvy)
+          if (!inv.objednavka_id && !inv.smlouva_id) {
             acc.withoutOrder++;
           }
           
@@ -2050,7 +2050,7 @@ const Invoices25List = () => {
               $color="#94a3b8"
             >
               <StatHeader>
-                <StatLabel>Bez objednávky</StatLabel>
+                <StatLabel>Bez přiřazení</StatLabel>
                 <StatIcon $color="#94a3b8">
                   <FontAwesomeIcon icon={faTimesCircle} />
                 </StatIcon>

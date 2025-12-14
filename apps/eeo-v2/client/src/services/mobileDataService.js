@@ -134,9 +134,7 @@ const mobileDataService = {
       if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
         const value = parseFloat(order.polozky_celkova_cena_s_dph);
         if (!isNaN(value) && value > 0) return value;
-      }
-
-      // 2. Spočítej z položek (Order V2 API vrací polozky přímo v order objektu)
+      }      // 2. Spočítej z položek (Order V2 API vrací polozky přímo v order objektu)
       if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
         const total = order.polozky.reduce((sum, item) => {
           const cena = parseFloat(item.cena_s_dph || 0);
@@ -203,30 +201,38 @@ const mobileDataService = {
     return {
       total,
       totalAmount,
-      // Mapování stavů
+      // Mapování stavů - používáme validOrders pro filtrování
       pending: { 
-        count: byStatus.KE_SCHVALENI || 0, 
-        amount: orders.filter(o => getOrderSystemStatus(o) === 'KE_SCHVALENI').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: (byStatus.KE_SCHVALENI || 0) + (byStatus.ODESLANA_KE_SCHVALENI || 0), 
+        amount: validOrders.filter(o => ['KE_SCHVALENI', 'ODESLANA_KE_SCHVALENI'].includes(getOrderSystemStatus(o))).reduce((s, o) => s + getOrderAmount(o), 0)
       },
       approved: { 
         count: byStatus.SCHVALENA || 0, 
-        amount: orders.filter(o => getOrderSystemStatus(o) === 'SCHVALENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'SCHVALENA').reduce((s, o) => s + getOrderAmount(o), 0)
       },
-      inProgress: { 
-        count: (byStatus.ROZPRACOVANA || 0) + (byStatus.ODESLANA || 0), 
-        amount: orders.filter(o => ['ROZPRACOVANA', 'ODESLANA'].includes(getOrderSystemStatus(o))).reduce((s, o) => s + getOrderAmount(o), 0)
+      maBytZverejnena: { 
+        count: byStatus.K_UVEREJNENI_DO_REGISTRU || 0, 
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'K_UVEREJNENI_DO_REGISTRU').reduce((s, o) => s + getOrderAmount(o), 0)
+      },
+      uverejnena: { 
+        count: byStatus.UVEREJNENA || 0, 
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'UVEREJNENA').reduce((s, o) => s + getOrderAmount(o), 0)
+      },
+      vecnaSpravnost: { 
+        count: byStatus.VECNA_SPRAVNOST || 0, 
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'VECNA_SPRAVNOST').reduce((s, o) => s + getOrderAmount(o), 0)
       },
       completed: { 
         count: byStatus.DOKONCENA || 0, 
-        amount: orders.filter(o => getOrderSystemStatus(o) === 'DOKONCENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'DOKONCENA').reduce((s, o) => s + getOrderAmount(o), 0)
       },
       rejected: { 
         count: byStatus.ZAMITNUTA || 0, 
-        amount: orders.filter(o => getOrderSystemStatus(o) === 'ZAMITNUTA').reduce((s, o) => s + getOrderAmount(o), 0)
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ZAMITNUTA').reduce((s, o) => s + getOrderAmount(o), 0)
       },
       cancelled: { 
         count: byStatus.ZRUSENA || 0, 
-        amount: orders.filter(o => getOrderSystemStatus(o) === 'ZRUSENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ZRUSENA').reduce((s, o) => s + getOrderAmount(o), 0)
       }
     };
   },
@@ -276,12 +282,26 @@ const mobileDataService = {
       const amount = parseFloat(invoice.fa_castka || 0);
       stats.totalAmount += amount;
 
-      // Status zaplacení
+      // Status zaplacení - PŘESNĚ PODLE INVOICES25LIST
       const status = getInvoiceStatus(invoice);
-      stats[status].count++;
-      stats[status].amount += amount;
+      
+      // Zaplacené
+      if (status === 'paid') {
+        stats.paid.count++;
+        stats.paid.amount += amount;
+      } else {
+        // NEZAPLACENO = všechny nezaplacené (včetně po splatnosti)
+        stats.unpaid.count++;
+        stats.unpaid.amount += amount;
+        
+        // PO SPLATNOSTI = podmnožina nezaplacených
+        if (status === 'overdue') {
+          stats.overdue.count++;
+          stats.overdue.amount += amount;
+        }
+      }
 
-      // Typ faktury - bezpečné získání
+      // Typ faktury - bezpečné získání (PŘESNĚ PODLE INVOICES25LIST!)
       const typRaw = invoice.fa_typ;
       const typ = (typRaw && typeof typRaw === 'string') ? typRaw.toUpperCase() : 'BEZNA';
       switch (typ) {
@@ -289,7 +309,7 @@ const mobileDataService = {
           stats.regular.count++;
           stats.regular.amount += amount;
           break;
-        case 'ZALOHA':
+        case 'ZALOHOVA':
           stats.advance.count++;
           stats.advance.amount += amount;
           break;
@@ -305,13 +325,15 @@ const mobileDataService = {
           stats.creditNote.count++;
           stats.creditNote.amount += amount;
           break;
-        case 'BEZ_PRIRAZENI':
-          stats.withoutAssignment.count++;
-          stats.withoutAssignment.amount += amount;
-          break;
         default:
           stats.regular.count++;
           stats.regular.amount += amount;
+      }
+      
+      // BEZ PŘIŘAZENÍ = faktury bez objednávky ANI smlouvy
+      if (!invoice.objednavka_id && !invoice.smlouva_id) {
+        stats.withoutAssignment.count++;
+        stats.withoutAssignment.amount += amount;
       }
     });
 
@@ -342,17 +364,34 @@ const mobileDataService = {
     const pokladnyList = pokladny.map(pokladna => {
       const pocetZaznamu = parseInt(pokladna.pocet_zaznamu || 0, 10);
       const koncovyStav = parseFloat(pokladna.koncovy_stav || 0);
+      const pocatecniStav = parseFloat(pokladna.pocatecni_stav || 0);
+      
+      // ✅ API VRACÍ celkove_prijmy, celkove_vydaje, prijmy_pocet, vydaje_pocet z DB
+      const celkovePrijmy = parseFloat(pokladna.celkove_prijmy || 0);
+      const celkoveVydaje = parseFloat(pokladna.celkove_vydaje || 0);
+      const prijmyPocet = parseInt(pokladna.prijmy_pocet || 0, 10);
+      const vydajePocet = parseInt(pokladna.vydaje_pocet || 0, 10);
       
       totalCount += pocetZaznamu;
       totalBalance += koncovyStav;
 
+      // ✅ Převod z předchozího měsíce (přichází z DB)
+      const prevod = parseFloat(pokladna.prevod_z_predchoziho || 0);
+      
       return {
         id: pokladna.id,
         cislo_pokladny: pokladna.cislo_pokladny,
         nazev: pokladna.nazev,
         pocet_zaznamu: pocetZaznamu,
         koncovy_stav: koncovyStav,
-        aktivni: pokladna.aktivni === 1 || pokladna.aktivni === '1'
+        pocatecni_stav: pocatecniStav,
+        prevod: prevod,
+        aktivni: pokladna.aktivni === 1 || pokladna.aktivni === '1',
+        // ✅ PŘÍJMY A VÝDAJE - počty i částky z DB
+        prijmy_castka: celkovePrijmy,
+        prijmy_pocet: prijmyPocet,
+        vydaje_castka: celkoveVydaje,
+        vydaje_pocet: vydajePocet
       };
     });
 

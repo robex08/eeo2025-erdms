@@ -76,12 +76,22 @@ function handle_cashbox_list_by_period_post($config, $input) {
                   pk.mesic,
                   pk.stav_knihy,
                   pk.koncovy_stav,
+                  pk.pocatecni_stav,
+                  pk.prevod_z_predchoziho,
                   pk.pocet_zaznamu,
+                  (SELECT COALESCE(SUM(z.castka_prijem), 0) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_prijmy,
+                  (SELECT COALESCE(SUM(z.castka_vydaj), 0) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_vydaje,
                   pu.id AS prirazeni_id,
                   pu.uzivatel_id,
                   u.jmeno AS uzivatel_jmeno,
                   u.prijmeni AS uzivatel_prijmeni,
-                  CONCAT(u.jmeno, ' ', u.prijmeni) AS uzivatel_cele_jmeno
+                  CONCAT(u.jmeno, ' ', u.prijmeni) AS uzivatel_cele_jmeno,
+                  (SELECT COUNT(*) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_prijem > 0 AND z.smazano = 0) AS prijmy_pocet,
+                  (SELECT COUNT(*) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_vydaj > 0 AND z.smazano = 0) AS vydaje_pocet
                 FROM 25a_pokladny p
                 INNER JOIN 25a_pokladni_knihy pk 
                   ON pk.pokladna_id = p.id
@@ -112,7 +122,17 @@ function handle_cashbox_list_by_period_post($config, $input) {
                   pk.mesic,
                   pk.stav_knihy,
                   pk.koncovy_stav,
-                  pk.pocet_zaznamu
+                  pk.pocatecni_stav,
+                  pk.prevod_z_predchoziho,
+                  pk.pocet_zaznamu,
+                  (SELECT COALESCE(SUM(z.castka_prijem), 0) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_prijmy,
+                  (SELECT COALESCE(SUM(z.castka_vydaj), 0) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.smazano = 0) AS celkove_vydaje,
+                  (SELECT COUNT(*) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_prijem > 0 AND z.smazano = 0) AS prijmy_pocet,
+                  (SELECT COUNT(*) FROM 25a_pokladni_polozky z 
+                   WHERE z.pokladni_kniha_id = pk.id AND z.castka_vydaj > 0 AND z.smazano = 0) AS vydaje_pocet
                 FROM 25a_pokladny p
                 INNER JOIN 25a_pokladni_knihy pk 
                   ON pk.pokladna_id = p.id

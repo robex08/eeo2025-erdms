@@ -641,7 +641,8 @@ function handle_cashbook_entry_create_post($config, $input) {
             // 🔧 Vypočítat zůstatek po operaci
             require_once __DIR__ . '/../services/BalanceCalculator.php';
             $balanceCalculator = new BalanceCalculator($db);
-            $amount = $input['castka_celkem'];
+            // ✅ OPRAVA: Spočítat celkovou částku z detail_items (ne z frontendu)
+            $amount = array_sum(array_column($input['detail_items'], 'castka'));
             $balance = $balanceCalculator->calculateNewEntryBalance(
                 $input['book_id'],
                 $amount,
@@ -764,9 +765,14 @@ function handle_cashbook_entry_update_post($config, $input) {
                 error_log("LP warnings: " . implode(', ', $validation['warnings']));
             }
             
-            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model
+            // ✅ OPRAVA: Spočítat celkovou částku z detail_items a nastavit správně castka_prijem/castka_vydaj
+            $amount = array_sum(array_column($input['detail_items'], 'castka'));
+            
+            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model + nastavit správné částky
             $masterData = array_merge($input, [
-                'pokladni_kniha_id' => $input['book_id']
+                'pokladni_kniha_id' => $input['book_id'],
+                'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
+                'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
             ]);
             
             // Update master + details (model má vlastní transakci)
