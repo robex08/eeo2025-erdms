@@ -445,7 +445,7 @@ function App() {
   if (isMobile) {
     return (
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <Suspense fallback={<div>Načítání...</div>}>
+        <Suspense fallback={<SplashScreen message="Načítání mobilní aplikace..." />}>
           {!isLoggedIn ? (
             <MobileLoginPage />
           ) : (

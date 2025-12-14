@@ -248,7 +248,7 @@ $queries['uzivatele_select_by_id'] = "SELECT * FROM ".TABLE_UZIVATELE." WHERE id
 // Update last activity timestamp for a user
 $queries['uzivatele_update_last_activity'] = "UPDATE " . TABLE_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
 // Select active users from last 5 minutes - opraveno pro PHP 5.6/MySQL 5.5 kompatibilitu
-$queries['uzivatele_active_last_5_minutes'] = "SELECT CONCAT(jmeno, ' ', prijmeni) AS cele_jmeno, dt_posledni_aktivita FROM " . TABLE_UZIVATELE . " WHERE dt_posledni_aktivita IS NOT NULL AND dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) AND aktivni = 1 ORDER BY dt_posledni_aktivita DESC";
+$queries['uzivatele_active_last_5_minutes'] = "SELECT id, username, CONCAT(jmeno, ' ', prijmeni) AS cele_jmeno, dt_posledni_aktivita FROM " . TABLE_UZIVATELE . " WHERE dt_posledni_aktivita IS NOT NULL AND dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) AND aktivni = 1 ORDER BY dt_posledni_aktivita DESC";
 $queries['uzivatele_hierarchie_select_all'] = "SELECT * FROM ".TABLE_UZIVATELE_HIERARCHIE;
 $queries['uzivatele_hierarchie_select_by_id'] = "SELECT * FROM ".TABLE_UZIVATELE_HIERARCHIE." WHERE nadrizeny_id = :nadrizeny_id AND podrizeny_id = :podrizeny_id";
 // --- KONEC GENEROVANÝCH SELECTŮ ---

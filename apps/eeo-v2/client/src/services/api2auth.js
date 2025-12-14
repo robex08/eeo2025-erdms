@@ -3105,6 +3105,23 @@ export async function fetchActiveUsers({ token, username }) {
 }
 
 /**
+ * Načtení aktivních uživatelů s rozšířenými statistikami
+ * Vrací: objednavky (count), faktury (count), pokladna_zustatek
+ */
+export async function fetchActiveUsersWithStats({ token, username }) {
+  try {
+    const response = await api2.post('user/active-with-stats', {
+      username,
+      token
+    });
+    return response.data.status === 'ok' ? response.data.data : [];
+  } catch (error) {
+    console.error('[fetchActiveUsersWithStats] Error:', error);
+    return [];
+  }
+}
+
+/**
  * Update aktivity uživatele
  * Volá se při jakékoli akci uživatele (uložení, přihlášení, odhlášení)
  * 
