@@ -6458,8 +6458,6 @@ function OrderForm25() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      console.log('🔓 Příkazce je SUPERADMIN → zobrazuji všechny LP kódy (s filtrem platnosti)');
-      
       return lpKodyOptions.filter(lp => {
         const platneOd = lp.platne_od ? new Date(lp.platne_od) : null;
         const platneDo = lp.platne_do ? new Date(lp.platne_do) : null;
