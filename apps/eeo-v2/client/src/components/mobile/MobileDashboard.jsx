@@ -4,6 +4,7 @@ import useThemeMode from '../../theme/useThemeMode';
 import MobileHeader from './MobileHeader';
 import MobileMenu from './MobileMenu';
 import OrderApprovalCard from './OrderApprovalCard';
+import MobileConfirmDialog from './MobileConfirmDialog';
 import SplashScreen from '../SplashScreen';
 import mobileDataService from '../../services/mobileDataService';
 import { fetchActiveUsersWithStats } from '../../services/api2auth';
@@ -47,6 +48,9 @@ function MobileDashboard() {
   const [showApprovalDetail, setShowApprovalDetail] = useState(false);
   const [approvalFilter, setApprovalFilter] = useState('all'); // 'all' | 'normal' | 'urgent'
   const [approvalSearchQuery, setApprovalSearchQuery] = useState('');
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [waitDialogOpen, setWaitDialogOpen] = useState(false);
+  const [currentOrder, setCurrentOrder] = useState(null);
 
   // Helper funkce pro MySQL datetime formát
   const toMySQLDateTime = () => {
@@ -282,31 +286,34 @@ function MobileDashboard() {
     }
   };
 
-  // Zamítnutí objednávky
-  const handleRejectOrder = async (order) => {
-    if (!token || !username || !order.id) return;
-    
-    const reason = prompt('Důvod zamítnutí (POVINNÉ):');
-    if (reason === null) return; // Uživatel zrušil
-    if (!reason || reason.trim() === '') {
-      alert('Důvod zamítnutí je povinný!');
+  // Zamítnutí objednávky - otevření dialogu
+  const handleRejectOrder = (order) => {
+    setCurrentOrder(order);
+    setRejectDialogOpen(true);
+  };
+
+  // Potvrzení zamítnutí
+  const confirmRejectOrder = async (reason) => {
+    if (!token || !username || !currentOrder?.id) {
+      setRejectDialogOpen(false);
       return;
     }
     
     try {
-      // Načti aktuální objednávku
-      const currentOrder = await getOrderV2(order.id, token, username, true);
-      if (!currentOrder) {
+      // Načti aktuální objednávku pro získání fresh dat
+      const freshOrder = await getOrderV2(currentOrder.id, token, username, true);
+      if (!freshOrder) {
         alert('Objednávku se nepodařilo načíst');
+        setRejectDialogOpen(false);
         return;
       }
 
       // Zpracuj workflow stavy
       let workflowStates = [];
       try {
-        workflowStates = Array.isArray(currentOrder.stav_workflow_kod)
-          ? currentOrder.stav_workflow_kod
-          : JSON.parse(currentOrder.stav_workflow_kod || '[]');
+        workflowStates = Array.isArray(freshOrder.stav_workflow_kod)
+          ? freshOrder.stav_workflow_kod
+          : JSON.parse(freshOrder.stav_workflow_kod || '[]');
       } catch {
         workflowStates = [];
       }
@@ -326,46 +333,52 @@ function MobileDashboard() {
         stav_workflow_kod: JSON.stringify(workflowStates),
         schvalovatel_id: userDetail?.id || null,
         dt_schvaleni: toMySQLDateTime(),
-        schvaleni_komentar: reason.trim()
+        schvaleni_komentar: reason
       };
 
-      console.log('[MobileDashboard] Zamítám objednávku:', order.id, 'updateData:', updateData);
-      await updateOrderV2(order.id, updateData, token, username);
+      console.log('[MobileDashboard] Zamítám objednávku:', currentOrder.id, 'updateData:', updateData);
+      await updateOrderV2(currentOrder.id, updateData, token, username);
       
-      // Obnovit seznam
+      // Zavřít dialog a obnovit seznam
+      setRejectDialogOpen(false);
+      setCurrentOrder(null);
       await loadPendingApprovals();
       await loadDashboardData();
     } catch (error) {
       console.error('[MobileDashboard] Error rejecting order:', error);
       alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
+      setRejectDialogOpen(false);
     }
   };
 
-  // Označit jako "Čeká se"
-  const handleWaitOrder = async (order) => {
-    if (!token || !username || !order.id) return;
-    
-    const reason = prompt('Důvod pozastavení (POVINNÉ):');
-    if (reason === null) return; // Uživatel zrušil
-    if (!reason || reason.trim() === '') {
-      alert('Důvod pozastavení je povinný!');
+  // Označit jako "Čeká se" - otevření dialogu
+  const handleWaitOrder = (order) => {
+    setCurrentOrder(order);
+    setWaitDialogOpen(true);
+  };
+
+  // Potvrzení pozastavení
+  const confirmWaitOrder = async (reason) => {
+    if (!token || !username || !currentOrder?.id) {
+      setWaitDialogOpen(false);
       return;
     }
     
     try {
-      // Načti aktuální objednávku
-      const currentOrder = await getOrderV2(order.id, token, username, true);
-      if (!currentOrder) {
+      // Načti aktuální objednávku pro získání fresh dat
+      const freshOrder = await getOrderV2(currentOrder.id, token, username, true);
+      if (!freshOrder) {
         alert('Objednávku se nepodařilo načíst');
+        setWaitDialogOpen(false);
         return;
       }
 
       // Zpracuj workflow stavy
       let workflowStates = [];
       try {
-        workflowStates = Array.isArray(currentOrder.stav_workflow_kod)
-          ? currentOrder.stav_workflow_kod
-          : JSON.parse(currentOrder.stav_workflow_kod || '[]');
+        workflowStates = Array.isArray(freshOrder.stav_workflow_kod)
+          ? freshOrder.stav_workflow_kod
+          : JSON.parse(freshOrder.stav_workflow_kod || '[]');
       } catch {
         workflowStates = [];
       }
@@ -385,18 +398,21 @@ function MobileDashboard() {
         stav_workflow_kod: JSON.stringify(workflowStates),
         schvalovatel_id: userDetail?.id || null,
         dt_schvaleni: toMySQLDateTime(),
-        schvaleni_komentar: reason.trim()
+        schvaleni_komentar: reason
       };
 
-      console.log('[MobileDashboard] Pozastavuji objednávku:', order.id, 'updateData:', updateData);
-      await updateOrderV2(order.id, updateData, token, username);
+      console.log('[MobileDashboard] Pozastavuji objednávku:', currentOrder.id, 'updateData:', updateData);
+      await updateOrderV2(currentOrder.id, updateData, token, username);
       
-      // Obnovit seznam
+      // Zavřít dialog a obnovit seznam
+      setWaitDialogOpen(false);
+      setCurrentOrder(null);
       await loadPendingApprovals();
       await loadDashboardData();
     } catch (error) {
       console.error('[MobileDashboard] Error waiting order:', error);
       alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
+      setWaitDialogOpen(false);
     }
   };
 
@@ -1112,6 +1128,33 @@ function MobileDashboard() {
       </footer>
         </>
       )}
+
+      {/* Dialogy pro schvalování */}
+      <MobileConfirmDialog
+        isOpen={rejectDialogOpen}
+        onClose={() => setRejectDialogOpen(false)}
+        onConfirm={confirmRejectOrder}
+        title="Zamítnout objednávku"
+        message={`Opravdu chcete zamítnout objednávku ${currentOrder?.cislo_objednavky || currentOrder?.ev_cislo || ''}?`}
+        confirmText="Zamítnout"
+        cancelText="Zrušit"
+        requireReason={true}
+        reasonPlaceholder="Zadejte důvod zamítnutí (povinné)..."
+        variant="danger"
+      />
+
+      <MobileConfirmDialog
+        isOpen={waitDialogOpen}
+        onClose={() => setWaitDialogOpen(false)}
+        onConfirm={confirmWaitOrder}
+        title="Pozastavit objednávku"
+        message={`Objednávka ${currentOrder?.cislo_objednavky || currentOrder?.ev_cislo || ''} bude označena jako "Čeká se".`}
+        confirmText="Pozastavit"
+        cancelText="Zrušit"
+        requireReason={true}
+        reasonPlaceholder="Zadejte důvod pozastavení (povinné)..."
+        variant="warning"
+      />
     </div>
   );
 }
