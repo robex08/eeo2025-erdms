@@ -310,20 +310,94 @@ apps/eeo-v2/client/src/
 
 ---
 
+## 🎨 Centrální hierarchie služba (15.12.2025)
+
+### ✅ Nové soubory
+```
+apps/eeo-v2/client/src/
+├── services/
+│   └── hierarchyService.js              # ✅ NOVÝ - Centrální služba pro hierarchii
+├── components/common/
+│   └── HierarchyBanner.jsx              # ✅ NOVÝ - Univerzální banner komponenta
+└── hooks/
+    └── useHierarchy.js                  # ✅ NOVÝ - React hook pro hierarchii
+```
+
+### 📱 Integrace do aplikací
+
+#### Desktop (Orders25List)
+```jsx
+import HierarchyBanner from '../components/common/HierarchyBanner';
+import { HierarchyModules } from '../services/hierarchyService';
+
+// V JSX:
+<HierarchyBanner module={HierarchyModules.ORDERS} compact={false} />
+```
+
+**Desktop zobrazení hierarchie:**
+- ✅ Textový banner (HierarchyBanner) nad obsahem stránky
+- ✅ Indikátor `.H{profileId}` v hlavičce vedle verze (např. "1.88.H8")
+
+#### Mobilní (MobileDashboard)
+```jsx
+// HierarchyBanner NENÍ v mobilní aplikaci - místo toho:
+// Indikátor .H{profileId} je přímo v MobileHeader
+```
+
+**Mobilní zobrazení hierarchie:**
+- ❌ Žádný textový banner (HierarchyBanner) - aby neplýtval místem na malé obrazovce
+- ✅ Indikátor `.H{profileId}` v hlavičce vedle verze (např. "1.88.H8")
+- 📱 Kompaktní řešení vhodné pro mobily
+
+### 🪝 Použití React Hooku
+```jsx
+import { useHierarchy } from '../hooks/useHierarchy';
+import { HierarchyModules } from '../services/hierarchyService';
+
+function MyComponent() {
+  const { config, isActive, message, loading } = useHierarchy(HierarchyModules.ORDERS);
+  
+  if (isActive) {
+    console.log('Hierarchie aktivní:', message);
+  }
+}
+```
+
+### 🔧 Centrální API služby
+```javascript
+import hierarchyService from '../services/hierarchyService';
+
+// Načtení konfigurace
+const config = await hierarchyService.getHierarchyConfig(token, username);
+
+// Kontrola modulu
+const isActive = await hierarchyService.isHierarchyActiveForModule('orders', token, username);
+
+// Info zpráva
+const message = hierarchyService.getHierarchyInfoMessage(config, 'orders');
+```
+
+---
+
 ## 🚀 Další kroky
 
 ### Okamžitě
-- [ ] Spustit SQL migraci na DEV databázi
-- [ ] Testovat s testovacími daty
-- [ ] Verifikovat 403 errory v prohlížeči
+- [x] Vytvořit centrální hierarchyService
+- [x] Vytvořit HierarchyBanner komponentu
+- [x] Vytvořit useHierarchy hook
+- [x] Integrovat do mobilní aplikace
+- [x] Integrovat do Orders25List (desktop)
+- [ ] Testovat na DEV prostředí
 
 ### Sprint 2
 - [ ] Implementovat hierarchii pro modul Pokladna
 - [ ] Upravit API endpointy pro cashbook
+- [ ] Přidat HierarchyBanner do Cashbook komponenty
 
 ### Sprint 3
 - [ ] Implementovat hierarchii pro modul Faktury
 - [ ] Upravit API endpointy pro invoices
+- [ ] Přidat HierarchyBanner do Invoices komponenty
 
 ---
 
@@ -332,8 +406,12 @@ apps/eeo-v2/client/src/
 1. **Hierarchie NENAHRAZUJE práva** - doplňuje je!
 2. **Backend je autoritativní** - frontend jen zobrazuje errory
 3. **HIERARCHY_IMMUNE > hierarchie** - imunní uživatelé vidí vše
-4. **Vypnutá hierarchie = žádný vliv** - systém funguje jako dříve
+4. **⭐ Vypnutá hierarchie = žádný vliv** - systém funguje jako dříve:
+   - Backend vrací `null` → použije se standardní role-based filter
+   - Frontend nezobrazuje žádný banner
+   - API volání fungují stejně jako před implementací hierarchie
 5. **Univerzální vyhledávání** už automaticky respektuje hierarchii (používá stejné API)
+6. **Vlastní objednávky VŽDY viditelné** - uživatel vidí minimálně své vlastní objednávky (kde je tvůrce/objednatel/garant)
 
 ---
 

@@ -1424,9 +1424,6 @@ const NotificationBellWrapper = ({ userId }) => {
 const Layout = ({ children }) => {
   // RSS vtipy: kompletně odstraněno (na žádost uživatele)
 
-  // State pro hierarchii info
-  const [hierarchyInfo, setHierarchyInfo] = useState(null);
-
   // State pro submenu - Administrace
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const adminMenuRef = useRef(null);
@@ -1519,7 +1516,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token } = useContext(AuthContext); // Přidán user_id pro filtrování draftu
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, hierarchyStatus } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
@@ -1549,50 +1546,23 @@ const Layout = ({ children }) => {
   const [calculatorLastResult, setCalculatorLastResult] = useState(null);
   const [calculatorLastExpression, setCalculatorLastExpression] = useState(null);
 
-  // Hierarchy status for ADMINI role (zobrazení v hlavičce)
-  const [hierarchyEnabled, setHierarchyEnabled] = useState(false);
+  // 🌲 HIERARCHIE: Použít data z AuthContext
+  const hierarchyInfo = useMemo(() => {
+    if (!hierarchyStatus || !hierarchyStatus.hierarchyEnabled || !hierarchyStatus.profileId) {
+      return { enabled: false };
+    }
+    
+    return {
+      profileId: hierarchyStatus.profileId,
+      enabled: true,
+      isImmune: hierarchyStatus.isImmune || false
+    };
+  }, [hierarchyStatus]);
   
   // Check if user is ADMINI (not ADMINISTRATOR or SUPERADMIN)
   const isAdmini = useMemo(() => {
     return userDetail?.roles?.some(role => role.kod_role === 'ADMINI') || false;
   }, [userDetail]);
-  
-  // Načíst stav hierarchie při loginu - JEDNOU, bez intervalu (hierarchie se nemění za běhu)
-  useEffect(() => {
-    if (!isLoggedIn || !token || !user?.username) return;
-    
-    const loadHierarchyStatus = async () => {
-      try {
-        const { getGlobalSettings } = await import('../services/globalSettingsApi');
-        const settings = await getGlobalSettings(token, user.username);
-        
-        setHierarchyEnabled(settings.hierarchy_enabled || false);
-        
-        // Nastavit info o hierarchii pro hlavičku
-        if (settings.hierarchy_enabled && settings.hierarchy_profile_id) {
-          setHierarchyInfo({
-            profileId: settings.hierarchy_profile_id,
-            enabled: true
-          });
-        } else {
-          setHierarchyInfo({ enabled: false });
-        }
-      } catch (error) {
-        console.error('Chyba při načítání stavu hierarchie:', error);
-        setHierarchyEnabled(false);
-        setHierarchyInfo(null);
-      }
-    };
-    
-    // Načíst JEDNOU při přihlášení, žádný interval
-    loadHierarchyStatus();
-    
-    // Cleanup při odhlášení
-    return () => {
-      setHierarchyEnabled(false);
-      setHierarchyInfo(null);
-    };
-  }, [isLoggedIn, token, user?.username]);
 
   // Notes recording state (pro floating button)
   const [notesRecording, setNotesRecording] = useState(false);
@@ -2472,7 +2442,11 @@ const Layout = ({ children }) => {
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
                 {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
                 {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
-                  <span style={{ color: '#10b981', fontWeight: '700' }}>.H{hierarchyInfo.profileId}</span>
+                  <span style={{ 
+                    color: hierarchyInfo.isImmune ? '#9ca3af' : '#10b981', 
+                    fontWeight: '700',
+                    opacity: hierarchyInfo.isImmune ? 0.6 : 1
+                  }}>.H{hierarchyInfo.profileId}</span>
                 )}
               </sup>
             </HeaderTitle>

@@ -80,9 +80,9 @@ function getActionLabel($notificationType) {
         'order_status_nova' => 'Vytvořil',
         'order_status_rozpracovana' => 'Rozpracoval',
         'order_status_ke_schvaleni' => 'Odeslal ke schválení',
-        'order_status_schvalena' => 'Schválil',
-        'order_status_zamitnuta' => 'Zamítl',
-        'order_status_ceka_se' => 'Vrátil k doplnění',
+        'order_status_schvalena' => 'Schválil', // ✅ FÁZE 1 - Template ready
+        'order_status_zamitnuta' => 'Zamítl', // ✅ FÁZE 1 - Template ready
+        'order_status_ceka_se' => 'Vrátil k doplnění', // ✅ FÁZE 1 - Template ready
         'order_status_odeslana' => 'Odeslal dodavateli',
         'order_status_ceka_potvrzeni' => 'Čeká na potvrzení',
         'order_status_potvrzena' => 'Potvrdil',
@@ -114,9 +114,9 @@ function getActionIcon($notificationType) {
         'order_status_nova' => '📄',
         'order_status_rozpracovana' => '✏️',
         'order_status_ke_schvaleni' => '⬆️',
-        'order_status_schvalena' => '✅',
-        'order_status_zamitnuta' => '❌',
-        'order_status_ceka_se' => '⏸️',
+        'order_status_schvalena' => '✅', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
+        'order_status_zamitnuta' => '❌', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
+        'order_status_ceka_se' => '⏸️', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
         'order_status_odeslana' => '📤',
         'order_status_ceka_potvrzeni' => '⏳',
         'order_status_potvrzena' => '✔️',
