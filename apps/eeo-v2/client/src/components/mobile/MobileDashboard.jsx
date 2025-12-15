@@ -81,8 +81,6 @@ function MobileDashboard() {
   const canApprove = isAdmin || userDetail?.permissions?.some(p => 
     p.kod_opravneni === 'ORDER_APPROVE'
   ) || false;
-  
-  console.log('[MobileDashboard] canApprove:', canApprove, 'isAdmin:', isAdmin, 'userDetail.id:', userDetail?.id, 'permissions:', userDetail?.permissions?.map(p => p.kod_opravneni));
 
   // Scroll s offsetem pro fixní hlavičku (60px) + nav bar (48px) + 8px mezera = 116px
   const scrollToSection = (sectionName) => {
@@ -107,7 +105,7 @@ function MobileDashboard() {
       setLoading(true);
       await loadDashboardData();
     } catch (error) {
-      console.error('Failed to load initial data:', error);
+      // Error handled silently
     } finally {
       setLoading(false);
     }
@@ -126,15 +124,11 @@ function MobileDashboard() {
 
   // Načíst objednávky ke schválení (pouze pro uživatele s právy)
   const loadPendingApprovals = async () => {
-    console.log('[MobileDashboard] loadPendingApprovals called - token:', !!token, 'username:', username, 'canApprove:', canApprove, 'userDetail.id:', userDetail?.id);
-    
     if (!token || !username || !canApprove) {
-      console.log('[MobileDashboard] Skipping loadPendingApprovals - missing requirements');
       return;
     }
     
     if (!userDetail?.id) {
-      console.warn('[MobileDashboard] userDetail.id not available yet!');
       return;
     }
     
@@ -142,8 +136,6 @@ function MobileDashboard() {
       setLoadingApprovals(true);
       // Načti VŠECHNY objednávky z aktuálního roku
       const orders = await listOrdersV2({ rok: selectedYear }, token, username, false, true);
-      
-      console.log('[MobileDashboard] Loaded orders:', orders?.length);
       
       if (Array.isArray(orders)) {
         // Debug: kolik objednávek má ODESLANA_KE_SCHVALENI
@@ -159,23 +151,15 @@ function MobileDashboard() {
           }
         });
         
-        console.log('[MobileDashboard] Total orders with ODESLANA_KE_SCHVALENI:', allPending.length);
-        
         // Vyfiltruj pouze objednávky ve stavu ODESLANA_KE_SCHVALENI
         // A kde je aktuální uživatel přikázce (prikazce_id == userDetail.id)
         const pending = allPending.filter(order => {
-          const match = order.prikazce_id === userDetail?.id;
-          if (!match) {
-            console.log('[MobileDashboard] Order', order.id, 'prikazce_id:', order.prikazce_id, '!= userDetail.id:', userDetail?.id);
-          }
-          return match;
+          return order.prikazce_id === userDetail?.id;
         });
         
-        console.log('[MobileDashboard] Pending approvals for user', userDetail?.id, ':', pending.length);
         setPendingApprovalOrders(pending);
       }
     } catch (error) {
-      console.error('[MobileDashboard] Error loading pending approvals:', error);
       setPendingApprovalOrders([]);
     } finally {
       setLoadingApprovals(false);
@@ -186,7 +170,6 @@ function MobileDashboard() {
     try {
       // Pokud nemáme token, zobraz prázdná data
       if (!token || !username) {
-        console.error('[MobileDashboard] ❌ No token/username - cannot load data!');
         setData({
           orders: null,
           invoices: null,
@@ -220,11 +203,9 @@ function MobileDashboard() {
         if (canApprove) {
           await loadPendingApprovals();
         }
-      } else {
-        console.error('[MobileDashboard] Result not successful:', result);
       }
     } catch (error) {
-      console.error('[MobileDashboard] Load error:', error);
+      // Error handled silently
     }
   };
 
@@ -274,14 +255,12 @@ function MobileDashboard() {
         schvaleni_komentar: '' // Vymazat komentář při schválení
       };
 
-      console.log('[MobileDashboard] Schvaluji objednávku:', order.id, 'updateData:', updateData);
       await updateOrderV2(order.id, updateData, token, username);
       
       // Obnovit seznam
       await loadPendingApprovals();
       await loadDashboardData();
     } catch (error) {
-      console.error('[MobileDashboard] Error approving order:', error);
       alert(`Chyba: ${error.message || 'Nepodařilo se schválit objednávku'}`);
     }
   };
@@ -336,7 +315,6 @@ function MobileDashboard() {
         schvaleni_komentar: reason
       };
 
-      console.log('[MobileDashboard] Zamítám objednávku:', currentOrder.id, 'updateData:', updateData);
       await updateOrderV2(currentOrder.id, updateData, token, username);
       
       // Zavřít dialog a obnovit seznam
@@ -345,7 +323,6 @@ function MobileDashboard() {
       await loadPendingApprovals();
       await loadDashboardData();
     } catch (error) {
-      console.error('[MobileDashboard] Error rejecting order:', error);
       alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
       setRejectDialogOpen(false);
     }
@@ -401,7 +378,6 @@ function MobileDashboard() {
         schvaleni_komentar: reason
       };
 
-      console.log('[MobileDashboard] Pozastavuji objednávku:', currentOrder.id, 'updateData:', updateData);
       await updateOrderV2(currentOrder.id, updateData, token, username);
       
       // Zavřít dialog a obnovit seznam
@@ -410,7 +386,6 @@ function MobileDashboard() {
       await loadPendingApprovals();
       await loadDashboardData();
     } catch (error) {
-      console.error('[MobileDashboard] Error waiting order:', error);
       alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
       setWaitDialogOpen(false);
     }
