@@ -7,8 +7,11 @@ const logoZZS = '/eeo-v2/logo-ZZS.png';
 /**
  * Mobilní hlavička s logem a zkratkou EEO
  * Obsahuje hamburger menu pro otevření navigace
+ * @param {string} title - Vlastní nadpis (přepíše výchozí "EEO")
+ * @param {boolean} showBackButton - Zobrazit tlačítko zpět
+ * @param {function} onBackClick - Handler pro tlačítko zpět
  */
-function MobileHeader({ onMenuClick, notificationCount = 0 }) {
+function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick }) {
   const { hierarchyStatus } = useContext(AuthContext);
   
   // Získat verzi z ENV proměnné a extrahovat číslo verze
@@ -21,29 +24,42 @@ function MobileHeader({ onMenuClick, notificationCount = 0 }) {
   return (
     <header className="mobile-header">
       <div className="mobile-header-container">
-        {/* Logo */}
-        <div className="mobile-logo">
-          <img src={logoZZS} alt="ZZS Logo" className="mobile-logo-img" />
-        </div>
+        {/* Tlačítko zpět (pokud je showBackButton) */}
+        {showBackButton ? (
+          <button className="mobile-back-btn" onClick={onBackClick} aria-label="Zpět">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>
+          </button>
+        ) : (
+          <>
+            {/* Logo */}
+            <div className="mobile-logo">
+              <img src={logoZZS} alt="ZZS Logo" className="mobile-logo-img" />
+            </div>
+          </>
+        )}
 
         {/* Název aplikace s verzí a profilem */}
         <div className="mobile-app-title">
           <h1>
-            EEO
-            <sup style={{ 
-              fontSize: '0.45em', 
-              marginLeft: '4px', 
-              fontWeight: '600', 
-              color: '#fbbf24',
-              textShadow: '0 1px 2px rgba(0,0,0,0.3)'
-            }}>
-              {versionNumber}
-              {profileId && (
-                <span style={{ color: '#10b981', fontWeight: '700' }}>.H{profileId}</span>
-              )}
-            </sup>
+            {title || 'EEO'}
+            {!title && (
+              <sup style={{ 
+                fontSize: '0.45em', 
+                marginLeft: '4px', 
+                fontWeight: '600', 
+                color: '#fbbf24',
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+              }}>
+                {versionNumber}
+                {profileId && (
+                  <span style={{ color: '#10b981', fontWeight: '700' }}>.H{profileId}</span>
+                )}
+              </sup>
+            )}
           </h1>
-          <span className="mobile-app-subtitle">Elektronická evidence objednávek</span>
+          {!title && <span className="mobile-app-subtitle">Elektronická evidence objednávek</span>}
         </div>
 
         {/* Notifikace a menu */}

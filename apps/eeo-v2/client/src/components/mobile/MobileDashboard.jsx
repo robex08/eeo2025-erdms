@@ -3,9 +3,11 @@ import { AuthContext } from '../../context/AuthContext';
 import useThemeMode from '../../theme/useThemeMode';
 import MobileHeader from './MobileHeader';
 import MobileMenu from './MobileMenu';
+import OrderApprovalCard from './OrderApprovalCard';
 import SplashScreen from '../SplashScreen';
 import mobileDataService from '../../services/mobileDataService';
 import { fetchActiveUsersWithStats } from '../../services/api2auth';
+import { listOrdersV2, getOrderV2, updateOrderV2 } from '../../services/apiOrderV2';
 import { getStatusIcon } from '../../utils/iconMapping';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -40,11 +42,28 @@ function MobileDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [activeUsers, setActiveUsers] = useState([]);
+  const [pendingApprovalOrders, setPendingApprovalOrders] = useState([]);
+  const [loadingApprovals, setLoadingApprovals] = useState(false);
+  const [showApprovalDetail, setShowApprovalDetail] = useState(false);
+  const [approvalFilter, setApprovalFilter] = useState('all'); // 'all' | 'normal' | 'urgent'
+  const [approvalSearchQuery, setApprovalSearchQuery] = useState('');
+
+  // Helper funkce pro MySQL datetime formát
+  const toMySQLDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
 
   // Sestavíme user objekt pro kompatibilitu
   const user = authUser ? {
     ...authUser,
-    displayName: userDetail?.jmeno_prijmeni || authUser.username,
+    displayName: userDetail?.jmeno_prijmeni_titul || userDetail?.jmeno_prijmeni || authUser.username,
     mail: userDetail?.email || '',
     upn: authUser.username
   } : null;
@@ -53,6 +72,13 @@ function MobileDashboard() {
   const isAdmin = userDetail?.roles?.some(role => 
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   ) || false;
+
+  // Kontrola oprávnění ke schvalování (ADMIN nebo má právo APPROVE)
+  const canApprove = isAdmin || userDetail?.permissions?.some(p => 
+    p.kod_opravneni === 'ORDER_APPROVE'
+  ) || false;
+  
+  console.log('[MobileDashboard] canApprove:', canApprove, 'isAdmin:', isAdmin, 'userDetail.id:', userDetail?.id, 'permissions:', userDetail?.permissions?.map(p => p.kod_opravneni));
 
   // Scroll s offsetem pro fixní hlavičku (60px) + nav bar (48px) + 8px mezera = 116px
   const scrollToSection = (sectionName) => {
@@ -94,6 +120,64 @@ function MobileDashboard() {
     }
   };
 
+  // Načíst objednávky ke schválení (pouze pro uživatele s právy)
+  const loadPendingApprovals = async () => {
+    console.log('[MobileDashboard] loadPendingApprovals called - token:', !!token, 'username:', username, 'canApprove:', canApprove, 'userDetail.id:', userDetail?.id);
+    
+    if (!token || !username || !canApprove) {
+      console.log('[MobileDashboard] Skipping loadPendingApprovals - missing requirements');
+      return;
+    }
+    
+    if (!userDetail?.id) {
+      console.warn('[MobileDashboard] userDetail.id not available yet!');
+      return;
+    }
+    
+    try {
+      setLoadingApprovals(true);
+      // Načti VŠECHNY objednávky z aktuálního roku
+      const orders = await listOrdersV2({ rok: selectedYear }, token, username, false, true);
+      
+      console.log('[MobileDashboard] Loaded orders:', orders?.length);
+      
+      if (Array.isArray(orders)) {
+        // Debug: kolik objednávek má ODESLANA_KE_SCHVALENI
+        const allPending = orders.filter(order => {
+          if (!order.id || order.id <= 1) return false;
+          try {
+            const workflowStates = Array.isArray(order.stav_workflow_kod) 
+              ? order.stav_workflow_kod 
+              : JSON.parse(order.stav_workflow_kod || '[]');
+            return Array.isArray(workflowStates) && workflowStates.includes('ODESLANA_KE_SCHVALENI');
+          } catch {
+            return false;
+          }
+        });
+        
+        console.log('[MobileDashboard] Total orders with ODESLANA_KE_SCHVALENI:', allPending.length);
+        
+        // Vyfiltruj pouze objednávky ve stavu ODESLANA_KE_SCHVALENI
+        // A kde je aktuální uživatel přikázce (prikazce_id == userDetail.id)
+        const pending = allPending.filter(order => {
+          const match = order.prikazce_id === userDetail?.id;
+          if (!match) {
+            console.log('[MobileDashboard] Order', order.id, 'prikazce_id:', order.prikazce_id, '!= userDetail.id:', userDetail?.id);
+          }
+          return match;
+        });
+        
+        console.log('[MobileDashboard] Pending approvals for user', userDetail?.id, ':', pending.length);
+        setPendingApprovalOrders(pending);
+      }
+    } catch (error) {
+      console.error('[MobileDashboard] Error loading pending approvals:', error);
+      setPendingApprovalOrders([]);
+    } finally {
+      setLoadingApprovals(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     try {
       // Pokud nemáme token, zobraz prázdná data
@@ -114,7 +198,9 @@ function MobileDashboard() {
       const result = await mobileDataService.getAllMobileData({ 
         token, 
         username,
-        year: selectedYear 
+        year: selectedYear,
+        userId: userDetail?.id,  // Pro filtrování objednávek podle přikázce (non-admin)
+        isAdmin: isAdmin         // Admin vidí všechny objednávky
       });
       
       console.log('[MobileDashboard] Result received:', result);
@@ -125,6 +211,10 @@ function MobileDashboard() {
         // Načti aktivní uživatele pro adminy
         if (isAdmin) {
           await loadActiveUsers();
+        }
+        // Načti objednávky ke schválení (pokud má práva)
+        if (canApprove) {
+          await loadPendingApprovals();
         }
       } else {
         console.error('[MobileDashboard] Result not successful:', result);
@@ -138,6 +228,176 @@ function MobileDashboard() {
     setRefreshing(true);
     await loadDashboardData();
     setRefreshing(false);
+  };
+
+  // Schválení objednávky
+  const handleApproveOrder = async (order) => {
+    if (!token || !username || !order.id) return;
+    
+    try {
+      // Načti aktuální objednávku
+      const currentOrder = await getOrderV2(order.id, token, username, true);
+      if (!currentOrder) {
+        alert('Objednávku se nepodařilo načíst');
+        return;
+      }
+
+      // Zpracuj workflow stavy
+      let workflowStates = [];
+      try {
+        workflowStates = Array.isArray(currentOrder.stav_workflow_kod)
+          ? currentOrder.stav_workflow_kod
+          : JSON.parse(currentOrder.stav_workflow_kod || '[]');
+      } catch {
+        workflowStates = [];
+      }
+
+      // Odstraň ODESLANA_KE_SCHVALENI, CEKA_SE, ZAMITNUTA
+      workflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA'].includes(s)
+      );
+
+      // Přidej SCHVALENA
+      if (!workflowStates.includes('SCHVALENA')) {
+        workflowStates.push('SCHVALENA');
+      }
+
+      // Aktualizuj objednávku
+      const updateData = {
+        stav_workflow_kod: JSON.stringify(workflowStates),
+        schvalovatel_id: userDetail?.id || null,
+        dt_schvaleni: toMySQLDateTime(),
+        schvaleni_komentar: '' // Vymazat komentář při schválení
+      };
+
+      console.log('[MobileDashboard] Schvaluji objednávku:', order.id, 'updateData:', updateData);
+      await updateOrderV2(order.id, updateData, token, username);
+      
+      // Obnovit seznam
+      await loadPendingApprovals();
+      await loadDashboardData();
+    } catch (error) {
+      console.error('[MobileDashboard] Error approving order:', error);
+      alert(`Chyba: ${error.message || 'Nepodařilo se schválit objednávku'}`);
+    }
+  };
+
+  // Zamítnutí objednávky
+  const handleRejectOrder = async (order) => {
+    if (!token || !username || !order.id) return;
+    
+    const reason = prompt('Důvod zamítnutí (POVINNÉ):');
+    if (reason === null) return; // Uživatel zrušil
+    if (!reason || reason.trim() === '') {
+      alert('Důvod zamítnutí je povinný!');
+      return;
+    }
+    
+    try {
+      // Načti aktuální objednávku
+      const currentOrder = await getOrderV2(order.id, token, username, true);
+      if (!currentOrder) {
+        alert('Objednávku se nepodařilo načíst');
+        return;
+      }
+
+      // Zpracuj workflow stavy
+      let workflowStates = [];
+      try {
+        workflowStates = Array.isArray(currentOrder.stav_workflow_kod)
+          ? currentOrder.stav_workflow_kod
+          : JSON.parse(currentOrder.stav_workflow_kod || '[]');
+      } catch {
+        workflowStates = [];
+      }
+
+      // Odstraň ODESLANA_KE_SCHVALENI, CEKA_SE, SCHVALENA
+      workflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA'].includes(s)
+      );
+
+      // Přidej ZAMITNUTA
+      if (!workflowStates.includes('ZAMITNUTA')) {
+        workflowStates.push('ZAMITNUTA');
+      }
+
+      // Aktualizuj objednávku
+      const updateData = {
+        stav_workflow_kod: JSON.stringify(workflowStates),
+        schvalovatel_id: userDetail?.id || null,
+        dt_schvaleni: toMySQLDateTime(),
+        schvaleni_komentar: reason.trim()
+      };
+
+      console.log('[MobileDashboard] Zamítám objednávku:', order.id, 'updateData:', updateData);
+      await updateOrderV2(order.id, updateData, token, username);
+      
+      // Obnovit seznam
+      await loadPendingApprovals();
+      await loadDashboardData();
+    } catch (error) {
+      console.error('[MobileDashboard] Error rejecting order:', error);
+      alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
+    }
+  };
+
+  // Označit jako "Čeká se"
+  const handleWaitOrder = async (order) => {
+    if (!token || !username || !order.id) return;
+    
+    const reason = prompt('Důvod pozastavení (POVINNÉ):');
+    if (reason === null) return; // Uživatel zrušil
+    if (!reason || reason.trim() === '') {
+      alert('Důvod pozastavení je povinný!');
+      return;
+    }
+    
+    try {
+      // Načti aktuální objednávku
+      const currentOrder = await getOrderV2(order.id, token, username, true);
+      if (!currentOrder) {
+        alert('Objednávku se nepodařilo načíst');
+        return;
+      }
+
+      // Zpracuj workflow stavy
+      let workflowStates = [];
+      try {
+        workflowStates = Array.isArray(currentOrder.stav_workflow_kod)
+          ? currentOrder.stav_workflow_kod
+          : JSON.parse(currentOrder.stav_workflow_kod || '[]');
+      } catch {
+        workflowStates = [];
+      }
+
+      // Odstraň ODESLANA_KE_SCHVALENI, SCHVALENA, ZAMITNUTA
+      workflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'SCHVALENA', 'ZAMITNUTA'].includes(s)
+      );
+
+      // Přidej CEKA_SE
+      if (!workflowStates.includes('CEKA_SE')) {
+        workflowStates.push('CEKA_SE');
+      }
+
+      // Aktualizuj objednávku
+      const updateData = {
+        stav_workflow_kod: JSON.stringify(workflowStates),
+        schvalovatel_id: userDetail?.id || null,
+        dt_schvaleni: toMySQLDateTime(),
+        schvaleni_komentar: reason.trim()
+      };
+
+      console.log('[MobileDashboard] Pozastavuji objednávku:', order.id, 'updateData:', updateData);
+      await updateOrderV2(order.id, updateData, token, username);
+      
+      // Obnovit seznam
+      await loadPendingApprovals();
+      await loadDashboardData();
+    } catch (error) {
+      console.error('[MobileDashboard] Error waiting order:', error);
+      alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
+    }
   };
 
   const formatCurrency = (amount) => {
@@ -390,10 +650,70 @@ function MobileDashboard() {
 
   return (
     <div className="mobile-dashboard">
+      {/* Fixní hlavička - vždy viditelná */}
       <MobileHeader 
         onMenuClick={() => setMenuOpen(true)}
         notificationCount={notificationCount}
       />
+      
+      {/* Subheader pro approval screen */}
+      {showApprovalDetail && (
+        <div className="mobile-subheader">
+          <button 
+            className="mobile-subheader-back"
+            onClick={() => setShowApprovalDetail(false)}
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>
+            Zpět
+          </button>
+          <h2 className="mobile-subheader-title">
+            Ke schválení ({(() => {
+              const total = pendingApprovalOrders.length;
+              const normal = pendingApprovalOrders.filter(o => !o.mimoradna_udalost).length;
+              const urgent = pendingApprovalOrders.filter(o => o.mimoradna_udalost).length;
+              
+              if (approvalFilter === 'all') {
+                return `${total}/${normal}/${urgent}`;
+              } else if (approvalFilter === 'normal') {
+                return normal;
+              } else {
+                return urgent;
+              }
+            })()})
+          </h2>
+          <div className="mobile-subheader-filters">
+            <button
+              className={`mobile-filter-btn ${approvalFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setApprovalFilter('all')}
+              title="Všechny objednávky"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+              </svg>
+            </button>
+            <button
+              className={`mobile-filter-btn ${approvalFilter === 'normal' ? 'active' : ''}`}
+              onClick={() => setApprovalFilter('normal')}
+              title="Normální objednávky"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+            </button>
+            <button
+              className={`mobile-filter-btn ${approvalFilter === 'urgent' ? 'active' : ''}`}
+              onClick={() => setApprovalFilter('urgent')}
+              title="Mimořádné objednávky"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
       
       <MobileMenu 
         isOpen={menuOpen}
@@ -401,7 +721,100 @@ function MobileDashboard() {
         user={user}
       />
 
-      {/* Fixní rychlá navigace */}
+      {/* Obsah pod fixní hlavičkou */}
+      {showApprovalDetail ? (
+        <>
+          {loadingApprovals ? (
+            <div className="mobile-dashboard-content">
+              <div className="mobile-refresh-indicator">
+                <div className="spinner-circle small"></div>
+                <span>Načítám objednávky...</span>
+              </div>
+            </div>
+          ) : pendingApprovalOrders.length > 0 ? (
+            <div className="mobile-approval-list">
+              <div className="mobile-approval-search">
+                <div className="mobile-approval-search-wrapper">
+                  <input
+                    type="text"
+                    placeholder="Vyhledat objednávku..."
+                    value={approvalSearchQuery}
+                    onChange={(e) => setApprovalSearchQuery(e.target.value)}
+                  />
+                  {approvalSearchQuery && (
+                    <button
+                      className="mobile-approval-search-clear"
+                      onClick={() => setApprovalSearchQuery('')}
+                      title="Vymazat vyhledávání"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+                {pendingApprovalOrders
+                  .filter(order => {
+                    // Filtr podle typu (normal/urgent)
+                    if (approvalFilter === 'urgent' && !order.mimoradna_udalost) return false;
+                    if (approvalFilter === 'normal' && order.mimoradna_udalost) return false;
+                    
+                    // Filtr podle vyhledávacího řetězce
+                    if (approvalSearchQuery.trim()) {
+                      const query = approvalSearchQuery.toLowerCase();
+                      const orderNumber = (order.cislo_objednavky || order.ev_cislo || '').toLowerCase();
+                      const predmet = (order.predmet || '').toLowerCase();
+                      const objednatel = (order.objednatel?.cele_jmeno || '').toLowerCase();
+                      const garant = (order.garant_uzivatel?.cele_jmeno || '').toLowerCase();
+                      
+                      return orderNumber.includes(query) || 
+                             predmet.includes(query) || 
+                             objednatel.includes(query) ||
+                             garant.includes(query);
+                    }
+                    
+                    return true;
+                  })
+                  .map(order => (
+                  <OrderApprovalCard
+                    key={order.id}
+                    order={order}
+                    onApprove={async (order) => {
+                      await handleApproveOrder(order);
+                      if (pendingApprovalOrders.length === 1) {
+                        setShowApprovalDetail(false);
+                      }
+                    }}
+                    onReject={async (order) => {
+                      await handleRejectOrder(order);
+                      if (pendingApprovalOrders.length === 1) {
+                        setShowApprovalDetail(false);
+                      }
+                    }}
+                    onWait={async (order) => {
+                      await handleWaitOrder(order);
+                      if (pendingApprovalOrders.length === 1) {
+                        setShowApprovalDetail(false);
+                      }
+                    }}
+                    loading={loadingApprovals}
+                  />
+                ))}
+          </div>
+          ) : (
+            <div className="mobile-dashboard-content">
+              <div className="mobile-empty-state-inline">
+                <p>✅ Žádné objednávky ke schválení</p>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Normální dashboard obsah */}
+
+          {/* Fixní rychlá navigace */}
       <nav className="mobile-quick-nav">
         {isAdmin && activeUsers.length > 0 && (
           <button 
@@ -536,6 +949,65 @@ function MobileDashboard() {
           </section>
         )}
 
+        {/* ✅ KE SCHVÁLENÍ - Široká dlaždice 2x1 pro ADMIN nebo uživatele s právy APPROVE */}
+        {canApprove && (loadingApprovals || pendingApprovalOrders.length > 0) && (() => {
+          const normalniCount = pendingApprovalOrders.filter(o => !o.mimoradna_udalost).length;
+          const mimoradneCount = pendingApprovalOrders.filter(o => o.mimoradna_udalost).length;
+          
+          // Výpočet celkové max ceny s DPH
+          const totalMaxPrice = pendingApprovalOrders.reduce((sum, order) => {
+            const maxPrice = parseFloat(order.max_cena_s_dph || 0);
+            return sum + (isNaN(maxPrice) ? 0 : maxPrice);
+          }, 0);
+          
+          return (
+            <section data-section="approvals" className="mobile-widget-section">
+              <div className="mobile-section-header">
+                <h2>Objednávky čekají na mé schválení</h2>
+              </div>
+              <div 
+                className="mobile-approval-widget"
+                onClick={() => !loadingApprovals && pendingApprovalOrders.length > 0 && setShowApprovalDetail(true)}
+              >
+                <div className="mobile-approval-widget-header">
+                  <div className="mobile-approval-widget-count">
+                    {loadingApprovals ? '...' : pendingApprovalOrders.length}
+                  </div>
+                  <div className="mobile-approval-widget-breakdown">
+                    {loadingApprovals ? (
+                      <div className="mobile-approval-loading">Načítám...</div>
+                    ) : (
+                      <>
+                        <div className="mobile-approval-normal">
+                          {normalniCount} normálních
+                        </div>
+                        {mimoradneCount > 0 && (
+                          <div className="mobile-approval-urgent">
+                            {mimoradneCount} mimořádných ⚠️
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="mobile-approval-widget-icon">
+                    <FontAwesomeIcon icon={getStatusIcon('ke_schvaleni')} />
+                  </div>
+                </div>
+                <div className="mobile-approval-widget-info">
+                  <div className="mobile-approval-widget-title-row">
+                    <div className="mobile-approval-widget-title">Ke schválení</div>
+                    <div className="mobile-approval-widget-action">Klikněte pro schválení</div>
+                  </div>
+                  <div className="mobile-approval-widget-title-row">
+                    <div className="mobile-approval-widget-subtitle">Max. celkem s DPH</div>
+                    <div className="mobile-approval-widget-price">{formatCurrency(totalMaxPrice)}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          );
+        })()}
+
         {/* Sekce objednávky */}
         {orderWidgets.length > 0 && (
           <section data-section="orders" className="mobile-widget-section">
@@ -638,9 +1110,16 @@ function MobileDashboard() {
           <span>{refreshing ? 'Obnovuji...' : 'Obnovit data'}</span>
         </button>
       </footer>
+        </>
+      )}
     </div>
   );
 }
+
+/**
+ * Komponenta pro jednotlivou dlaždici
+ * ✅ Používá FontAwesome ikony z desktop modulu (stejné jako Orders25List.js)
+ */
 
 /**
  * Komponenta pro jednotlivou dlaždici

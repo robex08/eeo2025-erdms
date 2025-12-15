@@ -10,12 +10,15 @@ import cashbookAPI from './cashbookService';
 const mobileDataService = {
   /**
    * Hlavní metoda pro načtení všech dat pro mobilní dashboard
-   * @param {Object} params - { token, username, year }
+   * @param {Object} params - { token, username, year, userId, isAdmin }
    * 
-   * DŮLEŽITÉ: Používáme STEJNÉ API jako desktop (listOrdersV2, listInvoices25, cashbookAPI).
+   * DůLEŽITÉ: Používáme STEJNÉ API jako desktop (listOrdersV2, listInvoices25, cashbookAPI).
    * Počítáme statistiky lokálně ze seznamů.
+   * 
+   * @param {number} userId - ID aktuálního uživatele (pro filtrování objednávek dle přikázce)
+   * @param {boolean} isAdmin - Pokud true, zobrazí všechny objednávky; jinak jen ty, kde je userId přikázce
    */
-  async getAllMobileData({ token, username, year = new Date().getFullYear() }) {
+  async getAllMobileData({ token, username, year = new Date().getFullYear(), userId = null, isAdmin = false }) {
     try {
       // Načti data paralelně pro rychlejší načítání
       const currentMonth = new Date().getMonth() + 1; // 1-12
@@ -42,7 +45,7 @@ const mobileDataService = {
       let ordersData = null;
       if (ordersResult.status === 'fulfilled' && Array.isArray(ordersResult.value)) {
         console.log('[MobileData] ✅ Processing orders from API:', ordersResult.value.length);
-        ordersData = this.calculateOrdersStats(ordersResult.value);
+        ordersData = this.calculateOrdersStats(ordersResult.value, userId, isAdmin);
       } else {
         console.error('[MobileData] ❌ Orders API FAILED! Reason:', ordersResult.reason);
         ordersData = { total: 0, totalAmount: 0, pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, inProgress: { count: 0, amount: 0 }, completed: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 }, cancelled: { count: 0, amount: 0 } };
@@ -111,9 +114,11 @@ const mobileDataService = {
   /**
    * Počítá statistiky ze seznamu objednávek - PŘESNĚ PODLE ORDERS25LIST!
    * @param {Array} orders - Seznam objednávek z API
+   * @param {number} userId - ID aktuálního uživatele (pro filtrování objednávek dle přikázce)
+   * @param {boolean} isAdmin - Pokud true, zobrazí všechny objednávky; jinak jen ty, kde je userId přikázce
    * @returns {Object} - Statistiky ve formátu { pending: {count, amount}, ... }
    */
-  calculateOrdersStats(orders) {
+  calculateOrdersStats(orders, userId = null, isAdmin = false) {
     // PŘESNĚ KOPIE Z ORDERS25LIST - getOrderTotalPriceWithDPH
     const getOrderAmount = (order) => {
       const status = getOrderSystemStatus(order);
@@ -182,7 +187,13 @@ const mobileDataService = {
 
     // PŘESNĚ PODLE ORDERS25LIST - vyfiltruj koncepty/drafty (nemají reálné ID) a systémovou obj id=1
     // V Orders25List se koncepty nepočítají do celkového počtu v tabulce
-    const validOrders = orders.filter(o => o.id && o.id > 1 && !o.isLocalConcept);
+    let validOrders = orders.filter(o => o.id && o.id > 1 && !o.isLocalConcept);
+    
+    // ⚠️ Filtrování pro non-admin uživatele: zobraz jen objednávky, kde je uživatel přikázce
+    if (!isAdmin && userId) {
+      validOrders = validOrders.filter(o => o.prikazce_id === userId);
+      console.log('[MobileData] Non-admin user', userId, '- filtered to', validOrders.length, 'orders (where prikazce_id matches)');
+    }
     
     const total = validOrders.length;
     const byStatus = validOrders.reduce((acc, order) => {
@@ -202,9 +213,10 @@ const mobileDataService = {
       total,
       totalAmount,
       // Mapování stavů - používáme validOrders pro filtrování
+      // ⚠️ KE_SCHVALENI je legacy pozůstatek - vše dle OrderV2 používá ODESLANA_KE_SCHVALENI
       pending: { 
-        count: (byStatus.KE_SCHVALENI || 0) + (byStatus.ODESLANA_KE_SCHVALENI || 0), 
-        amount: validOrders.filter(o => ['KE_SCHVALENI', 'ODESLANA_KE_SCHVALENI'].includes(getOrderSystemStatus(o))).reduce((s, o) => s + getOrderAmount(o), 0)
+        count: byStatus.ODESLANA_KE_SCHVALENI || 0, 
+        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ODESLANA_KE_SCHVALENI').reduce((s, o) => s + getOrderAmount(o), 0)
       },
       approved: { 
         count: byStatus.SCHVALENA || 0, 
