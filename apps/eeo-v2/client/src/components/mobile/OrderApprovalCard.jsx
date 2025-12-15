@@ -31,15 +31,6 @@ function OrderApprovalCard({ order, onApprove, onReject, onWait, loading }) {
 
   const maxCena = parseFloat(order.max_cena_s_dph || 0);
   
-  // 🔍 DEBUG: Výpis struktury order
-  console.log('[OrderApprovalCard] Order ID:', order.id);
-  console.log('[OrderApprovalCard] _enriched keys:', order._enriched ? Object.keys(order._enriched) : 'NO _enriched');
-  console.log('[OrderApprovalCard] objednatel_id:', order.objednatel_id);
-  console.log('[OrderApprovalCard] garant_id:', order.garant_id);
-  console.log('[OrderApprovalCard] _enriched.objednatel:', order._enriched?.objednatel);
-  console.log('[OrderApprovalCard] _enriched.garant:', order._enriched?.garant);
-  console.log('[OrderApprovalCard] financovani:', order.financovani);
-  
   // ✅ Zdroj financování - parsování a zobrazení detailů
   let zdrojFinancovani = 'Neuvedeno';
   let financovaniDetail = null;
