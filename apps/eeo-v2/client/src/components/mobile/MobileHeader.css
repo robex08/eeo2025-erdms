@@ -20,6 +20,31 @@
   max-width: 100%;
 }
 
+/* Tlačítko zpět */
+.mobile-back-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: white;
+}
+
+.mobile-back-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mobile-back-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
 /* Logo */
 .mobile-logo {
   flex-shrink: 0;

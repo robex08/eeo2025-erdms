@@ -297,11 +297,21 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 $relation['template_id'] = (int)$row['template_id'];
                 
                 if (!isset($nodeIds[$nodeId])) {
+                    // Extrahovat node_settings pro source node
+                    $nodeSettings = $row['node_settings'] ? json_decode($row['node_settings'], true) : array();
+                    $sourceSettings = isset($nodeSettings['source']) ? $nodeSettings['source'] : array();
+                    
                     $nodes[] = array(
                         'id' => $nodeId,
                         'type' => 'template',
                         'templateId' => (int)$row['template_id'],
-                        'name' => $row['template_name']
+                        'name' => $row['template_name'],
+                        'settings' => array(
+                            'normalVariant' => isset($sourceSettings['normalVariant']) ? $sourceSettings['normalVariant'] : null,
+                            'urgentVariant' => isset($sourceSettings['urgentVariant']) ? $sourceSettings['urgentVariant'] : null,
+                            'infoVariant' => isset($sourceSettings['infoVariant']) ? $sourceSettings['infoVariant'] : null,
+                            'previewVariant' => isset($sourceSettings['previewVariant']) ? $sourceSettings['previewVariant'] : null
+                        )
                     );
                     $nodeIds[$nodeId] = true;
                 }
@@ -390,11 +400,21 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 }
                 
                 if (!isset($nodeIds[$nodeId])) {
+                    // Extrahovat node_settings pro target node
+                    $nodeSettings = $row['node_settings'] ? json_decode($row['node_settings'], true) : array();
+                    $targetSettings = isset($nodeSettings['target']) ? $nodeSettings['target'] : array();
+                    
                     $nodes[] = array(
                         'id' => $nodeId,
                         'type' => 'template',
                         'templateId' => (int)$row['template_id'],
-                        'name' => $row['template_name']
+                        'name' => $row['template_name'],
+                        'settings' => array(
+                            'normalVariant' => isset($targetSettings['normalVariant']) ? $targetSettings['normalVariant'] : null,
+                            'urgentVariant' => isset($targetSettings['urgentVariant']) ? $targetSettings['urgentVariant'] : null,
+                            'infoVariant' => isset($targetSettings['infoVariant']) ? $targetSettings['infoVariant'] : null,
+                            'previewVariant' => isset($targetSettings['previewVariant']) ? $targetSettings['previewVariant'] : null
+                        )
                     );
                     $nodeIds[$nodeId] = true;
                 }
