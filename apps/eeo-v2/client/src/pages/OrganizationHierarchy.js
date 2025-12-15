@@ -5792,13 +5792,22 @@ const OrganizationHierarchy = () => {
                       if (!template) return null;
                       
                       // Parser všech variant z email_body podle <!-- RECIPIENT: TYPE -->
+                      // ✅ FÁZE 1 UPGRADE - Podporuje RECIPIENT i APPROVER_NORMAL
                       const parseAllVariants = (emailBody) => {
                         if (!emailBody) return [];
                         
                         const variants = [];
+                        
+                        // Definice všech možných variant
                         const variantTypes = [
+                          // ⭐ NOVÝ FORMÁT (Fáze 1: order_status_schvalena, zamitnuta, ceka_se)
+                          { type: 'RECIPIENT', icon: '🟠', name: 'Příjemce (oranžová - normální)' },
+                          
+                          // 🔧 STARÝ FORMÁT (order_status_ke_schvaleni)
                           { type: 'APPROVER_NORMAL', icon: '🟠', name: 'Schvalovatel (oranžová - normální)' },
                           { type: 'APPROVER_URGENT', icon: '🔴', name: 'Schvalovatel (červená - urgentní)' },
+                          
+                          // ✅ SPOLEČNÁ VARIANTA (info/submitter)
                           { type: 'SUBMITTER', icon: '🟢', name: 'Autor objednávky (zelená - info)' }
                         ];
                         
