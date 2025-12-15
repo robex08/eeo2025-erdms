@@ -52,6 +52,9 @@ export const AuthProvider = ({ children }) => {
     logic: 'OR',
     logicDescription: ''
   });
+  
+  // 🔐 HIERARCHIE PERMISSIONS: Rozšířená práva s hierarchií
+  const [expandedPermissions, setExpandedPermissions] = useState([]);
 
   const login = async (username, password) => {
     try {
@@ -101,6 +104,9 @@ export const AuthProvider = ({ children }) => {
         const perms = extractPermissionCodes(userDetail || {});
         setUserPermissions(perms);
         await saveAuthData.userPermissions(perms);
+        
+        // 🔐 Inicializovat expandedPermissions (hierarchie se načte později)
+        setExpandedPermissions(perms);
       } catch (err) {
         console.error('❌ Chyba při extrakci oprávnění:', err);
       }
@@ -125,11 +131,48 @@ export const AuthProvider = ({ children }) => {
 
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
-        const { getHierarchyStatus } = await import('../services/hierarchyOrderService');
-        const status = await getHierarchyStatus(loginData.id, loginData.token, loginData.username);
-        setHierarchyStatus(status);
+        console.log('🌲 [AuthContext] Načítám hierarchii...');
+        const { getHierarchyConfig } = await import('../services/hierarchyService');
+        const { expandPermissionsWithHierarchy } = await import('../services/permissionHierarchyService');
+        const config = await getHierarchyConfig(loginData.token, loginData.username);
+        console.log('🌲 [AuthContext] Hierarchie config:', config);
+        
+        // 🛡️ Zkontrolovat, zda uživatel má právo HIERARCHY_IMMUNE
+        // Použij extractPermissionCodes (stejná metoda jako pro ostatní práva)
+        const currentPerms = extractPermissionCodes(userDetail || {});
+        const hasImmunity = currentPerms.includes('HIERARCHY_IMMUNE');
+        console.log('🛡️ [AuthContext] HIERARCHY_IMMUNE check:', { hasImmunity, allPerms: currentPerms.length });
+        
+        // Převést na formát kompatibilní s hierarchyStatus
+        const newHierarchyStatus = {
+          hierarchyEnabled: config.enabled,
+          isImmune: hasImmunity,
+          profileId: config.profileId,
+          profileName: config.profileName,
+          logic: config.logic,
+          logicDescription: config.logicDescription
+        };
+        console.log('🌲 [AuthContext] Nastavuji hierarchyStatus:', newHierarchyStatus);
+        setHierarchyStatus(newHierarchyStatus);
+        
+        // 🔐 Rozšířit práva podle hierarchie
+        // currentPerms už bylo získáno výše pro HIERARCHY_IMMUNE check
+        const hierarchyEnabled = Boolean(config.enabled && config.profileId);
+        const expanded = expandPermissionsWithHierarchy(currentPerms, hierarchyEnabled, true, true);
+        setExpandedPermissions(expanded);
+        
+        console.log('🔐 [AuthContext] Hierarchie inicializována:', {
+          basePermissions: currentPerms.length,
+          expandedPermissions: expanded.length,
+          hierarchyEnabled,
+          profileId: config.profileId
+        });
       } catch (error) {
         console.warn('⚠️ Chyba při načítání stavu hierarchie (použije se výchozí):', error);
+        // Fallback: bez hierarchie používej pouze základní práva
+        // Získej aktuální userPermissions
+        const currentPerms = extractPermissionCodes(userDetail || {});
+        setExpandedPermissions(currentPerms);
       }
 
       // ✅ BROADCAST: Oznámit ostatním záložkám, že došlo k přihlášení
@@ -214,6 +257,28 @@ export const AuthProvider = ({ children }) => {
         const perms = extractPermissionCodes(fresh || {});
         setUserPermissions(perms);
         await saveAuthData.userPermissions(perms);
+        
+        // 🛡️ Zkontrolovat, zda uživatel má právo HIERARCHY_IMMUNE (může se změnit)
+        const hasImmunity = perms.includes('HIERARCHY_IMMUNE');
+        
+        // Aktualizovat hierarchyStatus s aktuálním isImmune
+        if (hierarchyStatus.hierarchyEnabled) {
+          setHierarchyStatus(prev => ({
+            ...prev,
+            isImmune: hasImmunity
+          }));
+        }
+        
+        // 🔐 Přepočítat expandedPermissions s hierarchií
+        try {
+          const { expandPermissionsWithHierarchy } = await import('../services/permissionHierarchyService');
+          const hierarchyEnabled = Boolean(hierarchyStatus.hierarchyEnabled && hierarchyStatus.profileId);
+          const expanded = expandPermissionsWithHierarchy(perms, hierarchyEnabled, true, true);
+          setExpandedPermissions(expanded);
+        } catch (err) {
+          console.warn('⚠️ Chyba při rozšíření práv hierarchií:', err);
+          setExpandedPermissions(perms); // Fallback bez hierarchie
+        }
       } catch {}
       return fresh;
     } catch (e) {
@@ -279,6 +344,15 @@ export const AuthProvider = ({ children }) => {
     setUserId(null);
     setUserDetail(null);
     setUserPermissions([]);
+    setExpandedPermissions([]); // 🔐 Vyčistit i rozšířená práva
+    setHierarchyStatus({
+      hierarchyEnabled: false,
+      isImmune: false,
+      profileId: null,
+      profileName: null,
+      logic: 'OR',
+      logicDescription: ''
+    });
 
     // Smart cleanup - smaže citlivá data, zachová užitečné preference
     try {
@@ -386,10 +460,78 @@ export const AuthProvider = ({ children }) => {
 
             if (storedPerms && storedPerms.length > 0) {
               setUserPermissions(storedPerms);
+              // 🔐 Inicializovat expandedPermissions (hierarchie se načte níže)
+              setExpandedPermissions(storedPerms);
             } else {
               const perms = extractPermissionCodes(storedDetail);
               setUserPermissions(perms);
+              setExpandedPermissions(perms);
               await saveAuthData.userPermissions(perms);
+            }
+            
+            // 🌲 HIERARCHIE: Načíst při page reload
+            try {
+              const { getHierarchyConfig } = await import('../services/hierarchyService');
+              const { expandPermissionsWithHierarchy } = await import('../services/permissionHierarchyService');
+              const config = await getHierarchyConfig(storedToken, storedUser.username);
+              
+              // 🛡️ Načíst ČERSTVÝ userDetail pro detekci HIERARCHY_IMMUNE
+              // (cached data v localStorage nemají všechna práva)
+              let hasImmunity = false;
+              let currentPerms = storedPerms && storedPerms.length > 0 ? storedPerms : extractPermissionCodes(storedDetail);
+              
+              try {
+                const freshDetail = await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
+                console.log('🔍🔍🔍 [AuthContext] CELÝ freshDetail:', JSON.stringify(freshDetail, null, 2));
+                console.log('🔍 [AuthContext] freshDetail.roles:', freshDetail?.roles);
+                if (freshDetail?.roles) {
+                  freshDetail.roles.forEach((role, idx) => {
+                    console.log(`🔍 Role ${idx}: ${role.kod_role}`, {
+                      rights: role.rights,
+                      prava: role.prava,
+                      allKeys: Object.keys(role)
+                    });
+                  });
+                }
+                
+                const freshPerms = extractPermissionCodes(freshDetail || {});
+                console.log('🔍 [AuthContext] Extracted permissions:', freshPerms);
+                console.log('🔍 [AuthContext] Hledám HIERARCHY_IMMUNE v:', freshPerms);
+                
+                hasImmunity = freshPerms.includes('HIERARCHY_IMMUNE');
+                currentPerms = freshPerms; // Použij čerstvá práva
+                
+                console.log('🛡️ [AuthContext] HIERARCHY_IMMUNE check (fresh data):', {
+                  hasImmunity,
+                  freshPerms: freshPerms.length,
+                  cachedPerms: storedPerms?.length || 0
+                });
+              } catch (freshError) {
+                console.warn('⚠️ Nepodařilo se načíst fresh userDetail, použiju cached:', freshError);
+                hasImmunity = currentPerms.includes('HIERARCHY_IMMUNE');
+              }
+              
+              setHierarchyStatus({
+                hierarchyEnabled: config.enabled,
+                isImmune: hasImmunity,
+                profileId: config.profileId,
+                profileName: config.profileName,
+                logic: config.logic,
+                logicDescription: config.logicDescription
+              });
+              
+              // currentPerms už bylo získáno výše
+              const hierarchyEnabled = Boolean(config.enabled && config.profileId);
+              const expanded = expandPermissionsWithHierarchy(currentPerms, hierarchyEnabled, true, true);
+              setExpandedPermissions(expanded);
+              
+              console.log('🔐 [AuthContext] Hierarchie načtena při page reload:', {
+                hierarchyEnabled,
+                isImmune: hasImmunity,
+                profileId: config.profileId
+              });
+            } catch (hierError) {
+              console.warn('⚠️ Chyba při načítání hierarchie při page reload:', hierError);
             }
           } else {
             // fallback: načti detail
@@ -401,6 +543,7 @@ export const AuthProvider = ({ children }) => {
             try {
               const perms = extractPermissionCodes(userDetail || {});
               setUserPermissions(perms);
+              setExpandedPermissions(perms); // 🔐 Inicializovat
               await saveAuthData.userPermissions(perms);
             } catch {}
           }
@@ -444,6 +587,7 @@ export const AuthProvider = ({ children }) => {
                 const storedPerms = await loadAuthData.userPermissions();
                 if (storedPerms && storedPerms.length > 0) {
                   setUserPermissions(storedPerms);
+                  setExpandedPermissions(storedPerms); // 🔐 Inicializovat
                 }
               } catch {}
             }
@@ -461,6 +605,7 @@ export const AuthProvider = ({ children }) => {
                 const storedPerms = await loadAuthData.userPermissions();
                 if (storedPerms && storedPerms.length > 0) {
                   setUserPermissions(storedPerms);
+                  setExpandedPermissions(storedPerms); // 🔐 Inicializovat
                 }
               } catch {}
               setLoading(false);
@@ -538,6 +683,7 @@ export const AuthProvider = ({ children }) => {
 
                   if (storedPerms && storedPerms.length > 0) {
                     setUserPermissions(storedPerms);
+                    setExpandedPermissions(storedPerms); // 🔐 Inicializovat
                   }
                 }
               } catch (error) {
@@ -609,12 +755,24 @@ export const AuthProvider = ({ children }) => {
 
       for (const k of candidatePermKeys) if (detail[k]) scanValue(detail[k]);
       for (const k of candidateFuncKeys) if (detail[k]) scanValue(detail[k]);
+      
+      // 🔥 EXPLICITNÍ skenování roles[].rights (pro API struktu freshDetail)
+      if (detail.roles && Array.isArray(detail.roles)) {
+        detail.roles.forEach(role => {
+          if (role.rights && Array.isArray(role.rights)) {
+            scanValue(role.rights);
+          }
+          if (role.prava && Array.isArray(role.prava)) {
+            scanValue(role.prava);
+          }
+        });
+      }
 
       // also scan top-level values just in case
       Object.keys(detail || {}).forEach(k => {
         if (candidatePermKeys.includes(k) || candidateFuncKeys.includes(k)) return;
         const v = detail[k];
-        if (typeof v === 'string' && /ORDER_APPROVE|ORDER|APPROVE|SCHVAL|PRAVO|PRAVY/i.test(v)) scanValue(v);
+        if (typeof v === 'string' && /ORDER_APPROVE|ORDER|APPROVE|SCHVAL|PRAVO|PRAVY|HIERARCHY/i.test(v)) scanValue(v);
       });
 
       const result = Array.from(out).filter(Boolean);
@@ -659,7 +817,11 @@ export const AuthProvider = ({ children }) => {
         return false;
       }
       
-      // 1) fast path: precomputed userPermissions
+      // 🔐 HIERARCHIE: Použij expandedPermissions (obsahuje základní + hierarchická práva)
+      // 1) fast path: precomputed expandedPermissions (obsahuje hierarchii)
+      if ((expandedPermissions || []).some(p => p === norm)) return true;
+      
+      // 2) fallback: precomputed userPermissions (bez hierarchie)
       if ((userPermissions || []).some(p => p === norm)) return true;
       // 2) check raw userDetail direct_rights if present (array of objects or codes)
       let ud = userDetail || {};
@@ -704,7 +866,7 @@ export const AuthProvider = ({ children }) => {
       }
       return false;
     } catch (e) { return false; }
-  }, [userPermissions, userDetail]);
+  }, [expandedPermissions, userPermissions, userDetail]); // 🔐 Závislost na expandedPermissions
 
   // Helper pro kontrolu admin role (SUPERADMIN nebo ADMINISTRATOR)
   // POZNÁMKA: 'ADMIN' NENÍ právo, je to alias pro kontrolu admin rolí!
@@ -731,7 +893,8 @@ export const AuthProvider = ({ children }) => {
       loading, 
       user_id, 
       userDetail, 
-      userPermissions, 
+      userPermissions,
+      expandedPermissions, // 🔐 HIERARCHIE: Rozšířená práva
       hasPermission, 
       hasAdminRole, 
       refreshUserDetail,

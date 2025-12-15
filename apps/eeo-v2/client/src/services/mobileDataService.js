@@ -1,11 +1,14 @@
 /**
  * 📱 Mobile Data Service
  * Servis pro získávání dat pro mobilní dashboard
+ * 
+ * ✅ Používá centrální hierarchyService pro konzistentní chování s desktop verzí
  */
 
 import { listOrdersV2 } from './apiOrderV2';
 import { listInvoices25 } from './api25invoices';
 import cashbookAPI from './cashbookService';
+import hierarchyService, { HierarchyModules } from './hierarchyService';
 
 const mobileDataService = {
   /**
@@ -24,6 +27,10 @@ const mobileDataService = {
       const currentMonth = new Date().getMonth() + 1; // 1-12
       
       console.log('[MobileData] Loading data for year:', year, 'token:', token ? 'present' : 'MISSING', 'username:', username);
+      
+      // 🏢 Načtení hierarchie (pro metadata)
+      const hierarchyConfig = await hierarchyService.getHierarchyConfigCached(token, username);
+      console.log('[MobileData] 🏢 Hierarchy status:', hierarchyConfig.status, 'for orders:', hierarchyConfig.modules.orders);
       
       const [ordersResult, invoicesResult, cashbookResult] = await Promise.allSettled([
         // 1. Objednávky pro daný rok - SPRÁVNÉ POŘADÍ PARAMETRŮ!
@@ -87,6 +94,14 @@ const mobileDataService = {
             orders: ordersResult.status === 'fulfilled' ? 'API' : 'MOCK',
             invoices: invoicesResult.status === 'fulfilled' ? 'API' : 'MOCK',
             cashbook: cashbookResult.status === 'fulfilled' ? 'API' : 'MOCK'
+          },
+          // 🏢 Hierarchie info
+          hierarchy: {
+            status: hierarchyConfig.status,
+            enabled: hierarchyConfig.enabled,
+            profileName: hierarchyConfig.profileName,
+            logic: hierarchyConfig.logic,
+            message: hierarchyService.getHierarchyInfoMessage(hierarchyConfig, HierarchyModules.ORDERS)
           }
         }
       };

@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
@@ -16,14 +16,52 @@ const logoZZS = '/eeo-v2/logo-ZZS.png';
  * @param {number} activityCount - Počet aktivit v historii
  */
 function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick, onActivityClick, activityCount = 0 }) {
-  const { hierarchyStatus } = useContext(AuthContext);
+  const { isLoggedIn, token, user } = useContext(AuthContext);
+  const [hierarchyInfo, setHierarchyInfo] = useState(null);
   
   // Získat verzi z ENV proměnné a extrahovat číslo verze
   const fullVersion = process.env.REACT_APP_VERSION || '1.88';
   const versionNumber = fullVersion.match(/(\d+\.\d+[a-z]?)/)?.[1] || fullVersion;
   
-  // Získat profil ID z hierarchie
-  const profileId = hierarchyStatus?.profileId;
+  // 🌲 HIERARCHIE: Načíst stav hierarchie při přihlášení (stejně jako v Layout.js)
+  useEffect(() => {
+    if (!isLoggedIn || !token || !user?.username) {
+      setHierarchyInfo(null);
+      return;
+    }
+    
+    const loadHierarchyStatus = async () => {
+      try {
+        const { getGlobalSettings } = await import('../../services/globalSettingsApi');
+        const { getUserDetailApi2 } = await import('../../services/api2auth');
+        
+        const settings = await getGlobalSettings(token, user.username);
+        const userDetail = await getUserDetailApi2(user.username, token, user.id);
+        
+        // Zkontrolovat HIERARCHY_IMMUNE právo
+        const hasImmunity = userDetail?.roles?.some(role => 
+          role.prava?.some(pravo => pravo.kod_prava === 'HIERARCHY_IMMUNE')
+        ) || false;
+        
+        // Nastavit info o hierarchii pro hlavičku
+        if (settings.hierarchy_enabled && settings.hierarchy_profile_id) {
+          setHierarchyInfo({
+            profileId: settings.hierarchy_profile_id,
+            enabled: true,
+            isImmune: hasImmunity
+          });
+          console.log('📱 [MobileHeader] Hierarchie načtena:', settings.hierarchy_profile_id, 'Imunita:', hasImmunity);
+        } else {
+          setHierarchyInfo({ enabled: false });
+        }
+      } catch (error) {
+        console.error('📱 [MobileHeader] Chyba při načítání hierarchie:', error);
+        setHierarchyInfo(null);
+      }
+    };
+    
+    loadHierarchyStatus();
+  }, [isLoggedIn, token, user?.username, user?.id]);
   
   return (
     <header className="mobile-header">
@@ -57,8 +95,12 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)'
               }}>
                 {versionNumber}
-                {profileId && (
-                  <span style={{ color: '#10b981', fontWeight: '700' }}>.H{profileId}</span>
+                {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
+                  <span style={{ 
+                    color: hierarchyInfo.isImmune ? '#9ca3af' : '#10b981', 
+                    fontWeight: '700',
+                    opacity: hierarchyInfo.isImmune ? 0.6 : 1
+                  }}>.H{hierarchyInfo.profileId}</span>
                 )}
               </sup>
             )}

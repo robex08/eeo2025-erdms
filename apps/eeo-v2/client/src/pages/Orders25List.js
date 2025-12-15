@@ -4143,10 +4143,13 @@ const CalendarButton = styled.button`
 const Orders25List = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, token, username, hasPermission, hasAdminRole, user_id, userDetail } = useContext(AuthContext);
+  const { user, token, username, hasPermission, hasAdminRole, user_id, userDetail, userPermissions, expandedPermissions } = useContext(AuthContext);
   const { setProgress } = useContext(ProgressContext) || {};
   const { setDebugInfo } = useContext(DebugContext) || {};
   const { showToast } = useContext(ToastContext) || {};
+  
+  // 🏢 HIERARCHIE: Načíst konfiguraci hierarchie
+  const [hierarchyConfig, setHierarchyConfig] = useState(null);
 
   // � CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Konverze na number pro všechna porovnání
@@ -4203,6 +4206,40 @@ const Orders25List = () => {
   useEffect(() => {
     permissionsRef.current = permissions;
   }, [permissions]);
+
+  // 🏢 HIERARCHIE: Načíst konfiguraci při mount a změně tokenu/username
+  useEffect(() => {
+    const loadHierarchy = async () => {
+      if (!token || !username) {
+        setHierarchyConfig(null);
+        return;
+      }
+      
+      try {
+        const { getHierarchyConfig } = await import('../services/hierarchyService');
+        const config = await getHierarchyConfig(token, username);
+        setHierarchyConfig(config);
+        
+        console.log('🏢 [Orders25List] Hierarchie načtena:', {
+          status: config.status,
+          enabled: config.enabled,
+          profileId: config.profileId,
+          profileName: config.profileName
+        });
+      } catch (error) {
+        console.error('❌ [Orders25List] Chyba při načítání hierarchie:', error);
+        setHierarchyConfig({
+          status: 'error',
+          enabled: false,
+          profileId: null,
+          profileName: null,
+          error: error.message
+        });
+      }
+    };
+    
+    loadHierarchy();
+  }, [token, username]);
 
   // State
   const [orders, setOrders] = useState([]);
@@ -12013,6 +12050,7 @@ const Orders25List = () => {
 
       <Container>
       <PageContent $blurred={loading}>
+      
       {/* Year Filter - prominent position above header */}
       <YearFilterPanel>
         <YearFilterLeft>

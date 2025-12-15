@@ -865,8 +865,9 @@ const UserManagementModal = ({
     // Nepřiřazená = práva, která uživatel NEMÁ (nejsou ani z role, ani přímo přiřazená)
     if (showOnlyUnassigned) {
       filtered = filtered.filter(p => {
-        const isFromRole = rightsFromRoles.has(p.id);
-        const isDirectlySelected = formData.direct_rights.includes(p.id);
+        const pravoId = Number(p.id); // ❗ Konverze na NUMBER
+        const isFromRole = rightsFromRoles.has(pravoId);
+        const isDirectlySelected = formData.direct_rights.includes(pravoId);
         const isChecked = isFromRole || isDirectlySelected;
         // Zobrazit pouze NEZAŠKRTNUTÁ práva (uživatel je NEMÁ)
         return !isChecked;
@@ -931,41 +932,55 @@ const UserManagementModal = ({
       let rolesIds = [];
       if (Array.isArray(userData.roles)) {
         rolesIds = userData.roles.map(r => {
+          let id = null;
           if (typeof r === 'object' && r !== null) {
             // Pokud má ID, použij ho
             if (r.id || r.role_id) {
-              return r.id || r.role_id;
+              id = r.id || r.role_id;
             }
-            // Jinak najdi v číselníku podle nazev_role
-            if (r.nazev_role) {
-              const foundRole = role.find(roleItem => roleItem.nazev_role === r.nazev_role);
-              return foundRole?.id;
+            // Jinak najdi v číselníku podle nazev_role nebo kod_role
+            else if (r.nazev_role || r.kod_role) {
+              const foundRole = role.find(roleItem => 
+                roleItem.nazev_role === r.nazev_role || roleItem.kod_role === r.kod_role
+              );
+              id = foundRole?.id;
             }
+          } else {
+            // Pokud je číslo/string, použij přímo
+            id = r;
           }
-          // Pokud je číslo/string, použij přímo
-          return r;
+          // ❗ KONVERZE NA NUMBER pro strict comparison v checkbox
+          return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
+      console.log('🔍 UserManagementModal - Role IDs po mapování:', rolesIds);
+      console.log('🔍 UserManagementModal - userData.roles:', userData.roles);
 
       // Zpracuj práva - najdi ID podle kod_prava v načtených právech
       let rightsIds = [];
       if (Array.isArray(userData.direct_rights)) {
         rightsIds = userData.direct_rights.map(p => {
+          let id = null;
           if (typeof p === 'object' && p !== null) {
             // Pokud má ID, použij ho
             if (p.id || p.pravo_id) {
-              return p.id || p.pravo_id;
+              id = p.id || p.pravo_id;
             }
             // Jinak najdi v číselníku podle kod_prava
-            if (p.kod_prava) {
+            else if (p.kod_prava) {
               const foundRight = prava.find(pravaItem => pravaItem.kod_prava === p.kod_prava);
-              return foundRight?.id;
+              id = foundRight?.id;
             }
+          } else {
+            // Pokud je číslo/string, použij přímo
+            id = p;
           }
-          // Pokud je číslo/string, použij přímo
-          return p;
+          // ❗ KONVERZE NA NUMBER pro strict comparison v checkbox
+          return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
+      console.log('🔍 UserManagementModal - Rights IDs po mapování:', rightsIds);
+      console.log('🔍 UserManagementModal - userData.direct_rights:', userData.direct_rights);
 
       const newFormData = {
         username: userData.username || '',
@@ -985,7 +1000,8 @@ const UserManagementModal = ({
         direct_rights: rightsIds
       };
 
-      // console.log('📝 Nastavuji formData (číselníky jsou načtené):', newFormData);
+      console.log('📝 UserManagementModal - Nastavuji formData:', newFormData);
+      console.log('📝 UserManagementModal - formData.roles:', newFormData.roles, 'typy:', newFormData.roles.map(id => typeof id));
       setFormData(newFormData);
       setErrors({});
       setSuccessMessage('');
@@ -1154,7 +1170,7 @@ const UserManagementModal = ({
           // console.log(`  ✓ Role ${roleId} má ${roleDetail.prava.length} práv:`, roleDetail.prava.map(p => p.kod_prava));
           roleDetail.prava.forEach(p => {
             if (p.id) {
-              allRights.add(p.id);
+              allRights.add(Number(p.id)); // ❗ Konverze na NUMBER
             }
           });
         } else {
@@ -1696,22 +1712,26 @@ const UserManagementModal = ({
                     <EmptyState>Žádné role nenalezeny</EmptyState>
                   ) : (
                     <CheckboxGrid>
-                      {filteredRoles.map(r => (
+                      {filteredRoles.map(r => {
+                        const roleId = Number(r.id); // ❗ Konverze na NUMBER
+                        const isChecked = formData.roles.includes(roleId);
+                        return (
                         <CheckboxLabel
                           key={r.id}
-                          $checked={formData.roles.includes(r.id)}
+                          $checked={isChecked}
                         >
                           <Checkbox
                             type="checkbox"
-                            checked={formData.roles.includes(r.id)}
-                            onChange={() => handleCheckboxChange('roles', r.id)}
+                            checked={isChecked}
+                            onChange={() => handleCheckboxChange('roles', roleId)}
                           />
                           <CheckboxContent>
                             <CheckboxTitle>{r.nazev_role || r.nazev}</CheckboxTitle>
                             {r.popis && <CheckboxDescription>{r.popis}</CheckboxDescription>}
                           </CheckboxContent>
                         </CheckboxLabel>
-                      ))}
+                        );
+                      })}
                     </CheckboxGrid>
                   )}
                 </FormSection>
@@ -1768,8 +1788,9 @@ const UserManagementModal = ({
                   ) : (
                     <CheckboxGrid>
                       {filteredPrava.map(p => {
-                        const isFromRole = rightsFromRoles.has(p.id);
-                        const isDirectlySelected = formData.direct_rights.includes(p.id);
+                        const pravoId = Number(p.id); // ❗ Konverze na NUMBER
+                        const isFromRole = rightsFromRoles.has(pravoId);
+                        const isDirectlySelected = formData.direct_rights.includes(pravoId);
                         const isChecked = isFromRole || isDirectlySelected;
 
                         return (
@@ -1785,7 +1806,7 @@ const UserManagementModal = ({
                               type="checkbox"
                               checked={isChecked}
                               disabled={isFromRole && !isDirectlySelected}
-                              onChange={() => handleCheckboxChange('direct_rights', p.id)}
+                              onChange={() => handleCheckboxChange('direct_rights', pravoId)}
                               style={{ cursor: isFromRole && !isDirectlySelected ? 'not-allowed' : 'pointer' }}
                             />
                             <CheckboxContent>

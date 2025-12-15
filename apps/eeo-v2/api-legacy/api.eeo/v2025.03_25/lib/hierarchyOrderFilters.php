@@ -227,13 +227,17 @@ function applyHierarchyFilterToOrders($userId, $db) {
     }
     
     if (empty($relationships)) {
-        // Uživatel nemá žádné hierarchické vztahy → nevidí NIC (pokud je hierarchie zapnutá)
-        error_log("❌ User $userId has NO relationships in profile $profileId");
-        error_log("⛔ BLOCKING ALL ORDERS (1=0)");
-        $HIERARCHY_DEBUG_INFO['reason'] = 'no_relationships';
+        // Uživatel nemá žádné hierarchické vztahy
+        // ALE musí vidět minimálně své vlastní objednávky (kde je tvůrce/objednatel/garant)
+        error_log("⚠️ User $userId has NO relationships in profile $profileId");
+        error_log("✅ Will see ONLY OWN orders (uzivatel_id, objednatel_id, garant_uzivatel_id)");
+        
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_relationships_own_only';
         $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
-        $HIERARCHY_DEBUG_INFO['filter_preview'] = '1 = 0 (BLOCK ALL)';
-        return "1 = 0"; // Blokuj všechny objednávky
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = "User sees only own orders";
+        
+        // Vrátíme filtr, který umožňuje vidět pouze vlastní objednávky
+        return "(o.uzivatel_id = $userId OR o.objednatel_id = $userId OR o.garant_uzivatel_id = $userId)";
     }
     
     error_log("✅ Found " . count($relationships) . " relationships for user $userId in profile $profileId");
@@ -329,14 +333,27 @@ function applyHierarchyFilterToOrders($userId, $db) {
     // Musíme filtrovat přes zúčastněné uživatele (objednatel, uzivatel, garant, atd.)
     $conditions = [];
     
-    if (!empty($visibleUserIds)) {
-        $userIdsList = implode(',', array_map('intval', $visibleUserIds));
-        // Hierarchie filtruje pouze přes 3 klíčové role
-        $conditions[] = "(
-            o.uzivatel_id IN ($userIdsList)
-            OR o.objednatel_id IN ($userIdsList)
-            OR o.garant_uzivatel_id IN ($userIdsList)
-        )";
+    // 🔥 PRIORITA: Uživatel VŽDY vidí své vlastní objednávky (nezávisle na hierarchii)
+    $conditions[] = "(
+        o.uzivatel_id = $userId
+        OR o.objednatel_id = $userId
+        OR o.garant_uzivatel_id = $userId
+    )";
+    error_log("✅ Added OWN orders condition for user $userId");
+    
+    if (!empty($visibleUserIds) && count($visibleUserIds) > 1) {
+        // Pokud má uživatel hierarchické vztahy, přidáme i je (kromě sebe, který už je výše)
+        $otherUserIds = array_diff($visibleUserIds, [$userId]);
+        if (!empty($otherUserIds)) {
+            $userIdsList = implode(',', array_map('intval', $otherUserIds));
+            // Hierarchie filtruje pouze přes 3 klíčové role
+            $conditions[] = "(
+                o.uzivatel_id IN ($userIdsList)
+                OR o.objednatel_id IN ($userIdsList)
+                OR o.garant_uzivatel_id IN ($userIdsList)
+            )";
+            error_log("✅ Added hierarchy users condition: " . count($otherUserIds) . " users");
+        }
     }
     
     if (!empty($visibleUskyIds)) {
@@ -360,15 +377,17 @@ function applyHierarchyFilterToOrders($userId, $db) {
     }
     
     if (empty($conditions)) {
-        // Žádné podmínky → nevidí nic
-        error_log("❌ NO CONDITIONS GENERATED");
-        error_log("⛔ BLOCKING ALL ORDERS (1=0)");
+        // Žádné podmínky z hierarchických vztahů
+        // ALE uživatel musí vidět minimálně své vlastní objednávky
+        error_log("⚠️ NO CONDITIONS GENERATED from relationships");
+        error_log("✅ Will see ONLY OWN orders (uzivatel_id, objednatel_id, garant_uzivatel_id)");
         
-        $HIERARCHY_DEBUG_INFO['reason'] = 'no_conditions';
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_conditions_own_only';
         $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
-        $HIERARCHY_DEBUG_INFO['filter_preview'] = '1 = 0 (BLOCK ALL - no conditions)';
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = "User sees only own orders";
         
-        return "1 = 0";
+        // Vrátíme filtr, který umožňuje vidět pouze vlastní objednávky
+        return "(o.uzivatel_id = $userId OR o.objednatel_id = $userId OR o.garant_uzivatel_id = $userId)";
     }
     
     // Logika OR/AND
