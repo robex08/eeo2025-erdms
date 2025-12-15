@@ -131,17 +131,13 @@ export const AuthProvider = ({ children }) => {
 
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
-        console.log('🌲 [AuthContext] Načítám hierarchii...');
         const { getHierarchyConfig } = await import('../services/hierarchyService');
         const { expandPermissionsWithHierarchy } = await import('../services/permissionHierarchyService');
         const config = await getHierarchyConfig(loginData.token, loginData.username);
-        console.log('🌲 [AuthContext] Hierarchie config:', config);
         
         // 🛡️ Zkontrolovat, zda uživatel má právo HIERARCHY_IMMUNE
-        // Použij extractPermissionCodes (stejná metoda jako pro ostatní práva)
         const currentPerms = extractPermissionCodes(userDetail || {});
         const hasImmunity = currentPerms.includes('HIERARCHY_IMMUNE');
-        console.log('🛡️ [AuthContext] HIERARCHY_IMMUNE check:', { hasImmunity, allPerms: currentPerms.length });
         
         // Převést na formát kompatibilní s hierarchyStatus
         const newHierarchyStatus = {
@@ -152,21 +148,12 @@ export const AuthProvider = ({ children }) => {
           logic: config.logic,
           logicDescription: config.logicDescription
         };
-        console.log('🌲 [AuthContext] Nastavuji hierarchyStatus:', newHierarchyStatus);
         setHierarchyStatus(newHierarchyStatus);
         
         // 🔐 Rozšířit práva podle hierarchie
-        // currentPerms už bylo získáno výše pro HIERARCHY_IMMUNE check
         const hierarchyEnabled = Boolean(config.enabled && config.profileId);
         const expanded = expandPermissionsWithHierarchy(currentPerms, hierarchyEnabled, true, true);
         setExpandedPermissions(expanded);
-        
-        console.log('🔐 [AuthContext] Hierarchie inicializována:', {
-          basePermissions: currentPerms.length,
-          expandedPermissions: expanded.length,
-          hierarchyEnabled,
-          profileId: config.profileId
-        });
       } catch (error) {
         console.warn('⚠️ Chyba při načítání stavu hierarchie (použije se výchozí):', error);
         // Fallback: bez hierarchie používej pouze základní práva
@@ -482,30 +469,9 @@ export const AuthProvider = ({ children }) => {
               
               try {
                 const freshDetail = await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
-                console.log('🔍🔍🔍 [AuthContext] CELÝ freshDetail:', JSON.stringify(freshDetail, null, 2));
-                console.log('🔍 [AuthContext] freshDetail.roles:', freshDetail?.roles);
-                if (freshDetail?.roles) {
-                  freshDetail.roles.forEach((role, idx) => {
-                    console.log(`🔍 Role ${idx}: ${role.kod_role}`, {
-                      rights: role.rights,
-                      prava: role.prava,
-                      allKeys: Object.keys(role)
-                    });
-                  });
-                }
-                
                 const freshPerms = extractPermissionCodes(freshDetail || {});
-                console.log('🔍 [AuthContext] Extracted permissions:', freshPerms);
-                console.log('🔍 [AuthContext] Hledám HIERARCHY_IMMUNE v:', freshPerms);
-                
                 hasImmunity = freshPerms.includes('HIERARCHY_IMMUNE');
                 currentPerms = freshPerms; // Použij čerstvá práva
-                
-                console.log('🛡️ [AuthContext] HIERARCHY_IMMUNE check (fresh data):', {
-                  hasImmunity,
-                  freshPerms: freshPerms.length,
-                  cachedPerms: storedPerms?.length || 0
-                });
               } catch (freshError) {
                 console.warn('⚠️ Nepodařilo se načíst fresh userDetail, použiju cached:', freshError);
                 hasImmunity = currentPerms.includes('HIERARCHY_IMMUNE');
@@ -524,12 +490,6 @@ export const AuthProvider = ({ children }) => {
               const hierarchyEnabled = Boolean(config.enabled && config.profileId);
               const expanded = expandPermissionsWithHierarchy(currentPerms, hierarchyEnabled, true, true);
               setExpandedPermissions(expanded);
-              
-              console.log('🔐 [AuthContext] Hierarchie načtena při page reload:', {
-                hierarchyEnabled,
-                isImmune: hasImmunity,
-                profileId: config.profileId
-              });
             } catch (hierError) {
               console.warn('⚠️ Chyba při načítání hierarchie při page reload:', hierError);
             }

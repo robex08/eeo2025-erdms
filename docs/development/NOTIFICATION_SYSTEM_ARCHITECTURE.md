@@ -250,13 +250,70 @@ function determineChannels(globalSettings, userPrefs) {
 
 ---
 
+## 🎯 Notification Triggers - Centrální Správa Událostí
+
+### Koncept: Notification Center
+
+**Princip:**  
+Všechny notifikace procházejí centrálním **Notification Center**, které:
+1. Zachytí událost (trigger)
+2. Předá Decision Engine
+3. Decision Engine rozhodne WHO + HOW + WHEN
+4. Dispatcher odešle notifikace
+
+```
+Event Source → Notification Center → Decision Engine → Dispatcher → Email/In-App
+```
+
+### Unified API
+
+```javascript
+// NotificationCenter.js
+class NotificationCenter {
+  
+  /**
+   * Hlavní metoda pro triggerování notifikací
+   * @param {string} eventType - Typ události (order_status_schvalena, task_assigned, atd.)
+   * @param {object} eventData - Data události (order_id, user_id, atd.)
+   * @param {object} context - Kontext volání (source: 'web'/'mobile', user, atd.)
+   */
+  static async trigger(eventType, eventData, context = {}) {
+    console.log(`📢 [NotificationCenter] Trigger: ${eventType}`, eventData);
+    
+    try {
+      // Předej Decision Engine
+      const decisions = await NotificationDecisionEngine.processEvent({
+        eventType,
+        eventData,
+        context
+      });
+      
+      console.log(`✅ [NotificationCenter] Processed: ${decisions.length} notifications`);
+      return decisions;
+      
+    } catch (error) {
+      console.error(`❌ [NotificationCenter] Error processing ${eventType}:`, error);
+      // Logování, ale nehavaruj aplikaci
+      return [];
+    }
+  }
+}
+
+export default NotificationCenter;
+```
+
+---
+
 ## 🛠️ Implementační Oblasti
 
 ### A) OrderForm - Notifikace při Změně Stavu
 
-#### Trigger Points
+#### Trigger Points v Kódu
+
+**1. Uložení objednávky KE SCHVÁLENÍ**
+
 ```javascript
-// Při ukládání objednávky v OrderForm
+// OrderForm.jsx (nebo backend handler)
 const handleSaveOrder = async (formData) => {
   const oldStatus = currentOrder?.status;
   const newStatus = formData.status;
@@ -264,26 +321,207 @@ const handleSaveOrder = async (formData) => {
   // Uložení objednávky
   const savedOrder = await saveOrderAPI(formData);
   
-  // ✅ Notifikace POUZE při změně stavu
+  // ✅ TRIGGER: Notifikace POUZE při změně stavu
   if (oldStatus !== newStatus) {
-    await NotificationDecisionEngine.processEvent({
-      eventType: `order_status_${newStatus}`,
-      eventData: {
+    await NotificationCenter.trigger(
+      `order_status_${newStatus}`, // eventType
+      {
         order_id: savedOrder.id,
+        order_number: savedOrder.cislo_obj,
         old_status: oldStatus,
         new_status: newStatus,
         author: currentUser,
-        timestamp: new Date()
+        order_data: {
+          nazev: savedOrder.nazev,
+          celkova_castka: savedOrder.celkova_castka,
+          dodavatel: savedOrder.dodavatel_nazev,
+          popis: savedOrder.popis
+        }
+      },
+      {
+        source: 'web', // nebo 'mobile'
+        user: currentUser
       }
-    });
+    );
   }
 };
 ```
 
+**Konkrétní trigger body:**
+
+| Akce Uživatele | Změna Stavu | Event Type | Příjemci |
+|----------------|-------------|------------|----------|
+| User uloží obj. ke schválení | `nova` → `ceka_se` | `order_status_ceka_se` | Schvalovatel (dle hierarchie) |
+| Schvalovatel schválí | `ceka_se` → `schvalena` | `order_status_schvalena` | Autor objednávky |
+| Schvalovatel zamítne | `ceka_se` → `zamitnuta` | `order_status_zamitnuta` | Autor objednávky |
+
+**2. Operace schválení/zamítnutí**
+
+```javascript
+// OrderApprovalPanel.jsx (nebo backend)
+const handleApprove = async (orderId, decision) => {
+  const order = await getOrderById(orderId);
+  
+  // Update stavu v DB
+  const updatedOrder = await updateOrderStatus(orderId, decision.newStatus);
+  
+  // ✅ TRIGGER: Notifikace o rozhodnutí
+  await NotificationCenter.trigger(
+    decision.newStatus === 'schvalena' 
+      ? 'order_status_schvalena' 
+      : 'order_status_zamitnuta',
+    {
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.cislo_obj,
+      old_status: order.status,
+      new_status: decision.newStatus,
+      approver: currentUser, // Kdo schválil/zamítl
+      author: order.autor, // Původní autor objednávky
+      approval_note: decision.note, // Poznámka schvalovatele
+      order_data: {
+        nazev: updatedOrder.nazev,
+        celkova_castka: updatedOrder.celkova_castka,
+        dodavatel: updatedOrder.dodavatel_nazev
+      }
+    },
+    {
+      source: 'web',
+      user: currentUser
+    }
+  );
+};
+```
+
+**3. Komunikace s dodavatelem**
+
+```javascript
+// OrderSupplierPanel.jsx
+const handleSendToSupplier = async (orderId) => {
+  const order = await getOrderById(orderId);
+  
+  // Odeslat objednávku dodavateli (email, API, atd.)
+  await sendOrderToSupplier(order);
+  
+  // Update stavu
+  const updatedOrder = await updateOrderStatus(orderId, 'odeslana');
+  
+  // ✅ TRIGGER: Notifikace o odeslání
+  await NotificationCenter.trigger(
+    'order_status_odeslana',
+    {
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.cislo_obj,
+      old_status: order.status,
+      new_status: 'odeslana',
+      supplier: order.dodavatel,
+      sent_at: new Date(),
+      order_data: { /* ... */ }
+    },
+    { source: 'web', user: currentUser }
+  );
+};
+
+const handleSupplierConfirmation = async (orderId, confirmationData) => {
+  // Dodavatel potvrdil objednávku
+  const updatedOrder = await updateOrderStatus(orderId, 'potvrzena');
+  
+  // ✅ TRIGGER: Notifikace o potvrzení
+  await NotificationCenter.trigger(
+    'order_status_potvrzena',
+    {
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.cislo_obj,
+      old_status: 'odeslana',
+      new_status: 'potvrzena',
+      supplier: updatedOrder.dodavatel,
+      confirmed_at: new Date(),
+      delivery_date: confirmationData.delivery_date,
+      order_data: { /* ... */ }
+    },
+    { source: 'supplier_portal', user: null } // Dodavatel není v systému
+  );
+};
+```
+
+**4. Fakturace a kontrola kvality**
+
+```javascript
+// InvoicePanel.jsx
+const handleInvoiceApproval = async (invoiceId, approved) => {
+  const invoice = await getInvoiceById(invoiceId);
+  const order = await getOrderById(invoice.order_id);
+  
+  // Update stavu
+  await updateInvoiceStatus(invoiceId, approved ? 'schvalena' : 'zamitnuta');
+  
+  if (approved) {
+    // ✅ TRIGGER: Faktura schválena
+    await NotificationCenter.trigger(
+      'order_status_faktura_schvalena',
+      {
+        order_id: order.id,
+        invoice_id: invoice.id,
+        invoice_number: invoice.cislo_faktury,
+        invoice_amount: invoice.castka,
+        approver: currentUser,
+        author: order.autor
+      },
+      { source: 'web', user: currentUser }
+    );
+  }
+};
+
+// QualityControlPanel.jsx
+const handleQualityCheck = async (orderId, passed, notes) => {
+  const order = await getOrderById(orderId);
+  
+  // Update stavu
+  const updatedOrder = await updateOrderStatus(
+    orderId, 
+    passed ? 'kontrola_potvrzena' : 'kontrola_zamitnuta'
+  );
+  
+  // ✅ TRIGGER: Výsledek kontroly
+  await NotificationCenter.trigger(
+    passed ? 'order_status_kontrola_potvrzena' : 'order_status_kontrola_zamitnuta',
+    {
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.cislo_obj,
+      old_status: order.status,
+      new_status: passed ? 'kontrola_potvrzena' : 'kontrola_zamitnuta',
+      controller: currentUser,
+      author: order.autor,
+      control_notes: notes,
+      rejection_reason: passed ? null : notes
+    },
+    { source: 'web', user: currentUser }
+  );
+};
+```
+
+#### Trigger Locations - Kde v Kódu Implementovat
+
+**Frontend (React):**
+- `OrderForm.jsx` - handleSave, handleSubmitForApproval
+- `OrderApprovalPanel.jsx` - handleApprove, handleReject
+- `OrderSupplierPanel.jsx` - handleSendToSupplier
+- `InvoicePanel.jsx` - handleInvoiceApproval
+- `QualityControlPanel.jsx` - handleQualityCheck
+
+**Backend (PHP API):**
+- `orderHandlers.php` - saveOrder, updateOrderStatus
+- `approvalHandlers.php` - approveOrder, rejectOrder
+- `supplierHandlers.php` - sendToSupplier, confirmFromSupplier
+- `invoiceHandlers.php` - approveInvoice
+- `qualityHandlers.php` - performQualityCheck
+
+**Doporučení:**  
+✅ **Backend implementation preferred** - notifikace trigger na backendu je bezpečnější a konzistentnější
+
 #### Stavy Vyžadující Notifikaci
-1. `schvalena` → Schvalovatel schválil
-2. `zamitnuta` → Schvalovatel zamítl
-3. `ceka_se` → Čeká na schválení
+1. `ceka_se` → Čeká na schválení (autor uložil ke schválení)
+2. `schvalena` → Schvalovatel schválil
+3. `zamitnuta` → Schvalovatel zamítl
 4. `odeslana` → Odesláno dodavateli
 5. `potvrzena` → Dodavatel potvrdil
 6. `faktura_schvalena` → Faktura schválena

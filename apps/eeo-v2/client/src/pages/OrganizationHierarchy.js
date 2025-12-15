@@ -1886,13 +1886,6 @@ const OrganizationHierarchy = () => {
         const token = await loadAuthData.token();
         const userData = await loadAuthData.user();
         const username = userData?.username || localStorage.getItem('username');
-        
-        console.log('🔑 Auth debug:', { 
-          hasToken: !!token, 
-          tokenLength: token?.length,
-          username,
-          userData 
-        });
 
         const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
 
@@ -1959,7 +1952,6 @@ const OrganizationHierarchy = () => {
           
           if (globalSettings.hierarchy_profile_id) {
             selectedProfile = profilesList.find(p => p.id === parseInt(globalSettings.hierarchy_profile_id));
-            console.log('✅ Loaded profile from Global Settings (DB):', selectedProfile?.name, 'ID:', globalSettings.hierarchy_profile_id);
           }
         } catch (err) {
           console.warn('⚠️ Failed to load profile from Global Settings:', err);
@@ -1973,12 +1965,10 @@ const OrganizationHierarchy = () => {
         
         setCurrentProfile(selectedProfile || null);
         
-        console.log('📋 Profiles loaded:', profilesList.length, 'Selected:', selectedProfile?.name, 'ID:', selectedProfile?.id);
         
         // 🔥 TEĎ načíst strukturu s profilId
         let structureData = { success: true, data: { nodes: [], relations: [] } };
         if (selectedProfile) {
-          console.log('📥 Loading structure for profile:', selectedProfile.id);
           structureData = await fetch(`${API_BASE_URL}/hierarchy/structure`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1986,15 +1976,8 @@ const OrganizationHierarchy = () => {
           }).then(r => r.json());
         }
         
-        console.log('🔍 Draft status:', { draftLoaded, hasStructureData: !!structureData.data });
-        console.log('📥 Structure data:', structureData);
         
         // 🔥 DEBUG: Detailní výpis struktury
-        console.log('🔍 structureData.data:', structureData?.data);
-        console.log('🔍 structureData.data.nodes:', structureData?.data?.nodes);
-        console.log('🔍 structureData.data.relations:', structureData?.data?.relations);
-        console.log('🔍 nodes length:', structureData?.data?.nodes?.length);
-        console.log('🔍 relations length:', structureData?.data?.relations?.length);
         
         // DŮLEŽITÉ: Pokud je draft, ale struktura z API má data, preferovat API data
         // Draft je jen pro dočasné změny, ne pro perzistentní uložení
@@ -2002,16 +1985,12 @@ const OrganizationHierarchy = () => {
         const shouldLoadFromApi = structureData.data && structureData.data.relations && structureData.data.relations.length > 0;
         
         if (shouldLoadFromApi) {
-          console.log('✅ Loading from API V2 (overriding draft if present)');
         }
 
         // 4. Nastavit hierarchickou strukturu z API V2 (preferovat API před draftem)
         if (shouldLoadFromApi) {
-          console.log('📥 V2 Loading hierarchy from API');
-          console.log('📊 V2 API Response:', structureData);
           
           // 🔥 DEBUG: Výpis celé struktury
-          console.log('🔍 Structure data full:', structureData);
           console.log('🔍 Structure data.data:', structureData?.data);
           console.log('🔍 Structure data.data.nodes:', structureData?.data?.nodes);
           console.log('🔍 Structure data.data.relations:', structureData?.data?.relations);
@@ -2020,7 +1999,6 @@ const OrganizationHierarchy = () => {
           const apiNodes = Array.isArray(structureData?.data?.nodes) ? structureData.data.nodes : [];
           const apiRelations = Array.isArray(structureData?.data?.relations) ? structureData.data.relations : [];
           
-          console.log('📦 V2 Received from API:', apiNodes.length, 'nodes,', apiRelations.length, 'relations');
           
           if (apiNodes.length === 0 && apiRelations.length === 0) {
             console.warn('⚠️ Empty structure data from API - will exit early');
@@ -2214,11 +2192,8 @@ const OrganizationHierarchy = () => {
             };
           }).filter(e => e !== null);
           
-          console.log('✅ V2 Created nodes:', flowNodes.length);
-          console.log('✅ V2 Created edges:', flowEdges.length);
           setNodes(flowNodes);
           setEdges(flowEdges);
-          console.log('✅ Initial hierarchy loaded:', flowNodes.length, 'nodes,', flowEdges.length, 'edges');
           
           // Pokud jsme nactli z API, vymazat draft
           localStorage.removeItem(LS_NODES_KEY);
@@ -2245,7 +2220,6 @@ const OrganizationHierarchy = () => {
   // 🔥 Auto-reload při změně profilu
   useEffect(() => {
     if (currentProfile && currentProfile.id) {
-      console.log('🔄 Profile changed to:', currentProfile.id, currentProfile.name);
       
       // Reload by triggering the main load - just clear nodes/edges
       // Main useEffect will reload on mount
@@ -2265,7 +2239,6 @@ const OrganizationHierarchy = () => {
       // Počkat na render a pak fitView
       setTimeout(() => {
         reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-        console.log('📐 Auto-fit applied for', nodes.length, 'nodes');
       }, 100);
     }
   }, [nodes.length, reactFlowInstance]);

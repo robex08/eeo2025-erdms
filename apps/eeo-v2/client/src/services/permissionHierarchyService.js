@@ -174,13 +174,11 @@ export const expandPermissionsWithHierarchy = (
     // Rozšíření rozsahu (OWN → ALL)
     if (allowExpand && hierarchyMap.expand) {
       expandedPermissions.add(hierarchyMap.expand);
-      console.log(`🏢 [PermissionHierarchy] Rozšíření: ${basePerm} → ${hierarchyMap.expand}`);
     }
     
     // Povýšení akce (READ → EDIT)
     if (allowUpgrade && hierarchyMap.upgrade) {
       expandedPermissions.add(hierarchyMap.upgrade);
-      console.log(`🏢 [PermissionHierarchy] Povýšení: ${basePerm} → ${hierarchyMap.upgrade}`);
     }
   }
   
@@ -204,13 +202,6 @@ export const createHierarchicalPermissionChecker = (basePermissions = [], hierar
     true, // allowExpand
     true  // allowUpgrade
   );
-  
-  console.log('🔐 [PermissionHierarchy] Vytvořen permission checker:', {
-    basePermissions: basePermissions.length,
-    expandedPermissions: expandedPermissions.length,
-    hierarchyEnabled,
-    profileId: hierarchyConfig.profileId
-  });
   
   /**
    * 🔍 Kontrola, zda uživatel má dané právo
@@ -382,7 +373,7 @@ export const testPermissionHierarchy = () => {
 };
 
 // Export všech funkcí
-export default {
+const permissionHierarchyService = {
   expandPermissionsWithHierarchy,
   createHierarchicalPermissionChecker,
   getOrderViewPermissions,
@@ -393,3 +384,5 @@ export default {
   testPermissionHierarchy,
   PERMISSION_HIERARCHY_MAP
 };
+
+export default permissionHierarchyService;
