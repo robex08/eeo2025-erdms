@@ -1362,6 +1362,288 @@ const MailTestPanel = () => {
               <br/>RECIPIENT = příjemce info (manager), SUBMITTER = autor objednávky (tvůrce).
             </div>
           </div>
+
+          {/* ========== FÁZE 3 ========== */}
+          <div style={{ 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #10b981',
+            background: 'linear-gradient(to right, #d1fae5, #ecfdf5)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#065f46', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              💰 FÁZE 3 - Faktury (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* FAKTURA SCHVÁLENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_faktura_schvalena');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{invoice_number}': 'FA-2025-00456',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{invoice_amount}': '15 840',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ'),
+                      '{due_date}': new Date(Date.now() + 14*24*60*60*1000).toLocaleDateString('cs-CZ'),
+                      '{invoice_detail_url}': 'https://erdms.zachranka.cz/faktura/456',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{invoice_number}', 'FA-2025-00456'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                💰 FAKTURA SCHVÁLENA - Pro příjemce (Zelená)
+              </Button>
+
+              {/* FAKTURA SCHVÁLENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_faktura_schvalena');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{invoice_number}': 'FA-2025-00456',
+                      '{supplier_name}': 'ABC Office, s.r.o.',
+                      '{invoice_amount}': '15 840',
+                      '{approval_date}': new Date().toLocaleString('cs-CZ'),
+                      '{due_date}': new Date(Date.now() + 14*24*60*60*1000).toLocaleDateString('cs-CZ'),
+                      '{invoice_detail_url}': 'https://erdms.zachranka.cz/faktura/456',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{invoice_number}', 'FA-2025-00456'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                💰 FAKTURA SCHVÁLENA - Pro autora (Zelená)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#d1fae5', 
+              border: '1px solid #a7f3d0',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#065f46'
+            }}>
+              <strong>💰 Info:</strong> Šablona pro notifikaci o schválení faktury k objednávce.
+              <br/>RECIPIENT = příjemce info (ekonom), SUBMITTER = autor objednávky.
+            </div>
+          </div>
+
+          {/* ========== FÁZE 4 ========== */}
+          <div style={{ 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: '3px solid #8b5cf6',
+            background: 'linear-gradient(to right, #ede9fe, #f5f3ff)',
+            padding: '20px',
+            borderRadius: '8px'
+          }}>
+            <h3 style={{ 
+              color: '#6b21a8', 
+              marginBottom: '15px', 
+              fontSize: '16px', 
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              🔍 FÁZE 4 - Kontrola kvality (2-stavové)
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* KONTROLA POTVRZENA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_kontrola_potvrzena');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{control_comment}': 'Vše v pořádku, objednávka splňuje všechna kritéria.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ KONTROLA OK - Pro příjemce (Zelená)
+              </Button>
+
+              {/* KONTROLA POTVRZENA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_kontrola_potvrzena');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{control_comment}': 'Vše v pořádku, objednávka splňuje všechna kritéria.',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#10b981', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ✅ KONTROLA OK - Pro autora (Zelená)
+              </Button>
+
+              {/* KONTROLA ZAMÍTNUTA - RECIPIENT */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_kontrola_zamitnuta');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_reason}': 'Chybí následující:\n1. Kompletní specifikace zboží\n2. Katalogová čísla\n3. Podpis příkazce na příloze',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[0];
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#dc2626', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ KONTROLA ZAMÍTNUTA - Pro příjemce (Červená)
+              </Button>
+
+              {/* KONTROLA ZAMÍTNUTA - SUBMITTER */}
+              <Button 
+                onClick={async () => {
+                  const template = templates.find(t => t.type === 'order_status_kontrola_zamitnuta');
+                  if (template) {
+                    const demoData = {
+                      '{order_number}': 'OBJ-2025-00123',
+                      '{controller_name}': 'Ing. Petra Nováková',
+                      '{control_date}': new Date().toLocaleString('cs-CZ'),
+                      '{rejection_reason}': 'Chybí následující:\n1. Kompletní specifikace zboží\n2. Katalogová čísla\n3. Podpis příkazce na příloze',
+                      '{order_detail_url}': 'https://erdms.zachranka.cz/objednavka/123',
+                      '{organization_name}': 'ZZS Středočeského kraje'
+                    };
+                    
+                    let body = template.email_body.split('<!-- RECIPIENT: SUBMITTER -->')[1] || template.email_body;
+                    Object.entries(demoData).forEach(([placeholder, value]) => {
+                      body = body.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
+                    });
+                    
+                    setFormData({
+                      ...formData,
+                      subject: template.email_subject.replace('{order_number}', 'OBJ-2025-00123'),
+                      body: body,
+                      isHtml: true
+                    });
+                    setRawTemplate(template);
+                    setSelectedTemplate(template.id);
+                  }
+                }}
+                style={{ background: '#f97316', fontSize: '14px', padding: '10px 20px' }}
+              >
+                ❌ KONTROLA ZAMÍTNUTA - Pro autora (Oranžová)
+              </Button>
+            </div>
+            
+            <div style={{ 
+              marginTop: '15px', 
+              padding: '12px', 
+              background: '#ede9fe', 
+              border: '1px solid #ddd6fe',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: '#6b21a8'
+            }}>
+              <strong>🔍 Info:</strong> Šablony pro výsledek kontroly kvality objednávky.
+              <br/>RECIPIENT = příjemce info (manager), SUBMITTER = autor objednávky.
+            </div>
+          </div>
         </FormGroup>
 
         {/* NÁHLEDY - 2 VARIANTY PRO PŘÍJEMCE */}
