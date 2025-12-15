@@ -6,9 +6,22 @@ import './MobileMenu.css';
 /**
  * Mobilní menu (slide-in) s možností odhlášení a přepínačem režimu
  */
-function MobileMenu({ isOpen, onClose, user }) {
+function MobileMenu({ isOpen, onClose, user, userDetail, authUser, onNavigate }) {
   const { logout } = useContext(AuthContext);
   const { mode, preference, setThemePreference } = useThemeMode();
+
+  // Sestavit celé jméno s titulem
+  const getFullName = () => {
+    if (!userDetail) return authUser?.displayName || authUser?.username || 'Uživatel';
+    
+    const parts = [];
+    if (userDetail.titul_pred) parts.push(userDetail.titul_pred);
+    if (userDetail.jmeno) parts.push(userDetail.jmeno);
+    if (userDetail.prijmeni) parts.push(userDetail.prijmeni);
+    if (userDetail.titul_za) parts.push(userDetail.titul_za);
+    
+    return parts.length > 0 ? parts.join(' ') : (authUser?.displayName || authUser?.username || 'Uživatel');
+  };
 
   const handleLogout = async () => {
     try {
@@ -53,23 +66,43 @@ function MobileMenu({ isOpen, onClose, user }) {
           {user && (
             <div className="mobile-menu-user">
               <div className="mobile-menu-user-avatar">
-                {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+                {userDetail?.jmeno ? userDetail.jmeno.charAt(0).toUpperCase() : (authUser?.displayName ? authUser.displayName.charAt(0).toUpperCase() : 'U')}
               </div>
               <div className="mobile-menu-user-info">
-                <div className="mobile-menu-user-name">{user.displayName || 'Uživatel'}</div>
-                <div className="mobile-menu-user-email">{user.mail || user.upn || ''}</div>
+                <div className="mobile-menu-user-name">
+                  {getFullName()}
+                </div>
+                <div className="mobile-menu-user-details">
+                  {userDetail?.usek_nazev && (
+                    <span className="user-detail-item">
+                      {typeof userDetail.usek_nazev === 'object' ? userDetail.usek_nazev?.nazev : userDetail.usek_nazev}
+                    </span>
+                  )}
+                  {userDetail?.lokalita_nazev && (
+                    <span className="user-detail-item">
+                      {typeof userDetail.lokalita_nazev === 'object' ? userDetail.lokalita_nazev?.nazev : userDetail.lokalita_nazev}
+                    </span>
+                  )}
+                </div>
+                <div className="mobile-menu-user-email">{userDetail?.email || authUser?.mail || authUser?.upn || authUser?.username || ''}</div>
               </div>
             </div>
           )}
 
           {/* Navigace */}
           <nav className="mobile-menu-nav">
-            <a href="#" className="mobile-menu-item" onClick={onClose}>
+            <button className="mobile-menu-item" onClick={() => { onNavigate('dashboard'); onClose(); }}>
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
               </svg>
-              <span>Domů</span>
-            </a>
+              <span>Dashboard</span>
+            </button>
+            <button className="mobile-menu-item" onClick={() => { onNavigate('activity'); onClose(); }}>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+              </svg>
+              <span>Aktivita</span>
+            </button>
           </nav>
 
           {/* Režim zobrazení */}

@@ -1,5 +1,7 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
 import './MobileHeader.css';
 
 const logoZZS = '/eeo-v2/logo-ZZS.png';
@@ -10,8 +12,10 @@ const logoZZS = '/eeo-v2/logo-ZZS.png';
  * @param {string} title - Vlastní nadpis (přepíše výchozí "EEO")
  * @param {boolean} showBackButton - Zobrazit tlačítko zpět
  * @param {function} onBackClick - Handler pro tlačítko zpět
+ * @param {function} onActivityClick - Handler pro otevření historie aktivit
+ * @param {number} activityCount - Počet aktivit v historii
  */
-function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick }) {
+function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick, onActivityClick, activityCount = 0 }) {
   const { hierarchyStatus } = useContext(AuthContext);
   
   // Získat verzi z ENV proměnné a extrahovat číslo verze
@@ -62,8 +66,22 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
           {!title && <span className="mobile-app-subtitle">Elektronická evidence objednávek</span>}
         </div>
 
-        {/* Notifikace a menu */}
+        {/* Historie aktivit a menu */}
         <div className="mobile-header-actions">
+          {/* Historie aktivit (vlevo od hamburgeru) */}
+          {!showBackButton && onActivityClick && (
+            <button 
+              className="mobile-activity-btn" 
+              onClick={onActivityClick}
+              aria-label="Historie aktivit"
+            >
+              <FontAwesomeIcon icon={faClockRotateLeft} />
+              {activityCount > 0 && (
+                <span className="mobile-activity-badge">{activityCount > 9 ? '9+' : activityCount}</span>
+              )}
+            </button>
+          )}
+
           {/* Zvoneček s notifikacemi */}
           {notificationCount > 0 && (
             <button className="mobile-notification-btn" aria-label="Notifikace">

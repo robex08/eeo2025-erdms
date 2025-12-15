@@ -1,0 +1,158 @@
+/**
+ * 🎉 Mobile Success Animation Styles
+ * Animace úspěchu s efektem odlétnutí do ikony historie
+ */
+
+.mobile-success-animation {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
+  pointer-events: none;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Fáze: hidden */
+.mobile-success-animation.hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Fáze: show - zobrazení s animací scale + fade */
+.mobile-success-animation.show {
+  opacity: 1;
+  visibility: visible;
+  animation: successBounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes successBounceIn {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Fáze: flyaway - odlétnutí do ikony historie (vpravo nahoře v hlavičce) */
+.mobile-success-animation.flyaway {
+  opacity: 0;
+  /* Ikona aktivity je v pravém horním rohu hlavičky - přesně na pozici ikony */
+  top: 15px;
+  right: 70px;
+  left: auto;
+  transform: translate(0, 0) scale(0.2);
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Content wrapper */
+.success-animation-content {
+  background: white;
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  min-width: 200px;
+}
+
+/* Ikona */
+.success-animation-icon {
+  font-size: 4rem;
+  line-height: 1;
+  animation: iconPulse 0.6s ease-out;
+}
+
+@keyframes iconPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* Zpráva */
+.success-animation-message {
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+  color: #212529;
+}
+
+/* Barevné varianty */
+.success-animation-approved .success-animation-icon {
+  color: #28a745;
+}
+
+.success-animation-approved .success-animation-content {
+  border-top: 4px solid #28a745;
+}
+
+.success-animation-rejected .success-animation-icon {
+  color: #dc3545;
+}
+
+.success-animation-rejected .success-animation-content {
+  border-top: 4px solid #dc3545;
+}
+
+.success-animation-waiting .success-animation-icon {
+  color: #ffc107;
+}
+
+.success-animation-waiting .success-animation-content {
+  border-top: 4px solid #ffc107;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .success-animation-content {
+    background: #2d2d2d;
+    box-shadow: 
+      0 10px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .success-animation-message {
+    color: #f8f9fa;
+  }
+
+  .success-animation-approved .success-animation-icon {
+    color: #5cb85c;
+  }
+
+  .success-animation-rejected .success-animation-icon {
+    color: #e74c3c;
+  }
+
+  .success-animation-waiting .success-animation-icon {
+    color: #f39c12;
+  }
+}
+
+/* Responsivní úpravy */
+@media (max-width: 480px) {
+  .success-animation-content {
+    padding: 1.5rem;
+    min-width: 180px;
+  }
+
+  .success-animation-icon {
+    font-size: 3rem;
+  }
+
+  .success-animation-message {
+    font-size: 1rem;
+  }
+}

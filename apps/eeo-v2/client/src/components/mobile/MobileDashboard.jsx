@@ -3,12 +3,16 @@ import { AuthContext } from '../../context/AuthContext';
 import useThemeMode from '../../theme/useThemeMode';
 import MobileHeader from './MobileHeader';
 import MobileMenu from './MobileMenu';
+import MobileActivityLog from './MobileActivityLog';
+import MobileSuccessAnimation from './MobileSuccessAnimation';
 import OrderApprovalCard from './OrderApprovalCard';
 import MobileConfirmDialog from './MobileConfirmDialog';
 import SplashScreen from '../SplashScreen';
 import mobileDataService from '../../services/mobileDataService';
 import { fetchActiveUsersWithStats } from '../../services/api2auth';
 import { listOrdersV2, getOrderV2, updateOrderV2 } from '../../services/apiOrderV2';
+import { getStavyWorkflow25 } from '../../services/api25orders';
+import { getActivities, addActivity, ACTIVITY_TYPES, ENTITY_TYPES } from '../../services/activityLogService';
 import { getStatusIcon } from '../../utils/iconMapping';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -51,6 +55,50 @@ function MobileDashboard() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [waitDialogOpen, setWaitDialogOpen] = useState(false);
   const [currentOrder, setCurrentOrder] = useState(null);
+  const [stavyWorkflowMap, setStavyWorkflowMap] = useState({});
+  const [activityLogOpen, setActivityLogOpen] = useState(false);
+  const [activityCount, setActivityCount] = useState(0);
+  const [successAnimation, setSuccessAnimation] = useState({ show: false, type: 'approved', message: '' });
+
+  // Načíst číselník stavů workflow z DB
+  useEffect(() => {
+    const loadStavy = async () => {
+      if (!token || !username) return;
+      
+      // Guard - zkontrolovat, že funkce existuje
+      if (typeof getStavyWorkflow25 !== 'function') {
+        console.error('[MobileDashboard] getStavyWorkflow25 není dostupná funkce!');
+        return;
+      }
+      
+      try {
+        const stavy = await getStavyWorkflow25({ token, username });
+        setStavyWorkflowMap(stavy || {});
+        console.log('[MobileDashboard] Číselník stavů načten:', Object.keys(stavy || {}).length, 'stavů');
+      } catch (error) {
+        console.error('[MobileDashboard] Chyba načítání číselníku stavů:', error);
+      }
+    };
+    loadStavy();
+  }, [token, username]);
+
+  // Helper funkce pro získání názvu stavu z číselníku
+  const getStavObjednavky = (workflowKod) => {
+    const stavZCiselniku = stavyWorkflowMap[workflowKod];
+    console.log('[getStavObjednavky]', workflowKod, '→', stavZCiselniku ? stavZCiselniku.nazev : 'FALLBACK');
+    if (stavZCiselniku) {
+      return stavZCiselniku.nazev;
+    }
+    // Fallback hodnoty - MĚLY BY SE POUŽÍVAT POUZE PŘI CHYBĚ NAČTENÍ
+    const fallbackMap = {
+      'SCHVALENA': 'Schválená',
+      'ZAMITNUTA': 'Zamítnutá',
+      'CEKA_SE': 'Čeká se',
+      'ODESLANA_KE_SCHVALENI': 'Ke schválení',
+      'NOVA': 'Nová'
+    };
+    return fallbackMap[workflowKod] || workflowKod;
+  };
 
   // Helper funkce pro MySQL datetime formát
   const toMySQLDateTime = () => {
@@ -98,7 +146,30 @@ function MobileDashboard() {
 
   useEffect(() => {
     loadInitialData();
+    loadActivityCount();
   }, [selectedYear]);
+
+  // Načíst počet aktivit
+  const loadActivityCount = () => {
+    const activities = getActivities();
+    setActivityCount(activities.length);
+  };
+
+  // Navigace z menu
+  const handleNavigate = (target) => {
+    if (target === 'dashboard') {
+      // Zavřít approval detail pokud je otevřený a vrátit na dashboard
+      setShowApprovalDetail(false);
+      // Scroll na začátek
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Refresh dat BEZ loading gate (na pozadí)
+      loadDashboardData();
+      loadActivityCount();
+    } else if (target === 'activity') {
+      // Otevřít historii aktivit
+      setActivityLogOpen(true);
+    }
+  };
 
   const loadInitialData = async () => {
     try {
@@ -250,6 +321,7 @@ function MobileDashboard() {
       // Aktualizuj objednávku
       const updateData = {
         stav_workflow_kod: JSON.stringify(workflowStates),
+        stav_objednavky: getStavObjednavky('SCHVALENA'),
         schvalovatel_id: userDetail?.id || null,
         dt_schvaleni: toMySQLDateTime(),
         schvaleni_komentar: '' // Vymazat komentář při schválení
@@ -257,9 +329,32 @@ function MobileDashboard() {
 
       await updateOrderV2(order.id, updateData, token, username);
       
-      // Obnovit seznam
+      // Zaznamenat aktivitu
+      addActivity({
+        entityType: ENTITY_TYPES.ORDER,
+        entityId: order.ev_cislo || order.cislo_objednavky || order.id,
+        activityType: ACTIVITY_TYPES.ORDER_APPROVED,
+        title: order.nazev_obj || `Objednávka ${order.ev_cislo || order.cislo_objednavky || order.id}`,
+        amount: order.castka_obj || null,
+        userName: username,
+        description: '✅ Objednávka byla schválena',
+        metadata: { 
+          orderNumber: order.ev_cislo || order.cislo_objednavky,
+          orderId: order.id 
+        }
+      });
+      
+      // Zobrazit success animaci
+      setSuccessAnimation({
+        show: true,
+        type: 'approved',
+        message: '✅ Objednávka schválena!'
+      });
+      
+      // Obnovit seznam a počet aktivit
       await loadPendingApprovals();
       await loadDashboardData();
+      loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se schválit objednávku'}`);
     }
@@ -310,6 +405,7 @@ function MobileDashboard() {
       // Aktualizuj objednávku
       const updateData = {
         stav_workflow_kod: JSON.stringify(workflowStates),
+        stav_objednavky: getStavObjednavky('ZAMITNUTA'),
         schvalovatel_id: userDetail?.id || null,
         dt_schvaleni: toMySQLDateTime(),
         schvaleni_komentar: reason
@@ -317,11 +413,34 @@ function MobileDashboard() {
 
       await updateOrderV2(currentOrder.id, updateData, token, username);
       
+      // Zaznamenat aktivitu
+      addActivity({
+        entityType: ENTITY_TYPES.ORDER,
+        entityId: currentOrder.ev_cislo || currentOrder.cislo_objednavky || currentOrder.id,
+        activityType: ACTIVITY_TYPES.ORDER_REJECTED,
+        title: currentOrder.nazev_obj || `Objednávka ${currentOrder.ev_cislo || currentOrder.cislo_objednavky || currentOrder.id}`,
+        amount: currentOrder.castka_obj || null,
+        userName: username,
+        description: `❌ Objednávka byla zamítnuta${reason ? `: ${reason}` : ''}`,
+        metadata: { 
+          orderNumber: currentOrder.ev_cislo || currentOrder.cislo_objednavky,
+          orderId: currentOrder.id 
+        }
+      });
+      
+      // Zobrazit success animaci
+      setSuccessAnimation({
+        show: true,
+        type: 'rejected',
+        message: '❌ Objednávka zamítnuta'
+      });
+      
       // Zavřít dialog a obnovit seznam
       setRejectDialogOpen(false);
       setCurrentOrder(null);
       await loadPendingApprovals();
       await loadDashboardData();
+      loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
       setRejectDialogOpen(false);
@@ -373,18 +492,39 @@ function MobileDashboard() {
       // Aktualizuj objednávku
       const updateData = {
         stav_workflow_kod: JSON.stringify(workflowStates),
+        stav_objednavky: getStavObjednavky('CEKA_SE'),
         schvalovatel_id: userDetail?.id || null,
         dt_schvaleni: toMySQLDateTime(),
         schvaleni_komentar: reason
       };
-
-      await updateOrderV2(currentOrder.id, updateData, token, username);
+      // Zaznamenat aktivitu
+      addActivity({
+        entityType: ENTITY_TYPES.ORDER,
+        entityId: currentOrder.ev_cislo || currentOrder.cislo_objednavky || currentOrder.id,
+        activityType: ACTIVITY_TYPES.ORDER_WAITING,
+        title: currentOrder.nazev_obj || `Objednávka ${currentOrder.ev_cislo || currentOrder.cislo_objednavky || currentOrder.id}`,
+        amount: currentOrder.castka_obj || null,
+        userName: username,
+        description: `⏳ Objednávka označena jako "Čeká se"${reason ? `: ${reason}` : ''}`,
+        metadata: { 
+          orderNumber: currentOrder.ev_cislo || currentOrder.cislo_objednavky,
+          orderId: currentOrder.id 
+        }
+      });
+      
+      // Zobrazit success animaci
+      setSuccessAnimation({
+        show: true,
+        type: 'waiting',
+        message: '⏳ Objednávka pozastavena'
+      });
       
       // Zavřít dialog a obnovit seznam
       setWaitDialogOpen(false);
       setCurrentOrder(null);
       await loadPendingApprovals();
       await loadDashboardData();
+      loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
       setWaitDialogOpen(false);
@@ -645,6 +785,8 @@ function MobileDashboard() {
       <MobileHeader 
         onMenuClick={() => setMenuOpen(true)}
         notificationCount={notificationCount}
+        onActivityClick={() => setActivityLogOpen(true)}
+        activityCount={activityCount}
       />
       
       {/* Subheader pro approval screen */}
@@ -710,6 +852,9 @@ function MobileDashboard() {
         isOpen={menuOpen}
         onClose={() => setMenuOpen(false)}
         user={user}
+        userDetail={userDetail}
+        authUser={authUser}
+        onNavigate={handleNavigate}
       />
 
       {/* Obsah pod fixní hlavičkou */}
@@ -1129,6 +1274,23 @@ function MobileDashboard() {
         requireReason={true}
         reasonPlaceholder="Zadejte důvod pozastavení (povinné)..."
         variant="warning"
+      />
+
+      {/* Activity Log Panel */}
+      <MobileActivityLog 
+        isOpen={activityLogOpen}
+        onClose={() => {
+          setActivityLogOpen(false);
+          loadActivityCount(); // Aktualizovat počet při zavření
+        }}
+      />
+
+      {/* Success Animation */}
+      <MobileSuccessAnimation
+        show={successAnimation.show}
+        type={successAnimation.type}
+        message={successAnimation.message}
+        onComplete={() => setSuccessAnimation({ show: false, type: 'approved', message: '' })}
       />
     </div>
   );
