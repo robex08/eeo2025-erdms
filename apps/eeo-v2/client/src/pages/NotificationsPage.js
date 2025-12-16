@@ -1299,8 +1299,8 @@ export const NotificationsPage = () => {
       // ✅ VŽDY EDIT MÓD - všechny notifikace otevírají objednávku k editaci!
       const mode = 'edit';
 
-      // 🎯 OPRAVA: ID objednávky může být v data.order_id NEBO v notification.related_object_id
-      const orderId = data.order_id || notification.related_object_id;
+      // 🎯 OPRAVA: ID objednávky může být v data.order_id NEBO v notification.objekt_id (po Czechification)
+      const orderId = data.order_id || notification.objekt_id;
 
       // Notifikace objednávek - navigace na detail
       if (notification.typ && notification.typ.includes('order') && orderId) {
@@ -1424,8 +1424,8 @@ export const NotificationsPage = () => {
           }
         }
 
-        // ✅ VŽDY EDIT MÓD
-        navigate(`/order-form-25?edit=${data.order_id}`);
+        // ✅ VŽDY EDIT MÓD - použij orderId proměnnou (ne data.order_id)
+        navigate(`/order-form-25?edit=${orderId}`);
       }
       // TODO alarmy - navigace na objednávku (alarm_todo také obsahuje 'order' a spadne do větve výše)
       else if (notification.typ && notification.typ.includes('alarm_todo') && data.order_id) {
