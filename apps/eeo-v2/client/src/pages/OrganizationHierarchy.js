@@ -7474,6 +7474,90 @@ const OrganizationHierarchy = () => {
                         </div>
                       </FormGroup>
                       
+                      {/* 🆕 Checkbox pro filtrování pouze AUTOR objednávky */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          padding: '12px',
+                          background: '#f0fdf4',
+                          border: '2px solid #10b981',
+                          borderRadius: '8px'
+                        }}>
+                          <input 
+                            type="checkbox"
+                            id="onlyOrderAuthor"
+                            checked={selectedEdge.data?.onlyOrderAuthor || false}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, onlyOrderAuthor: e.target.checked }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              marginTop: '2px'
+                            }}
+                          />
+                          <label htmlFor="onlyOrderAuthor" style={{ cursor: 'pointer', flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#047857', marginBottom: '4px' }}>
+                              🖊️ Poslat pouze AUTOROVI objednávky
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#065f46', lineHeight: '1.5' }}>
+                              <strong>✅ Zapnuto:</strong> Notifikace dostane jen uživatel, který objednávku vytvořil (sloupec <code>uzivatel_id</code> v tabulce objednávek).<br/>
+                              <strong>❌ Vypnuto:</strong> Kontrola autora se neprovádí.<br/>
+                              <strong>💡 Použití:</strong> Pro informování autora o změně stavu jeho objednávky (např. "Vaše objednávka byla schválena").
+                            </div>
+                          </label>
+                        </div>
+                      </FormGroup>
+                      
+                      {/* 🆕 Checkbox pro filtrování pouze GARANT objednávky */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          padding: '12px',
+                          background: '#fef2f2',
+                          border: '2px solid #ef4444',
+                          borderRadius: '8px'
+                        }}>
+                          <input 
+                            type="checkbox"
+                            id="onlyOrderGuarantor"
+                            checked={selectedEdge.data?.onlyOrderGuarantor || false}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, onlyOrderGuarantor: e.target.checked }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              marginTop: '2px'
+                            }}
+                          />
+                          <label htmlFor="onlyOrderGuarantor" style={{ cursor: 'pointer', flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#b91c1c', marginBottom: '4px' }}>
+                              🛡️ Poslat pouze GARANTOVI objednávky
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#7f1d1d', lineHeight: '1.5' }}>
+                              <strong>✅ Zapnuto:</strong> Notifikace dostane jen uživatel, který je garanten objednávky (sloupec <code>garant_uzivatel_id</code> v tabulce objednávek).<br/>
+                              <strong>❌ Vypnuto:</strong> Kontrola garanta se neprovádí.<br/>
+                              <strong>💡 Použití:</strong> Pro informování garanta o důležitých událostech (např. schválení, odmítnutí, překročení limitu).
+                            </div>
+                          </label>
+                        </div>
+                      </FormGroup>
+                      
                       <CheckboxGroup>
                         <CheckboxLabel>
                           <input 

@@ -1441,6 +1441,25 @@ function handle_notifications_event_types_list($input, $config, $queries) {
 // ==========================================
 
 /**
+ * Mapování recipient role na DB ENUM priorita
+ * AUTHOR_INFO a GUARANTOR_INFO se mapují na INFO (modrá, normální priorita)
+ */
+function mapRecipientRoleToPriority($recipientRole) {
+    switch ($recipientRole) {
+        case 'EXCEPTIONAL':
+            return 'EXCEPTIONAL';  // Urgentní (červená)
+        case 'APPROVAL':
+            return 'APPROVAL';     // Ke schválení (oranžová)
+        case 'INFO':
+        case 'AUTHOR_INFO':        // ← Pro autora objednávky (modrá)
+        case 'GUARANTOR_INFO':     // ← Pro garanta objednávky (modrá)
+            return 'INFO';         // Informativní (modrá)
+        default:
+            return 'INFO';         // Fallback
+    }
+}
+
+/**
  * Načte placeholder data z databáze podle object typu
  */
 function loadOrderPlaceholders($db, $objectId) {
@@ -1591,7 +1610,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                         ':pro_uzivatele_id' => $recipient['uzivatel_id'],
                         ':prijemci_json' => null,
                         ':pro_vsechny' => 0,
-                        ':priorita' => $recipient['recipientRole'], // EXCEPTIONAL, APPROVAL, INFO
+                        ':priorita' => mapRecipientRoleToPriority($recipient['recipientRole']), // ✅ MAP: AUTHOR_INFO/GUARANTOR_INFO → INFO
                         ':kategorie' => $template['kategorie'],
                         ':odeslat_email' => $recipient['sendEmail'] ? 1 : 0,
                         ':objekt_typ' => getObjectTypeFromEvent($eventType),
@@ -1704,7 +1723,9 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 // Kontrola checkbox filtrů
                 $onlyParticipants = isset($edge['data']['onlyOrderParticipants']) ? $edge['data']['onlyOrderParticipants'] : false;
                 $onlyLocation = isset($edge['data']['onlyOrderLocation']) ? $edge['data']['onlyOrderLocation'] : false;
-                error_log("         Filtry: onlyParticipants=" . ($onlyParticipants ? 'ANO' : 'NE') . ", onlyLocation=" . ($onlyLocation ? 'ANO' : 'NE'));
+                $onlyAuthor = isset($edge['data']['onlyOrderAuthor']) ? $edge['data']['onlyOrderAuthor'] : false;
+                $onlyGuarantor = isset($edge['data']['onlyOrderGuarantor']) ? $edge['data']['onlyOrderGuarantor'] : false;
+                error_log("         Filtry: onlyParticipants=" . ($onlyParticipants ? 'ANO' : 'NE') . ", onlyLocation=" . ($onlyLocation ? 'ANO' : 'NE') . ", onlyAuthor=" . ($onlyAuthor ? 'ANO' : 'NE') . ", onlyGuarantor=" . ($onlyGuarantor ? 'ANO' : 'NE'));
                 
                 // Kontrola, zda edge má tento eventType v types[]
                 $edgeEventTypes = isset($notifications['types']) ? $notifications['types'] : array();
@@ -1729,6 +1750,130 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 
                 // 5. Najít konkrétní uzivatel_id podle typu target node
                 $targetUserIds = resolveTargetUsers($db, $targetNode, $objectId, $triggerUserId);
+                
+                // 5a. ✅ FILTR: Pouze ÚČASTNÍCI objednávky + automatické rozlišení rolí
+                if ($onlyParticipants && $objectType === 'orders') {
+                    error_log("         📋 Filtr 'onlyOrderParticipants' aktivní - hledám účastníky objednávky $objectId...");
+                    
+                    // Načti objednávku
+                    $stmt = $db->prepare("
+                        SELECT uzivatel_id, garant_uzivatel_id, prikazce_user_id, 
+                               schvalil_1_user_id, schvalil_2_user_id, schvalil_3_user_id
+                        FROM " . TABLE_OBJEDNAVKY . " 
+                        WHERE id = :order_id
+                    ");
+                    $stmt->execute([':order_id' => $objectId]);
+                    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order) {
+                        error_log("         ⏩ SKIP - Objednávka $objectId nenalezena v DB");
+                        continue;
+                    }
+                    
+                    // Rozděl účastníky podle jejich role v objednávce
+                    $approvers = array(); // Schvalovatelé + příkazce (APPROVAL role)
+                    $infoRecipients = array(); // Autor + garant (INFO role)
+                    
+                    if ($order['uzivatel_id']) $infoRecipients[] = $order['uzivatel_id']; // Autor
+                    if ($order['garant_uzivatel_id']) $infoRecipients[] = $order['garant_uzivatel_id']; // Garant
+                    if ($order['prikazce_user_id']) $approvers[] = $order['prikazce_user_id']; // Příkazce
+                    if ($order['schvalil_1_user_id']) $approvers[] = $order['schvalil_1_user_id']; // Schvalovatel 1
+                    if ($order['schvalil_2_user_id']) $approvers[] = $order['schvalil_2_user_id']; // Schvalovatel 2
+                    if ($order['schvalil_3_user_id']) $approvers[] = $order['schvalil_3_user_id']; // Schvalovatel 3
+                    
+                    $approvers = array_unique($approvers);
+                    $infoRecipients = array_unique($infoRecipients);
+                    
+                    error_log("         ✅ Schvalovatelé/příkazce (APPROVAL): " . implode(', ', $approvers));
+                    error_log("         ✅ Autor/garant (INFO): " . implode(', ', $infoRecipients));
+                    
+                    // 🎯 INTELIGENTNÍ FILTROVÁNÍ podle recipientRole v edge
+                    $edgeRecipientRole = $recipientRole; // Z edge config
+                    
+                    if ($edgeRecipientRole === 'APPROVAL') {
+                        // Edge je pro APPROVAL → filtruj jen schvalovate/příkazce
+                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($approvers) {
+                            return in_array($userId, $approvers);
+                        });
+                        error_log("         🎯 Edge role=APPROVAL → filtr na schvalovatelé: " . implode(', ', $targetUserIds));
+                    } 
+                    elseif ($edgeRecipientRole === 'INFO' || $edgeRecipientRole === 'AUTHOR_INFO' || $edgeRecipientRole === 'GUARANTOR_INFO') {
+                        // Edge je pro INFO → filtruj jen autor+garant
+                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($infoRecipients) {
+                            return in_array($userId, $infoRecipients);
+                        });
+                        error_log("         🎯 Edge role=INFO → filtr na autor/garant: " . implode(', ', $targetUserIds));
+                    }
+                    else {
+                        // EXCEPTIONAL nebo jiná role → použij všechny účastníky
+                        $allParticipants = array_merge($approvers, $infoRecipients);
+                        $allParticipants = array_unique($allParticipants);
+                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($allParticipants) {
+                            return in_array($userId, $allParticipants);
+                        });
+                        error_log("         🎯 Edge role=$edgeRecipientRole → filtr na všichni účastníci: " . implode(', ', $targetUserIds));
+                    }
+                    
+                    if (empty($targetUserIds)) {
+                        error_log("         ⏩ SKIP - Žádný z target users není správný účastník pro tuto recipient role");
+                        continue;
+                    }
+                    error_log("         ✅ MATCH - Finální target users: " . implode(', ', $targetUserIds));
+                }
+                
+                // 5b. ✅ NOVÝ FILTR: Pouze AUTOR objednávky
+                if ($onlyAuthor && $objectType === 'orders') {
+                    error_log("         🖊️ Filtr 'onlyOrderAuthor' aktivní - hledám autora objednávky $objectId...");
+                    $stmt = $db->prepare("SELECT uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :order_id");
+                    $stmt->execute([':order_id' => $objectId]);
+                    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order || !$order['uzivatel_id']) {
+                        error_log("         ⏩ SKIP - Objednávka $objectId nemá autora v DB");
+                        continue;
+                    }
+                    
+                    $authorId = $order['uzivatel_id'];
+                    error_log("         ✅ Autor objednávky: user_id=$authorId");
+                    
+                    // Filtruj targetUserIds - pouze autor
+                    $targetUserIds = array_filter($targetUserIds, function($userId) use ($authorId) {
+                        return $userId == $authorId;
+                    });
+                    
+                    if (empty($targetUserIds)) {
+                        error_log("         ⏩ SKIP - Žádný z target users není autor objednávky");
+                        continue;
+                    }
+                    error_log("         ✅ MATCH - Target user(s) jsou autor: " . implode(', ', $targetUserIds));
+                }
+                
+                // 5b. ✅ NOVÝ FILTR: Pouze GARANT objednávky
+                if ($onlyGuarantor && $objectType === 'orders') {
+                    error_log("         🛡️ Filtr 'onlyOrderGuarantor' aktivní - hledám garanta objednávky $objectId...");
+                    $stmt = $db->prepare("SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :order_id");
+                    $stmt->execute([':order_id' => $objectId]);
+                    $order = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order || !$order['garant_uzivatel_id']) {
+                        error_log("         ⏩ SKIP - Objednávka $objectId nemá garanta v DB");
+                        continue;
+                    }
+                    
+                    $guarantorId = $order['garant_uzivatel_id'];
+                    error_log("         ✅ Garant objednávky: user_id=$guarantorId");
+                    
+                    // Filtruj targetUserIds - pouze garant
+                    $targetUserIds = array_filter($targetUserIds, function($userId) use ($guarantorId) {
+                        return $userId == $guarantorId;
+                    });
+                    
+                    if (empty($targetUserIds)) {
+                        error_log("         ⏩ SKIP - Žádný z target users není garant objednávky");
+                        continue;
+                    }
+                    error_log("         ✅ MATCH - Target user(s) jsou garant: " . implode(', ', $targetUserIds));
+                }
                 
                 // 6. Určit variantu šablony podle recipientRole
                 $recipientRole = isset($notifications['recipientRole']) ? $notifications['recipientRole'] : 'APPROVAL';
