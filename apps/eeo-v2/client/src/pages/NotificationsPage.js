@@ -957,13 +957,13 @@ export const NotificationsPage = () => {
 
       // Obohať notifikace o config (ikony, barvy)
       const enrichedNotifications = notificationsData.map(notification => {
-        const config = NOTIFICATION_CONFIG[notification.type] || {};
+        const config = NOTIFICATION_CONFIG[notification.typ] || {};
         return {
           ...notification,
           icon: config.icon || '🔔',
           color: config.color || '#3b82f6',
           category: config.category || 'system',
-          priority: notification.priority || config.priority || 'normal'
+          priority: notification.priorita || config.priority || 'normal'
         };
       });
 
@@ -1035,8 +1035,8 @@ export const NotificationsPage = () => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const matchesSearch =
-        notification.title?.toLowerCase().includes(query) ||
-        notification.message?.toLowerCase().includes(query);
+        notification.nadpis?.toLowerCase().includes(query) ||
+        notification.zprava?.toLowerCase().includes(query);
       if (!matchesSearch) return false;
     }
 
@@ -1059,7 +1059,7 @@ export const NotificationsPage = () => {
       };
 
       const notificationType = typeMapping[activeStatFilter];
-      if (notificationType && notification.type !== notificationType) {
+      if (notificationType && notification.typ !== notificationType) {
         return false;
       }
     }
@@ -1067,7 +1067,7 @@ export const NotificationsPage = () => {
     // Čtení/Nepřečteno - pokud je alespoň jeden zaškrtnutý, filtruj podle toho
     const hasReadFilter = showUnread || showRead;
     if (hasReadFilter) {
-      const isUnread = !notification.is_read || notification.is_read === 0;
+      const isUnread = !notification.precteno || notification.precteno === 0;
       const matchesReadFilter =
         (showUnread && isUnread) ||
         (showRead && !isUnread);
@@ -1077,7 +1077,7 @@ export const NotificationsPage = () => {
     // Priorita - pokud je alespoň jedna zaškrtnutá, filtruj podle toho (OR logika)
     const hasPriorityFilter = showUrgent || showHigh || showNormal;
     if (hasPriorityFilter) {
-      const priority = notification.priority || 'normal';
+      const priority = notification.priorita || 'normal';
       const matchesPriorityFilter =
         (showUrgent && priority === 'urgent') ||
         (showHigh && priority === 'high') ||
@@ -1115,8 +1115,8 @@ export const NotificationsPage = () => {
       }
 
       // 🎯 Pokud je to notifikace objednávky NEBO TODO alarm s order_id, přidej do vlákna
-      const isOrderNotification = notification.type?.includes('order');
-      const isTodoAlarm = notification.type?.includes('todo_alarm');
+      const isOrderNotification = notification.typ?.includes('order');
+      const isTodoAlarm = notification.typ?.includes('todo_alarm');
 
       if ((isOrderNotification || isTodoAlarm) && orderId) {
         if (!threads.has(orderId)) {
@@ -1287,7 +1287,7 @@ export const NotificationsPage = () => {
 
   const handleNotificationClick = async (notification) => {
     // Označit jako přečtenou pokud není
-    const isUnread = !notification.is_read || notification.is_read === 0;
+    const isUnread = !notification.precteno || notification.precteno === 0;
     if (isUnread) {
       await handleMarkAsRead(notification.id);
     }
@@ -1303,7 +1303,7 @@ export const NotificationsPage = () => {
       const orderId = data.order_id || notification.related_object_id;
 
       // Notifikace objednávek - navigace na detail
-      if (notification.type && notification.type.includes('order') && orderId) {
+      if (notification.typ && notification.typ.includes('order') && orderId) {
         const targetOrderId = parseInt(orderId);
 
         // 🔒 KONTROLA ZAMČENÍ - pokud jdeme do edit módu, zkontroluj zda není zamčená jiným uživatelem
@@ -1428,7 +1428,7 @@ export const NotificationsPage = () => {
         navigate(`/order-form-25?edit=${data.order_id}`);
       }
       // TODO alarmy - navigace na objednávku (alarm_todo také obsahuje 'order' a spadne do větve výše)
-      else if (notification.type && notification.type.includes('alarm_todo') && data.order_id) {
+      else if (notification.typ && notification.typ.includes('alarm_todo') && data.order_id) {
         // ⚠️ Fallback pro alarm_todo bez 'order' v typu - STEJNÝ KÓD JAKO VÝŠE
         const targetOrderId = parseInt(data.order_id);
         const user_id = userDetail?.user_id;
@@ -1543,7 +1543,7 @@ export const NotificationsPage = () => {
 
       // Aktualizuj badge pokud byla notifikace nepřečtená
       const notification = notifications.find(n => n.id === notificationId);
-      if (notification && (!notification.is_read || notification.is_read === 0)) {
+      if (notification && (!notification.precteno || notification.precteno === 0)) {
         if (bgTasks?.handleUnreadCountChange) {
           const currentCount = bgTasks.unreadNotificationsCount || 0;
           if (currentCount > 0) {
@@ -1612,7 +1612,7 @@ export const NotificationsPage = () => {
 
           // Aktualizuj badge pokud byla nepřečtená
           const notification = notifications.find(n => n.id === notificationId);
-          if (notification && (!notification.is_read || notification.is_read === 0)) {
+          if (notification && (!notification.precteno || notification.precteno === 0)) {
             if (bgTasks?.handleUnreadCountChange) {
               const currentCount = bgTasks.unreadNotificationsCount || 0;
               if (currentCount > 0) {
@@ -2116,7 +2116,7 @@ export const NotificationsPage = () => {
 
                 const isUnread = !mainNotification.is_read || mainNotification.is_read === 0 || mainNotification.is_read === false;
                 const isDismissed = mainNotification.is_dismissed === 1 || mainNotification.is_dismissed === true;
-                const priority = mainNotification.priority || 'normal';
+                const priority = mainNotification.priorita || 'normal';
 
                 // Parse data hlavní notifikace
                 let notificationData = {};
@@ -2147,18 +2147,18 @@ export const NotificationsPage = () => {
                       }}
                     >
                       <NotificationIcon $priority={priority}>
-                        {getNotificationEmoji(mainNotification.type, priority)}
+                        {getNotificationEmoji(mainNotification.typ, priority)}
                       </NotificationIcon>
                       <NotificationContent>
                         <NotificationHeader>
                           <NotificationTitle $isUnread={isUnread}>
                             {(() => {
-                              if (mainNotification.type?.includes('order') && mainNotification.data?.order_id && mainNotification.title) {
-                                const evCisloMatch = mainNotification.title.match(/(O-[^\s:]+)/);
+                              if (mainNotification.typ?.includes('order') && mainNotification.data?.order_id && mainNotification.nadpis) {
+                                const evCisloMatch = mainNotification.nadpis.match(/(O-[^\s:]+)/);
                                 if (evCisloMatch) {
                                   const evCislo = evCisloMatch[1];
-                                  const textBefore = mainNotification.title.substring(0, evCisloMatch.index);
-                                  const textAfter = mainNotification.title.substring(evCisloMatch.index + evCislo.length);
+                                  const textBefore = mainNotification.nadpis.substring(0, evCisloMatch.index);
+                                  const textAfter = mainNotification.nadpis.substring(evCisloMatch.index + evCislo.length);
 
                                   return (
                                     <>
@@ -2198,7 +2198,7 @@ export const NotificationsPage = () => {
                               }
                               return (
                                 <>
-                                  {mainNotification.title}
+                                  {mainNotification.nadpis}
                                   {!detailMode && (
                                     <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                       | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
@@ -2243,7 +2243,7 @@ export const NotificationsPage = () => {
                             )}
                           </NotificationTitle>
                         </NotificationHeader>
-                        {detailMode && mainNotification.type?.includes('order') && mainNotification.data ? (
+                        {detailMode && mainNotification.typ?.includes('order') && mainNotification.data ? (
                           <NotificationMessage>
                             <strong>Předmět:</strong> {mainNotification.data.order_subject || 'N/A'} | <strong>Cena:</strong> {mainNotification.data.max_price ? `${mainNotification.data.max_price} Kč` : 'N/A'} | <strong>Objednatel:</strong> {mainNotification.data.creator_name || 'N/A'} | <strong>Garant:</strong> {mainNotification.data.garant_name || 'N/A'} | <strong>Příkazce:</strong> {mainNotification.data.prikazce_name || 'N/A'}{mainNotification.data.action_performed_by ? ` | ${mainNotification.data.action_performed_by_label || 'Akce'}: ${mainNotification.data.action_performed_by}` : ''}
                           </NotificationMessage>
@@ -2287,7 +2287,7 @@ export const NotificationsPage = () => {
                             </TypeBadge>
                           )}
                           {detailMode && mainNotification.data?.action_performed_by && (() => {
-                            const colors = getActionColor(mainNotification.type, mainNotification.data.action_performed_by_label);
+                            const colors = getActionColor(mainNotification.typ, mainNotification.data.action_performed_by_label);
                             return (
                               <TypeBadge style={{ background: colors.background, color: colors.color, fontWeight: 600 }}>
                                 👤 {mainNotification.data.action_performed_by_label || 'Akce'}: {mainNotification.data.action_performed_by}
@@ -2562,9 +2562,9 @@ export const NotificationsPage = () => {
 
               // ✅ NORMÁLNÍ REŽIM - Jednotlivá notifikace (non-order nebo režim bez vláken)
               const notification = item.notification || item;
-              const isUnread = !notification.is_read || notification.is_read === 0 || notification.is_read === false;
-              const isDismissed = notification.is_dismissed === 1 || notification.is_dismissed === true;
-              const priority = notification.priority || 'normal';
+              const isUnread = !notification.precteno || notification.precteno === 0 || notification.precteno === false;
+              const isDismissed = notification.skryto === 1 || notification.skryto === true;
+              const priority = notification.priorita || 'normal';
 
               // ✅ Parse data_json if exists
               let notificationData = {};
@@ -2596,7 +2596,7 @@ export const NotificationsPage = () => {
                 >
                   {detailMode && (
                     <NotificationIcon $priority={priority}>
-                      {getNotificationEmoji(notification.type, priority)}
+                      {getNotificationEmoji(notification.typ, priority)}
                     </NotificationIcon>
                   )}
                   <NotificationContent style={!detailMode ? { marginLeft: '0' } : undefined}>
@@ -2604,12 +2604,12 @@ export const NotificationsPage = () => {
                       <NotificationTitle $isUnread={isUnread}>
                         {(() => {
                           // Parsing ev. čísla začínajícího na "O-" a vytvoření odkazu
-                          if (notification.type?.includes('order') && notification.data?.order_id && notification.title) {
-                            const evCisloMatch = notification.title.match(/(O-[^\s:]+)/);
+                          if (notification.typ?.includes('order') && notification.data?.order_id && notification.nadpis) {
+                            const evCisloMatch = notification.nadpis.match(/(O-[^\s:]+)/);
                             if (evCisloMatch) {
                               const evCislo = evCisloMatch[1];
-                              const textBefore = notification.title.substring(0, evCisloMatch.index);
-                              const textAfter = notification.title.substring(evCisloMatch.index + evCislo.length);
+                              const textBefore = notification.nadpis.substring(0, evCisloMatch.index);
+                              const textAfter = notification.nadpis.substring(evCisloMatch.index + evCislo.length);
 
                               return (
                                 <>
@@ -2649,7 +2649,7 @@ export const NotificationsPage = () => {
                           }
                           return (
                             <>
-                              {notification.title}
+                              {notification.nadpis}
                               {!detailMode && (
                                 <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                   | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
@@ -2663,13 +2663,13 @@ export const NotificationsPage = () => {
                         })()}
                       </NotificationTitle>
                     </NotificationHeader>
-                    {detailMode && notification.type?.includes('order') && notification.data ? (
+                    {detailMode && notification.typ?.includes('order') && notification.data ? (
                       <NotificationMessage>
                         <strong>Předmět:</strong> {notification.data.order_subject || 'N/A'} | <strong>Cena:</strong> {notification.data.max_price ? `${notification.data.max_price} Kč` : 'N/A'} | <strong>Objednatel:</strong> {notification.data.creator_name || 'N/A'} | <strong>Garant:</strong> {notification.data.garant_name || 'N/A'} | <strong>Příkazce:</strong> {notification.data.prikazce_name || 'N/A'}{notification.data.action_performed_by ? ` | ${notification.data.action_performed_by_label || 'Akce'}: ${notification.data.action_performed_by}` : ''}
                       </NotificationMessage>
-                    ) : detailMode && notification.message ? (
+                    ) : detailMode && notification.zprava ? (
                       <NotificationMessage>
-                        {notification.message}
+                        {notification.zprava}
                       </NotificationMessage>
                     ) : null}
 
@@ -2697,9 +2697,9 @@ export const NotificationsPage = () => {
                           {getTimeAgo(notification.dt_created || notification.created_at)}
                         </MetaItem>
                       )}
-                      {detailMode && notification.category && (
-                        <TypeBadge $type={notification.category}>
-                          {getCategoryLabel(notification.category)}
+                      {detailMode && notification.kategorie && (
+                        <TypeBadge $type={notification.kategorie}>
+                          {getCategoryLabel(notification.kategorie)}
                         </TypeBadge>
                       )}
                       {/* Datum akce jako badge */}
@@ -2710,7 +2710,7 @@ export const NotificationsPage = () => {
                       )}
                       {/* Osoba jako badge */}
                       {detailMode && notification.data?.action_performed_by && (() => {
-                        const colors = getActionColor(notification.type, notification.data.action_performed_by_label);
+                        const colors = getActionColor(notification.typ, notification.data.action_performed_by_label);
                         return (
                           <TypeBadge style={{ background: colors.background, color: colors.color, fontWeight: 600 }}>
                             👤 {notification.data.action_performed_by_label || 'Akce'}: {notification.data.action_performed_by}

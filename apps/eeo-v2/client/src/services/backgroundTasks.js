@@ -84,11 +84,11 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
         if (userId && notificationsData.data) {
           notificationsData.data.forEach(notification => {
             // Filtruj HIGH priority notifikace (TODO alarmy)
-            const isHighAlarm = notification.priority === 'HIGH' ||
-                               notification.type === 'alarm_todo_high' ||
-                               notification.type === 'alarm_todo_expired';
+            const isHighAlarm = notification.priorita === 'HIGH' ||
+                               notification.typ === 'alarm_todo_high' ||
+                               notification.typ === 'alarm_todo_expired';
 
-            if (isHighAlarm && (!notification.is_read || notification.is_read === 0)) {
+            if (isHighAlarm && (!notification.precteno || notification.precteno === 0)) {
               // Uložit do localStorage pro FloatingAlarmPopup
               try {
                 saveTodoAlarmToLocalStorage(notification, userId);
