@@ -280,11 +280,15 @@ const TemplateDropdown = ({
 
   if (!show) return null;
 
-  const filteredServerTemplates = serverTemplates
+  // ✅ Ošetření, pokud serverTemplates nebo savedTemplates není array
+  const safeServerTemplates = Array.isArray(serverTemplates) ? serverTemplates : [];
+  const safeSavedTemplates = Array.isArray(savedTemplates) ? savedTemplates : [];
+
+  const filteredServerTemplates = safeServerTemplates
     .filter(entry => entry && (entry.user_id === 0 || String(entry.user_id) === '0'))
     .filter(entry => matchesQuery(entry, searchQuery));
 
-  const filteredSavedTemplates = savedTemplates
+  const filteredSavedTemplates = safeSavedTemplates
     .filter(entry => matchesQuery(entry, searchQuery));
 
   return (
@@ -416,7 +420,7 @@ const TemplateDropdown = ({
         </HeaderTitle>
       </SectionHeader>
 
-      {savedTemplates.length === 0 && (
+      {safeSavedTemplates.length === 0 && (
         <EmptyMessage>Žádné šablony</EmptyMessage>
       )}
 
