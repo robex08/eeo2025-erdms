@@ -2161,6 +2161,17 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
 function handle_notifications_trigger($input, $config, $queries) {
     $db = $config['db'];
     
+    // ✅ Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    
+    $verification = verify_token($db, $token, $username);
+    if (!$verification['ok']) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Unauthorized: ' . $verification['message']));
+        return;
+    }
+    
     try {
         // Validace vstupních parametrů
         $eventType = isset($input['event_type']) ? $input['event_type'] : null;

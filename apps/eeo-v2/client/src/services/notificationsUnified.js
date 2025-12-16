@@ -799,10 +799,13 @@ class NotificationService {
 
       console.log('════════════════════════════════════════════════════════════════');
       console.log('🔔 [NotificationService] TRIGGER organizational hierarchy notification');
+      console.log('   Token:', token ? `${token.substring(0, 20)}...` : 'NULL');
+      console.log('   Username:', user?.username);
       console.log('   Event Type:', eventType);
       console.log('   Object ID:', objectId);
       console.log('   Trigger User ID:', triggerUserId);
       console.log('   Placeholder Data:', placeholderData);
+      console.log('   FULL PAYLOAD:', payload);
       console.log('════════════════════════════════════════════════════════════════');
 
       const response = await notificationsApi.post('/notifications/trigger', payload);
