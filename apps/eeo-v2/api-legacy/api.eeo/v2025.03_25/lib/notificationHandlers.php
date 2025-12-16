@@ -2159,45 +2159,30 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
  * }
  */
 function handle_notifications_trigger($input, $config, $queries) {
-    error_log("════════════════════════════════════════════════════════════════");
-    error_log("[NotificationTrigger] START - Incoming request");
-    error_log("[NotificationTrigger] Input: " . json_encode($input));
-    
     // ✅ Ověření tokenu - STEJNĚ JAKO V /notifications/list
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     
-    error_log("[NotificationTrigger] Token verification...");
-    error_log("[NotificationTrigger] Username: $username");
-    
     $token_data = verify_token_v2($username, $token);
     if (!$token_data) {
-        error_log("[NotificationTrigger] ❌ Token verification FAILED!");
         http_response_code(401);
         echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
         return;
     }
     
-    error_log("[NotificationTrigger] ✅ Token verified: " . json_encode($token_data));
-    
     if ($token_data['username'] !== $username) {
-        error_log("[NotificationTrigger] ❌ Username mismatch!");
         http_response_code(401);
         echo json_encode(array('err' => 'Username z tokenu neodpovídá username z požadavku'));
         return;
     }
     
-    error_log("[NotificationTrigger] Getting DB connection...");
-    $db = $config['db'];
+    $db = get_db($config);
     
     if (!$db) {
-        error_log("[NotificationTrigger] ❌ DB connection is NULL!");
         http_response_code(500);
         echo json_encode(array('err' => 'Database connection failed'));
         return;
     }
-    
-    error_log("[NotificationTrigger] DB connection OK");
     
     try {
         // Validace vstupních parametrů
@@ -2205,13 +2190,7 @@ function handle_notifications_trigger($input, $config, $queries) {
         $objectId = isset($input['object_id']) ? intval($input['object_id']) : null;
         $triggerUserId = isset($input['trigger_user_id']) ? intval($input['trigger_user_id']) : null;
         
-        error_log("[NotificationTrigger] Parameters:");
-        error_log("  - Event Type: $eventType");
-        error_log("  - Object ID: $objectId");
-        error_log("  - Trigger User ID: $triggerUserId");
-        
         if (!$eventType || !$objectId || !$triggerUserId) {
-            error_log("[NotificationTrigger] ❌ Missing parameters!");
             http_response_code(400);
             echo json_encode(array(
                 'err' => 'Missing required parameters',
@@ -2223,13 +2202,8 @@ function handle_notifications_trigger($input, $config, $queries) {
         // Volitelné placeholder data (pokud je poskytne frontend)
         $placeholderData = isset($input['placeholder_data']) ? $input['placeholder_data'] : array();
         
-        error_log("[NotificationTrigger] ✅ All parameters OK");
-        error_log("[NotificationTrigger] Calling notificationRouter()...");
-        
         // Zavolat notification router (hlavní logika)
         $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData);
-        
-        error_log("[NotificationTrigger] notificationRouter() returned: " . json_encode($result));
         
         if ($result['success']) {
             error_log("[NotificationTrigger] ✅ SUCCESS - Sent: " . $result['sent']);

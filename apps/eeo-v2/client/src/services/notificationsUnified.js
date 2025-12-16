@@ -819,6 +819,9 @@ class NotificationService {
 
     } catch (error) {
       console.error('❌ [NotificationService] Trigger CHYBA:', error);
+      console.error('   Error message:', error.message);
+      console.error('   HTTP Status:', error.response?.status);
+      console.error('   Response data:', error.response?.data);
       throw error;
     }
   }
