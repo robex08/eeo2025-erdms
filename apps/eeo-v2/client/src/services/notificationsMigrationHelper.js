@@ -182,7 +182,7 @@ const sendOrderNotifications_NEW = async (orderId, orderNumber, newWorkflowState
  *     n.type,
  *     u.username,
  *     n.message,
- *     n.is_read,
+ *     n.precteno,
  *     n.created_at
  *   FROM 25_notifications n
  *   LEFT JOIN 25_users u ON n.user_id = u.id

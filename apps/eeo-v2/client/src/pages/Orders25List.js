@@ -6043,7 +6043,7 @@ const Orders25List = () => {
       // Hledej ORDER_UNLOCK_FORCED notifikace
       const forceUnlockNotifications = notifications.filter(n =>
         n.type === 'order_unlock_forced' &&
-        n.is_read === false
+        n.precteno === false
       );
 
       if (forceUnlockNotifications.length > 0) {

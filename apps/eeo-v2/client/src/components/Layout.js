@@ -1058,7 +1058,7 @@ const NotificationBellWrapper = ({ userId }) => {
       // 🔄 AUTO-REFRESH: Detekuj nové nepřečtené notifikace o změně stavu objednávky
       // a triggeruj auto-refresh v Orders25List
       const newUnreadOrderNotifications = apiNotifications.filter(n => {
-        const isUnread = !n.is_read || n.is_read === 0;
+        const isUnread = !n.precteno || n.precteno === 0;
         const isOrderStatusChange = n.type && n.type.startsWith('order_status_');
         const hasOrderId = n.order_id && n.order_id > 0;
         return isUnread && isOrderStatusChange && hasOrderId;
@@ -1707,7 +1707,7 @@ const Layout = ({ children }) => {
         const filtered = prev.filter(n => {
           if (n.type === 'TODO_ALARM' && n.data?.taskId === completedTaskId) {
             // Aktualizuj badge
-            if (n.is_read === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
+            if (n.precteno === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
               bgTasksContext.handleUnreadCountChange?.(bgTasksContext.unreadNotificationsCount - 1);
             }
 
@@ -1726,7 +1726,7 @@ const Layout = ({ children }) => {
       const filtered = prev.filter(n => {
         if (n.type === 'TODO_ALARM' && n.data?.taskId === taskId) {
           // Aktualizuj badge (pokud byla nepřečtená)
-          if (n.is_read === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
+          if (n.precteno === 0 && bgTasksContext?.unreadNotificationsCount > 0) {
             bgTasksContext.handleUnreadCountChange?.(bgTasksContext.unreadNotificationsCount - 1);
           }
 
