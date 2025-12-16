@@ -2145,6 +2145,16 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+    
+    // === NOTIFIKAČNÍ CENTRUM - TRIGGER ENDPOINT ===
+    case 'notifications/trigger':
+        if ($request_method === 'POST') {
+            handle_notifications_trigger($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
 
     // === NOTIFIKAČNÍ ŠABLONY CRUD API ===
     case 'notifications/templates/list':
