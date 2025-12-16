@@ -59,25 +59,31 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
 
   callback: async () => {
     const timestamp = new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
+    
+    console.log('════════════════════════════════════════════════════════════════');
+    console.log(`🔔 [BTask checkNotifications] START - ${timestamp}`);
+    
     try {
       // Získání počtu nepřečtených notifikací
+      console.log('   → Volám getUnreadCount()...');
       const unreadCount = await getUnreadCount();
+      console.log(`   ✅ Unread count: ${unreadCount}`);
 
       // Callback s aktuálním počtem nepřečtených
       if (onUnreadCountChange) {
+        console.log(`   → Volám onUnreadCountChange(${unreadCount})`);
         onUnreadCountChange(unreadCount);
       }
 
       // Pokud jsou nové notifikace, načti jejich detaily
       if (unreadCount > 0 && onNewNotifications) {
+        console.log(`   → Načítám ${unreadCount} notifikací přes getNotificationsList()...`);
         const notificationsData = await getNotificationsList({
           limit: 20, // Zvýšeno z 5 na 20 pro všechny notifikace
           unread_only: false, // Načíst i přečtené pro kompletní sync
           include_dismissed: false // ✅ Neskrývat dismissed notifikace v dropdownu
         });
-
-        // 🆕 BEST PRACTICE: Synchronizuj HIGH alarmy do localStorage
+        console.log(`   ✅ Načteno ${notificationsData?.data?.length || 0} notifikací`);        // 🆕 BEST PRACTICE: Synchronizuj HIGH alarmy do localStorage
         const { saveTodoAlarmToLocalStorage } = require('../hooks/useTodoAlarms');
         const userId = getStoredUserId(); // Získej userId z auth
 
@@ -98,17 +104,27 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
           });
         }
 
+        console.log(`   → Volám onNewNotifications() s ${notificationsData.data?.length || 0} notifikacemi`);
         onNewNotifications(notificationsData.data, unreadCount);
+      } else if (unreadCount === 0) {
+        console.log('   ℹ️ Žádné nepřečtené notifikace');
       }
 
+      console.log('✅ [BTask checkNotifications] DONE');
+      console.log('════════════════════════════════════════════════════════════════');
       return { unreadCount };
 
     } catch (error) {
+      console.error('❌ [BTask checkNotifications] ERROR:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Stack:', error.stack);
+      console.log('════════════════════════════════════════════════════════════════');
       throw error;
     }
   },
 
   onError: (error) => {
+    console.error('❌ [BTask checkNotifications] onError callback:', error);
     // Tiše selhat - nezobrazovat error uživateli při background kontrole
   }
 });

@@ -51,9 +51,27 @@ function createNotification($db, $params) {
         if (!$result) {
             error_log("[Notifications] SQL Error: " . json_encode($stmt->errorInfo()));
             error_log("[Notifications] SQL Params: " . json_encode($params));
+            return false;
         }
         
-        return $result;
+        // Získat ID vytvořené notifikace
+        $notifikace_id = $db->lastInsertId();
+        
+        // Vytvořit záznam v read tabulce pro příjemce
+        if ($notifikace_id && isset($params[':pro_uzivatele_id']) && $params[':pro_uzivatele_id']) {
+            $read_sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " 
+                        (notifikace_id, uzivatel_id, precteno, dt_precteno, skryto, dt_skryto, dt_created, smazano, dt_smazano)
+                        VALUES (:notifikace_id, :uzivatel_id, 0, NULL, 0, NULL, :dt_created, 0, NULL)";
+            
+            $read_stmt = $db->prepare($read_sql);
+            $read_stmt->execute([
+                ':notifikace_id' => $notifikace_id,
+                ':uzivatel_id' => $params[':pro_uzivatele_id'],
+                ':dt_created' => $params[':dt_created']
+            ]);
+        }
+        
+        return $notifikace_id;
         
     } catch (Exception $e) {
         error_log("[Notifications] Exception in createNotification: " . $e->getMessage());
@@ -1418,6 +1436,52 @@ function handle_notifications_event_types_list($input, $config, $queries) {
 // ==========================================
 
 /**
+ * Načte placeholder data z databáze podle object typu
+ */
+function loadOrderPlaceholders($db, $objectId) {
+    try {
+        // Načti objednávku
+        $stmt = $db->prepare("
+            SELECT o.*, CONCAT(u.name, ' ', u.surname) as creator_name
+            FROM " . TABLE_OBJEDNAVKY . " o
+            LEFT JOIN users u ON o.uzivatel_id = u.id
+            WHERE o.id = :order_id
+        ");
+        $stmt->execute([':order_id' => $objectId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            return array();
+        }
+        
+        // Načti položky
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as items_count, SUM(COALESCE(cena_s_dph, 0)) as items_total_s_dph
+            FROM " . TABLE_OBJEDNAVKY_POLOZKY . "
+            WHERE objednavka_id = :order_id
+        ");
+        $stmt->execute([':order_id' => $objectId]);
+        $items = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Připrav placeholders
+        return array(
+            'action_icon' => '📋',
+            'order_number' => $order['cislo_objednavky'] ?? '',
+            'order_subject' => $order['predmet'] ?? '',
+            'max_price_with_dph' => number_format($order['max_cena_s_dph'] ?? 0, 0, ',', ' '),
+            'creator_name' => $order['creator_name'] ?? 'Neznámý',
+            'action_date' => date('d.m.Y H:i', strtotime($order['dt_objednavky'] ?? 'now')),
+            'items_count' => $items['items_count'] ?? 0,
+            'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' ')
+        );
+        
+    } catch (Exception $e) {
+        error_log("[loadOrderPlaceholders] Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
  * Hlavní router pro automatické odesílání notifikací při událostech
  * Použití: notificationRouter($db, 'ORDER_SENT_FOR_APPROVAL', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
  * 
@@ -1440,10 +1504,19 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
     error_log("   Event Type: $eventType");
     error_log("   Object ID: $objectId");
     error_log("   Trigger User ID: $triggerUserId");
-    error_log("   Placeholder Data: " . json_encode($placeholderData));
+    error_log("   Placeholder Data (frontend): " . json_encode($placeholderData));
     error_log("════════════════════════════════════════════════════════════════");
     
     try {
+        // 0. Načíst order data z DB a mergovat s frontend placeholders
+        $objectType = getObjectTypeFromEvent($eventType);
+        if ($objectType === 'orders') {
+            $dbPlaceholders = loadOrderPlaceholders($db, $objectId);
+            // Merguj: frontend data mají prioritu
+            $placeholderData = array_merge($dbPlaceholders, $placeholderData);
+            error_log("📊 [NotificationRouter] Merged placeholders: " . json_encode($placeholderData));
+        }
+        
         // 1. Najít příjemce podle organizational hierarchy
         error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
         $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId);
