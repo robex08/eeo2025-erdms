@@ -18,7 +18,7 @@ $conn->set_charset("utf8mb4");
 echo "✅ Připojeno k DB\n\n";
 
 // 2️⃣ Načtení šablony z DB
-$sql = "SELECT * FROM 25_notification_templates WHERE type = 'order_status_ke_schvaleni' LIMIT 1";
+$sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = 'order_status_ke_schvaleni' LIMIT 1";
 $result = $conn->query($sql);
 
 if (!$result || $result->num_rows === 0) {

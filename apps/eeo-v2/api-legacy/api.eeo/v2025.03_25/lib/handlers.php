@@ -1082,7 +1082,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
     // Načtení šablony z DB (type = order_status_ke_schvaleni)
     try {
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
-        $stmt = $db->prepare("SELECT * FROM .TABLE_NOTIFICATION_TEMPLATES. WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);

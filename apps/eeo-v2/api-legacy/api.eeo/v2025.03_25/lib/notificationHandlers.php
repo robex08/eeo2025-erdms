@@ -37,7 +37,7 @@ function createNotification($db, $params) {
         $params[':active'] = 1;
     }
     
-    $sql = "INSERT INTO 25_notifications 
+    $sql = "INSERT INTO " . TABLE_NOTIFIKACE . " 
             (type, title, message, data_json, from_user_id, to_user_id, to_users_json, to_all_users, 
              priority, category, send_email, related_object_type, related_object_id, dt_expires, dt_created, active) 
             VALUES 
@@ -66,7 +66,7 @@ function createNotification($db, $params) {
  * Načte template pro daný typ notifikace
  */
 function getNotificationTemplate($db, $type) {
-    $sql = "SELECT * FROM .TABLE_NOTIFICATION_TEMPLATES. WHERE type = :type AND active = 1";
+    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = :type AND active = 1";
     $stmt = $db->prepare($sql);
     $stmt->execute(array(':type' => $type));
     return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -92,7 +92,7 @@ function replacePlaceholders($text, $data) {
  * Načte notifikace pro uživatele podle 2-tabulkové struktury FE
  * POST /notifications/list
  * 
- * Používá INNER JOIN s .TABLE_NOTIFICATIONS_READ. - uživatel vidí jen notifikace,
+ * Používá INNER JOIN s " . TABLE_NOTIFIKACE_PRECTENI . " - uživatel vidí jen notifikace,
  * pro které má záznam v read tabulce
  */
 function handle_notifications_list($input, $config, $queries) {
@@ -167,8 +167,8 @@ function handle_notifications_list($input, $config, $queries) {
                     nr.dt_dismissed";
 
         $sql = "SELECT " . $select_columns . "
-                FROM 25_notifications n
-                INNER JOIN .TABLE_NOTIFICATIONS_READ. nr ON n.id = nr.notification_id
+                FROM " . TABLE_NOTIFIKACE . " n
+                INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notification_id
                 WHERE " . implode(' AND ', $where_conditions) . "
                 ORDER BY n.dt_created DESC
                 LIMIT :limit OFFSET :offset";
@@ -210,8 +210,8 @@ function handle_notifications_list($input, $config, $queries) {
 
         // Počet celkem pro stránkování
         $count_sql = "SELECT COUNT(*) as total
-                      FROM 25_notifications n
-                      INNER JOIN .TABLE_NOTIFICATIONS_READ. nr ON n.id = nr.notification_id
+                      FROM " . TABLE_NOTIFIKACE . " n
+                      INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notification_id
                       WHERE " . implode(' AND ', $where_conditions);
         
         $count_stmt = $db->prepare($count_sql);
@@ -272,7 +272,7 @@ function handle_notifications_mark_read($input, $config, $queries) {
         $user_id = $token_data['id'];
 
         $current_time = TimezoneHelper::getCzechDateTime();
-        $sql = "INSERT INTO .TABLE_NOTIFICATIONS_READ. (notification_id, user_id, is_read, dt_read, dt_created)
+        $sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (notification_id, user_id, is_read, dt_read, dt_created)
                 VALUES (:notification_id, :user_id, 1, :dt_read, :dt_created)
                 ON DUPLICATE KEY UPDATE 
                   is_read = 1, 
@@ -320,7 +320,7 @@ function handle_notifications_dismiss_all($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Aktualizovat všechny nepřečtené/neskryté notifikace uživatele
-        $sql = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                 SET is_dismissed = 1, 
                     dt_dismissed = :dt_dismissed 
                 WHERE user_id = :user_id 
@@ -374,7 +374,7 @@ function handle_notifications_restore($input, $config, $queries) {
         $user_id = $token_data['id'];
 
         // Nastavit is_dismissed zpět na 0
-        $sql = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                 SET is_dismissed = 0, 
                     dt_dismissed = NULL 
                 WHERE notification_id = :notification_id 
@@ -431,7 +431,7 @@ function handle_notifications_delete($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Soft delete - nastavit is_deleted = 1 v read tabulce
-        $sql = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                 SET is_deleted = 1, 
                     dt_deleted = :dt_deleted 
                 WHERE notification_id = :notification_id 
@@ -489,7 +489,7 @@ function handle_notifications_delete_all($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Soft delete všech notifikací uživatele
-        $sql = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                 SET is_deleted = 1, 
                     dt_deleted = :dt_deleted 
                 WHERE user_id = :user_id 
@@ -541,9 +541,9 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
         $db = get_db($config);
         $user_id = $token_data['id'];
 
-        // Označ všechny nepřečtené záznamy v .TABLE_NOTIFICATIONS_READ.
+        // Označ všechny nepřečtené záznamy v " . TABLE_NOTIFIKACE_PRECTENI . "
         $current_time = TimezoneHelper::getCzechDateTime();
-        $sql = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                 SET is_read = 1, dt_read = :dt_read
                 WHERE user_id = :user_id 
                   AND is_read = 0";
@@ -599,11 +599,11 @@ function handle_notifications_unread_count($input, $config, $queries) {
         $db = get_db($config);
         $user_id = $token_data['id'];
 
-        // Spočítej nepřečtené z .TABLE_NOTIFICATIONS_READ.
+        // Spočítej nepřečtené z " . TABLE_NOTIFIKACE_PRECTENI . "
         // MUSÍ být: nepřečtené (is_read=0), NEsmazané (is_deleted=0), NEdismissnuté (is_dismissed=0)
         $sql = "SELECT COUNT(*) as unread_count
-                FROM .TABLE_NOTIFICATIONS_READ. nr
-                INNER JOIN 25_notifications n ON nr.notification_id = n.id
+                FROM " . TABLE_NOTIFIKACE_PRECTENI . " nr
+                INNER JOIN " . TABLE_NOTIFIKACE . " n ON nr.notification_id = n.id
                 WHERE nr.user_id = :user_id
                   AND nr.is_read = 0
                   AND nr.is_dismissed = 0
@@ -634,8 +634,8 @@ function handle_notifications_unread_count($input, $config, $queries) {
  * ROZŠÍŘENO: Podpora order_id pro automatické naplnění placeholderů
  * 
  * Struktura:
- * 1. Vytvoří 1 záznam v 25_notifications (master data)
- * 2. Vytvoří záznamy v .TABLE_NOTIFICATIONS_READ. pro každého příjemce
+ * 1. Vytvoří 1 záznam v " . TABLE_NOTIFIKACE . " (master data)
+ * 2. Vytvoří záznamy v " . TABLE_NOTIFIKACE_PRECTENI . " pro každého příjemce
  */
 function handle_notifications_create($input, $config, $queries) {
     // DEBUG: Log vstupních dat
@@ -828,7 +828,7 @@ function handle_notifications_create($input, $config, $queries) {
         
         error_log("[Notifications] Final recipients: " . json_encode($recipient_user_ids));
         
-        // 1. VYTVOŘ MASTER ZÁZNAM v 25_notifications (pouze 1 záznam)
+        // 1. VYTVOŘ MASTER ZÁZNAM v " . TABLE_NOTIFIKACE . " (pouze 1 záznam)
         $priority = isset($input['priority']) ? $input['priority'] : $template['priority_default'];
         $category = isset($input['category']) ? $input['category'] : 'general';
         $send_email = isset($input['send_email']) ? (int)$input['send_email'] : (int)$template['send_email_default'];
@@ -836,7 +836,7 @@ function handle_notifications_create($input, $config, $queries) {
         $related_object_id = isset($input['related_object_id']) ? (int)$input['related_object_id'] : $order_id;
         
         $stmt = $db->prepare("
-            INSERT INTO 25_notifications (
+            INSERT INTO " . TABLE_NOTIFIKACE . " (
                 type, 
                 title, 
                 message, 
@@ -880,9 +880,9 @@ function handle_notifications_create($input, $config, $queries) {
         
         $notification_id = $db->lastInsertId();
         
-        // 2. VYTVOŘ READ ZÁZNAMY v .TABLE_NOTIFICATIONS_READ. (pro každého příjemce)
+        // 2. VYTVOŘ READ ZÁZNAMY v " . TABLE_NOTIFIKACE_PRECTENI . " (pro každého příjemce)
         $stmt_read = $db->prepare("
-            INSERT INTO .TABLE_NOTIFICATIONS_READ. (
+            INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (
                 notification_id,
                 user_id,
                 is_read,
@@ -911,7 +911,7 @@ function handle_notifications_create($input, $config, $queries) {
             }
             
             // Označit jako odeslaný
-            $stmt_email = $db->prepare("UPDATE 25_notifications SET email_sent = 1, email_sent_at = NOW() WHERE id = ?");
+            $stmt_email = $db->prepare("UPDATE " . TABLE_NOTIFIKACE . " SET email_sent = 1, email_sent_at = NOW() WHERE id = ?");
             $stmt_email->execute(array($notification_id));
             $email_sent = true;
         }
@@ -964,7 +964,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
         
         // KROK 1: Zkus UPDATE (pokud záznam existuje)
-        $sql_update = "UPDATE .TABLE_NOTIFICATIONS_READ. 
+        $sql_update = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
                        SET is_dismissed = 1, 
                            dt_dismissed = :dt_dismissed 
                        WHERE notification_id = :notification_id 
@@ -979,7 +979,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
 
         // KROK 2: Pokud UPDATE nezměnil žádný řádek, udělej INSERT
         if ($stmt->rowCount() == 0) {
-            $sql_insert = "INSERT INTO .TABLE_NOTIFICATIONS_READ. 
+            $sql_insert = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " 
                            (notification_id, user_id, is_read, is_dismissed, dt_dismissed, dt_created)
                            VALUES (:notification_id, :user_id, 0, 1, :dt_dismissed, :dt_created)";
             
@@ -1133,7 +1133,7 @@ function handle_notifications_templates($input, $config, $queries) {
         $active_only = isset($input['active_only']) ? (bool)$input['active_only'] : true;
         
         // Sestavení dotazu
-        $sql = "SELECT * FROM .TABLE_NOTIFICATION_TEMPLATES.";
+        $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . "";
         if ($active_only) {
             $sql .= " WHERE active = 1";
         }
@@ -1457,7 +1457,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 
                 // 3. Načíst template z DB
                 $stmt = $db->prepare("
-                    SELECT * FROM .TABLE_NOTIFICATION_TEMPLATES. 
+                    SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " 
                     WHERE id = :template_id AND active = 1
                 ");
                 $stmt->execute([':template_id' => $recipient['templateId']]);

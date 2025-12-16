@@ -185,7 +185,7 @@ function handle_hierarchy_structure_v2($data, $pdo) {
             LEFT JOIN ".TABLE_USEKY." us2 ON u2.usek_id = us2.id
             LEFT JOIN ".TABLE_LOKALITY." l ON v.lokalita_id = l.id
             LEFT JOIN ".TABLE_USEKY." us ON v.usek_id = us.id
-            LEFT JOIN ".TABLE_NOTIFICATION_TEMPLATES." t ON v.template_id = t.id
+            LEFT JOIN ".TABLE_NOTIFIKACE_SABLONY." t ON v.template_id = t.id
             LEFT JOIN 25_role r ON v.role_id = r.id
             WHERE v.profil_id = ? AND v.aktivni = 1
         ";
