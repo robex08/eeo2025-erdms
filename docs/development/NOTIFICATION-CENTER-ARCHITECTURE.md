@@ -89,6 +89,154 @@ Tento dokument analyzuje současný stav notifikačního systému v ERDMS a navr
 
 ---
 
+## 🔄 REFERENČNÍ WORKFLOW - KOMPLETNÍ OBJEDNÁVKA
+
+### Příklad: Životní cyklus objednávky s notifikacemi
+
+```
+FÁZE 1: VYTVOŘENÍ
+  Robert (Objednatel) → Vytvoří požadavek
+  EVENT: ORDER_CREATED
+  ├─► Příkazce → 🔴 URGENT "Schvalte objednávku"
+  ├─► Garant → 🟠 APPROVAL "Nová objednávka"
+  └─► Robert → 🟢 INFO "Odesláno ke schválení"
+
+FÁZE 2A: SCHVÁLENÍ
+  Příkazce → Schválí
+  EVENT: ORDER_APPROVED
+  ├─► Robert → 🟠 APPROVAL "Schváleno - pokračuj!"
+  ├─► Garant → 🟢 INFO "Schváleno"
+  └─► Příkazce → 🟢 INFO "Schválení odesláno"
+
+FÁZE 2B: ZAMÍTNUTÍ
+  Příkazce → Zamítne
+  EVENT: ORDER_REJECTED
+  ├─► Robert → 🔴 URGENT "Zamítnuto!"
+  ├─► Garant → 🟢 INFO "Zamítnuto"
+  └─► Příkazce → 🟢 INFO "Zamítnutí odesláno"
+  ❌ PROCES KONČÍ
+
+FÁZE 2C: VRÁCENÍ K DOPLNĚNÍ
+  Příkazce → Vrátí k doplnění
+  EVENT: ORDER_WAITING_FOR_CHANGES
+  ├─► Robert → 🟠 APPROVAL "Vráceno - doplň!"
+  ├─► Garant → 🟠 APPROVAL "Vráceno k doplnění"
+  └─► Příkazce → 🟢 INFO "Notifikace odeslána"
+
+FÁZE 3: ODESLÁNÍ DODAVATELI
+  Robert → Odešle dodavateli
+  EVENT: ORDER_SENT_TO_SUPPLIER
+  ├─► Role: Nákupčí → 🟠 APPROVAL "Odeslána dodavateli"
+  ├─► Garant → 🟢 INFO "Odeslána dodavateli"
+  ├─► Příkazce → 🟢 INFO "Odeslána dodavateli"
+  └─► Robert → 🟢 INFO "Úspěšně odesláno"
+
+FÁZE 4: ŽÁDOST O REGISTR
+  Robert → Žádá o schválení v registru
+  EVENT: ORDER_REGISTRY_APPROVAL_REQUESTED
+  ├─► Role: Registr IT → 🔴 URGENT "Schvalte registr!"
+  ├─► Garant → 🟢 INFO "Žádost o registr"
+  └─► Robert → 🟢 INFO "Žádost odeslána"
+
+FÁZE 5: DOPLNĚNÍ FAKTURY
+  Role: Registr IT → Doplní fakturu
+  EVENT: ORDER_INVOICE_ADDED
+  ├─► Robert → 🟠 APPROVAL "Proveď věcnou kontrolu!"
+  ├─► Garant → 🟢 INFO "Faktura doplněna"
+  └─► Role: Registr → 🟢 INFO "Notifikace odeslána"
+
+FÁZE 6: VĚCNÁ KONTROLA
+  Robert → Provede kontrolu
+  EVENT: ORDER_MATERIAL_CHECK_COMPLETED
+  ├─► Role: Registr IT → 🟠 APPROVAL "Dokonči objednávku!"
+  ├─► Garant → 🟢 INFO "Kontrola provedena"
+  └─► Robert → 🟢 INFO "Kontrola odeslána"
+
+FÁZE 7: DOKONČENÍ
+  Role: Registr IT → Dokončí
+  EVENT: ORDER_COMPLETED
+  ├─► Robert → 🟢 INFO "Dokončeno"
+  ├─► Garant → 🟢 INFO "Dokončeno"
+  ├─► Příkazce → 🟢 INFO "Dokončeno"
+  └─► Role: Registr → 🟢 INFO "Úspěšně dokončeno"
+  ✅ PROCES KONČÍ
+```
+
+**💡 Klíčové poznatky:**
+- Každá fáze = 1 událost (EVENT)
+- Každý příjemce má svou roli (URGENT/APPROVAL/INFO)
+- recipientRole určuje **TYP notifikace**, ne akci
+- Pokud EDGE v org. hierarchii neexistuje → notifikace se NEPOSÍLÁ
+- Template NODE obsahuje 3 varianty šablon (🔴🟠🟢)
+
+---
+
+## 🎨 recipientRole - FINÁLNÍ DEFINICE
+
+### Co `recipientRole` OPRAVDU znamená:
+
+**NENÍ to:**
+- ❌ "Musíš kliknout na tlačítko Potvrdit/Schválit"
+- ❌ "Vyžaduje akci od uživatele"
+- ❌ Workflow tlačítko ve formuláři
+
+**JE to:**
+- ✅ **Typ/priorita notifikace** (důležitá vs informační)
+- ✅ **Barva/vizuál** ve zvonečku (🔴 červená vs 🟠 oranžová vs 🟢 zelená)
+- ✅ **Kontext pro příjemce** ("karta je u tebe" vs "jen pro info")
+- ✅ **Výběr šablony** (urgentVariant vs normalVariant vs infoVariant)
+
+---
+
+### 3 Hodnoty recipientRole:
+
+```javascript
+// === URGENT - Urgentní schválení ===
+recipientRole: 'URGENT'
+Šablona: 🔴 urgentVariant
+Použití: Příkazce MUSÍ schválit, Registr MUSÍ schválit
+Příklad: "SCHVALTE objednávku #2025-001 IHNED!"
+Význam: Kritická akce - karta je u příjemce, urgentní
+
+// === APPROVAL - Důležitá notifikace ===
+recipientRole: 'APPROVAL'  
+Šablona: 🟠 normalVariant
+Použití: Objednatel dostane info, že může pokračovat
+Příklad: "Objednávka vrácena - karta je u tebe, pokračuj!"
+Význam: Důležitá notifikace - karta/úkol je u příjemce, může pokračovat
+
+// === INFO - Informační notifikace ===
+recipientRole: 'INFO'
+Šablona: 🟢 infoVariant
+Použití: Autor akce dostane potvrzení, že akce proběhla
+Příklad: "Notifikace odeslána objednateli Robert Holovský"
+Význam: Jen pro vědomí - akce dokončena, žádná další akce potřebná
+```
+
+---
+
+### Praktické příklady podle workflow:
+
+| Fáze | Kdo | recipientRole | Šablona | Text |
+|------|-----|---------------|---------|------|
+| Vytvoření | Příkazce | `URGENT` | 🔴 | "Schvalte obj!" |
+| Schváleno | Robert | `APPROVAL` | 🟠 | "Schváleno - pokračuj!" |
+| Schváleno | Příkazce | `INFO` | 🟢 | "Schválení odesláno" |
+| Vráceno | Robert | `APPROVAL` | 🟠 | "Vráceno - doplň!" |
+| Vráceno | Příkazce | `INFO` | 🟢 | "Notifikace odeslána" |
+| Odeslána | Nákupčí | `APPROVAL` | 🟠 | "Obj odeslána dodavateli" |
+| Registr | Registr IT | `URGENT` | 🔴 | "Schvalte registr!" |
+| Faktura | Robert | `APPROVAL` | 🟠 | "Proveď věcnou kontrolu!" |
+| Kontrola OK | Registr IT | `APPROVAL` | 🟠 | "Dokonči objednávku!" |
+| Dokončeno | Všichni | `INFO` | 🟢 | "Objednávka dokončena" |
+
+**💡 Důležité:**
+- `APPROVAL` **NEZNAMENÁ** "musíš kliknout na tlačítko Schválit ve formuláři"
+- `APPROVAL` **ZNAMENÁ** "důležitá notifikace - karta/úkol je u tebe, můžeš pokračovat"
+- Je to jen **typ/priorita notifikace**, ne workflow akce!
+
+---
+
 ## 🎯 NÁVRH ARCHITEKTURY
 
 ### A. Centrální Notifikační Service (Backend)
@@ -136,36 +284,110 @@ Tento dokument analyzuje současný stav notifikačního systému v ERDMS a navr
 #### 1. Definice Event Typů
 
 ```javascript
-// Centrální registr událostí
+// Centrální registr událostí - podle skutečného workflow
 const EVENT_TYPES = {
-  // === OBJEDNÁVKY ===
+  // === OBJEDNÁVKY - FÁZE 1: VYTVOŘENÍ ===
   ORDER_CREATED: {
     code: 'ORDER_CREATED',
     name: 'Objednávka vytvořena',
     category: 'orders',
-    urgencyLevel: 'NORMAL',
-    recipientRoles: ['APPROVER', 'INFO'],
-    defaultChannel: ['email', 'inapp']
+    urgencyLevel: 'URGENT',        // Příkazce musí schválit
+    recipientRoles: ['URGENT', 'APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Robert vytvoří objednávku → notifikace příkazci ke schválení'
   },
-  ORDER_SUBMITTED: {
-    code: 'ORDER_SUBMITTED',
-    name: 'Objednávka odeslána ke schválení',
-    category: 'orders',
-    urgencyLevel: 'NORMAL',
-    recipientRoles: ['APPROVER'],
-    defaultChannel: ['email', 'inapp']
-  },
+  
+  // === OBJEDNÁVKY - FÁZE 2A: SCHVÁLENÍ ===
   ORDER_APPROVED: {
     code: 'ORDER_APPROVED',
     name: 'Objednávka schválena',
     category: 'orders',
-    urgencyLevel: 'NORMAL',
-    recipientRoles: ['SUBMITTER', 'INFO'],
-    defaultChannel: ['email', 'inapp']
+    urgencyLevel: 'NORMAL',        // Robert může pokračovat
+    recipientRoles: ['APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Příkazce schválil → notifikace Robertovi, že může pokračovat'
   },
+  
+  // === OBJEDNÁVKY - FÁZE 2B: ZAMÍTNUTÍ ===
   ORDER_REJECTED: {
     code: 'ORDER_REJECTED',
     name: 'Objednávka zamítnuta',
+    urgencyLevel: 'URGENT',        // Robert musí vědět IHNED
+    recipientRoles: ['URGENT', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Příkazce zamítl → proces končí'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 2C: VRÁCENÍ ===
+  ORDER_WAITING_FOR_CHANGES: {
+    code: 'ORDER_WAITING_FOR_CHANGES',
+    name: 'Objednávka vrácena k doplnění',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Příkazce vrátil → Robert doplní a znovu odešle'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 3: PLNĚNÍ ===
+  ORDER_SENT_TO_SUPPLIER: {
+    code: 'ORDER_SENT_TO_SUPPLIER',
+    name: 'Objednávka odeslána dodavateli',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Robert odeslal dodavateli → notifikace nákupčímu a ostatním'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 4: REGISTR ===
+  ORDER_REGISTRY_APPROVAL_REQUESTED: {
+    code: 'ORDER_REGISTRY_APPROVAL_REQUESTED',
+    name: 'Žádost o schválení v registru',
+    category: 'orders',
+    urgencyLevel: 'URGENT',
+    recipientRoles: ['URGENT', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Robert žádá o registr → notifikace registru (role/úsek)'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 5: FAKTURA ===
+  ORDER_INVOICE_ADDED: {
+    code: 'ORDER_INVOICE_ADDED',
+    name: 'Faktura doplněna',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Registr doplnil fakturu → Robert musí provést věcnou kontrolu'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 6: KONTROLA ===
+  ORDER_MATERIAL_CHECK_COMPLETED: {
+    code: 'ORDER_MATERIAL_CHECK_COMPLETED',
+    name: 'Věcná kontrola provedena',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['APPROVAL', 'INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Robert provedl kontrolu → registr může dokončit'
+  },
+  
+  // === OBJEDNÁVKY - FÁZE 7: DOKONČENÍ ===
+  ORDER_COMPLETED: {
+    code: 'ORDER_COMPLETED',
+    name: 'Objednávka dokončena',
+    category: 'orders',
+    urgencyLevel: 'NORMAL',
+    recipientRoles: ['INFO'],
+    defaultChannel: ['email', 'inapp'],
+    description: 'Registr dokončil → notifikace všem zúčastněným'
+  },
+  
+  // === OBJEDNÁVKY - OSTATNÍ ===
+  ORDER_URGENT: {
+    code: 'ORDER_URGENT',
+    name: 'Urgentní objednávka
     category: 'orders',
     urgencyLevel: 'URGENT',
     recipientRoles: ['SUBMITTER'],
@@ -1023,13 +1245,734 @@ notification_delivery_log
 
 ---
 
+---
+
+## 📐 DETAILNÍ STRUKTURA: Organizational Hierarchy Nodes & Edges
+
+### 🔷 NODE TYPY A JEJICH STRUKTURA
+
+#### 1️⃣ **USER NODE** (Uživatel)
+```javascript
+{
+  id: 'user-{userId}-{timestamp}-{index}',
+  type: 'custom',
+  position: { x: 100, y: 50 },
+  data: {
+    type: 'user',
+    userId: '123',
+    name: 'Jan Novák',
+    position: 'Vedoucí IT',
+    initials: 'JN',
+    metadata: {
+      location: 'Praha',    // Lokalita uživatele
+      department: 'IT'      // Útvar uživatele
+    }
+  }
+}
+```
+
+**Handles:**
+- ✅ **Source** (zelený) - může vysílat data/práva nadřízeným
+- ✅ **Target** (červený) - může přijímat připojení od podřízených
+
+---
+
+#### 2️⃣ **TEMPLATE NODE** (Notifikační šablona) 🔔
+```javascript
+{
+  id: 'template-{templateId}-{timestamp}-{index}',
+  type: 'custom',
+  position: { x: 100, y: 50 },
+  data: {
+    type: 'template',
+    templateId: 'notif-001',
+    name: 'Objednávka vrácena k doplnění',  // Konkrétní událost!
+    position: 'Notifikační šablona',
+    initials: '🔔',
+    // ✅ KRITICKÉ: Template varianty pro různé role/urgentnost
+    normalVariant: 'order_status_schvalena',      // Normální notifikace
+    urgentVariant: 'order_status_urgent',         // Urgentní notifikace
+    infoVariant: 'order_status_info',             // Informační notifikace
+    previewVariant: 'order_status_schvalena',     // Pro preview v UI
+    metadata: {
+      type: 'template',
+      template: 'Objednávka vrácena k doplnění'
+    }
+  }
+}
+```
+
+**Handles:**
+- ✅ **Source POUZE** (zelený) - šablona vysílá notifikace
+- ❌ **ŽÁDNÝ Target** - šablona nepřijímá připojení
+
+**Barva:** 🟠 Oranžová (`#f59e0b`)
+
+---
+
+### 🔍 **KRITICKÉ: Směr šípky a sémantika**
+
+⚠️ **POZOR - ZMATEČNOST V TERMINOLOGII!**
+
+Existují **DVA MOŽNÉ MODELY**, které je potřeba rozlišit:
+
+#### **MODEL A: Template → User (Šablona VYSÍLÁ k příjemcům)**
+```
+┌─────────────────────────┐
+│ 🔔 Objednávka vrácena   │───────┐
+│ k doplnění              │       │ (zelená šipka)
+└─────────────────────────┘       │
+                                  ▼
+                          ┌──────────────┐
+                          │ 👤 Jan Novák │ ◄── PŘÍJEMCE
+                          │ (Autor obj.) │
+                          └──────────────┘
+```
+
+**Význam:**
+- **Template NODE** = "Co se stalo" (událost)
+- **User NODE** = "Komu to poslat" (příjemce)
+- **EDGE.data.notifications.recipientRole** = "Jakou roli má příjemce"
+  - `APPROVAL` = "Musíš to schválit!" (🔴 červená šablona)
+  - `INFO` = "Jen pro informaci" (🟢 zelená šablona)
+
+---
+
+#### **MODEL B: User → Template (Uživatel JE AUTOREM události)**
+```
+┌──────────────┐
+│ 👤 Jan Novák │───────┐ (zelená šipka)
+│ (Autor obj.) │       │
+└──────────────┘       ▼
+                ┌─────────────────────────┐
+                │ 🔔 Objednávka vrácena   │ ◄── CO se stalo
+                │ k doplnění              │
+                └─────────────────────────┘
+```
+
+**Význam:**
+- **User NODE** = "Kdo vyvolal událost" (autor akce)
+- **Template NODE** = "Co se stalo" (typ události)
+- **EDGE.data.notifications** = "Kdo má dostat notifikaci"
+
+---
+
+### 🎯 **DOPORUČENÝ MODEL: Template → Users (MODEL A)**
+
+**Důvody:**
+1. ✅ **Intuitivnější** - šablona "vysílá" notifikace příjemcům
+2. ✅ **Jednodušší logika** - EDGE určuje příjemce + roli
+3. ✅ **Škálovatelnost** - 1 šablona → N příjemců (různé role)
+4. ✅ **Odpovídá Frontend kódu** - Template má jen SOURCE handle
+
+**Příklad: "Objednávka vrácena k doplnění (CEKA_SE)"**
+
+```
+Template: "Objednávka vrácena k doplnění"
+    │
+    ├──(edge 1)──► User: Objednatel (autor obj.)
+    │              recipientRole: INFO  
+    │              → 🟢 zelená šablona: "Vaše obj byla vrácena"
+    │
+    ├──(edge 2)──► User: Garant
+    │              recipientRole: INFO
+    │              → 🟢 zelená šablona: "Obj byla vrácena"
+    │
+    └──(edge 3)──► User: Příkazce  
+                   recipientRole: INFO
+                   → 🟢 zelená šablona: "Obj byla vrácena (máte kopii)"
+```
+
+**Backend logika:**
+```php
+// 1. Událost: Příkazce vrátí objednávku k doplnění
+$event = 'ORDER_WAITING_FOR_CHANGES'; // CEKA_SE
+
+// 2. Najdi Template NODE pro tuto událost
+$template = findTemplateByEvent($event); 
+// → "Objednávka vrácena k doplnění"
+
+// 3. Najdi všechny EDGES vycházející z tohoto template
+$edges = findEdgesFromTemplate($template->id);
+
+// 4. Pro každý edge určit:
+foreach ($edges as $edge) {
+  $recipient = $edge->target_user_id;
+  $role = $edge->data->notifications->recipientRole; // INFO / APPROVAL
+  
+  // 5. Vybrat správnou variantu šablony
+  if ($role === 'APPROVAL') {
+    $variant = $template->urgentVariant; // 🔴 červená - ke schválení
+  } else if ($role === 'INFO') {
+    $variant = $template->infoVariant;   // 🟢 zelená - jen info
+  }
+  
+  // 6. Vložit do fronty
+  insertNotificationQueue([
+    'recipient_user_id' => $recipient,
+    'template_code' => $variant,
+    'event_type' => $event,
+    'entity_id' => $order_id
+  ]);
+}
+```
+
+---
+
+#### 3️⃣ **ROLE NODE** (Funkční role)
+```javascript
+{
+  id: 'role-{roleId}-{timestamp}-{index}',
+  type: 'custom',
+  position: { x: 100, y: 50 },
+  data: {
+    type: 'role',
+    roleId: 'admin',
+    name: 'Administrátor',
+    metadata: {
+      type: 'role',
+      popis: 'Správce systému',
+      userCount: 5  // Automaticky přepočítáno z edges
+    }
+  }
+}
+```
+
+**Handles:**
+- ✅ **Source** (zelený) - role může vysílat práva
+- ✅ **Target** (červený) - role přijímá uživatele
+
+**Barva:** 🟣 Fialová (`#8b5cf6`)
+
+---
+
+#### 4️⃣ **LOCATION NODE** (Lokalita)
+```javascript
+{
+  id: 'location-{locationId}-{timestamp}-{index}',
+  type: 'custom',
+  position: { x: 100, y: 50 },
+  data: {
+    type: 'location',
+    locationId: 'praha',
+    name: 'Praha',
+    metadata: {
+      userCount: 12  // Automaticky přepočítáno
+    }
+  }
+}
+```
+
+**Barva:** 🟤 Tmavě hnědá (`#92400e`)
+
+---
+
+#### 5️⃣ **DEPARTMENT NODE** (Útvar/Úsek)
+```javascript
+{
+  id: 'department-{departmentId}-{timestamp}-{index}',
+  type: 'custom',
+  position: { x: 100, y: 50 },
+  data: {
+    type: 'department',
+    departmentId: 'it',
+    name: 'IT oddělení',
+    metadata: {
+      userCount: 8  // Automaticky přepočítáno
+    }
+  }
+}
+```
+
+**Barva:** 🟢 Tmavě zelená (`#059669`)
+
+---
+
+### 🔗 EDGE STRUKTURA A DATA
+
+#### **ZÁKLADNÍ EDGE OBJEKT**
+```javascript
+{
+  id: 'rel-{relationId}',
+  source: 'user-123-...',      // ID source node
+  target: 'user-456-...',      // ID target node
+  type: 'smoothstep',           // ReactFlow edge type
+  animated: true,
+  markerEnd: { 
+    type: 'ArrowClosed',
+    color: '#3b82f6'            // Barva podle typu vztahu
+  },
+  style: { 
+    stroke: '#3b82f6',          // Barva hrany
+    strokeWidth: 3 
+  },
+  
+  // ✅ KLÍČOVÝ OBJEKT: edge.data - obsahuje VEŠKEROU konfiguraci
+  data: {
+    // 1️⃣ LEVEL & SCOPE (Rozsah dat)
+    level: 1,                   // 1=OWN, 2=TEAM, 3=LOCATION, 4=ALL
+    scope: 'OWN',               // Alternativní zápis
+    
+    // 2️⃣ RELATIONSHIP TYPE (Druh vztahu)
+    type: 'user-user',          // Typ ReactFlow edge
+    relationshipType: 'prime',  // 'prime', 'deputy', 'observer'
+    druh_vztahu: 'prime',       // Alias pro BE
+    
+    // 3️⃣ MODULE VISIBILITY (Viditelnost modulů)
+    modules: {
+      orders: true,             // Objednávky
+      invoices: false,          // Faktury
+      contracts: false,         // Smlouvy
+      cashbook: true,           // Pokladna
+      cashbookReadonly: false,  // Pokladna READ-ONLY
+      users: false,             // Uživatelé
+      lp: true                  // Limitované příslíby
+    },
+    
+    // 4️⃣ PERMISSION LEVEL (Úroveň práv)
+    permissionLevel: {
+      orders: 'READ_WRITE',     // READ_ONLY / READ_WRITE
+      invoices: 'READ_ONLY',
+      contracts: 'READ_ONLY',
+      cashbook: 'READ_WRITE'
+    },
+    
+    // 5️⃣ EXTENDED PERMISSIONS (Rozšířené lokality/útvary)
+    extended: {
+      locations: ['brno', 'ostrava'],       // Další lokality
+      departments: ['finance', 'hr'],       // Další útvary
+      combinations: [                       // Kombinace lokalita+útvar
+        { location: 'praha', department: 'it' },
+        { location: 'brno', department: 'finance' }
+      ]
+    },
+    
+    // 6️⃣ 🔔 NOTIFICATIONS CONFIG (KLÍČ PRO NOTIFIKAČNÍ CENTRUM!)
+    notifications: {
+      email: true,              // ✉️ Posílat i email?
+      inapp: true,              // 🔔 In-app notifikace (zvoneček)?
+      recipientRole: 'APPROVAL', // ⭐ KDO DOSTANE NOTIFIKACI?
+                                 // - 'APPROVAL' = Schvalovatel (červená šablona)
+                                 // - 'INFO' = Informační kopie (zelená šablona)
+                                 // - 'BOTH' = Oba (obě šablony)
+      types: [                  // Filtr event typů (prázdné = všechny)
+        'ORDER_CREATED',
+        'ORDER_APPROVED',
+        'ORDER_REJECTED'
+      ],
+      scope: 'orders'           // Modul pro notifikace (prázdné = všechny moduly)
+    }
+  }
+}
+```
+
+---
+
+### 🔑 KLÍČOVÉ KONCEPTY: `recipientRole`
+
+**recipientRole** určuje **typ a důležitost** notifikace:
+
+| Hodnota | Význam | Template Varianta | Use Case |
+|---------|--------|-------------------|----------|
+| `APPROVAL` | **Důležitá notifikace** - karta je u příjemce | **normalVariant** (🟠 oranžová) | Objednatel dostane info, že může pokračovat v objednávce |
+| `INFO` | **Informační notifikace** - jen pro vědomí | **infoVariant** (🟢 zelená) | Příkazce dostal potvrzení, že akce proběhla |
+| `URGENT` | **Urgentní schválení** - kritická akce | **urgentVariant** (🔴 červená) | Příkazce musí **schválit** objednávku (speciální případ) |
+
+---
+
+### 📸 **PRAKTICKÝ PŘÍKLAD: "Objednávka vrácena k doplnění"**
+
+**Scénář:**
+- **Robert Holovský** (Programátor) vytvoří objednávku
+- **Příkazce** ji vrátí k doplnění se stavem **CEKA_SE**
+- **Kdo má dostat notifikaci?**
+  1. ✅ **Objednatel** (Robert) - 🟠 "Vaše objednávka byla vrácena k doplnění" (**karta je u něj** - může pokračovat)
+  2. ✅ **Garant** - 🟠 "Objednávka byla vrácena k doplnění" (důležitá notifikace - hlídat průběh)
+  3. ✅ **Příkazce** - 🟢 "Notifikace o vrácení byla odeslána Robertovi" (jen info - akce dokončena)
+
+**Org. hierarchie konfigurace:**
+
+```
+┌─────────────────────────────────────────────┐
+│ 🔔 Objednávka vrácena k doplnění            │ (Template NODE)
+│    - normalVariant: "order_waiting"         │ 🟠 Pro toho, kdo má reagovat
+│    - infoVariant: "order_waiting_sent"      │ 🟢 Pro autora akce (potvrzení)
+└─────────────────────────────────────────────┘
+         │
+         ├─[EDGE 1]──► 👤 Robert Holovský (Objednatel)
+         │             recipientRole: ACTION
+         │             → 🟠 normalVariant: "Vaše obj vrácena - doplňte!"
+         │
+         ├─[EDGE 2]──► 👤 Garant
+         │             recipientRole: ACTION
+         │             → 🟠 normalVariant: "Obj vrácena - hlídejte!"
+         │
+         └─[EDGE 3]──► 👤 Příkazce (ten kdo vrátil)
+                       recipientRole: INFO
+                       → 🟢 infoVariant: "Notifikace odeslána Robertovi"
+```
+
+**Detail EDGE 1 (Template → Robert - Objednatel):**
+```javascript
+{
+  source: 'template-001',     // "Objednávka vrácena k doplnění"
+  target: 'user-robert',      // Robert Holovský
+  data: {
+    notifications: {
+      email: true,            // Poslat i email
+      inapp: true,            // In-app zvoneček
+      recipientRole: 'INFO',  // ⭐ Informační pro objednatele (🟢 zelená)
+      types: [                // Filtr událostí
+        'ORDER_WAITING_FOR_CHANGES'
+      ],
+      scope: 'orders'         // Pouze objednávky
+    }
+  }
+}
+```
+
+**Backend vyhodnocení:**
+```php
+// 1. Událost: Příkazce vrátí objednávku
+triggerNotification([
+  'event' => 'ORDER_WAITING_FOR_CHANGES',
+  'order_id' => 123,
+  'triggered_by' => 'prikazce_user_id'  // ⭐ Kdo klikl na tlačítko
+]);
+
+// 2. Najdi Template NODE
+$template = Template::findByEvent('ORDER_WAITING_FOR_CHANGES');
+// → id: 'template-001', name: 'Objednávka vrácena k doplnění'
+// → normalVariant: 'order_waiting' (🟠 pro toho kdo má reagovat)
+// → infoVariant: 'order_waiting_sent' (🟢 pro autora - potvrzení)
+
+// 3. Najdi všechny EDGES z tohoto template
+$edges = Edge::where('source', $template->id)->get();
+
+// 4. Pro každý edge → vložit do fronty
+foreach ($edges as $edge) {
+  $recipient = User::find($edge->target);
+  $role = $edge->data->notifications->recipientRole;
+  
+  // ⭐ JEDNODUCHÁ LOGIKA: 2 šablony podle role
+  if ($role === 'INFO') {
+    $templateCode = $template->infoVariant;     // 🟢 zelená - jen info
+  } else if ($role === 'APPROVAL') {
+    $templateCode = $template->normalVariant;   // 🟠 oranžová - důležitá notifikace
+  } else if ($role === 'URGENT') {
+    $templateCode = $template->urgentVariant;   // 🔴 červená - urgentní schválení
+  }
+  
+  // Vlož do fronty
+  NotificationQueue::create([
+    'recipient_user_id' => $recipient->id,
+    'template_code' => $templateCode,
+    'event_type' => 'ORDER_WAITING_FOR_CHANGES',
+    'entity_id' => 123,
+    'priority' => 'normal',
+    'status' => 'PENDING'
+  ]);
+}
+```
+
+**Výsledek:**
+- ✉️ **3 notifikace odeslány (2 ŠABLONY):**
+  1. **Robert** (Objednatel) → 🟠 `order_waiting`
+     - "Vaše objednávka #2025-001 byla vrácena k doplnění"
+     - **Karta je u něj** - může pokračovat v objednávce
+  2. **Garant** → 🟠 `order_waiting`
+     - "Objednávka #2025-001 byla vrácena k doplnění"
+     - Důležitá notifikace - hlídat průběh
+  3. **Příkazce** → 🟢 `order_waiting_sent`
+     - "Notifikace o vrácení byla odeslána objednateli Robert Holovský"
+     - Jen potvrzení - akce dokončenaná
+  }
+  
+  // Vlož do fronty
+  NotificationQueue::create([
+    'recipient_user_id' => $recipient->id,
+    'template_code' => $templateCode,
+    'event_type' => 'ORDER_WAITING_FOR_CHANGES',
+    'entity_id' => 123,
+    'priority' => 'normal',
+    'status' => 'PENDING'
+  ]);
+}
+```
+
+**Výsledek:**
+### 🎯 **AUTOR vs PŘÍJEMCE - Definice terminologie**
+
+| Termín | Význam | Kde se používá |
+|--------|--------|----------------|
+| **AUTOR události** | Kdo vyvolal akci (např. Příkazce vrátil obj) | Kontext - `triggered_by_user_id` |
+| **PŘÍJEMCE notifikace** | Kdo dostane notifikaci (Robert, Garant, ...) | ⭐ **EDGE.target** |
+| **recipientRole** | Role příjemce (ACTION/INFO) | ⭐ **EDGE.data.notifications** |
+| **Template NODE** | Typ události ("Co se stalo") | ⭐ **NODE.data.name** |
+
+---
+
+### 📨 **2-3 ŠABLONY = 2-3 ROLE**
+
+| recipientRole | Pro koho | Šablona | Text příkladu | Význam |
+|---------------|----------|---------|---------------|--------|
+| **APPROVAL** | Ten kdo má pokračovat | 🟠 `normalVariant` | "Obj vrácena - karta u tebe" | Důležitá notifikace |
+| **INFO** | Ten kdo poslal akci | 🟢 `infoVariant` | "Notifikace odeslána Robertovi" | Jen potvrzení |
+| **URGENT** | Schvalovatel (speciální) | 🔴 `urgentVariant` | "Schvalte objednávku IHNED" | Urgentní akce |
+
+| Termín | Význam | Kde se používá |
+|--------|--------|----------------|
+| **AUTOR události** | Kdo vyvolal akci (např. Příkazce vrátil obj) | Kontext - ne v NODE/EDGE! |
+| **PŘÍJEMCE notifikace** | Kdo dostane notifikaci (Robert, Garant, ...) | ⭐ **EDGE.target** |
+| **recipientRole** | Role příjemce (APPROVAL/INFO) | ⭐ **EDGE.data.notifications** |
+| **Template NODE** | Typ události ("Co se stalo") | ⭐ **NODE.data.name** |
+
+**⚠️ DŮLEŽITÉ:** 
+- **AUTOR události** (kdo klikl na tlačítko) ≠ **PŘÍJEMCE notifikace** (komu přijde zpráva)
+- **Template NODE** reprezentuje **TYP UDÁLOSTI**, ne autora!
+- **EDGE.target** = **PŘÍJEMCE** (user/role/lokalita, kdo dostane notifikaci)
+- **recipientRole** = **JAK** příjemce notifikaci dostane (ke schválení vs jen info)
+
+---
+
+### 📋 **Checklist pro vytváření Template NODE workflow:**
+
+1. ✅ **Vytvořit Template NODE** - "Co se stalo?"
+   - Název: "Objednávka vrácena k doplnění"
+   - normalVariant: `order_status_schvalena`
+   - infoVariant: `order_status_info` (🟢 zelená)
+   - urgentVariant: `order_status_urgent` (🔴 červená)
+
+2. ✅ **Připojit EDGES** - "Kdo má dostat notifikaci?"
+   - Template → Objednatel (recipientRole: INFO)
+   - Template → Garant (recipientRole: INFO)
+   - Template → Příkazce (recipientRole: INFO)
+
+3. ✅ **Nastavit EDGE.data.notifications**
+   - `email`: true/false
+   - `inapp`: true/false
+   - `recipientRole`: APPROVAL / INFO / BOTH
+   - `types`: [] (prázdné = všechny eventy)
+   - `scope`: 'orders' (jen objednávky)
+
+4. ✅ **Backend mapování**
+   - Event code: `ORDER_WAITING_FOR_CHANGES`
+   - Template name: "Objednávka vrácena k doplnění"
+   - Workflow state: `CEKA_SE`
+
+---
+
+**Příklad workflow:**
+1. User A vytvoří objednávku (`ORDER_CREATED`)
+2. Backend načte org. hierarchii
+3. Najde **Template NODE** pro `ORDER_CREATED`
+4. Najde všechny **EDGES** vycházející z Template
+5. Pro každý EDGE:
+   - Zjistí příjemce (target user)
+   - Zjistí `recipientRole` (APPROVAL/INFO)
+   - Vybere správnou template variantu
+6. Vloží do `notification_queue` → odešle
+
+---
+
+### 🎨 EDGE TYPY A BARVY
+
+| Typ vztahu | Barva | Popis |
+|------------|-------|-------|
+| `user-user` | 🔵 Modrá `#3b82f6` | Klasický nadřízený-podřízený |
+| `template-*` | 🟠 Oranžová `#f59e0b` | Notifikační šablona → uživatel/role |
+| `role-*` | 🟣 Fialová `#8b5cf6` | Role → uživatel |
+| `location-*` | 🟤 Tmavě hnědá `#92400e` | Lokalita → uživatel |
+| `department-*` | 🟢 Tmavě zelená `#059669` | Útvar → uživatel |
+
+---
+
+### 📝 BACKEND DATA CONTRACT
+
+**API Response: `/api.eeo/hierarchy/load`**
+```json
+{
+  "status": "success",
+  "data": {
+    "nodes": [
+      {
+        "type": "user",
+        "userId": 123,
+        "name": "Jan Novák",
+        "position": "Vedoucí IT",
+        "initials": "JN",
+        "metadata": {
+          "location": "Praha",
+          "department": "IT"
+        }
+      },
+      {
+        "type": "template",
+        "templateId": "notif-001",
+        "name": "Schválení objednávky",
+        "settings": {
+          "normalVariant": "order_status_schvalena",
+          "urgentVariant": "order_status_urgent",
+          "infoVariant": "order_status_info",
+          "previewVariant": "order_status_schvalena"
+        }
+      }
+    ],
+    "relations": [
+      {
+        "id": 1,
+        "type": "user-user",
+        "user_id_1": 123,
+        "user_id_2": 456,
+        "level": 1,
+        "relationshipType": "prime",
+        "modules": {
+          "orders": true,
+          "invoices": false
+        },
+        "permissionLevel": {
+          "orders": "READ_WRITE"
+        },
+        "notifications": {
+          "email": true,
+          "inapp": true,
+          "recipientRole": "APPROVAL",
+          "types": ["ORDER_CREATED", "ORDER_APPROVED"],
+          "scope": "orders"
+        },
+        "extended": {
+          "locations": [],
+          "departments": [],
+          "combinations": []
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### ✅ IMPLEMENTAČNÍ ZÁVĚRY
+
+1. **Frontend HOTOVÝ** ✅
+   - `OrganizationHierarchy.js` - plně funkční visual builder
+   - Ukládá `edge.data.notifications` do localStorage draftu
+   - UI pro nastavení `recipientRole` (APPROVAL/INFO/BOTH)
+
+2. **Backend CHYBÍ** ❌
+   - `/api.eeo/hierarchy/save` - ověřit že ukládá `notifications` objekt
+   - `/api.eeo/hierarchy/load` - ověřit že načítá `notifications` objekt
+   - `/api.eeo/notifications/trigger` - VYTVOŘIT NOVÝ endpoint
+
+3. **Notifikační Event Bus** ❌
+   - Queue systém (DB tabulky)
+   - Event Registry (PHP config)
+   - Queue Processor (cron job)
+
+---
+
 **Poznámka:** Organizational hierarchy frontend je **HOTOVÝ**. Nyní čeká na backend implementaci notifikačního systému podle architektury v tomto dokumentu.
 
 **Next Steps:** Review → Diskuze → Schválení → Implementace Fáze 1 (Backend Infrastructure)
 
 ---
 
+## 📊 AKTUALIZACE PO ANALÝZE (16. prosince 2025)
+
+### ✅ **CO FUNGUJE (Současná implementace)**
+
+1. **Frontend notifikační service** 
+   - `notificationService.js` - 11 helper metod
+   - `sendOrderNotifications()` - volá se na 28+ místech v `OrderForm25.js`
+   - Backend commit: `3a28a99` - automatické naplnění 50+ placeholderů
+
+2. **Backend template systém**
+   - 30 šablon v DB (`25_notification_templates`)
+   - 3 varianty per template (normal/urgent/info)
+   - `notificationHandlers.php` - placeholder replacement
+
+3. **Organizační hierarchie (Frontend)**
+   - Visual workflow builder hotový ✅
+   - Edge data obsahují `notifications.recipientRole` ✅
+   - Node settings mají `infoVariant`, `urgentVariant` ✅
+
+### ❌ **CO CHYBÍ (Potřeba implementovat)**
+
+1. **Event Type Registry** - centrální definice event types
+2. **Notification Center API** - endpoint `/api.eeo/notifications/trigger`
+3. **Queue systém** - DB tabulky + retry logic
+4. **Backend hierarchie integrace** - org. hierarchie → notification queue
+5. **Prioritní resoluce** - 3-úrovňová logika (Global → User → Hierarchy)
+
+### 🎯 **DOMLUVENTÝ POSTUP**
+
+#### **FÁZE 1: Backend Infrastructure** (2-3 dny)
+- ✅ Vytvořit DB tabulky (`notification_events`, `notification_queue`, `notification_delivery_log`)
+- ✅ Event Registry (`config/notification-events.php`)
+- ✅ Basic Notification Center API
+
+#### **FÁZE 2: Queue Processing** (1 den)
+- ✅ Queue Processor (cron job každých 30s)
+- ✅ Retry logic (max 3x)
+- ✅ Delivery logging
+
+#### **FÁZE 3: Org. Hierarchie Integration** (1-2 dny)
+- ✅ Napojení na org. hierarchii
+- ✅ Resoluce template variants podle `recipientRole`
+- ✅ Testování na DEV
+
+#### **FÁZE 4: Frontend Refactor** (1 den)
+- ✅ Nahradit `sendOrderNotifications()` → `NotificationCenter.trigger()`
+- ✅ Feature flag pro zapnutí (`notification_center_enabled`)
+- ✅ Dual mode (starý + nový systém paralelně)
+
+### 📐 **ARCHITEKTURNÍ ROZHODNUTÍ**
+
+| Otázka | Rozhodnutí |
+|--------|-----------|
+| **Event Types** | PHP config soubor (`config/notification-events.php`) + cache v DB |
+| **Recipient Role Resolution** | Z workflow stavu + `edge.data.notifications.recipientRole` |
+| **Urgentnost** | Událost určuje (`ORDER_URGENT`), edge má `recipientRole` |
+| **Edge Event Types filter** | Používá se! `edge.data.notifications.types: []` - prázdné = všechny eventy |
+| **WebSocket vs Polling** | **Polling (30s interval)** - jednodušší implementace |
+| **Queue interval** | **30 sekund** (cron: `* * * * * sleep 30; php ...`) |
+
+### 🚀 **IMPLEMENTAČNÍ STRATEGIE**
+
+```mermaid
+graph TD
+    A[Sprint 1: Infrastructure] --> B[DB tabulky + Event Registry]
+    B --> C[Sprint 2: Queue + Testing]
+    C --> D[Queue Processor + Logging]
+    D --> E[Sprint 3: Org. Hierarchy]
+    E --> F[Napojení + Template Resoluce]
+    F --> G[Sprint 4: Frontend Refactor]
+    G --> H[NotificationCenter.trigger + Feature Flag]
+    H --> I[Produkce s rollback možností]
+```
+
+### ⚠️ **RIZIKA A MITIGACE**
+
+| Riziko | Pravděpodobnost | Dopad | Mitigace |
+|--------|-----------------|-------|----------|
+| Kolize s org. hierarchií | Střední | Vysoký | Dual mode - starý systém jako fallback |
+| Performance queue | Nízká | Střední | Throttling + batch processing |
+| Email flooding | Střední | Vysoký | Rate limiting (max 10 emailů/min/user) |
+| Debugování | Vysoká | Střední | Extensive logging v `notification_delivery_log` |
+
+### 📅 **TIMELINE**
+
+- **Týden 1 (18-22.12.2025):** Infrastructure + Event Registry
+- **Týden 2 (8-12.1.2026):** Queue Processing + Testing
+- **Týden 3 (15-19.1.2026):** Org. Hierarchie Integration
+- **Týden 4 (22-26.1.2026):** Frontend Refactor + Produkce
+
+**CELKEM: 4 týdny (20 pracovních dní)**
+
+---
+
 **Připravil:** GitHub Copilot  
-**Datum:** 14. prosince 2025  
-**Status:** 🟡 DRAFT - Čeká na review a diskuzi  
-**Poslední update poznámek:** 14. prosince 2025 16:30
+**Datum:** 16. prosince 2025  
+**Status:** 🟢 READY - Připraveno k implementaci  
+**Poslední update:** 16. prosince 2025 - Kompletní analýza + NODE/EDGE struktura

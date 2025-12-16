@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Gradient pro zlatý efekt -->
+    <radialGradient id="goldGradient" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" style="stop-color:#fff8e1;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#ffd54f;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff6f00;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Vnější okraj mince - zlatý -->
+  <circle cx="100" cy="100" r="98" fill="url(#goldGradient)" stroke="#d84315" stroke-width="2.5"/>
+  
+  <!-- Dekorativní vroubkovaný okraj -->
+  <circle cx="100" cy="100" r="94" fill="none" stroke="#bf360c" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="#ff8a65" stroke-width="0.5"/>
+  
+  <!-- Vnitřní kruh -->
+  <circle cx="100" cy="100" r="86" fill="#ffe0b2" opacity="0.4"/>
+  
+  <!-- Vzor ₿ v pozadí (watermark) -->
+  <text x="100" y="110" font-family="Arial, sans-serif" font-size="120" 
+        font-weight="bold" fill="#ff6f00" text-anchor="middle" 
+        opacity="0.08">₿</text>
+  
+  <!-- Hlava - detailnější -->
+  <ellipse cx="100" cy="82" rx="26" ry="30" fill="none" stroke="#3e2723" stroke-width="1.8"/>
+  
+  <!-- Šrafování hlavy -->
+  <path d="M 77,70 Q 88,67 100,66 Q 112,67 123,70" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  <path d="M 78,75 Q 89,72 100,71 Q 111,72 122,75" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  <path d="M 79,80 Q 90,77 100,76 Q 110,77 121,80" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  <path d="M 80,85 Q 90,82 100,81 Q 110,82 120,85" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  <path d="M 81,90 Q 91,87 100,86 Q 109,87 119,90" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  <path d="M 82,95 Q 91,92 100,91 Q 109,92 118,95" fill="none" stroke="#5d4037" stroke-width="0.5" opacity="0.6"/>
+  
+  <!-- Oči - větší, přátelštější -->
+  <ellipse cx="88" cy="78" rx="5" ry="6" fill="#1a237e"/>
+  <ellipse cx="112" cy="78" rx="5" ry="6" fill="#1a237e"/>
+  <circle cx="89.5" cy="76.5" r="2" fill="#ffffff" opacity="0.9"/>
+  <circle cx="113.5" cy="76.5" r="2" fill="#ffffff" opacity="0.9"/>
+  
+  <!-- Obočí - výraznější -->
+  <path d="M 80,69 Q 88,66 96,67" fill="none" stroke="#1a237e" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M 104,67 Q 112,66 120,69" fill="none" stroke="#1a237e" stroke-width="1.5" stroke-linecap="round"/>
+  
+  <!-- Nos -->
+  <path d="M 100,80 L 100,90" fill="none" stroke="#3e2723" stroke-width="1.2" opacity="0.7"/>
+  <path d="M 96,89 Q 100,92 104,89" fill="none" stroke="#3e2723" stroke-width="1" opacity="0.6"/>
+  
+  <!-- Úsměv - výraznější -->
+  <path d="M 86,95 Q 100,104 114,95" fill="none" stroke="#1a237e" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 88,96 Q 100,102 112,96" fill="none" stroke="#1a237e" stroke-width="0.8" opacity="0.5"/>
+  
+  <!-- Brýle (volitelné - dává "účetní" vzhled) -->
+  <circle cx="88" cy="78" r="8" fill="none" stroke="#424242" stroke-width="1.2" opacity="0.7"/>
+  <circle cx="112" cy="78" r="8" fill="none" stroke="#424242" stroke-width="1.2" opacity="0.7"/>
+  <path d="M 96,78 L 104,78" fill="none" stroke="#424242" stroke-width="1.2" opacity="0.7"/>
+  
+  <!-- Ramena / oblek -->
+  <path d="M 70,112 Q 72,106 80,103 L 100,108 L 120,103 Q 128,106 130,112" 
+        fill="none" stroke="#3e2723" stroke-width="2"/>
+  <path d="M 72,110 Q 85,105 100,106" fill="none" stroke="#5d4037" stroke-width="0.6" opacity="0.5"/>
+  <path d="M 100,106 Q 115,105 128,110" fill="none" stroke="#5d4037" stroke-width="0.6" opacity="0.5"/>
+  
+  <!-- Kravata (detail) -->
+  <path d="M 100,108 L 98,118 L 100,124 L 102,118 Z" fill="#d84315" stroke="#bf360c" stroke-width="0.5" opacity="0.8"/>
+  
+  <!-- Vlasy -->
+  <path d="M 74,80 Q 76,64 88,58 Q 100,55 112,58 Q 124,64 126,80" 
+        fill="none" stroke="#1a237e" stroke-width="1.5"/>
+  <path d="M 78,72 Q 85,62 100,59 Q 115,62 122,72" 
+        fill="none" stroke="#3e2723" stroke-width="0.7" opacity="0.6"/>
+  
+  <!-- Symbol ₿ nahoře s kruhem -->
+  <circle cx="100" cy="25" r="12" fill="#ff6f00" stroke="#d84315" stroke-width="1.5"/>
+  <text x="100" y="30" font-family="Arial, sans-serif" font-size="16" 
+        font-weight="bold" fill="#fff" text-anchor="middle">₿</text>
+  
+  <!-- Text "FINANCE HELPER" dole -->
+  <g transform="translate(100, 165)">
+    <text x="0" y="0" font-family="serif" font-size="9" 
+          font-weight="700" fill="#d84315" text-anchor="middle" 
+          letter-spacing="1.5" opacity="0.9">FINANCE</text>
+  </g>
+  <g transform="translate(100, 175)">
+    <text x="0" y="0" font-family="serif" font-size="9" 
+          font-weight="700" fill="#d84315" text-anchor="middle" 
+          letter-spacing="1.5" opacity="0.9">HELPER</text>
+  </g>
+  
+  <!-- Dekorativní prvky -->
+  <path d="M 25,45 L 28,48 L 25,51 L 22,48 Z" fill="#ff6f00" opacity="0.5"/>
+  <path d="M 175,45 L 178,48 L 175,51 L 172,48 Z" fill="#ff6f00" opacity="0.5"/>
+  <path d="M 25,155 L 28,158 L 25,161 L 22,158 Z" fill="#ff6f00" opacity="0.5"/>
+  <path d="M 175,155 L 178,158 L 175,161 L 172,158 Z" fill="#ff6f00" opacity="0.5"/>
+  
+  <!-- Stínování pro 3D efekt -->
+  <path d="M 15,100 A 85,85 0 0,1 100,15" fill="none" stroke="#fff8e1" 
+        stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+  <path d="M 185,100 A 85,85 0 0,0 100,185" fill="none" stroke="#bf360c" 
+        stroke-width="1.5" opacity="0.3" stroke-linecap="round"/>
+</svg>

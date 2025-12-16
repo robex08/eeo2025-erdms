@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700"/>
+      <stop offset="50%" style="stop-color:#FFA500"/>
+      <stop offset="100%" style="stop-color:#FF8C00"/>
+    </linearGradient>
+    
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Stín -->
+  <ellipse cx="100" cy="190" rx="70" ry="10" fill="#000000" opacity="0.2"/>
+  
+  <!-- Vnější kruh mince -->
+  <circle cx="100" cy="100" r="90" fill="url(#goldGradient)" 
+          stroke="#FF6B00" stroke-width="4" filter="url(#glow)"/>
+  
+  <!-- Vroubkování -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#FF8C00" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+  
+  <!-- BITCOIN SYMBOL ₿ - VELKÝ A VIDITELNÝ -->
+  <g transform="translate(100, 100)">
+    <!-- Text ₿ (fallback) -->
+    <text x="0" y="20" font-family="Arial, sans-serif" font-size="80" 
+          font-weight="bold" fill="#FFFFFF" text-anchor="middle" 
+          filter="url(#glow)">₿</text>
+  </g>
+  
+  <!-- Lesk (3D efekt) -->
+  <ellipse cx="70" cy="70" rx="45" ry="30" fill="#FFFFFF" opacity="0.25" transform="rotate(-30 70 70)"/>
+</svg>
