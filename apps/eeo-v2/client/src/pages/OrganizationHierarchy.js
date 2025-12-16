@@ -11,7 +11,8 @@ import ReactFlow, {
   Panel,
   Handle,
   Position,
-  useReactFlow
+  useReactFlow,
+  getSmoothStepPath
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -475,6 +476,13 @@ const CanvasArea = styled.div`
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  
+  /* Animace pro čárkovanou čáru */
+  @keyframes dashdraw {
+    to {
+      stroke-dashoffset: -10;
+    }
+  }
   
   /* Pointer kurzor při hover nad nodem nebo edge */
   .react-flow__node,
@@ -1445,8 +1453,79 @@ const CustomNode = ({ data, selected }) => {
   );
 };
 
+// Custom Edge Component with dashed animated smoothstep line (lomená pravoúhlá čára)
+const CustomEdge = ({ 
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+  data,
+  source
+}) => {
+  const { getNode } = useReactFlow();
+  
+  const [edgePath] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+  
+  // Získej zdrojový node a jeho barvu
+  const sourceNode = getNode(source);
+  let strokeColor = '#94a3b8'; // Default šedá
+  
+  if (sourceNode?.data?.type === 'template') {
+    strokeColor = '#f59e0b'; // Oranžová pro šablony
+  } else if (sourceNode?.data?.type === 'location') {
+    strokeColor = '#92400e'; // Tmavě hnědá pro lokality
+  } else if (sourceNode?.data?.type === 'department') {
+    strokeColor = '#059669'; // Tmavě zelená pro útvary
+  } else if (sourceNode?.type === 'custom') {
+    strokeColor = '#3b82f6'; // Modrá pro uživatele
+  }
+  
+  return (
+    <>
+      {/* Neviditelná širší klikací plocha */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        className="react-flow__edge-interaction"
+      />
+      {/* Viditelná čára */}
+      <path
+        id={id}
+        style={{
+          ...style,
+          stroke: strokeColor,
+          strokeWidth: 2.5,
+          strokeDasharray: '8, 4',
+          animation: 'dashdraw 0.5s linear infinite',
+        }}
+        className="react-flow__edge-path"
+        d={edgePath}
+        markerEnd={markerEnd}
+      />
+    </>
+  );
+};
+
 const nodeTypes = {
   custom: CustomNode,
+};
+
+const edgeTypes = {
+  custom: CustomEdge,
 };
 
 // Main Component with error boundary for hot-reload issues
@@ -1619,7 +1698,7 @@ const OrganizationHierarchy = () => {
                 // Notifikace
                 notifications: {
                   ...(e.data?.notifications || {}),
-                  types: selectedNotificationEventTypes, // Event Types z API (ORDER_CREATED, etc.)
+                  types: selectedNotificationEventTypes, // Event Types z API (ORDER_SENT_FOR_APPROVAL, etc.)
                   email: notificationEmailEnabled,
                   inapp: notificationInAppEnabled,
                   recipientRole: notificationRecipientRole
@@ -5196,6 +5275,7 @@ const OrganizationHierarchy = () => {
               onNodeDragStop={onNodeDragStop}
               onInit={setReactFlowInstance}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               fitView
               attributionPosition="bottom-left"
               selectionOnDrag
@@ -5481,7 +5561,7 @@ const OrganizationHierarchy = () => {
                         return variants;
                       };
                       
-                      const availableVariants = parseAllVariants(template.email_body);
+                      const availableVariants = parseAllVariants(template.email_telo || template.email_body);
                       
                       // Určení výchozích hodnot
                       const defaultVariant = availableVariants.length > 0 ? availableVariants[0].type : '';
@@ -5677,13 +5757,23 @@ const OrganizationHierarchy = () => {
                         multiple
                         value={templateEventTypes}
                         onChange={(value) => setTemplateEventTypes(value)}
-                        options={notificationEventTypes.map(eventType => ({
-                          value: eventType.code,
-                          label: `${eventType.name} (${eventType.code})`,
-                          category: eventType.category
+                        options={(notificationEventTypes || []).map(eventType => ({
+                          id: eventType.kod || eventType.code,
+                          value: eventType.kod || eventType.code,
+                          label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
                         }))}
                         placeholder="Vyberte event types..."
-                        groupBy="category"
+                        field="templateEventTypes"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        hasTriedToSubmit={false}
                       />
                       <div style={{ 
                         fontSize: '0.7rem', 
@@ -5693,7 +5783,7 @@ const OrganizationHierarchy = () => {
                         lineHeight: '1.4'
                       }}>
                         💡 <strong>Určuje, kdy se tato šablona automaticky použije.</strong><br/>
-                        <span style={{ marginLeft: '18px' }}>• Např. ORDER_CREATED → šablona "Objednávka vytvořena"</span><br/>
+                        <span style={{ marginLeft: '18px' }}>• Např. ORDER_SENT_FOR_APPROVAL → šablona "Odeslána ke schválení"</span><br/>
                         <span style={{ marginLeft: '18px' }}>• Backend při události vybere šablonu podle event type</span><br/>
                         <span style={{ marginLeft: '18px' }}>• Pokud nevyberete → šablona se nepoužije automaticky</span>
                       </div>
@@ -5793,7 +5883,7 @@ const OrganizationHierarchy = () => {
                       return (
                         <>
                           {/* Preview In-App Notifikace - STEJNÝ STYL JAKO ZVONĚČEK */}
-                          {(template.app_title || template.app_message) && (
+                          {((template.app_nadpis || template.app_title) || (template.app_zprava || template.app_message)) && (
                             <div style={{ marginTop: '16px' }}>
                               <Label style={{ marginBottom: '8px', display: 'block' }}>
                                 <FontAwesomeIcon icon={faBell} style={{ marginRight: '6px', color: '#f5576c' }} />
@@ -5843,11 +5933,11 @@ const OrganizationHierarchy = () => {
                                     WebkitLineClamp: 2,
                                     WebkitBoxOrient: 'vertical'
                                   }}>
-                                    {replacePlaceholders(template.app_title) || 'Schválena: O-1958/75030926/2025/IT'}
+                                    {replacePlaceholders(template.app_nadpis || template.app_title) || 'Schválena: O-1958/75030926/2025/IT'}
                                   </div>
                                   
                                   {/* Message */}
-                                  {template.app_message && (
+                                  {(template.app_zprava || template.app_message) && (
                                     <div style={{
                                       fontSize: '13px',
                                       color: '#6b7280',
@@ -5859,7 +5949,7 @@ const OrganizationHierarchy = () => {
                                       WebkitLineClamp: 2,
                                       WebkitBoxOrient: 'vertical'
                                     }}>
-                                      {replacePlaceholders(template.app_message)}
+                                      {replacePlaceholders(template.app_zprava || template.app_message)}
                                     </div>
                                   )}
                                   
@@ -5982,32 +6072,32 @@ const OrganizationHierarchy = () => {
                             }}>
                               {/* Email Header */}
                               <div style={{
-                                padding: '16px 20px',
+                                padding: '8px 12px',
                                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                                 color: 'white',
-                                fontSize: '0.85rem'
+                                fontSize: '0.75rem'
                               }}>
-                                <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <strong style={{ fontSize: '0.9rem' }}>📧 Email Preview</strong>
+                                <div style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <strong style={{ fontSize: '0.8rem' }}>📧 Email Preview</strong>
                                 </div>
-                                <div style={{ marginBottom: '6px', opacity: 0.95 }}>
-                                  <strong>Předmět:</strong> {replacePlaceholders(template.email_subject || 'Bez předmětu')}
+                                <div style={{ marginBottom: '3px', opacity: 0.95, fontSize: '0.7rem' }}>
+                                  <strong>Předmět:</strong> {replacePlaceholders(template.email_predmet || template.email_subject || 'Bez předmětu')}
                                 </div>
-                                <div style={{ marginBottom: '6px', opacity: 0.95 }}>
+                                <div style={{ marginBottom: '3px', opacity: 0.95, fontSize: '0.7rem' }}>
                                   <strong>Odesílatel:</strong> EEO Systém &lt;noreply@eeo.cz&gt;
                                 </div>
-                                <div style={{ opacity: 0.95 }}>
+                                <div style={{ opacity: 0.95, fontSize: '0.7rem' }}>
                                   <strong>Příjemce:</strong> {mockData.recipient_name || mockData.user_name} &lt;{mockData.user_email}&gt;
                                 </div>
                               </div>
                               {/* Email Body - KOMPLETNÍ SCROLLOVATELNÝ náhled - ZMENŠENO */}
                               <div style={{
-                                padding: '12px',
+                                padding: '8px',
                                 fontSize: '0.5rem',
                                 lineHeight: '1.3',
                                 color: '#1f2937',
-                                maxHeight: '500px',
-                                minHeight: '200px',
+                                maxHeight: '400px',
+                                minHeight: '150px',
                                 overflowY: 'auto',
                                 overflowX: 'hidden',
                                 background: '#ffffff',
@@ -6022,7 +6112,7 @@ const OrganizationHierarchy = () => {
                                       (() => {
                                         // Extrakce správné varianty podle výběru v templatePreviewVariant
                                         const selectedVariantType = templatePreviewVariant || templateNormalVariant || 'APPROVER_NORMAL';
-                                        const emailBody = template.email_body || '<p style="color: #9ca3af; font-style: italic;">Email tělo není definováno v šabloně</p>';
+                                        const emailBody = template.email_telo || template.email_body || '<p style="color: #9ca3af; font-style: italic;">Email tělo není definováno v šabloně</p>';
                                         
                                         // Pokud není delimiter, vrať celý email_body
                                         if (!emailBody.includes('<!-- RECIPIENT:')) {
@@ -6596,20 +6686,6 @@ const OrganizationHierarchy = () => {
                   const sourceNode = nodes.find(n => n.id === selectedEdge.source);
                   const targetNode = nodes.find(n => n.id === selectedEdge.target);
                   
-                  // DEBUG: Log node types
-                  console.log('🔍 Edge detail - Source node:', {
-                    id: sourceNode?.id,
-                    dataType: sourceNode?.data?.type,
-                    metadataType: sourceNode?.data?.metadata?.type,
-                    name: sourceNode?.data?.name
-                  });
-                  console.log('🔍 Edge detail - Target node:', {
-                    id: targetNode?.id,
-                    dataType: targetNode?.data?.type,
-                    metadataType: targetNode?.data?.metadata?.type,
-                    name: targetNode?.data?.name
-                  });
-                  
                   return (
                   <>
                     {/* Typ vztahu badge */}
@@ -6627,7 +6703,6 @@ const OrganizationHierarchy = () => {
                       {(() => {
                         const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
                         const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
-                        console.log('🔍 Detected types:', { sourceType, targetType });
                         const relationInfo = getRelationshipTypeInfo(sourceType, targetType);
                         return `${relationInfo.icon} ${relationInfo.label}`;
                       })()}
@@ -6661,11 +6736,42 @@ const OrganizationHierarchy = () => {
                       fontSize: '0.85rem',
                       color: '#15803d'
                     }}>
-                      <strong>💡 Jak to funguje:</strong>
                       <div style={{ marginTop: '8px', fontSize: '0.8rem', lineHeight: '1.6' }}>
-                        <strong>{sourceNode?.data?.name?.split(' ')[0] || 'Nadřízený'}</strong> získá práva vidět data od <strong>{targetNode?.data?.name?.split(' ')[0] || 'podřízeného'}</strong>.<br/>
-                        <strong>Rozsah</strong> a <strong>Moduly</strong> určují, co přesně uvidí (objednávky/faktury/pokladnu).<br/>
-                        <strong>Rozšířené lokality/úseky</strong> přidávají další data mimo základní vztah.
+                        {(() => {
+                          const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                          const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                          const sourceName = sourceNode?.data?.name?.split(' ')[0] || 'Zdroj';
+                          const targetName = targetNode?.data?.name?.split(' ')[0] || 'Cíl';
+                          
+                          // Template → User/Location/Department (NOTIFIKACE)
+                          if (sourceType === 'template') {
+                            if (targetType === 'user') {
+                              return (
+                                <>
+                                  <strong>{targetName}</strong> bude dostávat notifikace podle šablony <strong>{sourceName}</strong>.<br/>
+                                  <strong>Typ notifikace</strong> určuje prioritu (důležitá/schvalovací/informační).<br/>
+                                  <strong>Event Types</strong> určují, kdy se notifikace odešle.
+                                </>
+                              );
+                            } else {
+                              return (
+                                <>
+                                  Všichni uživatelé v <strong>{targetName}</strong> dostanou notifikace podle šablony <strong>{sourceName}</strong>.<br/>
+                                  <strong>Event Types</strong> určují, kdy se notifikace odešle.
+                                </>
+                              );
+                            }
+                          }
+                          
+                          // Ostatní vztahy (PRÁVA)
+                          return (
+                            <>
+                              <strong>{sourceName}</strong> získá práva vidět data od <strong>{targetName}</strong>.<br/>
+                              <strong>Rozsah</strong> a <strong>Moduly</strong> určují, co přesně uvidí (objednávky/faktury/pokladnu).<br/>
+                              <strong>Rozšířené lokality/úseky</strong> přidávají další data mimo základní vztah.
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                     
@@ -6737,6 +6843,60 @@ const OrganizationHierarchy = () => {
                   </div>
                 </FormGroup>
                   );
+                })()}
+                
+                {/* Checkbox pro filtrování podle konkrétní objednávky (User→Department/Location) */}
+                {selectedEdge && (() => {
+                  const sourceNode = nodes.find(n => n.id === selectedEdge.source);
+                  const targetNode = nodes.find(n => n.id === selectedEdge.target);
+                  const sourceType = sourceNode?.data?.metadata?.type || sourceNode?.data?.type || 'user';
+                  const targetType = targetNode?.data?.metadata?.type || targetNode?.data?.type || 'user';
+                  
+                  // Zobraz jen pro User → Department/Location vztahy
+                  if (sourceType === 'user' && (targetType === 'department' || targetType === 'location')) {
+                    return (
+                      <FormGroup style={{ marginTop: '16px' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          padding: '12px',
+                          background: '#f0fdf4',
+                          border: '2px solid #86efac',
+                          borderRadius: '8px'
+                        }}>
+                          <input 
+                            type="checkbox"
+                            id="applyToOrdersOnly"
+                            checked={selectedEdge.data?.applyToOrdersOnly || false}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, applyToOrdersOnly: e.target.checked }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              marginTop: '2px'
+                            }}
+                          />
+                          <label htmlFor="applyToOrdersOnly" style={{ cursor: 'pointer', flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#15803d', marginBottom: '4px' }}>
+                              🎯 Platí jen pro objednávky z tohoto {targetType === 'department' ? 'úseku' : 'lokality'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#166534', lineHeight: '1.5' }}>
+                              <strong>✅ Zapnuto:</strong> Uživatel uvidí/upraví jen objednávky vytvořené v tomto {targetType === 'department' ? 'úseku' : 'lokalitě'}.<br/>
+                              <strong>❌ Vypnuto:</strong> Viditelnost se řídí podle nastaveného Scope (OWN/TEAM/LOCATION/ALL).
+                            </div>
+                          </label>
+                        </div>
+                      </FormGroup>
+                    );
+                  }
+                  return null;
                 })()}
               </DetailSection>
 
@@ -7200,13 +7360,23 @@ const OrganizationHierarchy = () => {
                           multiple
                           value={selectedNotificationEventTypes}
                           onChange={(value) => setSelectedNotificationEventTypes(value)}
-                          options={notificationEventTypes.map(eventType => ({
-                            value: eventType.code,
-                            label: `${eventType.name} (${eventType.code})`,
-                            category: eventType.category
+                          options={(notificationEventTypes || []).map(eventType => ({
+                            id: eventType.kod || eventType.code,
+                            value: eventType.kod || eventType.code,
+                            label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
                           }))}
                           placeholder="Vyberte typy událostí..."
-                          groupBy="category"
+                          field="selectedNotificationEventTypes"
+                          selectStates={selectStates}
+                          setSelectStates={setSelectStates}
+                          searchStates={searchStates}
+                          setSearchStates={setSearchStates}
+                          touchedSelectFields={touchedSelectFields}
+                          setTouchedSelectFields={setTouchedSelectFields}
+                          toggleSelect={toggleSelect}
+                          filterOptions={filterOptions}
+                          getOptionLabel={getOptionLabel}
+                          hasTriedToSubmit={false}
                         />
                         <div style={{ 
                           fontSize: '0.7rem', 
@@ -7215,8 +7385,92 @@ const OrganizationHierarchy = () => {
                           fontStyle: 'italic',
                           lineHeight: '1.4'
                         }}>
-                          💡 Vyberte konkrétní události (ORDER_CREATED, ORDER_APPROVED...), kdy se má tato notifikace poslat.<br/>
+                          💡 Vyberte konkrétní události (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED...), kdy se má tato notifikace poslat.<br/>
                           <span style={{ marginLeft: '18px' }}>Pokud nevyberete žádnou, notifikace se nebude automaticky spouštět.</span>
+                        </div>
+                      </FormGroup>
+                      
+                      {/* NOVÉ: Checkbox pro filtrování jen na účastníky objednávky */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          padding: '12px',
+                          background: '#fef3c7',
+                          border: '2px solid #fbbf24',
+                          borderRadius: '8px'
+                        }}>
+                          <input 
+                            type="checkbox"
+                            id="onlyOrderParticipants"
+                            checked={selectedEdge.data?.onlyOrderParticipants ?? true}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, onlyOrderParticipants: e.target.checked }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              marginTop: '2px'
+                            }}
+                          />
+                          <label htmlFor="onlyOrderParticipants" style={{ cursor: 'pointer', flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#78350f', marginBottom: '4px' }}>
+                              📋 Poslat pouze účastníkům objednávky
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: '1.5' }}>
+                              <strong>✅ Zapnuto:</strong> Notifikace dostanou jen ti, kteří jsou přiřazeni k dané objednávce 
+                              (objednatel, garant, příkazce, schvalovatelé této konkrétní objednávky).<br/>
+                              <strong>❌ Vypnuto:</strong> Notifikace dostanou VŠICHNI uživatelé s vybranou rolí v celém systému.
+                            </div>
+                          </label>
+                        </div>
+                      </FormGroup>
+                      
+                      {/* Checkbox pro filtrování podle lokality/úseku objednávky */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          padding: '12px',
+                          background: '#dbeafe',
+                          border: '2px solid #3b82f6',
+                          borderRadius: '8px'
+                        }}>
+                          <input 
+                            type="checkbox"
+                            id="onlyOrderLocation"
+                            checked={selectedEdge.data?.onlyOrderLocation || false}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, onlyOrderLocation: e.target.checked }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              marginTop: '2px'
+                            }}
+                          />
+                          <label htmlFor="onlyOrderLocation" style={{ cursor: 'pointer', flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1e40af', marginBottom: '4px' }}>
+                              📍 Filtrovat podle lokality/úseku objednávky
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#1e3a8a', lineHeight: '1.5' }}>
+                              <strong>✅ Zapnuto:</strong> Notifikace dostanou jen uživatelé s oprávněními pro lokalitu/úsek dané objednávky 
+                              (kontroluje hierarchii User → Department/Location).<br/>
+                              <strong>❌ Vypnuto:</strong> Kontrola lokality/úseku se neprovádí.
+                            </div>
+                          </label>
                         </div>
                       </FormGroup>
                       
@@ -7676,7 +7930,7 @@ const FullscreenEmailModal = ({ isOpen, onClose, emailData }) => {
     return emailBody.substring(htmlStart, htmlEnd).trim();
   };
   
-  const emailBodyToDisplay = extractEmailVariant(template.email_body, selectedVariantType || 'DEFAULT');
+  const emailBodyToDisplay = extractEmailVariant(template.email_telo || template.email_body, selectedVariantType || 'DEFAULT');
   
   return (
     <ModalOverlay onClick={onClose} style={{ zIndex: 20000 }}>
@@ -7775,7 +8029,7 @@ const FullscreenEmailModal = ({ isOpen, onClose, emailData }) => {
           }}>
             <div style={{ marginBottom: '12px' }}>
               <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#111827', lineHeight: '1.4' }}>
-                {replacePlaceholders(template.email_subject || 'Bez předmětu')}
+                {replacePlaceholders(template.email_predmet || template.email_subject || 'Bez předmětu')}
               </div>
             </div>
             <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '6px' }}>
