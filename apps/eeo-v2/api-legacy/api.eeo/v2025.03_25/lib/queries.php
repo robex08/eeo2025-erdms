@@ -21,9 +21,22 @@ define('TABLE_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
 define('TABLE_UZIVATELE_HIERARCHIE', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_PROFILY', '25_hierarchie_profily');
-define('TABLE_NOTIFICATION_TEMPLATES', '25_notification_templates');
 define('TABLE_UZIVATELE_ROLE', '25_uzivatele_role');
 define('TABLE_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
+
+// === NOTIFICATION SYSTEM CONSTANTS (České názvy) ===
+define('TABLE_NOTIFIKACE', '25_notifikace');                              // Hlavní tabulka notifikací
+define('TABLE_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');           // Read state pro příjemce
+define('TABLE_NOTIFIKACE_SABLONY', '25_notifikace_sablony');             // Šablony emailů/notifikací
+define('TABLE_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti'); // Katalog EVENT_TYPES
+define('TABLE_NOTIFIKACE_FRONTA', '25_notifikace_fronta');               // Fronta pro plánované odesílání
+define('TABLE_NOTIFIKACE_AUDIT', '25_notifikace_audit');                 // Audit log doručení
+define('TABLE_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni'); // User preferences
+
+// DEPRECATED - Zpětná kompatibilita (budou odstraněny v budoucnu)
+define('TABLE_NOTIFICATIONS', '25_notifikace');                          // @deprecated Use TABLE_NOTIFIKACE
+define('TABLE_NOTIFICATIONS_READ', '25_notifikace_precteni');           // @deprecated Use TABLE_NOTIFIKACE_PRECTENI
+define('TABLE_NOTIFICATION_TEMPLATES', '25_notifikace_sablony');        // @deprecated Use TABLE_NOTIFIKACE_SABLONY
 
 // === CASHBOOK (POKLADNA) CONSTANTS ===
 define('TABLE_POKLADNI_KNIHY', '25a_pokladni_knihy');
