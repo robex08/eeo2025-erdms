@@ -42,7 +42,41 @@
 
 ## ❌ ZNÁMÉ PROBLÉMY
 
-### 🐛 Problém 1: Placeholdery se Nenahrazují Konzistentně
+### ✅ ~~Problém 1: Jméno Uživatele se Nezobrazovalo~~ **VYŘEŠENO**
+
+**Symptom:**
+- Notifikace zobrazovaly jen **"user"** místo jména osoby, která akci provedla
+- Badge zobrazoval: `👤 user` ❌
+
+**Root Cause:**
+- Backend neukládal jméno trigger usera do `data_json`
+- Frontend očekával `action_performed_by` ale backend to neposílal
+
+**Řešení:**
+```php
+// Backend: notificationHandlers.php
+if ($triggerUserId) {
+    $stmt = $db->prepare("SELECT CONCAT(name, ' ', surname) as full_name FROM users WHERE id = :user_id");
+    $stmt->execute([':user_id' => $triggerUserId]);
+    $triggerUser = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($triggerUser) {
+        $placeholderData['action_performed_by'] = $triggerUser['full_name'];
+    }
+}
+```
+
+```javascript
+// Frontend: NotificationDropdown.js
+{notificationData.action_performed_by ? (
+  <span>👤 {notificationData.action_performed_by}</span>
+) : ...}
+```
+
+**Status:** ✅ Opraveno commit `6362846`
+
+---
+
+### 🐛 Problém 2: Placeholdery se Nenahrazují Konzistentně
 
 **Symptom:**
 - První 2 notifikace: ✅ "Ke schválení: **O-1984/75030926/2025/IT**" (plný text)
@@ -64,18 +98,19 @@ tail -f /var/log/php/error.log | grep -E "loadOrderPlaceholders|Merged placehold
   "order_number": "O-1984/75030926/2025/IT",
   "order_subject": "Test objednávka",
   "creator_name": "Robert Holovsky",
+  "action_performed_by": "Robert Holovsky",  ← NOVĚ!
   ...
 }
 ```
 
 **Požadované Řešení:**
-- ✅ Zkontrolovat, že `loadOrderPlaceholders()` se volá **před** každou notifikací
-- ✅ Ověřit strukturu DB dat (objednávka má všechny sloupce?)
-- ✅ Přidat fallback hodnoty pro chybějící placeholders
+- ⏳ Zkontrolovat, že `loadOrderPlaceholders()` se volá **před** každou notifikací
+- ⏳ Ověřit strukturu DB dat (objednávka má všechny sloupce?)
+- ⏳ Přidat fallback hodnoty pro chybějící placeholders
 
 ---
 
-### 🐛 Problém 2: Zvoneček Badge Nerefreshuje Automaticky
+### 🐛 Problém 3: Zvoneček Badge Nerefreshuje Automaticky
 
 **Symptom:**
 - Notifikace se vytvoří v DB (✅ read záznam existuje, precteno=0)
@@ -110,7 +145,7 @@ console.log('   Current state:', unreadNotificationsCount);
 
 ---
 
-### 🐛 Problém 3: Skupiny (např. Účetní) Nedostanou Notifikace
+### 🐛 Problém 4: Skupiny (např. Účetní) Nedostanou Notifikace
 
 **Symptom:**
 - Edge: Template → **Role: Účetní**
@@ -188,7 +223,7 @@ Edge #2: Template → Role Účetní
 
 ---
 
-### 🐛 Problém 4: HTML Varianty Šablon
+### 🐛 Problém 5: HTML Varianty Šablon
 
 **Symptom:**
 - Template má 3 HTML varianty:
