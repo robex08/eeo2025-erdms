@@ -767,12 +767,24 @@ export const createNotification = async (notificationData) => {
       ...notificationData
     };
 
+    console.log('════════════════════════════════════════════════════════════════');
+    console.log('🔔 [NotificationsAPI] Odesílám notifikaci');
+    console.log('   Type:', notificationData.type);
+    console.log('   Order ID:', notificationData.order_id);
+    console.log('   Recipients:', notificationData.recipients);
+    console.log('   Action User ID:', notificationData.action_user_id);
+    console.log('   Full Payload:', payload);
+    console.log('════════════════════════════════════════════════════════════════');
+
     const response = await notificationsApi.post('/notifications/create', payload);
     const result = handleApiResponse(response);
+
+    console.log('✅ [NotificationsAPI] Odpověď ze serveru:', result);
 
     return result;
 
   } catch (error) {
+    console.error('❌ [NotificationsAPI] Chyba při odesílání notifikace:', error);
     throw error;
   }
 };

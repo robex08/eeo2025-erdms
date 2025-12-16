@@ -8757,9 +8757,18 @@ function OrderForm25() {
   // Backend automaticky naplní 50+ placeholderů z order_id
   // 🔔 ROZŠÍŘENÁ PRAVIDLA NOTIFIKACÍ (01.11.2025)
   const sendOrderNotifications = async (orderId, orderNumber, newWorkflowState, oldWorkflowState, formData) => {
+    console.log('════════════════════════════════════════════════════════════════');
+    console.log('🔔 [sendOrderNotifications] ZAČÁTEK');
+    console.log('   Order ID:', orderId);
+    console.log('   Order Number:', orderNumber);
+    console.log('   Old Workflow State:', oldWorkflowState);
+    console.log('   New Workflow State:', newWorkflowState);
+    console.log('════════════════════════════════════════════════════════════════');
+    
     try {
       // Pokud se stav nezměnil, nic neposílej
       if (oldWorkflowState && newWorkflowState === oldWorkflowState) {
+        console.log('⚠️ [sendOrderNotifications] Stav se nezměnil, notifikace se neodešlou');
         return;
       }
 
@@ -9003,15 +9012,27 @@ function OrderForm25() {
       });
 
 
+      console.log('📊 [sendOrderNotifications] Detekovaný typ notifikace:', notificationType);
+      console.log('📊 [sendOrderNotifications] Původní příjemci (před filtrací):', Array.from(recipientUserIds));
+      console.log('📊 [sendOrderNotifications] Validní příjemci (po filtraci):', validRecipients);
+
       // Pokud nebyl detekován žádný typ notifikace, skonči
       if (!notificationType) {
+        console.log('⚠️ [sendOrderNotifications] Žádný typ notifikace nebyl detekován, končím');
         return;
       }
 
       // Pokud nejsou žádní příjemci, skonči
       if (validRecipients.length === 0) {
+        console.log('⚠️ [sendOrderNotifications] Žádní validní příjemci, notifikace se neodešlou');
         return;
       }
+
+      console.log('🚀 [sendOrderNotifications] Odesílám notifikace přes backend API...');
+      console.log('   → Typ:', notificationType);
+      console.log('   → Příjemci:', validRecipients);
+      console.log('   → Order ID:', orderId);
+      console.log('   → Action User ID:', user_id);
 
       // 🆕 NOVÝ BACKEND API - Odeslat notifikaci s automatickými placeholdery
       // Backend automaticky naplní 50+ placeholderů z order_id!
@@ -9025,7 +9046,10 @@ function OrderForm25() {
         recipients: validRecipients // Hromadné odeslání
       });
 
+      console.log('✅ [sendOrderNotifications] Notifikace úspěšně odeslány!');
+
     } catch (error) {
+      console.error('❌ [sendOrderNotifications] Chyba při odesílání notifikací:', error);
       // Nezastavuj workflow kvůli chybě notifikace
     }
   };
