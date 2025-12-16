@@ -12,7 +12,7 @@
 
 CREATE TABLE IF NOT EXISTS `25_notifikace_typy_udalosti` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `kod` VARCHAR(100) NOT NULL COMMENT 'Unikátní kód události (ORDER_CREATED, INVOICE_DUE_SOON, ...)',
+  `kod` VARCHAR(100) NOT NULL COMMENT 'Unikátní kód události (ORDER_SENT_FOR_APPROVAL, INVOICE_DUE_SOON, ...)',
   `nazev` VARCHAR(255) NOT NULL COMMENT 'Lidsky čitelný název',
   `kategorie` VARCHAR(50) NOT NULL COMMENT 'orders, invoices, contracts, cashbook',
   `popis` TEXT NULL COMMENT 'Detailní popis události',
@@ -203,7 +203,7 @@ INSERT INTO `25_notifikace_typy_udalosti`
   (`kod`, `nazev`, `kategorie`, `popis`, `uroven_nahlhavosti`, `role_prijemcu`, `vychozi_kanaly`, `modul`, `aktivni`, `dt_vytvoreno`)
 VALUES
   -- OBJEDNÁVKY - Workflow
-  ('ORDER_CREATED', 'Objednávka vytvořena', 'orders', 'Robert vytvoří objednávku → notifikace příkazci ke schválení', 'EXCEPTIONAL', '["EXCEPTIONAL","APPROVAL","INFO"]', '["email","inapp"]', 'orders', 1, NOW()),
+  ('ORDER_SENT_FOR_APPROVAL', 'Objednávka odeslána ke schválení', 'orders', 'Objednatel odeslal objednávku ke schválení → notifikace příkazci/schvalovateli (trigger: ODESLANA_KE_SCHVALENI)', 'EXCEPTIONAL', '["EXCEPTIONAL","APPROVAL","INFO"]', '["email","inapp"]', 'orders', 1, NOW()),
   ('ORDER_APPROVED', 'Objednávka schválena', 'orders', 'Příkazce schválil → notifikace Robertovi, že může pokračovat', 'NORMAL', '["APPROVAL","INFO"]', '["email","inapp"]', 'orders', 1, NOW()),
   ('ORDER_REJECTED', 'Objednávka zamítnuta', 'orders', 'Příkazce zamítl → proces končí', 'EXCEPTIONAL', '["EXCEPTIONAL","INFO"]', '["email","inapp"]', 'orders', 1, NOW()),
   ('ORDER_WAITING_FOR_CHANGES', 'Objednávka vrácena k doplnění', 'orders', 'Příkazce vrátil → Robert doplní a znovu odešle', 'NORMAL', '["APPROVAL","INFO"]', '["email","inapp"]', 'orders', 1, NOW()),

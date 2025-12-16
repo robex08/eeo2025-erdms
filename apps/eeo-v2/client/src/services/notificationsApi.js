@@ -789,6 +789,51 @@ export const createNotification = async (notificationData) => {
   }
 };
 
+/**
+ * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
+ * Backend automaticky najde příjemce v hierarchii podle event typu
+ * 
+ * @param {string} eventType - Event type code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, ...)
+ * @param {number} objectId - ID objektu (objednávka, faktura, ...)
+ * @param {number} triggerUserId - ID uživatele, který akci provedl
+ * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)
+ * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
+ */
+export const triggerNotification = async (eventType, objectId, triggerUserId, placeholderData = {}) => {
+  try {
+    const auth = await getAuthData();
+
+    const payload = {
+      ...auth,
+      event_type: eventType,
+      object_id: objectId,
+      trigger_user_id: triggerUserId,
+      placeholder_data: placeholderData
+    };
+
+    console.log('════════════════════════════════════════════════════════════════');
+    console.log('🔔 [NotificationsAPI] TRIGGER organizational hierarchy notification');
+    console.log('   Event Type:', eventType);
+    console.log('   Object ID:', objectId);
+    console.log('   Trigger User ID:', triggerUserId);
+    console.log('   Placeholder Data:', placeholderData);
+    console.log('════════════════════════════════════════════════════════════════');
+
+    const response = await notificationsApi.post('/notifications/trigger', payload);
+    const result = handleApiResponse(response);
+
+    console.log('✅ [NotificationsAPI] Trigger odpověď:', result);
+    console.log('   Sent:', result.sent);
+    console.log('   Errors:', result.errors);
+
+    return result;
+
+  } catch (error) {
+    console.error('❌ [NotificationsAPI] Trigger CHYBA:', error);
+    throw error;
+  }
+};
+
 // =============================================================================
 // HELPER FUNKCE PRO BĚŽNÉ USE-CASES
 // =============================================================================
@@ -1284,6 +1329,7 @@ export default {
   deleteNotification,
   deleteAllNotifications,
   createNotification,
+  trigger: triggerNotification,  // 🆕 NOVÝ: Org-hierarchy-aware notifications
   // Dropdown hide helpers (DEPRECATED - use dismiss/delete APIs)
   hideNotificationInDropdown,
   hideAllNotificationsInDropdown,

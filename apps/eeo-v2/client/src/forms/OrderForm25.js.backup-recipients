@@ -8789,10 +8789,13 @@ function OrderForm25() {
 
 
         if (formData.garant_uzivatel_id) {
+          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
         if (formData.prikazce_id) {
+          recipientUserIds.add(parseInt(formData.prikazce_id));
         }
         if (formData.schvalovatel_id) {
+          recipientUserIds.add(parseInt(formData.schvalovatel_id));
         }
       }
 
@@ -8811,13 +8814,16 @@ function OrderForm25() {
 
         // Vždy: objednatel a garant
         if (formData.objednatel_id) {
+          recipientUserIds.add(parseInt(formData.objednatel_id));
         }
         if (formData.garant_uzivatel_id) {
+          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
 
         // Příkazce JEN pokud je jiný než schvalovatel
         if (formData.prikazce_id && formData.schvalovatel_id &&
             parseInt(formData.prikazce_id) !== parseInt(formData.schvalovatel_id)) {
+          recipientUserIds.add(parseInt(formData.prikazce_id));
         } else if (formData.prikazce_id) {
         }
       }
@@ -8831,8 +8837,10 @@ function OrderForm25() {
 
         // Pro čeká: objednatel a garant
         if (formData.objednatel_id) {
+          recipientUserIds.add(parseInt(formData.objednatel_id));
         }
         if (formData.garant_uzivatel_id) {
+          recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
         }
       }
 
@@ -8847,6 +8855,10 @@ function OrderForm25() {
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
+        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 4. POTVRZENÍ DODAVATELE - POTVRZENA ===
@@ -8860,6 +8872,10 @@ function OrderForm25() {
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
+        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 5. REGISTR - ČEKÁ NA SCHVÁLENÍ ===
@@ -8877,6 +8893,10 @@ function OrderForm25() {
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
+        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 6b. REGISTR - ČEKÁ NA ZVEŘEJNĚNÍ (NEUVEREJNENA) ===
@@ -8889,6 +8909,7 @@ function OrderForm25() {
 
 
         // Garant + TODO: uživatelé s právy VEREJNE_ZAKAZKY
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
       }
 
       // === 7. FÁZE FAKTURACE - ČEKÁ NA FAKTURU ===
@@ -8902,6 +8923,8 @@ function OrderForm25() {
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
       }
 
       // === 8. FÁZE VĚCNÁ SPRÁVNOST - ČEKÁ NA KONTROLU ===
@@ -8914,6 +8937,8 @@ function OrderForm25() {
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
       }
 
       // === 9. FÁZE ZKONTROLOVÁNA (VĚCNÁ SPRÁVNOST POTVRZENA) ===
@@ -8929,6 +8954,8 @@ function OrderForm25() {
 
 
         // Objednatel (pokud není garant - Set zajistí unikátnost)
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
 
         // TODO: Přidat uživatele s právy VEREJNE_ZAKAZKY, HLAVNI_UCETNI, ROZPOCTAR
         // Vyžaduje volání API pro získání uživatelů podle práv
@@ -8945,6 +8972,10 @@ function OrderForm25() {
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
+        if (formData.schvalovatel_id) recipientUserIds.add(parseInt(formData.schvalovatel_id));
       }
 
       // === 11. OBJEDNÁVKA ZRUŠENA/STORNOVÁNA ===
@@ -8953,13 +8984,46 @@ function OrderForm25() {
 
       if (hasZrusena && !hadZrusena) {
         notificationType = 'order_status_zrusena';
+
+        // Pro zrušení: všichni relevantní
+        if (formData.objednatel_id) recipientUserIds.add(parseInt(formData.objednatel_id));
+        if (formData.garant_uzivatel_id) recipientUserIds.add(parseInt(formData.garant_uzivatel_id));
+        if (formData.prikazce_id) recipientUserIds.add(parseInt(formData.prikazce_id));
       }
 
+      // ✅ FILTR 1: Odfiltrovat aktuálně přihlášeného uživatele (neposílat sám sobě!)
+      // ⚠️ VYJÍMKA: Pokud je aktuální uživatel PŘÍKAZCE objednávky, tak notifikaci DOSTAT MÁ
+      if (user_id) {
+        const currentUserIdInt = parseInt(user_id);
+        const isUserCreator = formData.prikazce_id && parseInt(formData.prikazce_id) === currentUserIdInt;
+
+        if (recipientUserIds.has(currentUserIdInt)) {
+          if (isUserCreator) {
+          } else {
+            recipientUserIds.delete(currentUserIdInt);
+          }
+        }
+      }
+
+      // ✅ FILTR 2: Odstranit nevalidní ID (null, undefined, NaN)
+      const validRecipients = Array.from(recipientUserIds).filter(id => {
+        return id && !isNaN(id) && id > 0;
+      });
+
+
       console.log('📊 [sendOrderNotifications] Detekovaný typ notifikace:', notificationType);
+      console.log('📊 [sendOrderNotifications] Původní příjemci (před filtrací):', Array.from(recipientUserIds));
+      console.log('📊 [sendOrderNotifications] Validní příjemci (po filtraci):', validRecipients);
 
       // Pokud nebyl detekován žádný typ notifikace, skonči
       if (!notificationType) {
         console.log('⚠️ [sendOrderNotifications] Žádný typ notifikace nebyl detekován, končím');
+        return;
+      }
+
+      // Pokud nejsou žádní příjemci, skonči
+      if (validRecipients.length === 0) {
+        console.log('⚠️ [sendOrderNotifications] Žádní validní příjemci, notifikace se neodešlou');
         return;
       }
 
