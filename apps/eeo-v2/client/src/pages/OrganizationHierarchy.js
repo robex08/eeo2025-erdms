@@ -1521,6 +1521,7 @@ const OrganizationHierarchy = () => {
   const [templateUrgentVariant, setTemplateUrgentVariant] = useState('');
   const [templateInfoVariant, setTemplateInfoVariant] = useState('');
   const [templatePreviewVariant, setTemplatePreviewVariant] = useState('');
+  const [templateEventTypes, setTemplateEventTypes] = useState([]); // Event types pro template NODE
   
   // Detail panel data - úroveň práv pro nadřízeného
   const [permissionLevel, setPermissionLevel] = useState({
@@ -1658,7 +1659,8 @@ const OrganizationHierarchy = () => {
                 normalVariant: templateNormalVariant,
                 urgentVariant: templateUrgentVariant,
                 infoVariant: templateInfoVariant,
-                previewVariant: templatePreviewVariant
+                previewVariant: templatePreviewVariant,
+                eventTypes: templateEventTypes // Uložit event types do node data
               }
             };
           }
@@ -1666,7 +1668,7 @@ const OrganizationHierarchy = () => {
         })
       );
     }
-  }, [templateNormalVariant, templateUrgentVariant, templateInfoVariant, templatePreviewVariant, selectedNode]);
+  }, [templateNormalVariant, templateUrgentVariant, templateInfoVariant, templatePreviewVariant, templateEventTypes, selectedNode]);
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -2339,6 +2341,7 @@ const OrganizationHierarchy = () => {
         setTemplateUrgentVariant(node.data.urgentVariant || '');
         setTemplateInfoVariant(node.data.infoVariant || '');
         setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || '');
+        setTemplateEventTypes(node.data.eventTypes || []); // Načíst event types
       }
     } else {
       // Multi-select - skrýt detail panel
@@ -5988,6 +5991,38 @@ const OrganizationHierarchy = () => {
                         </>
                       );
                     })()}
+                    
+                    {/* EVENT TYPES PRO TEMPLATE */}
+                    <FormGroup style={{ marginTop: '16px' }}>
+                      <Label>
+                        Event Types (kdy se šablona použije)
+                        <span style={{ color: '#10b981', marginLeft: '4px', fontWeight: 'normal' }}>volitelné</span>
+                      </Label>
+                      <CustomSelect
+                        multiple
+                        value={templateEventTypes}
+                        onChange={(value) => setTemplateEventTypes(value)}
+                        options={notificationEventTypes.map(eventType => ({
+                          value: eventType.code,
+                          label: `${eventType.name} (${eventType.code})`,
+                          category: eventType.category
+                        }))}
+                        placeholder="Vyberte event types..."
+                        groupBy="category"
+                      />
+                      <div style={{ 
+                        fontSize: '0.7rem', 
+                        color: '#64748b', 
+                        marginTop: '6px',
+                        fontStyle: 'italic',
+                        lineHeight: '1.4'
+                      }}>
+                        💡 <strong>Určuje, kdy se tato šablona automaticky použije.</strong><br/>
+                        <span style={{ marginLeft: '18px' }}>• Např. ORDER_CREATED → šablona "Objednávka vytvořena"</span><br/>
+                        <span style={{ marginLeft: '18px' }}>• Backend při události vybere šablonu podle event type</span><br/>
+                        <span style={{ marginLeft: '18px' }}>• Pokud nevyberete → šablona se nepoužije automaticky</span>
+                      </div>
+                    </FormGroup>
                     
                     {/* PREVIEW NOTIFIKACE */}
                     {(() => {

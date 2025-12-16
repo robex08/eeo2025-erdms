@@ -1412,3 +1412,342 @@ function handle_notifications_event_types_list($input, $config, $queries) {
         error_log("[Notifications] Exception in handle_notifications_event_types_list: " . $e->getMessage());
     }
 }
+
+// ==========================================
+// NOTIFICATION ROUTER (pro automatické odesílání)
+// ==========================================
+
+/**
+ * Hlavní router pro automatické odesílání notifikací při událostech
+ * Použití: notificationRouter($db, 'ORDER_CREATED', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
+ * 
+ * @param PDO $db - Database connection
+ * @param string $eventType - Event type code (ORDER_CREATED, ORDER_APPROVED, etc.)
+ * @param int $objectId - ID objektu (objednávka, faktura, atd.)
+ * @param int $triggerUserId - ID uživatele, který akci provedl
+ * @param array $placeholderData - Data pro placeholder replacement
+ * @return array - Výsledek odesílání { success: bool, sent: int, errors: array }
+ */
+function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData = array()) {
+    $result = array(
+        'success' => false,
+        'sent' => 0,
+        'errors' => array()
+    );
+    
+    try {
+        // 1. Najít příjemce podle organizational hierarchy
+        $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId);
+        
+        if (empty($recipients)) {
+            error_log("[NotificationRouter] No recipients found for event $eventType, object $objectId");
+            return $result;
+        }
+        
+        // 2. Pro každého příjemce najít template a odeslat notifikaci
+        foreach ($recipients as $recipient) {
+            try {
+                // $recipient obsahuje:
+                // - user_id
+                // - recipientRole (EXCEPTIONAL, APPROVAL, INFO)
+                // - sendEmail (bool)
+                // - sendInApp (bool)
+                // - templateId
+                // - templateVariant (normalVariant, urgentVariant, infoVariant)
+                
+                // 3. Načíst template z DB
+                $stmt = $db->prepare("
+                    SELECT * FROM 25_notification_templates 
+                    WHERE id = :template_id AND active = 1
+                ");
+                $stmt->execute([':template_id' => $recipient['templateId']]);
+                $template = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$template) {
+                    $result['errors'][] = "Template {$recipient['templateId']} not found";
+                    continue;
+                }
+                
+                // 4. Vybrat správnou variantu podle recipientRole
+                $variant = $recipient['templateVariant'];
+                
+                // 5. Nahradit placeholdery v šabloně
+                $processedTitle = replacePlaceholders($template['app_title'], $placeholderData);
+                $processedMessage = replacePlaceholders($template['app_message'], $placeholderData);
+                $processedEmailBody = extractVariantFromEmailBody($template['email_body'], $variant);
+                $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
+                
+                // 6. Připravit data pro notifikaci
+                $notificationData = array(
+                    'event_type' => $eventType,
+                    'object_id' => $objectId,
+                    'recipient_role' => $recipient['recipientRole'],
+                    'template_id' => $recipient['templateId'],
+                    'template_variant' => $variant,
+                    'placeholders' => $placeholderData
+                );
+                
+                // 7. Vytvořit in-app notifikaci
+                if ($recipient['sendInApp']) {
+                    $params = array(
+                        ':type' => 'system',
+                        ':title' => $processedTitle,
+                        ':message' => $processedMessage,
+                        ':data_json' => json_encode($notificationData),
+                        ':from_user_id' => $triggerUserId,
+                        ':to_user_id' => $recipient['user_id'],
+                        ':to_users_json' => null,
+                        ':to_all_users' => 0,
+                        ':priority' => $recipient['recipientRole'], // EXCEPTIONAL, APPROVAL, INFO
+                        ':category' => $template['category'],
+                        ':send_email' => $recipient['sendEmail'] ? 1 : 0,
+                        ':related_object_type' => getObjectTypeFromEvent($eventType),
+                        ':related_object_id' => $objectId,
+                        ':dt_expires' => null,
+                        ':dt_created' => TimezoneHelper::getCzechDateTime(),
+                        ':active' => 1
+                    );
+                    
+                    createNotification($db, $params);
+                    $result['sent']++;
+                }
+                
+                // 8. Odeslat email (pokud je povolený)
+                if ($recipient['sendEmail']) {
+                    // TODO: Implementovat sendNotificationEmail()
+                    // sendNotificationEmail($recipient['user_id'], $processedTitle, $processedEmailBody);
+                }
+                
+            } catch (Exception $e) {
+                $result['errors'][] = "Error sending to user {$recipient['user_id']}: " . $e->getMessage();
+                error_log("[NotificationRouter] Error sending to user {$recipient['user_id']}: " . $e->getMessage());
+            }
+        }
+        
+        $result['success'] = ($result['sent'] > 0);
+        
+    } catch (Exception $e) {
+        $result['errors'][] = $e->getMessage();
+        error_log("[NotificationRouter] Exception: " . $e->getMessage());
+    }
+    
+    return $result;
+}
+
+/**
+ * Najde příjemce notifikací podle organizational hierarchy
+ * 
+ * @param PDO $db
+ * @param string $eventType - EVENT_TYPE code
+ * @param int $objectId - ID objektu
+ * @param int $triggerUserId - Kdo akci provedl
+ * @return array - Pole příjemců s config
+ */
+function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) {
+    $recipients = array();
+    
+    try {
+        // 1. Najít aktivní profil hierarchie
+        $stmt = $db->prepare("
+            SELECT id, structure_json 
+            FROM 25_hierarchy_profiles 
+            WHERE active = 1 
+            LIMIT 1
+        ");
+        $stmt->execute();
+        $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$profile) {
+            error_log("[findNotificationRecipients] No active hierarchy profile found");
+            return $recipients;
+        }
+        
+        $structure = json_decode($profile['structure_json'], true);
+        if (!$structure) {
+            error_log("[findNotificationRecipients] Invalid structure JSON in profile {$profile['id']}");
+            return $recipients;
+        }
+        
+        // 2. Projít všechny TEMPLATE nodes a najít ty, které mají eventType
+        foreach ($structure['nodes'] as $node) {
+            if ($node['type'] !== 'template') continue;
+            
+            $eventTypes = isset($node['data']['eventTypes']) ? $node['data']['eventTypes'] : array();
+            
+            // Pokud tento template nemá náš eventType, přeskoč
+            if (!in_array($eventType, $eventTypes)) continue;
+            
+            // 3. Najít všechny EDGE (šipky) vedoucí z tohoto template
+            foreach ($structure['edges'] as $edge) {
+                if ($edge['source'] !== $node['id']) continue;
+                
+                $notifications = isset($edge['data']['notifications']) ? $edge['data']['notifications'] : array();
+                
+                // Kontrola, zda edge má tento eventType v types[]
+                $edgeEventTypes = isset($notifications['types']) ? $notifications['types'] : array();
+                if (!in_array($eventType, $edgeEventTypes)) continue;
+                
+                // 4. Určit cílového uživatele/roli z edge target
+                $targetNodeId = $edge['target'];
+                $targetNode = null;
+                foreach ($structure['nodes'] as $n) {
+                    if ($n['id'] === $targetNodeId) {
+                        $targetNode = $n;
+                        break;
+                    }
+                }
+                
+                if (!$targetNode) continue;
+                
+                // 5. Najít konkrétní user_id podle typu target node
+                $targetUserIds = resolveTargetUsers($db, $targetNode, $objectId, $triggerUserId);
+                
+                // 6. Určit variantu šablony podle recipientRole
+                $recipientRole = isset($notifications['recipientRole']) ? $notifications['recipientRole'] : 'APPROVAL';
+                $variant = 'normalVariant'; // výchozí
+                
+                if ($recipientRole === 'EXCEPTIONAL') {
+                    $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
+                } elseif ($recipientRole === 'INFO') {
+                    $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
+                } else {
+                    $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'RECIPIENT';
+                }
+                
+                // 7. Přidat každého target user do seznamu příjemců
+                foreach ($targetUserIds as $userId) {
+                    $recipients[] = array(
+                        'user_id' => $userId,
+                        'recipientRole' => $recipientRole,
+                        'sendEmail' => isset($notifications['email']) ? (bool)$notifications['email'] : false,
+                        'sendInApp' => isset($notifications['inapp']) ? (bool)$notifications['inapp'] : true,
+                        'templateId' => $node['data']['templateId'],
+                        'templateVariant' => $variant
+                    );
+                }
+            }
+        }
+        
+    } catch (Exception $e) {
+        error_log("[findNotificationRecipients] Exception: " . $e->getMessage());
+    }
+    
+    return $recipients;
+}
+
+/**
+ * Najde konkrétní user_id podle typu node (user, role, location, department)
+ * 
+ * @param PDO $db
+ * @param array $node - Target node z hierarchie
+ * @param int $objectId - ID objektu (objednávka, faktura)
+ * @param int $triggerUserId - Kdo akci provedl
+ * @return array - Pole user_id
+ */
+function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
+    $userIds = array();
+    
+    try {
+        switch ($node['type']) {
+            case 'user':
+                // Přímý uživatel
+                if (isset($node['data']['userId'])) {
+                    $userIds[] = $node['data']['userId'];
+                }
+                break;
+                
+            case 'role':
+                // Všichni uživatelé s touto rolí
+                $roleId = isset($node['data']['roleId']) ? $node['data']['roleId'] : null;
+                if ($roleId) {
+                    $stmt = $db->prepare("
+                        SELECT DISTINCT ur.user_id 
+                        FROM 25_user_roles ur
+                        JOIN 25_users u ON ur.user_id = u.id
+                        WHERE ur.role_id = :role_id AND u.active = 1
+                    ");
+                    $stmt->execute([':role_id' => $roleId]);
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $userIds[] = $row['user_id'];
+                    }
+                }
+                break;
+                
+            case 'location':
+                // Všichni uživatelé na této lokaci
+                $locationId = isset($node['data']['locationId']) ? $node['data']['locationId'] : null;
+                if ($locationId) {
+                    $stmt = $db->prepare("
+                        SELECT DISTINCT id 
+                        FROM 25_users 
+                        WHERE location_id = :location_id AND active = 1
+                    ");
+                    $stmt->execute([':location_id' => $locationId]);
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $userIds[] = $row['id'];
+                    }
+                }
+                break;
+                
+            case 'department':
+                // Všichni uživatelé v tomto oddělení
+                $departmentId = isset($node['data']['departmentId']) ? $node['data']['departmentId'] : null;
+                if ($departmentId) {
+                    $stmt = $db->prepare("
+                        SELECT DISTINCT id 
+                        FROM 25_users 
+                        WHERE department_id = :department_id AND active = 1
+                    ");
+                    $stmt->execute([':department_id' => $departmentId]);
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $userIds[] = $row['id'];
+                    }
+                }
+                break;
+                
+            default:
+                error_log("[resolveTargetUsers] Unknown node type: {$node['type']}");
+        }
+    } catch (Exception $e) {
+        error_log("[resolveTargetUsers] Exception: " . $e->getMessage());
+    }
+    
+    return array_unique($userIds);
+}
+
+/**
+ * Extrahuje správnou variantu z email_body podle <!-- RECIPIENT: TYPE -->
+ */
+function extractVariantFromEmailBody($emailBody, $variant) {
+    if (!$emailBody) return '';
+    
+    $marker = "<!-- RECIPIENT: $variant -->";
+    
+    if (!strpos($emailBody, $marker)) {
+        // Varianta nenalezena, vrátit celé body (fallback)
+        return $emailBody;
+    }
+    
+    // Najít začátek varianty
+    $start = strpos($emailBody, $marker);
+    $start = $start + strlen($marker);
+    
+    // Najít konec varianty (další marker nebo konec)
+    $end = strpos($emailBody, '<!-- RECIPIENT:', $start);
+    if ($end === false) {
+        $end = strlen($emailBody);
+    }
+    
+    return trim(substr($emailBody, $start, $end - $start));
+}
+
+/**
+ * Určí object type podle event type
+ */
+function getObjectTypeFromEvent($eventType) {
+    if (strpos($eventType, 'ORDER_') === 0) return 'order';
+    if (strpos($eventType, 'INVOICE_') === 0) return 'invoice';
+    if (strpos($eventType, 'CONTRACT_') === 0) return 'contract';
+    if (strpos($eventType, 'CASHBOOK_') === 0) return 'cashbook';
+    return 'unknown';
+}
