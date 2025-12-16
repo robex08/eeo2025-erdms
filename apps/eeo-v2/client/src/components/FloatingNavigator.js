@@ -40,7 +40,6 @@ const categorizeErrorKey = (key) => {
   
   // 1. Informace o objednateli (včetně garanta!)
   if (key.includes('jmeno') || key.includes('email') || key.includes('ev_cislo') || key.includes('garant')) {
-    console.log(`🔍 categorizeErrorKey: "${key}" → objednatel`);
     return 'objednatel';
   }
   
@@ -49,7 +48,6 @@ const categorizeErrorKey = (key) => {
       key.includes('strediska') || key.includes('predmet') ||
       key.includes('financovani') || key.includes('lp_kod') || key.includes('cislo_smlouvy') ||
       key.includes('individualni_schvaleni') || key.includes('pojistna_udalost')) {
-    console.log(`🔍 categorizeErrorKey: "${key}" → schvaleni`);
     return 'schvaleni';
   }
   
@@ -1103,15 +1101,6 @@ const FloatingNavigator = ({
     });
 
     const errorCount = sectionErrors.length;
-    
-    if (Object.keys(validationErrors).length > 0 && section.id === 'schvaleni') {
-      console.log(`🧭 NaviPanel - sekce "${section.id}":`, {
-        allValidationErrors: validationErrors,
-        allErrorKeys: Object.keys(validationErrors),
-        sectionErrors,
-        errorCount
-      });
-    }
 
     // 🆕 Spočítat nevyplněná povinná pole (jen pokud NEJSOU validační chyby)
     // Toto slouží k zobrazení "oranžové tečky" před pokusem o uložení
