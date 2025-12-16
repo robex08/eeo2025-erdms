@@ -1224,3 +1224,191 @@ function handle_notifications_send_bulk($input, $config, $queries) {
         error_log("[Notifications] Exception in handle_notifications_send_bulk: " . $e->getMessage());
     }
 }
+
+// ==========================================
+// EVENT TYPES API (pro Notification Center)
+// ==========================================
+
+/**
+ * Seznam všech event types pro organizational hierarchy
+ * GET /notifications/event-types/list
+ * POST /notifications/event-types/list
+ * 
+ * @param array $input - Input parameters
+ * @param array $config - Config array
+ * @param array $queries - Queries array
+ * @return void - Outputs JSON
+ */
+function handle_notifications_event_types_list($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    try {
+        // Definice event types podle dokumentace
+        $eventTypes = array(
+            // OBJEDNÁVKY - Fáze 1: Vytvoření
+            array(
+                'code' => 'ORDER_CREATED',
+                'name' => 'Objednávka vytvořena',
+                'category' => 'orders',
+                'description' => 'Robert vytvoří objednávku → notifikace příkazci ke schválení',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 2A: Schválení
+            array(
+                'code' => 'ORDER_APPROVED',
+                'name' => 'Objednávka schválena',
+                'category' => 'orders',
+                'description' => 'Příkazce schválil → notifikace Robertovi, že může pokračovat',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 2B: Zamítnutí
+            array(
+                'code' => 'ORDER_REJECTED',
+                'name' => 'Objednávka zamítnuta',
+                'category' => 'orders',
+                'description' => 'Příkazce zamítl → proces končí',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 2C: Vrácení
+            array(
+                'code' => 'ORDER_WAITING_FOR_CHANGES',
+                'name' => 'Objednávka vrácena k doplnění',
+                'category' => 'orders',
+                'description' => 'Příkazce vrátil → Robert doplní a znovu odešle',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 3: Plnění
+            array(
+                'code' => 'ORDER_SENT_TO_SUPPLIER',
+                'name' => 'Objednávka odeslána dodavateli',
+                'category' => 'orders',
+                'description' => 'Robert odeslal dodavateli → notifikace nákupčímu a ostatním',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 4: Registr
+            array(
+                'code' => 'ORDER_REGISTRY_APPROVAL_REQUESTED',
+                'name' => 'Žádost o schválení v registru',
+                'category' => 'orders',
+                'description' => 'Robert žádá o registr → notifikace registru (role/úsek)',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 5: Faktura
+            array(
+                'code' => 'ORDER_INVOICE_ADDED',
+                'name' => 'Faktura doplněna',
+                'category' => 'orders',
+                'description' => 'Registr doplnil fakturu → Robert musí provést věcnou kontrolu',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 6: Kontrola
+            array(
+                'code' => 'ORDER_MATERIAL_CHECK_COMPLETED',
+                'name' => 'Věcná kontrola provedena',
+                'category' => 'orders',
+                'description' => 'Robert provedl kontrolu → registr může dokončit',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 7: Dokončení
+            array(
+                'code' => 'ORDER_COMPLETED',
+                'name' => 'Objednávka dokončena',
+                'category' => 'orders',
+                'description' => 'Registr dokončil → notifikace všem zúčastněným',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('INFO')
+            ),
+            
+            // FAKTURY
+            array(
+                'code' => 'INVOICE_CREATED',
+                'name' => 'Faktura vytvořena',
+                'category' => 'invoices',
+                'description' => 'Nová faktura byla vytvořena v systému',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_DUE_SOON',
+                'name' => 'Faktura brzy po splatnosti',
+                'category' => 'invoices',
+                'description' => 'Faktura se blíží ke dni splatnosti',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'INFO')
+            ),
+            array(
+                'code' => 'INVOICE_OVERDUE',
+                'name' => 'Faktura po splatnosti',
+                'category' => 'invoices',
+                'description' => 'Faktura je po splatnosti',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL')
+            ),
+            
+            // SMLOUVY
+            array(
+                'code' => 'CONTRACT_EXPIRING',
+                'name' => 'Smlouva brzy vyprší',
+                'category' => 'contracts',
+                'description' => 'Smlouva se blíží ke konci platnosti',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'INFO')
+            ),
+            
+            // POKLADNA
+            array(
+                'code' => 'CASHBOOK_LOW_BALANCE',
+                'name' => 'Nízký zůstatek v pokladně',
+                'category' => 'cashbook',
+                'description' => 'Zůstatek v pokladně je pod minimální hranicí',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('EXCEPTIONAL', 'INFO')
+            )
+        );
+        
+        // Filtrování podle kategorie (volitelné)
+        $category = isset($input['category']) ? $input['category'] : null;
+        if ($category) {
+            $eventTypes = array_filter($eventTypes, function($event) use ($category) {
+                return $event['category'] === $category;
+            });
+            $eventTypes = array_values($eventTypes); // Reindex pole
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $eventTypes,
+            'total' => count($eventTypes)
+        ));
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání event types: ' . $e->getMessage()));
+        error_log("[Notifications] Exception in handle_notifications_event_types_list: " . $e->getMessage());
+    }
+}

@@ -2118,6 +2118,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+    
+    case 'notifications/event-types/list':
+        if ($request_method === 'POST' || $request_method === 'GET') {
+            handle_notifications_event_types_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
 
     // === NOTIFIKAČNÍ ŠABLONY CRUD API ===
     case 'notifications/templates/list':
