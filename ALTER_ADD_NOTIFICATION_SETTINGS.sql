@@ -1,93 +1,74 @@
 -- ================================================
--- MIGRACE: Přidání notification_settings do 25_users
+-- MIGRACE: Přidání notifikačních preferencí
 -- Datum: 16. prosince 2025
 -- Účel: Uživatelské preference pro notifikace
+-- DB: eeo2025 (české názvy tabulek)
 -- ================================================
 
--- Kontrola, zda sloupec již existuje (pro bezpečné opakované spuštění)
-SET @col_exists = 0;
-SELECT COUNT(*) INTO @col_exists 
-FROM INFORMATION_SCHEMA.COLUMNS 
-WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = '25_users'
-  AND COLUMN_NAME = 'notification_settings';
+-- Použijeme existující tabulku 25_uzivatel_nastaveni
+-- Struktura: uzivatel_id, nastaveni_data (TEXT/JSON)
 
--- Přidat sloupec pouze pokud neexistuje
-SET @sql = IF(@col_exists = 0,
-    'ALTER TABLE 25_users 
-     ADD COLUMN notification_settings TEXT DEFAULT NULL 
-     COMMENT "JSON: Uživatelské preference pro notifikace"',
-    'SELECT "Column notification_settings already exists" AS message'
-);
+-- ================================================
+-- GLOBÁLNÍ NASTAVENÍ (25a_nastaveni_globalni)
+-- ================================================
 
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- Přidat globální nastavení pro notifikace
+INSERT INTO 25a_nastaveni_globalni (klic, hodnota, popis, vytvoreno)
+VALUES 
+    ('notifikace_system_povoleny', '1', 'Globální zapnutí/vypnutí notifikačního systému', NOW()),
+    ('notifikace_email_povoleny', '1', 'Globální zapnutí/vypnutí email notifikací', NOW()),
+    ('notifikace_inapp_povoleny', '1', 'Globální zapnutí/vypnutí in-app notifikací', NOW())
+ON DUPLICATE KEY UPDATE 
+    aktualizovano = NOW();
 
 -- ================================================
 -- VÝCHOZÍ HODNOTY PRO EXISTUJÍCÍ UŽIVATELE
 -- ================================================
 
-UPDATE 25_users 
-SET notification_settings = JSON_OBJECT(
-    'enabled', true,
-    'email_enabled', true,
-    'inapp_enabled', true,
-    'categories', JSON_OBJECT(
-        'orders', true,
-        'invoices', true,
-        'contracts', true,
-        'cashbook', true
-    )
-)
-WHERE notification_settings IS NULL
-  AND active = 1;
-
--- ================================================
--- GLOBAL SETTINGS PRO SYSTÉMOVOU ÚROVEŇ
--- ================================================
-
--- Kontrola, zda global settings existují
-INSERT IGNORE INTO 25_global_settings (setting_key, setting_value, description, created_at)
-VALUES 
-    ('notification_system_enabled', '1', 'Globální zapnutí/vypnutí notifikačního systému', NOW()),
-    ('notification_email_enabled', '1', 'Globální zapnutí/vypnutí email notifikací', NOW()),
-    ('notification_inapp_enabled', '1', 'Globální zapnutí/vypnutí in-app notifikací', NOW());
+-- Pro každého uživatele, který ještě nemá nastavení notifikací
+INSERT INTO 25_uzivatel_nastaveni (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
+SELECT 
+    u.id,
+    JSON_OBJECT(
+        'notifikace_povoleny', true,
+        'notifikace_email_povoleny', true,
+        'notifikace_inapp_povoleny', true,
+        'notifikace_kategorie', JSON_OBJECT(
+            'objednavky', true,
+            'faktury', true,
+            'smlouvy', true,
+            'pokladna', true
+        )
+    ),
+    '1.0',
+    NOW()
+FROM users u
+LEFT JOIN 25_uzivatel_nastaveni ns ON ns.uzivatel_id = u.id
+WHERE ns.id IS NULL
+  AND u.active = 'y';
 
 -- ================================================
 -- VERIFIKACE
 -- ================================================
 
 SELECT 
-    'notification_settings column' AS item,
-    CASE WHEN COUNT(*) > 0 THEN 'EXISTS ✓' ELSE 'MISSING ✗' END AS status
-FROM INFORMATION_SCHEMA.COLUMNS 
-WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = '25_users'
-  AND COLUMN_NAME = 'notification_settings'
+    'Globální nastavení' AS polozka,
+    COUNT(*) AS pocet
+FROM 25a_nastaveni_globalni
+WHERE klic LIKE 'notifikace_%'
 
 UNION ALL
 
 SELECT 
-    'Users with preferences set' AS item,
-    CONCAT(COUNT(*), ' users') AS status
-FROM 25_users 
-WHERE notification_settings IS NOT NULL
-  AND active = 1
-
-UNION ALL
-
-SELECT 
-    'Global settings' AS item,
-    CONCAT(COUNT(*), ' settings') AS status
-FROM 25_global_settings
-WHERE setting_key LIKE 'notification_%';
+    'Uživatelská nastavení' AS polozka,
+    COUNT(*) AS pocet
+FROM 25_uzivatel_nastaveni;
 
 -- ================================================
 -- HOTOVO
 -- ================================================
 -- Tento SQL skript přidal:
--- 1. Sloupec notification_settings do 25_users (TEXT, JSON)
--- 2. Výchozí hodnoty pro všechny aktivní uživatele
--- 3. Global settings pro systémovou úroveň kontroly
+-- 1. Globální nastavení do 25a_nastaveni_globalni
+-- 2. Výchozí hodnoty do 25_uzivatel_nastaveni pro aktivní uživatele
+-- 3. Struktura: nastaveni_data obsahuje JSON s preferencemi
 -- ================================================

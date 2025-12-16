@@ -1810,62 +1810,71 @@ function getUserNotificationPreferences($db, $userId) {
     try {
         // 1. GLOBAL SETTINGS - Systémová úroveň (má nejvyšší prioritu)
         $stmt = $db->prepare("
-            SELECT setting_key, setting_value 
-            FROM 25_global_settings 
-            WHERE setting_key IN (
-                'notification_system_enabled',
-                'notification_email_enabled', 
-                'notification_inapp_enabled'
+            SELECT klic, hodnota 
+            FROM 25a_nastaveni_globalni 
+            WHERE klic IN (
+                'notifikace_system_povoleny',
+                'notifikace_email_povoleny', 
+                'notifikace_inapp_povoleny'
             )
         ");
         $stmt->execute();
         
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $value = ($row['setting_value'] === '1' || $row['setting_value'] === 'true');
+            $value = ($row['hodnota'] === '1' || $row['hodnota'] === 'true');
             
-            if ($row['setting_key'] === 'notification_system_enabled' && !$value) {
+            if ($row['klic'] === 'notifikace_system_povoleny' && !$value) {
                 // Systém je vypnutý globálně - nic nefunguje
                 $preferences['enabled'] = false;
                 return $preferences;
             }
             
-            if ($row['setting_key'] === 'notification_email_enabled') {
+            if ($row['klic'] === 'notifikace_email_povoleny') {
                 $preferences['email_enabled'] = $value;
             }
             
-            if ($row['setting_key'] === 'notification_inapp_enabled') {
+            if ($row['klic'] === 'notifikace_inapp_povoleny') {
                 $preferences['inapp_enabled'] = $value;
             }
         }
         
         // 2. USER PROFILE SETTINGS - Uživatelská úroveň
-        // Předpoklad: uživatel má pole notification_settings jako JSON v tabulce 25_users
+        // Načtení z tabulky 25_uzivatel_nastaveni
         $stmt = $db->prepare("
-            SELECT notification_settings 
-            FROM 25_users 
-            WHERE id = :user_id
+            SELECT nastaveni_data 
+            FROM 25_uzivatel_nastaveni 
+            WHERE uzivatel_id = :user_id
         ");
         $stmt->execute([':user_id' => $userId]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $userSettings = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($user && !empty($user['notification_settings'])) {
-            $userSettings = json_decode($user['notification_settings'], true);
+        if ($userSettings && !empty($userSettings['nastaveni_data'])) {
+            $settings = json_decode($userSettings['nastaveni_data'], true);
             
-            if (isset($userSettings['enabled'])) {
-                $preferences['enabled'] = (bool)$userSettings['enabled'];
+            if (isset($settings['notifikace_povoleny'])) {
+                $preferences['enabled'] = (bool)$settings['notifikace_povoleny'];
             }
             
-            if (isset($userSettings['email_enabled'])) {
-                $preferences['email_enabled'] = $preferences['email_enabled'] && (bool)$userSettings['email_enabled'];
+            if (isset($settings['notifikace_email_povoleny'])) {
+                $preferences['email_enabled'] = $preferences['email_enabled'] && (bool)$settings['notifikace_email_povoleny'];
             }
             
-            if (isset($userSettings['inapp_enabled'])) {
-                $preferences['inapp_enabled'] = $preferences['inapp_enabled'] && (bool)$userSettings['inapp_enabled'];
+            if (isset($settings['notifikace_inapp_povoleny'])) {
+                $preferences['inapp_enabled'] = $preferences['inapp_enabled'] && (bool)$settings['notifikace_inapp_povoleny'];
             }
             
-            if (isset($userSettings['categories'])) {
-                foreach ($userSettings['categories'] as $category => $enabled) {
-                    $preferences['categories'][$category] = (bool)$enabled;
+            if (isset($settings['notifikace_kategorie'])) {
+                // Mapování českých názvů na anglické klíče
+                $categoryMap = [
+                    'objednavky' => 'orders',
+                    'faktury' => 'invoices',
+                    'smlouvy' => 'contracts',
+                    'pokladna' => 'cashbook'
+                ];
+                
+                foreach ($settings['notifikace_kategorie'] as $czCategory => $enabled) {
+                    $enCategory = isset($categoryMap[$czCategory]) ? $categoryMap[$czCategory] : $czCategory;
+                    $preferences['categories'][$enCategory] = (bool)$enabled;
                 }
             }
         }
@@ -1900,7 +1909,7 @@ function handle_notifications_user_preferences($input, $config, $queries) {
         $db = get_db($config);
         
         // Načíst user_id z username
-        $stmt = $db->prepare("SELECT id FROM 25_users WHERE username = :username");
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -1961,7 +1970,7 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         $db = get_db($config);
         
         // Načíst user_id
-        $stmt = $db->prepare("SELECT id FROM 25_users WHERE username = :username");
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -1973,27 +1982,46 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         
         $userId = $user['id'];
         
-        // Sestavit preferences object
+        // Mapování anglických názvů na české
+        $categoryMap = [
+            'orders' => 'objednavky',
+            'invoices' => 'faktury',
+            'contracts' => 'smlouvy',
+            'cashbook' => 'pokladna'
+        ];
+        
+        $czCategories = array();
+        if (isset($input['categories'])) {
+            foreach ($input['categories'] as $enKey => $value) {
+                $czKey = isset($categoryMap[$enKey]) ? $categoryMap[$enKey] : $enKey;
+                $czCategories[$czKey] = (bool)$value;
+            }
+        } else {
+            $czCategories = array(
+                'objednavky' => true,
+                'faktury' => true,
+                'smlouvy' => true,
+                'pokladna' => true
+            );
+        }
+        
+        // Sestavit preferences object (české klíče)
         $preferences = array(
-            'enabled' => isset($input['enabled']) ? (bool)$input['enabled'] : true,
-            'email_enabled' => isset($input['email_enabled']) ? (bool)$input['email_enabled'] : true,
-            'inapp_enabled' => isset($input['inapp_enabled']) ? (bool)$input['inapp_enabled'] : true,
-            'categories' => isset($input['categories']) ? $input['categories'] : array(
-                'orders' => true,
-                'invoices' => true,
-                'contracts' => true,
-                'cashbook' => true
-            )
+            'notifikace_povoleny' => isset($input['enabled']) ? (bool)$input['enabled'] : true,
+            'notifikace_email_povoleny' => isset($input['email_enabled']) ? (bool)$input['email_enabled'] : true,
+            'notifikace_inapp_povoleny' => isset($input['inapp_enabled']) ? (bool)$input['inapp_enabled'] : true,
+            'notifikace_kategorie' => $czCategories
         );
         
         $preferencesJson = json_encode($preferences);
         
-        // Uložit do DB (předpokládáme, že pole notification_settings existuje v tabulce 25_users)
-        // Pokud neexistuje, potřebujeme ALTER TABLE
+        // Uložit do DB (INSERT nebo UPDATE)
         $stmt = $db->prepare("
-            UPDATE 25_users 
-            SET notification_settings = :settings 
-            WHERE id = :user_id
+            INSERT INTO 25_uzivatel_nastaveni (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
+            VALUES (:user_id, :settings, '1.0', NOW())
+            ON DUPLICATE KEY UPDATE 
+                nastaveni_data = :settings,
+                upraveno = NOW()
         ");
         
         $result = $stmt->execute([
