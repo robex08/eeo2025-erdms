@@ -1514,8 +1514,10 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 
                 // 8. Odeslat email (pokud je povolený)
                 if ($recipient['sendEmail']) {
-                    // TODO: Implementovat sendNotificationEmail()
-                    // sendNotificationEmail($recipient['uzivatel_id'], $processedTitle, $processedEmailBody);
+                    $emailResult = sendNotificationEmail($db, $recipient['uzivatel_id'], $processedTitle, $processedEmailBody);
+                    if (!$emailResult['ok']) {
+                        $result['errors'][] = "Email failed for user {$recipient['uzivatel_id']}: " . ($emailResult['error'] ?? 'Unknown error');
+                    }
                 }
                 
             } catch (Exception $e) {
@@ -2043,5 +2045,115 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při ukládání preferencí: ' . $e->getMessage()));
         error_log("[Notifications] Exception in handle_notifications_user_preferences_update: " . $e->getMessage());
+    }
+}
+
+/**
+ * Odešle notifikační email uživateli
+ * 
+ * @param PDO $db
+ * @param int $userId
+ * @param string $subject
+ * @param string $htmlBody
+ * @return array - ['ok' => bool, 'error' => string]
+ */
+function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
+    try {
+        // 1. Načíst email uživatele z DB
+        $stmt = $db->prepare("
+            SELECT email, jmeno, prijmeni 
+            FROM 25_uzivatele 
+            WHERE uzivatel_id = :user_id AND aktivni = 1
+        ");
+        $stmt->execute([':user_id' => $userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user || empty($user['email'])) {
+            error_log("[sendNotificationEmail] User $userId has no email address");
+            return array('ok' => false, 'error' => 'No email address');
+        }
+        
+        // 2. Zavolat eeo_mail_send()
+        require_once __DIR__ . '/mail.php';
+        
+        $result = eeo_mail_send(
+            $user['email'],
+            $subject,
+            $htmlBody,
+            array('html' => true)
+        );
+        
+        // 3. Logovat výsledek
+        if ($result['ok']) {
+            error_log("[sendNotificationEmail] Email sent to {$user['email']} for user $userId");
+        } else {
+            error_log("[sendNotificationEmail] Email FAILED to {$user['email']} for user $userId");
+        }
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("[sendNotificationEmail] Exception: " . $e->getMessage());
+        return array('ok' => false, 'error' => $e->getMessage());
+    }
+}
+
+/**
+ * API Handler: Trigger notifikace podle event typu (použije org. hierarchii)
+ * 
+ * Endpoint: POST /api.eeo/notifications/trigger
+ * Body: {
+ *   token: string,
+ *   username: string,
+ *   event_type: string (ORDER_APPROVED, ORDER_REJECTED, ...),
+ *   object_id: int (ID objednávky/faktury/...),
+ *   trigger_user_id: int (kdo akci provedl)
+ * }
+ */
+function handle_notifications_trigger($input, $config, $queries) {
+    $db = $config['db'];
+    
+    try {
+        // Validace vstupních parametrů
+        $eventType = isset($input['event_type']) ? $input['event_type'] : null;
+        $objectId = isset($input['object_id']) ? intval($input['object_id']) : null;
+        $triggerUserId = isset($input['trigger_user_id']) ? intval($input['trigger_user_id']) : null;
+        
+        if (!$eventType || !$objectId || !$triggerUserId) {
+            http_response_code(400);
+            echo json_encode(array(
+                'err' => 'Missing required parameters',
+                'required' => ['event_type', 'object_id', 'trigger_user_id']
+            ));
+            return;
+        }
+        
+        // Volitelné placeholder data (pokud je poskytne frontend)
+        $placeholderData = isset($input['placeholder_data']) ? $input['placeholder_data'] : array();
+        
+        error_log("[NotificationTrigger] Event: $eventType, Object: $objectId, User: $triggerUserId");
+        
+        // Zavolat notification router (hlavní logika)
+        $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData);
+        
+        if ($result['success']) {
+            echo json_encode(array(
+                'status' => 'ok',
+                'zprava' => 'Notifikace odeslány',
+                'sent' => $result['sent'],
+                'errors' => $result['errors']
+            ));
+        } else {
+            http_response_code(500);
+            echo json_encode(array(
+                'err' => 'Failed to trigger notifications',
+                'errors' => $result['errors']
+            ));
+        }
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Exception: ' . $e->getMessage()));
+        error_log("[NotificationTrigger] Exception: " . $e->getMessage());
     }
 }
