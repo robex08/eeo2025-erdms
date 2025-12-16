@@ -773,6 +773,153 @@ class NotificationService {
     }
   }
 
+  /**
+   * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
+   * Backend automaticky najde příjemce v hierarchii podle event typu
+   * 
+   * @param {string} eventType - Event type code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, ...)
+   * @param {number} objectId - ID objektu (objednávka, faktura, ...)
+   * @param {number} triggerUserId - ID uživatele, který akci provedl
+   * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)
+   * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
+   */
+  async trigger(eventType, objectId, triggerUserId, placeholderData = {}) {
+    try {
+      const token = loadAuthData.token();
+      const user = loadAuthData.user();
+
+      const payload = {
+        token,
+        username: user?.username,
+        event_type: eventType,
+        object_id: objectId,
+        trigger_user_id: triggerUserId,
+        placeholder_data: placeholderData
+      };
+
+      console.log('════════════════════════════════════════════════════════════════');
+      console.log('🔔 [NotificationService] TRIGGER organizational hierarchy notification');
+      console.log('   Event Type:', eventType);
+      console.log('   Object ID:', objectId);
+      console.log('   Trigger User ID:', triggerUserId);
+      console.log('   Placeholder Data:', placeholderData);
+      console.log('════════════════════════════════════════════════════════════════');
+
+      const response = await notificationsApi.post('/notifications/trigger', payload);
+      const result = handleApiResponse(response);
+
+      console.log('✅ [NotificationService] Trigger odpověď:', result);
+      console.log('   Sent:', result.sent);
+      console.log('   Errors:', result.errors);
+
+      return result;
+
+    } catch (error) {
+      console.error('❌ [NotificationService] Trigger CHYBA:', error);
+      throw error;
+    }
+  }
+
+  // ===========================================================================
+  // TODO ALARM FUNKCE
+  // ===========================================================================
+
+  /**
+   * Poslat TODO alarm notifikaci (normální priorita)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmNormal(userId, todoData) {
+    return this.create({
+      token: loadAuthData.token(),
+      username: loadAuthData.user()?.username,
+      type: 'alarm_todo_normal',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Poslat TODO alarm notifikaci (VYSOKÁ priorita)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmHigh(userId, todoData) {
+    return this.create({
+      token: loadAuthData.token(),
+      username: loadAuthData.user()?.username,
+      type: 'alarm_todo_high',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Poslat TODO alarm notifikaci (PROŠLÝ TERMÍN)
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   */
+  async notifyTodoAlarmExpired(userId, todoData) {
+    return this.create({
+      token: loadAuthData.token(),
+      username: loadAuthData.user()?.username,
+      type: 'alarm_todo_expired',
+      order_id: null,
+      action_user_id: userId,
+      to_user_id: userId,
+      custom_placeholders: {
+        todo_title: todoData.todo_title,
+        todo_note: todoData.todo_note || '',
+        alarm_datetime: todoData.alarm_datetime,
+        alarm_date: todoData.alarm_date,
+        alarm_time: todoData.alarm_time,
+        user_name: todoData.user_name,
+        time_remaining: todoData.time_remaining || '',
+        todo_id: String(todoData.todo_id)
+      }
+    });
+  }
+
+  /**
+   * Univerzální funkce pro odeslání TODO alarm notifikace
+   * Automaticky vybere správný typ podle priority a stavu
+   * @param {number} userId - ID uživatele
+   * @param {Object} todoData - Data úkolu
+   * @param {boolean} isExpired - Je termín prošlý?
+   * @param {boolean} isHighPriority - Je vysoká priorita?
+   */
+  async notifyTodoAlarm(userId, todoData, isExpired = false, isHighPriority = false) {
+    if (isExpired) {
+      return this.notifyTodoAlarmExpired(userId, todoData);
+    } else if (isHighPriority) {
+      return this.notifyTodoAlarmHigh(userId, todoData);
+    } else {
+      return this.notifyTodoAlarmNormal(userId, todoData);
+    }
+  }
+
   // ===========================================================================
   // HELPER FUNKCE - Ready-to-use metody pro běžné workflow akce
   // ===========================================================================
@@ -954,6 +1101,11 @@ const notificationService = new NotificationService();
 
 // Export instance + class (pro testy)
 export { notificationService, NotificationService };
+
+// Export TODO alarm helper funkce (pro backward compatibility)
+export const notifyTodoAlarm = (userId, todoData, isExpired, isHighPriority) => {
+  return notificationService.notifyTodoAlarm(userId, todoData, isExpired, isHighPriority);
+};
 
 // Export jako default
 export default notificationService;
