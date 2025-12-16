@@ -184,7 +184,7 @@ function handle_notifications_list($input, $config, $queries) {
         $stmt->execute();
         $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Formátuj data pro frontend
+        // Formátuj data pro frontend (české názvy)
         $result = array_map(function($notif) {
             $item = array(
                 'id' => (int)$notif['id'],
@@ -201,7 +201,7 @@ function handle_notifications_list($input, $config, $queries) {
                 'dt_created' => $notif['dt_created']
             );
             
-            // Vždy vrátit skryto (už je v SELECT)
+            // Vždy vrátit skryto
             $item['skryto'] = $notif['skryto'] == 1;
             $item['dt_skryto'] = $notif['dt_skryto'];
             

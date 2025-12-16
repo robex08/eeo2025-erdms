@@ -441,7 +441,7 @@ export const markNotificationAsRead = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/mark-read', payload);
@@ -482,7 +482,7 @@ export const dismissNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/dismiss', payload);
@@ -523,7 +523,7 @@ export const restoreNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/restore', payload);
@@ -546,7 +546,7 @@ export const deleteNotification = async (notificationId) => {
 
     const payload = {
       ...auth,
-      notification_id: notificationId
+      notifikace_id: notificationId
     };
 
     const response = await notificationsApi.post('/notifications/delete', payload);

@@ -1071,7 +1071,7 @@ const NotificationBellWrapper = ({ userId }) => {
             detail: {
               orderId: notification.order_id,
               orderNumber: notification.order_number,
-              notificationType: notification.type,
+              notificationType: notification.typ,
               timestamp: new Date().toISOString()
             }
           }));
@@ -1105,7 +1105,7 @@ const NotificationBellWrapper = ({ userId }) => {
   // Handlers pro akce v dropdownu
   const handleNotificationClick = async (notification) => {
     // Označit jako přečtenou pokud není
-    const isUnread = !notification.is_read || notification.is_read === 0;
+    const isUnread = !notification.precteno || notification.precteno === 0;
     if (isUnread) {
       await handleMarkAsRead(notification.id);
     }
@@ -1133,7 +1133,7 @@ const NotificationBellWrapper = ({ userId }) => {
         data.order_id = data.id;
       }
 
-      if (notification.type?.includes('order') && data.order_id) {
+      if (notification.typ?.includes('order') && data.order_id) {
         const targetOrderId = parseInt(data.order_id);
         const user_id = userDetail?.user_id;
 
@@ -1206,7 +1206,7 @@ const NotificationBellWrapper = ({ userId }) => {
         // ✅ Navigace
         navigate(`/order-form-25?edit=${data.order_id}`);
         setDropdownVisible(false);
-      } else if (notification.type?.includes('alarm_todo') && data.order_id) {
+      } else if (notification.typ?.includes('alarm_todo') && data.order_id) {
         // ⚠️ Fallback pro alarm_todo bez 'order' v typu - STEJNÝ KÓD JAKO VÝŠE
         const targetOrderId = parseInt(data.order_id);
         const user_id = userDetail?.user_id;
@@ -1329,7 +1329,7 @@ const NotificationBellWrapper = ({ userId }) => {
 
       // Aktualizuj badge pokud byla nepřečtená
       const notification = notifications.find(n => n.id === notificationId);
-      if (notification && (!notification.is_read || notification.is_read === 0)) {
+      if (notification && (!notification.precteno || notification.precteno === 0)) {
         if (bgTasks?.handleUnreadCountChange) {
           const currentCount = bgTasks.unreadNotificationsCount || 0;
           if (currentCount > 0) {
@@ -1638,15 +1638,15 @@ const Layout = ({ children }) => {
     const newNotification = {
       id: notification.id,
       type: 'TODO_ALARM',
-      title: notification.priority === 'HIGH'
+      title: notification.priorita === 'HIGH'
         ? '🚨 TODO Alarm (HIGH)'
         : '⏰ TODO Alarm',
-      message: notification.message,
+      message: notification.zprava,
       dt_created: new Date(notification.timestamp).toISOString(),
       timestamp: notification.timestamp,
       is_read: 0,
       read: false,
-      priority: notification.priority || 'NORMAL',
+      priority: notification.priorita || 'NORMAL',
       data: {
         taskId: notification.taskId,
         alarmTime: notification.alarmTime

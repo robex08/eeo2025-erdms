@@ -595,8 +595,8 @@ export const NotificationDropdown = ({
             </EmptyState>
           ) : (
             notifications.slice(0, 10).map((notification, index) => {
-              const isUnread = !notification.is_read || notification.is_read === 0 || notification.is_read === false;
-              const priority = notification.priority || 'normal';
+              const isUnread = !notification.precteno || notification.precteno === 0 || notification.precteno === false;
+              const priority = notification.priorita || 'normal';
 
               // ✅ Parse data_json pro zobrazení dodatečných informací
               let notificationData = {};
@@ -625,11 +625,11 @@ export const NotificationDropdown = ({
                   </NotificationIcon>
                   <NotificationContent>
                     <NotificationTitle $isUnread={isUnread}>
-                      {notification.title || notification.app_title || 'Bez názvu'}
+                      {notification.nadpis || notification.app_title || 'Bez názvu'}
                     </NotificationTitle>
-                    {(notification.message || notification.app_message) && (
+                    {(notification.zprava || notification.app_message) && (
                       <NotificationMessage>
-                        {notification.message || notification.app_message}
+                        {notification.zprava || notification.app_message}
                       </NotificationMessage>
                     )}
                     <NotificationMeta>
@@ -638,7 +638,7 @@ export const NotificationDropdown = ({
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
                       {/* Zobraz informaci kdo poslal objednávku místo typu notifikace */}
-                      {notification.type?.includes('order') && notificationData.action_performed_by ? (
+                      {notification.typ?.includes('order') && notificationData.action_performed_by ? (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
@@ -649,7 +649,7 @@ export const NotificationDropdown = ({
                         }}>
                           👤 {notificationData.action_performed_by}
                         </span>
-                      ) : notification.type ? (
+                      ) : notification.typ ? (
                         <span style={{
                           background: '#e5e7eb',
                           padding: '2px 6px',
@@ -657,7 +657,7 @@ export const NotificationDropdown = ({
                           fontSize: '11px',
                           fontWeight: '500'
                         }}>
-                          {notification.type}
+                          {notification.typ}
                         </span>
                       ) : null}
                     </NotificationMeta>
