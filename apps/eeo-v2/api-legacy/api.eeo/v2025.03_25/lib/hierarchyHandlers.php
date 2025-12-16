@@ -5,7 +5,7 @@
 // DEPRECATED: Tento soubor obsahuje ZASTARALÉ funkce pro původní hierarchii (25_uzivatele_hierarchie)
 // Tabulka 25_uzivatele_hierarchie byla SMAZÁNA 13.12.2025
 // 
-// NOVÉ API pro hierarchii: viz hierarchyHandlers_v2.php (používá 25_hierarchie_vztahy)
+// NOVÉ API pro hierarchii: používá structure_json v tabulce 25_hierarchie_profily
 // Tyto funkce jsou ponechány pouze pro zpětnou kompatibilitu s legacy endpointy, které už se nepoužívají
 // ============================================================================================================
 
@@ -1261,9 +1261,9 @@ function handle_hierarchy_profiles_list($data, $pdo) {
                 p.aktivni,
                 p.dt_vytvoreno,
                 p.dt_upraveno,
+                p.structure_json,
                 u.jmeno,
-                u.prijmeni,
-                (SELECT COUNT(*) FROM 25_hierarchie_vztahy hz WHERE hz.profil_id = p.id AND hz.aktivni = 1) as vztahu_count
+                u.prijmeni
             FROM 25_hierarchie_profily p
             LEFT JOIN 25_uzivatele u ON p.vytvoril_user_id = u.id
             ORDER BY p.aktivni DESC, p.nazev ASC
@@ -1271,6 +1271,15 @@ function handle_hierarchy_profiles_list($data, $pdo) {
         
         $profiles = array();
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Spočítat vztahy z structure_json (edges)
+            $relationshipsCount = 0;
+            if (!empty($row['structure_json'])) {
+                $structure = json_decode($row['structure_json'], true);
+                if ($structure && isset($structure['edges'])) {
+                    $relationshipsCount = count($structure['edges']);
+                }
+            }
+            
             $profiles[] = array(
                 'id' => (int)$row['id'],
                 'name' => $row['nazev'],
@@ -1279,7 +1288,7 @@ function handle_hierarchy_profiles_list($data, $pdo) {
                 'createdAt' => $row['dt_vytvoreno'],
                 'updatedAt' => $row['dt_upraveno'],
                 'createdBy' => $row['jmeno'] ? trim($row['jmeno'] . ' ' . $row['prijmeni']) : null,
-                'relationshipsCount' => (int)$row['vztahu_count']
+                'relationshipsCount' => $relationshipsCount
             );
         }
         
@@ -1377,25 +1386,16 @@ function handle_hierarchy_profiles_delete($data, $pdo) {
     }
     
     try {
-        $pdo->beginTransaction();
-        
         // Zkontrolovat, zda není poslední profil
         $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM 25_hierarchie_profily");
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row['cnt'] <= 1) {
-            $pdo->rollBack();
             return array('success' => false, 'error' => 'Nelze smazat posledni profil');
         }
         
-        // Smazat všechny vztahy v profilu
-        $stmt = $pdo->prepare("DELETE FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ?");
-        $stmt->execute(array($profilId));
-        
-        // Smazat profil
+        // Smazat profil (structure_json je součástí profilu, smaže se automaticky)
         $stmt = $pdo->prepare("DELETE FROM 25_hierarchie_profily WHERE id = ?");
         $stmt->execute(array($profilId));
-        
-        $pdo->commit();
         
         return array('success' => true, 'message' => 'Profil uspesne smazan');
         

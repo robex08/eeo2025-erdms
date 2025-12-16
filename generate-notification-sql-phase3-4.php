@@ -59,18 +59,18 @@ foreach ($templates as $template) {
     
     $sendEmail = $template['send_email_default'] ? 1 : 0;
     
-    $sql = "UPDATE 25_notification_templates 
+    $sql = "UPDATE 25_notifikace_sablony 
 SET 
-    name = '{$escapedName}',
-    email_subject = '{$escapedSubject}',
-    email_body = '{$escapedHtml}',
-    app_title = '{$escapedAppTitle}',
-    app_message = '{$escapedAppMessage}',
-    send_email_default = {$sendEmail},
-    priority_default = '{$template['priority_default']}',
-    active = 1,
+    nazev = '{$escapedName}',
+    email_predmet = '{$escapedSubject}',
+    email_telo = '{$escapedHtml}',
+    app_nadpis = '{$escapedAppTitle}',
+    app_zprava = '{$escapedAppMessage}',
+    email_vychozi = {$sendEmail},
+    priorita_vychozi = '{$template['priority_default']}',
+    aktivni = 1,
     dt_updated = NOW()
-WHERE type = '{$template['type']}';";
+WHERE typ = '{$template['type']}';";
     
     $sqlStatements[] = $sql;
     

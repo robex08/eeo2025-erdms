@@ -914,9 +914,9 @@ switch ($endpoint) {
         break;
     
     case 'hierarchy/structure':
+        // DEPRECATED: Redirect to new API
         if ($request_method === 'POST') {
-            require_once __DIR__ . '/' . VERSION . '/lib/hierarchyHandlers_v2.php';
-            $response = handle_hierarchy_structure_v2($input, $pdo);
+            $response = handle_hierarchy_profiles_load_structure($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
@@ -926,9 +926,9 @@ switch ($endpoint) {
         break;
     
     case 'hierarchy/save':
+        // DEPRECATED: Redirect to new API
         if ($request_method === 'POST') {
-            require_once __DIR__ . '/' . VERSION . '/lib/hierarchyHandlers_v2.php';
-            $response = handle_hierarchy_save_v2($input, $pdo);
+            $response = handle_hierarchy_profiles_save_structure($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } else {
