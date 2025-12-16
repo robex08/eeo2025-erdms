@@ -12,12 +12,12 @@
 -- GLOBÁLNÍ NASTAVENÍ (25a_nastaveni_globalni)
 -- ================================================
 
--- Přidat globální nastavení pro notifikace
+-- Přidat globální nastavení pro notifikace (anglické klíče pro konzistenci s backendem)
 INSERT INTO 25a_nastaveni_globalni (klic, hodnota, popis, vytvoreno)
 VALUES 
-    ('notifikace_system_povoleny', '1', 'Globální zapnutí/vypnutí notifikačního systému', NOW()),
-    ('notifikace_email_povoleny', '1', 'Globální zapnutí/vypnutí email notifikací', NOW()),
-    ('notifikace_inapp_povoleny', '1', 'Globální zapnutí/vypnutí in-app notifikací', NOW())
+    ('notifications_enabled', '1', 'Hlavní vypínač pro celý notifikační systém', NOW()),
+    ('notifications_email_enabled', '1', 'Povolit zasílání emailových notifikací', NOW()),
+    ('notifications_inapp_enabled', '1', 'Povolit in-app notifikace (zvoneček)', NOW())
 ON DUPLICATE KEY UPDATE 
     aktualizovano = NOW();
 
@@ -39,7 +39,7 @@ FROM users u
 LEFT JOIN 25_uzivatel_nastaveni ns ON ns.uzivatel_id = u.id
 WHERE ns.id IS NULL
   AND u.active = 'y'
-ON DUPLICATE KEY UPDATE nastaveni_data = nastaveni_data; -- Nech stávající data (admin může upravit později)
+ON DUPLICATE KEY UPDATE nastaveni_data = VALUES(nastaveni_data); -- Nech stávající data (admin může upravit později)
 
 -- ================================================
 -- VERIFIKACE

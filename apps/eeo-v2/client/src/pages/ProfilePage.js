@@ -1581,8 +1581,15 @@ const ProfilePage = () => {
     
     // Notifikace
     notifikace: {
-      email: true,
-      system: true
+      povoleny: true,            // Hlavní vypínač
+      email_povoleny: true,       // Email kanál
+      inapp_povoleny: true,       // In-app kanál (zvoneček)
+      kategorie: {                // Kategorie modulů
+        objednavky: true,
+        faktury: true,
+        smlouvy: true,
+        pokladna: true
+      }
     },
     
     // Profil
@@ -3647,9 +3654,35 @@ const ProfilePage = () => {
                     Vyberte, jakým způsobem chcete dostávat oznámení o důležitých událostech v aplikaci.
                   </SettingDescription>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                  {/* Hlavní vypínač */}
+                  <div style={{ marginBottom: '2rem', padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '2px solid #e9ecef' }}>
+                    <ToggleSettingItem>
+                      <ToggleSettingLabel>
+                        <ToggleSettingTitle style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                          Povolit notifikace
+                        </ToggleSettingTitle>
+                        <SettingDescription>
+                          Hlavní vypínač pro všechny notifikace. Pokud vypnete, nebudete dostávat žádné oznámení.
+                        </SettingDescription>
+                      </ToggleSettingLabel>
+                      <ToggleSwitch>
+                        <input
+                          type="checkbox"
+                          checked={userSettings.notifikace.povoleny}
+                          onChange={(e) => setUserSettings(prev => ({
+                            ...prev,
+                            notifikace: { ...prev.notifikace, povoleny: e.target.checked }
+                          }))}
+                        />
+                        <span></span>
+                      </ToggleSwitch>
+                    </ToggleSettingItem>
+                  </div>
+
+                  {/* Kanály notifikací */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem', opacity: userSettings.notifikace.povoleny ? 1 : 0.5 }}>
                     
-                    {/* Systémové notifikace (v aplikaci) */}
+                    {/* In-app notifikace */}
                     <ToggleSettingItem>
                       <ToggleSettingLabel>
                         <ToggleSettingTitle>Zobrazovat notifikace v aplikaci</ToggleSettingTitle>
@@ -3661,10 +3694,11 @@ const ProfilePage = () => {
                       <ToggleSwitch>
                         <input
                           type="checkbox"
-                          checked={userSettings.notifikace.system}
+                          checked={userSettings.notifikace.inapp_povoleny}
+                          disabled={!userSettings.notifikace.povoleny}
                           onChange={(e) => setUserSettings(prev => ({
                             ...prev,
-                            notifikace: { ...prev.notifikace, system: e.target.checked }
+                            notifikace: { ...prev.notifikace, inapp_povoleny: e.target.checked }
                           }))}
                         />
                         <span></span>
@@ -3676,22 +3710,133 @@ const ProfilePage = () => {
                       <ToggleSettingLabel>
                         <ToggleSettingTitle>Zasílat notifikace emailem</ToggleSettingTitle>
                         <SettingDescription>
-                          Důležité události budou zasílány také na váš registrovaný email: <strong>{userDetail?.email || 'není k dispozici'}</strong>. Můžete vybrat obě možnosti, pouze jednu, nebo žádnou.
+                          Důležité události budou zasílány také na váš registrovaný email: <strong>{userDetail?.email || 'není k dispozici'}</strong>.
                         </SettingDescription>
                       </ToggleSettingLabel>
                       <ToggleSwitch>
                         <input
                           type="checkbox"
-                          checked={userSettings.notifikace.email}
+                          checked={userSettings.notifikace.email_povoleny}
+                          disabled={!userSettings.notifikace.povoleny}
                           onChange={(e) => setUserSettings(prev => ({
                             ...prev,
-                            notifikace: { ...prev.notifikace, email: e.target.checked }
+                            notifikace: { ...prev.notifikace, email_povoleny: e.target.checked }
                           }))}
                         />
                         <span></span>
                       </ToggleSwitch>
                     </ToggleSettingItem>
 
+                  </div>
+
+                  {/* Kategorie notifikací */}
+                  <div style={{ borderTop: '2px solid #e9ecef', paddingTop: '1.5rem' }}>
+                    <SettingDescription style={{ marginBottom: '1rem', fontWeight: 600 }}>
+                      Vyberte, ze kterých modulů chcete dostávat notifikace:
+                    </SettingDescription>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: userSettings.notifikace.povoleny ? 1 : 0.5 }}>
+                      
+                      {/* Objednávky */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Objednávky</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Změny stavů, schvalování, komentáře
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.objednavky}
+                            disabled={!userSettings.notifikace.povoleny}
+                            onChange={(e) => setUserSettings(prev => ({
+                              ...prev,
+                              notifikace: { 
+                                ...prev.notifikace, 
+                                kategorie: { ...prev.notifikace.kategorie, objednavky: e.target.checked }
+                              }
+                            }))}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Faktury */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Faktury</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové faktury, schválení, zamítnutí
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.faktury}
+                            disabled={!userSettings.notifikace.povoleny}
+                            onChange={(e) => setUserSettings(prev => ({
+                              ...prev,
+                              notifikace: { 
+                                ...prev.notifikace, 
+                                kategorie: { ...prev.notifikace.kategorie, faktury: e.target.checked }
+                              }
+                            }))}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Smlouvy */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Smlouvy</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové smlouvy, změny, komentáře
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.smlouvy}
+                            disabled={!userSettings.notifikace.povoleny}
+                            onChange={(e) => setUserSettings(prev => ({
+                              ...prev,
+                              notifikace: { 
+                                ...prev.notifikace, 
+                                kategorie: { ...prev.notifikace.kategorie, smlouvy: e.target.checked }
+                              }
+                            }))}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                      {/* Pokladna */}
+                      <ToggleSettingItem>
+                        <ToggleSettingLabel>
+                          <ToggleSettingTitle>Pokladna</ToggleSettingTitle>
+                          <SettingDescription style={{ fontSize: '0.85rem' }}>
+                            Nové doklady, kontroly, schvalování
+                          </SettingDescription>
+                        </ToggleSettingLabel>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={userSettings.notifikace.kategorie.pokladna}
+                            disabled={!userSettings.notifikace.povoleny}
+                            onChange={(e) => setUserSettings(prev => ({
+                              ...prev,
+                              notifikace: { 
+                                ...prev.notifikace, 
+                                kategorie: { ...prev.notifikace.kategorie, pokladna: e.target.checked }
+                              }
+                            }))}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                      </ToggleSettingItem>
+
+                    </div>
                   </div>
                 </CollapsibleContent>
               </SettingsSection>

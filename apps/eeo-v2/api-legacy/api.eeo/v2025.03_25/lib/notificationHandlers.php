@@ -1813,9 +1813,9 @@ function getUserNotificationPreferences($db, $userId) {
             SELECT klic, hodnota 
             FROM 25a_nastaveni_globalni 
             WHERE klic IN (
-                'notifikace_system_povoleny',
-                'notifikace_email_povoleny', 
-                'notifikace_inapp_povoleny'
+                'notifications_enabled',
+                'notifications_email_enabled', 
+                'notifications_inapp_enabled'
             )
         ");
         $stmt->execute();
@@ -1823,17 +1823,17 @@ function getUserNotificationPreferences($db, $userId) {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $value = ($row['hodnota'] === '1' || $row['hodnota'] === 'true');
             
-            if ($row['klic'] === 'notifikace_system_povoleny' && !$value) {
+            if ($row['klic'] === 'notifications_enabled' && !$value) {
                 // Systém je vypnutý globálně - nic nefunguje
                 $preferences['enabled'] = false;
                 return $preferences;
             }
             
-            if ($row['klic'] === 'notifikace_email_povoleny') {
+            if ($row['klic'] === 'notifications_email_enabled') {
                 $preferences['email_enabled'] = $value;
             }
             
-            if ($row['klic'] === 'notifikace_inapp_povoleny') {
+            if ($row['klic'] === 'notifications_inapp_enabled') {
                 $preferences['inapp_enabled'] = $value;
             }
         }
