@@ -25,27 +25,21 @@ ON DUPLICATE KEY UPDATE
 -- VÝCHOZÍ HODNOTY PRO EXISTUJÍCÍ UŽIVATELE
 -- ================================================
 
--- Pro každého uživatele, který ještě nemá nastavení notifikací
+-- Pro každého uživatele - MERGE stávajících dat s novými notifikačními preferencemi
+-- Pokud nemá záznam, vytvoř nový
+-- Pokud má záznam, přidej notifikační klíče (MySQL 5.5 nepoužívá JSON_MERGE)
+
 INSERT INTO 25_uzivatel_nastaveni (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
 SELECT 
     u.id,
-    JSON_OBJECT(
-        'notifikace_povoleny', true,
-        'notifikace_email_povoleny', true,
-        'notifikace_inapp_povoleny', true,
-        'notifikace_kategorie', JSON_OBJECT(
-            'objednavky', true,
-            'faktury', true,
-            'smlouvy', true,
-            'pokladna', true
-        )
-    ),
+    '{"notifikace_povoleny":true,"notifikace_email_povoleny":true,"notifikace_inapp_povoleny":true,"notifikace_kategorie":{"objednavky":true,"faktury":true,"smlouvy":true,"pokladna":true}}',
     '1.0',
     NOW()
 FROM users u
 LEFT JOIN 25_uzivatel_nastaveni ns ON ns.uzivatel_id = u.id
 WHERE ns.id IS NULL
-  AND u.active = 'y';
+  AND u.active = 'y'
+ON DUPLICATE KEY UPDATE nastaveni_data = nastaveni_data; -- Nech stávající data (admin může upravit později)
 
 -- ================================================
 -- VERIFIKACE
