@@ -162,8 +162,8 @@ if ($newStatus === 'SCHVALENA') {
 **MAPOVÁNÍ STATUS → EVENT:**
 | Status | Event Type |
 |--------|------------|
-| NOVA | ORDER_CREATED |
-| KE_SCHVALENI | ORDER_CREATED |
+| NOVA | N/A (pouze draft) |
+| KE_SCHVALENI | ORDER_SENT_FOR_APPROVAL |
 | SCHVALENA | ORDER_APPROVED |
 | ZAMITNUTA | ORDER_REJECTED |
 | CEKA_SE | ORDER_WAITING_FOR_CHANGES |

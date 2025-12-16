@@ -7,7 +7,7 @@
 -- ============================================
 
 -- ============================================
--- Šablona 1: Nová objednávka vytvořena (ORDER_CREATED)
+-- Šablona 1: Objednávka odeslána ke schválení (ORDER_SENT_FOR_APPROVAL)
 -- ============================================
 UPDATE 25_notification_templates 
 SET 
