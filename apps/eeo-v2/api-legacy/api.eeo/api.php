@@ -2127,6 +2127,24 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+    
+    case 'notifications/user-preferences':
+        if ($request_method === 'GET' || $request_method === 'POST') {
+            handle_notifications_user_preferences($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+    
+    case 'notifications/user-preferences/update':
+        if ($request_method === 'POST') {
+            handle_notifications_user_preferences_update($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
 
     // === NOTIFIKAČNÍ ŠABLONY CRUD API ===
     case 'notifications/templates/list':
