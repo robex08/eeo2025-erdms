@@ -1552,7 +1552,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         // 1. Najít aktivní profil hierarchie
         $stmt = $db->prepare("
             SELECT id, structure_json 
-            FROM 25_hierarchy_profiles 
+            FROM 25_hierarchie_profily 
             WHERE aktivni = 1 
             LIMIT 1
         ");

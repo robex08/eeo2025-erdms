@@ -5,65 +5,93 @@
  * ============================================================================
  * 
  * Tento soubor obsahuje funkce pro kontrolu oprávnění v modulech
- * na základě vztahů definovaných v tabulce 25_hierarchie_vztahy.
+ * na základě vztahů definovaných v structure_json (25_hierarchie_profily).
  * 
  * @package EEO v2025
  * @author  GitHub Copilot
- * @date    2025-12-12
+ * @date    2025-12-16
+ * @version 3.0 - Refactored to use structure_json
  */
 
 /**
  * Získá seznam ID záznamů, které může uživatel vidět v daném modulu
- * na základě hierarchy vztahů.
+ * na základě hierarchy vztahů ze structure_json.
  * 
  * @param PDO    $pdo        Database connection
  * @param int    $userId     ID uživatele (nadřízeného)
  * @param string $module     Název modulu ('orders', 'invoices', 'cashbook')
- * @param int    $profileId  ID profilu hierarchie (výchozí 1)
+ * @param int    $profileId  ID profilu hierarchie (výchozí NULL = aktivní)
  * @return array Array ID záznamů, které může vidět
  */
-function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = 1) {
-    // Mapování názvů modulů na sloupce v DB
-    $moduleColumns = [
-        'orders' => 'viditelnost_objednavky',
-        'invoices' => 'viditelnost_faktury',
-        'contracts' => 'viditelnost_smlouvy',
-        'cashbook' => 'viditelnost_pokladna'
-    ];
+function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null) {
+    // Načíst aktivní profil
+    if (!$profileId) {
+        $stmt = $pdo->prepare("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt->execute();
+        $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+        $profileId = $profile ? $profile['id'] : null;
+    }
     
-    if (!isset($moduleColumns[$module])) {
-        error_log("Unknown module: $module");
+    if (!$profileId) {
         return [];
     }
     
-    $moduleColumn = $moduleColumns[$module];
+    // Načíst structure_json
+    $stmt = $pdo->prepare("SELECT structure_json FROM 25_hierarchie_profily WHERE id = :profileId");
+    $stmt->execute(['profileId' => $profileId]);
+    $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Získat všechny aktivní vztahy, kde je uživatel nadřízený
-    $stmt = $pdo->prepare("
-        SELECT 
-            h.id,
-            h.typ_vztahu,
-            h.user_id_2,
-            h.lokalita_id,
-            h.usek_id,
-            h.druh_vztahu,
-            h.scope,
-            h.rozsirene_lokality,
-            h.rozsirene_useky,
-            h.kombinace_lokalita_usek
-        FROM 25_hierarchie_vztahy h
-        WHERE h.user_id_1 = :userId
-          AND h.profil_id = :profileId
-          AND h.aktivni = 1
-          AND h.$moduleColumn = 1
-    ");
+    if (!$profile || empty($profile['structure_json'])) {
+        return [];
+    }
     
-    $stmt->execute([
-        'userId' => $userId,
-        'profileId' => $profileId
-    ]);
+    $structure = json_decode($profile['structure_json'], true);
+    if (!$structure || !isset($structure['edges'])) {
+        return [];
+    }
     
-    $relationships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Najít user node
+    $userNodeId = null;
+    foreach ($structure['nodes'] as $node) {
+        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $userId) {
+            $userNodeId = $node['id'];
+            break;
+        }
+    }
+    
+    if (!$userNodeId) {
+        return [];
+    }
+    
+    // Projít edges a extrahovat vztahy
+    $relationships = [];
+    
+    foreach ($structure['edges'] as $edge) {
+        if ($edge['source'] !== $userNodeId && $edge['target'] !== $userNodeId) {
+            continue;
+        }
+        
+        $modules = isset($edge['data']['modules']) ? $edge['data']['modules'] : [];
+        if (!isset($modules[$module]) || !$modules[$module]) {
+            continue;
+        }
+        
+        $targetNodeId = ($edge['source'] === $userNodeId) ? $edge['target'] : $edge['source'];
+        
+        foreach ($structure['nodes'] as $node) {
+            if ($node['id'] === $targetNodeId) {
+                $relationships[] = [
+                    'node' => $node,
+                    'scope' => isset($edge['data']['scope']) ? $edge['data']['scope'] : 'OWN'
+                ];
+                break;
+            }
+        }
+    }
+    
+    if (empty($relationships)) {
+        return [];
+    }
     
     if (empty($relationships)) {
         return [];
@@ -72,15 +100,17 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = 1) {
     $visibleUserIds = [];
     
     foreach ($relationships as $rel) {
-        // Základní viditelnost podle scope
-        $subordinateUserId = $rel['user_id_2'];
+        $node = $rel['node'];
+        $scope = $rel['scope'];
         
-        if ($subordinateUserId) {
+        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id'])) {
+            $subordinateUserId = $node['data']['uzivatel_id'];
+            
             // Získat údaje podřízeného
             $subordinate = getUserById($pdo, $subordinateUserId);
             
             if ($subordinate) {
-                switch ($rel['scope']) {
+                switch ($scope) {
                     case 'OWN':
                         // Jen záznamy podřízeného
                         $visibleUserIds[] = $subordinateUserId;
