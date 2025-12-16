@@ -1541,6 +1541,20 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             error_log("📊 [NotificationRouter] Merged placeholders: " . json_encode($placeholderData));
         }
         
+        // 0a. Přidat trigger user jméno (kdo akci provedl)
+        if ($triggerUserId) {
+            $stmt = $db->prepare("SELECT CONCAT(name, ' ', surname) as full_name FROM users WHERE id = :user_id");
+            $stmt->execute([':user_id' => $triggerUserId]);
+            $triggerUser = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($triggerUser) {
+                // Přidat do placeholders pro nahrazení v textech
+                $placeholderData['trigger_user_name'] = $triggerUser['full_name'];
+                $placeholderData['action_user'] = $triggerUser['full_name'];
+                $placeholderData['action_performed_by'] = $triggerUser['full_name']; // Pro frontend zobrazení
+                error_log("👤 [NotificationRouter] Trigger user: " . $triggerUser['full_name']);
+            }
+        }
+        
         // 1. Najít příjemce podle organizational hierarchy
         error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
         $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId);
