@@ -55,29 +55,29 @@ foreach ($templates as $type => $config) {
     $app_message_escaped = addslashes($config['app_message']);
     
     // Generování SQL UPDATE
-    $sql = "UPDATE 25_notification_templates SET\n";
-    $sql .= "    email_body = '$html_escaped',\n";
-    $sql .= "    email_subject = '$subject_escaped',\n";
-    $sql .= "    app_title = '$app_title_escaped',\n";
-    $sql .= "    app_message = '$app_message_escaped',\n";
-    $sql .= "    priority_default = '{$config['priority']}',\n";
+    $sql = "UPDATE 25_notifikace_sablony SET\n";
+    $sql .= "    email_telo = '$html_escaped',\n";
+    $sql .= "    email_predmet = '$subject_escaped',\n";
+    $sql .= "    app_nadpis = '$app_title_escaped',\n";
+    $sql .= "    app_zprava = '$app_message_escaped',\n";
+    $sql .= "    priorita_vychozi = '{$config['priority']}',\n";
     $sql .= "    dt_updated = NOW()\n";
-    $sql .= "WHERE type = '$type';\n\n";
+    $sql .= "WHERE typ = '$type';\n\n";
     
     echo $sql;
     
     // Ověření
     echo "-- Ověření aktualizace:\n";
-    echo "SELECT id, type, name, LENGTH(email_body) as body_length, email_subject, active, dt_updated\n";
-    echo "FROM 25_notification_templates WHERE type = '$type';\n\n";
+    echo "SELECT id, typ, nazev, LENGTH(email_telo) as body_length, email_predmet, aktivni, dt_updated\n";
+    echo "FROM 25_notifikace_sablony WHERE typ = '$type';\n\n";
 }
 
 echo "-- ============================================================================\n";
 echo "-- Kontrola všech aktualizovaných šablon\n";
 echo "-- ============================================================================\n\n";
-echo "SELECT id, type, name, LENGTH(email_body) as body_length, email_subject, active, dt_updated\n";
-echo "FROM 25_notification_templates\n";
-echo "WHERE type IN ('order_status_schvalena', 'order_status_zamitnuta', 'order_status_ceka_se')\n";
+echo "SELECT id, typ, nazev, LENGTH(email_telo) as body_length, email_predmet, aktivni, dt_updated\n";
+echo "FROM 25_notifikace_sablony\n";
+echo "WHERE typ IN ('order_status_schvalena', 'order_status_zamitnuta', 'order_status_ceka_se')\n";
 echo "ORDER BY id;\n\n";
 
 echo "-- ============================================================================\n";

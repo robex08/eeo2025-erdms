@@ -2076,7 +2076,7 @@ const OrganizationHierarchy = () => {
       }
     };
 
-    loadHierarchyData();
+    loadInitialData();
   }, []); // Empty deps - run once on mount
 
   // Effect: Auto-save nodes/edges to localStorage (draft system)
@@ -2116,12 +2116,167 @@ const OrganizationHierarchy = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // TODO: Keyboard shortcuts implementation
+            if (relationType.includes('template')) {
+              return '#f59e0b'; // Oranžová pro notifikační šablony
+            } else if (relationType.includes('role')) {
+              return '#8b5cf6'; // Fialová pro role
+            } else if (relationType.includes('location')) {
+              return '#92400e'; // Tmavě hnědá pro lokality
+            } else if (relationType.includes('department')) {
+              return '#059669'; // Tmavě zelená pro útvary
+            } else if (relationType === 'user-user') {
+              return '#3b82f6'; // Modrá pro uživatel-uživatel
+            }
+            return '#3b82f6'; // Výchozí modrá
+          };
+
+          // Konvertovat relations na ReactFlow edges
+          const flowEdges = apiRelations.map((rel, index) => {
+            // Najít source a target nodes podle typu vztahu
+            let sourceNode, targetNode;
+            
+            const relType = rel.type; // 'user-user', 'location-user', etc.
+            const [sourceType, targetType] = relType.split('-');
+            
+            // Najít source node
+            if (sourceType === 'user') {
+              sourceNode = flowNodes.find(n => n.data.userId === String(rel.user_id_1));
+            } else if (sourceType === 'role') {
+              sourceNode = flowNodes.find(n => n.data.roleId === rel.role_id);
+            } else if (sourceType === 'location') {
+              sourceNode = flowNodes.find(n => n.data.locationId === rel.lokalita_id);
+            } else if (sourceType === 'department') {
+              sourceNode = flowNodes.find(n => n.data.departmentId === rel.usek_id);
+            } else if (sourceType === 'template') {
+              sourceNode = flowNodes.find(n => n.data.templateId === rel.template_id);
+            }
+            
+            // Najít target node
+            if (targetType === 'user') {
+              targetNode = flowNodes.find(n => n.data.userId === String(rel.user_id_2 || rel.user_id_1));
+            } else if (targetType === 'role') {
+              targetNode = flowNodes.find(n => n.data.roleId === rel.role_id);
+            } else if (targetType === 'location') {
+              targetNode = flowNodes.find(n => n.data.locationId === rel.lokalita_id);
+            } else if (targetType === 'department') {
+              targetNode = flowNodes.find(n => n.data.departmentId === rel.usek_id);
+            } else if (targetType === 'template') {
+              targetNode = flowNodes.find(n => n.data.templateId === rel.template_id);
+            }
+            
+            if (!sourceNode || !targetNode) {
+              console.warn('⚠️ Relation node not found:', rel);
+              return null;
+            }
+            
+            // Aplikovat pozice z relations
+            if (rel.position_1) {
+              sourceNode.position = rel.position_1;
+            }
+            if (rel.position_2) {
+              targetNode.position = rel.position_2;
+            }
+            
+            const edgeColor = getEdgeColor(relType);
+            
+            // Mapovat level zpět na scope: 1=OWN, 2=TEAM, 3=LOCATION, 4=ALL
+            const levelToScope = { 1: 'OWN', 2: 'TEAM', 3: 'LOCATION', 4: 'ALL' };
+            const edgeScope = levelToScope[rel.level] || 'OWN';
+            
+            return {
+              id: `rel-${rel.id || index}`,
+              source: sourceNode.id,
+              target: targetNode.id,
+              type: 'smoothstep',
+              animated: true,
+              markerEnd: { 
+                type: MarkerType.ArrowClosed,
+                color: edgeColor 
+              },
+              style: { 
+                stroke: edgeColor, 
+                strokeWidth: 3 
+              },
+              data: {
+                level: rel.level,
+                scope: edgeScope,
+                // Typ vztahu
+                relationshipType: rel.relationshipType || rel.druh_vztahu || 'prime',
+                druh_vztahu: rel.relationshipType || rel.druh_vztahu || 'prime',
+                // Viditelnost a moduly
+                visibility: rel.visibility || {},
+                modules: rel.modules || {},
+                // Úroveň práv
+                permissionLevel: rel.permissionLevel || {},
+                // Rozšířené lokality/útvary/kombinace
+                extended: rel.extended || {
+                  locations: [],
+                  departments: [],
+                  combinations: []
+                },
+                // Notifikace
+                notifications: rel.notifications || {
+                  email: false,
+                  inapp: true,
+                  types: [],
+                  recipientRole: 'APPROVAL'
+                },
+                // Typ vztahu pro React Flow
+                type: relType
+              }
+            };
+          }).filter(e => e !== null);
+          
+          setNodes(flowNodes);
+          setEdges(flowEdges);
+          
+          // Pokud jsme nactli z API, vymazat draft
+          localStorage.removeItem(LS_NODES_KEY);
+          localStorage.removeItem(LS_EDGES_KEY);
+          localStorage.removeItem(LS_TIMESTAMP_KEY);
+          setHasDraft(false);
+        } else if (draftLoaded) {
+          console.log('📝 Using draft from localStorage');
+        } else {
+          console.log('⚠️ No data to load - empty profile');
+        }
+
+        setLoading(false);
+      } catch (err) {
+        console.error('Error loading hierarchy:', err);
+        setError(err.message);
+        setLoading(false);
+      }
     };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    loadHierarchyData();
   }, []);
+
+  // 🔥 Auto-reload při změně profilu
+  useEffect(() => {
+    if (currentProfile && currentProfile.id) {
+      
+      // Reload by triggering the main load - just clear nodes/edges
+      // Main useEffect will reload on mount
+      setNodes([]);
+      setEdges([]);
+      setLoading(true);
+      
+      // Note: Actual reload happens in main useEffect on []
+      // This just signals UI that we're loading
+      setTimeout(() => setLoading(false), 500);
+    }
+  }, [currentProfile?.id]);
+
+  // 🔥 Auto-fit graf po načtení nodes
+  useEffect(() => {
+    if (nodes.length > 0 && reactFlowInstance) {
+      // Počkat na render a pak fitView
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+      }, 100);
+    }
+  }, [nodes.length, reactFlowInstance]);
 
   const onConnect = useCallback((params) => {
     // Určit typ vztahu a barvu podle source a target nodes
@@ -2679,12 +2834,12 @@ const OrganizationHierarchy = () => {
           data: {
             type: 'template',
             templateId: templateId,
-            name: template.nazev || template.name,
+            name: template.name,
             position: 'Notifikační šablona',
             initials: '🔔',
             metadata: {
               type: 'template',
-              template: template.nazev || template.name
+              template: template.name
             }
           }
         });
@@ -2764,18 +2919,18 @@ const OrganizationHierarchy = () => {
           data: {
             type: 'template',
             templateId: notifId,
-            name: template.nazev || template.name,
+            name: template.name,
             position: 'Notifikační šablona',
             initials: '🔔',
             metadata: {
               type: 'template',
-              template: template.nazev || template.name
+              template: template.name
             }
           }
         };
         
         setNodes((nds) => [...nds, newNode]);
-        console.log(`✅ Added notification template node: ${template.nazev || template.name}`);
+        console.log(`✅ Added notification template node: ${template.name}`);
       }
       return;
     }
@@ -3878,44 +4033,118 @@ const OrganizationHierarchy = () => {
     
     console.log('📂 Loading profile:', profile.name, 'ID:', profileId);
     
-    // Nacist strukturu pro vybrany profil (NOVÉ API)
+    // Nacist strukturu pro vybrany profil
     try {
       const token = await loadAuthData.token();
       const userData = await loadAuthData.user();
       const username = userData?.username || localStorage.getItem('username');
       const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
       
-      const response = await fetch(`${apiBase}/hierarchy/profiles/load-structure`, {
+      const response = await fetch(`${apiBase}/hierarchy/structure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, username, profile_id: profileId })
+        body: JSON.stringify({ token, username, profilId: profileId })
       });
       
       const result = await response.json();
       console.log('📥 Profile structure response:', result);
       
       if (result.success && result.data) {
-        // API vrací structure_json formát s nodes a edges
+        // API vrací V2 formát s nodes a relations
         const apiNodes = result.data.nodes || [];
-        const apiEdges = result.data.edges || [];
+        const apiRelations = result.data.relations || [];
         
-        if (apiNodes.length === 0 && apiEdges.length === 0) {
+        if (!apiRelations || apiRelations.length === 0) {
           setNodes([]);
           setEdges([]);
           console.log('📭 Empty profile loaded');
         } else {
-          console.log('📦 Received nodes:', apiNodes.length, 'edges:', apiEdges.length);
+          console.log('📦 Received nodes:', apiNodes.length, 'relations:', apiRelations.length);
           
-          // Zajistit, že všechny nodes mají position
-          const validNodes = apiNodes.map((node, index) => ({
-            ...node,
-            position: node.position || { x: 100 + (index % 5) * 200, y: 100 + Math.floor(index / 5) * 150 }
-          }));
+          // Nejdřív načíst pozice z relations (každý relation má position_1 a position_2)
+          const nodePositions = new Map();
+          apiRelations.forEach(rel => {
+            // Position pro node_1
+            if (rel.node_1 && rel.position_1) {
+              nodePositions.set(rel.node_1, rel.position_1);
+            }
+            // Position pro node_2
+            if (rel.node_2 && rel.position_2) {
+              nodePositions.set(rel.node_2, rel.position_2);
+            }
+          });
           
-          setNodes(validNodes);
-          setEdges(apiEdges);
+          console.log('📍 Loaded positions for', nodePositions.size, 'nodes');
           
-          console.log('✅ Profile loaded:', validNodes.length, 'nodes,', apiEdges.length, 'edges');
+          // Konvertovat backend nodes do ReactFlow formátu s uloženými pozicemi
+          const nodeIdMap = {};
+          const transformedNodes = apiNodes.map((node, index) => {
+            const reactFlowId = `${node.type}-${node.userId || node.roleId || node.departmentId || node.locationId || node.templateId}-${Date.now()}-${index}`;
+            nodeIdMap[node.id] = reactFlowId; // Mapování backend ID -> ReactFlow ID
+            
+            // Načíst uloženou pozici nebo použít default
+            const savedPosition = nodePositions.get(node.id);
+            const position = savedPosition || { x: index * 250, y: 0 };
+            
+            return {
+              id: reactFlowId,
+              type: 'custom',
+              position: position,
+              data: {
+                type: node.type,
+                name: node.name,
+                userId: node.userId,
+                roleId: node.roleId,
+                departmentId: node.departmentId,
+                locationId: node.locationId,
+                templateId: node.templateId,
+                position: node.position, // Pro uživatele (pracovní pozice)
+                initials: node.initials,
+                metadata: node.metadata || {},
+                popis: node.popis // Pro role
+              }
+            };
+          });
+          
+          console.log('🔄 Node mapping created:', nodeIdMap);
+          
+          // Konvertovat relations na edges - backend vrací node_1 a node_2 jako stringy
+          const transformedEdges = apiRelations.map((rel, idx) => {
+            // Backend vrací node_1 a node_2 jako 'user-123', 'role-5' atd.
+            const sourceId = nodeIdMap[rel.node_1];
+            const targetId = nodeIdMap[rel.node_2];
+            
+            if (!sourceId || !targetId) {
+              console.warn('⚠️ Missing source or target mapping for relation:', {
+                relation: rel,
+                node_1: rel.node_1,
+                node_2: rel.node_2,
+                sourceId,
+                targetId,
+                availableKeys: Object.keys(nodeIdMap)
+              });
+              return null;
+            }
+            
+            return {
+              id: `rel-${rel.id || idx}`,
+              source: sourceId,
+              target: targetId,
+              type: 'smoothstep',
+              animated: true,
+              data: {
+                level: rel.level,
+                visibility: rel.visibility,
+                notifications: rel.notifications,
+                type: rel.type
+              }
+            };
+          }).filter(e => e !== null);
+          
+          setNodes(transformedNodes);
+          setEdges(transformedEdges);
+          
+          console.log('✅ Profile loaded:', transformedNodes.length, 'nodes,', transformedEdges.length, 'edges');
         }
         
         // Vymazat draft pri nacitani profilu
@@ -4110,29 +4339,28 @@ const OrganizationHierarchy = () => {
   };
 
   const filteredUsers = allUsers.filter(u => 
-    u.name?.toLowerCase().includes(searchUsers.toLowerCase()) ||
-    u.position?.toLowerCase().includes(searchUsers.toLowerCase()) ||
-    u.location?.toLowerCase().includes(searchUsers.toLowerCase())
+    u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    u.position.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    u.location.toLowerCase().includes(searchUsers.toLowerCase())
   );
 
   const filteredRoles = allRoles.filter(role =>
-    role.nazev_role?.toLowerCase().includes(searchRoles.toLowerCase()) ||
+    role.nazev_role.toLowerCase().includes(searchRoles.toLowerCase()) ||
     (role.popis && role.popis.toLowerCase().includes(searchRoles.toLowerCase()))
   );
 
   const filteredLocations = allLocations.filter(loc =>
-    loc.name?.toLowerCase().includes(searchLocations.toLowerCase()) ||
-    loc.code?.toLowerCase().includes(searchLocations.toLowerCase())
+    loc.name.toLowerCase().includes(searchLocations.toLowerCase()) ||
+    loc.code.toLowerCase().includes(searchLocations.toLowerCase())
   );
 
   const filteredDepartments = allDepartments.filter(dept =>
-    dept.name?.toLowerCase().includes(searchDepartments.toLowerCase()) ||
-    dept.code?.toLowerCase().includes(searchDepartments.toLowerCase())
+    dept.name.toLowerCase().includes(searchDepartments.toLowerCase()) ||
+    dept.code.toLowerCase().includes(searchDepartments.toLowerCase())
   );
 
   const filteredNotificationTemplates = allNotificationTemplates.filter(template =>
-    (template.nazev || template.name)?.toLowerCase().includes(searchTemplates.toLowerCase()) ||
-    (template.typ || template.type)?.toLowerCase().includes(searchTemplates.toLowerCase()) ||
+    template.name.toLowerCase().includes(searchTemplates.toLowerCase()) ||
     (template.description && template.description.toLowerCase().includes(searchTemplates.toLowerCase()))
   );
 
@@ -4960,7 +5188,7 @@ const OrganizationHierarchy = () => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('application/reactflow', `notif-${template.id}`);
                           setDraggedItem(`notif-${template.id}`);
-                          console.log('🔔 Drag start notification template:', template.id, template.nazev || template.name);
+                          console.log('🔔 Drag start notification template:', template.id, template.name);
                         }}
                         onDragEnd={() => {
                           setDraggedItem(null);
@@ -5014,7 +5242,7 @@ const OrganizationHierarchy = () => {
                             fontSize: '0.9rem',
                             marginBottom: '4px'
                           }}>
-                            {template.nazev || template.name}
+                            {template.name}
                           </div>
                           <div style={{ 
                             fontSize: '0.75rem', 
@@ -5029,7 +5257,7 @@ const OrganizationHierarchy = () => {
                               borderRadius: '4px',
                               fontSize: '0.7rem'
                             }}>
-                              {template.typ || template.type}
+                              {template.type}
                             </code>
                             {template.email?.sendByDefault && (
                               <span style={{ color: '#3b82f6' }}>
@@ -7721,7 +7949,7 @@ const FullscreenEmailModal = ({ isOpen, onClose, emailData }) => {
               })()}
             </h2>
             <div style={{ fontSize: '0.85rem', opacity: 0.95 }}>
-              <strong>Šablona:</strong> {template.nazev || template.name || 'Bez názvu'}
+              <strong>Šablona:</strong> {template.name || 'Bez názvu'}
               {selectedVariantType && selectedVariantType !== 'DEFAULT' && (
                 <>
                   {' • '}

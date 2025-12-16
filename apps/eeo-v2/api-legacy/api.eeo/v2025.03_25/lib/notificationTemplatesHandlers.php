@@ -99,7 +99,7 @@ function handle_notifications_templates_list($input, $config, $queries) {
         
         $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Formátování pro frontend
+        // Formátování pro frontend - ponechat české názvy
         $result = array_map(function($t) {
             return [
                 'id' => (int)$t['id'],
@@ -108,8 +108,8 @@ function handle_notifications_templates_list($input, $config, $queries) {
                 'email_predmet' => $t['email_predmet'],
                 'email_telo' => $t['email_telo'],
                 'app_nadpis' => $t['app_nadpis'],
-                'app_message' => $t['app_message'],
-                'odeslat_email_default' => (bool)$t['odeslat_email_default'],
+                'app_zprava' => $t['app_zprava'],
+                'email_vychozi' => (bool)$t['email_vychozi'],
                 'priorita_vychozi' => $t['priorita_vychozi'],
                 'aktivni' => (bool)$t['aktivni'],
                 'dt_created' => $t['dt_created'],
@@ -165,7 +165,7 @@ function handle_notifications_templates_detail($input, $config, $queries) {
             return;
         }
         
-        // Formátování
+        // Formátování - ponechat české názvy
         $result = [
             'id' => (int)$template['id'],
             'typ' => $template['typ'],
@@ -173,8 +173,8 @@ function handle_notifications_templates_detail($input, $config, $queries) {
             'email_predmet' => $template['email_predmet'],
             'email_telo' => $template['email_telo'],
             'app_nadpis' => $template['app_nadpis'],
-            'app_message' => $template['app_message'],
-            'odeslat_email_default' => (bool)$template['odeslat_email_default'],
+            'app_zprava' => $template['app_zprava'],
+            'email_vychozi' => (bool)$template['email_vychozi'],
             'priorita_vychozi' => $template['priorita_vychozi'],
             'aktivni' => (bool)$template['aktivni'],
             'dt_created' => $template['dt_created'],

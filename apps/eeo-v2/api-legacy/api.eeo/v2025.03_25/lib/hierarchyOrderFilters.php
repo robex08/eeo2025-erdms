@@ -559,10 +559,7 @@ function canUserViewOrder($orderId, $userId, $db) {
         return false;
     }
     
-    // 4. Zkontroluj hierarchické vztahy
-    // Musíme zjistit, zda některý ze zúčastněných uživatelů splňuje hierarchické podmínky
-    $profileId = $settings['profile_id'];
-    
+    // 4. Zkontroluj hierarchické vztahy pomocí structure_json
     // POUZE 3 KLÍČOVÉ ROLE (uzivatel, objednatel, garant)
     $participantIds = array_filter([
         $order['uzivatel_id'],
@@ -574,59 +571,55 @@ function canUserViewOrder($orderId, $userId, $db) {
         return false; // Žádní zúčastnění uživatelé
     }
     
-    // Pro bezpečnost: použijeme placeholdery pro každý participantId
-    $participantPlaceholders = [];
-    $participantParams = [];
-    foreach ($participantIds as $idx => $participantId) {
-        $key = "participant{$idx}";
-        $participantPlaceholders[] = ":{$key}";
-        $participantParams[$key] = (int)$participantId;
-    }
-    $participantIdsStr = implode(',', $participantPlaceholders);
+    // Načíst vztahy uživatele ze structure_json
+    $relationships = getUserRelationshipsFromStructure($userId, $db);
     
-    // Zkontrolujeme, zda uživatel má hierarchický vztah k některému z účastníků
-    $checkQuery = "
-        SELECT COUNT(*) as cnt
-        FROM 25_hierarchie_vztahy hz
-        WHERE hz.profil_id = :profileId
-          AND hz.aktivni = 1
-          AND hz.viditelnost_objednavky = 1
-          AND (
-              -- Uživatel má vztah přes svou roli nebo direct vztah
-              (hz.user_id_1 = :userId1 OR hz.user_id_2 = :userId2)
-              OR hz.role_id IN (SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId3)
-          )
-          AND (
-              -- A tento vztah pokrývá některého z účastníků objednávky
-              (hz.typ_vztahu LIKE '%user%' AND (hz.user_id_1 IN ($participantIdsStr) OR hz.user_id_2 IN ($participantIdsStr)))
-              OR (hz.typ_vztahu LIKE '%department%' AND hz.usek_id IN (
-                  SELECT usek_id FROM 25_uzivatele WHERE id IN ($participantIdsStr)
-              ))
-              OR (hz.typ_vztahu LIKE '%location%' AND hz.lokalita_id IN (
-                  SELECT lokalita_id FROM 25_uzivatele WHERE id IN ($participantIdsStr)
-              ))
-          )
-    ";
-    
-    try {
-        $params = array_merge([
-            'profileId' => $profileId,
-            'userId1' => $userId,
-            'userId2' => $userId,
-            'userId3' => $userId
-        ], $participantParams);
-        
-        $stmt = $db->prepare($checkQuery);
-        $stmt->execute($params);
-        
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $canView = $row['cnt'] > 0;
-        
-        error_log("HIERARCHY: User $userId " . ($canView ? "CAN" : "CANNOT") . " view order $orderId");
-        
-        return $canView;
-    } catch (PDOException $e) {
-        error_log("HIERARCHY ERROR: Failed to check visibility: " . $e->getMessage());
+    if (empty($relationships)) {
+        error_log("HIERARCHY: User $userId has NO relationships in hierarchy");
         return false;
     }
+    
+    // Zkontrolovat, zda některý vztah pokrývá účastníky objednávky
+    foreach ($relationships as $rel) {
+        // Direct user-user vztah
+        if ($rel['typ_vztahu'] === 'user-user' && $rel['user_id_2']) {
+            if (in_array($rel['user_id_2'], $participantIds)) {
+                error_log("HIERARCHY: User $userId CAN view order $orderId (direct user relationship)");
+                return true;
+            }
+        }
+        
+        // Location vztah - zkontrolovat, zda některý účastník je z této lokality
+        if ($rel['typ_vztahu'] === 'user-location' && $rel['lokalita_id']) {
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND lokalita_id = ?");
+            $stmt->execute([$rel['lokalita_id']]);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
+                error_log("HIERARCHY: User $userId CAN view order $orderId (location relationship)");
+                return true;
+            }
+        }
+        
+        // Department vztah
+        if ($rel['typ_vztahu'] === 'user-department' && $rel['usek_id']) {
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND usek_id = ?");
+            $stmt->execute([$rel['usek_id']]);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
+                error_log("HIERARCHY: User $userId CAN view order $orderId (department relationship)");
+                return true;
+            }
+        }
+        
+        // Role vztah - zkontrolovat, zda některý účastník má tuto roli
+        if ($rel['typ_vztahu'] === 'user-role' && $rel['role_id']) {
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele_role WHERE uzivatel_id IN (".implode(',', array_map('intval', $participantIds)).") AND role_id = ?");
+            $stmt->execute([$rel['role_id']]);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
+                error_log("HIERARCHY: User $userId CAN view order $orderId (role relationship)");
+                return true;
+            }
+        }
+    }
+    
+    error_log("HIERARCHY: User $userId CANNOT view order $orderId (no matching relationships)");
+    return false;
 }

@@ -17,7 +17,7 @@ define('TABLE_ROLE_PRAVA', '25_role_prava');
 define('TABLE_USEKY', '25_useky');
 define('TABLE_UZIVATELE', '25_uzivatele');
 define('TABLE_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
-// DEPRECATED: Old hierarchy table removed 13.12.2025 - use TABLE_HIERARCHIE_VZTAHY instead
+// DEPRECATED: Old hierarchy table (kept for backward compatibility, but table doesn't exist)
 define('TABLE_UZIVATELE_HIERARCHIE', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
 define('TABLE_HIERARCHIE_PROFILY', '25_hierarchie_profily');
@@ -1082,7 +1082,7 @@ $queries['chat_online_status_mark_offline'] = "
 // ============ HIERARCHIE UŽIVATELŮ ============
 // ============ DEPRECATED: STARÁ HIERARCHIE (25_uzivatele_hierarchie) ============
 // Tyto queries byly odstraněny 13.12.2025 - tabulka již neexistuje
-// Nová hierarchie používá 25_hierarchie_vztahy a hierarchyHandlers_v2.php
+// Nová hierarchie používá structure_json v 25_hierarchie_profily a hierarchyHandlers.php
 /*
 $queries['hierarchy_get_subordinates'] = "..."; // REMOVED
 $queries['hierarchy_get_superiors'] = "..."; // REMOVED  
