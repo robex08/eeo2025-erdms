@@ -1034,6 +1034,28 @@ switch ($endpoint) {
             echo json_encode(array('error' => 'Method not allowed'));
         }
         break;
+    
+    case 'hierarchy/profiles/save-structure':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_save_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/profiles/load-structure':
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_profiles_load_structure($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
 
     // ============ ZASTUPOVÁNÍ UŽIVATELŮ ============
     case 'substitution/list':

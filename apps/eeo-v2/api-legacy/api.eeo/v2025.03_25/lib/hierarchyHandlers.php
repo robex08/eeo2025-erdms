@@ -1485,4 +1485,128 @@ function handle_hierarchy_profiles_toggle_active($data, $pdo) {
     }
 }
 
+/**
+ * Uložení structure_json do profilu
+ * 
+ * @param array $data Request data s nodes a edges
+ * @param PDO $pdo Database connection
+ * @return array Response
+ */
+function handle_hierarchy_profiles_save_structure($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $profileId = isset($data['profile_id']) ? (int)$data['profile_id'] : 0;
+    $nodes = isset($data['nodes']) ? $data['nodes'] : [];
+    $edges = isset($data['edges']) ? $data['edges'] : [];
+    
+    if ($profileId <= 0) {
+        return array('success' => false, 'error' => 'Neplatne profile_id');
+    }
+    
+    // Sestavit structure JSON
+    $structure = array(
+        'nodes' => $nodes,
+        'edges' => $edges
+    );
+    
+    $structureJson = json_encode($structure, JSON_UNESCAPED_UNICODE);
+    
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE 25_hierarchie_profily 
+            SET structure_json = :structure, dt_upraveno = NOW() 
+            WHERE id = :profileId
+        ");
+        $stmt->execute([
+            'structure' => $structureJson,
+            'profileId' => $profileId
+        ]);
+        
+        return array(
+            'success' => true,
+            'message' => 'Struktura hierarchie byla ulozena',
+            'nodes_count' => count($nodes),
+            'edges_count' => count($edges)
+        );
+        
+    } catch (PDOException $e) {
+        error_log("SAVE STRUCTURE ERROR: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Chyba pri ukladani struktury');
+    }
+}
+
+/**
+ * Načtení structure_json z profilu
+ * 
+ * @param array $data Request data
+ * @param PDO $pdo Database connection
+ * @return array Response
+ */
+function handle_hierarchy_profiles_load_structure($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatny nebo chybejici token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovida username z pozadavku');
+    }
+    
+    $profileId = isset($data['profile_id']) ? (int)$data['profile_id'] : 0;
+    
+    if ($profileId <= 0) {
+        // Načíst aktivní profil
+        $stmt = $pdo->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt->execute();
+    } else {
+        $stmt = $pdo->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE id = :profileId");
+        $stmt->execute(['profileId' => $profileId]);
+    }
+    
+    $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$profile) {
+        return array('success' => false, 'error' => 'Profil nenalezen');
+    }
+    
+    if (empty($profile['structure_json'])) {
+        return array(
+            'success' => true,
+            'data' => array(
+                'profile_id' => (int)$profile['id'],
+                'nodes' => [],
+                'edges' => []
+            )
+        );
+    }
+    
+    $structure = json_decode($profile['structure_json'], true);
+    
+    if (!$structure) {
+        return array('success' => false, 'error' => 'Chybny JSON format struktury');
+    }
+    
+    return array(
+        'success' => true,
+        'data' => array(
+            'profile_id' => (int)$profile['id'],
+            'nodes' => isset($structure['nodes']) ? $structure['nodes'] : [],
+            'edges' => isset($structure['edges']) ? $structure['edges'] : []
+        )
+    );
+}
+
 ?>
