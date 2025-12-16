@@ -2302,7 +2302,168 @@ V uživatelském profilu:
 
 ---
 
+---
+
+## 📊 SOUČASNÝ STAV ŠABLON V DATABÁZI
+
+**Database:** `eeo2025` na serveru `10.3.172.11`  
+**Credentials:** viz `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php`
+
+### Šablony v DB (25_notification_templates):
+
+| ID | Type | Name | Status |
+|----|------|------|--------|
+| 1 | order_status_nova | Nová objednávka vytvořena | ✅ Active |
+| 2 | order_status_ke_schvaleni | Objednávka odeslána ke schválení | ✅ Active |
+| 3 | order_status_schvalena | Objednávka schválena | ✅ Active (FÁZE 1) |
+| 4 | order_status_zamitnuta | Objednávka zamítnuta | ✅ Active (FÁZE 1) |
+| 5 | order_status_ceka_se | Objednávka vrácena k doplnění | ✅ Active (FÁZE 1) |
+| 6 | order_status_odeslana | Objednávka odeslána dodavateli | ✅ Active (FÁZE 2) |
+| 7 | order_status_ceka_potvrzeni | Objednávka čeká na potvrzení dodavatelem | ✅ Active |
+| 8 | order_status_potvrzena | Objednávka potvrzena dodavatelem | ✅ Active (FÁZE 2) |
+| 9 | order_status_dokoncena | Objednávka dokončena | ✅ Active |
+| 10 | order_status_zrusena | Objednávka zrušena | ✅ Active |
+| 11 | order_status_smazana | Objednávka smazána | ✅ Active |
+| 12 | order_status_rozpracovana | Objednávka rozpracována (koncept) | ✅ Active |
+| 13 | order_status_registr_ceka | Objednávka čeká na zveřejnění v registru | ✅ Active |
+| 14 | order_status_registr_zverejnena | Objednávka zveřejněna v registru | ✅ Active |
+| 15 | order_status_faktura_ceka | Objednávka čeká na přidání faktury | ✅ Active |
+| 16 | order_status_faktura_pridana | K objednávce byla přidána faktura | ✅ Active |
+| 17 | order_status_faktura_schvalena | Faktura schválena | ✅ Active (FÁZE 3) |
+| 18 | order_status_faktura_uhrazena | Faktura uhrazena | ✅ Active |
+| 19 | order_status_kontrola_ceka | Objednávka čeká na kontrolu věcné správnosti | ✅ Active |
+| 20 | order_status_kontrola_potvrzena | Kontrola kvality potvrzena | ✅ Active (FÁZE 4) |
+| 21 | order_status_kontrola_zamitnuta | Kontrola kvality zamítnuta | ✅ Active (FÁZE 4) |
+| 59 | order_status_realizovana | Objednávka realizována | ✅ Active |
+| 60 | order_status_faktura_prirazena | Faktura přiřazena k objednávce | ✅ Active |
+| 74 | order_status_faktura_zaplacena | Faktura zaplacena | ✅ Active |
+
+**Celkem:** 24 šablon
+
+### SQL Update soubory připravené:
+
+- ✅ `UPDATE_NOTIFICATION_TEMPLATES_PHASE1.sql` - ID 3, 4, 5 (schválena, zamítnuta, vrácena)
+- ✅ `UPDATE_NOTIFICATION_TEMPLATES_PHASE2.sql` - ID 6, 8 (odeslána, potvrzena)
+- ✅ `UPDATE_NOTIFICATION_TEMPLATES_PHASE3_4.sql` - ID 17, 20, 21 (faktura schválena, kontrola)
+- ✅ `UPDATE_NOTIFICATION_TEMPLATES_PHASE5.sql` - ID 1, 13, 16, 9 (nova, registr, faktura přidána, dokončena)
+
+### Mapování na EVENT_TYPES workflow:
+
+| Workflow Fáze | EVENT_TYPE | Template Type | DB ID | SQL Soubor |
+|---------------|------------|---------------|-------|------------|
+| FÁZE 1: VYTVOŘENÍ | ORDER_CREATED | order_status_nova | 1 | ✅ PHASE5 |
+| FÁZE 2A: SCHVÁLENÍ | ORDER_APPROVED | order_status_schvalena | 3 | ✅ PHASE1 |
+| FÁZE 2B: ZAMÍTNUTÍ | ORDER_REJECTED | order_status_zamitnuta | 4 | ✅ PHASE1 |
+| FÁZE 2C: VRÁCENÍ | ORDER_WAITING_FOR_CHANGES | order_status_ceka_se | 5 | ✅ PHASE1 |
+| FÁZE 3: PLNĚNÍ | ORDER_SENT_TO_SUPPLIER | order_status_odeslana | 6 | ✅ PHASE2 |
+| FÁZE 4: REGISTR | ORDER_REGISTRY_APPROVAL_REQUESTED | order_status_registr_ceka | 13 | ✅ PHASE5 |
+| FÁZE 5: FAKTURA | ORDER_INVOICE_ADDED | order_status_faktura_pridana | 16 | ✅ PHASE5 |
+| FÁZE 6: KONTROLA | ORDER_MATERIAL_CHECK_COMPLETED | order_status_kontrola_potvrzena | 20 | ✅ PHASE3_4 |
+| FÁZE 7: DOKONČENÍ | ORDER_COMPLETED | order_status_dokoncena | 9 | ✅ PHASE5 |
+
+### ✅ Všechny SQL soubory připraveny!
+
+**Kompletní workflow šablony (9 událostí):**
+1. ✅ order_status_nova (ID 1) - 🔴 EXCEPTIONAL - vytvoření objednávky
+2. ✅ order_status_schvalena (ID 3) - 🟢 INFO - schválení  
+3. ✅ order_status_zamitnuta (ID 4) - 🔴 EXCEPTIONAL - zamítnutí
+4. ✅ order_status_ceka_se (ID 5) - 🟠 APPROVAL - vrácení k doplnění
+5. ✅ order_status_odeslana (ID 6) - 🔵 INFO - odeslání dodavateli
+6. ✅ order_status_registr_ceka (ID 13) - 🔴 EXCEPTIONAL - žádost o registr
+7. ✅ order_status_faktura_pridana (ID 16) - 🟠 APPROVAL - faktura přidána
+8. ✅ order_status_kontrola_potvrzena (ID 20) - 🟢 INFO - věcná kontrola OK
+9. ✅ order_status_dokoncena (ID 9) - 🟢 INFO - dokončení
+
+**Poznámka:** Všechny šablony mají 2-variant strukturu (RECIPIENT + SUBMITTER).
+
+---
+
 **Připravil:** GitHub Copilot  
 **Datum:** 16. prosince 2025  
-**Status:** 🟢 READY - Level 2 & 3 implementováno, připraveno k integraci  
-**Poslední update:** 16. prosince 2025 - Přidán implementation guide + usage example
+**Status:** 🟢 COMPLETE - Database schema + všechny šablony v DB  
+**Poslední update:** 16. prosince 2025 18:31 - Vytvořeny nové tabulky + konstanty  
+**DB Access:** Remote MySQL na 10.3.172.11 (eeo2025 database)
+
+---
+
+## ✅ DOKONČENO - DATABASE SCHEMA & KONSTANTY
+
+### Nové tabulky vytvořeny (16.12.2025 18:31):
+
+1. **`25_notifikace_typy_udalosti`** ✅
+   - Katalog všech EVENT_TYPES (14 událostí)
+   - Sloupce: kod, nazev, kategorie, popis, uroven_nahlhavosti, role_prijemcu, vychozi_kanaly
+   - Všechny české názvy
+
+2. **`25_notifikace_fronta`** ✅
+   - Fronta pro plánované/odložené odesílání
+   - Sloupce: stav, priorita, pokus_cislo, prijemce_user_id, sablona_id, dt_planovano
+   - Podpora pro retry mechanismus (max_pokusu)
+
+3. **`25_notifikace_audit`** ✅
+   - Audit log všech odeslaných notifikací
+   - Sloupce: kanal_email, kanal_inapp, email_doruceno, email_otevren, inapp_precteno
+   - Tracking doručení a interakcí
+
+4. **`25_notifikace_uzivatele_nastaveni`** ✅
+   - Uživatelské preference
+   - Sloupce: povoleno, email_povoleno, inapp_povoleno, kategorie_*, tiche_hodiny_od/do
+   - Podpora pro denní souhrn a tiché hodiny
+
+### PHP konstanty v queries.php ✅
+
+```php
+define('TABLE_NOTIFICATIONS', '25_notifications');
+define('TABLE_NOTIFICATIONS_READ', '25_notifications_read');
+define('TABLE_NOTIFICATION_TEMPLATES', '25_notification_templates');
+define('TABLE_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti');
+define('TABLE_NOTIFIKACE_FRONTA', '25_notifikace_fronta');
+define('TABLE_NOTIFIKACE_AUDIT', '25_notifikace_audit');
+define('TABLE_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni');
+```
+
+### Hardcoded odkazy nahrazeny ✅
+
+- ✅ `notificationHandlers.php` - všechny odkazy nahrazeny konstantami
+- ✅ `handlers.php` - použity konstanty
+- ✅ `notificationTemplatesHandlers.php` - použity konstanty
+
+### SQL soubor:
+- 📄 `CREATE_NOTIFICATION_SYSTEM_TABLES.sql` (vytvořen a nahrán do DB)
+
+---
+
+---
+
+## ✅ DOKONČENO - VŠECHNY ŠABLONY V DATABÁZI
+
+### Nahrané SQL soubory:
+1. ✅ UPDATE_NOTIFICATION_TEMPLATES_PHASE1.sql (3 šablony) - Nahráno 2025-12-15 23:11
+2. ✅ UPDATE_NOTIFICATION_TEMPLATES_PHASE2.sql (2 šablony) - Nahráno 2025-12-15 23:28
+3. ✅ UPDATE_NOTIFICATION_TEMPLATES_PHASE3_4.sql (3 šablony) - Nahráno 2025-12-15 23:36
+4. ✅ UPDATE_NOTIFICATION_TEMPLATES_PHASE5.sql (4 šablony) - Nahráno 2025-12-16 17:41
+
+**Celkem:** 12 workflow šablon s 2-variant strukturou ✅
+
+### Kompletní workflow v DB:
+
+| ID | Template Type | Name | 2-var | Updated |
+|----|--------------|------|-------|---------|
+| 1 | order_status_nova | Nová objednávka vytvořena | ✅ | 2025-12-16 |
+| 3 | order_status_schvalena | Objednávka schválena | ✅ | 2025-12-15 |
+| 4 | order_status_zamitnuta | Objednávka zamítnuta | ✅ | 2025-12-15 |
+| 5 | order_status_ceka_se | Objednávka vrácena k doplnění | ✅ | 2025-12-15 |
+| 6 | order_status_odeslana | Objednávka odeslána dodavateli | ✅ | 2025-12-15 |
+| 8 | order_status_potvrzena | Objednávka potvrzena dodavatelem | ✅ | 2025-12-15 |
+| 13 | order_status_registr_ceka | Objednávka čeká na zveřejnění v registru | ✅ | 2025-12-16 |
+| 16 | order_status_faktura_pridana | K objednávce byla přidána faktura | ✅ | 2025-12-16 |
+| 17 | order_status_faktura_schvalena | Faktura schválena | ✅ | 2025-12-15 |
+| 20 | order_status_kontrola_potvrzena | Kontrola kvality potvrzena | ✅ | 2025-12-15 |
+| 21 | order_status_kontrola_zamitnuta | Kontrola kvality zamítnuta | ✅ | 2025-12-15 |
+| 9 | order_status_dokoncena | Objednávka dokončena | ✅ | 2025-12-16 |
+
+### Statistika databáze:
+- **Celkem šablon:** 24
+- **Aktivní šablony:** 24
+- **Dual-variant šablony:** 12
+- **Single-variant šablony:** 12
