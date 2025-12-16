@@ -2159,18 +2159,24 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
  * }
  */
 function handle_notifications_trigger($input, $config, $queries) {
-    $db = $config['db'];
-    
-    // ✅ Ověření tokenu
+    // ✅ Ověření tokenu - STEJNĚ JAKO V /notifications/list
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     
-    $verification = verify_token($db, $token, $username);
-    if (!$verification['ok']) {
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Unauthorized: ' . $verification['message']));
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
         return;
     }
+    
+    if ($token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Username z tokenu neodpovídá username z požadavku'));
+        return;
+    }
+    
+    $db = $config['db'];
     
     try {
         // Validace vstupních parametrů
