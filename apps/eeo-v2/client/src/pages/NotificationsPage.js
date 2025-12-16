@@ -1665,7 +1665,7 @@ export const NotificationsPage = () => {
             setNotifications(prev => prev.filter(n => !deletedIds.has(n.id)));
 
             // Aktualizuj badge - odečti smazané nepřečtené
-            const deletedUnreadCount = notificationsToDelete.filter(n => !n.is_read || n.is_read === 0).length;
+            const deletedUnreadCount = notificationsToDelete.filter(n => !n.precteno || n.precteno === 0).length;
             if (deletedUnreadCount > 0 && bgTasks?.handleUnreadCountChange) {
               const currentCount = bgTasks.unreadNotificationsCount || 0;
               bgTasks.handleUnreadCountChange(Math.max(0, currentCount - deletedUnreadCount));
@@ -2114,8 +2114,8 @@ export const NotificationsPage = () => {
                 // ✅ Unikátní klíč pro vlákno kombinující thread-orderId-mainNotificationId
                 const threadKey = `thread-${orderId}-${mainNotification.id}`;
 
-                const isUnread = !mainNotification.is_read || mainNotification.is_read === 0 || mainNotification.is_read === false;
-                const isDismissed = mainNotification.is_dismissed === 1 || mainNotification.is_dismissed === true;
+                const isUnread = !mainNotification.precteno || mainNotification.precteno === 0 || mainNotification.precteno === false;
+                const isDismissed = mainNotification.skryto === 1 || mainNotification.skryto === true;
                 const priority = mainNotification.priorita || 'normal';
 
                 // Parse data hlavní notifikace
@@ -2358,8 +2358,8 @@ export const NotificationsPage = () => {
 
                     {/* ✅ Starší notifikace ve vlákně (rozbalitelné) */}
                     {isExpanded && olderNotifications.map((olderNotif, olderIndex) => {
-                      const olderIsUnread = !olderNotif.is_read || olderNotif.is_read === 0;
-                      const olderIsDismissed = olderNotif.is_dismissed === 1;
+                      const olderIsUnread = !olderNotif.precteno || olderNotif.precteno === 0;
+                      const olderIsDismissed = olderNotif.skryto === 1;
                       const olderPriority = olderNotif.priority || 'normal';
 
                       let olderData = {};
