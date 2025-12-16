@@ -2095,11 +2095,210 @@ if ($result['success']) {
 ### 🔧 Další kroky
 
 1. ✅ **HOTOVO**: Event Types API, Template NODE eventTypes, Backend router
-2. ⏳ **TODO**: Integrace do order form workflow
-3. ⏳ **TODO**: Testování s reálnými daty
-4. ⏳ **TODO**: Frontend UI pro správu event types (admin panel)
-5. ⏳ **TODO**: Email sending implementation (aktuálně jen in-app)
-6. ⏳ **TODO**: Monitoring a logging (notification delivery log)
+2. ✅ **HOTOVO**: User preferences (Global Settings + User Profile)
+3. ⏳ **TODO**: Integrace do order form workflow
+4. ⏳ **TODO**: Testování s reálnými daty
+5. ⏳ **TODO**: Frontend UI pro správu user preferences (uživatelský profil)
+6. ⏳ **TODO**: Email sending implementation (aktuálně jen in-app)
+7. ⏳ **TODO**: Monitoring a logging (notification delivery log)
+
+---
+
+## 🔐 UŽIVATELSKÉ PREFERENCE (User Settings)
+
+### ✅ Implementováno (16. prosince 2025)
+
+#### **3-úrovňový systém kontroly:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1️⃣ GLOBAL SETTINGS (Systémová úroveň)                   │
+│    - notification_system_enabled (1/0)                  │
+│    - notification_email_enabled (1/0)                   │
+│    - notification_inapp_enabled (1/0)                   │
+│    → Pokud systém vypnutý = NIKDO nedostane notifikace │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 2️⃣ USER PROFILE SETTINGS (Uživatelská úroveň)          │
+│    25_users.notification_settings (JSON):              │
+│    {                                                    │
+│      "enabled": true/false,        ← Globální ON/OFF   │
+│      "email_enabled": true/false,  ← Email kanál       │
+│      "inapp_enabled": true/false,  ← In-app kanál      │
+│      "categories": {               ← Kategorie modulů  │
+│        "orders": true,                                 │
+│        "invoices": false,                              │
+│        "contracts": true,                              │
+│        "cashbook": true                                │
+│      }                                                 │
+│    }                                                    │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ 3️⃣ HIERARCHY CONFIG (Workflow úroveň)                   │
+│    EDGE.data.notifications:                            │
+│    {                                                    │
+│      "email": true,                                    │
+│      "inapp": true,                                    │
+│      "recipientRole": "EXCEPTIONAL",                   │
+│      "types": ["ORDER_CREATED"]                        │
+│    }                                                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### **Logika vyhodnocení:**
+
+1. **Global Settings**: Pokud `notification_system_enabled = 0` → STOP
+2. **User Preferences**: Pokud `user.enabled = false` → SKIP tohoto uživatele
+3. **User Preferences - Kategorie**: Pokud `user.categories.orders = false` → SKIP order notifikace
+4. **User Preferences - Kanály**: 
+   - `email_enabled = false` → Email se nepošle (i když EDGE má `email: true`)
+   - `inapp_enabled = false` → In-app se nezobrazí
+5. **Hierarchy Config**: Pokud oba kanály vypnuté → SKIP
+
+#### **Backend implementace:**
+
+V `notificationHandlers.php`:
+
+```php
+/**
+ * Načte uživatelské preference kombinované z Global + User Settings
+ */
+function getUserNotificationPreferences($db, $userId) {
+    // 1. Načte 25_global_settings
+    // 2. Načte 25_users.notification_settings (JSON)
+    // 3. Kombinuje: Global AND User (oboje musí být true)
+    
+    return [
+        'enabled' => true,
+        'email_enabled' => true,
+        'inapp_enabled' => true,
+        'categories' => [
+            'orders' => true,
+            'invoices' => false,  // ← Uživatel vypnul faktury
+            'contracts' => true,
+            'cashbook' => true
+        ]
+    ];
+}
+```
+
+V `findNotificationRecipients()`:
+
+```php
+foreach ($targetUserIds as $userId) {
+    // ✅ KONTROLA PREFERENCÍ
+    $userPrefs = getUserNotificationPreferences($db, $userId);
+    
+    if (!$userPrefs['enabled']) {
+        continue; // Uživatel má notifikace vypnuté globálně
+    }
+    
+    $category = getObjectTypeFromEvent($eventType); // 'orders'
+    if (!$userPrefs['categories'][$category]) {
+        continue; // Uživatel vypnul tuto kategorii
+    }
+    
+    // Override kanálů podle user preferences
+    $sendEmailFinal = $edgeEmail && $userPrefs['email_enabled'];
+    $sendInAppFinal = $edgeInApp && $userPrefs['inapp_enabled'];
+    
+    if (!$sendEmailFinal && !$sendInAppFinal) {
+        continue; // Oba kanály vypnuté
+    }
+    
+    $recipients[] = [...];
+}
+```
+
+#### **API Endpointy:**
+
+```
+GET/POST /api.eeo/notifications/user-preferences
+→ Načte preference aktuálního uživatele
+
+POST /api.eeo/notifications/user-preferences/update
+Body: {
+  "enabled": true,
+  "email_enabled": false,  // ← Vypnout emaily
+  "inapp_enabled": true,
+  "categories": {
+    "orders": true,
+    "invoices": false,     // ← Nechci vidět faktury
+    "contracts": true,
+    "cashbook": true
+  }
+}
+→ Uloží preference do 25_users.notification_settings
+```
+
+#### **SQL Migrace:**
+
+```sql
+-- Přidat sloupec notification_settings (TEXT/JSON)
+ALTER TABLE 25_users 
+ADD COLUMN notification_settings TEXT DEFAULT NULL;
+
+-- Výchozí hodnoty pro existující uživatele
+UPDATE 25_users 
+SET notification_settings = '{"enabled":true,"email_enabled":true,"inapp_enabled":true,"categories":{"orders":true,"invoices":true,"contracts":true,"cashbook":true}}'
+WHERE notification_settings IS NULL;
+
+-- Global settings
+INSERT INTO 25_global_settings (setting_key, setting_value)
+VALUES 
+  ('notification_system_enabled', '1'),
+  ('notification_email_enabled', '1'),
+  ('notification_inapp_enabled', '1');
+```
+
+#### **Praktický příklad:**
+
+**Scénář:** Robert nechce dostávat notifikace o fakturách, ale chce objednávky
+
+```json
+// Robert's preferences (user_id = 3)
+{
+  "enabled": true,
+  "email_enabled": true,
+  "inapp_enabled": true,
+  "categories": {
+    "orders": true,      // ✅ Chce
+    "invoices": false,   // ❌ Nechce
+    "contracts": true,
+    "cashbook": true
+  }
+}
+```
+
+**Výsledek:**
+- `ORDER_CREATED` → ✅ Robert dostane notifikaci
+- `INVOICE_CREATED` → ❌ Router ho přeskočí (kategorie vypnutá)
+- `CONTRACT_EXPIRING` → ✅ Robert dostane notifikaci
+
+#### **Frontend UI (TODO):**
+
+V uživatelském profilu:
+
+```jsx
+<UserNotificationSettings>
+  <Toggle label="Povolit notifikace" value={preferences.enabled} />
+  
+  <Divider />
+  
+  <Toggle label="Email notifikace" value={preferences.email_enabled} />
+  <Toggle label="In-app notifikace" value={preferences.inapp_enabled} />
+  
+  <Divider />
+  
+  <h4>Kategorie modulů:</h4>
+  <Toggle label="📦 Objednávky" value={preferences.categories.orders} />
+  <Toggle label="💰 Faktury" value={preferences.categories.invoices} />
+  <Toggle label="📄 Smlouvy" value={preferences.categories.contracts} />
+  <Toggle label="💵 Pokladna" value={preferences.categories.cashbook} />
+</UserNotificationSettings>
+```
 
 ---
 

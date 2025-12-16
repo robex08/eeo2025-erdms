@@ -1616,11 +1616,45 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 
                 // 7. Přidat každého target user do seznamu příjemců
                 foreach ($targetUserIds as $userId) {
+                    // ✅ KONTROLA UŽIVATELSKÝCH PREFERENCÍ
+                    $userPrefs = getUserNotificationPreferences($db, $userId);
+                    
+                    // Pokud má uživatel notifikace vypnuté globálně, přeskoč
+                    if (!$userPrefs['enabled']) {
+                        error_log("[findNotificationRecipients] User $userId has notifications disabled globally");
+                        continue;
+                    }
+                    
+                    // Aplikovat uživatelské preference na kanály
+                    $sendEmailFinal = isset($notifications['email']) ? (bool)$notifications['email'] : false;
+                    $sendInAppFinal = isset($notifications['inapp']) ? (bool)$notifications['inapp'] : true;
+                    
+                    // Override podle user preferences
+                    if (!$userPrefs['email_enabled']) {
+                        $sendEmailFinal = false;
+                    }
+                    if (!$userPrefs['inapp_enabled']) {
+                        $sendInAppFinal = false;
+                    }
+                    
+                    // Kontrola kategorie (orders, invoices, contracts, cashbook)
+                    $category = getObjectTypeFromEvent($eventType);
+                    if (isset($userPrefs['categories'][$category]) && !$userPrefs['categories'][$category]) {
+                        error_log("[findNotificationRecipients] User $userId has category '$category' disabled");
+                        continue;
+                    }
+                    
+                    // Pokud jsou oba kanály vypnuté, přeskoč
+                    if (!$sendEmailFinal && !$sendInAppFinal) {
+                        error_log("[findNotificationRecipients] User $userId has both channels disabled for this notification");
+                        continue;
+                    }
+                    
                     $recipients[] = array(
                         'user_id' => $userId,
                         'recipientRole' => $recipientRole,
-                        'sendEmail' => isset($notifications['email']) ? (bool)$notifications['email'] : false,
-                        'sendInApp' => isset($notifications['inapp']) ? (bool)$notifications['inapp'] : true,
+                        'sendEmail' => $sendEmailFinal,
+                        'sendInApp' => $sendInAppFinal,
                         'templateId' => $node['data']['templateId'],
                         'templateVariant' => $variant
                     );
@@ -1745,9 +1779,241 @@ function extractVariantFromEmailBody($emailBody, $variant) {
  * Určí object type podle event type
  */
 function getObjectTypeFromEvent($eventType) {
-    if (strpos($eventType, 'ORDER_') === 0) return 'order';
-    if (strpos($eventType, 'INVOICE_') === 0) return 'invoice';
-    if (strpos($eventType, 'CONTRACT_') === 0) return 'contract';
+    if (strpos($eventType, 'ORDER_') === 0) return 'orders';
+    if (strpos($eventType, 'INVOICE_') === 0) return 'invoices';
+    if (strpos($eventType, 'CONTRACT_') === 0) return 'contracts';
     if (strpos($eventType, 'CASHBOOK_') === 0) return 'cashbook';
     return 'unknown';
+}
+
+/**
+ * Načte uživatelské preference pro notifikace
+ * Kombinuje Global Settings + User Profile Settings
+ * 
+ * @param PDO $db
+ * @param int $userId
+ * @return array - Preference settings
+ */
+function getUserNotificationPreferences($db, $userId) {
+    $preferences = array(
+        'enabled' => true,          // Globální zapnutí/vypnutí
+        'email_enabled' => true,    // Email kanál
+        'inapp_enabled' => true,    // In-app kanál
+        'categories' => array(      // Kategorie modulů
+            'orders' => true,
+            'invoices' => true,
+            'contracts' => true,
+            'cashbook' => true
+        )
+    );
+    
+    try {
+        // 1. GLOBAL SETTINGS - Systémová úroveň (má nejvyšší prioritu)
+        $stmt = $db->prepare("
+            SELECT setting_key, setting_value 
+            FROM 25_global_settings 
+            WHERE setting_key IN (
+                'notification_system_enabled',
+                'notification_email_enabled', 
+                'notification_inapp_enabled'
+            )
+        ");
+        $stmt->execute();
+        
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $value = ($row['setting_value'] === '1' || $row['setting_value'] === 'true');
+            
+            if ($row['setting_key'] === 'notification_system_enabled' && !$value) {
+                // Systém je vypnutý globálně - nic nefunguje
+                $preferences['enabled'] = false;
+                return $preferences;
+            }
+            
+            if ($row['setting_key'] === 'notification_email_enabled') {
+                $preferences['email_enabled'] = $value;
+            }
+            
+            if ($row['setting_key'] === 'notification_inapp_enabled') {
+                $preferences['inapp_enabled'] = $value;
+            }
+        }
+        
+        // 2. USER PROFILE SETTINGS - Uživatelská úroveň
+        // Předpoklad: uživatel má pole notification_settings jako JSON v tabulce 25_users
+        $stmt = $db->prepare("
+            SELECT notification_settings 
+            FROM 25_users 
+            WHERE id = :user_id
+        ");
+        $stmt->execute([':user_id' => $userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user && !empty($user['notification_settings'])) {
+            $userSettings = json_decode($user['notification_settings'], true);
+            
+            if (isset($userSettings['enabled'])) {
+                $preferences['enabled'] = (bool)$userSettings['enabled'];
+            }
+            
+            if (isset($userSettings['email_enabled'])) {
+                $preferences['email_enabled'] = $preferences['email_enabled'] && (bool)$userSettings['email_enabled'];
+            }
+            
+            if (isset($userSettings['inapp_enabled'])) {
+                $preferences['inapp_enabled'] = $preferences['inapp_enabled'] && (bool)$userSettings['inapp_enabled'];
+            }
+            
+            if (isset($userSettings['categories'])) {
+                foreach ($userSettings['categories'] as $category => $enabled) {
+                    $preferences['categories'][$category] = (bool)$enabled;
+                }
+            }
+        }
+        
+    } catch (Exception $e) {
+        error_log("[getUserNotificationPreferences] Error loading preferences for user $userId: " . $e->getMessage());
+    }
+    
+    return $preferences;
+}
+
+/**
+ * API: Načte uživatelské preference pro notifikace
+ * GET/POST /notifications/user-preferences
+ * 
+ * @param array $input
+ * @param array $config
+ * @param array $queries
+ */
+function handle_notifications_user_preferences($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Načíst user_id z username
+        $stmt = $db->prepare("SELECT id FROM 25_users WHERE username = :username");
+        $stmt->execute([':username' => $request_username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'Uživatel nenalezen'));
+            return;
+        }
+        
+        $userId = $user['id'];
+        $preferences = getUserNotificationPreferences($db, $userId);
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => $preferences
+        ));
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při načítání preferencí: ' . $e->getMessage()));
+        error_log("[Notifications] Exception in handle_notifications_user_preferences: " . $e->getMessage());
+    }
+}
+
+/**
+ * API: Uloží uživatelské preference pro notifikace
+ * POST /notifications/user-preferences/update
+ * 
+ * Input:
+ * {
+ *   "enabled": true,
+ *   "email_enabled": true,
+ *   "inapp_enabled": true,
+ *   "categories": {
+ *     "orders": true,
+ *     "invoices": false,
+ *     "contracts": true,
+ *     "cashbook": true
+ *   }
+ * }
+ * 
+ * @param array $input
+ * @param array $config
+ * @param array $queries
+ */
+function handle_notifications_user_preferences_update($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Načíst user_id
+        $stmt = $db->prepare("SELECT id FROM 25_users WHERE username = :username");
+        $stmt->execute([':username' => $request_username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'Uživatel nenalezen'));
+            return;
+        }
+        
+        $userId = $user['id'];
+        
+        // Sestavit preferences object
+        $preferences = array(
+            'enabled' => isset($input['enabled']) ? (bool)$input['enabled'] : true,
+            'email_enabled' => isset($input['email_enabled']) ? (bool)$input['email_enabled'] : true,
+            'inapp_enabled' => isset($input['inapp_enabled']) ? (bool)$input['inapp_enabled'] : true,
+            'categories' => isset($input['categories']) ? $input['categories'] : array(
+                'orders' => true,
+                'invoices' => true,
+                'contracts' => true,
+                'cashbook' => true
+            )
+        );
+        
+        $preferencesJson = json_encode($preferences);
+        
+        // Uložit do DB (předpokládáme, že pole notification_settings existuje v tabulce 25_users)
+        // Pokud neexistuje, potřebujeme ALTER TABLE
+        $stmt = $db->prepare("
+            UPDATE 25_users 
+            SET notification_settings = :settings 
+            WHERE id = :user_id
+        ");
+        
+        $result = $stmt->execute([
+            ':settings' => $preferencesJson,
+            ':user_id' => $userId
+        ]);
+        
+        if ($result) {
+            echo json_encode(array(
+                'status' => 'ok',
+                'message' => 'Preference uloženy',
+                'data' => $preferences
+            ));
+        } else {
+            throw new Exception('Nepodařilo se uložit preference');
+        }
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při ukládání preferencí: ' . $e->getMessage()));
+        error_log("[Notifications] Exception in handle_notifications_user_preferences_update: " . $e->getMessage());
+    }
 }
