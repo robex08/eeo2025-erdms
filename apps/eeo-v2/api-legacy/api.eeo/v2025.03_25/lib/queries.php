@@ -33,11 +33,6 @@ define('TABLE_NOTIFIKACE_FRONTA', '25_notifikace_fronta');               // Fron
 define('TABLE_NOTIFIKACE_AUDIT', '25_notifikace_audit');                 // Audit log doručení
 define('TABLE_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni'); // User preferences
 
-// DEPRECATED - Zpětná kompatibilita (budou odstraněny v budoucnu)
-define('TABLE_NOTIFICATIONS', '25_notifikace');                          // @deprecated Use TABLE_NOTIFIKACE
-define('TABLE_NOTIFICATIONS_READ', '25_notifikace_precteni');           // @deprecated Use TABLE_NOTIFIKACE_PRECTENI
-define('TABLE_NOTIFICATION_TEMPLATES', '25_notifikace_sablony');        // @deprecated Use TABLE_NOTIFIKACE_SABLONY
-
 // === CASHBOOK (POKLADNA) CONSTANTS ===
 define('TABLE_POKLADNI_KNIHY', '25a_pokladni_knihy');
 define('TABLE_POKLADNI_POLOZKY', '25a_pokladni_polozky');
