@@ -1502,10 +1502,12 @@ const OrganizationHierarchy = () => {
   const [allDepartments, setAllDepartments] = useState([]);
   const [notificationTypes, setNotificationTypes] = useState([]);
   const [allNotificationTemplates, setAllNotificationTemplates] = useState([]);
+  const [notificationEventTypes, setNotificationEventTypes] = useState([]); // Event Types pro Notification Center
   
   // Detail panel data - rozsirene lokality a notifikace pro vybrany vztah
   const [selectedExtendedLocations, setSelectedExtendedLocations] = useState([]);
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
+  const [selectedNotificationEventTypes, setSelectedNotificationEventTypes] = useState([]); // Vybrané event types pro edge
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
   const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
   const [notificationRecipientRole, setNotificationRecipientRole] = useState('APPROVAL'); // EXCEPTIONAL, APPROVAL, INFO
@@ -1616,7 +1618,7 @@ const OrganizationHierarchy = () => {
                 // Notifikace
                 notifications: {
                   ...(e.data?.notifications || {}),
-                  types: selectedNotificationTypes,
+                  types: selectedNotificationEventTypes, // Event Types z API (ORDER_CREATED, etc.)
                   email: notificationEmailEnabled,
                   inapp: notificationInAppEnabled,
                   recipientRole: notificationRecipientRole
@@ -1632,7 +1634,7 @@ const OrganizationHierarchy = () => {
     selectedExtendedLocations, 
     selectedExtendedDepartments, 
     selectedCombinations, 
-    selectedNotificationTypes, 
+    selectedNotificationEventTypes, // Event Types (změněno z selectedNotificationTypes)
     notificationEmailEnabled, 
     notificationInAppEnabled,
     notificationRecipientRole,
@@ -1905,14 +1907,15 @@ const OrganizationHierarchy = () => {
         };
 
         // 3. Paralelní načtení dat (BEZ struktury - tu načteme až po zjištění profilu)
-        const [usersData, rolesData, locationsData, departmentsData, profilesData, notifTypesData, templatesData] = await Promise.all([
+        const [usersData, rolesData, locationsData, departmentsData, profilesData, notifTypesData, templatesData, eventTypesData] = await Promise.all([
           fetchData('hierarchy/users'),
           fetchData('ciselniky/role/list'),
           fetchData('hierarchy/locations'),
           fetchData('hierarchy/departments'),
           fetchData('hierarchy/profiles/list'),
           fetchData('hierarchy/notification-types'),
-          fetchData('notifications/templates/list')
+          fetchData('notifications/templates/list'),
+          fetchData('notifications/event-types/list')
         ]);
 
         const users = usersData.data || [];
@@ -1937,6 +1940,7 @@ const OrganizationHierarchy = () => {
         setAllDepartments(departmentsData.data || []);
         setNotificationTypes(notifTypesData.data || []);
         setAllNotificationTemplates(templatesData.data || []);
+        setNotificationEventTypes(eventTypesData.data || []);
         
         // Nastavit profily a najít aktivní
         const profilesList = profilesData.data || [];
@@ -2365,6 +2369,7 @@ const OrganizationHierarchy = () => {
     setNotificationEmailEnabled(edge.data?.notifications?.email || false);
     setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
       setNotificationRecipientRole(edge.data?.notifications?.recipientRole || 'APPROVAL');    // EXCEPTIONAL, APPROVAL, INFO
+    setSelectedNotificationEventTypes(edge.data?.notifications?.types || []); // Načíst vybrané event types
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -7472,6 +7477,36 @@ const OrganizationHierarchy = () => {
                           <span style={{ marginLeft: '18px' }}>• EXCEPTIONAL = příkazce/registr musí schválit</span><br/>
                           <span style={{ marginLeft: '18px' }}>• APPROVAL = karta u příjemce, může pokračovat</span><br/>
                           <span style={{ marginLeft: '18px' }}>• INFO = jen potvrzení, akce dokončena</span>
+                        </div>
+                      </FormGroup>
+                      
+                      {/* Event Types Multi-select */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <Label>
+                          Typy událostí (Event Types)
+                          <span style={{ color: '#10b981', marginLeft: '4px', fontWeight: 'normal' }}>volitelné</span>
+                        </Label>
+                        <CustomSelect
+                          multiple
+                          value={selectedNotificationEventTypes}
+                          onChange={(value) => setSelectedNotificationEventTypes(value)}
+                          options={notificationEventTypes.map(eventType => ({
+                            value: eventType.code,
+                            label: `${eventType.name} (${eventType.code})`,
+                            category: eventType.category
+                          }))}
+                          placeholder="Vyberte typy událostí..."
+                          groupBy="category"
+                        />
+                        <div style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#64748b', 
+                          marginTop: '6px',
+                          fontStyle: 'italic',
+                          lineHeight: '1.4'
+                        }}>
+                          💡 Vyberte konkrétní události (ORDER_CREATED, ORDER_APPROVED...), kdy se má tato notifikace poslat.<br/>
+                          <span style={{ marginLeft: '18px' }}>Pokud nevyberete žádnou, notifikace se nebude automaticky spouštět.</span>
                         </div>
                       </FormGroup>
                       
