@@ -637,8 +637,8 @@ export const NotificationDropdown = ({
                         <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px' }} />
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
-                      {/* Zobraz informaci kdo poslal objednávku místo typu notifikace */}
-                      {notification.typ?.includes('order') && notificationData.action_performed_by ? (
+                      {/* Zobraz informaci kdo poslal/provedl akci */}
+                      {notificationData.action_performed_by ? (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
