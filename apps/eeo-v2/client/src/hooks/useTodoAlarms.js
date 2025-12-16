@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { notifyTodoAlarm } from '../services/notificationsApi';
+import { notifyTodoAlarm } from '../services/notificationsUnified';
 
 // =============================================================================
 // HELPER FUNKCE PRO FORMÁTOVÁNÍ
