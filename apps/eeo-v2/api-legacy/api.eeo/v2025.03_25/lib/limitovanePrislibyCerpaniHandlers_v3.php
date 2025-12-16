@@ -62,8 +62,8 @@ function prepocetCerpaniPodleCislaLP($conn, $cislo_lp) {
     // Filtruje podle datumu vytvoření objednávky BETWEEN nejstarší a nejnovější platnost
     $sql_cerpani_obj = "
         SELECT COALESCE(SUM(pol.celkova_cena), 0) as cerpano_obj
-        FROM 25_objednavky obj
-        JOIN 25_objednavky_polozky pol ON obj.id = pol.objednavka_id
+        FROM " . TABLE_OBJEDNAVKY . " obj
+        JOIN " . TABLE_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
         WHERE pol.limitovana_prisliba = '$cislo_lp_safe'
         AND obj.status IN ('schvaleno', 'dokonceno', 'realizovano')
         AND DATE(obj.datum_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
@@ -245,8 +245,8 @@ function inicializaceCerpaniLP($conn, $rok = 2025) {
         SELECT 
             COUNT(DISTINCT pol.limitovana_prisliba) as pocet_lp,
             COALESCE(SUM(pol.celkova_cena), 0) as celkem_obj
-        FROM 25_objednavky obj
-        JOIN 25_objednavky_polozky pol ON obj.id = pol.objednavka_id
+        FROM " . TABLE_OBJEDNAVKY . " obj
+        JOIN " . TABLE_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
         WHERE obj.status IN ('schvaleno', 'dokonceno', 'realizovano')
         AND YEAR(obj.datum_vytvoreni) = $rok
         AND pol.limitovana_prisliba IS NOT NULL

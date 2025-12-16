@@ -5,9 +5,10 @@ define('TABLE_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 define('TABLE_CISELNIK_STAVY', '25_ciselnik_stavy');
 define('TABLE_DODAVATELE', '25_dodavatele');
 define('TABLE_LOKALITY', '25_lokality');
-define('TABLE_OBJEDNAVKY', '25_objednavky');
-define('TABLE_OBJEDNAVKY_POLOZKY', '25_objednavky_polozky');
+define('TABLE_OBJEDNAVKY', '25a_objednavky');              // ⚠️ SPRÁVNĚ: 25a_objednavky (NE 25_objednavky!)
+define('TABLE_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
 define('TABLE_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
+define('TABLE_OBJEDNAVKY_FAKTURY', '25a_objednavky_faktury');
 define('TABLE_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
 define('TABLE_ORGANIZACE', '25_organizace_vizitka');
 define('TABLE_POZICE', '25_pozice');
