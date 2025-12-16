@@ -32,17 +32,17 @@ function createNotification($db, $params) {
         $params[':dt_created'] = TimezoneHelper::getCzechDateTime();
     }
     
-    // Přidáme active flag pokud není nastaven
-    if (!isset($params[':active'])) {
-        $params[':active'] = 1;
+    // Přidáme aktivni flag pokud není nastaven
+    if (!isset($params[':aktivni'])) {
+        $params[':aktivni'] = 1;
     }
     
     $sql = "INSERT INTO " . TABLE_NOTIFIKACE . " 
-            (type, title, message, data_json, from_user_id, to_user_id, to_users_json, to_all_users, 
-             priority, category, send_email, related_object_type, related_object_id, dt_expires, dt_created, active) 
+            (typ, nadpis, zprava, data_json, od_uzivatele_id, pro_uzivatele_id, prijemci_json, pro_vsechny, 
+             priorita, kategorie, odeslat_email, objekt_typ, objekt_id, dt_expires, dt_created, aktivni) 
             VALUES 
-            (:type, :title, :message, :data_json, :from_user_id, :to_user_id, :to_users_json, :to_all_users,
-             :priority, :category, :send_email, :related_object_type, :related_object_id, :dt_expires, :dt_created, :active)";
+            (:typ, :nadpis, :zprava, :data_json, :od_uzivatele_id, :pro_uzivatele_id, :prijemci_json, :pro_vsechny,
+             :priorita, :kategorie, :odeslat_email, :objekt_typ, :objekt_id, :dt_expires, :dt_created, :aktivni)";
     
     try {
         $stmt = $db->prepare($sql);
@@ -65,10 +65,10 @@ function createNotification($db, $params) {
 /**
  * Načte template pro daný typ notifikace
  */
-function getNotificationTemplate($db, $type) {
-    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = :type AND active = 1";
+function getNotificationTemplate($db, $typ) {
+    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE typ = :typ AND aktivni = 1";
     $stmt = $db->prepare($sql);
-    $stmt->execute(array(':type' => $type));
+    $stmt->execute(array(':typ' => $typ));
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
@@ -115,60 +115,60 @@ function handle_notifications_list($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
         
         // Parametry
         $limit = isset($input['limit']) ? (int)$input['limit'] : 20;
         $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
         $unread_only = isset($input['unread_only']) ? (bool)$input['unread_only'] : false;
-        $category = isset($input['category']) ? $input['category'] : null;
+        $kategorie = isset($input['kategorie']) ? $input['kategorie'] : null;
         $include_dismissed = isset($input['include_dismissed']) ? (bool)$input['include_dismissed'] : false;
 
         // Sestavení dotazu - INNER JOIN s read tabulkou
         $where_conditions = array(
-            "nr.user_id = :user_id",
-            "n.active = 1",
+            "nr.uzivatel_id = :uzivatel_id",
+            "n.aktivni = 1",
             "(n.dt_expires IS NULL OR n.dt_expires > NOW())"
         );
         
         // Vždy filtruj smazané notifikace
-        $where_conditions[] = "nr.is_deleted = 0";
+        $where_conditions[] = "nr.smazano = 0";
         
         // Pokud NENÍ include_dismissed, filtruj skryté notifikace
         if (!$include_dismissed) {
-            $where_conditions[] = "nr.is_dismissed = 0";
+            $where_conditions[] = "nr.skryto = 0";
         }
         
-        $params = array(':user_id' => $user_id);
+        $params = array(':uzivatel_id' => $uzivatel_id);
 
         if ($unread_only) {
-            $where_conditions[] = "nr.is_read = 0";
+            $where_conditions[] = "nr.precteno = 0";
         }
 
-        if ($category) {
-            $where_conditions[] = "n.category = :category";
-            $params[':category'] = $category;
+        if ($kategorie) {
+            $where_conditions[] = "n.kategorie = :kategorie";
+            $params[':kategorie'] = $kategorie;
         }
 
-        // Sestavení SELECT - vždy včetně is_dismissed a is_deleted
+        // Sestavení SELECT - vždy včetně skryto a smazano
         $select_columns = "n.id,
-                    n.type,
-                    n.title,
-                    n.message,
-                    n.priority,
-                    n.category,
-                    n.related_object_type,
-                    n.related_object_id,
+                    n.typ,
+                    n.nadpis,
+                    n.zprava,
+                    n.priorita,
+                    n.kategorie,
+                    n.objekt_typ,
+                    n.objekt_id,
                     n.data_json,
                     n.dt_created,
-                    nr.is_read,
-                    nr.dt_read,
-                    nr.is_dismissed,
-                    nr.dt_dismissed";
+                    nr.precteno,
+                    nr.dt_precteno,
+                    nr.skryto,
+                    nr.dt_skryto";
 
         $sql = "SELECT " . $select_columns . "
                 FROM " . TABLE_NOTIFIKACE . " n
-                INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notification_id
+                INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
                 WHERE " . implode(' AND ', $where_conditions) . "
                 ORDER BY n.dt_created DESC
                 LIMIT :limit OFFSET :offset";
@@ -188,22 +188,22 @@ function handle_notifications_list($input, $config, $queries) {
         $result = array_map(function($notif) {
             $item = array(
                 'id' => (int)$notif['id'],
-                'type' => $notif['type'],
-                'title' => $notif['title'],
-                'message' => $notif['message'],
-                'priority' => $notif['priority'],
-                'category' => $notif['category'],
-                'related_object_type' => $notif['related_object_type'],
-                'related_object_id' => $notif['related_object_id'] ? (int)$notif['related_object_id'] : null,
+                'typ' => $notif['typ'],
+                'nadpis' => $notif['nadpis'],
+                'zprava' => $notif['zprava'],
+                'priorita' => $notif['priorita'],
+                'kategorie' => $notif['kategorie'],
+                'objekt_typ' => $notif['objekt_typ'],
+                'objekt_id' => $notif['objekt_id'] ? (int)$notif['objekt_id'] : null,
                 'data' => $notif['data_json'] ? json_decode($notif['data_json'], true) : null,
-                'is_read' => $notif['is_read'] == 1,
-                'dt_read' => $notif['dt_read'],
+                'precteno' => $notif['precteno'] == 1,
+                'dt_precteno' => $notif['dt_precteno'],
                 'dt_created' => $notif['dt_created']
             );
             
-            // Vždy vrátit is_dismissed (už je v SELECT)
-            $item['is_dismissed'] = $notif['is_dismissed'] == 1;
-            $item['dt_dismissed'] = $notif['dt_dismissed'];
+            // Vždy vrátit skryto (už je v SELECT)
+            $item['skryto'] = $notif['skryto'] == 1;
+            $item['dt_skryto'] = $notif['dt_skryto'];
             
             return $item;
         }, $notifications);
@@ -211,7 +211,7 @@ function handle_notifications_list($input, $config, $queries) {
         // Počet celkem pro stránkování
         $count_sql = "SELECT COUNT(*) as total
                       FROM " . TABLE_NOTIFIKACE . " n
-                      INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notification_id
+                      INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
                       WHERE " . implode(' AND ', $where_conditions);
         
         $count_stmt = $db->prepare($count_sql);
@@ -246,7 +246,7 @@ function handle_notifications_mark_read($input, $config, $queries) {
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $notification_id = isset($input['notification_id']) ? (int)$input['notification_id'] : 0;
+    $notifikace_id = isset($input['notifikace_id']) ? (int)$input['notifikace_id'] : 0;
 
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -261,7 +261,7 @@ function handle_notifications_mark_read($input, $config, $queries) {
         return;
     }
 
-    if ($notification_id <= 0) {
+    if ($notifikace_id <= 0) {
         http_response_code(400);
         echo json_encode(['err' => 'Neplatné ID notifikace']);
         return;
@@ -269,27 +269,27 @@ function handle_notifications_mark_read($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
 
         $current_time = TimezoneHelper::getCzechDateTime();
-        $sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (notification_id, user_id, is_read, dt_read, dt_created)
-                VALUES (:notification_id, :user_id, 1, :dt_read, :dt_created)
+        $sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (notifikace_id, uzivatel_id, precteno, dt_precteno, dt_created)
+                VALUES (:notifikace_id, :uzivatel_id, 1, :dt_precteno, :dt_created)
                 ON DUPLICATE KEY UPDATE 
-                  is_read = 1, 
-                  dt_read = :dt_read_update";
+                  precteno = 1, 
+                  dt_precteno = :dt_precteno_update";
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(
-            ':notification_id' => $notification_id,
-            ':user_id' => $user_id,
-            ':dt_read' => $current_time,
+            ':notifikace_id' => $notifikace_id,
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_precteno' => $current_time,
             ':dt_created' => $current_time,
-            ':dt_read_update' => $current_time
+            ':dt_precteno_update' => $current_time
         ));
 
         echo json_encode(array(
             'status' => 'ok',
-            'message' => 'Notifikace byla zamítnuta'
+            'zprava' => 'Notifikace byla zamítnuta'
         ));
 
     } catch (Exception $e) {
@@ -316,27 +316,27 @@ function handle_notifications_dismiss_all($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Aktualizovat všechny nepřečtené/neskryté notifikace uživatele
         $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                SET is_dismissed = 1, 
-                    dt_dismissed = :dt_dismissed 
-                WHERE user_id = :user_id 
-                  AND is_dismissed = 0";
+                SET skryto = 1, 
+                    dt_skryto = :dt_skryto 
+                WHERE uzivatel_id = :uzivatel_id 
+                  AND skryto = 0";
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(
-            ':user_id' => $user_id,
-            ':dt_dismissed' => $current_time
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_skryto' => $current_time
         ));
 
         $count = $stmt->rowCount();
 
         echo json_encode(array(
             'status' => 'ok',
-            'message' => "Všechny notifikace skryty v dropdownu",
+            'zprava' => "Všechny notifikace skryty v dropdownu",
             'hidden_count' => $count
         ));
 
@@ -354,7 +354,7 @@ function handle_notifications_restore($input, $config, $queries) {
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $notification_id = isset($input['notification_id']) ? (int)$input['notification_id'] : 0;
+    $notifikace_id = isset($input['notifikace_id']) ? (int)$input['notifikace_id'] : 0;
 
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -363,7 +363,7 @@ function handle_notifications_restore($input, $config, $queries) {
         return;
     }
 
-    if ($notification_id <= 0) {
+    if ($notifikace_id <= 0) {
         http_response_code(400);
         echo json_encode(['err' => 'Neplatné ID notifikace']);
         return;
@@ -371,25 +371,25 @@ function handle_notifications_restore($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
 
-        // Nastavit is_dismissed zpět na 0
+        // Nastavit skryto zpět na 0
         $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                SET is_dismissed = 0, 
-                    dt_dismissed = NULL 
-                WHERE notification_id = :notification_id 
-                  AND user_id = :user_id";
+                SET skryto = 0, 
+                    dt_skryto = NULL 
+                WHERE notifikace_id = :notifikace_id 
+                  AND uzivatel_id = :uzivatel_id";
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(
-            ':notification_id' => $notification_id,
-            ':user_id' => $user_id
+            ':notifikace_id' => $notifikace_id,
+            ':uzivatel_id' => $uzivatel_id
         ));
 
         if ($stmt->rowCount() > 0) {
             echo json_encode(array(
                 'status' => 'ok',
-                'message' => 'Notifikace obnovena v dropdownu'
+                'zprava' => 'Notifikace obnovena v dropdownu'
             ));
         } else {
             http_response_code(404);
@@ -410,7 +410,7 @@ function handle_notifications_delete($input, $config, $queries) {
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $notification_id = isset($input['notification_id']) ? (int)$input['notification_id'] : 0;
+    $notifikace_id = isset($input['notifikace_id']) ? (int)$input['notifikace_id'] : 0;
 
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -419,7 +419,7 @@ function handle_notifications_delete($input, $config, $queries) {
         return;
     }
 
-    if ($notification_id <= 0) {
+    if ($notifikace_id <= 0) {
         http_response_code(400);
         echo json_encode(['err' => 'Neplatné ID notifikace']);
         return;
@@ -427,27 +427,27 @@ function handle_notifications_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
         $current_time = TimezoneHelper::getCzechDateTime();
 
-        // Soft delete - nastavit is_deleted = 1 v read tabulce
+        // Soft delete - nastavit smazano = 1 v read tabulce
         $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                SET is_deleted = 1, 
-                    dt_deleted = :dt_deleted 
-                WHERE notification_id = :notification_id 
-                  AND user_id = :user_id";
+                SET smazano = 1, 
+                    dt_smazano = :dt_smazano 
+                WHERE notifikace_id = :notifikace_id 
+                  AND uzivatel_id = :uzivatel_id";
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(
-            ':notification_id' => $notification_id,
-            ':user_id' => $user_id,
-            ':dt_deleted' => $current_time
+            ':notifikace_id' => $notifikace_id,
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_smazano' => $current_time
         ));
 
         if ($stmt->rowCount() > 0) {
             echo json_encode(array(
                 'status' => 'ok',
-                'message' => 'Notifikace trvale smazána z databáze'
+                'zprava' => 'Notifikace trvale smazána z databáze'
             ));
         } else {
             http_response_code(404);
@@ -485,27 +485,27 @@ function handle_notifications_delete_all($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Soft delete všech notifikací uživatele
         $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                SET is_deleted = 1, 
-                    dt_deleted = :dt_deleted 
-                WHERE user_id = :user_id 
-                  AND is_deleted = 0";
+                SET smazano = 1, 
+                    dt_smazano = :dt_smazano 
+                WHERE uzivatel_id = :uzivatel_id 
+                  AND smazano = 0";
 
         $stmt = $db->prepare($sql);
         $stmt->execute(array(
-            ':user_id' => $user_id,
-            ':dt_deleted' => $current_time
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_smazano' => $current_time
         ));
 
         $count = $stmt->rowCount();
 
         echo json_encode(array(
             'status' => 'ok',
-            'message' => 'Všechny notifikace trvale smazány',
+            'zprava' => 'Všechny notifikace trvale smazány',
             'deleted_count' => $count
         ));
 
@@ -539,19 +539,19 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
 
         // Označ všechny nepřečtené záznamy v " . TABLE_NOTIFIKACE_PRECTENI . "
         $current_time = TimezoneHelper::getCzechDateTime();
         $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                SET is_read = 1, dt_read = :dt_read
-                WHERE user_id = :user_id 
-                  AND is_read = 0";
+                SET precteno = 1, dt_precteno = :dt_precteno
+                WHERE uzivatel_id = :uzivatel_id 
+                  AND precteno = 0";
 
         $stmt = $db->prepare($sql);
         $result = $stmt->execute(array(
-            ':user_id' => $user_id,
-            ':dt_read' => $current_time
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_precteno' => $current_time
         ));
         
         if ($result) {
@@ -559,7 +559,7 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
             
             echo json_encode(array(
                 'status' => 'ok',
-                'message' => "Označeno {$marked_count} notifikací jako přečtených",
+                'zprava' => "Označeno {$marked_count} notifikací jako přečtených",
                 'marked_count' => $marked_count
             ));
         } else {
@@ -597,21 +597,21 @@ function handle_notifications_unread_count($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
 
         // Spočítej nepřečtené z " . TABLE_NOTIFIKACE_PRECTENI . "
-        // MUSÍ být: nepřečtené (is_read=0), NEsmazané (is_deleted=0), NEdismissnuté (is_dismissed=0)
+        // MUSÍ být: nepřečtené (precteno=0), NEsmazané (smazano=0), NEdismissnuté (skryto=0)
         $sql = "SELECT COUNT(*) as unread_count
                 FROM " . TABLE_NOTIFIKACE_PRECTENI . " nr
-                INNER JOIN " . TABLE_NOTIFIKACE . " n ON nr.notification_id = n.id
-                WHERE nr.user_id = :user_id
-                  AND nr.is_read = 0
-                  AND nr.is_dismissed = 0
-                  AND nr.is_deleted = 0
-                  AND n.active = 1";
+                INNER JOIN " . TABLE_NOTIFIKACE . " n ON nr.notifikace_id = n.id
+                WHERE nr.uzivatel_id = :uzivatel_id
+                  AND nr.precteno = 0
+                  AND nr.skryto = 0
+                  AND nr.smazano = 0
+                  AND n.aktivni = 1";
 
         $stmt = $db->prepare($sql);
-        $stmt->execute(array(':user_id' => $user_id));
+        $stmt->execute(array(':uzivatel_id' => $uzivatel_id));
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -662,7 +662,7 @@ function handle_notifications_create($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $required_fields = array('type');
+    $required_fields = array('typ');
     foreach ($required_fields as $field) {
         if (empty($input[$field])) {
             error_log("[Notifications] Missing required field: $field");
@@ -676,31 +676,31 @@ function handle_notifications_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $type = $input['type'];
-        $current_user_id = $token_data['id'];
+        $typ = $input['typ'];
+        $current_uzivatel_id = $token_data['id'];
         $username = $token_data['username'];
         
-        error_log("[Notifications] Processing type: $type for user: $username (ID: $current_user_id)");
+        error_log("[Notifications] Processing typ: $typ for user: $username (ID: $current_uzivatel_id)");
         
         // Načti template z databáze
-        $template = getNotificationTemplate($db, $type);
+        $template = getNotificationTemplate($db, $typ);
         if (!$template) {
-            error_log("[Notifications] Template not found for type: $type");
+            error_log("[Notifications] Template not found for typ: $typ");
             http_response_code(400);
-            echo json_encode(array('err' => "Neznámý typ notifikace: $type"));
+            echo json_encode(array('err' => "Neznámý typ notifikace: $typ"));
             return;
         }
         
-        error_log("[Notifications] Template loaded: " . $template['name']);
+        error_log("[Notifications] Template loaded: " . $template['nazev']);
         
         // NOVÉ: Podpora order_id pro automatické naplnění placeholderů
         $placeholderData = array();
         $order_id = isset($input['order_id']) ? (int)$input['order_id'] : null;
-        $action_user_id = isset($input['action_user_id']) ? (int)$input['action_user_id'] : $current_user_id;
+        $action_uzivatel_id = isset($input['action_uzivatel_id']) ? (int)$input['action_uzivatel_id'] : $current_uzivatel_id;
         $additional_data = isset($input['additional_data']) ? $input['additional_data'] : array();
         
         error_log("[Notifications] order_id from input: " . ($order_id ? $order_id : 'NULL'));
-        error_log("[Notifications] action_user_id: $action_user_id");
+        error_log("[Notifications] action_uzivatel_id: $action_uzivatel_id");
         
         if ($order_id) {
             error_log("[Notifications] ===== LOADING ORDER DATA START =====");
@@ -708,7 +708,7 @@ function handle_notifications_create($input, $config, $queries) {
             
             // Načti data objednávky a připrav placeholdery (s error handlingem)
             try {
-                $placeholderData = getOrderPlaceholderData($db, $order_id, $action_user_id, $additional_data);
+                $placeholderData = getOrderPlaceholderData($db, $order_id, $action_uzivatel_id, $additional_data);
                 
                 error_log("[Notifications] getOrderPlaceholderData returned: " . (is_array($placeholderData) ? count($placeholderData) . " keys" : "NOT ARRAY"));
                 
@@ -724,10 +724,10 @@ function handle_notifications_create($input, $config, $queries) {
                 }
                 
                 // Přidej ikonu a label akce VŽDY (i když order data selhala)
-                $placeholderData['action_icon'] = getActionIcon($type);
-                $placeholderData['action_performed_by_label'] = getActionLabel($type);
+                $placeholderData['action_icon'] = getActionIcon($typ);
+                $placeholderData['action_performed_by_label'] = getActionLabel($typ);
                 $placeholderData['priority_icon'] = getPriorityIcon(
-                    isset($input['priority']) ? $input['priority'] : $template['priority_default']
+                    isset($input['priorita']) ? $input['priorita'] : $template['priorita_vychozi']
                 );
                 
                 error_log("[Notifications] ===== LOADING ORDER DATA END =====");
@@ -761,116 +761,116 @@ function handle_notifications_create($input, $config, $queries) {
         // Použij template_override pokud je zadáno (FE může přepsat template)
         $template_override = isset($input['template_override']) ? $input['template_override'] : array();
         
-        $app_title = isset($template_override['app_title']) ? 
-            $template_override['app_title'] : $template['app_title'];
+        $app_nadpis = isset($template_override['app_nadpis']) ? 
+            $template_override['app_nadpis'] : $template['app_nadpis'];
         $app_message = isset($template_override['app_message']) ? 
             $template_override['app_message'] : $template['app_message'];
-        $email_subject = isset($template_override['email_subject']) ? 
-            $template_override['email_subject'] : $template['email_subject'];
-        $email_body = isset($template_override['email_body']) ? 
-            $template_override['email_body'] : $template['email_body'];
+        $email_predmet = isset($template_override['email_predmet']) ? 
+            $template_override['email_predmet'] : $template['email_predmet'];
+        $email_telo = isset($template_override['email_telo']) ? 
+            $template_override['email_telo'] : $template['email_telo'];
         
         // Nahraď placeholdery v template
-        $app_title = notif_replacePlaceholders($app_title, $finalData);
+        $app_nadpis = notif_replacePlaceholders($app_nadpis, $finalData);
         $app_message = notif_replacePlaceholders($app_message, $finalData);
         
         // Email vždy s placeholdery
-        $email_subject = notif_replacePlaceholders($email_subject, $finalData);
-        $email_body = notif_replacePlaceholders($email_body, $finalData);
+        $email_predmet = notif_replacePlaceholders($email_predmet, $finalData);
+        $email_telo = notif_replacePlaceholders($email_telo, $finalData);
         
-        error_log("[Notifications] After placeholder replacement - Title: " . $app_title);
+        error_log("[Notifications] After placeholder replacement - Title: " . $app_nadpis);
         error_log("[Notifications] After placeholder replacement - Message: " . substr($app_message, 0, 100));
         
         // KLÍČOVÁ LOGIKA: Určení příjemců
-        $to_user_id = isset($input['to_user_id']) ? (int)$input['to_user_id'] : null;
+        $pro_uzivatele_id = isset($input['pro_uzivatele_id']) ? (int)$input['pro_uzivatele_id'] : null;
         $to_users = isset($input['to_users']) && is_array($input['to_users']) ? $input['to_users'] : null;
-        $to_all_users = isset($input['to_all_users']) ? (bool)$input['to_all_users'] : false;
+        $pro_vsechny = isset($input['pro_vsechny']) ? (bool)$input['pro_vsechny'] : false;
         
-        error_log("[Notifications] Recipients config: to_user_id=" . ($to_user_id ?: 'null') . 
+        error_log("[Notifications] Recipients config: pro_uzivatele_id=" . ($pro_uzivatele_id ?: 'null') . 
                   ", to_users=" . ($to_users ? json_encode($to_users) : 'null') . 
-                  ", to_all_users=" . ($to_all_users ? 'true' : 'false'));
+                  ", pro_vsechny=" . ($pro_vsechny ? 'true' : 'false'));
         
         // Sestavení pole příjemců
-        $recipient_user_ids = array();
+        $recipient_uzivatel_ids = array();
         
-        if ($to_all_users) {
+        if ($pro_vsechny) {
             // Broadcast - všichni aktivní uživatelé
             $users_table = get_users_table_name();
-            $stmt = $db->prepare("SELECT id FROM {$users_table} WHERE active = 1");
+            $stmt = $db->prepare("SELECT id FROM {$users_table} WHERE aktivni = 1");
             $stmt->execute();
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $recipient_user_ids = array_column($users, 'id');
-            error_log("[Notifications] Broadcasting '$type' to " . count($recipient_user_ids) . " users");
+            $recipient_uzivatel_ids = array_column($users, 'id');
+            error_log("[Notifications] Broadcasting '$typ' to " . count($recipient_uzivatel_ids) . " users");
             
         } elseif (!empty($to_users) && is_array($to_users)) {
             // Skupina uživatelů
-            $recipient_user_ids = array_map('intval', $to_users);
-            error_log("[Notifications] Sending '$type' to group: " . implode(',', $recipient_user_ids));
+            $recipient_uzivatel_ids = array_map('intval', $to_users);
+            error_log("[Notifications] Sending '$typ' to group: " . implode(',', $recipient_uzivatel_ids));
             
-        } elseif (!empty($to_user_id)) {
+        } elseif (!empty($pro_uzivatele_id)) {
             // Konkrétní uživatel
-            $recipient_user_ids = array($to_user_id);
-            error_log("[Notifications] Sending '$type' to user: $to_user_id");
+            $recipient_uzivatel_ids = array($pro_uzivatele_id);
+            error_log("[Notifications] Sending '$typ' to user: $pro_uzivatele_id");
             
         } else {
             error_log("[Notifications] No recipients specified!");
             http_response_code(400);
-            echo json_encode(array('err' => 'Musíte zadat alespoň jednoho příjemce (to_user_id, to_users nebo to_all_users)'));
+            echo json_encode(array('err' => 'Musíte zadat alespoň jednoho příjemce (pro_uzivatele_id, to_users nebo pro_vsechny)'));
             return;
         }
         
-        if (empty($recipient_user_ids)) {
+        if (empty($recipient_uzivatel_ids)) {
             error_log("[Notifications] Recipients array is empty after processing!");
             http_response_code(400);
             echo json_encode(array('err' => 'Nebyli nalezeni žádní příjemci pro notifikaci'));
             return;
         }
         
-        error_log("[Notifications] Final recipients: " . json_encode($recipient_user_ids));
+        error_log("[Notifications] Final recipients: " . json_encode($recipient_uzivatel_ids));
         
         // 1. VYTVOŘ MASTER ZÁZNAM v " . TABLE_NOTIFIKACE . " (pouze 1 záznam)
-        $priority = isset($input['priority']) ? $input['priority'] : $template['priority_default'];
-        $category = isset($input['category']) ? $input['category'] : 'general';
-        $send_email = isset($input['send_email']) ? (int)$input['send_email'] : (int)$template['send_email_default'];
-        $related_object_type = isset($input['related_object_type']) ? $input['related_object_type'] : ($order_id ? 'order' : null);
-        $related_object_id = isset($input['related_object_id']) ? (int)$input['related_object_id'] : $order_id;
+        $priorita = isset($input['priorita']) ? $input['priorita'] : $template['priorita_vychozi'];
+        $kategorie = isset($input['kategorie']) ? $input['kategorie'] : 'general';
+        $odeslat_email = isset($input['odeslat_email']) ? (int)$input['odeslat_email'] : (int)$template['odeslat_email_default'];
+        $objekt_typ = isset($input['objekt_typ']) ? $input['objekt_typ'] : ($order_id ? 'order' : null);
+        $objekt_id = isset($input['objekt_id']) ? (int)$input['objekt_id'] : $order_id;
         
         $stmt = $db->prepare("
             INSERT INTO " . TABLE_NOTIFIKACE . " (
-                type, 
-                title, 
-                message, 
-                from_user_id, 
-                to_user_id,
-                to_users_json,
-                to_all_users,
-                priority,
-                category,
-                send_email,
-                related_object_type,
-                related_object_id,
+                typ, 
+                nadpis, 
+                zprava, 
+                od_uzivatele_id, 
+                pro_uzivatele_id,
+                prijemci_json,
+                pro_vsechny,
+                priorita,
+                kategorie,
+                odeslat_email,
+                objekt_typ,
+                objekt_id,
                 data_json,
                 dt_created,
-                active
+                aktivni
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)
         ");
         
         $result = $stmt->execute(array(
-            $type,
+            $typ,
             // Použij TEMPLATE s nahrazenými placeholdery, fallback na FE custom text
-            !empty($app_title) ? $app_title : (!empty($input['title']) ? $input['title'] : 'Notifikace'),
-            !empty($app_message) ? $app_message : (!empty($input['message']) ? $input['message'] : ''),
-            $current_user_id,
-            // Pro jednotlivce: konkrétní user_id, pro skupinu/broadcast: NULL
-            count($recipient_user_ids) === 1 ? $recipient_user_ids[0] : null,
+            !empty($app_nadpis) ? $app_nadpis : (!empty($input['nadpis']) ? $input['nadpis'] : 'Notifikace'),
+            !empty($app_message) ? $app_message : (!empty($input['zprava']) ? $input['zprava'] : ''),
+            $current_uzivatel_id,
+            // Pro jednotlivce: konkrétní uzivatel_id, pro skupinu/broadcast: NULL
+            count($recipient_uzivatel_ids) === 1 ? $recipient_uzivatel_ids[0] : null,
             // Pro skupinu: JSON array, jinak NULL
-            count($recipient_user_ids) > 1 && !$to_all_users ? json_encode($recipient_user_ids) : null,
-            $to_all_users ? 1 : 0,
-            $priority,
-            $category,
-            $send_email,
-            $related_object_type,
-            $related_object_id,
+            count($recipient_uzivatel_ids) > 1 && !$pro_vsechny ? json_encode($recipient_uzivatel_ids) : null,
+            $pro_vsechny ? 1 : 0,
+            $priorita,
+            $kategorie,
+            $odeslat_email,
+            $objekt_typ,
+            $objekt_id,
             !empty($finalData) ? json_encode($finalData) : null
         ));
         
@@ -878,51 +878,51 @@ function handle_notifications_create($input, $config, $queries) {
             throw new Exception('Chyba při vytváření master notifikace');
         }
         
-        $notification_id = $db->lastInsertId();
+        $notifikace_id = $db->lastInsertId();
         
         // 2. VYTVOŘ READ ZÁZNAMY v " . TABLE_NOTIFIKACE_PRECTENI . " (pro každého příjemce)
         $stmt_read = $db->prepare("
             INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (
-                notification_id,
-                user_id,
-                is_read,
-                is_dismissed,
+                notifikace_id,
+                uzivatel_id,
+                precteno,
+                skryto,
                 dt_created
             ) VALUES (?, ?, 0, 0, NOW())
         ");
         
         $read_records_created = 0;
-        foreach ($recipient_user_ids as $user_id) {
-            $result = $stmt_read->execute(array($notification_id, $user_id));
+        foreach ($recipient_uzivatel_ids as $uzivatel_id) {
+            $result = $stmt_read->execute(array($notifikace_id, $uzivatel_id));
             if ($result) {
                 $read_records_created++;
-                error_log("[Notifications] Created read record for user: $user_id, notification: $notification_id");
+                error_log("[Notifications] Created read record for user: $uzivatel_id, notification: $notifikace_id");
             } else {
-                error_log("[Notifications] Failed to create read record for user: $user_id, notification: $notification_id");
+                error_log("[Notifications] Failed to create read record for user: $uzivatel_id, notification: $notifikace_id");
             }
         }
         
         // 3. ODESLAT EMAIL (pokud je potřeba)
-        $email_sent = false;
-        if ($send_email && !empty($email_subject)) {
-            foreach ($recipient_user_ids as $user_id) {
-                // TODO: Implementovat sendNotificationEmail($user_id, $email_subject, $email_body);
-                error_log("[Notifications] Email should be sent to user: $user_id for notification: $notification_id");
+        $email_odeslan = false;
+        if ($odeslat_email && !empty($email_predmet)) {
+            foreach ($recipient_uzivatel_ids as $uzivatel_id) {
+                // TODO: Implementovat sendNotificationEmail($uzivatel_id, $email_predmet, $email_telo);
+                error_log("[Notifications] Email should be sent to user: $uzivatel_id for notification: $notifikace_id");
             }
             
             // Označit jako odeslaný
-            $stmt_email = $db->prepare("UPDATE " . TABLE_NOTIFIKACE . " SET email_sent = 1, email_sent_at = NOW() WHERE id = ?");
-            $stmt_email->execute(array($notification_id));
-            $email_sent = true;
+            $stmt_email = $db->prepare("UPDATE " . TABLE_NOTIFIKACE . " SET email_odeslan = 1, email_odeslan_kdy = NOW() WHERE id = ?");
+            $stmt_email->execute(array($notifikace_id));
+            $email_odeslan = true;
         }
         
         // 4. RESPONSE
         $response = array(
             'status' => 'ok',
-            'message' => 'Notifikace byla vytvořena',
-            'notification_id' => (int)$notification_id,
+            'zprava' => 'Notifikace byla vytvořena',
+            'notifikace_id' => (int)$notifikace_id,
             'recipients_count' => $read_records_created,
-            'email_sent' => $email_sent
+            'email_odeslan' => $email_odeslan
         );
         
         echo json_encode($response);
@@ -942,7 +942,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
-    $notification_id = isset($input['notification_id']) ? (int)$input['notification_id'] : 0;
+    $notifikace_id = isset($input['notifikace_id']) ? (int)$input['notifikace_id'] : 0;
 
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -951,7 +951,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
         return;
     }
 
-    if ($notification_id <= 0) {
+    if ($notifikace_id <= 0) {
         http_response_code(400);
         echo json_encode(['err' => 'Neplatné ID notifikace']);
         return;
@@ -959,42 +959,42 @@ function handle_notifications_dismiss($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $user_id = $token_data['id'];
+        $uzivatel_id = $token_data['id'];
 
         $current_time = TimezoneHelper::getCzechDateTime();
         
         // KROK 1: Zkus UPDATE (pokud záznam existuje)
         $sql_update = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
-                       SET is_dismissed = 1, 
-                           dt_dismissed = :dt_dismissed 
-                       WHERE notification_id = :notification_id 
-                         AND user_id = :user_id";
+                       SET skryto = 1, 
+                           dt_skryto = :dt_skryto 
+                       WHERE notifikace_id = :notifikace_id 
+                         AND uzivatel_id = :uzivatel_id";
 
         $stmt = $db->prepare($sql_update);
         $stmt->execute(array(
-            ':notification_id' => $notification_id,
-            ':user_id' => $user_id,
-            ':dt_dismissed' => $current_time
+            ':notifikace_id' => $notifikace_id,
+            ':uzivatel_id' => $uzivatel_id,
+            ':dt_skryto' => $current_time
         ));
 
         // KROK 2: Pokud UPDATE nezměnil žádný řádek, udělej INSERT
         if ($stmt->rowCount() == 0) {
             $sql_insert = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " 
-                           (notification_id, user_id, is_read, is_dismissed, dt_dismissed, dt_created)
-                           VALUES (:notification_id, :user_id, 0, 1, :dt_dismissed, :dt_created)";
+                           (notifikace_id, uzivatel_id, precteno, skryto, dt_skryto, dt_created)
+                           VALUES (:notifikace_id, :uzivatel_id, 0, 1, :dt_skryto, :dt_created)";
             
             $stmt = $db->prepare($sql_insert);
             $stmt->execute(array(
-                ':notification_id' => $notification_id,
-                ':user_id' => $user_id,
-                ':dt_dismissed' => $current_time,
+                ':notifikace_id' => $notifikace_id,
+                ':uzivatel_id' => $uzivatel_id,
+                ':dt_skryto' => $current_time,
                 ':dt_created' => $current_time
             ));
         }
 
         echo json_encode(array(
             'status' => 'ok',
-            'message' => 'Notifikace skryta v dropdownu'
+            'zprava' => 'Notifikace skryta v dropdownu'
         ));
 
     } catch (Exception $e) {
@@ -1027,33 +1027,33 @@ function handle_notifications_preview($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    if (empty($input['type'])) {
+    if (empty($input['typ'])) {
         http_response_code(400);
-        echo json_encode(array('err' => 'Chybí povinné pole: type'));
+        echo json_encode(array('err' => 'Chybí povinné pole: typ'));
         return;
     }
 
     try {
         $db = get_db($config);
-        $type = $input['type'];
-        $current_user_id = $token_data['id'];
+        $typ = $input['typ'];
+        $current_uzivatel_id = $token_data['id'];
         
         // Načti template z databáze
-        $template = getNotificationTemplate($db, $type);
+        $template = getNotificationTemplate($db, $typ);
         if (!$template) {
             http_response_code(400);
-            echo json_encode(array('err' => "Neznámý typ notifikace: $type"));
+            echo json_encode(array('err' => "Neznámý typ notifikace: $typ"));
             return;
         }
         
         // Načti placeholder data pokud je zadáno order_id
         $placeholderData = array();
         $order_id = isset($input['order_id']) ? (int)$input['order_id'] : null;
-        $action_user_id = isset($input['action_user_id']) ? (int)$input['action_user_id'] : $current_user_id;
+        $action_uzivatel_id = isset($input['action_uzivatel_id']) ? (int)$input['action_uzivatel_id'] : $current_uzivatel_id;
         $additional_data = isset($input['additional_data']) ? $input['additional_data'] : array();
         
         if ($order_id) {
-            $placeholderData = getOrderPlaceholderData($db, $order_id, $action_user_id, $additional_data);
+            $placeholderData = getOrderPlaceholderData($db, $order_id, $action_uzivatel_id, $additional_data);
             
             if (isset($placeholderData['error'])) {
                 http_response_code(400);
@@ -1062,19 +1062,19 @@ function handle_notifications_preview($input, $config, $queries) {
             }
             
             // Přidej ikony a labely
-            $placeholderData['action_icon'] = getActionIcon($type);
-            $placeholderData['action_performed_by_label'] = getActionLabel($type);
-            $placeholderData['priority_icon'] = getPriorityIcon($template['priority_default']);
+            $placeholderData['action_icon'] = getActionIcon($typ);
+            $placeholderData['action_performed_by_label'] = getActionLabel($typ);
+            $placeholderData['priority_icon'] = getPriorityIcon($template['priorita_vychozi']);
         }
         
         // Nahraď placeholdery
-        $app_title = notif_replacePlaceholders($template['app_title'], $placeholderData);
+        $app_nadpis = notif_replacePlaceholders($template['app_nadpis'], $placeholderData);
         $app_message = notif_replacePlaceholders($template['app_message'], $placeholderData);
-        $email_subject = notif_replacePlaceholders($template['email_subject'], $placeholderData);
-        $email_body = notif_replacePlaceholders($template['email_body'], $placeholderData);
+        $email_predmet = notif_replacePlaceholders($template['email_predmet'], $placeholderData);
+        $email_telo = notif_replacePlaceholders($template['email_telo'], $placeholderData);
         
         // Zjisti které placeholdery byly použity
-        preg_match_all('/\{([a-z_]+)\}/', $template['app_title'] . $template['app_message'], $matches);
+        preg_match_all('/\{([a-z_]+)\}/', $template['app_nadpis'] . $template['app_message'], $matches);
         $placeholders_used = array_unique($matches[1]);
         
         // Zjisti které placeholdery chybí (nebyly nahrazeny)
@@ -1089,13 +1089,13 @@ function handle_notifications_preview($input, $config, $queries) {
         echo json_encode(array(
             'status' => 'ok',
             'template' => array(
-                'type' => $type,
-                'app_title' => $app_title,
+                'typ' => $typ,
+                'app_nadpis' => $app_nadpis,
                 'app_message' => $app_message,
-                'email_subject' => $email_subject,
-                'email_body' => $email_body,
-                'priority' => $template['priority_default'],
-                'send_email_default' => $template['send_email_default'] == 1
+                'email_predmet' => $email_predmet,
+                'email_telo' => $email_telo,
+                'priorita' => $template['priorita_vychozi'],
+                'odeslat_email_default' => $template['odeslat_email_default'] == 1
             ),
             'placeholders_used' => $placeholders_used,
             'missing_data' => $missing_data,
@@ -1135,9 +1135,9 @@ function handle_notifications_templates($input, $config, $queries) {
         // Sestavení dotazu
         $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . "";
         if ($active_only) {
-            $sql .= " WHERE active = 1";
+            $sql .= " WHERE aktivni = 1";
         }
-        $sql .= " ORDER BY name ASC";
+        $sql .= " ORDER BY nazev ASC";
         
         $stmt = $db->prepare($sql);
         $stmt->execute();
@@ -1147,15 +1147,15 @@ function handle_notifications_templates($input, $config, $queries) {
         $result = array_map(function($template) {
             return array(
                 'id' => (int)$template['id'],
-                'type' => $template['type'],
-                'name' => $template['name'],
-                'app_title' => $template['app_title'],
+                'typ' => $template['typ'],
+                'nazev' => $template['nazev'],
+                'app_nadpis' => $template['app_nadpis'],
                 'app_message' => $template['app_message'],
-                'email_subject' => $template['email_subject'],
-                'email_body' => $template['email_body'],
-                'send_email_default' => $template['send_email_default'] == 1,
-                'priority_default' => $template['priority_default'],
-                'active' => $template['active'] == 1,
+                'email_predmet' => $template['email_predmet'],
+                'email_telo' => $template['email_telo'],
+                'odeslat_email_default' => $template['odeslat_email_default'] == 1,
+                'priorita_vychozi' => $template['priorita_vychozi'],
+                'aktivni' => $template['aktivni'] == 1,
                 'dt_created' => $template['dt_created'],
                 'dt_updated' => $template['dt_updated']
             );
@@ -1191,7 +1191,7 @@ function handle_notifications_send_bulk($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $required_fields = array('type', 'recipients');
+    $required_fields = array('typ', 'recipients');
     foreach ($required_fields as $field) {
         if (empty($input[$field])) {
             http_response_code(400);
@@ -1257,8 +1257,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 1: Vytvoření
             array(
                 'code' => 'ORDER_CREATED',
-                'name' => 'Objednávka vytvořena',
-                'category' => 'orders',
+                'nazev' => 'Objednávka vytvořena',
+                'kategorie' => 'orders',
                 'description' => 'Robert vytvoří objednávku → notifikace příkazci ke schválení',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'APPROVAL', 'INFO')
@@ -1267,8 +1267,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 2A: Schválení
             array(
                 'code' => 'ORDER_APPROVED',
-                'name' => 'Objednávka schválena',
-                'category' => 'orders',
+                'nazev' => 'Objednávka schválena',
+                'kategorie' => 'orders',
                 'description' => 'Příkazce schválil → notifikace Robertovi, že může pokračovat',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
@@ -1277,8 +1277,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 2B: Zamítnutí
             array(
                 'code' => 'ORDER_REJECTED',
-                'name' => 'Objednávka zamítnuta',
-                'category' => 'orders',
+                'nazev' => 'Objednávka zamítnuta',
+                'kategorie' => 'orders',
                 'description' => 'Příkazce zamítl → proces končí',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
@@ -1287,8 +1287,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 2C: Vrácení
             array(
                 'code' => 'ORDER_WAITING_FOR_CHANGES',
-                'name' => 'Objednávka vrácena k doplnění',
-                'category' => 'orders',
+                'nazev' => 'Objednávka vrácena k doplnění',
+                'kategorie' => 'orders',
                 'description' => 'Příkazce vrátil → Robert doplní a znovu odešle',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
@@ -1297,8 +1297,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 3: Plnění
             array(
                 'code' => 'ORDER_SENT_TO_SUPPLIER',
-                'name' => 'Objednávka odeslána dodavateli',
-                'category' => 'orders',
+                'nazev' => 'Objednávka odeslána dodavateli',
+                'kategorie' => 'orders',
                 'description' => 'Robert odeslal dodavateli → notifikace nákupčímu a ostatním',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
@@ -1307,8 +1307,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 4: Registr
             array(
                 'code' => 'ORDER_REGISTRY_APPROVAL_REQUESTED',
-                'name' => 'Žádost o schválení v registru',
-                'category' => 'orders',
+                'nazev' => 'Žádost o schválení v registru',
+                'kategorie' => 'orders',
                 'description' => 'Robert žádá o registr → notifikace registru (role/úsek)',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
@@ -1317,8 +1317,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 5: Faktura
             array(
                 'code' => 'ORDER_INVOICE_ADDED',
-                'name' => 'Faktura doplněna',
-                'category' => 'orders',
+                'nazev' => 'Faktura doplněna',
+                'kategorie' => 'orders',
                 'description' => 'Registr doplnil fakturu → Robert musí provést věcnou kontrolu',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
@@ -1327,8 +1327,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 6: Kontrola
             array(
                 'code' => 'ORDER_MATERIAL_CHECK_COMPLETED',
-                'name' => 'Věcná kontrola provedena',
-                'category' => 'orders',
+                'nazev' => 'Věcná kontrola provedena',
+                'kategorie' => 'orders',
                 'description' => 'Robert provedl kontrolu → registr může dokončit',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
@@ -1337,8 +1337,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // OBJEDNÁVKY - Fáze 7: Dokončení
             array(
                 'code' => 'ORDER_COMPLETED',
-                'name' => 'Objednávka dokončena',
-                'category' => 'orders',
+                'nazev' => 'Objednávka dokončena',
+                'kategorie' => 'orders',
                 'description' => 'Registr dokončil → notifikace všem zúčastněným',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('INFO')
@@ -1347,24 +1347,24 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // FAKTURY
             array(
                 'code' => 'INVOICE_CREATED',
-                'name' => 'Faktura vytvořena',
-                'category' => 'invoices',
+                'nazev' => 'Faktura vytvořena',
+                'kategorie' => 'invoices',
                 'description' => 'Nová faktura byla vytvořena v systému',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             array(
                 'code' => 'INVOICE_DUE_SOON',
-                'name' => 'Faktura brzy po splatnosti',
-                'category' => 'invoices',
+                'nazev' => 'Faktura brzy po splatnosti',
+                'kategorie' => 'invoices',
                 'description' => 'Faktura se blíží ke dni splatnosti',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
             ),
             array(
                 'code' => 'INVOICE_OVERDUE',
-                'name' => 'Faktura po splatnosti',
-                'category' => 'invoices',
+                'nazev' => 'Faktura po splatnosti',
+                'kategorie' => 'invoices',
                 'description' => 'Faktura je po splatnosti',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL')
@@ -1373,8 +1373,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // SMLOUVY
             array(
                 'code' => 'CONTRACT_EXPIRING',
-                'name' => 'Smlouva brzy vyprší',
-                'category' => 'contracts',
+                'nazev' => 'Smlouva brzy vyprší',
+                'kategorie' => 'contracts',
                 'description' => 'Smlouva se blíží ke konci platnosti',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
@@ -1383,8 +1383,8 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             // POKLADNA
             array(
                 'code' => 'CASHBOOK_LOW_BALANCE',
-                'name' => 'Nízký zůstatek v pokladně',
-                'category' => 'cashbook',
+                'nazev' => 'Nízký zůstatek v pokladně',
+                'kategorie' => 'cashbook',
                 'description' => 'Zůstatek v pokladně je pod minimální hranicí',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
@@ -1392,10 +1392,10 @@ function handle_notifications_event_types_list($input, $config, $queries) {
         );
         
         // Filtrování podle kategorie (volitelné)
-        $category = isset($input['category']) ? $input['category'] : null;
-        if ($category) {
-            $eventTypes = array_filter($eventTypes, function($event) use ($category) {
-                return $event['category'] === $category;
+        $kategorie = isset($input['kategorie']) ? $input['kategorie'] : null;
+        if ($kategorie) {
+            $eventTypes = array_filter($eventTypes, function($event) use ($kategorie) {
+                return $event['kategorie'] === $kategorie;
             });
             $eventTypes = array_values($eventTypes); // Reindex pole
         }
@@ -1422,7 +1422,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
  * Použití: notificationRouter($db, 'ORDER_CREATED', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
  * 
  * @param PDO $db - Database connection
- * @param string $eventType - Event type code (ORDER_CREATED, ORDER_APPROVED, etc.)
+ * @param string $eventType - Event typ code (ORDER_CREATED, ORDER_APPROVED, etc.)
  * @param int $objectId - ID objektu (objednávka, faktura, atd.)
  * @param int $triggerUserId - ID uživatele, který akci provedl
  * @param array $placeholderData - Data pro placeholder replacement
@@ -1448,7 +1448,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         foreach ($recipients as $recipient) {
             try {
                 // $recipient obsahuje:
-                // - user_id
+                // - uzivatel_id
                 // - recipientRole (EXCEPTIONAL, APPROVAL, INFO)
                 // - sendEmail (bool)
                 // - sendInApp (bool)
@@ -1458,7 +1458,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 3. Načíst template z DB
                 $stmt = $db->prepare("
                     SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " 
-                    WHERE id = :template_id AND active = 1
+                    WHERE id = :template_id AND aktivni = 1
                 ");
                 $stmt->execute([':template_id' => $recipient['templateId']]);
                 $template = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1472,9 +1472,9 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $variant = $recipient['templateVariant'];
                 
                 // 5. Nahradit placeholdery v šabloně
-                $processedTitle = replacePlaceholders($template['app_title'], $placeholderData);
+                $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderData);
                 $processedMessage = replacePlaceholders($template['app_message'], $placeholderData);
-                $processedEmailBody = extractVariantFromEmailBody($template['email_body'], $variant);
+                $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
                 $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
                 
                 // 6. Připravit data pro notifikaci
@@ -1490,22 +1490,22 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 7. Vytvořit in-app notifikaci
                 if ($recipient['sendInApp']) {
                     $params = array(
-                        ':type' => 'system',
-                        ':title' => $processedTitle,
-                        ':message' => $processedMessage,
+                        ':typ' => 'system',
+                        ':nadpis' => $processedTitle,
+                        ':zprava' => $processedMessage,
                         ':data_json' => json_encode($notificationData),
-                        ':from_user_id' => $triggerUserId,
-                        ':to_user_id' => $recipient['user_id'],
-                        ':to_users_json' => null,
-                        ':to_all_users' => 0,
-                        ':priority' => $recipient['recipientRole'], // EXCEPTIONAL, APPROVAL, INFO
-                        ':category' => $template['category'],
-                        ':send_email' => $recipient['sendEmail'] ? 1 : 0,
-                        ':related_object_type' => getObjectTypeFromEvent($eventType),
-                        ':related_object_id' => $objectId,
+                        ':od_uzivatele_id' => $triggerUserId,
+                        ':pro_uzivatele_id' => $recipient['uzivatel_id'],
+                        ':prijemci_json' => null,
+                        ':pro_vsechny' => 0,
+                        ':priorita' => $recipient['recipientRole'], // EXCEPTIONAL, APPROVAL, INFO
+                        ':kategorie' => $template['kategorie'],
+                        ':odeslat_email' => $recipient['sendEmail'] ? 1 : 0,
+                        ':objekt_typ' => getObjectTypeFromEvent($eventType),
+                        ':objekt_id' => $objectId,
                         ':dt_expires' => null,
                         ':dt_created' => TimezoneHelper::getCzechDateTime(),
-                        ':active' => 1
+                        ':aktivni' => 1
                     );
                     
                     createNotification($db, $params);
@@ -1515,12 +1515,12 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 8. Odeslat email (pokud je povolený)
                 if ($recipient['sendEmail']) {
                     // TODO: Implementovat sendNotificationEmail()
-                    // sendNotificationEmail($recipient['user_id'], $processedTitle, $processedEmailBody);
+                    // sendNotificationEmail($recipient['uzivatel_id'], $processedTitle, $processedEmailBody);
                 }
                 
             } catch (Exception $e) {
-                $result['errors'][] = "Error sending to user {$recipient['user_id']}: " . $e->getMessage();
-                error_log("[NotificationRouter] Error sending to user {$recipient['user_id']}: " . $e->getMessage());
+                $result['errors'][] = "Error sending to user {$recipient['uzivatel_id']}: " . $e->getMessage();
+                error_log("[NotificationRouter] Error sending to user {$recipient['uzivatel_id']}: " . $e->getMessage());
             }
         }
         
@@ -1551,14 +1551,14 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         $stmt = $db->prepare("
             SELECT id, structure_json 
             FROM 25_hierarchy_profiles 
-            WHERE active = 1 
+            WHERE aktivni = 1 
             LIMIT 1
         ");
         $stmt->execute();
         $profile = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$profile) {
-            error_log("[findNotificationRecipients] No active hierarchy profile found");
+            error_log("[findNotificationRecipients] No aktivni hierarchy profile found");
             return $recipients;
         }
         
@@ -1570,7 +1570,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         
         // 2. Projít všechny TEMPLATE nodes a najít ty, které mají eventType
         foreach ($structure['nodes'] as $node) {
-            if ($node['type'] !== 'template') continue;
+            if ($node['typ'] !== 'template') continue;
             
             $eventTypes = isset($node['data']['eventTypes']) ? $node['data']['eventTypes'] : array();
             
@@ -1599,7 +1599,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 
                 if (!$targetNode) continue;
                 
-                // 5. Najít konkrétní user_id podle typu target node
+                // 5. Najít konkrétní uzivatel_id podle typu target node
                 $targetUserIds = resolveTargetUsers($db, $targetNode, $objectId, $triggerUserId);
                 
                 // 6. Určit variantu šablony podle recipientRole
@@ -1638,9 +1638,9 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     }
                     
                     // Kontrola kategorie (orders, invoices, contracts, cashbook)
-                    $category = getObjectTypeFromEvent($eventType);
-                    if (isset($userPrefs['categories'][$category]) && !$userPrefs['categories'][$category]) {
-                        error_log("[findNotificationRecipients] User $userId has category '$category' disabled");
+                    $kategorie = getObjectTypeFromEvent($eventType);
+                    if (isset($userPrefs['categories'][$kategorie]) && !$userPrefs['categories'][$kategorie]) {
+                        error_log("[findNotificationRecipients] User $userId has kategorie '$kategorie' disabled");
                         continue;
                     }
                     
@@ -1651,7 +1651,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     }
                     
                     $recipients[] = array(
-                        'user_id' => $userId,
+                        'uzivatel_id' => $userId,
                         'recipientRole' => $recipientRole,
                         'sendEmail' => $sendEmailFinal,
                         'sendInApp' => $sendInAppFinal,
@@ -1670,19 +1670,19 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
 }
 
 /**
- * Najde konkrétní user_id podle typu node (user, role, location, department)
+ * Najde konkrétní uzivatel_id podle typu node (user, role, location, department)
  * 
  * @param PDO $db
  * @param array $node - Target node z hierarchie
  * @param int $objectId - ID objektu (objednávka, faktura)
  * @param int $triggerUserId - Kdo akci provedl
- * @return array - Pole user_id
+ * @return array - Pole uzivatel_id
  */
 function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
     $userIds = array();
     
     try {
-        switch ($node['type']) {
+        switch ($node['typ']) {
             case 'user':
                 // Přímý uživatel
                 if (isset($node['data']['userId'])) {
@@ -1695,14 +1695,14 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                 $roleId = isset($node['data']['roleId']) ? $node['data']['roleId'] : null;
                 if ($roleId) {
                     $stmt = $db->prepare("
-                        SELECT DISTINCT ur.user_id 
+                        SELECT DISTINCT ur.uzivatel_id 
                         FROM 25_user_roles ur
-                        JOIN 25_users u ON ur.user_id = u.id
-                        WHERE ur.role_id = :role_id AND u.active = 1
+                        JOIN 25_users u ON ur.uzivatel_id = u.id
+                        WHERE ur.role_id = :role_id AND u.aktivni = 1
                     ");
                     $stmt->execute([':role_id' => $roleId]);
                     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                        $userIds[] = $row['user_id'];
+                        $userIds[] = $row['uzivatel_id'];
                     }
                 }
                 break;
@@ -1714,7 +1714,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT id 
                         FROM 25_users 
-                        WHERE location_id = :location_id AND active = 1
+                        WHERE location_id = :location_id AND aktivni = 1
                     ");
                     $stmt->execute([':location_id' => $locationId]);
                     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1730,7 +1730,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT id 
                         FROM 25_users 
-                        WHERE department_id = :department_id AND active = 1
+                        WHERE department_id = :department_id AND aktivni = 1
                     ");
                     $stmt->execute([':department_id' => $departmentId]);
                     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1740,7 +1740,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                 break;
                 
             default:
-                error_log("[resolveTargetUsers] Unknown node type: {$node['type']}");
+                error_log("[resolveTargetUsers] Unknown node typ: {$node['typ']}");
         }
     } catch (Exception $e) {
         error_log("[resolveTargetUsers] Exception: " . $e->getMessage());
@@ -1750,7 +1750,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
 }
 
 /**
- * Extrahuje správnou variantu z email_body podle <!-- RECIPIENT: TYPE -->
+ * Extrahuje správnou variantu z email_telo podle <!-- RECIPIENT: TYPE -->
  */
 function extractVariantFromEmailBody($emailBody, $variant) {
     if (!$emailBody) return '';
@@ -1776,7 +1776,7 @@ function extractVariantFromEmailBody($emailBody, $variant) {
 }
 
 /**
- * Určí object type podle event type
+ * Určí object typ podle event typ
  */
 function getObjectTypeFromEvent($eventType) {
     if (strpos($eventType, 'ORDER_') === 0) return 'orders';
@@ -1843,9 +1843,9 @@ function getUserNotificationPreferences($db, $userId) {
         $stmt = $db->prepare("
             SELECT nastaveni_data 
             FROM 25_uzivatel_nastaveni 
-            WHERE uzivatel_id = :user_id
+            WHERE uzivatel_id = :uzivatel_id
         ");
-        $stmt->execute([':user_id' => $userId]);
+        $stmt->execute([':uzivatel_id' => $userId]);
         $userSettings = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($userSettings && !empty($userSettings['nastaveni_data'])) {
@@ -1908,7 +1908,7 @@ function handle_notifications_user_preferences($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        // Načíst user_id z username
+        // Načíst uzivatel_id z username
         $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1969,7 +1969,7 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
     try {
         $db = get_db($config);
         
-        // Načíst user_id
+        // Načíst uzivatel_id
         $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -2018,7 +2018,7 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         // Uložit do DB (INSERT nebo UPDATE)
         $stmt = $db->prepare("
             INSERT INTO 25_uzivatel_nastaveni (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
-            VALUES (:user_id, :settings, '1.0', NOW())
+            VALUES (:uzivatel_id, :settings, '1.0', NOW())
             ON DUPLICATE KEY UPDATE 
                 nastaveni_data = :settings,
                 upraveno = NOW()
@@ -2026,13 +2026,13 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         
         $result = $stmt->execute([
             ':settings' => $preferencesJson,
-            ':user_id' => $userId
+            ':uzivatel_id' => $userId
         ]);
         
         if ($result) {
             echo json_encode(array(
                 'status' => 'ok',
-                'message' => 'Preference uloženy',
+                'zprava' => 'Preference uloženy',
                 'data' => $preferences
             ));
         } else {

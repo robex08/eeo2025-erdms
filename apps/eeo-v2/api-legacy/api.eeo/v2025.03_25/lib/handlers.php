@@ -819,7 +819,7 @@ function handle_orders_create($input, $config, $queries) {
                     ':nazev_souboru' => $attachment['storedName'],
                     ':puvodni_nazev' => $attachment['originalName'],
                     ':velikost' => intval($attachment['size']),
-                    ':typ_prilohy' => $attachment['type']
+                    ':typ_prilohy' => $attachment['typ']
                 ]);
             }
         }
@@ -1079,10 +1079,10 @@ function handle_notifications_send_dual($input, $config, $queries) {
         return;
     }
     
-    // Načtení šablony z DB (type = order_status_ke_schvaleni)
+    // Načtení šablony z DB (typ = order_status_ke_schvaleni)
     try {
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
-        $stmt = $db->prepare("SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = 'order_status_ke_schvaleni' AND active = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE typ = 'order_status_ke_schvaleni' AND aktivni = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);
@@ -1183,18 +1183,18 @@ function handle_notifications_send_dual($input, $config, $queries) {
     $sent_count = 0;
     $in_app_count = 0;
     
-    // Sloučit from (SUBMITTER) a to (APPROVER) do jednoho pole s type označením
+    // Sloučit from (SUBMITTER) a to (APPROVER) do jednoho pole s typ označením
     $all_recipients = [];
     
     if ($has_from) {
         foreach ($input['from'] as $user_id) {
-            $all_recipients[] = ['user_id' => $user_id, 'type' => 'SUBMITTER'];
+            $all_recipients[] = ['user_id' => $user_id, 'typ' => 'SUBMITTER'];
         }
     }
     
     if ($has_to) {
         foreach ($input['to'] as $user_id) {
-            $all_recipients[] = ['user_id' => $user_id, 'type' => 'APPROVER'];
+            $all_recipients[] = ['user_id' => $user_id, 'typ' => 'APPROVER'];
         }
     }
     
@@ -1203,9 +1203,9 @@ function handle_notifications_send_dual($input, $config, $queries) {
     // Projít všechny příjemce
     foreach ($all_recipients as $recipient) {
         $user_id = $recipient['user_id'];
-        $recipient_type = $recipient['type'];
+        $recipient_type = $recipient['typ'];
         
-        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (type: $recipient_type)\n", FILE_APPEND);
+        file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "  👤 Processing user_id: $user_id (typ: $recipient_type)\n", FILE_APPEND);
         if (!$user_id) {
             error_log("⚠️ Prázdné user_id, přeskakuji");
             continue;
@@ -1269,7 +1269,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
         // Tato funkce odesílá POUZE dual-template emaily s kontrolou nastavení
         
         if ($email_enabled) {
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (type: $recipient_type)...\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    📨 Sending email (typ: $recipient_type)...\n", FILE_APPEND);
             
             // Určit přesný typ šablony: APPROVER_NORMAL, APPROVER_URGENT nebo SUBMITTER
             // from[] = SUBMITTER (zelená informační šablona)
@@ -1282,7 +1282,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $template_type = 'SUBMITTER';
             }
             
-            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template type: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
+            file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "    🎭 Template typ: $template_type" . ($is_urgent ? " 🚨" : "") . "\n", FILE_APPEND);
             
             // Extrahuj správnou HTML šablonu podle typu (triple-template: normal/urgent/submitter)
             $email_body = get_email_template_by_recipient($template['email_body'], $template_type);
