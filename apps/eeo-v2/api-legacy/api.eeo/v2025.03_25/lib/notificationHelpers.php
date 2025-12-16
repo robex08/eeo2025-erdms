@@ -138,11 +138,11 @@ function getActionIcon($notificationType) {
 }
 
 /**
- * Vrátí ikonu podle priority
- * @param string $priority
+ * Vrátí ikonu podle priorita
+ * @param string $priorita
  * @return string
  */
-function getPriorityIcon($priority) {
+function getPriorityIcon($priorita) {
     $icons = array(
         'urgent' => '🔴',
         'high' => '🟠',
@@ -150,7 +150,7 @@ function getPriorityIcon($priority) {
         'low' => '⚪'
     );
     
-    return isset($icons[$priority]) ? $icons[$priority] : '🟢';
+    return isset($icons[$priorita]) ? $icons[$priorita] : '🟢';
 }
 
 // ==========================================
@@ -254,7 +254,7 @@ function generateItemsSummary($items, $maxLines = 3) {
             break;
         }
         
-        $nazev = isset($item['nazev']) ? $item['nazev'] : (isset($item['name']) ? $item['name'] : 'Položka');
+        $nazev = isset($item['nazev']) ? $item['nazev'] : (isset($item['nazev']) ? $item['nazev'] : 'Položka');
         $mnozstvi = isset($item['mnozstvi']) ? $item['mnozstvi'] : (isset($item['quantity']) ? $item['quantity'] : 1);
         $jednotka = isset($item['jednotka']) ? $item['jednotka'] : (isset($item['unit']) ? $item['unit'] : 'ks');
         
@@ -339,9 +339,9 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
         if ($actionUserId) {
             $userSql = "SELECT CONCAT(COALESCE(titul_pred, ''), ' ', COALESCE(jmeno, ''), ' ', COALESCE(prijmeni, ''), ' ', COALESCE(titul_za, '')) as full_name 
                         FROM {$usersTable} 
-                        WHERE id = :user_id";
+                        WHERE id = :uzivatel_id";
             $userStmt = $db->prepare($userSql);
-            $userStmt->execute(array(':user_id' => $actionUserId));
+            $userStmt->execute(array(':uzivatel_id' => $actionUserId));
             $actionUser = $userStmt->fetch(PDO::FETCH_ASSOC);
             
             if ($actionUser) {
@@ -456,9 +456,9 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
         if (isset($order['potvrdil_vecnou_spravnost_id']) && $order['potvrdil_vecnou_spravnost_id']) {
             $kontrolorSql = "SELECT CONCAT(COALESCE(titul_pred, ''), ' ', COALESCE(jmeno, ''), ' ', COALESCE(prijmeni, ''), ' ', COALESCE(titul_za, '')) as full_name 
                              FROM {$usersTable} 
-                             WHERE id = :user_id";
+                             WHERE id = :uzivatel_id";
             $kontrolorStmt = $db->prepare($kontrolorSql);
-            $kontrolorStmt->execute(array(':user_id' => $order['potvrdil_vecnou_spravnost_id']));
+            $kontrolorStmt->execute(array(':uzivatel_id' => $order['potvrdil_vecnou_spravnost_id']));
             $kontrolor = $kontrolorStmt->fetch(PDO::FETCH_ASSOC);
             
             if ($kontrolor) {
