@@ -1972,7 +1972,138 @@ graph TD
 
 ---
 
+## 📝 IMPLEMENTAČNÍ PŘÍKLAD (Level 2 & 3 - DOKONČENO)
+
+### ✅ Co bylo implementováno (16. prosince 2025)
+
+#### **Level 1: UI Fixes** (commit `c04bcb9`)
+- ✅ Změna URGENT → EXCEPTIONAL (méně agresivní slovník)
+- ✅ Rozšířený tooltip pro recipientRole dropdown
+- ✅ Vyjasnění, že recipientRole určuje TYP notifikace, ne workflow akci
+
+#### **Level 2: Event Types API** (commit `7ecf552`)
+- ✅ Backend: `handle_notifications_event_types_list()` v `notificationHandlers.php`
+- ✅ 14 Event Types definovaných:
+  - **Objednávky (9)**: ORDER_CREATED, ORDER_APPROVED, ORDER_REJECTED, ORDER_WAITING_FOR_CHANGES, ORDER_SENT_TO_SUPPLIER, ORDER_REGISTRY_APPROVAL_REQUESTED, ORDER_INVOICE_ADDED, ORDER_MATERIAL_CHECK_COMPLETED, ORDER_COMPLETED
+  - **Faktury (3)**: INVOICE_CREATED, INVOICE_DUE_SOON, INVOICE_OVERDUE
+  - **Smlouvy (1)**: CONTRACT_EXPIRING
+  - **Pokladna (1)**: CASHBOOK_LOW_BALANCE
+- ✅ Endpoint: `GET/POST /api.eeo/notifications/event-types/list`
+- ✅ Frontend: Load event types on mount, store in state
+- ✅ UI: Multi-select dropdown pro event types v EDGE detail panelu
+
+#### **Level 3: Template NODE + Notification Router** (commit `e46a03a`)
+- ✅ **Frontend**: Template NODE má pole `eventTypes[]` (uloženo v `node.data.eventTypes`)
+- ✅ **Frontend**: Multi-select dropdown pro výběr event types v template detail panelu
+- ✅ **Backend**: `notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData)`
+  - Hlavní funkce pro automatické odesílání notifikací
+  - Najde template s daným eventType
+  - Projde edges a najde příjemce
+  - Resolve target users podle node typu (user/role/location/department)
+  - Vybere správnou HTML variantu podle recipientRole
+  - Vytvoří in-app notifikaci a pošle email
+- ✅ **Backend**: `findNotificationRecipients()` - traverse hierarchie
+- ✅ **Backend**: `resolveTargetUsers()` - resolve user IDs z node
+- ✅ **Backend**: `extractVariantFromEmailBody()` - parse HTML variant
+- ✅ **Backend**: `getObjectTypeFromEvent()` - určí object type
+
+### 🎯 Použití v Kódu
+
+#### **Krok 1: Definice v Organizational Hierarchy (frontend)**
+
+Admin vytvoří strukturu:
+```
+[TEMPLATE: Objednávka vytvořena]
+  ├─ eventTypes: [ORDER_CREATED]
+  ├─ normalVariant: RECIPIENT
+  ├─ urgentVariant: APPROVER_URGENT
+  └─ infoVariant: SUBMITTER
+
+[EDGE: Template → Příkazce (User/Role)]
+  ├─ notifications.types: [ORDER_CREATED]
+  ├─ notifications.recipientRole: EXCEPTIONAL
+  ├─ notifications.email: true
+  └─ notifications.inapp: true
+
+[EDGE: Template → Objednatel (User)]
+  ├─ notifications.types: [ORDER_CREATED]
+  ├─ notifications.recipientRole: INFO
+  ├─ notifications.email: false
+  └─ notifications.inapp: true
+```
+
+#### **Krok 2: Spuštění notifikace (backend - v order form)**
+
+V `orderFormHandlers.php` nebo `orderWorkflow.php`:
+
+```php
+// Po vytvoření objednávky
+$orderId = 142;
+$userId = $request_username; // Robert Holovský
+$placeholderData = array(
+    'order_number' => 'O-2025-00142',
+    'order_id' => $orderId,
+    'status' => 'Ke schválení',
+    'predmet' => 'Nákup kancelářského vybavení',
+    'cena_celkem' => '45 670 Kč',
+    'dodavatel' => 'ALZA.cz s.r.o.',
+    'pozadovatel_jmeno' => 'Robert Holovský',
+    'pozadovatel_email' => 'robert.holovsky@example.com',
+    'url_objednavky' => 'https://eeo.example.com/order-form-25?edit=142',
+    'datum_vytvoreni' => '16.12.2025'
+);
+
+// 🚀 SPUSTIT NOTIFIKACE
+require_once 'notificationHandlers.php';
+$result = notificationRouter($db, 'ORDER_CREATED', $orderId, $userId, $placeholderData);
+
+if ($result['success']) {
+    error_log("[Order] Sent {$result['sent']} notifications for ORDER_CREATED");
+} else {
+    error_log("[Order] Failed to send notifications: " . implode(', ', $result['errors']));
+}
+```
+
+#### **Krok 3: Co se stane automaticky**
+
+1. **Router najde template** s `eventTypes: [ORDER_CREATED]`
+2. **Router najde edges** vedoucí z tohoto template s `notifications.types: [ORDER_CREATED]`
+3. **Router resolve příjemce**:
+   - EDGE 1 → Příkazce (User ID 5) - recipientRole: EXCEPTIONAL
+   - EDGE 2 → Objednatel (User ID 3) - recipientRole: INFO
+4. **Router vybere HTML variantu**:
+   - Příkazce: urgentVariant (APPROVER_URGENT) - 🔴 červený email
+   - Objednatel: infoVariant (SUBMITTER) - 🟢 zelený email
+5. **Router nahradí placeholdery**:
+   - `{order_number}` → O-2025-00142
+   - `{predmet}` → Nákup kancelářského vybavení
+   - atd.
+6. **Router vytvoří notifikace**:
+   - In-app notifikace v DB (tabulka `25_notifications`)
+   - Email (pokud `notifications.email: true`)
+
+#### **Krok 4: Výsledek**
+
+- **Příkazce** (User ID 5):
+  - ✅ Zvoněček: 🔴 "Schvalte objednávku O-2025-00142"
+  - ✅ Email: Červený HTML template s tlačítkem "Schválit"
+  
+- **Objednatel** (Robert, User ID 3):
+  - ✅ Zvoněček: 🟢 "Vaše objednávka byla vytvořena"
+  - ⏭️ Email: Ne (email: false)
+
+### 🔧 Další kroky
+
+1. ✅ **HOTOVO**: Event Types API, Template NODE eventTypes, Backend router
+2. ⏳ **TODO**: Integrace do order form workflow
+3. ⏳ **TODO**: Testování s reálnými daty
+4. ⏳ **TODO**: Frontend UI pro správu event types (admin panel)
+5. ⏳ **TODO**: Email sending implementation (aktuálně jen in-app)
+6. ⏳ **TODO**: Monitoring a logging (notification delivery log)
+
+---
+
 **Připravil:** GitHub Copilot  
 **Datum:** 16. prosince 2025  
-**Status:** 🟢 READY - Připraveno k implementaci  
-**Poslední update:** 16. prosince 2025 - Kompletní analýza + NODE/EDGE struktura
+**Status:** 🟢 READY - Level 2 & 3 implementováno, připraveno k integraci  
+**Poslední update:** 16. prosince 2025 - Přidán implementation guide + usage example
