@@ -1508,7 +1508,7 @@ const OrganizationHierarchy = () => {
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
   const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
   const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
-  const [notificationRecipientRole, setNotificationRecipientRole] = useState('APPROVAL'); // APPROVER_NORMAL, APPROVER_URGENT, SUBMITTER
+  const [notificationRecipientRole, setNotificationRecipientRole] = useState('APPROVAL'); // EXCEPTIONAL, APPROVAL, INFO
   
   // Detail panel data - druh vztahu a scope
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
@@ -2364,7 +2364,7 @@ const OrganizationHierarchy = () => {
     // Nacist notifikacni nastaveni z edge data
     setNotificationEmailEnabled(edge.data?.notifications?.email || false);
     setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
-      setNotificationRecipientRole(edge.data?.notifications?.recipientRole || 'APPROVAL');    // Nacist druh vztahu a scope z edge data
+      setNotificationRecipientRole(edge.data?.notifications?.recipientRole || 'APPROVAL');    // EXCEPTIONAL, APPROVAL, INFO
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -7455,18 +7455,23 @@ const OrganizationHierarchy = () => {
                         <Select 
                           value={notificationRecipientRole} 
                           onChange={(e) => setNotificationRecipientRole(e.target.value)}
+                          title="Určuje typ/prioritu notifikace, NE akci k potvrzení"
                         >
-                          <option value="APPROVAL">🟠 Požadavek na schválení</option>
-                          <option value="INFO">🟢 Informační oznámení</option>
-                          <option value="BOTH">🔵 Oboje (schválení + info)</option>
+                          <option value="EXCEPTIONAL">🔴 Mimořádná událost (kritické schválení)</option>
+                          <option value="APPROVAL">🟠 Důležitá notifikace (karta u příjemce)</option>
+                          <option value="INFO">🟢 Informační oznámení (jen pro vědomí)</option>
                         </Select>
                         <div style={{ 
                           fontSize: '0.7rem', 
                           color: '#64748b', 
                           marginTop: '6px',
-                          fontStyle: 'italic'
+                          fontStyle: 'italic',
+                          lineHeight: '1.4'
                         }}>
-                          💡 Urgentnost určí až událost v procesu. Zde jen definujete charakter notifikace.
+                          💡 <strong>Důležité:</strong> Typ notifikace určuje barvu/prioritu ve zvonečku, NE workflow tlačítko.<br/>
+                          <span style={{ marginLeft: '18px' }}>• EXCEPTIONAL = příkazce/registr musí schválit</span><br/>
+                          <span style={{ marginLeft: '18px' }}>• APPROVAL = karta u příjemce, může pokračovat</span><br/>
+                          <span style={{ marginLeft: '18px' }}>• INFO = jen potvrzení, akce dokončena</span>
                         </div>
                       </FormGroup>
                       

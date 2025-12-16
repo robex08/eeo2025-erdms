@@ -97,8 +97,8 @@ Tento dokument analyzuje současný stav notifikačního systému v ERDMS a navr
 FÁZE 1: VYTVOŘENÍ
   Robert (Objednatel) → Vytvoří požadavek
   EVENT: ORDER_CREATED
-  ├─► Příkazce → 🔴 URGENT "Schvalte objednávku"
-  ├─► Garant → 🟠 APPROVAL "Nová objednávka"
+  ├─► Příkazce → 🔴 EXCEPTIONAL "Schvalte objednávku"
+  ├─► Garant → 🟠 APPROVAL "Nová objednávku"
   └─► Robert → 🟢 INFO "Odesláno ke schválení"
 
 FÁZE 2A: SCHVÁLENÍ
@@ -111,7 +111,7 @@ FÁZE 2A: SCHVÁLENÍ
 FÁZE 2B: ZAMÍTNUTÍ
   Příkazce → Zamítne
   EVENT: ORDER_REJECTED
-  ├─► Robert → 🔴 URGENT "Zamítnuto!"
+  ├─► Robert → 🔴 EXCEPTIONAL "Zamítnuto!"
   ├─► Garant → 🟢 INFO "Zamítnuto"
   └─► Příkazce → 🟢 INFO "Zamítnutí odesláno"
   ❌ PROCES KONČÍ
@@ -134,7 +134,7 @@ FÁZE 3: ODESLÁNÍ DODAVATELI
 FÁZE 4: ŽÁDOST O REGISTR
   Robert → Žádá o schválení v registru
   EVENT: ORDER_REGISTRY_APPROVAL_REQUESTED
-  ├─► Role: Registr IT → 🔴 URGENT "Schvalte registr!"
+  ├─► Role: Registr IT → 🔴 EXCEPTIONAL "Schvalte registr!"
   ├─► Garant → 🟢 INFO "Žádost o registr"
   └─► Robert → 🟢 INFO "Žádost odeslána"
 
@@ -164,7 +164,7 @@ FÁZE 7: DOKONČENÍ
 
 **💡 Klíčové poznatky:**
 - Každá fáze = 1 událost (EVENT)
-- Každý příjemce má svou roli (URGENT/APPROVAL/INFO)
+- Každý příjemce má svou roli (EXCEPTIONAL/APPROVAL/INFO)
 - recipientRole určuje **TYP notifikace**, ne akci
 - Pokud EDGE v org. hierarchii neexistuje → notifikace se NEPOSÍLÁ
 - Template NODE obsahuje 3 varianty šablon (🔴🟠🟢)
@@ -191,12 +191,12 @@ FÁZE 7: DOKONČENÍ
 ### 3 Hodnoty recipientRole:
 
 ```javascript
-// === URGENT - Urgentní schválení ===
-recipientRole: 'URGENT'
+// === EXCEPTIONAL - Mimořádná událost ===
+recipientRole: 'EXCEPTIONAL'
 Šablona: 🔴 urgentVariant
 Použití: Příkazce MUSÍ schválit, Registr MUSÍ schválit
 Příklad: "SCHVALTE objednávku #2025-001 IHNED!"
-Význam: Kritická akce - karta je u příjemce, urgentní
+Význam: Kritická akce - karta je u příjemce, mimořádná událost
 
 // === APPROVAL - Důležitá notifikace ===
 recipientRole: 'APPROVAL'  
@@ -219,13 +219,13 @@ Význam: Jen pro vědomí - akce dokončena, žádná další akce potřebná
 
 | Fáze | Kdo | recipientRole | Šablona | Text |
 |------|-----|---------------|---------|------|
-| Vytvoření | Příkazce | `URGENT` | 🔴 | "Schvalte obj!" |
+| Vytvoření | Příkazce | `EXCEPTIONAL` | 🔴 | "Schvalte obj!" |
 | Schváleno | Robert | `APPROVAL` | 🟠 | "Schváleno - pokračuj!" |
 | Schváleno | Příkazce | `INFO` | 🟢 | "Schválení odesláno" |
 | Vráceno | Robert | `APPROVAL` | 🟠 | "Vráceno - doplň!" |
 | Vráceno | Příkazce | `INFO` | 🟢 | "Notifikace odeslána" |
 | Odeslána | Nákupčí | `APPROVAL` | 🟠 | "Obj odeslána dodavateli" |
-| Registr | Registr IT | `URGENT` | 🔴 | "Schvalte registr!" |
+| Registr | Registr IT | `EXCEPTIONAL` | 🔴 | "Schvalte registr!" |
 | Faktura | Robert | `APPROVAL` | 🟠 | "Proveď věcnou kontrolu!" |
 | Kontrola OK | Registr IT | `APPROVAL` | 🟠 | "Dokonči objednávku!" |
 | Dokončeno | Všichni | `INFO` | 🟢 | "Objednávka dokončena" |
@@ -291,8 +291,8 @@ const EVENT_TYPES = {
     code: 'ORDER_CREATED',
     name: 'Objednávka vytvořena',
     category: 'orders',
-    urgencyLevel: 'URGENT',        // Příkazce musí schválit
-    recipientRoles: ['URGENT', 'APPROVAL', 'INFO'],
+    urgencyLevel: 'EXCEPTIONAL',        // Příkazce musí schválit
+    recipientRoles: ['EXCEPTIONAL', 'APPROVAL', 'INFO'],
     defaultChannel: ['email', 'inapp'],
     description: 'Robert vytvoří objednávku → notifikace příkazci ke schválení'
   },
@@ -312,8 +312,8 @@ const EVENT_TYPES = {
   ORDER_REJECTED: {
     code: 'ORDER_REJECTED',
     name: 'Objednávka zamítnuta',
-    urgencyLevel: 'URGENT',        // Robert musí vědět IHNED
-    recipientRoles: ['URGENT', 'INFO'],
+    urgencyLevel: 'EXCEPTIONAL',        // Robert musí vědět IHNED
+    recipientRoles: ['EXCEPTIONAL', 'INFO'],
     defaultChannel: ['email', 'inapp'],
     description: 'Příkazce zamítl → proces končí'
   },
@@ -345,8 +345,8 @@ const EVENT_TYPES = {
     code: 'ORDER_REGISTRY_APPROVAL_REQUESTED',
     name: 'Žádost o schválení v registru',
     category: 'orders',
-    urgencyLevel: 'URGENT',
-    recipientRoles: ['URGENT', 'INFO'],
+    urgencyLevel: 'EXCEPTIONAL',
+    recipientRoles: ['EXCEPTIONAL', 'INFO'],
     defaultChannel: ['email', 'inapp'],
     description: 'Robert žádá o registr → notifikace registru (role/úsek)'
   },
@@ -1574,9 +1574,9 @@ foreach ($edges as $edge) {
 
 | Hodnota | Význam | Template Varianta | Use Case |
 |---------|--------|-------------------|----------|
+| `EXCEPTIONAL` | **Mimořádná událost** - kritické schválení | **urgentVariant** (🔴 červená) | Příkazce musí **schválit** objednávku ihned |
 | `APPROVAL` | **Důležitá notifikace** - karta je u příjemce | **normalVariant** (🟠 oranžová) | Objednatel dostane info, že může pokračovat v objednávce |
 | `INFO` | **Informační notifikace** - jen pro vědomí | **infoVariant** (🟢 zelená) | Příkazce dostal potvrzení, že akce proběhla |
-| `URGENT` | **Urgentní schválení** - kritická akce | **urgentVariant** (🔴 červená) | Příkazce musí **schválit** objednávku (speciální případ) |
 
 ---
 
@@ -1659,8 +1659,8 @@ foreach ($edges as $edge) {
     $templateCode = $template->infoVariant;     // 🟢 zelená - jen info
   } else if ($role === 'APPROVAL') {
     $templateCode = $template->normalVariant;   // 🟠 oranžová - důležitá notifikace
-  } else if ($role === 'URGENT') {
-    $templateCode = $template->urgentVariant;   // 🔴 červená - urgentní schválení
+  } else if ($role === 'EXCEPTIONAL') {
+    $templateCode = $template->urgentVariant;   // 🔴 červená - mimořádná událost
   }
   
   // Vlož do fronty
@@ -1718,7 +1718,7 @@ foreach ($edges as $edge) {
 |---------------|----------|---------|---------------|--------|
 | **APPROVAL** | Ten kdo má pokračovat | 🟠 `normalVariant` | "Obj vrácena - karta u tebe" | Důležitá notifikace |
 | **INFO** | Ten kdo poslal akci | 🟢 `infoVariant` | "Notifikace odeslána Robertovi" | Jen potvrzení |
-| **URGENT** | Schvalovatel (speciální) | 🔴 `urgentVariant` | "Schvalte objednávku IHNED" | Urgentní akce |
+| **EXCEPTIONAL** | Schvalovatel (speciální) | 🔴 `urgentVariant` | "Schvalte objednávku IHNED" | Mimořádná událost |
 
 | Termín | Význam | Kde se používá |
 |--------|--------|----------------|
