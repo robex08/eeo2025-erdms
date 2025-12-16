@@ -1256,7 +1256,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
         $eventTypes = array(
             // OBJEDNÁVKY - Fáze 1: Vytvoření
             array(
-                'code' => 'ORDER_CREATED',
+                'code' => 'ORDER_SENT_FOR_APPROVAL',
                 'nazev' => 'Objednávka vytvořena',
                 'kategorie' => 'orders',
                 'description' => 'Robert vytvoří objednávku → notifikace příkazci ke schválení',
@@ -1419,10 +1419,10 @@ function handle_notifications_event_types_list($input, $config, $queries) {
 
 /**
  * Hlavní router pro automatické odesílání notifikací při událostech
- * Použití: notificationRouter($db, 'ORDER_CREATED', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
+ * Použití: notificationRouter($db, 'ORDER_SENT_FOR_APPROVAL', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
  * 
  * @param PDO $db - Database connection
- * @param string $eventType - Event typ code (ORDER_CREATED, ORDER_APPROVED, etc.)
+ * @param string $eventType - Event typ code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, etc.)
  * @param int $objectId - ID objektu (objednávka, faktura, atd.)
  * @param int $triggerUserId - ID uživatele, který akci provedl
  * @param array $placeholderData - Data pro placeholder replacement
@@ -1435,13 +1435,28 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         'errors' => array()
     );
     
+    error_log("════════════════════════════════════════════════════════════════");
+    error_log("🔔 [NotificationRouter] TRIGGER PŘIJAT!");
+    error_log("   Event Type: $eventType");
+    error_log("   Object ID: $objectId");
+    error_log("   Trigger User ID: $triggerUserId");
+    error_log("   Placeholder Data: " . json_encode($placeholderData));
+    error_log("════════════════════════════════════════════════════════════════");
+    
     try {
         // 1. Najít příjemce podle organizational hierarchy
+        error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
         $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId);
         
         if (empty($recipients)) {
-            error_log("[NotificationRouter] No recipients found for event $eventType, object $objectId");
+            error_log("❌ [NotificationRouter] Žádní příjemci nenalezeni pro event $eventType, object $objectId");
+            error_log("   → Zkontrolujte, zda existuje pravidlo v organizační hierarchii pro tento event type");
             return $result;
+        }
+        
+        error_log("✅ [NotificationRouter] Nalezeno " . count($recipients) . " příjemců:");
+        foreach ($recipients as $idx => $r) {
+            error_log("   Příjemce #" . ($idx+1) . ": User ID={$r['uzivatel_id']}, Role={$r['recipientRole']}, Email=" . ($r['sendEmail'] ? 'ANO' : 'NE') . ", InApp=" . ($r['sendInApp'] ? 'ANO' : 'NE'));
         }
         
         // 2. Pro každého příjemce najít template a odeslat notifikaci
@@ -1548,8 +1563,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
 function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) {
     $recipients = array();
     
+    error_log("📋 [findNotificationRecipients] Začínám hledat příjemce...");
+    
     try {
         // 1. Najít aktivní profil hierarchie
+        error_log("   🔍 Hledám aktivní hierarchický profil...");
         $stmt = $db->prepare("
             SELECT id, structure_json 
             FROM 25_hierarchie_profily 
@@ -1560,34 +1578,64 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         $profile = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$profile) {
-            error_log("[findNotificationRecipients] No aktivni hierarchy profile found");
+            error_log("   ❌ ŽÁDNÝ aktivní hierarchický profil nenalezen!");
+            error_log("   → Zkontrolujte tabulku 25_hierarchie_profily, sloupec 'aktivni' = 1");
             return $recipients;
         }
+        
+        error_log("   ✅ Nalezen profil ID={$profile['id']}");
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
-            error_log("[findNotificationRecipients] Invalid structure JSON in profile {$profile['id']}");
+            error_log("   ❌ Neplatný JSON ve structure_json profilu {$profile['id']}");
             return $recipients;
         }
         
+        error_log("   📊 Structure má " . count($structure['nodes']) . " nodes a " . count($structure['edges']) . " edges");
+        
         // 2. Projít všechny TEMPLATE nodes a najít ty, které mají eventType
+        error_log("   🔍 Hledám template nodes s event typem '$eventType'...");
+        $matchingTemplates = 0;
+        
         foreach ($structure['nodes'] as $node) {
             if ($node['typ'] !== 'template') continue;
             
             $eventTypes = isset($node['data']['eventTypes']) ? $node['data']['eventTypes'] : array();
             
+            error_log("      Template: {$node['data']['name']}, Event Types: " . json_encode($eventTypes));
+            
             // Pokud tento template nemá náš eventType, přeskoč
             if (!in_array($eventType, $eventTypes)) continue;
             
+            $matchingTemplates++;
+            error_log("      ✅ MATCH! Template '{$node['data']['name']}' má event '$eventType'");
+            
             // 3. Najít všechny EDGE (šipky) vedoucí z tohoto template
+            error_log("      🔗 Hledám edges z template '{$node['data']['name']}'...");
+            $edgeCount = 0;
+            
             foreach ($structure['edges'] as $edge) {
                 if ($edge['source'] !== $node['id']) continue;
                 
+                $edgeCount++;
+                error_log("         Edge #{$edgeCount}: {$edge['source']} → {$edge['target']}");
+                
                 $notifications = isset($edge['data']['notifications']) ? $edge['data']['notifications'] : array();
+                error_log("         Notification config: " . json_encode($notifications));
+                
+                // Kontrola checkbox filtrů
+                $onlyParticipants = isset($edge['data']['onlyOrderParticipants']) ? $edge['data']['onlyOrderParticipants'] : false;
+                $onlyLocation = isset($edge['data']['onlyOrderLocation']) ? $edge['data']['onlyOrderLocation'] : false;
+                error_log("         Filtry: onlyParticipants=" . ($onlyParticipants ? 'ANO' : 'NE') . ", onlyLocation=" . ($onlyLocation ? 'ANO' : 'NE'));
                 
                 // Kontrola, zda edge má tento eventType v types[]
                 $edgeEventTypes = isset($notifications['types']) ? $notifications['types'] : array();
-                if (!in_array($eventType, $edgeEventTypes)) continue;
+                if (!in_array($eventType, $edgeEventTypes)) {
+                    error_log("         ⚠️ Edge nemá event type '$eventType' v types[], přeskakuji");
+                    continue;
+                }
+                
+                error_log("         ✅ Edge obsahuje event type '$eventType'!");
                 
                 // 4. Určit cílového uživatele/roli z edge target
                 $targetNodeId = $edge['target'];
