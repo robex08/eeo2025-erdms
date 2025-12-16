@@ -785,8 +785,8 @@ class NotificationService {
    */
   async trigger(eventType, objectId, triggerUserId, placeholderData = {}) {
     try {
-      const token = loadAuthData.token();
-      const user = loadAuthData.user();
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
 
       const payload = {
         token,
@@ -799,7 +799,7 @@ class NotificationService {
 
       console.log('════════════════════════════════════════════════════════════════');
       console.log('🔔 [NotificationService] TRIGGER organizational hierarchy notification');
-      console.log('   Token:', token ? `${token.substring(0, 20)}...` : 'NULL');
+      console.log('   Token:', token ? (typeof token === 'string' ? `${token.substring(0, 20)}...` : '[OBJECT]') : 'NULL');
       console.log('   Username:', user?.username);
       console.log('   Event Type:', eventType);
       console.log('   Object ID:', objectId);
@@ -833,9 +833,11 @@ class NotificationService {
    * @param {Object} todoData - Data úkolu
    */
   async notifyTodoAlarmNormal(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
     return this.create({
-      token: loadAuthData.token(),
-      username: loadAuthData.user()?.username,
+      token,
+      username: user?.username,
       type: 'alarm_todo_normal',
       order_id: null,
       action_user_id: userId,
@@ -859,9 +861,11 @@ class NotificationService {
    * @param {Object} todoData - Data úkolu
    */
   async notifyTodoAlarmHigh(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
     return this.create({
-      token: loadAuthData.token(),
-      username: loadAuthData.user()?.username,
+      token,
+      username: user?.username,
       type: 'alarm_todo_high',
       order_id: null,
       action_user_id: userId,
@@ -885,9 +889,11 @@ class NotificationService {
    * @param {Object} todoData - Data úkolu
    */
   async notifyTodoAlarmExpired(userId, todoData) {
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
     return this.create({
-      token: loadAuthData.token(),
-      username: loadAuthData.user()?.username,
+      token,
+      username: user?.username,
       type: 'alarm_todo_expired',
       order_id: null,
       action_user_id: userId,
