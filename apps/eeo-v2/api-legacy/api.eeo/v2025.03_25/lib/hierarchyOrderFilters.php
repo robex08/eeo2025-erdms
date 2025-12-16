@@ -3,7 +3,7 @@
  * Hierarchy Order Filters - Hierarchie workflow pro filtraci objednávek
  * 
  * Implementace hierarchického řízení viditelnosti objednávek podle
- * organizačního řádu (25_hierarchie_profily a 25_hierarchie_vztahy).
+ * organizačního řádu (25_hierarchie_profily).
  * 
  * Klíčové principy:
  * 1. Hierarchie má PRIORITU nad standardními právy a rolemi
@@ -12,11 +12,133 @@
  * 4. HIERARCHY_IMMUNE právo → bypass hierarchie
  * 
  * @author GitHub Copilot & robex08
- * @date 13. prosince 2025
- * @version 2.0 - Opraveno dle skutečné DB struktury
+ * @date 16. prosince 2025
+ * @version 3.0 - Refactored to use structure_json
  */
 
 // Note: dbconfig.php is already included in orderV2Endpoints.php
+
+/**
+ * Načte vztahy pro uživatele z structure_json v aktivním profilu
+ * 
+ * @param int $userId User ID
+ * @param PDO $db Database connection
+ * @return array Pole vztahů ve formátu kompatibilním se starým kódem
+ */
+function getUserRelationshipsFromStructure($userId, $db) {
+    // Načíst aktivní profil
+    $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+    $stmt->execute();
+    $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$profile || empty($profile['structure_json'])) {
+        return [];
+    }
+    
+    $structure = json_decode($profile['structure_json'], true);
+    if (!$structure || !isset($structure['nodes']) || !isset($structure['edges'])) {
+        return [];
+    }
+    
+    // Najít user node
+    $userNodeId = null;
+    foreach ($structure['nodes'] as $node) {
+        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $userId) {
+            $userNodeId = $node['id'];
+            break;
+        }
+    }
+    
+    if (!$userNodeId) {
+        return [];
+    }
+    
+    // Najít role uživatele
+    $userRoles = [];
+    $stmt = $db->prepare("SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId");
+    $stmt->execute(['userId' => $userId]);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $userRoles[] = $row['role_id'];
+    }
+    
+    // Projít edges a najít vztahy uživatele
+    $relationships = [];
+    
+    foreach ($structure['edges'] as $edge) {
+        $isUserRelation = false;
+        $targetNode = null;
+        
+        // Je edge od user node?
+        if ($edge['source'] === $userNodeId || $edge['target'] === $userNodeId) {
+            $isUserRelation = true;
+            $targetNodeId = ($edge['source'] === $userNodeId) ? $edge['target'] : $edge['source'];
+            
+            // Najít target node
+            foreach ($structure['nodes'] as $node) {
+                if ($node['id'] === $targetNodeId) {
+                    $targetNode = $node;
+                    break;
+                }
+            }
+        }
+        
+        // Nebo je edge od role node, kterou user má?
+        if (!$isUserRelation && !empty($userRoles)) {
+            foreach ($structure['nodes'] as $node) {
+                if ($node['typ'] === 'role' && isset($node['data']['role_id']) && in_array($node['data']['role_id'], $userRoles)) {
+                    if ($edge['source'] === $node['id'] || $edge['target'] === $node['id']) {
+                        $isUserRelation = true;
+                        $targetNodeId = ($edge['source'] === $node['id']) ? $edge['target'] : $edge['source'];
+                        
+                        foreach ($structure['nodes'] as $n) {
+                            if ($n['id'] === $targetNodeId) {
+                                $targetNode = $n;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if ($isUserRelation && $targetNode) {
+            // Mapovat na starý formát pro zpětnou kompatibilitu
+            $modules = isset($edge['data']['modules']) ? $edge['data']['modules'] : ['orders' => true];
+            
+            if (!isset($modules['orders']) || !$modules['orders']) {
+                continue; // Skip pokud není orders module
+            }
+            
+            $rel = [
+                'typ_vztahu' => $targetNode['typ'],
+                'user_id_1' => null,
+                'user_id_2' => null,
+                'lokalita_id' => null,
+                'usek_id' => null,
+                'role_id' => null
+            ];
+            
+            if ($targetNode['typ'] === 'user' && isset($targetNode['data']['uzivatel_id'])) {
+                $rel['user_id_2'] = $targetNode['data']['uzivatel_id'];
+                $rel['typ_vztahu'] = 'user-user';
+            } elseif ($targetNode['typ'] === 'location' && isset($targetNode['data']['lokalita_id'])) {
+                $rel['lokalita_id'] = $targetNode['data']['lokalita_id'];
+                $rel['typ_vztahu'] = 'user-location';
+            } elseif ($targetNode['typ'] === 'department' && isset($targetNode['data']['usek_id'])) {
+                $rel['usek_id'] = $targetNode['data']['usek_id'];
+                $rel['typ_vztahu'] = 'user-department';
+            } elseif ($targetNode['typ'] === 'role' && isset($targetNode['data']['role_id'])) {
+                $rel['role_id'] = $targetNode['data']['role_id'];
+                $rel['typ_vztahu'] = 'user-role';
+            }
+            
+            $relationships[] = $rel;
+        }
+    }
+    
+    return $relationships;
+}
 
 /**
  * Zkontroluje, zda je hierarchie workflow aktivní
@@ -177,50 +299,20 @@ function applyHierarchyFilterToOrders($userId, $db) {
     
     error_log("✅ User is NOT immune - will apply hierarchy filter");
     
-    // 3. Načti všechny hierarchické vztahy uživatele
+    // 3. Načti všechny hierarchické vztahy uživatele ze structure_json
     $profileId = $settings['profile_id'];
     $logic = $settings['logic'];
     
-    // ✅ SPRÁVNÁ QUERY: Všechny sloupce existují v DB
-    $query = "
-        SELECT 
-            hz.typ_vztahu,
-            hz.user_id_1,
-            hz.user_id_2,
-            hz.lokalita_id,
-            hz.usek_id,
-            hz.role_id
-        FROM 25_hierarchie_vztahy hz
-        WHERE hz.profil_id = :profileId
-          AND hz.aktivni = 1
-          AND hz.viditelnost_objednavky = 1
-          AND (
-              hz.user_id_1 = :userId1
-              OR hz.user_id_2 = :userId2
-              OR (hz.role_id IS NOT NULL AND hz.role_id IN (
-                  SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId3
-              ))
-          )
-    ";
-    
-    error_log("🔍 HIERARCHY DEBUG: Loading relationships for user $userId, profile $profileId");
+    error_log("🔍 HIERARCHY DEBUG: Loading relationships for user $userId, profile $profileId from structure_json");
     
     try {
-        $stmt = $db->prepare($query);
-        $stmt->execute([
-            'profileId' => $profileId,
-            'userId1' => $userId,
-            'userId2' => $userId,
-            'userId3' => $userId
-        ]);
-        
-        $relationships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $relationships = getUserRelationshipsFromStructure($userId, $db);
         
         // 🔥 Ulož do debug info
         $HIERARCHY_DEBUG_INFO['relationships'] = $relationships;
         $HIERARCHY_DEBUG_INFO['relationships_count'] = count($relationships);
         
-    } catch (PDOException $e) {
+    } catch (Exception $e) {
         error_log("❌ HIERARCHY ERROR: Failed to load relationships: " . $e->getMessage());
         $HIERARCHY_DEBUG_INFO['error'] = $e->getMessage();
         return null;
