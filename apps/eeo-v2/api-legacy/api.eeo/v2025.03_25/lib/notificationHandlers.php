@@ -616,6 +616,8 @@ function handle_notifications_unread_count($input, $config, $queries) {
     try {
         $db = get_db($config);
         $uzivatel_id = $token_data['id'];
+        
+        error_log("🔔 [UnreadCount] Počítám nepřečtené pro user_id=$uzivatel_id...");
 
         // Spočítej nepřečtené z " . TABLE_NOTIFIKACE_PRECTENI . "
         // MUSÍ být: nepřečtené (precteno=0), NEsmazané (smazano=0), NEdismissnuté (skryto=0)
@@ -632,10 +634,13 @@ function handle_notifications_unread_count($input, $config, $queries) {
         $stmt->execute(array(':uzivatel_id' => $uzivatel_id));
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $count = (int)$result['unread_count'];
+        
+        error_log("   ✅ Výsledek: $count nepřečtených notifikací");
 
         echo json_encode(array(
             'status' => 'ok',
-            'unread_count' => (int)$result['unread_count']
+            'unread_count' => $count
         ));
 
     } catch (Exception $e) {
@@ -1578,11 +1583,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 7. Vytvořit in-app notifikaci
                 if ($recipient['sendInApp']) {
                     $params = array(
-                        ':typ' => 'system',
+                        ':typ' => 'user',  // ✅ OPRAVENO: 'user' místo 'system' - notifikaci poslal skutečný uživatel
                         ':nadpis' => $processedTitle,
                         ':zprava' => $processedMessage,
                         ':data_json' => json_encode($notificationData),
-                        ':od_uzivatele_id' => $triggerUserId,
+                        ':od_uzivatele_id' => $triggerUserId,  // ✅ Autor akce (user_id=100)
                         ':pro_uzivatele_id' => $recipient['uzivatel_id'],
                         ':prijemci_json' => null,
                         ':pro_vsechny' => 0,
