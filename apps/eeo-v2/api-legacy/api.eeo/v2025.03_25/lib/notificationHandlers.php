@@ -2332,23 +2332,46 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
     error_log("   Event: $eventType, Object ID: $objectId, Trigger User: $triggerUserId");
     
     try {
-        // 1. Najít aktivní profil hierarchie
-        error_log("   🔍 Hledám aktivní hierarchický profil...");
-        $stmt = $db->prepare("
-            SELECT id, structure_json 
-            FROM 25_hierarchie_profily 
-            WHERE aktivni = 1 
-            LIMIT 1
-        ");
-        $stmt->execute();
-        $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+        // 1. Najít profil hierarchie z GLOBÁLNÍHO NASTAVENÍ (ne podle aktivni=1)
+        error_log("   🔍 Načítám hierarchický profil z globálního nastavení...");
         
-        if (!$profile) {
-            error_log("   ❌ ŽÁDNÝ aktivní hierarchický profil nenalezen!");
+        // Načíst hierarchy_profile_id z global settings
+        $stmt = $db->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'hierarchy_profile_id'");
+        $stmt->execute();
+        $settingRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $profileId = null;
+        if ($settingRow && $settingRow['hodnota'] && $settingRow['hodnota'] !== 'NULL') {
+            $profileId = (int)$settingRow['hodnota'];
+        }
+        
+        // Fallback: pokud není nastaveno, použít první aktivní profil
+        if (!$profileId) {
+            error_log("   ⚠️ Profil není nastaven v global settings, použiji aktivní profil jako fallback");
+            $stmt = $db->prepare("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 ORDER BY id ASC LIMIT 1");
+            $stmt->execute();
+            $fallbackRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($fallbackRow) {
+                $profileId = (int)$fallbackRow['id'];
+            }
+        }
+        
+        if (!$profileId) {
+            error_log("   ❌ ŽÁDNÝ hierarchický profil nenalezen!");
             return $recipients;
         }
         
-        error_log("   ✅ Nalezen profil ID={$profile['id']}");
+        // Načíst structure_json pro vybraný profil
+        $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE id = ?");
+        $stmt->execute([$profileId]);
+        $profile = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$profile) {
+            error_log("   ❌ Profil ID=$profileId neexistuje!");
+            return $recipients;
+        }
+        
+        error_log("   ✅ Načten profil ID={$profile['id']} z globálního nastavení");
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
