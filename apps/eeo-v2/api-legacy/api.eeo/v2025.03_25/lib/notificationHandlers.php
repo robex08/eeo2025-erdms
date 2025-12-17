@@ -2466,12 +2466,16 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 error_log("         → After scope filter: " . count($targetUserIds) . " recipients");
                 
                 // 7. PRO KAŽDÉHO UŽIVATELE určit variantu a recipientRole podle jeho ROLE V OBJEDNÁVCE
-                // Načíst data objednávky jednou pro všechny
+                // Načíst data objednávky jednou pro všechny (včetně mimoradna_udalost)
                 $entityData = null;
                 if ($objectType === 'orders') {
-                    $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                    $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id, mimoradna_udalost FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
                     $stmt->execute([$objectId]);
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($entityData && $entityData['mimoradna_udalost']) {
+                        error_log("         🔥 MIMOŘÁDNÁ UDÁLOST - použije se EXCEPTIONAL varianta pro příkazce/schvalovatel");
+                    }
                 }
                 
                 // 8. Přidat každého target user do seznamu příjemců
@@ -2481,10 +2485,18 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     $userVariant = 'infoVariant';  // Default
                     
                     if ($entityData) {
-                        // Je příkazce/schvalovatel? → APPROVAL (urgentVariant)
+                        // Je příkazce/schvalovatel?
                         if ($userId == $entityData['prikazce_id'] || $userId == $entityData['schvalovatel_id']) {
-                            $userRecipientRole = 'APPROVAL';
-                            $userVariant = 'urgentVariant';
+                            // 🔥 Pokud je mimořádná událost → EXCEPTIONAL (blesk ⚡)
+                            if (!empty($entityData['mimoradna_udalost'])) {
+                                $userRecipientRole = 'EXCEPTIONAL';
+                                $userVariant = 'urgentVariant';  // Použije urgentVariant z NODE (červená šablona)
+                            } 
+                            // 🟠 Normální událost → APPROVAL (vykřičník ❗)
+                            else {
+                                $userRecipientRole = 'APPROVAL';
+                                $userVariant = 'urgentVariant';  // Stále urgentVariant, ale priorita APPROVAL
+                            }
                         }
                         // Je autor/garant/objednatel? → INFO (infoVariant)
                         elseif ($userId == $entityData['uzivatel_id'] || 
