@@ -2548,20 +2548,40 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     );
                 }
                 
-                // 9. 🆕 VŽDY přidat tvůrce notifikace (source účastníky) s INFO prioritou
+                // 9. 🆕 Přidat tvůrce notifikace (source účastníky) s INFO prioritou
                 // Tito dostanou notifikaci BEZ OHLEDU na NODE filtr (roli)
                 if ($objectType === 'orders' && $entityData) {
-                    error_log("         🔄 Přidávám source účastníky (tvůrce notifikace) s INFO prioritou...");
+                    // Kontrola, zda je zapnuto odesílání INFO tvůrcům
+                    $sourceInfoEnabled = isset($edge['data']['source_info_recipients']['enabled']) 
+                        ? (bool)$edge['data']['source_info_recipients']['enabled'] 
+                        : true;  // Default: zapnuto pro zpětnou kompatibilitu
                     
-                    $sourceParticipants = array();
-                    if (!empty($entityData['uzivatel_id'])) $sourceParticipants[] = $entityData['uzivatel_id'];
-                    if (!empty($entityData['garant_uzivatel_id'])) $sourceParticipants[] = $entityData['garant_uzivatel_id'];
-                    if (!empty($entityData['objednatel_id'])) $sourceParticipants[] = $entityData['objednatel_id'];
-                    
-                    // Získat INFO variantu z NODE
-                    $infoVariantName = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : '';
-                    
-                    foreach ($sourceParticipants as $sourceUserId) {
+                    if (!$sourceInfoEnabled) {
+                        error_log("         ⚠️ Source INFO recipients vypnuto v EDGE konfiguraci");
+                    } else {
+                        error_log("         🔄 Přidávám source účastníky (tvůrce notifikace) s INFO prioritou...");
+                        
+                        // Pokud není definováno pole 'fields', použij default seznam
+                        $defaultFields = ['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id'];
+                        $selectedFields = isset($edge['data']['source_info_recipients']['fields']) 
+                            ? $edge['data']['source_info_recipients']['fields'] 
+                            : $defaultFields;
+                        
+                        error_log("         → Selected fields: " . implode(', ', $selectedFields));
+                        
+                        $sourceParticipants = array();
+                        foreach ($selectedFields as $field) {
+                            if (!empty($entityData[$field])) {  // NULL se automaticky přeskočí
+                                $sourceParticipants[] = $entityData[$field];
+                            }
+                        }
+                        
+                        $sourceParticipants = array_unique($sourceParticipants);  // Odstranit duplicity
+                        
+                        // Získat INFO variantu z NODE
+                        $infoVariantName = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : '';
+                        
+                        foreach ($sourceParticipants as $sourceUserId) {
                         // Zkontrolovat, zda už není v seznamu (z NODE filtru)
                         $alreadyAdded = false;
                         foreach ($recipients as $existingRecipient) {
@@ -2610,6 +2630,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                             'templateId' => $node['data']['templateId'],
                             'templateVariant' => $infoVariantName
                         );
+                        }
                     }
                 }
             }
