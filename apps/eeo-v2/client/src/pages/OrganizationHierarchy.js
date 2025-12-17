@@ -2048,22 +2048,39 @@ const OrganizationHierarchy = () => {
         const profilesList = profilesData.data || [];
         setProfiles(profilesList);
         
-        // 🔥 PRIORITA: Načíst z Global Settings (DB) - to je zdroj pravdy!
+        // 🔥 PRIORITA načítání profilu:
+        // 1. localStorage (poslední vybraný uživatelem)
+        // 2. Global Settings (DB default)
+        // 3. Fallback: aktivní profil nebo první
         let selectedProfile = null;
         
-        // 1. Zkus načíst z global settings API
-        try {
-          const { getGlobalSettings } = await import('../services/globalSettingsApi');
-          const globalSettings = await getGlobalSettings(token, username);
-          
-          if (globalSettings.hierarchy_profile_id) {
-            selectedProfile = profilesList.find(p => p.id === parseInt(globalSettings.hierarchy_profile_id));
+        // 1. Zkusit načíst z localStorage (poslední volba uživatele)
+        const savedProfileId = localStorage.getItem(LS_PROFILE_KEY);
+        if (savedProfileId) {
+          selectedProfile = profilesList.find(p => p.id === parseInt(savedProfileId));
+          if (selectedProfile) {
+            console.log('✅ Loaded profile from localStorage:', selectedProfile.name);
           }
-        } catch (err) {
-          console.warn('⚠️ Failed to load profile from Global Settings:', err);
         }
         
-        // 2. Fallback: Použít aktivní profil
+        // 2. Pokud není v localStorage, zkus Global Settings API
+        if (!selectedProfile) {
+          try {
+            const { getGlobalSettings } = await import('../services/globalSettingsApi');
+            const globalSettings = await getGlobalSettings(token, username);
+            
+            if (globalSettings.hierarchy_profile_id) {
+              selectedProfile = profilesList.find(p => p.id === parseInt(globalSettings.hierarchy_profile_id));
+              if (selectedProfile) {
+                console.log('✅ Loaded profile from Global Settings:', selectedProfile.name);
+              }
+            }
+          } catch (err) {
+            console.warn('⚠️ Failed to load profile from Global Settings:', err);
+          }
+        }
+        
+        // 3. Fallback: Použít aktivní profil
         if (!selectedProfile) {
           selectedProfile = profilesList.find(p => p.isActive) || profilesList[0];
           console.log('⚠️ Using fallback profile (active or first):', selectedProfile?.name);
@@ -2147,6 +2164,14 @@ const OrganizationHierarchy = () => {
           localStorage.removeItem(LS_NODES_KEY);
           localStorage.removeItem(LS_EDGES_KEY);
           localStorage.removeItem(LS_TIMESTAMP_KEY);
+          
+          // 🆕 FIT VIEW po načtení dat z API
+          setTimeout(() => {
+            if (reactFlowInstance) {
+              reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+              console.log('🔄 ReactFlow viewport fitted after initial load');
+            }
+          }, 200);
           
         } else {
           // Fallback: Načíst draft z localStorage
