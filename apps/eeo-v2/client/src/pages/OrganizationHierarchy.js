@@ -7565,6 +7565,51 @@ const OrganizationHierarchy = () => {
                         </div>
                       </div>
                       
+                      {/* Recipient Type Display */}
+                      <div style={{ 
+                        padding: '10px', 
+                        background: '#e0f2fe', 
+                        borderRadius: '6px',
+                        marginBottom: '12px',
+                        border: '2px solid #0ea5e9'
+                      }}>
+                        <div style={{ fontSize: '0.8rem', color: '#0c4a6e', fontWeight: 600, marginBottom: '4px' }}>
+                          👤 Typ příjemce (Recipient Type)
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 700 }}>
+                          {(() => {
+                            const recipientNode = targetNode?.data?.type === 'template' ? sourceNode : targetNode;
+                            const nodeType = recipientNode?.data?.type;
+                            const genericType = recipientNode?.data?.genericType;
+                            
+                            if (nodeType === 'genericRecipient' && genericType) {
+                              const labels = {
+                                'TRIGGER_USER': '🎯 TRIGGER_USER',
+                                'ENTITY_AUTHOR': '✍️ ENTITY_AUTHOR',
+                                'ENTITY_OWNER': '👤 ENTITY_OWNER'
+                              };
+                              return labels[genericType] || genericType;
+                            } else if (nodeType === 'user') {
+                              return '👤 USER';
+                            } else if (nodeType === 'role') {
+                              return '🎭 ROLE';
+                            } else if (nodeType === 'group') {
+                              return '👥 GROUP';
+                            } else {
+                              return nodeType?.toUpperCase() || 'UNKNOWN';
+                            }
+                          })()}
+                        </div>
+                        <div style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#0c4a6e', 
+                          marginTop: '4px',
+                          fontStyle: 'italic'
+                        }}>
+                          Určuje, jaký typ příjemců bude tato notifikace oslovovat
+                        </div>
+                      </div>
+                      
                       {/* Typ notifikace pro příjemce */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
@@ -7715,6 +7760,72 @@ const OrganizationHierarchy = () => {
                               <strong>❌ Vypnuto:</strong> Kontrola lokality/úseku se neprovádí.
                             </div>
                           </label>
+                        </div>
+                      </FormGroup>
+
+                      {/* Scope Filter - nový systém pro filtrování příjemců */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <div style={{
+                          padding: '12px',
+                          background: '#f0fdf4',
+                          border: '2px solid #10b981',
+                          borderRadius: '8px'
+                        }}>
+                          <label style={{ 
+                            fontSize: '0.85rem', 
+                            fontWeight: '600', 
+                            color: '#065f46', 
+                            marginBottom: '8px',
+                            display: 'block'
+                          }}>
+                            🎯 Scope Filter (Rozsah příjemců)
+                          </label>
+                          <select 
+                            value={selectedEdge.data?.scope_filter || 'NONE'}
+                            onChange={(e) => {
+                              setEdges(edges.map(edge => 
+                                edge.id === selectedEdge.id 
+                                  ? { ...edge, data: { ...edge.data, scope_filter: e.target.value }}
+                                  : edge
+                              ));
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              fontSize: '0.85rem',
+                              border: '2px solid #10b981',
+                              borderRadius: '6px',
+                              backgroundColor: 'white',
+                              cursor: 'pointer',
+                              marginBottom: '8px'
+                            }}
+                          >
+                            <option value="NONE">NONE - Bez filtru (výchozí)</option>
+                            <option value="ALL">ALL - Všichni uživatelé daného typu</option>
+                            <option value="LOCATION">LOCATION - Pouze z lokality entity</option>
+                            <option value="DEPARTMENT">DEPARTMENT - Pouze z úseku entity</option>
+                            <option value="ENTITY_PARTICIPANTS">ENTITY_PARTICIPANTS - ⭐ Pouze účastníci této entity</option>
+                          </select>
+                          <div style={{ fontSize: '0.75rem', color: '#047857', lineHeight: '1.5', marginTop: '4px' }}>
+                            {selectedEdge.data?.scope_filter === 'NONE' && (
+                              <span>🔓 <strong>NONE:</strong> Všichni uživatelé odpovídající typu příjemce (bez dalšího filtrování).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'ALL' && (
+                              <span>🌍 <strong>ALL:</strong> Explicitně posílat všem uživatelům daného typu v celém systému.</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'LOCATION' && (
+                              <span>📍 <strong>LOCATION:</strong> Pouze uživatelé z lokality této konkrétní entity (kontroluje hierarchii).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'DEPARTMENT' && (
+                              <span>🏢 <strong>DEPARTMENT:</strong> Pouze uživatelé z úseku této konkrétní entity (kontroluje hierarchii).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'ENTITY_PARTICIPANTS' && (
+                              <span>⭐ <strong>ENTITY_PARTICIPANTS:</strong> Pouze účastníci této konkrétní entity (objednatel, garant, příkazce, schvalovatelé). <em>Nejpřesnější filtr!</em></span>
+                            )}
+                            {!selectedEdge.data?.scope_filter && (
+                              <span>🔓 <strong>NONE (výchozí):</strong> Všichni uživatelé odpovídající typu příjemce.</span>
+                            )}
+                          </div>
                         </div>
                       </FormGroup>
                       
