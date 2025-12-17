@@ -1824,32 +1824,37 @@ function resolveRecipients($db, $recipientType, $recipientData, $entityType, $en
         switch ($recipientType) {
             case 'USER':
                 // Konkrétní uživatel
-                if (isset($recipientData['uzivatel_id'])) {
+                if (isset($recipientData['userId'])) {
+                    $recipients = [$recipientData['userId']];
+                } elseif (isset($recipientData['uzivatel_id'])) {
                     $recipients = [$recipientData['uzivatel_id']];
                 }
                 break;
                 
             case 'ROLE':
                 // Všichni uživatelé s danou rolí
-                if (isset($recipientData['role_id'])) {
+                $roleId = isset($recipientData['roleId']) ? $recipientData['roleId'] : (isset($recipientData['role_id']) ? $recipientData['role_id'] : null);
+                if ($roleId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT u.id 
-                        FROM users u
-                        JOIN 25_user_roles ur ON u.id = ur.user_id
+                        FROM 25_users u
+                        JOIN 25_user_roles ur ON u.id = ur.uzivatel_id
                         WHERE ur.role_id = ? AND u.aktivni = 1
                     ");
-                    $stmt->execute([$recipientData['role_id']]);
+                    $stmt->execute([$roleId]);
                     $recipients = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                    error_log("[resolveRecipients] ROLE $roleId: Found " . count($recipients) . " users");
                 }
                 break;
                 
             case 'GROUP':
                 // Skupina uživatelů
-                if (isset($recipientData['group_id'])) {
+                $groupId = isset($recipientData['groupId']) ? $recipientData['groupId'] : (isset($recipientData['group_id']) ? $recipientData['group_id'] : null);
+                if ($groupId) {
                     $stmt = $db->prepare("
-                        SELECT user_id FROM 25_user_groups_members WHERE group_id = ?
+                        SELECT uzivatel_id FROM 25_user_groups_members WHERE group_id = ?
                     ");
-                    $stmt->execute([$recipientData['group_id']]);
+                    $stmt->execute([$groupId]);
                     $recipients = $stmt->fetchAll(PDO::FETCH_COLUMN);
                 }
                 break;
