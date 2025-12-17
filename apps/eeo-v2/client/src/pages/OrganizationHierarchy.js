@@ -1101,8 +1101,7 @@ const CustomNode = ({ data, selected }) => {
   const isRole = data.type === 'role';
   const isLocation = data.type === 'location';
   const isDepartment = data.type === 'department';
-  const isGenericRecipient = data.type === 'genericRecipient';
-  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole && !isGenericRecipient;
+  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole;
   
   // Pro template nodes - jen zelený výstupní bod
   if (isTemplate) {
@@ -1249,7 +1248,7 @@ const CustomNode = ({ data, selected }) => {
     );
   }
 
-  // Pro role nodes - fialový node s ikonou štítu
+  // Pro role nodes - fialový node s target handle
   if (isRole) {
     return (
       <div style={{
@@ -2906,39 +2905,6 @@ const OrganizationHierarchy = () => {
       bounds: { left: reactFlowBounds.left, top: reactFlowBounds.top },
       viewport: reactFlowInstance.getViewport()
     });
-    
-    // Zpracování Generic Recipient - přidat jako node
-    if (dragId.startsWith('generic-')) {
-      const genericType = dragId.replace('generic-', '');
-      const nodeId = `genericRecipient-${genericType}-${Date.now()}`;
-      
-      const genericLabels = {
-        'TRIGGER_USER': 'Spouštěč akce',
-        'ENTITY_AUTHOR': 'Objednatel / Autor',
-        'ENTITY_OWNER': 'Příkazce / Vlastník'
-      };
-      
-      const newNode = {
-        id: nodeId,
-        type: 'custom',
-        position,
-        data: {
-          type: 'genericRecipient',
-          genericType: genericType,
-          name: genericLabels[genericType] || genericType,
-          label: genericLabels[genericType] || genericType,
-          position: 'Dynamický příjemce',
-          initials: genericType === 'TRIGGER_USER' ? '🎯' : genericType === 'ENTITY_AUTHOR' ? '✍️' : '👤',
-          metadata: {
-            type: 'genericRecipient'
-          }
-        }
-      };
-      
-      setNodes((nds) => [...nds, newNode]);
-      console.log(`✅ Added generic recipient node: ${genericType}`);
-      return;
-    }
     
     // Zpracování notifikační šablony - přidat jako node
     if (dragId.startsWith('notif-')) {
@@ -5076,134 +5042,6 @@ const OrganizationHierarchy = () => {
                 </SectionContent>
               </CollapsibleSection>
 
-              {/* GENERIC RECIPIENTS - Nová sekce pro Generic Recipient System */}
-              <CollapsibleSection>
-                <SectionHeader
-                  expanded={expandedSections.genericRecipients}
-                  onClick={() => toggleSection('genericRecipients')}
-                >
-                  <FontAwesomeIcon icon={expandedSections.genericRecipients ? faChevronDown : faChevronRight} />
-                  <span style={{ marginLeft: '8px' }}>🎯 DYNAMIČTÍ PŘÍJEMCI (3)</span>
-                </SectionHeader>
-                <SectionContent expanded={expandedSections.genericRecipients}>
-                  <div>
-                    {/* TRIGGER_USER */}
-                    <LocationItem
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('application/reactflow', 'generic-TRIGGER_USER');
-                        setDraggedItem('generic-TRIGGER_USER');
-                        console.log('🎯 Drag start generic: TRIGGER_USER');
-                      }}
-                      onDragEnd={() => {
-                        setDraggedItem(null);
-                      }}
-                      style={{
-                        background: 'white',
-                        borderColor: '#e0e6ed',
-                        cursor: 'grab'
-                      }}
-                    >
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '1rem',
-                        flexShrink: 0
-                      }}>
-                        🎯
-                      </div>
-                      <UserInfo>
-                        <UserName>Spouštěč akce</UserName>
-                        <UserMeta>Uživatel, který akci provedl</UserMeta>
-                      </UserInfo>
-                    </LocationItem>
-
-                    {/* ENTITY_AUTHOR */}
-                    <LocationItem
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('application/reactflow', 'generic-ENTITY_AUTHOR');
-                        setDraggedItem('generic-ENTITY_AUTHOR');
-                        console.log('🎯 Drag start generic: ENTITY_AUTHOR');
-                      }}
-                      onDragEnd={() => {
-                        setDraggedItem(null);
-                      }}
-                      style={{
-                        background: 'white',
-                        borderColor: '#e0e6ed',
-                        cursor: 'grab'
-                      }}
-                    >
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '1rem',
-                        flexShrink: 0
-                      }}>
-                        ✍️
-                      </div>
-                      <UserInfo>
-                        <UserName>Objednatel / Autor</UserName>
-                        <UserMeta>Tvůrce entity (objednatel objednávky, autor faktury...)</UserMeta>
-                      </UserInfo>
-                    </LocationItem>
-
-                    {/* ENTITY_OWNER */}
-                    <LocationItem
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('application/reactflow', 'generic-ENTITY_OWNER');
-                        setDraggedItem('generic-ENTITY_OWNER');
-                        console.log('🎯 Drag start generic: ENTITY_OWNER');
-                      }}
-                      onDragEnd={() => {
-                        setDraggedItem(null);
-                      }}
-                      style={{
-                        background: 'white',
-                        borderColor: '#e0e6ed',
-                        cursor: 'grab'
-                      }}
-                    >
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '1rem',
-                        flexShrink: 0
-                      }}>
-                        👤
-                      </div>
-                      <UserInfo>
-                        <UserName>Příkazce / Vlastník</UserName>
-                        <UserMeta>Příkazce objednávky, vlastník entity</UserMeta>
-                      </UserInfo>
-                    </LocationItem>
-                  </div>
-                </SectionContent>
-              </CollapsibleSection>
-
               {/* NOTIFIKAČNÍ ŠABLONY - Nová sekce */}
               <CollapsibleSection>
                 <SectionHeader
@@ -6886,125 +6724,6 @@ const OrganizationHierarchy = () => {
                   </>
                 )}
                 
-                {/* GENERIC RECIPIENT NODE */}
-                {selectedNode && selectedNode.data.type === 'genericRecipient' && (
-                  <>
-                    <FormGroup>
-                      <Label>Typ dynamického příjemce</Label>
-                      <Input value={selectedNode.data.genericType || 'NEZnÁMÝ'} readOnly />
-                    </FormGroup>
-                    <FormGroup>
-                      <Label>Název</Label>
-                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
-                    </FormGroup>
-                    
-                    <div style={{
-                      marginTop: '12px',
-                      padding: '14px',
-                      background: (() => {
-                        const colors = {
-                          'TRIGGER_USER': '#d1fae5',
-                          'ENTITY_AUTHOR': '#dbeafe',
-                          'ENTITY_OWNER': '#fef3c7'
-                        };
-                        return colors[selectedNode.data.genericType] || '#f3f4f6';
-                      })(),
-                      border: (() => {
-                        const colors = {
-                          'TRIGGER_USER': '2px solid #10b981',
-                          'ENTITY_AUTHOR': '2px solid #3b82f6',
-                          'ENTITY_OWNER': '2px solid #f59e0b'
-                        };
-                        return colors[selectedNode.data.genericType] || '2px solid #9ca3af';
-                      })(),
-                      borderRadius: '8px',
-                      fontSize: '0.85rem',
-                      color: (() => {
-                        const colors = {
-                          'TRIGGER_USER': '#065f46',
-                          'ENTITY_AUTHOR': '#1e40af',
-                          'ENTITY_OWNER': '#92400e'
-                        };
-                        return colors[selectedNode.data.genericType] || '#374151';
-                      })()
-                    }}>
-                      <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '8px' }}>
-                        {selectedNode.data.genericType === 'TRIGGER_USER' && '🎯 Spouštěč akce'}
-                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && '✍️ Objednatel / Autor entity'}
-                        {selectedNode.data.genericType === 'ENTITY_OWNER' && '👤 Příkazce / Vlastník entity'}
-                      </div>
-                      <strong>💡 Jak to funguje:</strong>
-                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
-                        {selectedNode.data.genericType === 'TRIGGER_USER' && (
-                          <>
-                            <li>Dynamicky se určí podle <strong>kontextu události</strong></li>
-                            <li>Např. když Jan Novák schválí objednávku → <strong>Jan Novák</strong> dostane notifikaci</li>
-                            <li>Ideální pro: potvrzení akce, zpětné info o tom co jsem udělal</li>
-                          </>
-                        )}
-                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && (
-                          <>
-                            <li>Určí se podle pole <strong>objednatel_id</strong> u objednávky</li>
-                            <li>Např. objednávku vytvořil Petr Svoboda → <strong>Petr Svoboda</strong> dostane notifikaci</li>
-                            <li>Ideální pro: notifikace o změně stavu objednávky, kterou jsem vytvořil</li>
-                          </>
-                        )}
-                        {selectedNode.data.genericType === 'ENTITY_OWNER' && (
-                          <>
-                            <li>Určí se podle pole <strong>prikazce_id</strong> u objednávky</li>
-                            <li>Např. příkazce je Marie Nováková → <strong>Marie Nováková</strong> dostane notifikaci</li>
-                            <li>Ideální pro: notifikace o schvalování, fakturaci mé objednávky</li>
-                          </>
-                        )}
-                      </ul>
-                    </div>
-                    
-                    {/* Zobrazení příchozích hran (ze kterých templates přicházejí notifikace) */}
-                    {(() => {
-                      const incomingEdges = edges.filter(e => e.target === selectedNode.id);
-                      if (incomingEdges.length === 0) return null;
-                      
-                      return (
-                        <div style={{
-                          marginTop: '12px',
-                          padding: '12px',
-                          background: '#f0fdf4',
-                          border: '2px solid #10b981',
-                          borderRadius: '8px'
-                        }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#065f46', marginBottom: '8px' }}>
-                            📨 Notifikační šablony (příchozí):
-                          </div>
-                          {incomingEdges.map(edge => {
-                            const sourceNode = nodes.find(n => n.id === edge.source);
-                            const scopeFilter = edge.data?.scope_filter || 'NONE';
-                            const recipientRole = edge.data?.recipientRole || 'INFO';
-                            
-                            return (
-                              <div key={edge.id} style={{
-                                padding: '8px',
-                                background: 'white',
-                                border: '1px solid #d1fae5',
-                                borderRadius: '6px',
-                                marginBottom: '6px',
-                                fontSize: '0.8rem'
-                              }}>
-                                <div style={{ fontWeight: '600', color: '#047857' }}>
-                                  🔔 {sourceNode?.data?.name || 'Unknown Template'}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: '#065f46', marginTop: '4px' }}>
-                                  📍 <strong>Scope Filter:</strong> {scopeFilter}<br/>
-                                  🎯 <strong>Typ notifikace:</strong> {recipientRole}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-                
                 {/* UŽIVATELSKÝ NODE */}
                 {selectedNode && (!selectedNode.data.type || selectedNode.data.type === 'user') && (
                   <>
@@ -8041,7 +7760,7 @@ const OrganizationHierarchy = () => {
                             marginBottom: '8px',
                             display: 'block'
                           }}>
-                            🎯 Scope Filter (Rozsah příjemců)
+                            🎯 Komu poslat (Scope Filter)
                           </label>
                           <select 
                             value={selectedEdge.data?.scope_filter || 'NONE'}
@@ -8063,30 +7782,43 @@ const OrganizationHierarchy = () => {
                               marginBottom: '8px'
                             }}
                           >
-                            <option value="NONE">NONE - Bez filtru (výchozí)</option>
-                            <option value="ALL">ALL - Všichni uživatelé daného typu</option>
-                            <option value="LOCATION">LOCATION - Pouze z lokality entity</option>
-                            <option value="DEPARTMENT">DEPARTMENT - Pouze z úseku entity</option>
-                            <option value="ENTITY_PARTICIPANTS">ENTITY_PARTICIPANTS - ⭐ Pouze účastníci této entity</option>
+                            <optgroup label="─── ZÁKLADNÍ FILTRY ───">
+                              <option value="NONE">Bez filtru - všichni daného typu</option>
+                              <option value="LOCATION">Z lokality entity</option>
+                              <option value="DEPARTMENT">Z úseku entity</option>
+                            </optgroup>
+                            <optgroup label="─── ÚČASTNÍCI TÉTO ENTITY ⭐ ───">
+                              <option value="PARTICIPANTS_ALL">⭐ Všichni účastníci</option>
+                              <option value="PARTICIPANTS_OBJEDNATEL">Jen objednatel</option>
+                              <option value="PARTICIPANTS_PRIKAZCE">Jen příkazce</option>
+                              <option value="PARTICIPANTS_GARANT">Jen garant</option>
+                              <option value="PARTICIPANTS_SCHVALOVATEL">Jen schvalovatelé</option>
+                            </optgroup>
                           </select>
                           <div style={{ fontSize: '0.75rem', color: '#047857', lineHeight: '1.5', marginTop: '4px' }}>
-                            {selectedEdge.data?.scope_filter === 'NONE' && (
-                              <span>🔓 <strong>NONE:</strong> Všichni uživatelé odpovídající typu příjemce (bez dalšího filtrování).</span>
-                            )}
-                            {selectedEdge.data?.scope_filter === 'ALL' && (
-                              <span>🌍 <strong>ALL:</strong> Explicitně posílat všem uživatelům daného typu v celém systému.</span>
+                            {(!selectedEdge.data?.scope_filter || selectedEdge.data?.scope_filter === 'NONE') && (
+                              <span>🔓 <strong>Bez filtru:</strong> Pošle všem uživatelům daného typu (role/úsek/lokalita) bez omezení.</span>
                             )}
                             {selectedEdge.data?.scope_filter === 'LOCATION' && (
-                              <span>📍 <strong>LOCATION:</strong> Pouze uživatelé z lokality této konkrétní entity (kontroluje hierarchii).</span>
+                              <span>📍 <strong>Z lokality:</strong> Pošle jen uživatelům z lokality, kde je objednávka/faktura.</span>
                             )}
                             {selectedEdge.data?.scope_filter === 'DEPARTMENT' && (
-                              <span>🏢 <strong>DEPARTMENT:</strong> Pouze uživatelé z úseku této konkrétní entity (kontroluje hierarchii).</span>
+                              <span>🏢 <strong>Z úseku:</strong> Pošle jen uživatelům z úseku, kde je objednávka/faktura.</span>
                             )}
-                            {selectedEdge.data?.scope_filter === 'ENTITY_PARTICIPANTS' && (
-                              <span>⭐ <strong>ENTITY_PARTICIPANTS:</strong> Pouze účastníci této konkrétní entity (objednatel, garant, příkazce, schvalovatelé). <em>Nejpřesnější filtr!</em></span>
+                            {selectedEdge.data?.scope_filter === 'PARTICIPANTS_ALL' && (
+                              <span>⭐ <strong>Všichni účastníci:</strong> Pošle VŠEM, kdo jsou přiřazeni k této konkrétní objednávce (objednatel, garant, příkazce, schvalovatelé).</span>
                             )}
-                            {!selectedEdge.data?.scope_filter && (
-                              <span>🔓 <strong>NONE (výchozí):</strong> Všichni uživatelé odpovídající typu příjemce.</span>
+                            {selectedEdge.data?.scope_filter === 'PARTICIPANTS_OBJEDNATEL' && (
+                              <span>✍️ <strong>Jen objednatel:</strong> Pošle JEN objednateli této konkrétní objednávky (pole objednatel_id).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'PARTICIPANTS_PRIKAZCE' && (
+                              <span>👤 <strong>Jen příkazce:</strong> Pošle JEN příkazci této konkrétní objednávky (pole prikazce_id).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'PARTICIPANTS_GARANT' && (
+                              <span>🛡️ <strong>Jen garant:</strong> Pošle JEN garantovi této konkrétní objednávky (pole garant_id).</span>
+                            )}
+                            {selectedEdge.data?.scope_filter === 'PARTICIPANTS_SCHVALOVATEL' && (
+                              <span>✅ <strong>Jen schvalovatelé:</strong> Pošle JEN schvalovatelům této konkrétní objednávky (schvalovatel_1_id, schvalovatel_2_id...).</span>
                             )}
                           </div>
                         </div>
