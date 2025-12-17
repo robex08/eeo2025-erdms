@@ -1934,14 +1934,24 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
     error_log("════════════════════════════════════════════════════════════════");
     
     try {
-        // 0. Načíst order data z DB a mergovat s frontend placeholders
+        // 0. Načíst entity data z DB a mergovat s frontend placeholders
         $objectType = getObjectTypeFromEvent($eventType);
+        
+        // ✅ OPRAVA: Načíst placeholders pro VŠECHNY typy objektů
         if ($objectType === 'orders') {
             $dbPlaceholders = loadOrderPlaceholders($db, $objectId);
-            // Merguj: frontend data mají prioritu
-            $placeholderData = array_merge($dbPlaceholders, $placeholderData);
-            error_log("📊 [NotificationRouter] Merged placeholders: " . json_encode($placeholderData));
+            error_log("📊 [NotificationRouter] DB placeholders loaded: " . count($dbPlaceholders) . " keys");
+            if (!empty($dbPlaceholders)) {
+                error_log("   Keys: " . implode(', ', array_keys($dbPlaceholders)));
+            }
+        } else {
+            $dbPlaceholders = array();
+            error_log("⚠️ [NotificationRouter] No placeholder loader for object type: $objectType");
         }
+        
+        // Merguj: frontend data mají prioritu, ale DB data doplní chybějící
+        $placeholderData = array_merge($dbPlaceholders, $placeholderData);
+        error_log("✅ [NotificationRouter] Merged placeholders: " . count($placeholderData) . " keys total");
         
         // 0a. Přidat trigger user jméno (kdo akci provedl)
         if ($triggerUserId) {
@@ -2005,6 +2015,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
                 $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
                 
+                // ✅ OPRAVA: Logování pro debugging placeholder problems
+                error_log("   📝 Placeholder replacement for User {$recipient['uzivatel_id']}:");
+                error_log("      Title: " . substr($processedTitle, 0, 50));
+                error_log("      Message: " . substr($processedMessage, 0, 80));
+                
                 // 6. Připravit data pro notifikaci
                 $notificationData = array(
                     'event_type' => $eventType,
@@ -2012,7 +2027,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                     'recipient_role' => $recipient['recipientRole'],
                     'template_id' => $recipient['templateId'],
                     'template_variant' => $variant,
-                    'placeholders' => $placeholderData
+                    'placeholders' => $placeholderData  // ✅ DŮLEŽITÉ: Uložit placeholders pro pozdější použití
                 );
                 
                 // 7. Vytvořit in-app notifikaci
