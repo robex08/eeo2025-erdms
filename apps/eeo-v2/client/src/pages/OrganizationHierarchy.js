@@ -1096,12 +1096,13 @@ const HelpExample = styled.div`
 
 // Custom Node Component
 const CustomNode = ({ data, selected }) => {
-  // Rozlišit typ node (user, location, department, template, role)
+  // Rozlišit typ node (user, location, department, template, role, genericRecipient)
   const isTemplate = data.type === 'template';
   const isRole = data.type === 'role';
   const isLocation = data.type === 'location';
   const isDepartment = data.type === 'department';
-  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole;
+  const isGenericRecipient = data.type === 'genericRecipient';
+  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole && !isGenericRecipient;
   
   // Pro template nodes - jen zelený výstupní bod
   if (isTemplate) {
@@ -1162,6 +1163,83 @@ const CustomNode = ({ data, selected }) => {
               fontSize: '0.7rem', 
               color: '#92400e',
               fontWeight: 500
+            }}>
+              {data.position}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Pro Generic Recipient nodes - zelený/modrý/oranžový node
+  if (isGenericRecipient) {
+    const colors = {
+      'TRIGGER_USER': { bg: '#10b981', light: '#d1fae5', text: '#065f46' },
+      'ENTITY_AUTHOR': { bg: '#3b82f6', light: '#dbeafe', text: '#1e40af' },
+      'ENTITY_OWNER': { bg: '#f59e0b', light: '#fef3c7', text: '#92400e' }
+    };
+    const color = colors[data.genericType] || colors['TRIGGER_USER'];
+    
+    return (
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: selected 
+          ? `linear-gradient(135deg, ${color.light} 0%, ${color.light} 100%)`
+          : 'white',
+        border: `3px solid ${color.bg}`,
+        minWidth: '200px',
+        boxShadow: selected 
+          ? `0 6px 16px ${color.bg}66`
+          : `0 2px 8px ${color.bg}44`,
+        transition: 'all 0.2s',
+        position: 'relative',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+      }}>
+        {/* Target handle - generic recipient přijímá notifikace */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={{
+            width: '16px',
+            height: '16px',
+            background: '#ef4444',
+            border: '3px solid white',
+            boxShadow: '0 2px 8px rgba(239, 68, 68, 0.5)',
+            cursor: 'pointer',
+            left: '-10px'
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${color.bg} 0%, ${color.bg} 100%)`,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.3rem',
+            boxShadow: `0 2px 8px ${color.bg}66`
+          }}>
+            {data.initials}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: color.text,
+              fontSize: '0.85rem',
+              marginBottom: '2px'
+            }}>
+              {data.name}
+            </div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: color.text,
+              fontWeight: 500,
+              opacity: 0.7
             }}>
               {data.position}
             </div>
@@ -1560,6 +1638,7 @@ const OrganizationHierarchy = () => {
       roles: false,
       locations: false,
       departments: false,
+      genericRecipients: false,
       notificationTemplates: false
     };
   });
@@ -2827,6 +2906,39 @@ const OrganizationHierarchy = () => {
       bounds: { left: reactFlowBounds.left, top: reactFlowBounds.top },
       viewport: reactFlowInstance.getViewport()
     });
+    
+    // Zpracování Generic Recipient - přidat jako node
+    if (dragId.startsWith('generic-')) {
+      const genericType = dragId.replace('generic-', '');
+      const nodeId = `genericRecipient-${genericType}-${Date.now()}`;
+      
+      const genericLabels = {
+        'TRIGGER_USER': 'Trigger User',
+        'ENTITY_AUTHOR': 'Entity Author',
+        'ENTITY_OWNER': 'Entity Owner'
+      };
+      
+      const newNode = {
+        id: nodeId,
+        type: 'custom',
+        position,
+        data: {
+          type: 'genericRecipient',
+          genericType: genericType,
+          name: genericLabels[genericType] || genericType,
+          label: genericLabels[genericType] || genericType,
+          position: 'Generic Recipient',
+          initials: genericType === 'TRIGGER_USER' ? '🎯' : genericType === 'ENTITY_AUTHOR' ? '✍️' : '👤',
+          metadata: {
+            type: 'genericRecipient'
+          }
+        }
+      };
+      
+      setNodes((nds) => [...nds, newNode]);
+      console.log(`✅ Added generic recipient node: ${genericType}`);
+      return;
+    }
     
     // Zpracování notifikační šablony - přidat jako node
     if (dragId.startsWith('notif-')) {
@@ -4960,6 +5072,138 @@ const OrganizationHierarchy = () => {
                         </UserInfo>
                       </LocationItem>
                     ))}
+                  </div>
+                </SectionContent>
+              </CollapsibleSection>
+
+              {/* GENERIC RECIPIENTS - Nová sekce pro Generic Recipient System */}
+              <CollapsibleSection>
+                <SectionHeader
+                  expanded={expandedSections.genericRecipients}
+                  onClick={() => toggleSection('genericRecipients')}
+                >
+                  <SectionTitle>
+                    🎯 GENERIC RECIPIENTS (3)
+                  </SectionTitle>
+                  <SectionIcon expanded={expandedSections.genericRecipients}>
+                    <FontAwesomeIcon icon={expandedSections.genericRecipients ? faChevronDown : faChevronRight} />
+                  </SectionIcon>
+                </SectionHeader>
+                <SectionContent expanded={expandedSections.genericRecipients}>
+                  <div>
+                    {/* TRIGGER_USER */}
+                    <LocationItem
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('application/reactflow', 'generic-TRIGGER_USER');
+                        setDraggedItem('generic-TRIGGER_USER');
+                        console.log('🎯 Drag start generic: TRIGGER_USER');
+                      }}
+                      onDragEnd={() => {
+                        setDraggedItem(null);
+                      }}
+                      style={{
+                        background: 'white',
+                        borderColor: '#e0e6ed',
+                        cursor: 'grab'
+                      }}
+                    >
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1rem',
+                        flexShrink: 0
+                      }}>
+                        🎯
+                      </div>
+                      <UserInfo>
+                        <UserName>Trigger User</UserName>
+                        <UserMeta>Uživatel, který akci provedl</UserMeta>
+                      </UserInfo>
+                    </LocationItem>
+
+                    {/* ENTITY_AUTHOR */}
+                    <LocationItem
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('application/reactflow', 'generic-ENTITY_AUTHOR');
+                        setDraggedItem('generic-ENTITY_AUTHOR');
+                        console.log('🎯 Drag start generic: ENTITY_AUTHOR');
+                      }}
+                      onDragEnd={() => {
+                        setDraggedItem(null);
+                      }}
+                      style={{
+                        background: 'white',
+                        borderColor: '#e0e6ed',
+                        cursor: 'grab'
+                      }}
+                    >
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1rem',
+                        flexShrink: 0
+                      }}>
+                        ✍️
+                      </div>
+                      <UserInfo>
+                        <UserName>Entity Author</UserName>
+                        <UserMeta>Autor/tvůrce entity (objednávka, faktura, ...)</UserMeta>
+                      </UserInfo>
+                    </LocationItem>
+
+                    {/* ENTITY_OWNER */}
+                    <LocationItem
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('application/reactflow', 'generic-ENTITY_OWNER');
+                        setDraggedItem('generic-ENTITY_OWNER');
+                        console.log('🎯 Drag start generic: ENTITY_OWNER');
+                      }}
+                      onDragEnd={() => {
+                        setDraggedItem(null);
+                      }}
+                      style={{
+                        background: 'white',
+                        borderColor: '#e0e6ed',
+                        cursor: 'grab'
+                      }}
+                    >
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '1rem',
+                        flexShrink: 0
+                      }}>
+                        👤
+                      </div>
+                      <UserInfo>
+                        <UserName>Entity Owner</UserName>
+                        <UserMeta>Vlastník/příkazce entity</UserMeta>
+                      </UserInfo>
+                    </LocationItem>
                   </div>
                 </SectionContent>
               </CollapsibleSection>
