@@ -2138,7 +2138,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 
                 // 5. Nahradit placeholdery v šabloně
                 $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderData);
-                $processedMessage = replacePlaceholders($template['app_message'], $placeholderData);
+                $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderData);
                 $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
                 $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
                 
@@ -2146,6 +2146,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 error_log("   📝 Placeholder replacement for User {$recipient['uzivatel_id']}:");
                 error_log("      Title: " . substr($processedTitle, 0, 50));
                 error_log("      Message: " . substr($processedMessage, 0, 80));
+                error_log("      Placeholders passed: " . json_encode(array_keys($placeholderData)));
                 
                 // 6. Připravit data pro notifikaci
                 $notificationData = array(
