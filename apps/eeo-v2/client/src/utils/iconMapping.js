@@ -157,10 +157,19 @@ export const extractOrderStatusFromNotificationType = (notificationType) => {
 
 /**
  * 🎨 Mapování typů notifikací na EMOJI ikony
+ * 
+ * ⚠️ DEPRECATED od 17.12.2025 - Místo emoji se nyní používají FontAwesome ikony podle priority
+ * @see NotificationsPage.js -> getPriorityIconComponent()
+ * 
+ * Nové ikony:
+ * - INFO: faInfoCircle (modrý kruh)
+ * - APPROVAL/HIGH: faExclamation (oranžový vykřičník)
+ * - EXCEPTIONAL/URGENT: faBolt (červený blesk)
  *
  * Pro notifikace související s objednávkami se použije emoji podle stavu.
  * Pro ostatní notifikace jsou definovány specifické emoji.
  *
+ * @deprecated Používá se pouze pro zpětnou kompatibilitu
  * @param {string} notificationType - Typ notifikace (např. 'order_status_nova', 'todo_alarm')
  * @param {string} priority - Priorita notifikace ('low', 'normal', 'high', 'urgent')
  * @returns {string} Emoji ikona

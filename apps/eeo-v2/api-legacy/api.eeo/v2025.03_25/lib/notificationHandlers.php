@@ -1724,8 +1724,15 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             return $userIds;
             
         case 'ENTITY_PARTICIPANTS':
-            // DEPRECATED - použít místo toho PARTICIPANTS_ALL
-            // Zachováno pro zpětnou kompatibilitu
+            // ⚠️ DEPRECATED od 17.12.2025 - použít místo toho PARTICIPANTS_ALL
+            // Starý systém používal array_intersect (průnik), nový systém nahrazuje celé $userIds
+            // Zachováno POUZE pro zpětnou kompatibilitu se starými hierarchiemi
+            // 
+            // MIGRAČNÍ CESTA:
+            // 1. Změnit scope_filter z 'ENTITY_PARTICIPANTS' na 'PARTICIPANTS_ALL'
+            // 2. V organizační hierarchii použít nový Generic Recipient System
+            // 
+            // @deprecated Bude odstraněno v příští verzi
             $participants = getEntityParticipants($db, $entityType, $entityId);
             $filtered = array_intersect($userIds, $participants);
             error_log("[applyScopeFilter] ENTITY_PARTICIPANTS (deprecated): " . count($userIds) . " → " . count($filtered) . " users");
