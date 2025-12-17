@@ -1588,9 +1588,12 @@ const OrganizationHierarchy = () => {
   const [selectedExtendedLocations, setSelectedExtendedLocations] = useState([]);
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
   const [selectedNotificationEventTypes, setSelectedNotificationEventTypes] = useState([]); // Vybrané event types pro edge
-  const [notificationEmailEnabled, setNotificationEmailEnabled] = useState(false);
-  const [notificationInAppEnabled, setNotificationInAppEnabled] = useState(true);
-  const [notificationRecipientRole, setNotificationRecipientRole] = useState('APPROVAL'); // EXCEPTIONAL, APPROVAL, INFO
+
+  // Detail panel data - EDGE notifikace (stejná logika jako u NODE)
+  const [edgeScopeFilter, setEdgeScopeFilter] = useState('NONE');
+  const [edgeSendEmail, setEdgeSendEmail] = useState(false);
+  const [edgeSendInApp, setEdgeSendInApp] = useState(true);
+  const [edgeRecipientRole, setEdgeRecipientRole] = useState('APPROVAL');
   
   // Detail panel data - druh vztahu a scope
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
@@ -1672,7 +1675,7 @@ const OrganizationHierarchy = () => {
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileDialogMode, setProfileDialogMode] = useState('save'); // 'save' or 'saveAs'
   
-  // Auto-save rozsirenych lokalit, useku, kombinaci, notifikaci, typu vztahu, scope, modulu a permission level do edge
+  // Auto-save rozsirenych lokalit, useku, kombinaci, event types, typu vztahu, scope, modulu a permission level do edge
   React.useEffect(() => {
     if (selectedEdge) {
       setEdges((eds) =>
@@ -1696,13 +1699,10 @@ const OrganizationHierarchy = () => {
                   departments: selectedExtendedDepartments,
                   combinations: selectedCombinations
                 },
-                // Notifikace
+                // Notifikace - jen event types (email/inapp/recipientRole se ukládají přímo v onChange)
                 notifications: {
                   ...(e.data?.notifications || {}),
-                  types: selectedNotificationEventTypes, // Event Types z API (ORDER_SENT_FOR_APPROVAL, etc.)
-                  email: notificationEmailEnabled,
-                  inapp: notificationInAppEnabled,
-                  recipientRole: notificationRecipientRole
+                  types: selectedNotificationEventTypes
                 }
               }
             };
@@ -1715,16 +1715,36 @@ const OrganizationHierarchy = () => {
     selectedExtendedLocations, 
     selectedExtendedDepartments, 
     selectedCombinations, 
-    selectedNotificationEventTypes, // Event Types (změněno z selectedNotificationTypes)
-    notificationEmailEnabled, 
-    notificationInAppEnabled,
-    notificationRecipientRole,
+    selectedNotificationEventTypes,
     relationshipType,
     relationshipScope,
     moduleVisibility,
     permissionLevel,
     selectedEdge
   ]);
+
+  // Auto-save EDGE notification settings (stejná logika jako u NODE template variant)
+  React.useEffect(() => {
+    if (selectedEdge) {
+      setEdges((eds) =>
+        eds.map((e) => {
+          if (e.id === selectedEdge.id) {
+            return {
+              ...e,
+              data: {
+                ...e.data,
+                scope_filter: edgeScopeFilter,
+                sendEmail: edgeSendEmail,
+                sendInApp: edgeSendInApp,
+                recipientRole: edgeRecipientRole
+              }
+            };
+          }
+          return e;
+        })
+      );
+    }
+  }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, selectedEdge]);
   
   // Auto-save template variant do node
   React.useEffect(() => {
@@ -2322,10 +2342,11 @@ const OrganizationHierarchy = () => {
     const extendedDepts = edge.data?.extended?.departments || edge.data?.permissions?.extended?.departments || [];
     setSelectedExtendedDepartments(extendedDepts);
     
-    // Nacist notifikacni nastaveni z edge data
-    setNotificationEmailEnabled(edge.data?.notifications?.email || false);
-    setNotificationInAppEnabled(edge.data?.notifications?.inapp !== false);
-      setNotificationRecipientRole(edge.data?.notifications?.recipientRole || 'APPROVAL');    // EXCEPTIONAL, APPROVAL, INFO
+    // Nacist notifikacni nastaveni z edge data (STEJNÁ LOGIKA JAKO U NODE)
+    setEdgeScopeFilter(edge.data?.scope_filter || 'NONE');
+    setEdgeSendEmail(edge.data?.sendEmail || false);
+    setEdgeSendInApp(edge.data?.sendInApp !== false);
+    setEdgeRecipientRole(edge.data?.recipientRole || 'APPROVAL');
     setSelectedNotificationEventTypes(edge.data?.notifications?.types || []); // Načíst vybrané event types
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
@@ -7506,8 +7527,8 @@ const OrganizationHierarchy = () => {
                           <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
                         </Label>
                         <Select 
-                          value={notificationRecipientRole} 
-                          onChange={(e) => setNotificationRecipientRole(e.target.value)}
+                          value={edgeRecipientRole}
+                          onChange={(e) => setEdgeRecipientRole(e.target.value)}
                           title="Určuje, kterou barvu emailu použít"
                         >
                           <option value="EXCEPTIONAL">🔴 URGENTNÍ - kritické, vyžaduje rychlou akci</option>
@@ -7568,105 +7589,9 @@ const OrganizationHierarchy = () => {
                         </div>
                       </FormGroup>
                       
-                      {/* NOVÉ: Checkbox pro filtrování jen na účastníky objednávky */}
-                      <FormGroup style={{ marginBottom: '16px' }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '10px',
-                          padding: '12px',
-                          background: '#fef3c7',
-                          border: '2px solid #fbbf24',
-                          borderRadius: '8px'
-                        }}>
-                          <input 
-                            type="checkbox"
-                            id="onlyOrderParticipants"
-                            checked={selectedEdge.data?.onlyOrderParticipants ?? true}
-                            onChange={(e) => {
-                              setEdges(edges.map(edge => 
-                                edge.id === selectedEdge.id 
-                                  ? { ...edge, data: { ...edge.data, onlyOrderParticipants: e.target.checked }}
-                                  : edge
-                              ));
-                            }}
-                            style={{
-                              width: '18px',
-                              height: '18px',
-                              cursor: 'pointer',
-                              marginTop: '2px'
-                            }}
-                          />
-                          <label htmlFor="onlyOrderParticipants" style={{ cursor: 'pointer', flex: 1 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#78350f', marginBottom: '4px' }}>
-                              📋 Poslat pouze účastníkům objednávky
-                              <span style={{ 
-                                marginLeft: '8px', 
-                                fontSize: '0.7rem', 
-                                padding: '2px 6px', 
-                                background: '#fed7aa',
-                                borderRadius: '4px',
-                                fontWeight: 'normal'
-                              }}>⚠️ ZASTARALÉ</span>
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: '1.5' }}>
-                              <strong>⚠️ Doporučujeme použít nový "Scope Filter" níže!</strong><br/>
-                              ✅ Zapnuto = jen účastníci objednávky<br/>
-                              ❌ Vypnuto = všichni s rolí
-                            </div>
-                          </label>
-                        </div>
-                      </FormGroup>
+
                       
-                      {/* Checkbox pro filtrování podle lokality/úseku objednávky */}
-                      <FormGroup style={{ marginBottom: '16px' }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '10px',
-                          padding: '12px',
-                          background: '#dbeafe',
-                          border: '2px solid #3b82f6',
-                          borderRadius: '8px'
-                        }}>
-                          <input 
-                            type="checkbox"
-                            id="onlyOrderLocation"
-                            checked={selectedEdge.data?.onlyOrderLocation || false}
-                            onChange={(e) => {
-                              setEdges(edges.map(edge => 
-                                edge.id === selectedEdge.id 
-                                  ? { ...edge, data: { ...edge.data, onlyOrderLocation: e.target.checked }}
-                                  : edge
-                              ));
-                            }}
-                            style={{
-                              width: '18px',
-                              height: '18px',
-                              cursor: 'pointer',
-                              marginTop: '2px'
-                            }}
-                          />
-                          <label htmlFor="onlyOrderLocation" style={{ cursor: 'pointer', flex: 1 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1e40af', marginBottom: '4px' }}>
-                              📍 Filtrovat podle lokality/úseku objednávky
-                              <span style={{ 
-                                marginLeft: '8px', 
-                                fontSize: '0.7rem', 
-                                padding: '2px 6px', 
-                                background: '#bfdbfe',
-                                borderRadius: '4px',
-                                fontWeight: 'normal'
-                              }}>⚠️ ZASTARALÉ</span>
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#1e3a8a', lineHeight: '1.5' }}>
-                              <strong>⚠️ Doporučujeme použít nový "Scope Filter" níže!</strong><br/>
-                              ✅ Zapnuto = jen z lokality/úseku objednávky<br/>
-                              ❌ Vypnuto = bez kontroly
-                            </div>
-                          </label>
-                        </div>
-                      </FormGroup>
+
 
                       {/* Scope Filter - nový systém pro filtrování příjemců */}
                       <FormGroup style={{ marginBottom: '16px' }}>
@@ -7686,14 +7611,8 @@ const OrganizationHierarchy = () => {
                             🎯 Komu poslat (Scope Filter)
                           </label>
                           <select 
-                            value={selectedEdge.data?.scope_filter || 'NONE'}
-                            onChange={(e) => {
-                              setEdges(edges.map(edge => 
-                                edge.id === selectedEdge.id 
-                                  ? { ...edge, data: { ...edge.data, scope_filter: e.target.value }}
-                                  : edge
-                              ));
-                            }}
+                            value={edgeScopeFilter}
+                            onChange={(e) => setEdgeScopeFilter(e.target.value)}
                             style={{
                               width: '100%',
                               padding: '8px',
@@ -7750,9 +7669,9 @@ const OrganizationHierarchy = () => {
                       <CheckboxGroup>
                         <CheckboxLabel>
                           <input 
-                            type="checkbox" 
-                            checked={notificationEmailEnabled}
-                            onChange={(e) => setNotificationEmailEnabled(e.target.checked)}
+                            type="checkbox"
+                            checked={edgeSendEmail}
+                            onChange={(e) => setEdgeSendEmail(e.target.checked)}
                           />
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <FontAwesomeIcon icon={faEnvelope} style={{ color: '#667eea' }} />
@@ -7761,9 +7680,9 @@ const OrganizationHierarchy = () => {
                         </CheckboxLabel>
                         <CheckboxLabel>
                           <input 
-                            type="checkbox" 
-                            checked={notificationInAppEnabled}
-                            onChange={(e) => setNotificationInAppEnabled(e.target.checked)}
+                            type="checkbox"
+                            checked={edgeSendInApp}
+                            onChange={(e) => setEdgeSendInApp(e.target.checked)}
                           />
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <FontAwesomeIcon icon={faBell} style={{ color: '#f5576c' }} />
@@ -7960,7 +7879,7 @@ const OrganizationHierarchy = () => {
                     <h3>📦 Rozšířená oprávnění</h3>
                     <p>
                       <strong>Lokality/Úseky:</strong> Nadřízený vidí data i z dalších míst mimo základní vztah.<br/>
-                      <strong>Notifikace:</strong> {notificationEmailEnabled ? 'Email ✓' : 'Email ✗'} {notificationInAppEnabled ? 'In-app ✓' : 'In-app ✗'}
+                      <strong>Notifikace:</strong> {edgeSendEmail ? 'Email ✓' : 'Email ✗'} {edgeSendInApp ? 'In-app ✓' : 'In-app ✗'}
                     </p>
                   </HelpSection>
 

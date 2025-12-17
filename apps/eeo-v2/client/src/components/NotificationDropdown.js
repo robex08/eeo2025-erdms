@@ -638,7 +638,7 @@ export const NotificationDropdown = ({
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
                       {/* Zobraz informaci kdo poslal/provedl akci */}
-                      {notificationData.action_performed_by ? (
+                      {(notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) ? (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
@@ -647,7 +647,7 @@ export const NotificationDropdown = ({
                           fontSize: '11px',
                           fontWeight: '500'
                         }}>
-                          👤 {notificationData.action_performed_by}
+                          👤 {notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by}
                         </span>
                       ) : notification.typ ? (
                         <span style={{
