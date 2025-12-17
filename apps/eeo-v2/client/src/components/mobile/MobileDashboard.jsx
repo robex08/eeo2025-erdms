@@ -205,8 +205,17 @@ function MobileDashboard() {
     
     try {
       setLoadingApprovals(true);
-      // Načti VŠECHNY objednávky z aktuálního roku
+      // Načti objednávky z aktuálního roku
+      // Backend automaticky filtruje podle oprávnění (aktivni=1 + role-based filter nebo hierarchie)
       const orders = await listOrdersV2({ rok: selectedYear }, token, username, false, true);
+      
+      console.log('📊 [MobileDashboard] Načteno objednávek:', orders?.length);
+      console.log('📊 [MobileDashboard] Sample objednávky (první 3):', orders?.slice(0, 3).map(o => ({
+        id: o.id,
+        aktivni: o.aktivni,
+        stav: o.stav_objednavky,
+        workflow: o.stav_workflow_kod
+      })));
       
       if (Array.isArray(orders)) {
         // Debug: kolik objednávek má ODESLANA_KE_SCHVALENI
