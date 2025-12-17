@@ -1464,17 +1464,35 @@ function mapRecipientRoleToPriority($recipientRole) {
  */
 function loadOrderPlaceholders($db, $objectId) {
     try {
-        // Načti objednávku
+        // Načti objednávku s JOINy na všechny účastníky
         $stmt = $db->prepare("
-            SELECT o.*, CONCAT(u.name, ' ', u.surname) as creator_name
+            SELECT o.*, 
+                   CONCAT(creator.name, ' ', creator.surname) as creator_name,
+                   CONCAT(objednatel.name, ' ', objednatel.surname) as objednatel_name,
+                   CONCAT(prikazce.name, ' ', prikazce.surname) as prikazce_name,
+                   CONCAT(garant.name, ' ', garant.surname) as garant_name,
+                   CONCAT(schval1.name, ' ', schval1.surname) as schvalovatel_1_name,
+                   CONCAT(schval2.name, ' ', schval2.surname) as schvalovatel_2_name,
+                   CONCAT(schval3.name, ' ', schval3.surname) as schvalovatel_3_name,
+                   CONCAT(schval4.name, ' ', schval4.surname) as schvalovatel_4_name,
+                   CONCAT(schval5.name, ' ', schval5.surname) as schvalovatel_5_name
             FROM " . TABLE_OBJEDNAVKY . " o
-            LEFT JOIN users u ON o.uzivatel_id = u.id
+            LEFT JOIN 25_users creator ON o.uzivatel_id = creator.id
+            LEFT JOIN 25_users objednatel ON o.objednatel_id = objednatel.id
+            LEFT JOIN 25_users prikazce ON o.prikazce_id = prikazce.id
+            LEFT JOIN 25_users garant ON o.garant_id = garant.id
+            LEFT JOIN 25_users schval1 ON o.schvalovatel_1_id = schval1.id
+            LEFT JOIN 25_users schval2 ON o.schvalovatel_2_id = schval2.id
+            LEFT JOIN 25_users schval3 ON o.schvalovatel_3_id = schval3.id
+            LEFT JOIN 25_users schval4 ON o.schvalovatel_4_id = schval4.id
+            LEFT JOIN 25_users schval5 ON o.schvalovatel_5_id = schval5.id
             WHERE o.id = :order_id
         ");
         $stmt->execute([':order_id' => $objectId]);
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$order) {
+            error_log("[loadOrderPlaceholders] Order not found: $objectId");
             return array();
         }
         
@@ -1487,8 +1505,17 @@ function loadOrderPlaceholders($db, $objectId) {
         $stmt->execute([':order_id' => $objectId]);
         $items = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        // Sestavení jmen schvalovatelů (může jich být více)
+        $schvalovatel_names = array();
+        for ($i = 1; $i <= 5; $i++) {
+            if (!empty($order["schvalovatel_{$i}_name"])) {
+                $schvalovatel_names[] = $order["schvalovatel_{$i}_name"];
+            }
+        }
+        $schvalovatel_list = !empty($schvalovatel_names) ? implode(', ', $schvalovatel_names) : 'Nepřiřazen';
+        
         // Připrav placeholders
-        return array(
+        $placeholders = array(
             'action_icon' => '📋',
             'order_number' => $order['cislo_objednavky'] ?? '',
             'order_subject' => $order['predmet'] ?? '',
@@ -1496,8 +1523,26 @@ function loadOrderPlaceholders($db, $objectId) {
             'creator_name' => $order['creator_name'] ?? 'Neznámý',
             'action_date' => date('d.m.Y H:i', strtotime($order['dt_objednavky'] ?? 'now')),
             'items_count' => $items['items_count'] ?? 0,
-            'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' ')
+            'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' '),
+            
+            // ⭐ NOVÉ: Jména všech účastníků objednávky
+            'objednatel_name' => $order['objednatel_name'] ?? 'Nepřiřazen',
+            'prikazce_name' => $order['prikazce_name'] ?? 'Nepřiřazen',
+            'garant_name' => $order['garant_name'] ?? 'Nepřiřazen',
+            'schvalovatel_name' => $schvalovatel_list,
+            'schvalovatel_1_name' => $order['schvalovatel_1_name'] ?? 'Nepřiřazen',
+            'schvalovatel_2_name' => $order['schvalovatel_2_name'] ?? 'Nepřiřazen',
+            'schvalovatel_3_name' => $order['schvalovatel_3_name'] ?? 'Nepřiřazen',
+            'schvalovatel_4_name' => $order['schvalovatel_4_name'] ?? 'Nepřiřazen',
+            'schvalovatel_5_name' => $order['schvalovatel_5_name'] ?? 'Nepřiřazen',
         );
+        
+        error_log("[loadOrderPlaceholders] Loaded " . count($placeholders) . " placeholders for order $objectId");
+        error_log("   objednatel: " . $placeholders['objednatel_name']);
+        error_log("   prikazce: " . $placeholders['prikazce_name']);
+        error_log("   garant: " . $placeholders['garant_name']);
+        
+        return $placeholders;
         
     } catch (Exception $e) {
         error_log("[loadOrderPlaceholders] Error: " . $e->getMessage());
@@ -2048,20 +2093,6 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         // Merguj: frontend data mají prioritu, ale DB data doplní chybějící
         $placeholderData = array_merge($dbPlaceholders, $placeholderData);
         error_log("✅ [NotificationRouter] Merged placeholders: " . count($placeholderData) . " keys total");
-        
-        // 0a. Přidat trigger user jméno (kdo akci provedl)
-        if ($triggerUserId) {
-            $stmt = $db->prepare("SELECT CONCAT(name, ' ', surname) as full_name FROM users WHERE id = :user_id");
-            $stmt->execute([':user_id' => $triggerUserId]);
-            $triggerUser = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($triggerUser) {
-                // Přidat do placeholders pro nahrazení v textech
-                $placeholderData['trigger_user_name'] = $triggerUser['full_name'];
-                $placeholderData['action_user'] = $triggerUser['full_name'];
-                $placeholderData['action_performed_by'] = $triggerUser['full_name']; // Pro frontend zobrazení
-                error_log("👤 [NotificationRouter] Trigger user: " . $triggerUser['full_name']);
-            }
-        }
         
         // 1. Najít příjemce podle organizational hierarchy
         error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
