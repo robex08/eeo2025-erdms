@@ -2438,21 +2438,47 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 
                 error_log("         → After scope filter: " . count($targetUserIds) . " recipients");
                 
-                // 7. Určit variantu šablony podle recipientRole
-                $variant = 'normalVariant'; // default
-                
-                if ($recipientRole === 'EXCEPTIONAL') {
-                    $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'urgentVariant';
-                } elseif ($recipientRole === 'INFO' || $recipientRole === 'AUTHOR_INFO' || $recipientRole === 'GUARANTOR_INFO') {
-                    $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'infoVariant';
-                } else {
-                    $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'normalVariant';
+                // 7. PRO KAŽDÉHO UŽIVATELE určit variantu a recipientRole podle jeho ROLE V OBJEDNÁVCE
+                // Načíst data objednávky jednou pro všechny
+                $entityData = null;
+                if ($objectType === 'orders') {
+                    $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                    $stmt->execute([$objectId]);
+                    $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
-                
-                error_log("         → Template variant: $variant");
                 
                 // 8. Přidat každého target user do seznamu příjemců
                 foreach ($targetUserIds as $userId) {
+                    // 🆕 DYNAMICKÉ určení recipientRole podle role uživatele v entitě
+                    $userRecipientRole = 'INFO';  // Default
+                    $userVariant = 'infoVariant';  // Default
+                    
+                    if ($entityData) {
+                        // Je příkazce/schvalovatel? → APPROVAL (urgentVariant)
+                        if ($userId == $entityData['prikazce_id'] || $userId == $entityData['schvalovatel_id']) {
+                            $userRecipientRole = 'APPROVAL';
+                            $userVariant = 'urgentVariant';
+                        }
+                        // Je autor/garant/objednatel? → INFO (infoVariant)
+                        elseif ($userId == $entityData['uzivatel_id'] || 
+                                $userId == $entityData['garant_uzivatel_id'] || 
+                                $userId == $entityData['objednatel_id']) {
+                            $userRecipientRole = 'INFO';
+                            $userVariant = 'infoVariant';
+                        }
+                    }
+                    
+                    // Získat název varianty z NODE
+                    $variantName = '';
+                    if ($userVariant === 'urgentVariant' && !empty($node['data']['urgentVariant'])) {
+                        $variantName = $node['data']['urgentVariant'];
+                    } elseif ($userVariant === 'infoVariant' && !empty($node['data']['infoVariant'])) {
+                        $variantName = $node['data']['infoVariant'];
+                    } elseif (!empty($node['data']['normalVariant'])) {
+                        $variantName = $node['data']['normalVariant'];
+                    }
+                    
+                    error_log("         → User $userId: role=$userRecipientRole, variant=$userVariant ($variantName)");
                     // Kontrola uživatelských preferencí
                     $userPrefs = getUserNotificationPreferences($db, $userId);
                     
@@ -2487,11 +2513,11 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     
                     $recipients[] = array(
                         'uzivatel_id' => $userId,
-                        'recipientRole' => $recipientRole,
+                        'recipientRole' => $userRecipientRole,  // 🆕 Dynamicky určeno podle role v entitě
                         'sendEmail' => $sendEmailFinal,
                         'sendInApp' => $sendInAppFinal,
                         'templateId' => $node['data']['templateId'],
-                        'templateVariant' => $variant
+                        'templateVariant' => $variantName  // 🆕 Použit variantName z NODE
                     );
                 }
             }
