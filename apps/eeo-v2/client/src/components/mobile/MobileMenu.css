@@ -9,7 +9,7 @@
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s, visibility 0.3s;
-  z-index: 150;
+  z-index: 9998; /* Vysoký z-index pro překrytí všeho */
   /* Zajištění, že overlay nebude blokovat scroll když je zavřené */
   pointer-events: none;
 }
@@ -31,7 +31,7 @@
   background: white;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
   transition: right 0.3s ease-out;
-  z-index: 200;
+  z-index: 9999; /* Nejvyšší z-index - nad vším */
   display: flex;
   flex-direction: column;
 }

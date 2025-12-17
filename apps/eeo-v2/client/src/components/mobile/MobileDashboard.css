@@ -145,6 +145,8 @@
 /* Tlačítko obnovit data */
 .mobile-refresh-button-container {
   padding: 16px 16px 8px;
+  position: relative;
+  z-index: 10; /* Pod menu (150) ale nad obsahem (1) */
 }
 
 .mobile-refresh-button {
