@@ -1616,19 +1616,79 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
         case 'NONE':
         case 'ALL':
             // Bez filtru - vrátit všechny
+            error_log("[applyScopeFilter] NONE/ALL: " . count($userIds) . " users (no filter)");
             return $userIds;
             
         case 'ENTITY_PARTICIPANTS':
-            // JEN účastníci TÉTO konkrétní entity
+            // DEPRECATED - použít místo toho PARTICIPANTS_ALL
+            // Zachováno pro zpětnou kompatibilitu
             $participants = getEntityParticipants($db, $entityType, $entityId);
             $filtered = array_intersect($userIds, $participants);
-            error_log("[applyScopeFilter] ENTITY_PARTICIPANTS: " . count($userIds) . " → " . count($filtered) . " users");
+            error_log("[applyScopeFilter] ENTITY_PARTICIPANTS (deprecated): " . count($userIds) . " → " . count($filtered) . " users");
+            return array_values($filtered);
+            
+        case 'PARTICIPANTS_ALL':
+            // ⭐ VŠICHNI účastníci této konkrétní entity
+            $participants = getEntityParticipants($db, $entityType, $entityId);
+            $filtered = array_intersect($userIds, $participants);
+            error_log("[applyScopeFilter] PARTICIPANTS_ALL: " . count($userIds) . " → " . count($filtered) . " users");
+            return array_values($filtered);
+            
+        case 'PARTICIPANTS_OBJEDNATEL':
+            // ✍️ JEN objednatel této entity
+            $objednatelId = getEntityField($db, $entityType, $entityId, 'objednatel_id');
+            if (!$objednatelId) {
+                error_log("[applyScopeFilter] PARTICIPANTS_OBJEDNATEL: No objednatel_id found");
+                return array();
+            }
+            $filtered = array_intersect($userIds, [$objednatelId]);
+            error_log("[applyScopeFilter] PARTICIPANTS_OBJEDNATEL: " . count($userIds) . " → " . count($filtered) . " users (objednatel_id=$objednatelId)");
+            return array_values($filtered);
+            
+        case 'PARTICIPANTS_PRIKAZCE':
+            // 👤 JEN příkazce této entity
+            $prikazceId = getEntityField($db, $entityType, $entityId, 'prikazce_id');
+            if (!$prikazceId) {
+                error_log("[applyScopeFilter] PARTICIPANTS_PRIKAZCE: No prikazce_id found");
+                return array();
+            }
+            $filtered = array_intersect($userIds, [$prikazceId]);
+            error_log("[applyScopeFilter] PARTICIPANTS_PRIKAZCE: " . count($userIds) . " → " . count($filtered) . " users (prikazce_id=$prikazceId)");
+            return array_values($filtered);
+            
+        case 'PARTICIPANTS_GARANT':
+            // 🛡️ JEN garant této entity
+            $garantId = getEntityField($db, $entityType, $entityId, 'garant_id');
+            if (!$garantId) {
+                error_log("[applyScopeFilter] PARTICIPANTS_GARANT: No garant_id found");
+                return array();
+            }
+            $filtered = array_intersect($userIds, [$garantId]);
+            error_log("[applyScopeFilter] PARTICIPANTS_GARANT: " . count($userIds) . " → " . count($filtered) . " users (garant_id=$garantId)");
+            return array_values($filtered);
+            
+        case 'PARTICIPANTS_SCHVALOVATEL':
+            // ✅ JEN schvalovatelé této entity
+            $schvalovatelIds = array();
+            for ($i = 1; $i <= 5; $i++) {
+                $schvalId = getEntityField($db, $entityType, $entityId, "schvalovatel_{$i}_id");
+                if ($schvalId) {
+                    $schvalovatelIds[] = $schvalId;
+                }
+            }
+            if (empty($schvalovatelIds)) {
+                error_log("[applyScopeFilter] PARTICIPANTS_SCHVALOVATEL: No schvalovatelé found");
+                return array();
+            }
+            $filtered = array_intersect($userIds, $schvalovatelIds);
+            error_log("[applyScopeFilter] PARTICIPANTS_SCHVALOVATEL: " . count($userIds) . " → " . count($filtered) . " users (schvalovatelIds: " . implode(',', $schvalovatelIds) . ")");
             return array_values($filtered);
             
         case 'LOCATION':
             // Jen z lokality entity
             $entityLocation = getEntityLocation($db, $entityType, $entityId);
             if (!$entityLocation) {
+                error_log("[applyScopeFilter] LOCATION: No location found");
                 return array();
             }
             
@@ -1641,13 +1701,14 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             $params = array_merge($userIds, [$entityLocation]);
             $stmt->execute($params);
             $filtered = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            error_log("[applyScopeFilter] LOCATION: " . count($userIds) . " → " . count($filtered) . " users");
+            error_log("[applyScopeFilter] LOCATION: " . count($userIds) . " → " . count($filtered) . " users (lokalita_id=$entityLocation)");
             return $filtered;
             
         case 'DEPARTMENT':
             // Jen z úseku entity
             $entityDepartment = getEntityDepartment($db, $entityType, $entityId);
             if (!$entityDepartment) {
+                error_log("[applyScopeFilter] DEPARTMENT: No department found");
                 return array();
             }
             
@@ -1660,12 +1721,42 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             $params = array_merge($userIds, [$entityDepartment]);
             $stmt->execute($params);
             $filtered = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            error_log("[applyScopeFilter] DEPARTMENT: " . count($userIds) . " → " . count($filtered) . " users");
+            error_log("[applyScopeFilter] DEPARTMENT: " . count($userIds) . " → " . count($filtered) . " users (usek_id=$entityDepartment)");
             return $filtered;
             
         default:
-            error_log("[applyScopeFilter] Unknown scope filter: $scopeFilter");
+            error_log("[applyScopeFilter] Unknown scope filter: $scopeFilter - using no filter");
             return $userIds;
+    }
+}
+
+/**
+ * Univerzální helper pro získání konkrétního fieldu z entity
+ * 
+ * @param PDO $db
+ * @param string $entityType - 'orders', 'invoices', ...
+ * @param int $entityId
+ * @param string $fieldName - 'objednatel_id', 'prikazce_id', 'garant_id', 'schvalovatel_1_id', ...
+ * @return mixed - Hodnota fieldu nebo null
+ */
+function getEntityField($db, $entityType, $entityId, $fieldName) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT $fieldName FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT $fieldName FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        $value = $stmt->fetchColumn();
+        return $value !== false ? $value : null;
+    } catch (Exception $e) {
+        error_log("[getEntityField] Error getting $fieldName for $entityType $entityId: " . $e->getMessage());
+        return null;
     }
 }
 
