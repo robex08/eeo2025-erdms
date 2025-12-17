@@ -1505,6 +1505,408 @@ function loadOrderPlaceholders($db, $objectId) {
     }
 }
 
+// ==========================================
+// GENERIC RECIPIENT SYSTEM - NOVÉ FUNKCE
+// ==========================================
+
+/**
+ * Vrátí seznam účastníků konkrétní entity (objednávka, faktura, ...)
+ * 
+ * @param PDO $db - Database connection
+ * @param string $entityType - Typ entity ('orders', 'invoices', 'todos', 'cashbook')
+ * @param int $entityId - ID entity
+ * @return array - Pole user_id účastníků
+ */
+function getEntityParticipants($db, $entityType, $entityId) {
+    $participants = array();
+    
+    try {
+        switch ($entityType) {
+            case 'orders':
+                // Objednávka: autor + garant + schvalovatel + příkazce
+                $stmt = $db->prepare("
+                    SELECT DISTINCT user_id
+                    FROM (
+                        SELECT uzivatel_id as user_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id
+                        UNION
+                        SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND garant_uzivatel_id IS NOT NULL
+                        UNION
+                        SELECT schvalovatel_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND schvalovatel_uzivatel_id IS NOT NULL
+                        UNION
+                        SELECT prikazce_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND prikazce_uzivatel_id IS NOT NULL
+                    ) as participants
+                    WHERE user_id IS NOT NULL
+                ");
+                $stmt->execute([':entity_id' => $entityId]);
+                $participants = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                break;
+                
+            case 'invoices':
+                // Faktura: autor + schvalovatel + účetní
+                $stmt = $db->prepare("
+                    SELECT DISTINCT user_id
+                    FROM (
+                        SELECT created_by_user_id as user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id
+                        UNION
+                        SELECT approver_user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id AND approver_user_id IS NOT NULL
+                        UNION
+                        SELECT accountant_user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id AND accountant_user_id IS NOT NULL
+                    ) as participants
+                    WHERE user_id IS NOT NULL
+                ");
+                $stmt->execute([':entity_id' => $entityId]);
+                $participants = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                break;
+                
+            case 'todos':
+                // TODO: autor + přiřazený uživatel
+                $stmt = $db->prepare("
+                    SELECT DISTINCT user_id
+                    FROM (
+                        SELECT created_by_user_id as user_id FROM " . TABLE_TODOS . " WHERE id = :entity_id
+                        UNION
+                        SELECT assigned_to_user_id FROM " . TABLE_TODOS . " WHERE id = :entity_id AND assigned_to_user_id IS NOT NULL
+                    ) as participants
+                    WHERE user_id IS NOT NULL
+                ");
+                $stmt->execute([':entity_id' => $entityId]);
+                $participants = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                break;
+                
+            case 'cashbook':
+                // Pokladna: autor
+                $stmt = $db->prepare("
+                    SELECT created_by_user_id as user_id 
+                    FROM " . TABLE_CASHBOOK . " 
+                    WHERE id = :entity_id
+                ");
+                $stmt->execute([':entity_id' => $entityId]);
+                $participants = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                break;
+                
+            default:
+                error_log("[getEntityParticipants] Unknown entity type: $entityType");
+        }
+        
+        error_log("[getEntityParticipants] $entityType #$entityId: " . count($participants) . " participants - " . json_encode($participants));
+        
+    } catch (Exception $e) {
+        error_log("[getEntityParticipants] Error: " . $e->getMessage());
+    }
+    
+    return $participants;
+}
+
+/**
+ * Aplikuje scope filter na seznam uživatelů
+ * 
+ * @param PDO $db - Database connection
+ * @param array $userIds - Pole user_id k filtrování
+ * @param string $scopeFilter - 'NONE', 'ALL', 'LOCATION', 'DEPARTMENT', 'ENTITY_PARTICIPANTS'
+ * @param string $entityType - Typ entity ('orders', 'invoices', ...)
+ * @param int $entityId - ID entity
+ * @return array - Filtrované pole user_id
+ */
+function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
+    if (empty($userIds)) {
+        return array();
+    }
+    
+    switch ($scopeFilter) {
+        case 'NONE':
+        case 'ALL':
+            // Bez filtru - vrátit všechny
+            return $userIds;
+            
+        case 'ENTITY_PARTICIPANTS':
+            // JEN účastníci TÉTO konkrétní entity
+            $participants = getEntityParticipants($db, $entityType, $entityId);
+            $filtered = array_intersect($userIds, $participants);
+            error_log("[applyScopeFilter] ENTITY_PARTICIPANTS: " . count($userIds) . " → " . count($filtered) . " users");
+            return array_values($filtered);
+            
+        case 'LOCATION':
+            // Jen z lokality entity
+            $entityLocation = getEntityLocation($db, $entityType, $entityId);
+            if (!$entityLocation) {
+                return array();
+            }
+            
+            $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+            $stmt = $db->prepare("
+                SELECT id FROM users 
+                WHERE id IN ($placeholders) 
+                AND lokalita_id = ?
+            ");
+            $params = array_merge($userIds, [$entityLocation]);
+            $stmt->execute($params);
+            $filtered = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            error_log("[applyScopeFilter] LOCATION: " . count($userIds) . " → " . count($filtered) . " users");
+            return $filtered;
+            
+        case 'DEPARTMENT':
+            // Jen z úseku entity
+            $entityDepartment = getEntityDepartment($db, $entityType, $entityId);
+            if (!$entityDepartment) {
+                return array();
+            }
+            
+            $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+            $stmt = $db->prepare("
+                SELECT id FROM users 
+                WHERE id IN ($placeholders) 
+                AND usek_id = ?
+            ");
+            $params = array_merge($userIds, [$entityDepartment]);
+            $stmt->execute($params);
+            $filtered = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            error_log("[applyScopeFilter] DEPARTMENT: " . count($userIds) . " → " . count($filtered) . " users");
+            return $filtered;
+            
+        default:
+            error_log("[applyScopeFilter] Unknown scope filter: $scopeFilter");
+            return $userIds;
+    }
+}
+
+/**
+ * Vrátí location_id entity
+ */
+function getEntityLocation($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT lokalita_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT location_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityLocation] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Vrátí department_id entity
+ */
+function getEntityDepartment($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT usek_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT department_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityDepartment] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Resolves recipient user IDs based on recipient_type
+ * 
+ * @param PDO $db - Database connection
+ * @param string $recipientType - 'USER', 'ROLE', 'GROUP', 'TRIGGER_USER', 'ENTITY_AUTHOR', 'ENTITY_OWNER', 'ENTITY_GUARANTOR', 'ENTITY_APPROVER'
+ * @param mixed $recipientData - Node data (user_id, role_id, group_id, nebo null pro generic types)
+ * @param string $entityType - Typ entity ('orders', 'invoices', ...)
+ * @param int $entityId - ID entity
+ * @param int $triggerUserId - ID uživatele, který akci provedl
+ * @return array - Pole user_id příjemců
+ */
+function resolveRecipients($db, $recipientType, $recipientData, $entityType, $entityId, $triggerUserId) {
+    $recipients = array();
+    
+    try {
+        switch ($recipientType) {
+            case 'USER':
+                // Konkrétní uživatel
+                if (isset($recipientData['uzivatel_id'])) {
+                    $recipients = [$recipientData['uzivatel_id']];
+                }
+                break;
+                
+            case 'ROLE':
+                // Všichni uživatelé s danou rolí
+                if (isset($recipientData['role_id'])) {
+                    $stmt = $db->prepare("
+                        SELECT DISTINCT u.id 
+                        FROM users u
+                        JOIN 25_user_roles ur ON u.id = ur.user_id
+                        WHERE ur.role_id = ? AND u.aktivni = 1
+                    ");
+                    $stmt->execute([$recipientData['role_id']]);
+                    $recipients = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                }
+                break;
+                
+            case 'GROUP':
+                // Skupina uživatelů
+                if (isset($recipientData['group_id'])) {
+                    $stmt = $db->prepare("
+                        SELECT user_id FROM 25_user_groups_members WHERE group_id = ?
+                    ");
+                    $stmt->execute([$recipientData['group_id']]);
+                    $recipients = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                }
+                break;
+                
+            case 'TRIGGER_USER':
+                // Uživatel, který akci provedl
+                if ($triggerUserId) {
+                    $recipients = [$triggerUserId];
+                }
+                break;
+                
+            case 'ENTITY_AUTHOR':
+                // Autor entity (tvůrce objednávky/faktury/...)
+                $author = getEntityAuthor($db, $entityType, $entityId);
+                if ($author) {
+                    $recipients = [$author];
+                }
+                break;
+                
+            case 'ENTITY_OWNER':
+                // Vlastník/příkazce entity
+                $owner = getEntityOwner($db, $entityType, $entityId);
+                if ($owner) {
+                    $recipients = [$owner];
+                }
+                break;
+                
+            case 'ENTITY_GUARANTOR':
+                // Garant entity
+                $guarantor = getEntityGuarantor($db, $entityType, $entityId);
+                if ($guarantor) {
+                    $recipients = [$guarantor];
+                }
+                break;
+                
+            case 'ENTITY_APPROVER':
+                // Schvalovatel entity
+                $approver = getEntityApprover($db, $entityType, $entityId);
+                if ($approver) {
+                    $recipients = [$approver];
+                }
+                break;
+                
+            default:
+                error_log("[resolveRecipients] Unknown recipient type: $recipientType");
+        }
+        
+        error_log("[resolveRecipients] $recipientType: " . count($recipients) . " recipients");
+        
+    } catch (Exception $e) {
+        error_log("[resolveRecipients] Error: " . $e->getMessage());
+    }
+    
+    return $recipients;
+}
+
+/**
+ * Helper funkce pro získání autora entity
+ */
+function getEntityAuthor($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                break;
+            case 'todos':
+                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_TODOS . " WHERE id = ?");
+                break;
+            case 'cashbook':
+                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_CASHBOOK . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityAuthor] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Helper funkce pro získání vlastníka/příkazce entity
+ */
+function getEntityOwner($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT prikazce_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityOwner] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Helper funkce pro získání garanta entity
+ */
+function getEntityGuarantor($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityGuarantor] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Helper funkce pro získání schvalovatele entity
+ */
+function getEntityApprover($db, $entityType, $entityId) {
+    try {
+        switch ($entityType) {
+            case 'orders':
+                $stmt = $db->prepare("SELECT schvalovatel_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT approver_user_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                break;
+            default:
+                return null;
+        }
+        $stmt->execute([$entityId]);
+        return $stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("[getEntityApprover] Error: " . $e->getMessage());
+        return null;
+    }
+}
+
 /**
  * Hlavní router pro automatické odesílání notifikací při událostech
  * Použití: notificationRouter($db, 'ORDER_SENT_FOR_APPROVAL', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
@@ -1674,7 +2076,8 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
 function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) {
     $recipients = array();
     
-    error_log("📋 [findNotificationRecipients] Začínám hledat příjemce...");
+    error_log("📋 [findNotificationRecipients] GENERIC SYSTEM START");
+    error_log("   Event: $eventType, Object ID: $objectId, Trigger User: $triggerUserId");
     
     try {
         // 1. Najít aktivní profil hierarchie
@@ -1690,7 +2093,6 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         
         if (!$profile) {
             error_log("   ❌ ŽÁDNÝ aktivní hierarchický profil nenalezen!");
-            error_log("   → Zkontrolujte tabulku 25_hierarchie_profily, sloupec 'aktivni' = 1");
             return $recipients;
         }
         
@@ -1698,13 +2100,17 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
-            error_log("   ❌ Neplatný JSON ve structure_json profilu {$profile['id']}");
+            error_log("   ❌ Neplatný JSON ve structure_json");
             return $recipients;
         }
         
-        error_log("   📊 Structure má " . count($structure['nodes']) . " nodes a " . count($structure['edges']) . " edges");
+        error_log("   📊 Structure: " . count($structure['nodes']) . " nodes, " . count($structure['edges']) . " edges");
         
-        // 2. Projít všechny TEMPLATE nodes a najít ty, které mají eventType
+        // Určit object type z event type
+        $objectType = getObjectTypeFromEvent($eventType);
+        error_log("   📦 Object type: $objectType");
+        
+        // 2. Najít TEMPLATE nodes s tímto event typem
         error_log("   🔍 Hledám template nodes s event typem '$eventType'...");
         $matchingTemplates = 0;
         
@@ -1713,42 +2119,36 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
             
             $eventTypes = isset($node['data']['eventTypes']) ? $node['data']['eventTypes'] : array();
             
-            error_log("      Template: {$node['data']['name']}, Event Types: " . json_encode($eventTypes));
-            
             // Pokud tento template nemá náš eventType, přeskoč
             if (!in_array($eventType, $eventTypes)) continue;
             
             $matchingTemplates++;
-            error_log("      ✅ MATCH! Template '{$node['data']['name']}' má event '$eventType'");
+            error_log("      ✅ Template '{$node['data']['name']}' má event '$eventType'");
             
-            // 3. Najít všechny EDGE (šipky) vedoucí z tohoto template
-            error_log("      🔗 Hledám edges z template '{$node['data']['name']}'...");
+            // 3. Najít všechny EDGES vedoucí z tohoto template
             $edgeCount = 0;
             
             foreach ($structure['edges'] as $edge) {
                 if ($edge['source'] !== $node['id']) continue;
                 
                 $edgeCount++;
-                error_log("         Edge #{$edgeCount}: {$edge['source']} → {$edge['target']}");
+                error_log("         Edge #{$edgeCount}: {$edge['id']}");
                 
-                $notifications = isset($edge['data']['notifications']) ? $edge['data']['notifications'] : array();
-                error_log("         Notification config: " . json_encode($notifications));
+                // ════════════════════════════════════════════════════════════
+                // GENERIC RECIPIENT SYSTEM - NOVÁ LOGIKA
+                // ════════════════════════════════════════════════════════════
                 
-                // Kontrola checkbox filtrů
-                $onlyParticipants = isset($edge['data']['onlyOrderParticipants']) ? $edge['data']['onlyOrderParticipants'] : false;
-                $onlyLocation = isset($edge['data']['onlyOrderLocation']) ? $edge['data']['onlyOrderLocation'] : false;
-                error_log("         Filtry: onlyParticipants=" . ($onlyParticipants ? 'ANO' : 'NE') . ", onlyLocation=" . ($onlyLocation ? 'ANO' : 'NE'));
+                // Načíst recipient_type a scope_filter z edge.data
+                $recipientType = isset($edge['data']['recipient_type']) ? $edge['data']['recipient_type'] : 'USER';
+                $scopeFilter = isset($edge['data']['scope_filter']) ? $edge['data']['scope_filter'] : 'NONE';
+                $recipientRole = isset($edge['data']['recipientRole']) ? $edge['data']['recipientRole'] : 'INFO';
+                $sendEmail = isset($edge['data']['sendEmail']) ? (bool)$edge['data']['sendEmail'] : false;
+                $sendInApp = isset($edge['data']['sendInApp']) ? (bool)$edge['data']['sendInApp'] : true;
                 
-                // Kontrola, zda edge má tento eventType v types[]
-                $edgeEventTypes = isset($notifications['types']) ? $notifications['types'] : array();
-                if (!in_array($eventType, $edgeEventTypes)) {
-                    error_log("         ⚠️ Edge nemá event type '$eventType' v types[], přeskakuji");
-                    continue;
-                }
+                error_log("         → recipient_type=$recipientType, scope_filter=$scopeFilter, recipientRole=$recipientRole");
+                error_log("         → sendEmail=" . ($sendEmail ? 'ANO' : 'NE') . ", sendInApp=" . ($sendInApp ? 'ANO' : 'NE'));
                 
-                error_log("         ✅ Edge obsahuje event type '$eventType'!");
-                
-                // 4. Určit cílového uživatele/roli z edge target
+                // 4. Najít target node
                 $targetNodeId = $edge['target'];
                 $targetNode = null;
                 foreach ($structure['nodes'] as $n) {
@@ -1758,114 +2158,61 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     }
                 }
                 
-                if (!$targetNode) continue;
-                
-                // 5. Najít konkrétní uzivatel_id podle typu target node
-                $targetUserIds = resolveTargetUsers($db, $targetNode, $objectId, $triggerUserId);
-                
-                // 5a. ✅ FILTR: Pouze ÚČASTNÍCI objednávky + automatické rozlišení rolí
-                if ($onlyParticipants && $objectType === 'orders') {
-                    error_log("         📋 Filtr 'onlyOrderParticipants' aktivní - hledám účastníky objednávky $objectId...");
-                    
-                    // Načti objednávku
-                    $stmt = $db->prepare("
-                        SELECT uzivatel_id, garant_uzivatel_id, prikazce_user_id, 
-                               schvalil_1_user_id, schvalil_2_user_id, schvalil_3_user_id
-                        FROM " . TABLE_OBJEDNAVKY . " 
-                        WHERE id = :order_id
-                    ");
-                    $stmt->execute([':order_id' => $objectId]);
-                    $order = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    if (!$order) {
-                        error_log("         ⏩ SKIP - Objednávka $objectId nenalezena v DB");
-                        continue;
-                    }
-                    
-                    // Rozděl účastníky podle jejich role v objednávce
-                    $approvers = array(); // Schvalovatelé + příkazce (APPROVAL role)
-                    $infoRecipients = array(); // Autor + garant (INFO role)
-                    
-                    if ($order['uzivatel_id']) $infoRecipients[] = $order['uzivatel_id']; // Autor
-                    if ($order['garant_uzivatel_id']) $infoRecipients[] = $order['garant_uzivatel_id']; // Garant
-                    if ($order['prikazce_user_id']) $approvers[] = $order['prikazce_user_id']; // Příkazce
-                    if ($order['schvalil_1_user_id']) $approvers[] = $order['schvalil_1_user_id']; // Schvalovatel 1
-                    if ($order['schvalil_2_user_id']) $approvers[] = $order['schvalil_2_user_id']; // Schvalovatel 2
-                    if ($order['schvalil_3_user_id']) $approvers[] = $order['schvalil_3_user_id']; // Schvalovatel 3
-                    
-                    $approvers = array_unique($approvers);
-                    $infoRecipients = array_unique($infoRecipients);
-                    
-                    error_log("         ✅ Schvalovatelé/příkazce (APPROVAL): " . implode(', ', $approvers));
-                    error_log("         ✅ Autor/garant (INFO): " . implode(', ', $infoRecipients));
-                    
-                    // 🎯 INTELIGENTNÍ FILTROVÁNÍ podle recipientRole v edge
-                    $edgeRecipientRole = $recipientRole; // Z edge config
-                    
-                    if ($edgeRecipientRole === 'APPROVAL') {
-                        // Edge je pro APPROVAL → filtruj jen schvalovate/příkazce
-                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($approvers) {
-                            return in_array($userId, $approvers);
-                        });
-                        error_log("         🎯 Edge role=APPROVAL → filtr na schvalovatelé: " . implode(', ', $targetUserIds));
-                    } 
-                    elseif ($edgeRecipientRole === 'INFO' || $edgeRecipientRole === 'AUTHOR_INFO' || $edgeRecipientRole === 'GUARANTOR_INFO') {
-                        // Edge je pro INFO → filtruj jen autor+garant
-                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($infoRecipients) {
-                            return in_array($userId, $infoRecipients);
-                        });
-                        error_log("         🎯 Edge role=INFO → filtr na autor/garant: " . implode(', ', $targetUserIds));
-                    }
-                    else {
-                        // EXCEPTIONAL nebo jiná role → použij všechny účastníky
-                        $allParticipants = array_merge($approvers, $infoRecipients);
-                        $allParticipants = array_unique($allParticipants);
-                        $targetUserIds = array_filter($targetUserIds, function($userId) use ($allParticipants) {
-                            return in_array($userId, $allParticipants);
-                        });
-                        error_log("         🎯 Edge role=$edgeRecipientRole → filtr na všichni účastníci: " . implode(', ', $targetUserIds));
-                    }
-                    
-                    if (empty($targetUserIds)) {
-                        error_log("         ⏩ SKIP - Žádný z target users není správný účastník pro tuto recipient role");
-                        continue;
-                    }
-                    error_log("         ✅ MATCH - Finální target users: " . implode(', ', $targetUserIds));
+                if (!$targetNode) {
+                    error_log("         ❌ Target node nenalezen: $targetNodeId");
+                    continue;
                 }
                 
-                // 6. Určit variantu šablony podle recipientRole
-                $recipientRole = isset($notifications['recipientRole']) ? $notifications['recipientRole'] : 'APPROVAL';
-                $variant = 'normalVariant'; // výchozí
+                error_log("         ✅ Target node: type={$targetNode['typ']}, name=" . ($targetNode['data']['name'] ?? 'N/A'));
                 
-                // ✅ Čti varianty přímo z template node dat (z DB/hierarchie)
+                // 5. RESOLVE RECIPIENTS - použij novou Generic funkci
+                $recipientData = $targetNode['data'] ?? array();
+                $targetUserIds = resolveRecipients($db, $recipientType, $recipientData, $objectType, $objectId, $triggerUserId);
+                
+                if (empty($targetUserIds)) {
+                    error_log("         ❌ Žádní příjemci po resolve");
+                    continue;
+                }
+                
+                error_log("         → Resolved " . count($targetUserIds) . " recipients: " . implode(', ', $targetUserIds));
+                
+                // 6. APPLY SCOPE FILTER
+                $targetUserIds = applyScopeFilter($db, $targetUserIds, $scopeFilter, $objectType, $objectId);
+                
+                if (empty($targetUserIds)) {
+                    error_log("         ❌ Žádní příjemci po scope filter");
+                    continue;
+                }
+                
+                error_log("         → After scope filter: " . count($targetUserIds) . " recipients");
+                
+                // 7. Určit variantu šablony podle recipientRole
+                $variant = 'normalVariant'; // default
+                
                 if ($recipientRole === 'EXCEPTIONAL') {
                     $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'urgentVariant';
-                    error_log("         🟠 Recipient role=EXCEPTIONAL → varianta='$variant'");
                 } elseif ($recipientRole === 'INFO' || $recipientRole === 'AUTHOR_INFO' || $recipientRole === 'GUARANTOR_INFO') {
                     $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'infoVariant';
-                    error_log("         🟢 Recipient role=$recipientRole → varianta='$variant'");
                 } else {
-                    // APPROVAL nebo jiná role
                     $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'normalVariant';
-                    error_log("         🟠 Recipient role=$recipientRole → varianta='$variant'");
                 }
                 
-                // 7. Přidat každého target user do seznamu příjemců
+                error_log("         → Template variant: $variant");
+                
+                // 8. Přidat každého target user do seznamu příjemců
                 foreach ($targetUserIds as $userId) {
-                    // ✅ KONTROLA UŽIVATELSKÝCH PREFERENCÍ
+                    // Kontrola uživatelských preferencí
                     $userPrefs = getUserNotificationPreferences($db, $userId);
                     
-                    // Pokud má uživatel notifikace vypnuté globálně, přeskoč
                     if (!$userPrefs['enabled']) {
-                        error_log("[findNotificationRecipients] User $userId has notifications disabled globally");
+                        error_log("         ⚠️ User $userId: notifications disabled globally");
                         continue;
                     }
                     
-                    // Aplikovat uživatelské preference na kanály
-                    $sendEmailFinal = isset($notifications['email']) ? (bool)$notifications['email'] : false;
-                    $sendInAppFinal = isset($notifications['inapp']) ? (bool)$notifications['inapp'] : true;
+                    // Aplikovat uživatelské preference
+                    $sendEmailFinal = $sendEmail;
+                    $sendInAppFinal = $sendInApp;
                     
-                    // Override podle user preferences
                     if (!$userPrefs['email_enabled']) {
                         $sendEmailFinal = false;
                     }
@@ -1873,16 +2220,16 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                         $sendInAppFinal = false;
                     }
                     
-                    // Kontrola kategorie (orders, invoices, contracts, cashbook)
+                    // Kontrola kategorie
                     $kategorie = getObjectTypeFromEvent($eventType);
                     if (isset($userPrefs['categories'][$kategorie]) && !$userPrefs['categories'][$kategorie]) {
-                        error_log("[findNotificationRecipients] User $userId has kategorie '$kategorie' disabled");
+                        error_log("         ⚠️ User $userId: kategorie '$kategorie' disabled");
                         continue;
                     }
                     
-                    // Pokud jsou oba kanály vypnuté, přeskoč
+                    // Pokud oba kanály vypnuté, přeskoč
                     if (!$sendEmailFinal && !$sendInAppFinal) {
-                        error_log("[findNotificationRecipients] User $userId has both channels disabled for this notification");
+                        error_log("         ⚠️ User $userId: both channels disabled");
                         continue;
                     }
                     
