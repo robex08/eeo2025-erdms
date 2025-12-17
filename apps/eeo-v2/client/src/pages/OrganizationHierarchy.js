@@ -5762,6 +5762,42 @@ const OrganizationHierarchy = () => {
                       <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
                     </FormGroup>
                     
+                    {/* INFO BOX - JAK FUNGUJE NOVÝ SYSTÉM */}
+                    <div style={{
+                      padding: '14px',
+                      background: 'linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%)',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '8px',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#1e40af', marginBottom: '8px' }}>
+                        🎯 Jak funguje nový notifikační systém
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#1e3a8a', lineHeight: '1.6' }}>
+                        <strong>1️⃣ Šablona obsahuje text a design emailu</strong><br/>
+                        <strong>2️⃣ Propojte šablonu se šipkou na příjemce:</strong>
+                        <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
+                          <li><strong>👤 Konkrétní uživatel</strong> - např. Jan Novák</li>
+                          <li><strong>🎭 Role</strong> - např. všichni s rolí "Schvalovatel"</li>
+                          <li><strong>🎯 Generic Recipient</strong> - např. TRIGGER_USER (ten, kdo akci provedl)</li>
+                        </ul>
+                        <strong>3️⃣ Na šipce nastavte:</strong>
+                        <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
+                          <li><strong>Scope Filter</strong> - koho zahrnout (všichni/jen účastníci entity...)</li>
+                          <li><strong>Event Types</strong> - kdy poslat (ORDER_SENT_FOR_APPROVAL...)</li>
+                        </ul>
+                        <div style={{ 
+                          marginTop: '8px', 
+                          paddingTop: '8px', 
+                          borderTop: '1px solid #93c5fd',
+                          fontStyle: 'italic',
+                          fontSize: '0.75rem'
+                        }}>
+                          💡 <strong>Tip:</strong> Klikněte na <strong>šipku</strong> pro nastavení routingu, nebo skrolujte dolů pro přehled všech připojených příjemců
+                        </div>
+                      </div>
+                    </div>
+                    
                     {/* NASTAVENÍ HTML ŠABLON PRO NORMÁLNÍ A MIMOŘÁDNÝ STAV */}
                     {(() => {
                       const template = allNotificationTemplates.find(t => t.id === selectedNode.data.templateId);
@@ -5826,7 +5862,7 @@ const OrganizationHierarchy = () => {
                           {/* VÝBĚR HTML ŠABLONY PRO NORMÁLNÍ STAV */}
                           <FormGroup>
                             <Label>
-                              HTML šablona pro NORMÁLNÍ stav
+                              🟠 Barva emailu pro BĚŽNÉ případy
                               <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
                             </Label>
                             <select
@@ -5850,19 +5886,20 @@ const OrganizationHierarchy = () => {
                               ))}
                             </select>
                             <div style={{ 
-                              fontSize: '0.7rem', 
+                              fontSize: '0.75rem', 
                               color: '#64748b', 
                               marginTop: '4px',
-                              fontStyle: 'italic'
+                              lineHeight: '1.4'
                             }}>
-                              Tato HTML varianta se použije pro běžné případy (např. oranžová)
+                              💡 Běžné případy = standardní schvalování, změna stavu apod.<br/>
+                              Doporučeno: <strong>🟠 oranžová</strong> varianta
                             </div>
                           </FormGroup>
                           
                           {/* VÝBĚR HTML ŠABLONY PRO MIMOŘÁDNÝ STAV */}
                           <FormGroup>
                             <Label>
-                              HTML šablona pro MIMOŘÁDNÝ stav
+                              🔴 Barva emailu pro URGENTNÍ případy
                               <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
                             </Label>
                             <select
@@ -5886,19 +5923,20 @@ const OrganizationHierarchy = () => {
                               ))}
                             </select>
                             <div style={{ 
-                              fontSize: '0.7rem', 
+                              fontSize: '0.75rem', 
                               color: '#64748b', 
                               marginTop: '4px',
-                              fontStyle: 'italic'
+                              lineHeight: '1.4'
                             }}>
-                              Tato HTML varianta se použije pro urgentní/mimořádné případy (např. červená)
+                              💡 Urgentní případy = kritické schvalování, upozornění na problém apod.<br/>
+                              Doporučeno: <strong>🔴 červená</strong> varianta
                             </div>
                           </FormGroup>
                           
                           {/* VÝBĚR HTML ŠABLONY PRO INFORMAČNÍ OZNÁMENÍ */}
                           <FormGroup>
                             <Label>
-                              HTML šablona pro INFORMAČNÍ oznámení
+                              🟢 Barva emailu pro INFORMAČNÍ zprávy
                               <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
                             </Label>
                             <select
@@ -5922,31 +5960,32 @@ const OrganizationHierarchy = () => {
                               ))}
                             </select>
                             <div style={{ 
-                              fontSize: '0.7rem', 
+                              fontSize: '0.75rem', 
                               color: '#64748b', 
                               marginTop: '4px',
-                              fontStyle: 'italic'
+                              lineHeight: '1.4'
                             }}>
-                              Tato HTML varianta se použije pro čistě informační notifikace (např. zelená)
+                              💡 Informační zprávy = potvrzení dokončení, FYI, "jen pro vědomí" apod.<br/>
+                              Doporučeno: <strong>🟢 zelená</strong> varianta
                             </div>
                           </FormGroup>
                           
                           {/* INFO BOX */}
                           <div style={{
-                            padding: '10px 12px',
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
+                            padding: '12px',
+                            background: '#f0fdf4',
+                            border: '2px solid #10b981',
                             borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            color: '#1e40af',
+                            fontSize: '0.8rem',
+                            color: '#065f46',
                             marginTop: '8px'
                           }}>
-                            <strong>💡 Jak to funguje:</strong>
-                            <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px', lineHeight: '1.5' }}>
-                              <li>Můžete definovat 3 různé HTML varianty pro různé situace</li>
-                              <li>Doporučení: Normální = <span style={{color: '#f59e0b', fontWeight: 'bold'}}>🟠 oranžová</span>, Urgentní = <span style={{color: '#dc2626', fontWeight: 'bold'}}>🔴 červená</span>, Info = <span style={{color: '#10b981', fontWeight: 'bold'}}>🟢 zelená</span></li>
-                              <li>Backend automaticky vybere správnou podle události a typu příjemce (definuje se v EDGE)</li>
-                              <li>EDGE (šipka) určuje typ notifikace: schválení, info, nebo oboje</li>
+                            <strong>💡 Jak barvy emailů fungují:</strong>
+                            <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px', lineHeight: '1.6' }}>
+                              <li><strong>Šablona = obsah emailu</strong> (text, placeholdery, design)</li>
+                              <li><strong>Barva = priorita/nálada</strong> emailu (🟠 normální, 🔴 urgentní, 🟢 info)</li>
+                              <li><strong>Backend automaticky vybere barvu</strong> podle typu události a příjemce</li>
+                              <li><strong>Příjemce určíte šipkou</strong> - propojte šablonu s uživatelem/rolí/Generic Recipient</li>
                             </ul>
                           </div>
                           
@@ -6016,16 +6055,14 @@ const OrganizationHierarchy = () => {
                         hasTriedToSubmit={false}
                       />
                       <div style={{ 
-                        fontSize: '0.7rem', 
+                        fontSize: '0.75rem', 
                         color: '#64748b', 
                         marginTop: '6px',
-                        fontStyle: 'italic',
-                        lineHeight: '1.4'
+                        lineHeight: '1.5'
                       }}>
-                        💡 <strong>Určuje, kdy se tato šablona automaticky použije.</strong><br/>
-                        <span style={{ marginLeft: '18px' }}>• Např. ORDER_SENT_FOR_APPROVAL → šablona "Odeslána ke schválení"</span><br/>
-                        <span style={{ marginLeft: '18px' }}>• Backend při události vybere šablonu podle event type</span><br/>
-                        <span style={{ marginLeft: '18px' }}>• Pokud nevyberete → šablona se nepoužije automaticky</span>
+                        💡 <strong>Event Types = kdy systém pošle tuto šablonu</strong><br/>
+                        Např. vyberete <strong>ORDER_SENT_FOR_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
+                        ⚠️ Pokud nevyberete žádný → šablona se nepoužije automaticky
                       </div>
                     </FormGroup>
                     
@@ -7823,29 +7860,28 @@ const OrganizationHierarchy = () => {
                       {/* Typ notifikace pro příjemce */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
-                          Typ notifikace pro příjemce
+                          🎯 Jak důležitá je tato notifikace?
                           <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
                         </Label>
                         <Select 
                           value={notificationRecipientRole} 
                           onChange={(e) => setNotificationRecipientRole(e.target.value)}
-                          title="Určuje typ/prioritu notifikace, NE akci k potvrzení"
+                          title="Určuje, kterou barvu emailu použít"
                         >
-                          <option value="EXCEPTIONAL">🔴 Mimořádná událost (kritické schválení)</option>
-                          <option value="APPROVAL">🟠 Důležitá notifikace (karta u příjemce)</option>
-                          <option value="INFO">🟢 Informační oznámení (jen pro vědomí)</option>
+                          <option value="EXCEPTIONAL">🔴 URGENTNÍ - kritické, vyžaduje rychlou akci</option>
+                          <option value="APPROVAL">🟠 NORMÁLNÍ - standardní notifikace</option>
+                          <option value="INFO">🟢 INFORMACE - jen pro vědomí, nic nedělat</option>
                         </Select>
                         <div style={{ 
-                          fontSize: '0.7rem', 
+                          fontSize: '0.75rem', 
                           color: '#64748b', 
                           marginTop: '6px',
-                          fontStyle: 'italic',
-                          lineHeight: '1.4'
+                          lineHeight: '1.5'
                         }}>
-                          💡 <strong>Důležité:</strong> Typ notifikace určuje barvu/prioritu ve zvonečku, NE workflow tlačítko.<br/>
-                          <span style={{ marginLeft: '18px' }}>• EXCEPTIONAL = příkazce/registr musí schválit</span><br/>
-                          <span style={{ marginLeft: '18px' }}>• APPROVAL = karta u příjemce, může pokračovat</span><br/>
-                          <span style={{ marginLeft: '18px' }}>• INFO = jen potvrzení, akce dokončena</span>
+                          💡 <strong>Toto určuje, kterou BARVU emailu použít</strong> (z nastavení šablony):<br/>
+                          • <strong>URGENTNÍ</strong> = použije se 🔴 červená varianta emailu<br/>
+                          • <strong>NORMÁLNÍ</strong> = použije se 🟠 oranžová varianta emailu<br/>
+                          • <strong>INFORMACE</strong> = použije se 🟢 zelená varianta emailu
                         </div>
                       </FormGroup>
                       
@@ -7878,14 +7914,15 @@ const OrganizationHierarchy = () => {
                           hasTriedToSubmit={false}
                         />
                         <div style={{ 
-                          fontSize: '0.7rem', 
+                          fontSize: '0.75rem', 
                           color: '#64748b', 
                           marginTop: '6px',
-                          fontStyle: 'italic',
-                          lineHeight: '1.4'
+                          lineHeight: '1.5'
                         }}>
-                          💡 Vyberte konkrétní události (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED...), kdy se má tato notifikace poslat.<br/>
-                          <span style={{ marginLeft: '18px' }}>Pokud nevyberete žádnou, notifikace se nebude automaticky spouštět.</span>
+                          💡 <strong>Kdy poslat tuto notifikace?</strong> Vyberte události:<br/>
+                          • Např. <strong>ORDER_SENT_FOR_APPROVAL</strong> = když někdo odešle objednávku ke schválení<br/>
+                          • Můžete vybrat více událostí najednou<br/>
+                          ⚠️ Pokud nevyberete žádnou → notifikace se nepoužije automaticky
                         </div>
                       </FormGroup>
                       
@@ -7921,11 +7958,19 @@ const OrganizationHierarchy = () => {
                           <label htmlFor="onlyOrderParticipants" style={{ cursor: 'pointer', flex: 1 }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#78350f', marginBottom: '4px' }}>
                               📋 Poslat pouze účastníkům objednávky
+                              <span style={{ 
+                                marginLeft: '8px', 
+                                fontSize: '0.7rem', 
+                                padding: '2px 6px', 
+                                background: '#fed7aa',
+                                borderRadius: '4px',
+                                fontWeight: 'normal'
+                              }}>⚠️ ZASTARALÉ</span>
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: '1.5' }}>
-                              <strong>✅ Zapnuto:</strong> Notifikace dostanou jen ti, kteří jsou přiřazeni k dané objednávce 
-                              (objednatel, garant, příkazce, schvalovatelé této konkrétní objednávky).<br/>
-                              <strong>❌ Vypnuto:</strong> Notifikace dostanou VŠICHNI uživatelé s vybranou rolí v celém systému.
+                              <strong>⚠️ Doporučujeme použít nový "Scope Filter" níže!</strong><br/>
+                              ✅ Zapnuto = jen účastníci objednávky<br/>
+                              ❌ Vypnuto = všichni s rolí
                             </div>
                           </label>
                         </div>
@@ -7963,11 +8008,19 @@ const OrganizationHierarchy = () => {
                           <label htmlFor="onlyOrderLocation" style={{ cursor: 'pointer', flex: 1 }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1e40af', marginBottom: '4px' }}>
                               📍 Filtrovat podle lokality/úseku objednávky
+                              <span style={{ 
+                                marginLeft: '8px', 
+                                fontSize: '0.7rem', 
+                                padding: '2px 6px', 
+                                background: '#bfdbfe',
+                                borderRadius: '4px',
+                                fontWeight: 'normal'
+                              }}>⚠️ ZASTARALÉ</span>
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#1e3a8a', lineHeight: '1.5' }}>
-                              <strong>✅ Zapnuto:</strong> Notifikace dostanou jen uživatelé s oprávněními pro lokalitu/úsek dané objednávky 
-                              (kontroluje hierarchii User → Department/Location).<br/>
-                              <strong>❌ Vypnuto:</strong> Kontrola lokality/úseku se neprovádí.
+                              <strong>⚠️ Doporučujeme použít nový "Scope Filter" níže!</strong><br/>
+                              ✅ Zapnuto = jen z lokality/úseku objednávky<br/>
+                              ❌ Vypnuto = bez kontroly
                             </div>
                           </label>
                         </div>
