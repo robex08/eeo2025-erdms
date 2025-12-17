@@ -5082,12 +5082,8 @@ const OrganizationHierarchy = () => {
                   expanded={expandedSections.genericRecipients}
                   onClick={() => toggleSection('genericRecipients')}
                 >
-                  <SectionTitle>
-                    🎯 GENERIC RECIPIENTS (3)
-                  </SectionTitle>
-                  <SectionIcon expanded={expandedSections.genericRecipients}>
-                    <FontAwesomeIcon icon={expandedSections.genericRecipients ? faChevronDown : faChevronRight} />
-                  </SectionIcon>
+                  <FontAwesomeIcon icon={expandedSections.genericRecipients ? faChevronDown : faChevronRight} />
+                  <span style={{ marginLeft: '8px' }}>🎯 GENERIC RECIPIENTS (3)</span>
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.genericRecipients}>
                   <div>
@@ -6536,6 +6532,101 @@ const OrganizationHierarchy = () => {
                         </div>
                       );
                     })()}
+                    
+                    {/* ODCHOZÍ NOTIFIKACE (komu se posílá) */}
+                    {(() => {
+                      const outgoingEdges = edges.filter(e => e.source === selectedNode.id);
+                      if (outgoingEdges.length === 0) return (
+                        <div style={{
+                          marginTop: '16px',
+                          padding: '12px',
+                          background: '#fef3c7',
+                          border: '2px solid #fbbf24',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          color: '#92400e'
+                        }}>
+                          ⚠️ <strong>Šablona není propojena s žádným příjemcem!</strong>
+                          <div style={{ fontSize: '0.8rem', marginTop: '6px' }}>
+                            Přetáhněte šipku z této šablony na uživatele, roli nebo Generic Recipient node.
+                          </div>
+                        </div>
+                      );
+                      
+                      return (
+                        <div style={{
+                          marginTop: '16px',
+                          padding: '12px',
+                          background: '#f0fdf4',
+                          border: '2px solid #10b981',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#065f46', marginBottom: '10px' }}>
+                            📤 Odchozí notifikace ({outgoingEdges.length}):
+                          </div>
+                          {outgoingEdges.map((edge, idx) => {
+                            const targetNode = nodes.find(n => n.id === edge.target);
+                            const recipientType = targetNode?.data?.type === 'genericRecipient' 
+                              ? targetNode.data.genericType 
+                              : targetNode?.data?.type?.toUpperCase() || 'UNKNOWN';
+                            const scopeFilter = edge.data?.scope_filter || 'NONE';
+                            const recipientRole = edge.data?.recipientRole || 'INFO';
+                            const eventTypes = edge.data?.eventTypes || [];
+                            
+                            const recipientTypeColors = {
+                              'TRIGGER_USER': { bg: '#d1fae5', border: '#10b981', text: '#065f46', icon: '🎯' },
+                              'ENTITY_AUTHOR': { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: '✍️' },
+                              'ENTITY_OWNER': { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', icon: '👤' },
+                              'USER': { bg: '#f3e8ff', border: '#a855f7', text: '#6b21a8', icon: '👤' },
+                              'ROLE': { bg: '#e0e7ff', border: '#6366f1', text: '#3730a3', icon: '🎭' }
+                            };
+                            
+                            const colors = recipientTypeColors[recipientType] || { 
+                              bg: '#f3f4f6', border: '#9ca3af', text: '#374151', icon: '❓' 
+                            };
+                            
+                            return (
+                              <div key={edge.id} style={{
+                                padding: '10px',
+                                background: colors.bg,
+                                border: `2px solid ${colors.border}`,
+                                borderRadius: '6px',
+                                marginBottom: idx < outgoingEdges.length - 1 ? '8px' : '0',
+                                fontSize: '0.85rem'
+                              }}>
+                                <div style={{ fontWeight: '700', color: colors.text, marginBottom: '6px' }}>
+                                  {colors.icon} {targetNode?.data?.name || 'Unknown'} 
+                                  <span style={{ fontWeight: '600', opacity: 0.8, marginLeft: '6px' }}>
+                                    ({recipientType})
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: colors.text, lineHeight: '1.5' }}>
+                                  <strong>🎯 Typ notifikace:</strong> {recipientRole}<br/>
+                                  <strong>📍 Scope Filter:</strong> {scopeFilter}
+                                  {scopeFilter === 'ENTITY_PARTICIPANTS' && <span style={{ color: '#10b981' }}> ⭐</span>}
+                                  {eventTypes.length > 0 && (
+                                    <>
+                                      <br/><strong>⚡ Event Types:</strong> {eventTypes.slice(0, 2).join(', ')}
+                                      {eventTypes.length > 2 && ` +${eventTypes.length - 2} dalších`}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div style={{ 
+                            fontSize: '0.7rem', 
+                            color: '#047857', 
+                            marginTop: '8px',
+                            fontStyle: 'italic',
+                            paddingTop: '8px',
+                            borderTop: '1px solid #d1fae5'
+                          }}>
+                            💡 Klikněte na <strong>šipku (hranu)</strong> pro úpravu Scope Filter a typu notifikace
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
                 
@@ -6755,6 +6846,125 @@ const OrganizationHierarchy = () => {
                         })()}
                       </div>
                     </div>
+                  </>
+                )}
+                
+                {/* GENERIC RECIPIENT NODE */}
+                {selectedNode && selectedNode.data.type === 'genericRecipient' && (
+                  <>
+                    <FormGroup>
+                      <Label>Typ Generic Recipient</Label>
+                      <Input value={selectedNode.data.genericType || 'UNKNOWN'} readOnly />
+                    </FormGroup>
+                    <FormGroup>
+                      <Label>Název</Label>
+                      <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
+                    </FormGroup>
+                    
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '14px',
+                      background: (() => {
+                        const colors = {
+                          'TRIGGER_USER': '#d1fae5',
+                          'ENTITY_AUTHOR': '#dbeafe',
+                          'ENTITY_OWNER': '#fef3c7'
+                        };
+                        return colors[selectedNode.data.genericType] || '#f3f4f6';
+                      })(),
+                      border: (() => {
+                        const colors = {
+                          'TRIGGER_USER': '2px solid #10b981',
+                          'ENTITY_AUTHOR': '2px solid #3b82f6',
+                          'ENTITY_OWNER': '2px solid #f59e0b'
+                        };
+                        return colors[selectedNode.data.genericType] || '2px solid #9ca3af';
+                      })(),
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: (() => {
+                        const colors = {
+                          'TRIGGER_USER': '#065f46',
+                          'ENTITY_AUTHOR': '#1e40af',
+                          'ENTITY_OWNER': '#92400e'
+                        };
+                        return colors[selectedNode.data.genericType] || '#374151';
+                      })()
+                    }}>
+                      <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                        {selectedNode.data.genericType === 'TRIGGER_USER' && '🎯 Uživatel, který akci provedl'}
+                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && '✍️ Autor/zadavatel entity'}
+                        {selectedNode.data.genericType === 'ENTITY_OWNER' && '👤 Vlastník/příkazce entity'}
+                      </div>
+                      <strong>💡 Jak to funguje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        {selectedNode.data.genericType === 'TRIGGER_USER' && (
+                          <>
+                            <li>Dynamicky se určí podle <strong>kontextu události</strong></li>
+                            <li>Např. když Jan Novák schválí objednávku → <strong>Jan Novák</strong> dostane notifikaci</li>
+                            <li>Ideální pro: potvrzení akce, zpětné info o tom co jsem udělal</li>
+                          </>
+                        )}
+                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && (
+                          <>
+                            <li>Určí se podle pole <strong>objednatel_id</strong> u objednávky</li>
+                            <li>Např. objednávku vytvořil Petr Svoboda → <strong>Petr Svoboda</strong> dostane notifikaci</li>
+                            <li>Ideální pro: notifikace o změně stavu objednávky, kterou jsem vytvořil</li>
+                          </>
+                        )}
+                        {selectedNode.data.genericType === 'ENTITY_OWNER' && (
+                          <>
+                            <li>Určí se podle pole <strong>prikazce_id</strong> u objednávky</li>
+                            <li>Např. příkazce je Marie Nováková → <strong>Marie Nováková</strong> dostane notifikaci</li>
+                            <li>Ideální pro: notifikace o schvalování, fakturaci mé objednávky</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                    
+                    {/* Zobrazení příchozích hran (ze kterých templates přicházejí notifikace) */}
+                    {(() => {
+                      const incomingEdges = edges.filter(e => e.target === selectedNode.id);
+                      if (incomingEdges.length === 0) return null;
+                      
+                      return (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '12px',
+                          background: '#f0fdf4',
+                          border: '2px solid #10b981',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#065f46', marginBottom: '8px' }}>
+                            📨 Notifikační šablony (příchozí):
+                          </div>
+                          {incomingEdges.map(edge => {
+                            const sourceNode = nodes.find(n => n.id === edge.source);
+                            const scopeFilter = edge.data?.scope_filter || 'NONE';
+                            const recipientRole = edge.data?.recipientRole || 'INFO';
+                            
+                            return (
+                              <div key={edge.id} style={{
+                                padding: '8px',
+                                background: 'white',
+                                border: '1px solid #d1fae5',
+                                borderRadius: '6px',
+                                marginBottom: '6px',
+                                fontSize: '0.8rem'
+                              }}>
+                                <div style={{ fontWeight: '600', color: '#047857' }}>
+                                  🔔 {sourceNode?.data?.name || 'Unknown Template'}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#065f46', marginTop: '4px' }}>
+                                  📍 <strong>Scope Filter:</strong> {scopeFilter}<br/>
+                                  🎯 <strong>Typ notifikace:</strong> {recipientRole}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
                 
