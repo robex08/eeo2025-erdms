@@ -1463,29 +1463,38 @@ function mapRecipientRoleToPriority($recipientRole) {
  * Načte placeholder data z databáze podle object typu
  */
 function loadOrderPlaceholders($db, $objectId) {
+    // Načíst table names pomocí funkcí z orderQueries.php
+    if (!function_exists('get_orders_table_name')) {
+        require_once __DIR__ . '/orderQueries.php';
+    }
+    
+    $orders_table = get_orders_table_name(); // 25a_objednavky
+    $order_items_table = get_order_items_table_name(); // 25a_objednavky_polozky
+    $users_table = get_users_table_name(); // 25_uzivatele
+    
     try {
         // Načti objednávku s JOINy na všechny účastníky
         $stmt = $db->prepare("
             SELECT o.*, 
-                   CONCAT(creator.name, ' ', creator.surname) as creator_name,
-                   CONCAT(objednatel.name, ' ', objednatel.surname) as objednatel_name,
-                   CONCAT(prikazce.name, ' ', prikazce.surname) as prikazce_name,
-                   CONCAT(garant.name, ' ', garant.surname) as garant_name,
-                   CONCAT(schval1.name, ' ', schval1.surname) as schvalovatel_1_name,
-                   CONCAT(schval2.name, ' ', schval2.surname) as schvalovatel_2_name,
-                   CONCAT(schval3.name, ' ', schval3.surname) as schvalovatel_3_name,
-                   CONCAT(schval4.name, ' ', schval4.surname) as schvalovatel_4_name,
-                   CONCAT(schval5.name, ' ', schval5.surname) as schvalovatel_5_name
-            FROM " . TABLE_OBJEDNAVKY . " o
-            LEFT JOIN 25_users creator ON o.uzivatel_id = creator.id
-            LEFT JOIN 25_users objednatel ON o.objednatel_id = objednatel.id
-            LEFT JOIN 25_users prikazce ON o.prikazce_id = prikazce.id
-            LEFT JOIN 25_users garant ON o.garant_id = garant.id
-            LEFT JOIN 25_users schval1 ON o.schvalovatel_1_id = schval1.id
-            LEFT JOIN 25_users schval2 ON o.schvalovatel_2_id = schval2.id
-            LEFT JOIN 25_users schval3 ON o.schvalovatel_3_id = schval3.id
-            LEFT JOIN 25_users schval4 ON o.schvalovatel_4_id = schval4.id
-            LEFT JOIN 25_users schval5 ON o.schvalovatel_5_id = schval5.id
+                   CONCAT(creator.jmeno, ' ', creator.prijmeni) as creator_name,
+                   CONCAT(objednatel.jmeno, ' ', objednatel.prijmeni) as objednatel_name,
+                   CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_name,
+                   CONCAT(garant.jmeno, ' ', garant.prijmeni) as garant_name,
+                   CONCAT(schval1.jmeno, ' ', schval1.prijmeni) as schvalovatel_1_name,
+                   CONCAT(schval2.jmeno, ' ', schval2.prijmeni) as schvalovatel_2_name,
+                   CONCAT(schval3.jmeno, ' ', schval3.prijmeni) as schvalovatel_3_name,
+                   CONCAT(schval4.jmeno, ' ', schval4.prijmeni) as schvalovatel_4_name,
+                   CONCAT(schval5.jmeno, ' ', schval5.prijmeni) as schvalovatel_5_name
+            FROM $orders_table o
+            LEFT JOIN $users_table creator ON o.uzivatel_id = creator.id
+            LEFT JOIN $users_table objednatel ON o.objednatel_id = objednatel.id
+            LEFT JOIN $users_table prikazce ON o.prikazce_id = prikazce.id
+            LEFT JOIN $users_table garant ON o.garant_id = garant.id
+            LEFT JOIN $users_table schval1 ON o.schvalovatel_1_id = schval1.id
+            LEFT JOIN $users_table schval2 ON o.schvalovatel_2_id = schval2.id
+            LEFT JOIN $users_table schval3 ON o.schvalovatel_3_id = schval3.id
+            LEFT JOIN $users_table schval4 ON o.schvalovatel_4_id = schval4.id
+            LEFT JOIN $users_table schval5 ON o.schvalovatel_5_id = schval5.id
             WHERE o.id = :order_id
         ");
         $stmt->execute([':order_id' => $objectId]);
@@ -1499,7 +1508,7 @@ function loadOrderPlaceholders($db, $objectId) {
         // Načti položky
         $stmt = $db->prepare("
             SELECT COUNT(*) as items_count, SUM(COALESCE(cena_s_dph, 0)) as items_total_s_dph
-            FROM " . TABLE_OBJEDNAVKY_POLOZKY . "
+            FROM $order_items_table
             WHERE objednavka_id = :order_id
         ");
         $stmt->execute([':order_id' => $objectId]);
