@@ -4017,6 +4017,15 @@ const OrganizationHierarchy = () => {
           setEdges(apiEdges);
           
           console.log('✅ Profile loaded:', validNodes.length, 'nodes,', apiEdges.length, 'edges');
+          
+          // 🆕 FORCE RE-RENDER: Po načtení profilu znovu vyfituj viewport
+          // Malé zpoždění aby se ReactFlow stihl inicializovat
+          setTimeout(() => {
+            if (reactFlowInstance) {
+              reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+              console.log('🔄 ReactFlow viewport refitted after profile load');
+            }
+          }, 100);
         }
         
         // Vymazat draft pri nacitani profilu
