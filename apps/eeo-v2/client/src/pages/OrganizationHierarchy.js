@@ -1595,6 +1595,10 @@ const OrganizationHierarchy = () => {
   const [edgeSendInApp, setEdgeSendInApp] = useState(true);
   const [edgeRecipientRole, setEdgeRecipientRole] = useState('APPROVAL');
   
+  // Source INFO recipients configuration
+  const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
+  const [sourceInfoFields, setSourceInfoFields] = useState(['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id']);
+  
   // Detail panel data - druh vztahu a scope
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
   const [relationshipScope, setRelationshipScope] = useState('OWN'); // OWN, TEAM, LOCATION, ALL
@@ -1736,7 +1740,11 @@ const OrganizationHierarchy = () => {
                 scope_filter: edgeScopeFilter,
                 sendEmail: edgeSendEmail,
                 sendInApp: edgeSendInApp,
-                recipientRole: edgeRecipientRole
+                recipientRole: edgeRecipientRole,
+                source_info_recipients: {
+                  enabled: sourceInfoEnabled,
+                  fields: sourceInfoFields
+                }
               }
             };
           }
@@ -1744,7 +1752,7 @@ const OrganizationHierarchy = () => {
         })
       );
     }
-  }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, selectedEdge]);
+  }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, sourceInfoEnabled, sourceInfoFields, selectedEdge]);
   
   // Auto-save template variant do node
   React.useEffect(() => {
@@ -2367,6 +2375,10 @@ const OrganizationHierarchy = () => {
     setSelectedNotificationEventTypes(edge.data?.notifications?.types || []); // Načíst vybrané event types
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
+    
+    // Načíst source INFO recipients konfiguraci
+    setSourceInfoEnabled(edge.data?.source_info_recipients?.enabled !== false); // Default true
+    setSourceInfoFields(edge.data?.source_info_recipients?.fields || ['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id']);
     
     // Nacist viditelnost modulu z edge data (zkontrolovat modules i visibility)
     setModuleVisibility({
@@ -7723,6 +7735,72 @@ const OrganizationHierarchy = () => {
                           </div>
                         </CheckboxLabel>
                       </CheckboxGroup>
+                      
+                      {/* Source INFO Recipients Configuration */}
+                      <div style={{ 
+                        marginTop: '16px',
+                        padding: '12px',
+                        background: '#eff6ff',
+                        borderRadius: '8px',
+                        border: '1px solid #bfdbfe'
+                      }}>
+                        <CheckboxLabel style={{ marginBottom: '12px' }}>
+                          <input 
+                            type="checkbox"
+                            checked={sourceInfoEnabled}
+                            onChange={(e) => setSourceInfoEnabled(e.target.checked)}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FontAwesomeIcon icon={faInfoCircle} style={{ color: '#3b82f6' }} />
+                            <span><strong>Odeslat INFO potvrzení tvůrcům události</strong></span>
+                          </div>
+                        </CheckboxLabel>
+                        
+                        {sourceInfoEnabled && (
+                          <div style={{ marginLeft: '24px', marginTop: '8px' }}>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '8px' }}>
+                              Vyberte pole z objednávky, jejichž uživatelé dostanou INFO notifikaci:
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
+                              {[
+                                { value: 'uzivatel_id', label: 'Autor (uzivatel_id)' },
+                                { value: 'garant_uzivatel_id', label: 'Garant (garant_uzivatel_id)' },
+                                { value: 'objednatel_id', label: 'Objednatel (objednatel_id)' },
+                                { value: 'schvalovatel_id', label: 'Schvalovatel (schvalovatel_id)' },
+                                { value: 'prikazce_id', label: 'Příkazce (prikazce_id)' },
+                                { value: 'dodavatel_id', label: 'Dodavatel (dodavatel_id)' },
+                                { value: 'odesilatel_id', label: 'Odesílatel (odesilatel_id)' },
+                                { value: 'fakturant_id', label: 'Fakturant (fakturant_id)' },
+                                { value: 'zverejnil_id', label: 'Zveřejnil (zverejnil_id)' },
+                                { value: 'dokoncil_id', label: 'Dokončil (dokoncil_id)' }
+                              ].map(field => (
+                                <CheckboxLabel key={field.value} style={{ fontSize: '0.85rem' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={sourceInfoFields.includes(field.value)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSourceInfoFields([...sourceInfoFields, field.value]);
+                                      } else {
+                                        setSourceInfoFields(sourceInfoFields.filter(f => f !== field.value));
+                                      }
+                                    }}
+                                  />
+                                  <span>{field.label}</span>
+                                </CheckboxLabel>
+                              ))}
+                            </div>
+                            <div style={{ 
+                              marginTop: '8px', 
+                              fontSize: '0.7rem', 
+                              color: '#64748b',
+                              fontStyle: 'italic'
+                            }}>
+                              💡 NULL hodnoty se automaticky přeskočí
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       
                       <div style={{ 
                         marginTop: '12px',
