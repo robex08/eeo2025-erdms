@@ -2913,9 +2913,9 @@ const OrganizationHierarchy = () => {
       const nodeId = `genericRecipient-${genericType}-${Date.now()}`;
       
       const genericLabels = {
-        'TRIGGER_USER': 'Trigger User',
-        'ENTITY_AUTHOR': 'Entity Author',
-        'ENTITY_OWNER': 'Entity Owner'
+        'TRIGGER_USER': 'Spouštěč akce',
+        'ENTITY_AUTHOR': 'Objednatel / Autor',
+        'ENTITY_OWNER': 'Příkazce / Vlastník'
       };
       
       const newNode = {
@@ -2927,7 +2927,7 @@ const OrganizationHierarchy = () => {
           genericType: genericType,
           name: genericLabels[genericType] || genericType,
           label: genericLabels[genericType] || genericType,
-          position: 'Generic Recipient',
+          position: 'Dynamický příjemce',
           initials: genericType === 'TRIGGER_USER' ? '🎯' : genericType === 'ENTITY_AUTHOR' ? '✍️' : '👤',
           metadata: {
             type: 'genericRecipient'
@@ -5083,7 +5083,7 @@ const OrganizationHierarchy = () => {
                   onClick={() => toggleSection('genericRecipients')}
                 >
                   <FontAwesomeIcon icon={expandedSections.genericRecipients ? faChevronDown : faChevronRight} />
-                  <span style={{ marginLeft: '8px' }}>🎯 GENERIC RECIPIENTS (3)</span>
+                  <span style={{ marginLeft: '8px' }}>🎯 DYNAMIČTÍ PŘÍJEMCI (3)</span>
                 </SectionHeader>
                 <SectionContent expanded={expandedSections.genericRecipients}>
                   <div>
@@ -5120,7 +5120,7 @@ const OrganizationHierarchy = () => {
                         🎯
                       </div>
                       <UserInfo>
-                        <UserName>Trigger User</UserName>
+                        <UserName>Spouštěč akce</UserName>
                         <UserMeta>Uživatel, který akci provedl</UserMeta>
                       </UserInfo>
                     </LocationItem>
@@ -5158,8 +5158,8 @@ const OrganizationHierarchy = () => {
                         ✍️
                       </div>
                       <UserInfo>
-                        <UserName>Entity Author</UserName>
-                        <UserMeta>Autor/tvůrce entity (objednávka, faktura, ...)</UserMeta>
+                        <UserName>Objednatel / Autor</UserName>
+                        <UserMeta>Tvůrce entity (objednatel objednávky, autor faktury...)</UserMeta>
                       </UserInfo>
                     </LocationItem>
 
@@ -5196,8 +5196,8 @@ const OrganizationHierarchy = () => {
                         👤
                       </div>
                       <UserInfo>
-                        <UserName>Entity Owner</UserName>
-                        <UserMeta>Vlastník/příkazce entity</UserMeta>
+                        <UserName>Příkazce / Vlastník</UserName>
+                        <UserMeta>Příkazce objednávky, vlastník entity</UserMeta>
                       </UserInfo>
                     </LocationItem>
                   </div>
@@ -5779,7 +5779,7 @@ const OrganizationHierarchy = () => {
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
                           <li><strong>👤 Konkrétní uživatel</strong> - např. Jan Novák</li>
                           <li><strong>🎭 Role</strong> - např. všichni s rolí "Schvalovatel"</li>
-                          <li><strong>🎯 Generic Recipient</strong> - např. TRIGGER_USER (ten, kdo akci provedl)</li>
+                          <li><strong>🎯 Dynamický příjemce</strong> - např. Spouštěč akce, Objednatel, Příkazce</li>
                         </ul>
                         <strong>3️⃣ Na šipce nastavte:</strong>
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
@@ -6585,7 +6585,7 @@ const OrganizationHierarchy = () => {
                         }}>
                           ⚠️ <strong>Šablona není propojena s žádným příjemcem!</strong>
                           <div style={{ fontSize: '0.8rem', marginTop: '6px' }}>
-                            Přetáhněte šipku z této šablony na uživatele, roli nebo Generic Recipient node.
+                            Přetáhněte šipku z této šablony na uživatele, roli nebo dynamického příjemce.
                           </div>
                         </div>
                       );
@@ -6890,8 +6890,8 @@ const OrganizationHierarchy = () => {
                 {selectedNode && selectedNode.data.type === 'genericRecipient' && (
                   <>
                     <FormGroup>
-                      <Label>Typ Generic Recipient</Label>
-                      <Input value={selectedNode.data.genericType || 'UNKNOWN'} readOnly />
+                      <Label>Typ dynamického příjemce</Label>
+                      <Input value={selectedNode.data.genericType || 'NEZnÁMÝ'} readOnly />
                     </FormGroup>
                     <FormGroup>
                       <Label>Název</Label>
@@ -6929,9 +6929,9 @@ const OrganizationHierarchy = () => {
                       })()
                     }}>
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '8px' }}>
-                        {selectedNode.data.genericType === 'TRIGGER_USER' && '🎯 Uživatel, který akci provedl'}
-                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && '✍️ Autor/zadavatel entity'}
-                        {selectedNode.data.genericType === 'ENTITY_OWNER' && '👤 Vlastník/příkazce entity'}
+                        {selectedNode.data.genericType === 'TRIGGER_USER' && '🎯 Spouštěč akce'}
+                        {selectedNode.data.genericType === 'ENTITY_AUTHOR' && '✍️ Objednatel / Autor entity'}
+                        {selectedNode.data.genericType === 'ENTITY_OWNER' && '👤 Příkazce / Vlastník entity'}
                       </div>
                       <strong>💡 Jak to funguje:</strong>
                       <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
@@ -7821,7 +7821,7 @@ const OrganizationHierarchy = () => {
                         border: '2px solid #0ea5e9'
                       }}>
                         <div style={{ fontSize: '0.8rem', color: '#0c4a6e', fontWeight: 600, marginBottom: '4px' }}>
-                          👤 Typ příjemce (Recipient Type)
+                          👤 Typ příjemce
                         </div>
                         <div style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 700 }}>
                           {(() => {
@@ -7831,19 +7831,19 @@ const OrganizationHierarchy = () => {
                             
                             if (nodeType === 'genericRecipient' && genericType) {
                               const labels = {
-                                'TRIGGER_USER': '🎯 TRIGGER_USER',
-                                'ENTITY_AUTHOR': '✍️ ENTITY_AUTHOR',
-                                'ENTITY_OWNER': '👤 ENTITY_OWNER'
+                                'TRIGGER_USER': '🎯 Spouštěč akce',
+                                'ENTITY_AUTHOR': '✍️ Objednatel / Autor',
+                                'ENTITY_OWNER': '👤 Příkazce / Vlastník'
                               };
                               return labels[genericType] || genericType;
                             } else if (nodeType === 'user') {
-                              return '👤 USER';
+                              return '👤 Konkrétní uživatel';
                             } else if (nodeType === 'role') {
-                              return '🎭 ROLE';
+                              return '🎭 Role (všichni s touto rolí)';
                             } else if (nodeType === 'group') {
-                              return '👥 GROUP';
+                              return '👥 Skupina';
                             } else {
-                              return nodeType?.toUpperCase() || 'UNKNOWN';
+                              return nodeType?.toUpperCase() || 'NEZNÁMÝ';
                             }
                           })()}
                         </div>
@@ -7853,7 +7853,7 @@ const OrganizationHierarchy = () => {
                           marginTop: '4px',
                           fontStyle: 'italic'
                         }}>
-                          Určuje, jaký typ příjemců bude tato notifikace oslovovat
+                          Určuje, komu se bude notifikace posílat
                         </div>
                       </div>
                       
