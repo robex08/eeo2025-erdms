@@ -19,6 +19,12 @@ require_once __DIR__ . '/TimezoneHelper.php';
 // Include notification helpers (nové funkce pro placeholdery)
 require_once __DIR__ . '/notificationHelpers.php';
 
+// Include queries.php for TABLE_* constants
+require_once __DIR__ . '/queries.php';
+
+// Include queries.php for TABLE constants
+require_once __DIR__ . '/queries.php';
+
 // ==========================================
 // HELPER FUNKCE
 // ==========================================
@@ -1948,8 +1954,8 @@ function resolveRecipients($db, $recipientType, $recipientData, $entityType, $en
                 if ($roleId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT u.id 
-                        FROM 25_users u
-                        JOIN 25_user_roles ur ON u.id = ur.uzivatel_id
+                        FROM " . TABLE_UZIVATELE . " u
+                        JOIN " . TABLE_UZIVATELE_ROLE . " ur ON u.id = ur.uzivatel_id
                         WHERE ur.role_id = ? AND u.aktivni = 1
                     ");
                     $stmt->execute([$roleId]);
@@ -2331,12 +2337,23 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
     error_log("📋 [findNotificationRecipients] GENERIC SYSTEM START");
     error_log("   Event: $eventType, Object ID: $objectId, Trigger User: $triggerUserId");
     
+    // ✅ DEBUG: Log database connection
+    try {
+        $testQuery = $db->query("SELECT 1");
+        error_log("   ✅ Database connection OK");
+    } catch (Exception $e) {
+        error_log("   ❌ Database connection FAILED: " . $e->getMessage());
+        return $recipients;
+    }
+    
     try {
         // 1. Zkontrolovat, zda je organizační hierarchie ZAPNUTA v global settings
         error_log("   🔍 Kontroluji, zda je organizační hierarchie zapnuta...");
         $stmt = $db->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'hierarchy_enabled'");
         $stmt->execute();
         $hierarchyEnabledRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        error_log("   📊 hierarchy_enabled row: " . json_encode($hierarchyEnabledRow));
         
         $hierarchyEnabled = ($hierarchyEnabledRow && $hierarchyEnabledRow['hodnota'] === '1');
         
@@ -2355,6 +2372,8 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         $stmt->execute();
         $settingRow = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        error_log("   📊 hierarchy_profile_id row: " . json_encode($settingRow));
+        
         $profileId = null;
         if ($settingRow && $settingRow['hodnota'] && $settingRow['hodnota'] !== 'NULL') {
             $profileId = (int)$settingRow['hodnota'];
@@ -2364,6 +2383,8 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
             error_log("   ❌ ŽÁDNÝ hierarchický profil není nastaven v global settings!");
             return $recipients;  // Bez profilu se nepoužije generický systém
         }
+        
+        error_log("   ✅ Loaded profile ID: $profileId");
         
         // Načíst structure_json pro vybraný profil
         $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE id = ?");
@@ -2376,14 +2397,17 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         }
         
         error_log("   ✅ Načten profil ID={$profile['id']} z globálního nastavení");
+        error_log("   📊 structure_json length: " . strlen($profile['structure_json']));
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
-            error_log("   ❌ Neplatný JSON ve structure_json");
+            error_log("   ❌ Neplatný JSON ve structure_json - json_last_error: " . json_last_error_msg());
             return $recipients;
         }
         
-        error_log("   📊 Structure: " . count($structure['nodes']) . " nodes, " . count($structure['edges']) . " edges");
+        $nodeCount = isset($structure['nodes']) ? count($structure['nodes']) : 0;
+        $edgeCount = isset($structure['edges']) ? count($structure['edges']) : 0;
+        error_log("   📊 Structure: $nodeCount nodes, $edgeCount edges");
         
         // Určit object type z event type
         $objectType = getObjectTypeFromEvent($eventType);
