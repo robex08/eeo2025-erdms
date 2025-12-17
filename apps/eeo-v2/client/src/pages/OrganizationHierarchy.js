@@ -5605,8 +5605,8 @@ const OrganizationHierarchy = () => {
                         <strong>2️⃣ Propojte šablonu se šipkou na příjemce:</strong>
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
                           <li><strong>👤 Konkrétní uživatel</strong> - např. Jan Novák</li>
-                          <li><strong>🎭 Role</strong> - např. všichni s rolí "Schvalovatel"</li>
-                          <li><strong>🎯 Dynamický příjemce</strong> - např. Spouštěč akce, Objednatel, Příkazce</li>
+                          <li><strong>🎭 Role</strong> - např. všichni s rolí "Schvalovatel" nebo "Příkazce operace"</li>
+                          <li><strong>📍 Lokalita/Útvar</strong> - např. všichni z lokality Kladno</li>
                         </ul>
                         <strong>3️⃣ Na šipce nastavte:</strong>
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
@@ -6412,7 +6412,7 @@ const OrganizationHierarchy = () => {
                         }}>
                           ⚠️ <strong>Šablona není propojena s žádným příjemcem!</strong>
                           <div style={{ fontSize: '0.8rem', marginTop: '6px' }}>
-                            Přetáhněte šipku z této šablony na uživatele, roli nebo dynamického příjemce.
+                            Přetáhněte šipku z této šablony na uživatele, roli, lokalitu nebo útvar.
                           </div>
                         </div>
                       );
@@ -7565,31 +7565,37 @@ const OrganizationHierarchy = () => {
                         </div>
                       </div>
                       
-                      {/* Typ notifikace pro příjemce */}
+                      {/* Typ notifikace pro příjemce - DEPRECATED, ponecháno pro kompatibilitu */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
-                          🎯 Jak důležitá je tato notifikace?
-                          <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                          🎯 Výchozí priorita notifikace (deprecated)
+                          <span style={{ color: '#64748b', marginLeft: '4px', fontSize: '0.75rem' }}>nepoužívá se</span>
                         </Label>
                         <Select 
                           value={edgeRecipientRole}
                           onChange={(e) => setEdgeRecipientRole(e.target.value)}
-                          title="Určuje, kterou barvu emailu použít"
+                          title="Toto pole je deprecated - priorita se určuje dynamicky"
+                          disabled
+                          style={{ opacity: 0.5, cursor: 'not-allowed' }}
                         >
-                          <option value="EXCEPTIONAL">🔴 URGENTNÍ - kritické, vyžaduje rychlou akci</option>
-                          <option value="APPROVAL">🟠 NORMÁLNÍ - standardní notifikace</option>
-                          <option value="INFO">🟢 INFORMACE - jen pro vědomí, nic nedělat</option>
+                          <option value="EXCEPTIONAL">🔴 URGENTNÍ</option>
+                          <option value="APPROVAL">🟠 NORMÁLNÍ</option>
+                          <option value="INFO">🟢 INFORMACE</option>
                         </Select>
                         <div style={{ 
                           fontSize: '0.75rem', 
                           color: '#64748b', 
                           marginTop: '6px',
-                          lineHeight: '1.5'
+                          lineHeight: '1.5',
+                          padding: '8px',
+                          background: '#fef3c7',
+                          borderRadius: '4px',
+                          border: '1px solid #fbbf24'
                         }}>
-                          💡 <strong>Toto určuje, kterou BARVU emailu použít</strong> (z nastavení šablony):<br/>
-                          • <strong>URGENTNÍ</strong> = použije se 🔴 červená varianta emailu<br/>
-                          • <strong>NORMÁLNÍ</strong> = použije se 🟠 oranžová varianta emailu<br/>
-                          • <strong>INFORMACE</strong> = použije se 🟢 zelená varianta emailu
+                          ⚠️ <strong>Toto pole je zastaralé.</strong> Priorita se nyní určuje <strong>dynamicky podle role uživatele v entitě</strong>:<br/>
+                          • <strong>Příkazce/Schvalovatel</strong> → APPROVAL 🟠 (urgentVariant z šablony)<br/>
+                          • <strong>Autor/Garant/Objednatel</strong> → INFO 🟢 (infoVariant z šablony)<br/>
+                          • <strong>Source účastníci</strong> → INFO 🟢 (podle "Odeslat INFO potvrzení tvůrcům")
                         </div>
                       </FormGroup>
                       
