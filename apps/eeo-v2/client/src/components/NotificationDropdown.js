@@ -12,7 +12,9 @@ import {
   faExclamationCircle,
   faClock,
   faInfoCircle,
-  faEyeSlash
+  faEyeSlash,
+  faBolt,
+  faExclamation
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -181,25 +183,34 @@ const NotificationsList = styled.div`
   }
 `;
 
-const NotificationIcon = styled.div(({ $priority }) => `
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-  background: ${
-    $priority === 'urgent'
-      ? 'linear-gradient(135deg, #dc2626, #991b1b)'
-      : $priority === 'high'
-      ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-      : 'linear-gradient(135deg, #3b82f6, #2563eb)'
-  };
-  color: white;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-`);
+const NotificationIcon = styled.div(({ $priority }) => {
+  const normalizedPriority = ($priority || 'INFO').toUpperCase();
+  
+  let bgColor, iconColor;
+  if (normalizedPriority === 'EXCEPTIONAL' || normalizedPriority === 'URGENT') {
+    bgColor = '#fef2f2';  // Světle červená
+    iconColor = '#dc2626';  // Tmavě červená
+  } else if (normalizedPriority === 'APPROVAL' || normalizedPriority === 'HIGH') {
+    bgColor = '#fffbeb';  // Světle oranžová
+    iconColor = '#f59e0b';  // Tmavě oranžová
+  } else {
+    bgColor = '#eff6ff';  // Světle modrá
+    iconColor = '#3b82f6';  // Tmavě modrá
+  }
+  
+  return `
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    background: ${bgColor};
+    color: ${iconColor};
+  `;
+});
 
 const NotificationContent = styled.div`
   flex: 1;
@@ -530,13 +541,19 @@ export const NotificationDropdown = ({
   };
 
   const getPriorityIcon = (priority) => {
-    switch (priority) {
-      case 'urgent':
-        return faExclamationCircle;
-      case 'high':
-        return faClock;
+    const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    switch (normalizedPriority) {
+      case 'EXCEPTIONAL':
+      case 'URGENT':
+        return faBolt;  // ⚡ Blesk - červená
+      case 'APPROVAL':
+      case 'HIGH':
+        return faExclamation;  // ❗ Vykřičník - oranžová
+      case 'INFO':
+      case 'NORMAL':
       default:
-        return faInfoCircle;
+        return faInfoCircle;  // ℹ️ Info kruh - modrá
     }
   };
 
