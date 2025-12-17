@@ -94,11 +94,36 @@ function getNotificationTemplate($db, $typ) {
  * Nahradí placeholdery v textu notifikace
  */
 function replacePlaceholders($text, $data) {
-    if (empty($text) || empty($data)) return $text;
+    error_log("🔄 [replacePlaceholders] CALLED");
+    error_log("   Text: " . substr($text, 0, 100));
+    error_log("   Data keys: " . (is_array($data) ? implode(', ', array_keys($data)) : 'NOT ARRAY'));
+    error_log("   Data count: " . (is_array($data) ? count($data) : 0));
     
-    foreach ($data as $key => $value) {
-        $text = str_replace('{' . $key . '}', $value, $text);
+    if (empty($text)) {
+        error_log("   ⚠️ Text is empty, returning original");
+        return $text;
     }
+    
+    if (empty($data)) {
+        error_log("   ⚠️ Data is empty, returning text WITHOUT replacements");
+        return $text;
+    }
+    
+    $originalText = $text;
+    foreach ($data as $key => $value) {
+        $placeholder = '{' . $key . '}';
+        if (strpos($text, $placeholder) !== false) {
+            error_log("   ✅ Replacing $placeholder with: " . substr($value, 0, 50));
+            $text = str_replace($placeholder, $value, $text);
+        }
+    }
+    
+    if ($text === $originalText) {
+        error_log("   ⚠️ NO REPLACEMENTS MADE! Text unchanged");
+    } else {
+        error_log("   ✅ Replacements done. Result: " . substr($text, 0, 100));
+    }
+    
     return $text;
 }
 
@@ -204,6 +229,20 @@ function handle_notifications_list($input, $config, $queries) {
 
         // Formátuj data pro frontend (české názvy)
         $result = array_map(function($notif) {
+            // Parse data_json
+            $data = $notif['data_json'] ? json_decode($notif['data_json'], true) : null;
+            
+            // ✅ FLATTEN placeholders do root objektu (nový formát má data v .placeholders)
+            if ($data && isset($data['placeholders']) && is_array($data['placeholders'])) {
+                // Merguj placeholders do root objektu
+                $data = array_merge($data, $data['placeholders']);
+            }
+            
+            // ✅ PŘIDEJ order_id jako alias pro object_id (pro zpětnou kompatibilitu)
+            if ($data && isset($data['object_id']) && $notif['objekt_typ'] === 'orders' && !isset($data['order_id'])) {
+                $data['order_id'] = $data['object_id'];
+            }
+            
             $item = array(
                 'id' => (int)$notif['id'],
                 'typ' => $notif['typ'],
@@ -213,7 +252,7 @@ function handle_notifications_list($input, $config, $queries) {
                 'kategorie' => $notif['kategorie'],
                 'objekt_typ' => $notif['objekt_typ'],
                 'objekt_id' => $notif['objekt_id'] ? (int)$notif['objekt_id'] : null,
-                'data' => $notif['data_json'] ? json_decode($notif['data_json'], true) : null,
+                'data' => $data,
                 'precteno' => $notif['precteno'] == 1,
                 'dt_precteno' => $notif['dt_precteno'],
                 'dt_created' => $notif['dt_created']
@@ -752,6 +791,17 @@ function handle_notifications_create($input, $config, $queries) {
                 $placeholderData['priority_icon'] = getPriorityIcon(
                     isset($input['priorita']) ? $input['priorita'] : $template['priorita_vychozi']
                 );
+                
+                // 🆕 Načti jméno osoby, která akci provedla
+                try {
+                    $stmt = $db->prepare("SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TABLE_UZIVATELE . " WHERE id = :uzivatel_id");
+                    $stmt->execute([':uzivatel_id' => $action_uzivatel_id]);
+                    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $placeholderData['action_performed_by'] = $user ? $user['full_name'] : 'Systém';
+                } catch (Exception $e) {
+                    error_log("[Notifications] ⚠️ Could not load action_performed_by: " . $e->getMessage());
+                    $placeholderData['action_performed_by'] = 'Systém';
+                }
                 
                 error_log("[Notifications] ===== LOADING ORDER DATA END =====");
             } catch (Exception $e) {
@@ -1463,6 +1513,9 @@ function mapRecipientRoleToPriority($recipientRole) {
  * Načte placeholder data z databáze podle object typu
  */
 function loadOrderPlaceholders($db, $objectId) {
+    // 🐛 DEBUG START
+    $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('loadOrderPlaceholders START', 'objectId=$objectId')");
+    
     // Načíst table names pomocí funkcí z orderQueries.php
     if (!function_exists('get_orders_table_name')) {
         require_once __DIR__ . '/orderQueries.php';
@@ -1472,6 +1525,9 @@ function loadOrderPlaceholders($db, $objectId) {
     $order_items_table = get_order_items_table_name(); // 25a_objednavky_polozky
     $users_table = get_users_table_name(); // 25_uzivatele
     
+    // 🐛 DEBUG: Table names
+    $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('Table names', 'orders=$orders_table, users=$users_table')");
+    
     try {
         // Načti objednávku s JOINy na všechny účastníky
         $stmt = $db->prepare("
@@ -1480,30 +1536,30 @@ function loadOrderPlaceholders($db, $objectId) {
                    CONCAT(objednatel.jmeno, ' ', objednatel.prijmeni) as objednatel_name,
                    CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_name,
                    CONCAT(garant.jmeno, ' ', garant.prijmeni) as garant_name,
-                   CONCAT(schval1.jmeno, ' ', schval1.prijmeni) as schvalovatel_1_name,
-                   CONCAT(schval2.jmeno, ' ', schval2.prijmeni) as schvalovatel_2_name,
-                   CONCAT(schval3.jmeno, ' ', schval3.prijmeni) as schvalovatel_3_name,
-                   CONCAT(schval4.jmeno, ' ', schval4.prijmeni) as schvalovatel_4_name,
-                   CONCAT(schval5.jmeno, ' ', schval5.prijmeni) as schvalovatel_5_name
+                   CONCAT(schval.jmeno, ' ', schval.prijmeni) as schvalovatel_name
             FROM $orders_table o
             LEFT JOIN $users_table creator ON o.uzivatel_id = creator.id
             LEFT JOIN $users_table objednatel ON o.objednatel_id = objednatel.id
             LEFT JOIN $users_table prikazce ON o.prikazce_id = prikazce.id
-            LEFT JOIN $users_table garant ON o.garant_id = garant.id
-            LEFT JOIN $users_table schval1 ON o.schvalovatel_1_id = schval1.id
-            LEFT JOIN $users_table schval2 ON o.schvalovatel_2_id = schval2.id
-            LEFT JOIN $users_table schval3 ON o.schvalovatel_3_id = schval3.id
-            LEFT JOIN $users_table schval4 ON o.schvalovatel_4_id = schval4.id
-            LEFT JOIN $users_table schval5 ON o.schvalovatel_5_id = schval5.id
+            LEFT JOIN $users_table garant ON o.garant_uzivatel_id = garant.id
+            LEFT JOIN $users_table schval ON o.schvalovatel_id = schval.id
             WHERE o.id = :order_id
         ");
         $stmt->execute([':order_id' => $objectId]);
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        // 🐛 DEBUG: Fetch result
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('Order fetched', 'found=" . ($order ? 'YES' : 'NO') . "')");
+        
         if (!$order) {
             error_log("[loadOrderPlaceholders] Order not found: $objectId");
+            $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('ORDER NOT FOUND', 'objectId=$objectId')");
             return array();
         }
+        
+        // 🐛 DEBUG: Order data
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('Order data', 'cislo=" . ($order['cislo_objednavky'] ?? 'NULL') . "')");
+
         
         // Načti položky
         $stmt = $db->prepare("
@@ -1514,14 +1570,8 @@ function loadOrderPlaceholders($db, $objectId) {
         $stmt->execute([':order_id' => $objectId]);
         $items = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Sestavení jmen schvalovatelů (může jich být více)
-        $schvalovatel_names = array();
-        for ($i = 1; $i <= 5; $i++) {
-            if (!empty($order["schvalovatel_{$i}_name"])) {
-                $schvalovatel_names[] = $order["schvalovatel_{$i}_name"];
-            }
-        }
-        $schvalovatel_list = !empty($schvalovatel_names) ? implode(', ', $schvalovatel_names) : 'Nepřiřazen';
+        // Schvalovatel (jen jeden)
+        $schvalovatel_list = !empty($order['schvalovatel_name']) ? $order['schvalovatel_name'] : 'Nepřiřazen';
         
         // Připrav placeholders
         $placeholders = array(
@@ -1538,23 +1588,23 @@ function loadOrderPlaceholders($db, $objectId) {
             'objednatel_name' => $order['objednatel_name'] ?? 'Nepřiřazen',
             'prikazce_name' => $order['prikazce_name'] ?? 'Nepřiřazen',
             'garant_name' => $order['garant_name'] ?? 'Nepřiřazen',
-            'schvalovatel_name' => $schvalovatel_list,
-            'schvalovatel_1_name' => $order['schvalovatel_1_name'] ?? 'Nepřiřazen',
-            'schvalovatel_2_name' => $order['schvalovatel_2_name'] ?? 'Nepřiřazen',
-            'schvalovatel_3_name' => $order['schvalovatel_3_name'] ?? 'Nepřiřazen',
-            'schvalovatel_4_name' => $order['schvalovatel_4_name'] ?? 'Nepřiřazen',
-            'schvalovatel_5_name' => $order['schvalovatel_5_name'] ?? 'Nepřiřazen',
+            'schvalovatel_name' => $schvalovatel_list
         );
         
-        error_log("[loadOrderPlaceholders] Loaded " . count($placeholders) . " placeholders for order $objectId");
+        error_log("[loadOrderPlaceholders] ✅ Loaded " . count($placeholders) . " placeholders for order $objectId");
+        error_log("   order_number: " . $placeholders['order_number']);
+        error_log("   order_subject: " . $placeholders['order_subject']);
+        error_log("   creator_name: " . $placeholders['creator_name']);
         error_log("   objednatel: " . $placeholders['objednatel_name']);
         error_log("   prikazce: " . $placeholders['prikazce_name']);
         error_log("   garant: " . $placeholders['garant_name']);
+        error_log("   ALL KEYS: " . implode(', ', array_keys($placeholders)));
         
         return $placeholders;
         
     } catch (Exception $e) {
         error_log("[loadOrderPlaceholders] Error: " . $e->getMessage());
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('EXCEPTION in loadOrderPlaceholders', '" . addslashes($e->getMessage()) . "')");
         return array();
     }
 }
@@ -1585,9 +1635,9 @@ function getEntityParticipants($db, $entityType, $entityId) {
                         UNION
                         SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND garant_uzivatel_id IS NOT NULL
                         UNION
-                        SELECT schvalovatel_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND schvalovatel_uzivatel_id IS NOT NULL
+                        SELECT schvalovatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND schvalovatel_id IS NOT NULL
                         UNION
-                        SELECT prikazce_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND prikazce_uzivatel_id IS NOT NULL
+                        SELECT prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND prikazce_id IS NOT NULL
                     ) as participants
                     WHERE user_id IS NOT NULL
                 ");
@@ -1683,10 +1733,10 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             
         case 'PARTICIPANTS_ALL':
             // ⭐ VŠICHNI účastníci této konkrétní entity
+            // IGNORE $userIds - scope_filter NAHRADÍ recipient type
             $participants = getEntityParticipants($db, $entityType, $entityId);
-            $filtered = array_intersect($userIds, $participants);
-            error_log("[applyScopeFilter] PARTICIPANTS_ALL: " . count($userIds) . " → " . count($filtered) . " users");
-            return array_values($filtered);
+            error_log("[applyScopeFilter] PARTICIPANTS_ALL: REPLACING target users with " . count($participants) . " participants");
+            return $participants;
             
         case 'PARTICIPANTS_OBJEDNATEL':
             // ✍️ JEN objednatel této entity
@@ -2001,7 +2051,7 @@ function getEntityOwner($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT prikazce_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2041,7 +2091,7 @@ function getEntityApprover($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT schvalovatel_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT schvalovatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
                 $stmt = $db->prepare("SELECT approver_user_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
@@ -2089,23 +2139,51 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         
         // ✅ OPRAVA: Načíst placeholders pro VŠECHNY typy objektů
         if ($objectType === 'orders') {
+            // 🐛 DEBUG: Log do DB
+            $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('loadOrderPlaceholders BEFORE', 'objectId=$objectId')");
+            
             $dbPlaceholders = loadOrderPlaceholders($db, $objectId);
+            
+            // 🐛 DEBUG: Log výsledek
+            $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('loadOrderPlaceholders AFTER', '" . json_encode($dbPlaceholders) . "')");
+            
             error_log("📊 [NotificationRouter] DB placeholders loaded: " . count($dbPlaceholders) . " keys");
             if (!empty($dbPlaceholders)) {
                 error_log("   Keys: " . implode(', ', array_keys($dbPlaceholders)));
             }
         } else {
             $dbPlaceholders = array();
+            $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('No placeholder loader', 'objectType=$objectType')");
             error_log("⚠️ [NotificationRouter] No placeholder loader for object type: $objectType");
         }
         
         // Merguj: frontend data mají prioritu, ale DB data doplní chybějící
         $placeholderData = array_merge($dbPlaceholders, $placeholderData);
+        
+        // 🆕 Načti jméno osoby, která akci provedla (pro notificationRouter)
+        if (!isset($placeholderData['action_performed_by'])) {
+            try {
+                $stmt = $db->prepare("SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TABLE_UZIVATELE . " WHERE id = :uzivatel_id");
+                $stmt->execute([':uzivatel_id' => $triggerUserId]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                $placeholderData['action_performed_by'] = $user ? $user['full_name'] : 'Systém';
+            } catch (Exception $e) {
+                error_log("[NotificationRouter] ⚠️ Could not load action_performed_by: " . $e->getMessage());
+                $placeholderData['action_performed_by'] = 'Systém';
+            }
+        }
+        
+        // 🐛 DEBUG: Log merge výsledek
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('MERGED placeholders', '" . json_encode($placeholderData) . "')");
+        
         error_log("✅ [NotificationRouter] Merged placeholders: " . count($placeholderData) . " keys total");
         
         // 1. Najít příjemce podle organizational hierarchy
         error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('BEFORE findNotificationRecipients', 'eventType=$eventType, objectId=$objectId, triggerUserId=$triggerUserId')");
         $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId);
+        $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('AFTER findNotificationRecipients', 'count=" . count($recipients) . "')");
+        
         
         if (empty($recipients)) {
             error_log("❌ [NotificationRouter] Žádní příjemci nenalezeni pro event $eventType, object $objectId");
@@ -2117,6 +2195,9 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         foreach ($recipients as $idx => $r) {
             error_log("   Příjemce #" . ($idx+1) . ": User ID={$r['uzivatel_id']}, Role={$r['recipientRole']}, Email=" . ($r['sendEmail'] ? 'ANO' : 'NE') . ", InApp=" . ($r['sendInApp'] ? 'ANO' : 'NE'));
         }
+        
+        // ⚠️ ŽÁDNÁ DEDUPLIKACE - pokud uživatel má více rolí, dostane více notifikací!
+        // Např. RH ADMIN jako příkazce dostane APPROVAL + jako garant dostane INFO
         
         // 2. Pro každého příjemce najít template a odeslat notifikaci
         foreach ($recipients as $recipient) {
@@ -2152,8 +2233,15 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 error_log("      Placeholders: " . json_encode($placeholderData));
                 
                 // 5. Nahradit placeholdery v šabloně
+                // 🐛 DEBUG: Log před replacementem
+                $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('BEFORE replacement', 'title=" . addslashes($template['app_nadpis']) . "')");
+                
                 $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderData);
                 $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderData);
+                
+                // 🐛 DEBUG: Log po replacementu
+                $db->exec("INSERT INTO debug_notification_log (message, data) VALUES ('AFTER replacement', 'title=" . addslashes($processedTitle) . "')");
+
                 $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
                 $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
                 
@@ -2175,7 +2263,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 7. Vytvořit in-app notifikaci
                 if ($recipient['sendInApp']) {
                     $params = array(
-                        ':typ' => 'user',  // ✅ OPRAVENO: 'user' místo 'system' - notifikaci poslal skutečný uživatel
+                        ':typ' => $template['typ'],  // ✅ Použít typ ze šablony (např. 'order_status_ke_schvaleni')
                         ':nadpis' => $processedTitle,
                         ':zprava' => $processedMessage,
                         ':data_json' => json_encode($notificationData),
@@ -2849,12 +2937,24 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
  * }
  */
 function handle_notifications_trigger($input, $config, $queries) {
+    $logFile = '/tmp/notification_debug.log';
+    file_put_contents($logFile, "\n════════════════════════════════════════════════════════════════\n", FILE_APPEND);
+    file_put_contents($logFile, "🚀 [handle_notifications_trigger] API ENDPOINT CALLED! " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+    file_put_contents($logFile, "   Input: " . json_encode($input) . "\n", FILE_APPEND);
+    file_put_contents($logFile, "════════════════════════════════════════════════════════════════\n", FILE_APPEND);
+    
+    error_log("════════════════════════════════════════════════════════════════");
+    error_log("🚀 [handle_notifications_trigger] API ENDPOINT CALLED!");
+    error_log("   Input: " . json_encode($input));
+    error_log("════════════════════════════════════════════════════════════════");
+    
     // ✅ Ověření tokenu - STEJNĚ JAKO V /notifications/list
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     
     $token_data = verify_token_v2($username, $token);
     if (!$token_data) {
+        error_log("❌ [handle_notifications_trigger] Token verification FAILED");
         http_response_code(401);
         echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
         return;
@@ -2891,6 +2991,19 @@ function handle_notifications_trigger($input, $config, $queries) {
         
         // Volitelné placeholder data (pokud je poskytne frontend)
         $placeholderData = isset($input['placeholder_data']) ? $input['placeholder_data'] : array();
+        
+        // ✅ FIX: PHP json_decode převádí prázdný JS objekt {} na PHP stdClass nebo prázdné pole []
+        // Potřebujeme associative array pro array_merge()
+        if (is_object($placeholderData)) {
+            $placeholderData = (array)$placeholderData;  // Convert stdClass to array
+        }
+        if (empty($placeholderData) || !is_array($placeholderData)) {
+            $placeholderData = array();  // Ensure it's an empty associative array
+        }
+        
+        error_log("📥 [NotificationTrigger] Placeholder data type: " . gettype($placeholderData));
+        error_log("   Is array: " . (is_array($placeholderData) ? 'YES' : 'NO'));
+        error_log("   Count: " . (is_array($placeholderData) ? count($placeholderData) : 0));
         
         // Zavolat notification router (hlavní logika)
         $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData);
