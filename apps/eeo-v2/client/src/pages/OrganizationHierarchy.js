@@ -2165,14 +2165,6 @@ const OrganizationHierarchy = () => {
           localStorage.removeItem(LS_EDGES_KEY);
           localStorage.removeItem(LS_TIMESTAMP_KEY);
           
-          // 🆕 FIT VIEW po načtení dat z API
-          setTimeout(() => {
-            if (reactFlowInstance) {
-              reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
-              console.log('🔄 ReactFlow viewport fitted after initial load');
-            }
-          }, 200);
-          
         } else {
           // Fallback: Načíst draft z localStorage
           console.log('⚠️ No API data, checking localStorage draft...');
@@ -5329,7 +5321,14 @@ const OrganizationHierarchy = () => {
               onNodeClick={onNodeClick}
               onEdgeClick={onEdgeClick}
               onNodeDragStop={onNodeDragStop}
-              onInit={setReactFlowInstance}
+              onInit={(instance) => {
+                setReactFlowInstance(instance);
+                // 🆕 Fit view hned po inicializaci (opraví zobrazení po F5)
+                setTimeout(() => {
+                  instance.fitView({ padding: 0.2, duration: 800 });
+                  console.log('🔄 ReactFlow fitted on init');
+                }, 100);
+              }}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
               fitView
