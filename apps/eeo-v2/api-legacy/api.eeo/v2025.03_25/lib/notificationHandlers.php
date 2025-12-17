@@ -2332,7 +2332,22 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
     error_log("   Event: $eventType, Object ID: $objectId, Trigger User: $triggerUserId");
     
     try {
-        // 1. Najít profil hierarchie z GLOBÁLNÍHO NASTAVENÍ (ne podle aktivni=1)
+        // 1. Zkontrolovat, zda je organizační hierarchie ZAPNUTA v global settings
+        error_log("   🔍 Kontroluji, zda je organizační hierarchie zapnuta...");
+        $stmt = $db->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'hierarchy_enabled'");
+        $stmt->execute();
+        $hierarchyEnabledRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $hierarchyEnabled = ($hierarchyEnabledRow && $hierarchyEnabledRow['hodnota'] === '1');
+        
+        if (!$hierarchyEnabled) {
+            error_log("   ⚠️ Organizační hierarchie je VYPNUTA v global settings - generický systém se nepoužije");
+            return $recipients;  // Vrátit prázdné pole, použije se starý systém
+        }
+        
+        error_log("   ✅ Organizační hierarchie je ZAPNUTA");
+        
+        // 2. Najít profil hierarchie z GLOBÁLNÍHO NASTAVENÍ
         error_log("   🔍 Načítám hierarchický profil z globálního nastavení...");
         
         // Načíst hierarchy_profile_id z global settings
@@ -2345,20 +2360,9 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
             $profileId = (int)$settingRow['hodnota'];
         }
         
-        // Fallback: pokud není nastaveno, použít první aktivní profil
         if (!$profileId) {
-            error_log("   ⚠️ Profil není nastaven v global settings, použiji aktivní profil jako fallback");
-            $stmt = $db->prepare("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 ORDER BY id ASC LIMIT 1");
-            $stmt->execute();
-            $fallbackRow = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($fallbackRow) {
-                $profileId = (int)$fallbackRow['id'];
-            }
-        }
-        
-        if (!$profileId) {
-            error_log("   ❌ ŽÁDNÝ hierarchický profil nenalezen!");
-            return $recipients;
+            error_log("   ❌ ŽÁDNÝ hierarchický profil není nastaven v global settings!");
+            return $recipients;  // Bez profilu se nepoužije generický systém
         }
         
         // Načíst structure_json pro vybraný profil
