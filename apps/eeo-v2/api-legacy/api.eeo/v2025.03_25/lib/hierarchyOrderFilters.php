@@ -574,8 +574,15 @@ function canUserViewOrder($orderId, $userId, $db) {
     // Načíst vztahy uživatele ze structure_json
     $relationships = getUserRelationshipsFromStructure($userId, $db);
     
+    // 🔥 FIX: Pokud uživatel nemá vztahy, může vidět minimálně SVOJE VLASTNÍ objednávky
     if (empty($relationships)) {
-        error_log("HIERARCHY: User $userId has NO relationships in hierarchy");
+        error_log("HIERARCHY: User $userId has NO relationships in hierarchy - checking OWN orders only");
+        // Zkontrolovat, zda je uživatel přímo zúčastněný (uzivatel_id, objednatel_id, garant_uzivatel_id)
+        if (in_array($userId, $participantIds)) {
+            error_log("HIERARCHY: User $userId CAN view order $orderId (own order)");
+            return true;
+        }
+        error_log("HIERARCHY: User $userId CANNOT view order $orderId (not own order, no relationships)");
         return false;
     }
     

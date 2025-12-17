@@ -63,11 +63,11 @@ const PERMISSION_HIERARCHY_MAP = {
   // DELETE permissions
   'ORDER_DELETE_OWN': {
     expand: 'ORDER_DELETE_ALL',    // Rozšíření: může mazat i jiné
-    upgrade: 'ORDER_MANAGE'        // Povýšení: plná správa
+    upgrade: null                  // ❌ NESMÍ upgradovat na ORDER_MANAGE (admin právo)
   },
   'ORDER_DELETE_ALL': {
     expand: null,                  // Už je ALL
-    upgrade: 'ORDER_MANAGE'        // Povýšení: plná správa
+    upgrade: null                  // ❌ NESMÍ upgradovat na ORDER_MANAGE (admin právo)
   },
   
   // CREATE permission (rozšíření nemá smysl, ale může povýšit)
@@ -79,7 +79,7 @@ const PERMISSION_HIERARCHY_MAP = {
   // APPROVE permission
   'ORDER_APPROVE': {
     expand: null,                  // APPROVE je globální
-    upgrade: 'ORDER_MANAGE'        // Může získat plnou správu
+    upgrade: null                  // ❌ NESMÍ upgradovat na ORDER_MANAGE (admin právo)
   },
   
   // ============================================

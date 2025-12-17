@@ -2274,6 +2274,25 @@ const OrganizationHierarchy = () => {
       edgeColor = '#3b82f6'; // Modrá pro uživatel-uživatel (podle legendy)
     }
     
+    // 🆕 Automaticky nastavit recipient_type podle typu target node
+    let recipientType = 'USER'; // default
+    if (targetNode) {
+      const targetType = targetNode.data?.type || targetNode.typ;
+      switch (targetType) {
+        case 'role':
+          recipientType = 'ROLE';
+          break;
+        case 'group':
+          recipientType = 'GROUP';
+          break;
+        case 'user':
+          recipientType = 'USER';
+          break;
+        default:
+          recipientType = 'USER';
+      }
+    }
+    
     setEdges((eds) => addEdge({
       ...params,
       type: 'smoothstep',
@@ -2287,7 +2306,12 @@ const OrganizationHierarchy = () => {
         strokeWidth: 3 
       },
       data: {
-        type: relationType
+        type: relationType,
+        recipient_type: recipientType, // 🆕 Automaticky nastaveno podle target node typu
+        scope_filter: 'NONE', // Default, uživatel může změnit v edge config panelu
+        recipientRole: 'INFO', // Default
+        sendEmail: false,
+        sendInApp: true
       }
     }, eds));
   }, [nodes]);
