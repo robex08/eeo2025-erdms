@@ -8995,14 +8995,15 @@ function OrderForm25() {
       console.log('   → Trigger User ID:', user_id);
       console.log('   → Backend najde příjemce v org hierarchii automaticky!');
 
-      // 🆕 NOVÝ BACKEND API - Org-hierarchy-aware notifications
+      // 🆕 NOVÝ BACKEND API - Org-hierarchy-aware notifications (Generic Recipient System)
       // Backend automaticky:
       // 1. Najde aktivní hierarchický profil
       // 2. Najde template s tímto event typem
-      // 3. Najde edges z template a určí příjemce
-      // 4. Aplikuje filtry (onlyOrderParticipants, onlyOrderLocation)
-      // 5. Naplní placeholdery z order_id
-      // 6. Odešle notifikace
+      // 3. Najde edges z template a určí příjemce pomocí resolveRecipients()
+      // 4. Aplikuje scope_filter (PARTICIPANTS_ALL, PARTICIPANTS_PRIKAZCE, LOCATION, etc.)
+      //    ⚠️ DEPRECATED: onlyOrderParticipants, onlyOrderLocation (nahrazeno scope_filter)
+      // 5. Naplní placeholdery z order_id pomocí loadOrderPlaceholders()
+      // 6. Odešle notifikace s prioritou podle recipientRole (APPROVAL, INFO, EXCEPTIONAL)
 
       await notificationService.trigger(eventType, orderId, user_id);
 
