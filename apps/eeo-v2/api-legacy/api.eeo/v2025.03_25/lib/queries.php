@@ -9,6 +9,7 @@ define('TABLE_OBJEDNAVKY', '25a_objednavky');              // ⚠️ SPRÁVNĚ: 
 define('TABLE_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
 define('TABLE_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
 define('TABLE_OBJEDNAVKY_FAKTURY', '25a_objednavky_faktury');
+define('TABLE_FAKTURY', '25a_objednavky_faktury');         // Alias pro faktury (hlavní tabulka faktur)
 define('TABLE_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
 define('TABLE_ORGANIZACE', '25_organizace_vizitka');
 define('TABLE_POZICE', '25_pozice');

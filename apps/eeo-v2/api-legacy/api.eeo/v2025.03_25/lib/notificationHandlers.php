@@ -1602,7 +1602,7 @@ function loadOrderPlaceholders($db, $objectId) {
                 $lp_ids = array_map('intval', $financovani_obj['lp_kody']);
                 if (!empty($lp_ids)) {
                     $placeholders_lp = implode(',', array_fill(0, count($lp_ids), '?'));
-                    $stmt_lp = $db->prepare("SELECT cislo_lp, nazev_uctu FROM r_LP WHERE id IN ($placeholders_lp)");
+                    $stmt_lp = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . OLD_TABLE_LPS . " WHERE id IN ($placeholders_lp)");
                     $stmt_lp->execute($lp_ids);
                     $lp_names = [];
                     while ($lp_row = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
@@ -2401,6 +2401,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $notificationData = array(
                     'event_type' => $eventType,
                     'object_id' => $objectId,
+                    'order_id' => $objectId,  // ✅ OPRAVA: Frontend očekává order_id pro navigaci!
                     'recipient_role' => $recipient['recipientRole'],
                     'template_id' => $recipient['templateId'],
                     'template_variant' => $variant,
