@@ -87,7 +87,7 @@ function createNotification($db, $params) {
  * Načte template pro daný typ notifikace
  */
 function getNotificationTemplate($db, $typ) {
-    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE typ = :typ AND aktivni = 1";
+    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE LOWER(typ) = LOWER(:typ) AND aktivni = 1";
     $stmt = $db->prepare($sql);
     $stmt->execute(array(':typ' => $typ));
     return $stmt->fetch(PDO::FETCH_ASSOC);
