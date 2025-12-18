@@ -65,7 +65,7 @@ import {
 } from '../services/apiOrderV2';
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
-import notificationServiceDual from '../services/notificationService'; // 🆕 Dual-template notifikace
+import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
 import {
   validateWorkflowData,
@@ -8995,6 +8995,8 @@ function OrderForm25() {
       console.log('   → Trigger User ID:', user_id);
       console.log('   → Backend najde příjemce v org hierarchii automaticky!');
 
+      // ⚠️ DEPRECATED: Tato funkce už není potřeba - notifikace se odesílají přímo v saveOrderToAPI
+      // pomocí triggerNotification() s plnými placeholder daty
       // 🆕 NOVÝ BACKEND API - Org-hierarchy-aware notifications (Generic Recipient System)
       // Backend automaticky:
       // 1. Najde aktivní hierarchický profil
@@ -9005,9 +9007,10 @@ function OrderForm25() {
       // 5. Naplní placeholdery z order_id pomocí loadOrderPlaceholders()
       // 6. Odešle notifikace s prioritou podle recipientRole (APPROVAL, INFO, EXCEPTIONAL)
 
-      await notificationService.trigger(eventType, orderId, user_id);
+      // ❌ DISABLED - Notifikace se odesílají v saveOrderToAPI s plnými daty
+      // await notificationService.trigger(eventType, orderId, user_id);
 
-      console.log('✅ [sendOrderNotifications] Trigger odeslán! Backend zpracovává...');
+      console.log('⚠️ [sendOrderNotifications] DEPRECATED - notifikace se odesílají v saveOrderToAPI');
 
     } catch (error) {
       console.error('❌ [sendOrderNotifications] Chyba při odesílání notifikací:', error);
@@ -10235,28 +10238,27 @@ function OrderForm25() {
                 return stredisko ? stredisko.label : kod;
               });
               
-              await notificationServiceDual.sendOrderApprovalNotifications({
-                token,
-                username,
-                orderData: {
-                  id: orderId,
-                  ev_cislo: orderNumber,
-                  predmet: formData.predmet || '',
-                  prikazce_id: formData.prikazce_id,
+              // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
+              await triggerNotification(
+                'ORDER_SENT_FOR_APPROVAL',
+                orderId,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  commander_id: formData.prikazce_id,
                   garant_id: formData.garant_uzivatel_id,
-                  vytvoril: formData.objednatel_id,
-                  objednatel_id: formData.objednatel_id,
-                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+                  creator_id: formData.objednatel_id,
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
-                  strediska_nazvy: strediskaNazvy,
+                  strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
+                  is_urgent: formData.mimoradna_udalost || false
                 }
-              });
-              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent-new', `Dual-template EMAILY odeslány pro novou objednávku ${orderNumber}`);
-            } catch (dualError) {
-              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error-new', `Chyba při dual-template emailech: ${dualError.message}`);
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-new', `Org-hierarchy notifikace triggernuta pro novou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-new', `Chyba při trigger notifikaci: ${triggerError.message}`);
             }
           }
         } catch (notifError) {
@@ -10687,7 +10689,7 @@ function OrderForm25() {
           const hadKeSchvaleni = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA_KE_SCHVALENI') : false;
           
           if (hasKeSchvaleni && !hadKeSchvaleni) {
-            // Odeslat POUZE EMAILY (zvonečky už vytořila funkce sendOrderNotifications)
+            // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
             try {
               // Převést kódy středisek na názvy (strediskaOptions má strukturu {value, label})
               const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
@@ -10695,28 +10697,26 @@ function OrderForm25() {
                 return stredisko ? stredisko.label : kod;
               });
               
-              await notificationServiceDual.sendOrderApprovalNotifications({
-                token,
-                username,
-                orderData: {
-                  id: formData.id,
-                  ev_cislo: orderNumber,
-                  predmet: formData.predmet || '',
-                  prikazce_id: formData.prikazce_id,
+              await triggerNotification(
+                'ORDER_SENT_FOR_APPROVAL',
+                formData.id,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  commander_id: formData.prikazce_id,
                   garant_id: formData.garant_uzivatel_id,
-                  vytvoril: formData.objednatel_id,
-                  objednatel_id: formData.objednatel_id,
-                  dodavatel_nazev: formData.dodavatel_nazev || 'Neuvedeno',
-                  // 💰 FINANCOVÁNÍ - použít již normalizovaný objekt z orderData (stejný jako jde do DB)
+                  creator_id: formData.objednatel_id,
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
-                  strediska_nazvy: strediskaNazvy,
+                  strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false  // 🚨 Mimořádná událost
+                  is_urgent: formData.mimoradna_udalost || false
                 }
-              });
-              addDebugLog('success', 'NOTIFICATION', 'dual-email-sent', `Dual-template EMAILY odeslány pro objednávku ${orderNumber}`);
-            } catch (dualError) {
-              addDebugLog('warning', 'NOTIFICATION', 'dual-email-error', `Chyba při dual-template emailech: ${dualError.message}`);
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent', `Org-hierarchy notifikace triggernuta pro objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error', `Chyba při trigger notifikaci: ${triggerError.message}`);
             }
           }
         } catch (notifError) {

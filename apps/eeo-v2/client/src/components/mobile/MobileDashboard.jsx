@@ -360,9 +360,8 @@ function MobileDashboard() {
         message: '✅ Objednávka schválena!'
       });
       
-      // Obnovit seznam a počet aktivit
-      await loadPendingApprovals();
-      await loadDashboardData();
+      // Obnovit seznam a počet aktivit na pozadí (bez loading stavu)
+      loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se schválit objednávku'}`);
@@ -444,11 +443,10 @@ function MobileDashboard() {
         message: '❌ Objednávka zamítnuta'
       });
       
-      // Zavřít dialog a obnovit seznam
+      // Zavřít dialog a obnovit seznam na pozadí
       setRejectDialogOpen(false);
       setCurrentOrder(null);
-      await loadPendingApprovals();
-      await loadDashboardData();
+      loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
@@ -528,11 +526,10 @@ function MobileDashboard() {
         message: '⏳ Objednávka pozastavena'
       });
       
-      // Zavřít dialog a obnovit seznam
+      // Zavřít dialog a obnovit seznam na pozadí
       setWaitDialogOpen(false);
       setCurrentOrder(null);
-      await loadPendingApprovals();
-      await loadDashboardData();
+      loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
       alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
