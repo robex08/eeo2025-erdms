@@ -10589,19 +10589,7 @@ function OrderForm25() {
 
         // Už není potřeba explicitní DB reload - BE vrací spolehlivý stav v response
 
-        // Zobrazit success message - POUZE pro běžné uživatele (SUPERADMIN/ADMIN mají toast výše)
-        if (!shouldStayOnForm) {
-          if (result.message) {
-            showToast && showToast(result.message, { type: 'success' });
-          } else if (result.lock_info?.locked_by_user_fullname) {
-            showToast && showToast(
-              `Objednávka byla úspěšně vytvořena (edituje: ${result.lock_info.locked_by_user_fullname})`,
-              { type: 'success' }
-            );
-          } else {
-            showToast && showToast(`Objednávka byla úspěšně vytvořena`, { type: 'success' });
-          }
-        }
+        // ❌ REMOVED: Toast zpráva "Objednávka byla úspěšně vytvořena" - notifikace už informují uživatele
 
         // POZNÁMKA: Autosave byl přesunut do DraftManager.syncWithDatabase()
         // Není potřeba volat saveDraftWithData - způsobovalo duplicitní zápis a race conditions
@@ -11027,20 +11015,7 @@ function OrderForm25() {
         // FÁZE se automaticky přepočítá z aktualizovaného formData.stav_workflow_kod
         addDebugLog('success', 'UPDATE', 'workflow-state', `DB stav: ${updatedWorkflowKod} - fáze se přepočítá automaticky`);
 
-        // 🎉 TOAST NOTIFIKACE pro UPDATE - zobrazit AŽ PO aktualizaci state
-        if (shouldStayOnForm) {
-          // SUPERADMIN/ADMIN - zůstává na formuláři, zobrazit toast
-          const orderNumber = formData.ev_cislo || formData.cislo_objednavky || formData.id;
-          showToast && showToast(`Objednávka ${orderNumber} byla úspěšně aktualizována`, { type: 'success' });
-        } else {
-          // Běžný uživatel - zobrazit obecnou zprávu (bude přesměrován)
-          if (result.message) {
-            showToast && showToast(result.message, { type: 'success' });
-          } else {
-            const orderNumber = formData.ev_cislo || formData.cislo_objednavky || formData.id;
-            showToast && showToast(`Objednávka ${orderNumber} byla úspěšně aktualizována`, { type: 'success' });
-          }
-        }
+        // ❌ REMOVED: Toast zpráva "Objednávka byla úspěšně aktualizována" - notifikace už informují uživatele
 
         // Debug: Zkontroluj, zda má workflow stav SCHVALENA
         const hasSchvalena = hasWorkflowState(updatedWorkflowKod, 'SCHVALENA');
