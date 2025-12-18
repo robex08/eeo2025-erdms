@@ -1610,6 +1610,16 @@ function loadOrderPlaceholders($db, $objectId) {
                     }
                     $financovani_text = 'LP: ' . implode(', ', $lp_names);
                 }
+            } elseif ($typ === 'INDIVIDUALNI_SCHVALENI' && isset($financovani_obj['individualni_schvaleni'])) {
+                $financovani_text = 'Individuální schválení: ' . $financovani_obj['individualni_schvaleni'];
+                if (!empty($financovani_obj['individualni_poznamka'])) {
+                    $financovani_text .= ' (' . $financovani_obj['individualni_poznamka'] . ')';
+                }
+            } elseif ($typ === 'POJISTNA_UDALOST' && isset($financovani_obj['pojistna_udalost_cislo'])) {
+                $financovani_text = 'Pojistná událost: ' . $financovani_obj['pojistna_udalost_cislo'];
+                if (!empty($financovani_obj['pojistna_udalost_poznamka'])) {
+                    $financovani_text .= ' (' . $financovani_obj['pojistna_udalost_poznamka'] . ')';
+                }
             } elseif (!empty($nazev)) {
                 $financovani_text = $nazev;
             }

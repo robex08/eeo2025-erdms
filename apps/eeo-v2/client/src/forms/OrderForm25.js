@@ -8964,33 +8964,7 @@ function OrderForm25() {
       }
 
       console.log('🚀 [sendOrderNotifications] Odesílám notifikace přes NOVÝ org-hierarchy systém...');
-      console.log('   → Notification Type (template):', notificationType);
-      console.log('   → Převádím na Event Type...');
-
-      // 🆕🆕🆕 MAPOVÁNÍ: Template type → Event Type
-      const eventTypeMap = {
-        'order_status_ke_schvaleni': 'ORDER_SENT_FOR_APPROVAL',
-        'order_status_schvalena': 'ORDER_APPROVED',
-        'order_status_zamitnuta': 'ORDER_REJECTED',
-        'order_status_ceka_se': 'ORDER_WAITING',
-        'order_status_odeslana': 'ORDER_SENT_TO_SUPPLIER',
-        'order_status_potvrzena': 'ORDER_CONFIRMED',
-        'order_status_registr_zverejnena': 'ORDER_PUBLISHED',
-        'order_status_registr_ceka': 'ORDER_TO_BE_PUBLISHED',
-        'order_status_faktura_ceka': 'ORDER_INVOICING',
-        'order_status_kontrola_ceka': 'ORDER_MATERIAL_CORRECTNESS',
-        'order_status_kontrola_potvrzena': 'ORDER_CHECKED',
-        'order_status_dokoncena': 'ORDER_COMPLETED',
-        'order_status_zrusena': 'ORDER_CANCELLED'
-      };
-
-      const eventType = eventTypeMap[notificationType];
-      if (!eventType) {
-        console.error('❌ [sendOrderNotifications] Neznámý notification type:', notificationType);
-        return;
-      }
-
-      console.log('   → Event Type:', eventType);
+      console.log('   → Event Type:', notificationType);
       console.log('   → Order ID:', orderId);
       console.log('   → Trigger User ID:', user_id);
       console.log('   → Backend najde příjemce v org hierarchii automaticky!');
@@ -10240,7 +10214,7 @@ function OrderForm25() {
               
               // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
               await triggerNotification(
-                'ORDER_SENT_FOR_APPROVAL',
+                'order_status_ke_schvaleni',
                 orderId,
                 user_id || formData.objednatel_id,
                 {
@@ -10698,7 +10672,7 @@ function OrderForm25() {
               });
               
               await triggerNotification(
-                'ORDER_SENT_FOR_APPROVAL',
+                'order_status_ke_schvaleni',
                 formData.id,
                 user_id || formData.objednatel_id,
                 {
