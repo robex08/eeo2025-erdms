@@ -53,7 +53,7 @@ const PERMISSION_HIERARCHY_MAP = {
   // EDIT permissions
   'ORDER_EDIT_OWN': {
     expand: 'ORDER_EDIT_ALL',      // Rozšíření: může editovat i jiné
-    upgrade: 'ORDER_DELETE_OWN'    // Povýšení: může mazat svoje
+    upgrade: 'ORDER_CREATE'        // Povýšení: může vytvářet
   },
   'ORDER_EDIT_ALL': {
     expand: null,                  // Už je ALL
@@ -70,10 +70,10 @@ const PERMISSION_HIERARCHY_MAP = {
     upgrade: null                  // ❌ NESMÍ upgradovat na ORDER_MANAGE (admin právo)
   },
   
-  // CREATE permission (rozšíření nemá smysl, ale může povýšit)
+  // CREATE permission
   'ORDER_CREATE': {
     expand: null,                  // CREATE je globální
-    upgrade: 'ORDER_EDIT_OWN'      // Může získat i editaci
+    upgrade: null                  // ❌ CREATE nedává další práva
   },
   
   // APPROVE permission

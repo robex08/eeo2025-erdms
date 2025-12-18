@@ -449,6 +449,9 @@ class NotificationService {
   }
 
   /**
+   * @deprecated ⚠️ DEPRECATED - Use triggerNotification() from notificationsApi.js instead
+   * This function bypasses organizational hierarchy and ignores edge sendEmail settings
+   * 
    * Odeslat DUAL-TEMPLATE notifikace při odeslání ke schválení
    * 
    * @param {Object} params
@@ -462,6 +465,13 @@ class NotificationService {
     username,
     orderData
   }) {
+    console.error('════════════════════════════════════════════════════════════════');
+    console.error('⚠️ DEPRECATED: sendOrderApprovalNotifications()');
+    console.error('   This function bypasses organizational hierarchy');
+    console.error('   Use: triggerNotification() from notificationsApi.js');
+    console.error('   Event: ORDER_SENT_FOR_APPROVAL');
+    console.error('════════════════════════════════════════════════════════════════');
+    
     try {
       // Sestavit FROM (SUBMITTER - zelená šablona) a TO (APPROVER - červená šablona)
       const fromSet = new Set();
