@@ -2411,7 +2411,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 7. Vytvořit in-app notifikaci
                 if ($recipient['sendInApp']) {
                     $params = array(
-                        ':typ' => 'user',  // ✅ OPRAVENO: 'user' místo 'system' - notifikaci poslal skutečný uživatel
+                        ':typ' => $eventType,  // ✅ OPRAVA: Musí být eventType (order_status_ke_schvaleni), ne 'user'! Frontend filtruje notification.typ.includes('order')
                         ':nadpis' => $processedTitle,
                         ':zprava' => $processedMessage,
                         ':data_json' => json_encode($notificationData),
