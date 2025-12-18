@@ -1578,22 +1578,91 @@ function loadOrderPlaceholders($db, $objectId) {
         $stmt->execute([':order_id' => $objectId]);
         $items = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Připrav placeholders
+        // Dekóduj JSON pole - STŘEDISKA
+        $strediska_arr = json_decode($order['strediska_kod'] ?? '[]', true);
+        $strediska_names = is_array($strediska_arr) ? $strediska_arr : [];
+        $strediska_text = !empty($strediska_names) ? implode(', ', $strediska_names) : 'Neuvedeno';
+        
+        // Dekóduj JSON - FINANCOVÁNÍ (komplexní struktura)
+        $financovani_obj = json_decode($order['financovani'] ?? '{}', true);
+        $financovani_text = 'Neuvedeno';
+        
+        if (is_array($financovani_obj) && !empty($financovani_obj)) {
+            // Určit typ financování
+            $typ = isset($financovani_obj['typ']) ? $financovani_obj['typ'] : '';
+            $nazev = isset($financovani_obj['nazev']) ? $financovani_obj['nazev'] : '';
+            
+            // Sestavit text podle typu
+            if ($typ === 'SMLOUVA' && isset($financovani_obj['cislo_smlouvy'])) {
+                $financovani_text = 'Smlouva č. ' . $financovani_obj['cislo_smlouvy'];
+            } elseif ($typ === 'FAKTURA' && isset($financovani_obj['cislo_faktury'])) {
+                $financovani_text = 'Faktura č. ' . $financovani_obj['cislo_faktury'];
+            } elseif ($typ === 'LP' && isset($financovani_obj['lp_kody']) && is_array($financovani_obj['lp_kody'])) {
+                // LP jsou uložené jako pole ID - načíst z DB
+                $lp_ids = array_map('intval', $financovani_obj['lp_kody']);
+                if (!empty($lp_ids)) {
+                    $placeholders_lp = implode(',', array_fill(0, count($lp_ids), '?'));
+                    $stmt_lp = $db->prepare("SELECT cislo_lp, nazev_uctu FROM r_LP WHERE id IN ($placeholders_lp)");
+                    $stmt_lp->execute($lp_ids);
+                    $lp_names = [];
+                    while ($lp_row = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
+                        $lp_names[] = $lp_row['cislo_lp'] . ' (' . $lp_row['nazev_uctu'] . ')';
+                    }
+                    $financovani_text = 'LP: ' . implode(', ', $lp_names);
+                }
+            } elseif (!empty($nazev)) {
+                $financovani_text = $nazev;
+            }
+        }
+        
+        $financovani_poznamka = is_array($financovani_obj) && isset($financovani_obj['poznamka']) ? $financovani_obj['poznamka'] : '';
+        
+        // SCHVALOVATEL / PŘÍKAZCE - použij toho, kdo NENÍ NULL
+        $approver_display = 'Nepřiřazen';
+        if (!empty($order['schvalovatel_name']) && $order['schvalovatel_name'] !== 'Nepřiřazen') {
+            $approver_display = $order['schvalovatel_name'];
+        } elseif (!empty($order['prikazce_name']) && $order['prikazce_name'] !== 'Nepřiřazen') {
+            $approver_display = $order['prikazce_name'];
+        }
+        
+        // Připrav placeholders - KOMPLETNÍ SET
         $placeholders = array(
+            // Ikona a základní info
             'action_icon' => '📋',
             'order_number' => $order['cislo_objednavky'] ?? '',
             'order_subject' => $order['predmet'] ?? '',
-            'max_price_with_dph' => number_format($order['max_cena_s_dph'] ?? 0, 0, ',', ' '),
-            'creator_name' => $order['creator_name'] ?? 'Neznámý',
-            'action_date' => date('d.m.Y H:i', strtotime($order['dt_objednavky'] ?? 'now')),
-            'items_count' => $items['items_count'] ?? 0,
-            'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' '),
+            'predmet' => $order['predmet'] ?? '',  // alias
             
-            // ⭐ NOVÉ: Jména všech účastníků objednávky
+            // Cena
+            'max_price_with_dph' => number_format($order['max_cena_s_dph'] ?? 0, 0, ',', ' ') . ' Kč',
+            'amount' => number_format($order['max_cena_s_dph'] ?? 0, 0, ',', ' ') . ' Kč',  // alias
+            
+            // Datum
+            'action_date' => date('d.m.Y H:i', strtotime($order['dt_objednavky'] ?? 'now')),
+            'date' => date('d.m.Y', strtotime($order['dt_objednavky'] ?? 'now')),  // alias
+            
+            // Položky
+            'items_count' => $items['items_count'] ?? 0,
+            'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' ') . ' Kč',
+            
+            // Účastníci
+            'creator_name' => $order['creator_name'] ?? 'Neznámý',
             'objednatel_name' => $order['objednatel_name'] ?? 'Nepřiřazen',
             'prikazce_name' => $order['prikazce_name'] ?? 'Nepřiřazen',
             'garant_name' => $order['garant_name'] ?? 'Nepřiřazen',
-            'schvalovatel_name' => $order['schvalovatel_name'] ?? 'Nepřiřazen',
+            'schvalovatel_name' => $approver_display,  // použije schvalovatele NEBO příkazce
+            'approver_name' => $approver_display,  // alias
+            
+            // Střediska a financování
+            'strediska' => $strediska_text,
+            'financovani' => $financovani_text,
+            'financovani_poznamka' => $financovani_poznamka,
+            
+            // Stav
+            'stav_objednavky' => $order['stav_objednavky'] ?? '',
+            
+            // User_name se doplní později podle příjemce
+            'user_name' => '{user_name}',  // placeholder pro pozdější nahrazení
         );
         
         error_log("[loadOrderPlaceholders] Loaded " . count($placeholders) . " placeholders for order $objectId");
@@ -2290,11 +2359,28 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                     ])]);
                 } catch (Exception $e) {}
                 
-                // 5. Nahradit placeholdery v šabloně
-                $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderData);
-                $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderData);
+                // 5. Načíst jméno příjemce a doplnit do placeholderů
+                $stmt_user = $db->prepare("SELECT jmeno, prijmeni FROM " . TABLE_UZIVATELE . " WHERE id = :user_id");
+                $stmt_user->execute([':user_id' => $recipient['uzivatel_id']]);
+                $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
+                
+                $placeholderDataWithUser = $placeholderData;
+                $placeholderDataWithUser['user_name'] = $user_data ? trim($user_data['jmeno'] . ' ' . $user_data['prijmeni']) : 'Uživatel';
+                
+                // 🔍 DEBUG: Vypsat VŠECHNY placeholdery před nahrazením
+                error_log("   🔍 FINANCOVÁNÍ DEBUG pro User {$recipient['uzivatel_id']}:");
+                error_log("      financovani value: " . ($placeholderDataWithUser['financovani'] ?? 'NOT SET'));
+                error_log("      All placeholders: " . json_encode($placeholderDataWithUser, JSON_UNESCAPED_UNICODE));
+                
+                // 6. Nahradit placeholdery v šabloně
+                $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderDataWithUser);
+                $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderDataWithUser);
                 $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
-                $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderData);
+                $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderDataWithUser);
+                
+                // 🔍 DEBUG: Zkontrolovat jestli se financování nahradilo
+                error_log("   🔍 EMAIL BODY AFTER replacePlaceholders (first 500 chars):");
+                error_log("      " . substr($processedEmailBody, 0, 500));
                 
                 // ✅ OPRAVA: Logování pro debugging placeholder problems
                 error_log("   📝 Placeholder replacement for User {$recipient['uzivatel_id']}:");
@@ -2365,11 +2451,48 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 }
                 
                 // 8. Odeslat email (pokud je povolený)
+                // DEBUG do DB - kontrola sendEmail flag
+                try {
+                    $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                    $stmt_debug->execute(['Before email check', json_encode([
+                        'user_id' => $recipient['uzivatel_id'],
+                        'sendEmail' => $recipient['sendEmail'],
+                        'sendEmail_type' => gettype($recipient['sendEmail'])
+                    ])]);
+                } catch (Exception $e) {}
+                
                 if ($recipient['sendEmail']) {
+                    // DEBUG do DB
+                    try {
+                        $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                        $stmt_debug->execute(['Calling sendNotificationEmail', json_encode([
+                            'user_id' => $recipient['uzivatel_id']
+                        ])]);
+                    } catch (Exception $e) {}
+                    
                     $emailResult = sendNotificationEmail($db, $recipient['uzivatel_id'], $processedTitle, $processedEmailBody);
+                    
+                    // DEBUG do DB
+                    try {
+                        $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                        $stmt_debug->execute(['After sendNotificationEmail', json_encode([
+                            'user_id' => $recipient['uzivatel_id'],
+                            'result' => $emailResult
+                        ])]);
+                    } catch (Exception $e) {}
+                    
                     if (!$emailResult['ok']) {
                         $result['errors'][] = "Email failed for user {$recipient['uzivatel_id']}: " . ($emailResult['error'] ?? 'Unknown error');
                     }
+                } else {
+                    // DEBUG do DB - email byl vypnutý
+                    try {
+                        $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                        $stmt_debug->execute(['Email SKIPPED', json_encode([
+                            'user_id' => $recipient['uzivatel_id'],
+                            'reason' => 'sendEmail = false'
+                        ])]);
+                    } catch (Exception $e) {}
                 }
                 
             } catch (Exception $e) {
@@ -2585,6 +2708,19 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     );
                     
                     error_log("         ✅ User $userId: Added to recipients (email=" . ($sendEmailFinal ? 'YES' : 'NO') . ", inapp=" . ($sendInAppFinal ? 'YES' : 'NO') . ")");
+                    
+                    // DEBUG do DB
+                    try {
+                        $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                        $stmt_debug->execute(['Recipient added', json_encode([
+                            'user_id' => $userId,
+                            'role' => $recipientRole,
+                            'sendEmail' => $sendEmailFinal,
+                            'sendInApp' => $sendInAppFinal,
+                            'templateId' => $templateId,
+                            'variant' => $variant
+                        ])]);
+                    } catch (Exception $e) {}
                 }
                 
                 // 9. 🆕 Přidat tvůrce notifikace (source účastníky) s INFO prioritou
@@ -2812,10 +2948,11 @@ function extractVariantFromEmailBody($emailBody, $variant) {
  * Určí object typ podle event typ
  */
 function getObjectTypeFromEvent($eventType) {
-    if (strpos($eventType, 'ORDER_') === 0) return 'orders';
-    if (strpos($eventType, 'INVOICE_') === 0) return 'invoices';
-    if (strpos($eventType, 'CONTRACT_') === 0) return 'contracts';
-    if (strpos($eventType, 'CASHBOOK_') === 0) return 'cashbook';
+    // Podporuj jak uppercase (ORDER_SENT_FOR_APPROVAL) tak lowercase (order_status_ke_schvaleni)
+    if (strpos($eventType, 'ORDER_') === 0 || strpos($eventType, 'order_') === 0) return 'orders';
+    if (strpos($eventType, 'INVOICE_') === 0 || strpos($eventType, 'invoice_') === 0) return 'invoices';
+    if (strpos($eventType, 'CONTRACT_') === 0 || strpos($eventType, 'contract_') === 0) return 'contracts';
+    if (strpos($eventType, 'CASHBOOK_') === 0 || strpos($eventType, 'cashbook_') === 0) return 'cashbook';
     return 'unknown';
 }
 
@@ -3100,7 +3237,7 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
         $stmt = $db->prepare("
             SELECT email, jmeno, prijmeni 
             FROM 25_uzivatele 
-            WHERE uzivatel_id = :user_id AND aktivni = 1
+            WHERE id = :user_id AND aktivni = 1
         ");
         $stmt->execute([':user_id' => $userId]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
