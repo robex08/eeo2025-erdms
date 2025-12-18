@@ -1625,7 +1625,21 @@ function loadOrderPlaceholders($db, $objectId) {
             }
         }
         
-        $financovani_poznamka = is_array($financovani_obj) && isset($financovani_obj['poznamka']) ? $financovani_obj['poznamka'] : '';
+        // Extrahovat poznámku podle typu financování
+        $financovani_poznamka = '';
+        if (is_array($financovani_obj)) {
+            $typ = $financovani_obj['typ'] ?? '';
+            if ($typ === 'SMLOUVA' && !empty($financovani_obj['smlouva_poznamka'])) {
+                $financovani_poznamka = $financovani_obj['smlouva_poznamka'];
+            } elseif ($typ === 'INDIVIDUALNI_SCHVALENI' && !empty($financovani_obj['individualni_poznamka'])) {
+                $financovani_poznamka = $financovani_obj['individualni_poznamka'];
+            } elseif ($typ === 'POJISTNA_UDALOST' && !empty($financovani_obj['pojistna_udalost_poznamka'])) {
+                $financovani_poznamka = $financovani_obj['pojistna_udalost_poznamka'];
+            } elseif (!empty($financovani_obj['poznamka'])) {
+                // Fallback pro starý formát
+                $financovani_poznamka = $financovani_obj['poznamka'];
+            }
+        }
         
         // SCHVALOVATEL / PŘÍKAZCE - použij toho, kdo NENÍ NULL
         $approver_display = 'Nepřiřazen';
