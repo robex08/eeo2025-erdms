@@ -922,7 +922,7 @@ const ProgressOverlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 99999;
+  z-index: 100010;
   animation: fadeIn 0.2s ease-in;
 
   @keyframes fadeIn {
@@ -2169,6 +2169,10 @@ export default function InvoiceEvidencePage() {
           spisovka_priloha_id: firstAttachment.spisovka_file_id,
           filename: firstAttachment.name
         };
+        
+        // 🎯 Označit v localStorage, že s tímto dokumentem pracuji
+        localStorage.setItem('spisovka_active_dokument', firstAttachment.spisovka_dokument_id);
+        console.log('🎯 Aktivní Spisovka dokument uložen do LS:', firstAttachment.spisovka_dokument_id);
       } else if (firstAttachment.serverId) {
         console.log('ℹ️ Attachment už je uploadovaný (serverId:', firstAttachment.serverId, '), přeskakuji uložení metadata');
       } else {
@@ -2193,9 +2197,82 @@ export default function InvoiceEvidencePage() {
           removedAttachment?.spisovka_file_id === metadata.spisovka_priloha_id) {
         console.log('🚮 Zrušení Spisovka trackingu pro smazanou přílohu:', metadata);
         pendingSpisovkaMetadataRef.current = null;
+        // Vyčistit aktivní dokument z localStorage
+        localStorage.removeItem('spisovka_active_dokument');
+        console.log('🧹 Aktivní Spisovka dokument vymazán z LS (příloha smazána)');
       }
     }
   }, []);
+
+  // 🔄 Handler: Spisovka dokument conflict - uživatel rozhodne, zda přidat duplikát
+  const handleSpisovkaConflict = useCallback(async (metadata, fakturaId, existingRecord) => {
+    return new Promise((resolve) => {
+      const message = (
+        <div style={{ fontFamily: 'system-ui', lineHeight: '1.6' }}>
+          <p style={{ marginBottom: '12px', fontWeight: 600 }}>
+            Tento dokument ze Spisovky již byl dříve zaevidován:
+          </p>
+          {existingRecord && (
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fef3c7',
+              borderRadius: '6px',
+              fontSize: '13px',
+              marginBottom: '12px'
+            }}>
+              <div><strong>Faktura:</strong> {existingRecord.fa_cislo_vema || existingRecord.faktura_id}</div>
+              <div><strong>Datum:</strong> {existingRecord.zpracovano_kdy ? new Date(existingRecord.zpracovano_kdy).toLocaleString('cs-CZ') : 'N/A'}</div>
+              <div><strong>Uživatel:</strong> {existingRecord.uzivatel_id}</div>
+            </div>
+          )}
+          <p style={{ marginBottom: '8px' }}>
+            Chcete přesto přidat tuto přílohu k nové faktuře?
+          </p>
+          <p style={{ fontSize: '12px', color: '#78716c', marginTop: '8px' }}>
+            ⚠️ Vytvoří se duplicitní záznam v trackingu.
+          </p>
+        </div>
+      );
+
+      setConfirmDialog({
+        isOpen: true,
+        title: '⚠️ Dokument již evidován',
+        message,
+        onConfirm: async () => {
+          // Uživatel potvrdil - force tracking
+          try {
+            const result = await markSpisovkaDocumentProcessed({
+              username,
+              token,
+              dokument_id: metadata.dokument_id,
+              spisovka_priloha_id: metadata.spisovka_priloha_id,
+              faktura_id: fakturaId,
+              fa_cislo_vema: formData.fa_cislo_vema,
+              stav: 'ZAEVIDOVANO',
+              poznamka: `DUPLICITA - Auto-tracking: Příloha ze Spisovky (file_id: ${metadata.spisovka_priloha_id})`,
+              force: true // 🔥 Vynucení duplicity
+            });
+
+            if (result.success) {
+              console.log('✅ Duplicitní Spisovka dokument označen jako zpracovaný (force):', metadata);
+              showToast && showToast('✅ Příloha přidána (duplicitní záznam vytvořen)', { type: 'success' });
+            } else {
+              console.warn('⚠️ Force tracking se nezdařil:', result);
+            }
+          } catch (err) {
+            console.error('❌ Force tracking error:', err);
+          }
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          resolve(true);
+        },
+        onCancel: () => {
+          console.log('🚫 Uživatel zrušil přidání duplicitní přílohy');
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          resolve(false);
+        }
+      });
+    });
+  }, [username, token, formData.fa_cislo_vema, setConfirmDialog, showToast]);
 
   // 📎 Handler: po úspěšném uploadu přílohy - volá se z InvoiceAttachmentsCompact
   const handleAttachmentUploaded = useCallback(async (fakturaId, uploadedAttachment) => {
@@ -2213,7 +2290,7 @@ export default function InvoiceEvidencePage() {
       console.log('🔍 pendingSpisovkaMetadata (from ref):', metadata);
       
       if (metadata) {
-        await markSpisovkaDocumentProcessed({
+        const result = await markSpisovkaDocumentProcessed({
           username,
           token,
           dokument_id: metadata.dokument_id,
@@ -2221,24 +2298,41 @@ export default function InvoiceEvidencePage() {
           faktura_id: fakturaId,
           fa_cislo_vema: formData.fa_cislo_vema,
           stav: 'ZAEVIDOVANO',
-          poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${metadata.spisovka_priloha_id})`
+          poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${metadata.spisovka_priloha_id})`,
+          force: false // První pokus bez force
         });
         
-        console.log('✅ Spisovka dokument označen jako zpracovaný:', {
-          dokument_id: metadata.dokument_id,
-          spisovka_priloha_id: metadata.spisovka_priloha_id,
-          faktura_id: fakturaId
-        });
-        
-        // Vyčistit metadata po úspěšném zápisu
-        pendingSpisovkaMetadataRef.current = null;
+        // 🔍 Kontrola výsledku
+        if (result.success) {
+          console.log('✅ Spisovka dokument označen jako zpracovaný:', {
+            dokument_id: metadata.dokument_id,
+            spisovka_priloha_id: metadata.spisovka_priloha_id,
+            faktura_id: fakturaId
+          });
+          // Vyčistit metadata po úspěšném zápisu
+          pendingSpisovkaMetadataRef.current = null;
+          // ⚠️ NEvyčišťovat LS zde - uživatel může přidat další přílohy ze stejné faktury
+          // LS se vyčistí při opouštění stránky nebo při reset formu
+        } else if (result.conflict) {
+          // 🚨 CONFLICT - zobrazit dialog uživateli
+          console.warn('⚠️ Conflict detekován:', result);
+          await handleSpisovkaConflict(metadata, fakturaId, result.existingRecord);
+          // Vyčistit metadata i po confliktu (dialog už byl zobrazen)
+          pendingSpisovkaMetadataRef.current = null;
+          // ⚠️ NEvyčišťovat LS - uživatel může přidat další přílohy
+        }
       } else {
         console.log('ℹ️ Žádná Spisovka metadata k trackingu (není ze Spisovky)');
       }
     } catch (spisovkaErr) {
       console.error('⚠️ Nepodařilo se označit Spisovka dokument jako zpracovaný:', spisovkaErr);
+      // Vyčistit metadata i při chybě
+      pendingSpisovkaMetadataRef.current = null;
+      // ✅ Při chybě vyčistit LS - uživatel musí začít znovu
+      localStorage.removeItem('spisovka_active_dokument');
+      console.log('🧹 Aktivní Spisovka dokument vymazán z LS (chyba trackingu)');
     }
-  }, [username, token, formData.fa_cislo_vema, markSpisovkaDocumentProcessed]);
+  }, [username, token, formData.fa_cislo_vema, handleSpisovkaConflict]);
 
   // 📎 Validace faktury před uploadem příloh (podle vzoru OrderForm25)
   // Parametr: faktura objekt (ne file!) - obsahuje data faktury pro validaci
@@ -2925,6 +3019,8 @@ export default function InvoiceEvidencePage() {
       try {
         localStorage.removeItem('invoiceFormData');
         localStorage.removeItem('invoiceAttachments');
+        localStorage.removeItem('spisovka_active_dokument'); // 🎯 Vyčistit aktivní Spisovka dokument
+        console.log('🧹 Aktivní Spisovka dokument vymazán z LS (faktura uložena)');
       } catch (err) {
         console.warn('Chyba při mazání localStorage:', err);
       }

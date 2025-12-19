@@ -13,7 +13,7 @@ const Overlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100003;
+  z-index: 100010;
   animation: fadeIn 0.2s ease;
 
   @keyframes fadeIn {

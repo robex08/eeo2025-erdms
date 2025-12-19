@@ -1332,6 +1332,26 @@ function handle_invoices25_list($input, $config, $queries) {
                     $params[] = $user_id;
                     break;
                     
+                case 'with_contract':
+                    // Přiřazené ke smlouvě
+                    $where_conditions[] = 'f.smlouva_id IS NOT NULL AND f.smlouva_id > 0';
+                    break;
+                    
+                case 'with_order':
+                    // Přiřazené k objednávce
+                    $where_conditions[] = 'f.objednavka_id IS NOT NULL AND f.objednavka_id > 0';
+                    break;
+                    
+                case 'without_assignment':
+                    // Bez přiřazení (ani OBJ ani SML)
+                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)';
+                    break;
+                    
+                case 'from_spisovka':
+                    // Ze Spisovky (má tracking záznam)
+                    $where_conditions[] = 'szl.id IS NOT NULL';
+                    break;
+                    
                 default:
                     // Neznámá hodnota - ignorovat
                     error_log("Invoices25 LIST: Unknown filter_status value: " . $filter_status);
@@ -1392,7 +1412,11 @@ function handle_invoices25_list($input, $config, $queries) {
             COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
             COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN 1 END) as pocet_moje_faktury,
-            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury
+            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
+            COUNT(CASE WHEN f.smlouva_id IS NOT NULL AND f.smlouva_id > 0 THEN 1 END) as pocet_s_smlouvou,
+            COUNT(CASE WHEN f.objednavka_id IS NOT NULL AND f.objednavka_id > 0 THEN 1 END) as pocet_s_objednavkou,
+            COUNT(CASE WHEN (f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0) THEN 1 END) as pocet_bez_prirazeni,
+            COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -1402,6 +1426,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql";
         
         $stats_stmt = $db->prepare($stats_sql);
@@ -1419,7 +1444,11 @@ function handle_invoices25_list($input, $config, $queries) {
             'pocet_po_splatnosti' => (int)$stats['pocet_po_splatnosti'],
             'celkem_po_splatnosti' => (float)$stats['celkem_po_splatnosti'],
             'pocet_moje_faktury' => (int)$stats['pocet_moje_faktury'],
-            'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury']
+            'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury'],
+            'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
+            'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
+            'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],
+            'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky']
         );
         
         // KROK 2: Načíst samotné záznamy
@@ -1456,7 +1485,10 @@ function handle_invoices25_list($input, $config, $queries) {
             u_predana.jmeno AS fa_predana_zam_jmeno,
             u_predana.prijmeni AS fa_predana_zam_prijmeni,
             u_predana.titul_pred AS fa_predana_zam_titul_pred,
-            u_predana.titul_za AS fa_predana_zam_titul_za
+            u_predana.titul_za AS fa_predana_zam_titul_za,
+            szl.id AS spisovka_tracking_id,
+            szl.dokument_id AS spisovka_dokument_id,
+            szl.spisovka_priloha_id AS spisovka_priloha_id
         FROM `$faktury_table` f
         LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -1468,6 +1500,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_ciselnik_stavy` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql
         GROUP BY f.id
         ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
@@ -1600,6 +1633,10 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             $faktura['fa_predana_zam_jmeno_cele'] = $predana_jmeno_cele;
             
+            // Spisovka tracking - přidat informaci o původu ze Spisovky
+            $faktura['from_spisovka'] = !empty($faktura['spisovka_tracking_id']);
+            $faktura['spisovka_dokument_id'] = $faktura['from_spisovka'] ? $faktura['spisovka_dokument_id'] : null;
+            
             // Odstraníme pouze pomocné sloupce (detail už je v vytvoril_uzivatel_detail)
             unset($faktura['vytvoril_jmeno']);
             unset($faktura['vytvoril_prijmeni']);
@@ -1611,6 +1648,8 @@ function handle_invoices25_list($input, $config, $queries) {
             unset($faktura['fa_predana_zam_prijmeni']);
             unset($faktura['fa_predana_zam_titul_pred']);
             unset($faktura['fa_predana_zam_titul_za']);
+            unset($faktura['spisovka_tracking_id']);
+            unset($faktura['spisovka_priloha_id']);
         }
         
         // KROK 3: Načíst přílohy pro každou fakturu (enriched data)
