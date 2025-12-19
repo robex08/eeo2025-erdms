@@ -1875,7 +1875,7 @@ export default function InvoiceEvidencePage() {
     try {
       // 🔒 KROK 1: Zamknout objednávku pro editaci (přidávání faktur)
       console.log('🔒 InvoiceEvidencePage - Zamykám objednávku #', orderIdToLoad);
-      await lockOrderV2(orderIdToLoad, token, username, false);
+      await lockOrderV2({ orderId: orderIdToLoad, token, username, force: false });
       console.log('✅ Objednávka úspěšně zamčena pro přidávání faktur');
 
       // ✅ KROK 2: Načti plná data objednávky s enriched daty (faktury, položky, atd.)
@@ -1889,13 +1889,13 @@ export default function InvoiceEvidencePage() {
       } else {
         setError('Nepodařilo se načíst data objednávky');
         // Odemkni pokud se načtení nezdařilo
-        await unlockOrderV2(orderIdToLoad, token, username).catch(e => console.warn('⚠️ Unlock failed:', e));
+        await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
       }
     } catch (err) {
       setError(err.message || 'Chyba při načítání objednávky');
       showToast && showToast(err.message || 'Chyba při načítání objednávky', 'error');
       // Odemkni při jakékoliv chybě
-      await unlockOrderV2(orderIdToLoad, token, username).catch(e => console.warn('⚠️ Unlock failed:', e));
+      await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
     } finally {
       setOrderLoading(false);
     }
@@ -1964,7 +1964,7 @@ export default function InvoiceEvidencePage() {
       // Cleanup při unmount - odemkni objednávku pokud byla zamčená
       if (formData.order_id && token && username) {
         console.log('🔓 InvoiceEvidencePage unmount - odemykám objednávku #', formData.order_id);
-        unlockOrderV2(formData.order_id, token, username)
+        unlockOrderV2({ orderId: formData.order_id, token, username })
           .then(() => console.log('✅ Objednávka odemčena při opuštění InvoiceEvidencePage'))
           .catch(err => console.warn('⚠️ Nepodařilo se odemknout objednávku:', err));
       }

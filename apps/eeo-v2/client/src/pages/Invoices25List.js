@@ -1376,10 +1376,12 @@ const Invoices25List = () => {
     if (invoice.objednavka_id) {
       // 🔒 KONTROLA LOCK před přidáním faktury k objednávce
       try {
+        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (přidání FA)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
         if (orderCheck?.lock_info?.locked === true) {
+          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji přidání FA');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
@@ -1397,10 +1399,11 @@ const Invoices25List = () => {
           return;
         }
       } catch (err) {
-        console.warn('⚠️ Nepodařilo se zkontrolovat LOCK objednávky:', err);
+        console.warn('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
       }
       
       // ✅ Není zamčená - přidat fakturu k objednávce
+      console.log('✅ LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' OK - přidávám FA');
       navigate('/invoice-evidence', {
         state: {
           orderIdForLoad: invoice.objednavka_id
@@ -1939,10 +1942,12 @@ const Invoices25List = () => {
     // 🔒 KONTROLA LOCK před editací faktury s objednávkou
     if (invoice.objednavka_id) {
       try {
+        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (editace FA)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
         if (orderCheck?.lock_info?.locked === true) {
+          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji editaci FA');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
@@ -1960,11 +1965,12 @@ const Invoices25List = () => {
           return;
         }
       } catch (err) {
-        console.warn('⚠️ Nepodařilo se zkontrolovat LOCK objednávky:', err);
+        console.warn('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
       }
     }
     
     // ✅ Není zamčená nebo nemá objednávku - pokračuj s editací
+    console.log('✅ LOCK Invoices25List: Obj ' + (invoice.objednavka_id ? '#' + invoice.objednavka_id : 'bez obj') + ' OK - otevírám FA');
     navigate('/invoice-evidence', { 
       state: { 
         editInvoiceId: invoice.id,

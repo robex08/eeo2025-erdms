@@ -6788,10 +6788,11 @@ function OrderForm25() {
           } else {
             // Objednávka není zamčená - normální lock
             try {
+              console.log('🔒 LOCK OrderForm25: Zamykám obj #' + editOrderId);
               const lockResult = await lockOrderV2({ token, username, orderId: editOrderId });
               if (lockResult.success) {
                 // NOTE: unlockOrderIdRef removed - formData.id is used for unlock
-                
+                console.log('✅ LOCK OrderForm25: OK - obj #' + editOrderId);
                 showToast?.(
                   `Objednávka zamknuta pro editaci`,
                   'info'
@@ -8706,8 +8707,9 @@ function OrderForm25() {
     const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
     if (unlockOrderId && token && username && !skipUnlock) {
       try {
+        console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (po uložení do DB)');
         await unlockOrderV2({ token, username, orderId: unlockOrderId });
-        console.log('✅ Unlock OK po uložení:', unlockOrderId);
+        console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
       } catch (error) {
         console.warn('⚠️ Unlock FAILED po uložení:', error.message);
         // Ignoruj chybu odemykání - pokračuj s navigací
@@ -15535,11 +15537,16 @@ function OrderForm25() {
         // Odemkni objednávku (pokud je editace) - použij editOrderId nebo formData.id
         // ✅ FIX: editOrderId je stabilnější než formData.id (může být undefined po smazání draftu)
         const unlockOrderId = editOrderId || formData.id;
+        console.log('🔍 UNLOCK DEBUG OrderForm25: editOrderId=' + editOrderId + ', formData.id=' + formData.id + ', unlockOrderId=' + unlockOrderId + ', token=' + !!token + ', username=' + !!username);
+        
         if (unlockOrderId && token && username) {
           try {
+            console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (zavření konečného stavu)');
             await unlockOrderV2({ token, username, orderId: unlockOrderId });
+            console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
             // 🔒 KRITICKÉ: Zabránit duplicitnímu unlock z useEffect cleanup (již neexistuje)
           } catch (error) {
+            console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
             // Ignoruj chybu odemykání
           }
         }
@@ -15668,12 +15675,16 @@ function OrderForm25() {
       // 2. Odemkni objednávku (pokud je editace) - graceful handling
       // ✅ FIX: Použít editOrderId místo formData.id (po smazání draftu může být formData prázdné)
       const unlockOrderId = editOrderId || formData.id;
+      console.log('🔍 UNLOCK DEBUG OrderForm25: editOrderId=' + editOrderId + ', formData.id=' + formData.id + ', unlockOrderId=' + unlockOrderId + ', token=' + !!token + ', username=' + !!username);
       
       if (unlockOrderId && token && username) {
         try {
+          console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (zavření formuláře)');
           await unlockOrderV2({ token, username, orderId: unlockOrderId });
+          console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
           addDebugLog('success', 'CANCEL', 'unlock', `Objednávka ${unlockOrderId} byla odemknuta`);
         } catch (error) {
+          console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
           addDebugLog('warning', 'CANCEL', 'unlock-error', `Chyba při odemykání: ${error.message} - ignorováno`);
           // Ignoruj chybu - formulář se zavře i když odemykání selže
         }
