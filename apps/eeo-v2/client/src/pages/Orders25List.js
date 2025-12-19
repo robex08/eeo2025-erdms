@@ -6268,12 +6268,9 @@ const Orders25List = () => {
       if (total > 0) return total;
     }
 
-    // 3. FALLBACK: Max cena s DPH (schválený limit) - pouze pokud objednávka nemá faktury ani položky
-    if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
-      const value = parseFloat(order.max_cena_s_dph);
-      if (!isNaN(value)) return value;
-    }
-
+    // ⚠️ NEPOUŽÍVAT max_cena_s_dph jako fallback!
+    // max_cena_s_dph je limit, ne skutečná cena
+    // Pokud objednávka nemá faktury ani položky, vrať 0
     return 0;
   }, [orders]);
 
