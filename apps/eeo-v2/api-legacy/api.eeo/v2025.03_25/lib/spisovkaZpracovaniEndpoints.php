@@ -42,6 +42,14 @@ define('TABLE_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
  * - offset: int (optional, default 0) - Offset pro stránkování
  */
 function handle_spisovka_zpracovani_list($input, $config) {
+    // OKAMŽITÝ DB logging - musí fungovat!
+    try {
+        $log_pdo = new PDO("mysql:host=10.3.172.11;dbname=eeo2025", "eeo2025", "hn48qka?a");
+        $log_pdo->exec("INSERT INTO debug_api_log (endpoint, method, input_data, error_message) VALUES ('START', 'POST', 'Function called', 'Config check: " . (isset($config) ? 'YES' : 'NO') . "')");
+    } catch (Exception $le) {
+        file_put_contents('/tmp/debug_log_error.txt', date('Y-m-d H:i:s') . " - " . $le->getMessage() . "\n", FILE_APPEND);
+    }
+    
     // DB Debug logger
     $debug_pdo = null;
     try {
@@ -53,6 +61,7 @@ function handle_spisovka_zpracovani_list($input, $config) {
         $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, input_data) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote(json_encode($input)) . ")");
     } catch (Exception $e) {
         error_log("Debug log failed: " . $e->getMessage());
+        file_put_contents('/tmp/debug_log_error.txt', date('Y-m-d H:i:s') . " - Config log failed: " . $e->getMessage() . "\n", FILE_APPEND);
     }
     
     error_log("📋 handle_spisovka_zpracovani_list called");
@@ -142,10 +151,8 @@ function handle_spisovka_zpracovani_list($input, $config) {
         
         $where_clause = implode(' AND ', $where);
         
-        // Dotaz s JOINy pro zobrazení souvisejících dat
-        $uzivatele_table = get_users_table_name();
-        $faktury_table = get_invoices_table_name();
-        
+        // Dotaz - JEN naše data z tracking tabulky (bez JOINů na cizí DB!)
+        // dokument_id je ID ze Spisovky (10.1.1.253), ale nepotřebujeme JOINovat
         $sql = "
             SELECT 
                 szl.id,
@@ -157,17 +164,8 @@ function handle_spisovka_zpracovani_list($input, $config) {
                 szl.stav,
                 szl.poznamka,
                 szl.doba_zpracovani_s,
-                szl.dt_vytvoreni,
-                u.jmeno AS uzivatel_jmeno,
-                u.prijmeni AS uzivatel_prijmeni,
-                dp.nazev_souboru AS dokument_nazev,
-                dp.klasifikace AS dokument_typ,
-                f.fa_datum_vystaveni AS faktura_datum_vystaveni,
-                f.fa_castka AS faktura_castka
+                szl.dt_vytvoreni
             FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
-            LEFT JOIN {$uzivatele_table} u ON szl.uzivatel_id = u.id
-            LEFT JOIN dokument_priloha dp ON szl.dokument_id = dp.id
-            LEFT JOIN {$faktury_table} f ON szl.faktura_id = f.id
             WHERE {$where_clause}
             ORDER BY szl.zpracovano_kdy DESC
             LIMIT :limit OFFSET :offset
@@ -341,18 +339,14 @@ function handle_spisovka_zpracovani_stats($input, $config) {
         $stmt->execute();
         $stats = $stmt->fetch();
         
-        // Statistiky podle uživatelů (top 10)
-        $uzivatele_table = get_users_table_name();
+        // Statistiky podle uživatelů (top 10) - JEN uzivatel_id, bez JOINu
         $sql_users = "
             SELECT 
-                u.id,
-                u.jmeno,
-                u.prijmeni,
+                szl.uzivatel_id,
                 COUNT(*) as pocet_zpracovanych
             FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
-            LEFT JOIN {$uzivatele_table} u ON szl.uzivatel_id = u.id
             WHERE {$where_clause}
-            GROUP BY u.id, u.jmeno, u.prijmeni
+            GROUP BY szl.uzivatel_id
             ORDER BY pocet_zpracovanych DESC
             LIMIT 10
         ";

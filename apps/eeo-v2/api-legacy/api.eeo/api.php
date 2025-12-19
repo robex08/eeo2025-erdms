@@ -5006,8 +5006,15 @@ switch ($endpoint) {
         
         // GET/POST /api.eeo/spisovka-zpracovani/list
         if ($endpoint === 'spisovka-zpracovani/list') {
+            error_log("🔵 API.PHP: Matched endpoint spisovka-zpracovani/list");
+            error_log("🔵 API.PHP: Method: $request_method");
+            error_log("🔵 API.PHP: Input: " . json_encode($input));
+            error_log("🔵 API.PHP: Config exists: " . (isset($_config) ? 'YES' : 'NO'));
+            
             if ($request_method === 'GET' || $request_method === 'POST') {
+                error_log("🔵 API.PHP: Calling handle_spisovka_zpracovani_list()");
                 handle_spisovka_zpracovani_list($input, $_config);
+                error_log("🔵 API.PHP: Function returned");
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
