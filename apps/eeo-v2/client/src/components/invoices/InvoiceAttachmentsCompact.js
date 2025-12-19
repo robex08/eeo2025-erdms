@@ -737,7 +737,7 @@ const InvoiceAttachmentsCompact = ({
       const isTempFaktura = String(fakturaId).startsWith('temp-');
       
       // 🎬 SIMULACE UPLOADU S PROGRESS BAREM
-      // Spustíme upload asynchronně a pak refreshneme z DB
+      // Spustíme upload asynchronně
       const uploadPromises = newFiles.map(file => 
         uploadFileToServer(file.id, file.klasifikace, file)
       );
@@ -745,16 +745,8 @@ const InvoiceAttachmentsCompact = ({
       // ⏳ Počkat na všechny uploady
       await Promise.all(uploadPromises);
       
-      // 🔄 PO DOKONČENÍ UPLOADU: Refresh příloh z DB (načtení skutečných dat)
-      if (!isTempFaktura && fakturaId) {
-        console.log('🔄 Refreshing attachments from DB after upload...');
-        try {
-          await loadAttachmentsFromServer();
-          console.log('✅ Attachments refreshed from DB');
-        } catch (refreshErr) {
-          console.error('⚠️ Failed to refresh attachments:', refreshErr);
-        }
-      }
+      // ✅ UPLOAD HOTOVÝ - přílohy zůstávají v UI (optimistic update)
+      // ⚠️ ŽÁDNÝ REFRESH z DB - mohlo by to resetovat formulář při ukládání faktury
     }
   };
 
