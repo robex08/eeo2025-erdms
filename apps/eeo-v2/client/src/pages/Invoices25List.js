@@ -2719,10 +2719,20 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell>
                       {invoice.potvrdil_vecnou_spravnost_zkracene ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.potvrdil_vecnou_spravnost_zkracene}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                            <strong>{invoice.potvrdil_vecnou_spravnost_zkracene}</strong>
+                          </div>
+                          {invoice.dt_potvrzeni_vecne_spravnosti && (
+                            <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
+                              <span title="Datum potvrzení věcné správnosti" style={{ whiteSpace: 'nowrap' }}>
+                                {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ color: '#cbd5e1' }}>—</span>
                       )}
