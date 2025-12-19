@@ -509,12 +509,13 @@ const TxtViewer = styled.pre`
 // MAIN COMPONENT
 // ============================================================
 
-const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted }) => {
+const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username }) => {
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
   const [zpracovaneIds, setZpracovaneIds] = useState(new Set()); // 📋 Set zpracovaných dokument_id
+  const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
   const [fileViewerPosition, setFileViewerPosition] = useState(() => {
@@ -717,10 +718,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   // 📋 Načíst zpracované dokumenty pro označení
   const fetchZpracovaneDokumenty = useCallback(async () => {
     try {
-      // Předpokládáme že máme token a username v localStorage nebo kontextu
-      const token = localStorage.getItem('token');
-      const username = localStorage.getItem('username');
-      
+      // Token a username přicházejí jako props z InvoiceEvidencePage
       if (!token || !username) {
         console.warn('⚠️ Token nebo username chybí - nelze načíst zpracované dokumenty');
         return;
@@ -743,7 +741,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       console.warn('⚠️ Nepodařilo se načíst zpracované dokumenty:', err);
       // Neblokujeme - panel může fungovat i bez tohoto
     }
-  }, []);
+  }, [token, username]);
 
   const fetchFaktury = useCallback(async () => {
     setLoading(true);
@@ -774,7 +772,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, pagination.offset, pagination.rok, fetchZpracovaneDokumenty]);
+  }, [pagination.limit, pagination.offset, pagination.rok, fetchZpracovaneDokumenty, token, username]);
 
   // Initial fetch
   useEffect(() => {
@@ -950,7 +948,10 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                       <PrilohaTitle>
                         📎 Přílohy ({faktura.prilohy.length})
                       </PrilohaTitle>
-                      {faktura.prilohy.slice(0, 3).map((priloha) => {
+                      {(() => {
+                        const isExpanded = expandedAttachments.has(faktura.dokument_id);
+                        const attachmentsToShow = isExpanded ? faktura.prilohy : faktura.prilohy.slice(0, 3);
+                        return attachmentsToShow.map((priloha) => {
                         const isPdf = priloha.mime_type === 'application/pdf';
                         const isTxt = priloha.mime_type === 'text/plain' || priloha.filename.toLowerCase().endsWith('.txt');
                         const canPreview = isPdf || isTxt;
@@ -1058,10 +1059,46 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                             </div>
                           </PrilohaItem>
                         );
-                      })}
+                        });
+                      })()}
                       {faktura.prilohy.length > 3 && (
-                        <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.4rem', textAlign: 'center', fontWeight: 600 }}>
-                          +{faktura.prilohy.length - 3} další
+                        <div 
+                          style={{ 
+                            fontSize: '0.75rem', 
+                            color: '#3b82f6', 
+                            marginTop: '0.5rem', 
+                            textAlign: 'center', 
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: '0.5rem',
+                            borderRadius: '4px',
+                            background: '#eff6ff',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedAttachments(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(faktura.dokument_id)) {
+                                newSet.delete(faktura.dokument_id);
+                              } else {
+                                newSet.add(faktura.dokument_id);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#dbeafe';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#eff6ff';
+                            e.currentTarget.style.transform = 'translateY(0)';
+                          }}
+                        >
+                          {expandedAttachments.has(faktura.dokument_id) 
+                            ? '▲ Skrýt přílohy' 
+                            : `▼ Zobrazit +${faktura.prilohy.length - 3} další`}
                         </div>
                       )}
                     </PrilohaSection>
