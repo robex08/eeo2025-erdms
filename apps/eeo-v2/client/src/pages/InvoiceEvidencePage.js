@@ -4513,6 +4513,8 @@ export default function InvoiceEvidencePage() {
           beginDrag={handleSpisovkaInboxDrag}
           onClose={() => setSpisovkaInboxOpen(false)}
           onOCRDataExtracted={handleOCRDataExtracted}
+          token={token}
+          username={username}
         />
       )}
 

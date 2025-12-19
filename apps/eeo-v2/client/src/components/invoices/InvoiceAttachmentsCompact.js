@@ -870,7 +870,7 @@ const InvoiceAttachmentsCompact = ({
         }
 
         // Volám onCreateInvoiceInDB callback
-        showToast&&showToast('⏳ Vytvářím fakturu v databázi...', { type: 'info' });
+        // ❌ ODSTRANĚNO: Toast "Vytvářím fakturu..." - způsoboval spam
         
         const realFakturaId = await onCreateInvoiceInDB(fakturaId);
         
@@ -880,7 +880,7 @@ const InvoiceAttachmentsCompact = ({
           throw new Error('Nepodařilo se získat reálné ID faktury');
         }
 
-        showToast&&showToast('✅ Faktura vytvořena, nahrávám přílohu...', { type: 'info' });
+        // ❌ ODSTRANĚNO: Toast "Faktura vytvořena..." - uživatel vidí jen finální úspěch
 
         // Najdi název typu přílohy pro zobrazení
         const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === klasifikace);
@@ -936,7 +936,7 @@ const InvoiceAttachmentsCompact = ({
           } : f
         ));
 
-        // Příloha úspěšně nahrána - zelený stylovaný toast
+        // ✅ Příloha úspěšně nahrána - JEDINÝ toast pro temp fakturu
         const successMessage = (
           <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
             <div style={{ 
@@ -1064,7 +1064,7 @@ const InvoiceAttachmentsCompact = ({
         } : f
       ));
 
-      // Zelený stylovaný success toast
+      // ✅ JEDINÝ success toast pro existující fakturu
       const successMessage = (
         <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
           <div style={{ 
@@ -1690,33 +1690,7 @@ const InvoiceAttachmentsCompact = ({
         // Zpracovat jako běžný soubor
         await handleFileUpload([file]);
         
-        // Zelený success toast po nahrání
-        const successMessage = (
-          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
-            <div style={{ 
-              fontSize: '15px', 
-              fontWeight: '600', 
-              marginBottom: '8px', 
-              color: '#1a1a1a',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
-              <span>Příloha úspěšně nahrána</span>
-            </div>
-            <div style={{ 
-              padding: '8px',
-              backgroundColor: '#f0fdf4',
-              borderRadius: '4px',
-              fontSize: '13px',
-              color: '#166534'
-            }}>
-              {finalFilename}
-            </div>
-          </div>
-        );
-        showToast && showToast(successMessage, { type: 'success' });
+        // ✅ Toast se zobrazí automaticky v handleFileUpload -> uploadAttachment
       } catch (error) {
         console.error('❌ Chyba při stahování souboru ze spisovky:', error);
         showToast && showToast('❌ Chyba při stahování souboru ze spisovky', { type: 'error' });

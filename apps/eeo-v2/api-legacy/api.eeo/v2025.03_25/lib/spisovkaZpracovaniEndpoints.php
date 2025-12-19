@@ -21,6 +21,11 @@
  */
 
 require_once __DIR__ . '/TimezoneHelper.php';
+require_once __DIR__ . '/handlers.php';
+require_once __DIR__ . '/orderQueries.php';
+
+// === TABLE CONSTANTS ===
+define('TABLE_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
 
 /**
  * GET /api/spisovka-zpracovani/list
@@ -37,9 +42,21 @@ require_once __DIR__ . '/TimezoneHelper.php';
  * - offset: int (optional, default 0) - Offset pro stránkování
  */
 function handle_spisovka_zpracovani_list($input, $config) {
+    error_log("📋 handle_spisovka_zpracovani_list called");
+    error_log("Input: " . json_encode($input));
+    
     // Ověření tokenu
     $username = isset($input['username']) ? $input['username'] : '';
     $token = isset($input['token']) ? $input['token'] : '';
+    
+    error_log("Username: $username, Token length: " . strlen($token));
+    
+    if (!function_exists('verify_token_v2')) {
+        error_log("❌ verify_token_v2 function NOT FOUND!");
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'verify_token_v2 not found']);
+        return;
+    }
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
@@ -106,6 +123,9 @@ function handle_spisovka_zpracovani_list($input, $config) {
         $where_clause = implode(' AND ', $where);
         
         // Dotaz s JOINy pro zobrazení souvisejících dat
+        $uzivatele_table = get_users_table_name();
+        $faktury_table = get_invoices_table_name();
+        
         $sql = "
             SELECT 
                 szl.id,
@@ -124,10 +144,10 @@ function handle_spisovka_zpracovani_list($input, $config) {
                 dp.klasifikace AS dokument_typ,
                 f.fa_datum_vystaveni AS faktura_datum_vystaveni,
                 f.fa_castka AS faktura_castka
-            FROM 25_spisovka_zpracovani_log szl
-            LEFT JOIN uzivatele_25 u ON szl.uzivatel_id = u.id
+            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            LEFT JOIN {$uzivatele_table} u ON szl.uzivatel_id = u.id
             LEFT JOIN dokument_priloha dp ON szl.dokument_id = dp.id
-            LEFT JOIN faktury_25 f ON szl.faktura_id = f.id
+            LEFT JOIN {$faktury_table} f ON szl.faktura_id = f.id
             WHERE {$where_clause}
             ORDER BY szl.zpracovano_kdy DESC
             LIMIT :limit OFFSET :offset
@@ -148,7 +168,7 @@ function handle_spisovka_zpracovani_list($input, $config) {
         // Počet celkových záznamů pro stránkování
         $count_sql = "
             SELECT COUNT(*) as total
-            FROM 25_spisovka_zpracovani_log szl
+            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
             WHERE {$where_clause}
         ";
         $count_stmt = $pdo->prepare($count_sql);
@@ -246,17 +266,17 @@ function handle_spisovka_zpracovani_stats($input, $config) {
         $where_clause = implode(' AND ', $where);
         
         // Celkové statistiky
-        $sql = "
+        $stats_sql = "
             SELECT 
                 COUNT(*) as celkem,
                 COUNT(CASE WHEN stav = 'ZAEVIDOVANO' THEN 1 END) as zaevidovano,
                 COUNT(CASE WHEN stav = 'NENI_FAKTURA' THEN 1 END) as neni_faktura,
                 COUNT(CASE WHEN stav = 'CHYBA' THEN 1 END) as chyba,
                 COUNT(CASE WHEN stav = 'DUPLIKAT' THEN 1 END) as duplikat,
-                AVG(doba_zpracovani_s) as prumerna_doba_zpracovani_s,
+                AVG(doba_zpracovani_s) as prumerna_doba_s,
                 MIN(zpracovano_kdy) as prvni_zpracovani,
                 MAX(zpracovano_kdy) as posledni_zpracovani
-            FROM 25_spisovka_zpracovani_log
+            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . "
             WHERE {$where_clause}
         ";
         
@@ -268,14 +288,15 @@ function handle_spisovka_zpracovani_stats($input, $config) {
         $stats = $stmt->fetch();
         
         // Statistiky podle uživatelů (top 10)
+        $uzivatele_table = get_users_table_name();
         $sql_users = "
             SELECT 
                 u.id,
                 u.jmeno,
                 u.prijmeni,
                 COUNT(*) as pocet_zpracovanych
-            FROM 25_spisovka_zpracovani_log szl
-            LEFT JOIN uzivatele_25 u ON szl.uzivatel_id = u.id
+            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            LEFT JOIN {$uzivatele_table} u ON szl.uzivatel_id = u.id
             WHERE {$where_clause}
             GROUP BY u.id, u.jmeno, u.prijmeni
             ORDER BY pocet_zpracovanych DESC
@@ -390,7 +411,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         // Kontrola zda dokument už není zpracovaný (duplikát)
         $check_sql = "
-            SELECT id FROM 25_spisovka_zpracovani_log 
+            SELECT id FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " 
             WHERE dokument_id = :dokument_id 
             LIMIT 1
         ";
@@ -410,7 +431,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         // INSERT záznamu
         $sql = "
-            INSERT INTO 25_spisovka_zpracovani_log (
+            INSERT INTO " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " (
                 dokument_id,
                 uzivatel_id,
                 zpracovano_kdy,
