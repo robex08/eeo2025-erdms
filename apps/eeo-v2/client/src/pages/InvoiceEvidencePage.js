@@ -5222,7 +5222,27 @@ export default function InvoiceEvidencePage() {
                 <ProgressButton 
                   variant="primary" 
                   onClick={async () => {
-                    // 🎯 RESET FORMULÁŘE PO ÚSPĚŠNÉM ULOŽENÍ
+                    // 🎯 KROK 1: RESET editingInvoiceId a vyčistit localStorage NEJDŘÍV
+                    setEditingInvoiceId(null);
+                    
+                    // 🧹 Vyčistit location.state (aby se effect neloadoval znovu)
+                    if (location.state?.editInvoiceId) {
+                      navigate(location.pathname, { replace: true, state: {} });
+                    }
+                    
+                    // 💾 Vyčistit localStorage HNED
+                    try {
+                      localStorage.removeItem('invoiceFormData');
+                      localStorage.removeItem('invoiceAttachments');
+                      localStorage.removeItem('editingInvoiceId');
+                      localStorage.removeItem('hadOriginalEntity');
+                      localStorage.removeItem('spisovka_active_dokument');
+                      console.log('🧹 LocalStorage vyčištěn IHNED po kliknutí na Pokračovat');
+                    } catch (err) {
+                      console.warn('Chyba při mazání localStorage:', err);
+                    }
+                    
+                    // 🎯 KROK 2: RESET FORMULÁŘE
                     const resetData = progressModal.resetData || {};
                     const { keepEntity, shouldResetEntity, wasEditing, currentOrderId, currentSmlouvaId } = resetData;
                     
@@ -5244,21 +5264,8 @@ export default function InvoiceEvidencePage() {
                       fa_datum_vraceni_zam: ''
                     });
 
-                    // Reset editace faktury a příloh
-                    setEditingInvoiceId(null);
+                    // Reset příloh
                     setAttachments([]);
-                    
-                    // 💾 Vyčistit localStorage
-                    try {
-                      localStorage.removeItem('invoiceFormData');
-                      localStorage.removeItem('invoiceAttachments');
-                      localStorage.removeItem('editingInvoiceId');
-                      localStorage.removeItem('hadOriginalEntity');
-                      localStorage.removeItem('spisovka_active_dokument');
-                      console.log('🧹 LocalStorage vyčištěn po uložení faktury');
-                    } catch (err) {
-                      console.warn('Chyba při mazání localStorage:', err);
-                    }
                     
                     // Reset preview entity a autocomplete pokud je potřeba
                     if (shouldResetEntity) {
