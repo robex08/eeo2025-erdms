@@ -6721,8 +6721,9 @@ const Orders25List = () => {
           {/* Druhý řádek - Předmět */}
           {row.original.predmet && (
             <div style={{
-              fontSize: '0.95em',
-              color: '#475569',
+              fontSize: '1em',
+              fontWeight: 600,
+              color: '#1e293b',
               marginTop: '4px',
               lineHeight: '1.3',
               maxWidth: '300px',
