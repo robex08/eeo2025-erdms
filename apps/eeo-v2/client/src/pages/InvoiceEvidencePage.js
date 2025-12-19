@@ -1355,10 +1355,10 @@ export default function InvoiceEvidencePage() {
   // Spisovka Inbox Panel - pouze pro ADMIN
   const [spisovkaInboxOpen, setSpisovkaInboxOpen] = useState(false);
   const [spisovkaInboxState, setSpisovkaInboxState] = useState({
-    x: window.innerWidth - 620, // Širší panel (600px)
-    y: Math.max(200, window.innerHeight / 2 - 300),
-    w: 600, // Zvětšená šířka z 400 na 600
-    h: 600,
+    x: Math.max(0, window.innerWidth - 750), // Snap doprava, min 0 (nesmí být záporné)
+    y: 144, // Pod fixed header (96px) + menubar (48px)
+    w: 750, // Šířka jako náhled faktury
+    h: Math.max(400, window.innerHeight - 144 - 54), // Mezi header+menubar a footer
     minimized: false
   });
   const [spisovkaTodayCount, setSpisovkaTodayCount] = useState(0);
@@ -1433,6 +1433,10 @@ export default function InvoiceEvidencePage() {
     }
     return [];
   });
+
+  // 📋 SPISOVKA METADATA - pomocná proměnná pro tracking (uloží se při drag & drop ze Spisovky)
+  // Používáme useRef místo useState, aby se metadata neztrácela v closure callbacků
+  const pendingSpisovkaMetadataRef = useRef(null);
 
   // CustomSelect states
   const [selectStates, setSelectStates] = useState({});
@@ -2128,13 +2132,113 @@ export default function InvoiceEvidencePage() {
 
   // 📎 Handler: změna příloh (controlled component pattern)
   const handleAttachmentsChange = useCallback((newAttachments) => {
+    console.log('🔍 handleAttachmentsChange called:', {
+      count: newAttachments.length,
+      firstAttachment: newAttachments[0] ? {
+        id: newAttachments[0].id,
+        name: newAttachments[0].name,
+        spisovka_dokument_id: newAttachments[0].spisovka_dokument_id,
+        spisovka_file_id: newAttachments[0].spisovka_file_id,
+        allKeys: Object.keys(newAttachments[0])
+      } : null,
+      currentMetadata: pendingSpisovkaMetadataRef.current
+    });
+    
     setAttachments(newAttachments);
+    
+    // 📋 Při přidání prvního attachmentu zkontrolovat Spisovka metadata a uložit je
+    // DŮLEŽITÉ: Uložit JEN když:
+    // 1. Je attachment ze Spisovky (má metadata)
+    // 2. Ještě nebyl uploadován (!serverId = lokální soubor)
+    // 3. Ref je prázdný (metadata ještě nebyla uložena)
+    if (newAttachments.length > 0 && !pendingSpisovkaMetadataRef.current) {
+      const firstAttachment = newAttachments[0];
+      
+      // Uložit metadata JEN pro lokální soubory (před uploadem)
+      if (firstAttachment.spisovka_dokument_id && 
+          firstAttachment.spisovka_file_id && 
+          !firstAttachment.serverId) {
+        console.log('📋 Uložení Spisovka metadata z prvního attachmentu (lokální soubor):', {
+          dokument_id: firstAttachment.spisovka_dokument_id,
+          file_id: firstAttachment.spisovka_file_id,
+          filename: firstAttachment.name,
+          serverId: firstAttachment.serverId
+        });
+        pendingSpisovkaMetadataRef.current = {
+          dokument_id: firstAttachment.spisovka_dokument_id,
+          spisovka_priloha_id: firstAttachment.spisovka_file_id,
+          filename: firstAttachment.name
+        };
+      } else if (firstAttachment.serverId) {
+        console.log('ℹ️ Attachment už je uploadovaný (serverId:', firstAttachment.serverId, '), přeskakuji uložení metadata');
+      } else {
+        console.log('⚠️ První attachment nemá Spisovka metadata:', {
+          has_dokument_id: !!firstAttachment.spisovka_dokument_id,
+          has_file_id: !!firstAttachment.spisovka_file_id
+        });
+      }
+    }
   }, []);
 
-  // 📎 Handler: po úspěšném uploadu přílohy (placeholder - zatím nepoužito)
-  const handleAttachmentUploaded = useCallback((uploadedAttachment) => {
-    // Zde můžeme případně triggernout autosave nebo jiné akce
+  // 🗑️ Handler: při smazání přílohy - vyčistit pending metadata
+  const handleAttachmentRemoved = useCallback((removedAttachment) => {
+    console.log('🗑️ handleAttachmentRemoved called:', removedAttachment);
+    
+    // Pokud byla příloha ze Spisovky a ještě nebyla uložena do DB, vyčistit metadata
+    if (pendingSpisovkaMetadataRef.current) {
+      const metadata = pendingSpisovkaMetadataRef.current;
+      
+      // Zkontrolovat, jestli mazaný soubor odpovídá pending metadata
+      if (removedAttachment?.spisovka_dokument_id === metadata.dokument_id ||
+          removedAttachment?.spisovka_file_id === metadata.spisovka_priloha_id) {
+        console.log('🚮 Zrušení Spisovka trackingu pro smazanou přílohu:', metadata);
+        pendingSpisovkaMetadataRef.current = null;
+      }
+    }
   }, []);
+
+  // 📎 Handler: po úspěšném uploadu přílohy - volá se z InvoiceAttachmentsCompact
+  const handleAttachmentUploaded = useCallback(async (fakturaId, uploadedAttachment) => {
+    console.log('📎 handleAttachmentUploaded called:', { fakturaId, uploadedAttachment });
+    
+    // Guard: Pokud není fakturaId, není co trackovat
+    if (!fakturaId) {
+      console.log('⚠️ handleAttachmentUploaded: Chybí fakturaId, přeskakuji tracking');
+      return;
+    }
+    
+    // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (po uploadu přílohy)
+    try {
+      const metadata = pendingSpisovkaMetadataRef.current;
+      console.log('🔍 pendingSpisovkaMetadata (from ref):', metadata);
+      
+      if (metadata) {
+        await markSpisovkaDocumentProcessed({
+          username,
+          token,
+          dokument_id: metadata.dokument_id,
+          spisovka_priloha_id: metadata.spisovka_priloha_id,
+          faktura_id: fakturaId,
+          fa_cislo_vema: formData.fa_cislo_vema,
+          stav: 'ZAEVIDOVANO',
+          poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${metadata.spisovka_priloha_id})`
+        });
+        
+        console.log('✅ Spisovka dokument označen jako zpracovaný:', {
+          dokument_id: metadata.dokument_id,
+          spisovka_priloha_id: metadata.spisovka_priloha_id,
+          faktura_id: fakturaId
+        });
+        
+        // Vyčistit metadata po úspěšném zápisu
+        pendingSpisovkaMetadataRef.current = null;
+      } else {
+        console.log('ℹ️ Žádná Spisovka metadata k trackingu (není ze Spisovky)');
+      }
+    } catch (spisovkaErr) {
+      console.error('⚠️ Nepodařilo se označit Spisovka dokument jako zpracovaný:', spisovkaErr);
+    }
+  }, [username, token, formData.fa_cislo_vema, markSpisovkaDocumentProcessed]);
 
   // 📎 Validace faktury před uploadem příloh (podle vzoru OrderForm25)
   // Parametr: faktura objekt (ne file!) - obsahuje data faktury pro validaci
@@ -2299,6 +2403,20 @@ export default function InvoiceEvidencePage() {
           updates.fa_castka = ocrData.castka;
         }
         
+        // 📋 SPISOVKA METADATA pro automatický tracking
+        // Přidat Spisovka metadata do file objektu (pokud existují)
+        if (ocrData.spisovka_dokument_id && ocrData.spisovka_priloha_id && prev.file) {
+          updates.file = {
+            ...prev.file,
+            spisovka_dokument_id: ocrData.spisovka_dokument_id,
+            spisovka_file_id: ocrData.spisovka_priloha_id
+          };
+          console.log('📋 Spisovka metadata přidána do file objektu:', {
+            dokument_id: ocrData.spisovka_dokument_id,
+            file_id: ocrData.spisovka_priloha_id
+          });
+        }
+        
         return {
           ...prev,
           ...updates
@@ -2371,8 +2489,8 @@ export default function InvoiceEvidencePage() {
 
       setSpisovkaInboxState(prev => {
         let newState = { ...prev };
-        const minW = 320;
-        const minH = 200;
+        const minW = 620; // Minimální šířka aby se vešla všechna tlačítka v hlavičce (rok + 5 period tlačítek + 3 filtry)
+        const minH = 400; // Minimální výška pro zobrazení alespoň 2 faktury
 
         if (dir === 'move') {
           newState.x = Math.max(0, Math.min(startState.x + dx, window.innerWidth - prev.w));
@@ -2836,23 +2954,38 @@ export default function InvoiceEvidencePage() {
       // Toto se provede na pozadí - neblokuje úspěch uložení faktury
       if (!editingInvoiceId && result?.data?.id) {
         try {
-          // 🆕 PRIORITA 1: Pokud má soubor Spisovka metadata (file_id, dokument_id)
-          if (formData.file?.spisovka_file_id && formData.file?.spisovka_dokument_id) {
-            // ✅ PŘESNÉ PROPOJENÍ podle file_id
+          // 🆕 PRIORITA 1: Hledat Spisovka metadata v prvním attachmentu
+          const firstAttachment = attachments?.[0];
+          
+          console.log('🔍 SPISOVKA TRACKING DEBUG:', {
+            editingInvoiceId,
+            resultId: result?.data?.id,
+            attachmentsCount: attachments?.length,
+            firstAttachment: firstAttachment ? {
+              id: firstAttachment.id,
+              name: firstAttachment.name,
+              spisovka_file_id: firstAttachment.spisovka_file_id,
+              spisovka_dokument_id: firstAttachment.spisovka_dokument_id,
+              allKeys: Object.keys(firstAttachment)
+            } : null
+          });
+          
+          if (firstAttachment?.spisovka_file_id && firstAttachment?.spisovka_dokument_id) {
+            // ✅ PŘESNÉ PROPOJENÍ podle file_id z attachmentu
             await markSpisovkaDocumentProcessed({
               username,
               token,
-              dokument_id: formData.file.spisovka_dokument_id,
-              spisovka_priloha_id: formData.file.spisovka_file_id, // 🆕 Přesné ID přílohy
+              dokument_id: firstAttachment.spisovka_dokument_id,
+              spisovka_priloha_id: firstAttachment.spisovka_file_id, // 🆕 Přesné ID přílohy
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema,
               stav: 'ZAEVIDOVANO',
-              poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${formData.file.spisovka_file_id})`
+              poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${firstAttachment.spisovka_file_id})`
             });
             
             console.log('✅ Spisovka dokument označen jako zpracovaný (přesné propojení):', {
-              dokument_id: formData.file.spisovka_dokument_id,
-              spisovka_priloha_id: formData.file.spisovka_file_id,
+              dokument_id: firstAttachment.spisovka_dokument_id,
+              spisovka_priloha_id: firstAttachment.spisovka_file_id,
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema
             });
@@ -3953,6 +4086,7 @@ export default function InvoiceEvidencePage() {
               attachments={attachments}
               onAttachmentsChange={handleAttachmentsChange}
               onAttachmentUploaded={handleAttachmentUploaded}
+              onAttachmentRemoved={handleAttachmentRemoved}
               onCreateInvoiceInDB={handleCreateInvoiceInDB}
               onOCRDataExtracted={handleOCRDataExtracted}
             />
