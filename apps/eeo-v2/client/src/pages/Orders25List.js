@@ -6642,8 +6642,7 @@ const Orders25List = () => {
       size: 120
     },
     {
-      id: 'cislo_objednavky',
-      accessorFn: (row) => row.cislo_objednavky,
+      accessorKey: 'cislo_objednavky',
       header: 'Evidenční číslo',
       sortingFn: (rowA, rowB) => {
         const numA = rowA.original.cislo_objednavky || '';
@@ -6663,7 +6662,7 @@ const Orders25List = () => {
         const cislo = row.original.cislo_objednavky || '';
         const predmet = row.original.predmet || '';
 
-        // Case-insensitive a bez diakritiky - hledej v čísle i předmětu
+        // Filtruj podle čísla i předmětu (OR podmínka)
         const normalizedCislo = removeDiacritics(cislo.toLowerCase());
         const normalizedPredmet = removeDiacritics(predmet.toLowerCase());
         const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
