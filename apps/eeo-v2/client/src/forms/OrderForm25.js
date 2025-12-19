@@ -8693,7 +8693,7 @@ function OrderForm25() {
 
   // Progress indikátor a přesměrování po úspěšném uložení
   // 🔒 skipUnlock: Pro ADMIN/SUPERADMIN nezamykáme - zůstávají editovat
-  const startSaveProgressAndRedirect = (orderNumber, orderId, skipUnlock = false) => {
+  const startSaveProgressAndRedirect = async (orderNumber, orderId, skipUnlock = false) => {
     // ✅ Toast zpráva o úspěšném uložení
     showToast && showToast(formatToastMessage(`Objednávka ${orderNumber} byla úspěšně uložena do databáze`, 'success'), { type: 'success' });
     
@@ -8702,18 +8702,18 @@ function OrderForm25() {
     setSaveProgress(0);
     setSaveProgressText('Ukládám objednávku...');
 
-    // Odemkni objednávku na pozadí (POKUD NENÍ skipUnlock)
-    (async () => {
-      const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
-      if (unlockOrderId && token && username && !skipUnlock) {
-        try {
-          await unlockOrderV2({ token, username, orderId: unlockOrderId });
-        } catch (error) {
-          // Ignoruj chybu odemykání
-        }
+    // 🔒 KRITICKÉ: Odemkni objednávku PŘED navigací (AWAIT!) - TUTOVKA!
+    const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
+    if (unlockOrderId && token && username && !skipUnlock) {
+      try {
+        await unlockOrderV2({ token, username, orderId: unlockOrderId });
+        console.log('✅ Unlock OK po uložení:', unlockOrderId);
+      } catch (error) {
+        console.warn('⚠️ Unlock FAILED po uložení:', error.message);
+        // Ignoruj chybu odemykání - pokračuj s navigací
       }
-      setIsChanged(false);
-    })();
+    }
+    setIsChanged(false);
 
     // 🚀 Spustit progress přes DraftManager
     const progressControl = draftManager.startProgress({
@@ -10046,14 +10046,8 @@ function OrderForm25() {
 
         addDebugLog('info', 'SAVE-V2', 'create-success', `Order created: ID ${result.id}`);
 
-        if (result.lock_info?.locked && !result.lock_info?.locked_by_user_id) {
-          try {
-            await unlockOrderV2({ token, username, orderId: result.id });
-            addDebugLog('info', 'SAVE-V2', 'auto-unlock', `Automaticky odemčena objednávka ${result.id} (byla zamčená bez vlastníka)`);
-          } catch (unlockError) {
-            addDebugLog('warning', 'SAVE-V2', 'auto-unlock-error', `Chyba při odemykání: ${unlockError.message}`);
-          }
-        }
+        // ❌ ODSTRANĚNO: CREATE by neměl vytvářet lock, takže není potřeba unlock
+        // Draft/localStorage operace nemají dělat LOCK/UNLOCK
 
         updatedFormDataImmediate = result;
         orderId = result.id;
@@ -10344,7 +10338,7 @@ function OrderForm25() {
             addDebugLog('error', 'INSERT', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
           }
 
-          startSaveProgressAndRedirect(orderNumber, orderId);
+          await startSaveProgressAndRedirect(orderNumber, orderId);
 
         } else {
           // SUPERADMIN/ADMIN - zůstává na formuláři v edit režimu
@@ -11119,7 +11113,7 @@ function OrderForm25() {
             addDebugLog('error', 'UPDATE', 'cache-invalidation-error', `Chyba při invalidaci cache: ${e.message}`);
           }
 
-          startSaveProgressAndRedirect(orderNumber, updateOrderId);
+          await startSaveProgressAndRedirect(orderNumber, updateOrderId);
         } else {
           // SUPERADMIN/ADMIN - zůstává na formuláři v edit režimu
           // ✅ Povolit autosave zpět (zůstávají editovat)
