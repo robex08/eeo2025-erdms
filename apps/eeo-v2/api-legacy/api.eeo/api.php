@@ -184,6 +184,9 @@ require_once __DIR__ . '/v2025.03_25/lib/searchHandlers.php';
 // REPORTS - Order V2 Reports
 require_once __DIR__ . '/v2025.03_25/lib/reportsHandlers.php';
 
+// SPISOVKA ZPRACOVANI - Tracking zpracovaných dokumentů ze Spisovka InBox
+require_once __DIR__ . '/v2025.03_25/lib/spisovkaZpracovaniEndpoints.php';
+
 // Routing endpointů
 $request_uri = $_SERVER['REQUEST_URI'];
 $request_method = $_SERVER['REQUEST_METHOD'];
@@ -4990,6 +4993,43 @@ switch ($endpoint) {
         if ($endpoint === 'ciselniky/smlouvy/prepocet-cerpani') {
             if ($request_method === 'POST') {
                 handle_ciselniky_smlouvy_prepocet_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // ===============================================
+        // SPISOVKA ZPRACOVÁNÍ - Tracking dokumentů
+        // ===============================================
+        
+        // GET/POST /api.eeo/spisovka-zpracovani/list
+        if ($endpoint === 'spisovka-zpracovani/list') {
+            if ($request_method === 'GET' || $request_method === 'POST') {
+                handle_spisovka_zpracovani_list($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
+            }
+            break;
+        }
+        
+        // GET/POST /api.eeo/spisovka-zpracovani/stats
+        if ($endpoint === 'spisovka-zpracovani/stats') {
+            if ($request_method === 'GET' || $request_method === 'POST') {
+                handle_spisovka_zpracovani_stats($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/spisovka-zpracovani/mark
+        if ($endpoint === 'spisovka-zpracovani/mark') {
+            if ($request_method === 'POST') {
+                handle_spisovka_zpracovani_mark($input, $_config);
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
