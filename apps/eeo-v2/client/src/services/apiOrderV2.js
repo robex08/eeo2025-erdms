@@ -1870,71 +1870,6 @@ export async function getLPOptionsForItems(lpIds = [], rok = null, username, tok
 }
 
 // ============================================================================
-// 🔒 LOCK/UNLOCK OPERATIONS
-// ============================================================================
-
-/**
- * Lock order for editing
- */
-export async function lockOrderV2({ token, username, orderId }) {
-  try {
-    const response = await apiOrderV2.post(
-      '/order-v2/lock',
-      { 
-        id: orderId,        // Backend očekává 'id' (primary)
-        orderId: orderId,   // Fallback pro kompatibilitu
-        token,
-        username
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
-    return response.data;
-  } catch (err) {
-    throw new Error(normalizeError(err));
-  }
-}
-
-/**
- * Unlock order after editing
- */
-export async function unlockOrderV2({ token, username, orderId, force = false }) {
-  try {
-    const payload = { 
-      id: orderId,        // Backend očekává 'id' (primary)
-      orderId: orderId,   // Fallback pro kompatibilitu
-      force,
-      token,
-      username
-    };
-    
-    const response = await apiOrderV2.post(
-      '/order-v2/unlock',
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
-    
-    return response.data;
-  } catch (err) {
-    console.error('❌ Unlock selhal:', {
-      error: err.message,
-      responseData: err.response?.data,
-      responseStatus: err.response?.status,
-      responseHeaders: err.response?.headers
-    });
-    console.error('❌ [UNLOCK DEBUG] Backend error message:', err.response?.data?.err || err.response?.data?.message || 'No error message');
-    throw new Error(normalizeError(err));
-  }
-}
-
-// ============================================================================
 // 📚 DICTIONARY/REFERENCE DATA
 // ============================================================================
 
@@ -2058,4 +1993,62 @@ export function formatFileSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+/**
+ * 🔒 LOCK objednávky pro editaci
+ * @param {number} orderId - ID objednávky
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @param {boolean} force - Vynutit zámek (admin může odemknout a převzít)
+ * @returns {Promise<Object>} Response data
+ */
+export async function lockOrderV2(orderId, token, username, force = false) {
+  try {
+    const response = await apiOrderV2.post(
+      `/order-v2/${orderId}/lock`,
+      { 
+        token,
+        username,
+        force 
+      }
+    );
+
+    return response.data;
+  } catch (err) {
+    console.error('❌ Chyba při zamykání objednávky:', err);
+    
+    // Při 423 (Locked) zachovat lock_info v error objektu
+    if (err.response && err.response.status === 423 && err.response.data) {
+      const error = new Error(err.response.data.message || 'Objednávka je zamčená');
+      error.response = err.response; // Zachovat celou response pro přístup k lock_info
+      throw error;
+    }
+    
+    throw new Error(normalizeError(err));
+  }
+}
+
+/**
+ * 🔓 UNLOCK objednávky
+ * @param {number} orderId - ID objednávky
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Response data
+ */
+export async function unlockOrderV2(orderId, token, username) {
+  try {
+    const response = await apiOrderV2.post(
+      `/order-v2/${orderId}/unlock`,
+      { 
+        token,
+        username 
+      }
+    );
+
+    return response.data;
+  } catch (err) {
+    console.error('❌ Chyba při odemykání objednávky:', err);
+    throw new Error(normalizeError(err));
+  }
 }

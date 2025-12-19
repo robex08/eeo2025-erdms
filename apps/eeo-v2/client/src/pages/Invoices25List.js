@@ -9,7 +9,8 @@ import {
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract
+  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
+  faLock, faEnvelope, faPhone, faClock
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -23,6 +24,92 @@ import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoic
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
 // =============================================================================
+
+// 🔒 LOCK Dialog komponenty
+const UserInfo = styled.div`
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+`;
+
+const InfoText = styled.p`
+  margin: 0.75rem 0;
+  color: #64748b;
+  line-height: 1.6;
+`;
+
+const WarningText = styled.p`
+  margin: 0.75rem 0;
+  color: #dc2626;
+  font-weight: 600;
+  line-height: 1.6;
+`;
+
+const ContactInfo = styled.div`
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+`;
+
+const ContactItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  color: #1e40af;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #e0e7ff;
+  }
+
+  svg {
+    color: #3b82f6;
+    width: 18px;
+    height: 18px;
+  }
+
+  a {
+    color: #1e40af;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #1e3a8a;
+      text-decoration: underline;
+    }
+  }
+`;
+
+const ContactLabel = styled.span`
+  font-weight: 600;
+  min-width: 80px;
+  color: #64748b;
+`;
+
+const LockTimeInfo = styled.div`
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  svg {
+    color: #f59e0b;
+    width: 16px;
+    height: 16px;
+  }
+`;
 
 const Container = styled.div`
   position: relative;
@@ -1256,6 +1343,10 @@ const Invoices25List = () => {
     newStatus: false
   });
   
+  // 🔒 State pro LOCK dialog system
+  const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
+  const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
+  
   // State pro slide panel (náhled faktury)
   const [slidePanelOpen, setSlidePanelOpen] = useState(false);
   const [slidePanelInvoice, setSlidePanelInvoice] = useState(null);
@@ -1275,9 +1366,41 @@ const Invoices25List = () => {
   };
 
   // Handler: Přidat fakturu k objednávce/smlouvě kliknutím na číslo
-  const handleAddInvoiceToEntity = (invoice) => {
+  // 🔒 Handler pro zavření LOCK dialogu
+  const handleLockedOrderCancel = () => {
+    setShowLockedOrderDialog(false);
+    setLockedOrderInfo(null);
+  };
+  
+  const handleAddInvoiceToEntity = async (invoice) => {
     if (invoice.objednavka_id) {
-      // Přidat fakturu k objednávce
+      // 🔒 KONTROLA LOCK před přidáním faktury k objednávce
+      try {
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        if (orderCheck?.lock_info?.locked === true) {
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumožňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          return;
+        }
+      } catch (err) {
+        console.warn('⚠️ Nepodařilo se zkontrolovat LOCK objednávky:', err);
+      }
+      
+      // ✅ Není zamčená - přidat fakturu k objednávce
       navigate('/invoice-evidence', {
         state: {
           orderIdForLoad: invoice.objednavka_id
@@ -1812,8 +1935,36 @@ const Invoices25List = () => {
     setSlidePanelLoading(false);
   };
 
-  const handleEditInvoice = (invoice) => {
-    // Navigace na evidenční stránku s parametrem pro editaci
+  const handleEditInvoice = async (invoice) => {
+    // 🔒 KONTROLA LOCK před editací faktury s objednávkou
+    if (invoice.objednavka_id) {
+      try {
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        if (orderCheck?.lock_info?.locked === true) {
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumožňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          return;
+        }
+      } catch (err) {
+        console.warn('⚠️ Nepodařilo se zkontrolovat LOCK objednávky:', err);
+      }
+    }
+    
+    // ✅ Není zamčená nebo nemá objednávku - pokračuj s editací
     navigate('/invoice-evidence', { 
       state: { 
         editInvoiceId: invoice.id,
@@ -3203,6 +3354,64 @@ const Invoices25List = () => {
               </div>
             </div>
           </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* 🔒 Modal pro zamčenou objednávku - informační dialog */}
+      {lockedOrderInfo && (
+        <ConfirmDialog
+          isOpen={showLockedOrderDialog}
+          onClose={handleLockedOrderCancel}
+          onConfirm={handleLockedOrderCancel}
+          title="Objednávka není dostupná"
+          icon={faLock}
+          variant="warning"
+          confirmText="Zavřít"
+          showCancel={false}
+        >
+          <InfoText>
+            Objednávka je aktuálně editována uživatelem:
+          </InfoText>
+          <UserInfo>
+            <strong>{lockedOrderInfo.lockedByUserName}</strong>
+          </UserInfo>
+
+          {/* Kontaktní údaje */}
+          {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+            <ContactInfo>
+              {lockedOrderInfo.lockedByUserEmail && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <ContactLabel>Email:</ContactLabel>
+                  <a href={`mailto:${lockedOrderInfo.lockedByUserEmail}`}>
+                    {lockedOrderInfo.lockedByUserEmail}
+                  </a>
+                </ContactItem>
+              )}
+              {lockedOrderInfo.lockedByUserTelefon && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faPhone} />
+                  <ContactLabel>Telefon:</ContactLabel>
+                  <a href={`tel:${lockedOrderInfo.lockedByUserTelefon}`}>
+                    {lockedOrderInfo.lockedByUserTelefon}
+                  </a>
+                </ContactItem>
+              )}
+            </ContactInfo>
+          )}
+
+          {/* Čas zamčení */}
+          {lockedOrderInfo.lockAgeMinutes !== null && lockedOrderInfo.lockAgeMinutes !== undefined && (
+            <LockTimeInfo>
+              <FontAwesomeIcon icon={faClock} />
+              Zamčeno před {lockedOrderInfo.lockAgeMinutes} {lockedOrderInfo.lockAgeMinutes === 1 ? 'minutou' : lockedOrderInfo.lockAgeMinutes < 5 ? 'minutami' : 'minutami'}
+            </LockTimeInfo>
+          )}
+
+          <InfoText>
+            Fakturu/objednávku nelze upravovat, dokud ji má otevřenou jiný uživatel.
+            Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
+          </InfoText>
         </ConfirmDialog>
       )}
       

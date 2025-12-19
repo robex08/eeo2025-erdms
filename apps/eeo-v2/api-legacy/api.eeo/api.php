@@ -2771,6 +2771,36 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/order-v2/{id}/lock - zamknuti objednavky pro editaci
+        // ⚠️ MUST be before /order-v2/{id} pattern
+        if (preg_match('/^order-v2\/(\d+)\/lock$/', $endpoint, $matches)) {
+            $order_id = (int)$matches[1];
+            
+            if ($request_method === 'POST') {
+                error_log('🔒 [LOCK API] Request received for order #' . $order_id);
+                handle_order_v2_lock($input, $config, $queries, $order_id);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/{id}/unlock - odemknuti konkretni objednavky
+        // ⚠️ MUST be before /order-v2/{id} pattern
+        if (preg_match('/^order-v2\/(\d+)\/unlock$/', $endpoint, $matches)) {
+            $order_id = (int)$matches[1];
+            
+            if ($request_method === 'POST') {
+                error_log('🔓 [UNLOCK API] Request received for order #' . $order_id);
+                handle_order_v2_unlock($input, $config, $queries, $order_id);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+            }
+            break;
+        }
+        
         // POST /api.eeo/order-v2/{id} - nacte objednavku podle ID (GET deprecated)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
