@@ -42,12 +42,17 @@ export const filterByOrderDate = (order, filterValue, getOrderDate) => {
 
 /**
  * Filtr podle čísla objednávky
+ * Hledá ZÁROVEŇ v čísle objednávky i v předmětu (dva řádky ve sloupci "Evidenční číslo")
  */
 export const filterByOrderNumber = (order, filterValue) => {
   if (!filterValue) return true;
 
   const cislo = removeDiacritics(order.cislo_objednavky || '');
-  return cislo.includes(removeDiacritics(filterValue));
+  const predmet = removeDiacritics(order.predmet || '');
+  const normalizedFilter = removeDiacritics(filterValue);
+
+  // Filtruj podle čísla NEBO předmětu (OR podmínka)
+  return cislo.includes(normalizedFilter) || predmet.includes(normalizedFilter);
 };
 
 /**
