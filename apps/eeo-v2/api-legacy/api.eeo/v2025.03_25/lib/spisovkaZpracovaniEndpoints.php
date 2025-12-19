@@ -42,6 +42,19 @@ define('TABLE_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
  * - offset: int (optional, default 0) - Offset pro stránkování
  */
 function handle_spisovka_zpracovani_list($input, $config) {
+    // DB Debug logger
+    $debug_pdo = null;
+    try {
+        $debug_pdo = new PDO(
+            "mysql:host={$config['mysql']['host']};dbname={$config['mysql']['database']};charset=utf8mb4",
+            $config['mysql']['username'],
+            $config['mysql']['password']
+        );
+        $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, input_data) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote(json_encode($input)) . ")");
+    } catch (Exception $e) {
+        error_log("Debug log failed: " . $e->getMessage());
+    }
+    
     error_log("📋 handle_spisovka_zpracovani_list called");
     error_log("Input: " . json_encode($input));
     
@@ -52,7 +65,11 @@ function handle_spisovka_zpracovani_list($input, $config) {
     error_log("Username: $username, Token length: " . strlen($token));
     
     if (!function_exists('verify_token_v2')) {
-        error_log("❌ verify_token_v2 function NOT FOUND!");
+        $err_msg = "verify_token_v2 function NOT FOUND!";
+        error_log("❌ " . $err_msg);
+        if ($debug_pdo) {
+            $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ")");
+        }
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => 'verify_token_v2 not found']);
         return;
@@ -60,6 +77,9 @@ function handle_spisovka_zpracovani_list($input, $config) {
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
+        if ($debug_pdo) {
+            $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message) VALUES ('spisovka-zpracovani/list', 'POST', 'Auth failed')");
+        }
         http_response_code(401);
         echo json_encode([
             'status' => 'error',
@@ -191,11 +211,45 @@ function handle_spisovka_zpracovani_list($input, $config) {
         ]);
         
     } catch (PDOException $e) {
-        error_log("Spisovka zpracovani list error: " . $e->getMessage());
+        $err_msg = "PDO Error: " . $e->getMessage();
+        $stack = $e->getTraceAsString();
+        error_log("Spisovka zpracovani list error: " . $err_msg);
+        error_log("Stack: " . $stack);
+        
+        // Log do DB
+        if ($debug_pdo) {
+            try {
+                $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message, stack_trace) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ", " . $debug_pdo->quote($stack) . ")");
+            } catch (Exception $log_err) {
+                error_log("Failed to log error to DB: " . $log_err->getMessage());
+            }
+        }
+        
         http_response_code(500);
         echo json_encode([
             'status' => 'error',
-            'message' => 'Chyba při načítání zpracovaných dokumentů'
+            'message' => 'Chyba při načítání zpracovaných dokumentů',
+            'debug' => $err_msg
+        ]);
+    } catch (Exception $e) {
+        $err_msg = "General Error: " . $e->getMessage();
+        $stack = $e->getTraceAsString();
+        error_log("Spisovka zpracovani list error: " . $err_msg);
+        
+        // Log do DB
+        if ($debug_pdo) {
+            try {
+                $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message, stack_trace) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ", " . $debug_pdo->quote($stack) . ")");
+            } catch (Exception $log_err) {
+                error_log("Failed to log error to DB: " . $log_err->getMessage());
+            }
+        }
+        
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání zpracovaných dokumentů',
+            'debug' => $err_msg
         ]);
     }
 }
