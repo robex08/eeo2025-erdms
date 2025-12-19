@@ -6247,23 +6247,33 @@ const Orders25List = () => {
   // �💰 Helper funkce pro získání celkové ceny s DPH Z POLOŽEK OBJEDNÁVKY
   // Počítá POUZE ze součtu položek (cena_s_dph), NIKDY z max_cena_s_dph
   const getOrderTotalPriceWithDPH = useCallback((order) => {
-    // 1. Zkus vrácené pole z BE (polozky_celkova_cena_s_dph je již součet)
+    // 🆕 1. PRIORITA: Faktury (pokud existují)
+    if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
+      const value = parseFloat(order.faktury_celkova_castka_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+    
+    // 2. PRIORITA: Položky - zkus vrácené pole z BE (polozky_celkova_cena_s_dph je již součet)
     if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
       const value = parseFloat(order.polozky_celkova_cena_s_dph);
-      if (!isNaN(value)) return value;
+      if (!isNaN(value) && value > 0) return value;
     }
 
-    // 2. Spočítej z položek (Order V2 API vrací polozky přímo v order objektu)
+    // 🔄 Spočítej z pole položek jako fallback (Order V2 API vrací polozky přímo v order objektu)
     if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
       const total = order.polozky.reduce((sum, item) => {
         const cena = parseFloat(item.cena_s_dph || 0);
         return sum + (isNaN(cena) ? 0 : cena);
       }, 0);
-      return total;
+      if (total > 0) return total;
     }
 
-    // 3. Pokud nejsou položky, vrať 0 (NE max_cena_s_dph!)
-    // max_cena_s_dph je limit, ne skutečná cena
+    // 3. FALLBACK: Max cena s DPH (schválený limit) - pouze pokud objednávka nemá faktury ani položky
+    if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
+      const value = parseFloat(order.max_cena_s_dph);
+      if (!isNaN(value)) return value;
+    }
+
     return 0;
   }, [orders]);
 
