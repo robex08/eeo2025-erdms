@@ -505,6 +505,37 @@ function enrichOrderWithInvoices($db, &$order) {
         }
     }
     $order['faktury_celkova_castka_s_dph'] = $celkova_castka_faktur_s_dph;
+    
+    // 🆕 Vypočítat celkovou cenu objednávky podle priority: faktury > položky > max cena
+    $order['celkova_cena_s_dph'] = calculateOrderTotalPrice($order);
+}
+
+/**
+ * Vypočítá celkovou cenu objednávky s DPH podle priority:
+ * 1. Faktury (pokud existují)
+ * 2. Položky (pokud existují)  
+ * 3. Max cena s DPH (fallback)
+ * 
+ * @param array $order - Objednávka s načtenými fakturami a položkami
+ * @return float - Celková cena s DPH
+ */
+function calculateOrderTotalPrice($order) {
+    // 1. PRIORITA: Faktury (pokud existují)
+    if (isset($order['faktury_celkova_castka_s_dph']) && $order['faktury_celkova_castka_s_dph'] > 0) {
+        return (float)$order['faktury_celkova_castka_s_dph'];
+    }
+    
+    // 2. PRIORITA: Položky (pokud existují)
+    if (isset($order['polozky_celkova_cena_s_dph']) && $order['polozky_celkova_cena_s_dph'] > 0) {
+        return (float)$order['polozky_celkova_cena_s_dph'];
+    }
+    
+    // 3. FALLBACK: Max cena s DPH (schválený limit)
+    if (isset($order['max_cena_s_dph']) && is_numeric($order['max_cena_s_dph'])) {
+        return (float)$order['max_cena_s_dph'];
+    }
+    
+    return 0.0;
 }
 
 /**

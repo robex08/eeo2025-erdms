@@ -29,7 +29,39 @@ function OrderApprovalCard({ order, onApprove, onReject, onWait, loading }) {
     }
   };
 
-  const maxCena = parseFloat(order.max_cena_s_dph || 0);
+  // 🆕 NOVÁ LOGIKA: Celková cena podle priority faktury > položky > max cena
+  const getCelkovaCena = (order) => {
+    // 1. PRIORITA: Faktury (pokud existují)
+    if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
+      const value = parseFloat(order.faktury_celkova_castka_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+    
+    // 2. PRIORITA: Položky (pokud existují)
+    if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
+      const value = parseFloat(order.polozky_celkova_cena_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+
+    // Fallback: Spočítej z pole položek
+    if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
+      const total = order.polozky.reduce((sum, item) => {
+        const cena = parseFloat(item.cena_s_dph || 0);
+        return sum + (isNaN(cena) ? 0 : cena);
+      }, 0);
+      if (total > 0) return total;
+    }
+
+    // 3. FALLBACK: Max cena s DPH (schválený limit)
+    if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
+      const value = parseFloat(order.max_cena_s_dph);
+      if (!isNaN(value)) return value;
+    }
+
+    return 0;
+  };
+
+  const celkovaCena = getCelkovaCena(order);
   
   // ✅ Zdroj financování - parsování a zobrazení detailů
   let zdrojFinancovani = 'Neuvedeno';
