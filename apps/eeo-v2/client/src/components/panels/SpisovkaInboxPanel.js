@@ -515,6 +515,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
   const [zpracovaneIds, setZpracovaneIds] = useState(new Set()); // 📋 Set zpracovaných dokument_id
+  const [zpracovaneDetails, setZpracovaneDetails] = useState(new Map()); // 📋 Map dokument_id → {uzivatel_jmeno, zpracovano_kdy, fa_cislo_vema}
+  const [filterMode, setFilterMode] = useState('vse'); // 'vse' | 'nezaevidovane' | 'zaevidovane'
   const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
@@ -735,6 +737,19 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         // Vytvořit Set z dokument_id pro rychlé vyhledávání
         const processedIds = new Set(response.data.map(item => item.dokument_id));
         setZpracovaneIds(processedIds);
+        
+        // Vytvořit Map s detaily pro každý dokument
+        const detailsMap = new Map();
+        response.data.forEach(item => {
+          detailsMap.set(item.dokument_id, {
+            uzivatel_jmeno: item.uzivatel_jmeno || 'Neznámý',
+            zpracovano_kdy: item.zpracovano_kdy,
+            fa_cislo_vema: item.fa_cislo_vema,
+            stav: item.stav
+          });
+        });
+        setZpracovaneDetails(detailsMap);
+        
         console.log('✅ Načteno zpracovaných dokumentů:', processedIds.size);
       }
     } catch (err) {
@@ -860,6 +875,52 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
               {pagination.total} celkem
             </InboxStats>
           </InboxHeader>
+          
+          {/* 🔘 FILTROVACÍ TLAČÍTKA */}
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            padding: '0.75rem 1rem',
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            alignItems: 'center'
+          }}>
+            <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>Zobrazit:</span>
+            {['vse', 'nezaevidovane', 'zaevidovane'].map(mode => (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '6px',
+                  border: filterMode === mode ? '2px solid #10b981' : '1px solid #d1d5db',
+                  background: filterMode === mode ? '#ecfdf5' : 'white',
+                  color: filterMode === mode ? '#059669' : '#6b7280',
+                  fontSize: '0.8rem',
+                  fontWeight: filterMode === mode ? 600 : 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => {
+                  if (filterMode !== mode) {
+                    e.currentTarget.style.borderColor = '#10b981';
+                    e.currentTarget.style.color = '#059669';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (filterMode !== mode) {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.color = '#6b7280';
+                  }
+                }}
+              >
+                {mode === 'vse' && 'Vše'}
+                {mode === 'nezaevidovane' && `Nezaevidované (${faktury.filter(f => !zpracovaneIds.has(f.dokument_id)).length})`}
+                {mode === 'zaevidovane' && `Zaevidované (${zpracovaneIds.size})`}
+              </button>
+            ))}
+          </div>
 
           {loading && (
             <LoadingBox>
@@ -886,9 +947,28 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             </EmptyBox>
           )}
 
-          {!loading && !error && faktury.length > 0 && (
+          {!loading && !error && faktury.length > 0 && (() => {
+            // 🔍 Filtrování faktur podle režimu
+            const filteredFaktury = faktury.filter(faktura => {
+              const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+              if (filterMode === 'nezaevidovane') return !isZaevidovano;
+              if (filterMode === 'zaevidovane') return isZaevidovano;
+              return true; // 'vse'
+            });
+            
+            if (filteredFaktury.length === 0) {
+              return (
+                <EmptyBox>
+                  <FontAwesomeIcon icon={faBookOpen} size="2x" />
+                  {filterMode === 'nezaevidovane' && 'Všechny faktury jsou zaevidované ✓'}
+                  {filterMode === 'zaevidovane' && 'Zatím žádné zaevidované faktury'}
+                </EmptyBox>
+              );
+            }
+            
+            return (
             <InboxContent>
-              {faktury.map((faktura) => (
+              {filteredFaktury.map((faktura) => (
                 <FakturaCard 
                   key={faktura.dokument_id}
                 >
@@ -942,6 +1022,51 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                       <InfoValue>{formatDate(faktura.datum_vzniku)}</InfoValue>
                     </InfoRow>
                   </FakturaInfo>
+
+                  {/* 📋 INFO O ZPRACOVÁNÍ (pokud je zaevidováno) */}
+                  {zpracovaneIds.has(faktura.dokument_id) && zpracovaneDetails.has(faktura.dokument_id) && (() => {
+                    const detail = zpracovaneDetails.get(faktura.dokument_id);
+                    const zpracovanoDate = new Date(detail.zpracovano_kdy);
+                    const timeAgo = Math.floor((Date.now() - zpracovanoDate.getTime()) / 1000);
+                    let timeText = '';
+                    if (timeAgo < 60) timeText = 'před chvílí';
+                    else if (timeAgo < 3600) timeText = `před ${Math.floor(timeAgo / 60)} min`;
+                    else if (timeAgo < 86400) timeText = `před ${Math.floor(timeAgo / 3600)} h`;
+                    else timeText = `před ${Math.floor(timeAgo / 86400)} dny`;
+                    
+                    return (
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                        borderTop: '1px solid #a7f3d0',
+                        borderBottom: '1px solid #a7f3d0',
+                        marginBottom: '0.5rem'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          fontSize: '0.8rem',
+                          color: '#047857',
+                          fontWeight: 500
+                        }}>
+                          <span>✓</span>
+                          <span>
+                            Zaevidováno <strong>{timeText}</strong>
+                            {detail.fa_cislo_vema && <> jako <strong>{detail.fa_cislo_vema}</strong></>}
+                          </span>
+                        </div>
+                        <div style={{
+                          fontSize: '0.75rem',
+                          color: '#059669',
+                          marginTop: '0.25rem',
+                          paddingLeft: '1.5rem'
+                        }}>
+                          Uživatel: <strong>{detail.uzivatel_jmeno}</strong> • {zpracovanoDate.toLocaleString('cs-CZ')}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {faktura.prilohy && faktura.prilohy.length > 0 && (
                     <PrilohaSection>
@@ -1108,7 +1233,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                 </FakturaCard>
               ))}
             </InboxContent>
-          )}
+            );
+          })()}
         </InboxContainer>
       )}
 
