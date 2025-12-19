@@ -59,6 +59,90 @@ const formatDateForPicker = (date) => {
   return d.toISOString().split('T')[0];
 };
 
+// Currency Input Component - zachovává pozici kurzoru při psaní
+function CurrencyInput({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder }) {
+  const inputRef = useRef(null);
+  const [localValue, setLocalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Funkce pro formátování měny (BEZ Kč, protože to je fixně vpravo)
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '';
+    // Pro faktury/účetnictví přesně 2 desetinná místa
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  };
+
+  // Inicializace lokální hodnoty z props (pouze když není focused)
+  useEffect(() => {
+    if (!isFocused) {
+      const formattedValue = formatCurrency(value || '');
+      if (localValue !== formattedValue) {
+        setLocalValue(formattedValue);
+      }
+    }
+  }, [value, isFocused, localValue]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+
+    // Aktualizovat lokální hodnotu okamžitě (bez formátování)
+    setLocalValue(newValue);
+
+    // Očistit hodnotu od formátování
+    const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+
+    // Volat onChange s očištěnou hodnotou
+    if (onChange) {
+      onChange({ target: { name: fieldName, value: finalValue } });
+    }
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlurLocal = () => {
+    setIsFocused(false);
+
+    // Formátovat hodnotu při ztrátě fokusu
+    const formatted = formatCurrency(localValue);
+    setLocalValue(formatted);
+
+    // Očistit hodnotu před odesláním do onBlur
+    const cleanValue = localValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+
+    // Zavolat parent onBlur pro validaci
+    if (onBlur) {
+      onBlur({ target: { name: fieldName, value: finalValue } });
+    }
+  };
+
+  return (
+    <CurrencyInputWrapper>
+      <Input
+        ref={inputRef}
+        type="text"
+        name={fieldName}
+        placeholder={placeholder}
+        value={localValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlurLocal}
+        disabled={disabled}
+        style={{ textAlign: 'right', paddingRight: '40px', fontWeight: isFocused ? '400' : '600' }}
+        $hasError={hasError}
+      />
+      <CurrencySymbol>Kč</CurrencySymbol>
+    </CurrencyInputWrapper>
+  );
+}
+
 // ===================================================================
 // STYLED COMPONENTS - Recyklované z OrderForm25 + nové pro layout
 // ===================================================================
@@ -3276,7 +3360,18 @@ export default function InvoiceEvidencePage() {
                   name="fa_cislo_vema"
                   value={formData.fa_cislo_vema}
                   onChange={handleInputChange}
+                  onBlur={(e) => {
+                    // Po ztrátě fokusu zvýraznit text tučně (pokud má hodnotu)
+                    if (e.target.value) {
+                      e.target.style.fontWeight = '600';
+                    }
+                  }}
+                  onFocus={(e) => {
+                    // Při získání fokusu vrátit normální tloušťku
+                    e.target.style.fontWeight = '400';
+                  }}
                   placeholder="12345678"
+                  style={{ fontWeight: formData.fa_cislo_vema ? '600' : '400' }}
                   $hasError={!!fieldErrors.fa_cislo_vema}
                 />
                 {fieldErrors.fa_cislo_vema && (
@@ -3312,18 +3407,33 @@ export default function InvoiceEvidencePage() {
                     </button>
                   )}
                 </FieldLabel>
-                <CurrencyInputWrapper>
-                  <Input
-                    type="text"
-                    name="fa_castka"
-                    value={formData.fa_castka}
-                    onChange={handleInputChange}
-                    placeholder="25 000,50"
-                    style={{textAlign: 'right', paddingRight: '40px', width: '100%'}}
-                    $hasError={!!fieldErrors.fa_castka}
-                  />
-                  <CurrencySymbol>Kč</CurrencySymbol>
-                </CurrencyInputWrapper>
+                <CurrencyInput
+                  fieldName="fa_castka"
+                  value={formData.fa_castka}
+                  onChange={handleInputChange}
+                  onBlur={(e) => {
+                    // Validace čísla s desetinným oddělovačem
+                    const value = e.target.value;
+                    if (value) {
+                      const num = parseFloat(value);
+                      if (isNaN(num) || num <= 0) {
+                        setFieldErrors(prev => ({
+                          ...prev,
+                          fa_castka: 'Zadejte platnou částku (číslo větší než 0)'
+                        }));
+                      } else {
+                        // Vymazat chybu pokud je číslo v pořádku
+                        setFieldErrors(prev => {
+                          const { fa_castka, ...rest } = prev;
+                          return rest;
+                        });
+                      }
+                    }
+                  }}
+                  disabled={false}
+                  hasError={!!fieldErrors.fa_castka}
+                  placeholder="25 000,50"
+                />
                 {fieldErrors.fa_castka && (
                   <FieldError>
                     <FontAwesomeIcon icon={faExclamationTriangle} />
