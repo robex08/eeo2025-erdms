@@ -1829,7 +1829,9 @@ export default function InvoiceEvidencePage() {
           setOriginalFormData(loadedFormData);
           
           // Zapamatovat si, zda měla faktura původně přiřazenou objednávku nebo smlouvu
-          setHadOriginalEntity(!!(invoiceData.objednavka_id || invoiceData.smlouva_id));
+          const hadEntity = !!(invoiceData.objednavka_id || invoiceData.smlouva_id);
+          setHadOriginalEntity(hadEntity);
+          localStorage.setItem('hadOriginalEntity', JSON.stringify(hadEntity));
           
           // Pokud je známa objednávka, načíst ji a nastavit searchTerm
           if (orderIdForLoad || invoiceData.objednavka_id) {
@@ -2384,6 +2386,11 @@ export default function InvoiceEvidencePage() {
     });
     
     setEditingInvoiceId(faktura.id);
+    
+    // Nastavit hadOriginalEntity podle toho, jestli má faktura přiřazenou objednávku nebo smlouvu
+    const hadEntity = !!(faktura.objednavka_id || faktura.smlouva_id);
+    setHadOriginalEntity(hadEntity);
+    localStorage.setItem('hadOriginalEntity', JSON.stringify(hadEntity));
 
     // Scroll na začátek formuláře
     window.scrollTo({ top: 0, behavior: 'smooth' });
