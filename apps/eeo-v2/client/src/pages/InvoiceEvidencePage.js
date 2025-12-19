@@ -3284,18 +3284,14 @@ export default function InvoiceEvidencePage() {
 
       // ⚠️ RESET FORMULÁŘE se provede až po kliknutí na "Pokračovat" v progress dialogu
       // Uložíme data potřebná pro reset do stavu progress dialogu
-      // ✅ PŘI UPDATE (editaci) - smazat všechno (keepEntity = false)
-      // ✅ PŘI CREATE (nové) - ponechat objednávku (keepEntity = true)
+      // ✅ PŘI UPDATE (editaci) - smazat všechno včetně objednávky
+      // ✅ PŘI CREATE (nové) - ponechat objednávku pro další fakturu
       const wasEditing = !!editingInvoiceId;
-      const keepEntity = !wasEditing; // false při editaci, true při nové faktuře
-      const shouldResetEntity = !keepEntity; // true při editaci, false při nové faktuře
       
       // 💾 Uložit reset parametry do progress dialogu (použije se při kliknutí na "Pokračovat")
       setProgressModal(prev => ({
         ...prev,
         resetData: {
-          keepEntity,
-          shouldResetEntity,
           wasEditing,
           currentOrderId: formData.order_id,
           currentSmlouvaId: formData.smlouva_id
@@ -5232,8 +5228,10 @@ export default function InvoiceEvidencePage() {
                 <ProgressButton 
                   variant="primary" 
                   onClick={async () => {
-                    // 🎯 KROK 1: RESET editingInvoiceId a vyčistit localStorage NEJDŘÍV
+                    // 🎯 KROK 1: RESET příloh a editingInvoiceId NEJDŘÍV (aby useEffect nereloadoval)
+                    setAttachments([]);
                     setEditingInvoiceId(null);
+                    setHadOriginalEntity(false);
                     
                     // 🧹 Vyčistit location.state (aby se effect neloadoval znovu)
                     if (location.state?.editInvoiceId) {
@@ -5254,7 +5252,11 @@ export default function InvoiceEvidencePage() {
                     
                     // 🎯 KROK 2: RESET FORMULÁŘE
                     const resetData = progressModal.resetData || {};
-                    const { keepEntity, shouldResetEntity, wasEditing, currentOrderId, currentSmlouvaId } = resetData;
+                    const { wasEditing, currentOrderId, currentSmlouvaId } = resetData;
+                    
+                    // ✅ PŘI UPDATE - smazat všechno včetně objednávky
+                    // ✅ PŘI CREATE - ponechat objednávku pro další fakturu
+                    const shouldResetEntity = wasEditing;
                     
                     // Reset formData
                     setFormData({
@@ -5273,9 +5275,6 @@ export default function InvoiceEvidencePage() {
                       fa_datum_predani_zam: '',
                       fa_datum_vraceni_zam: ''
                     });
-
-                    // Reset příloh
-                    setAttachments([]);
                     
                     // Reset preview entity a autocomplete pokud je potřeba
                     if (shouldResetEntity) {
