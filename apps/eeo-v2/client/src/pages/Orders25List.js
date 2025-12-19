@@ -7441,10 +7441,21 @@ const Orders25List = () => {
         return filterValue === '---' || filterValue === '';
       },
       cell: ({ row }) => {
-        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        const maxPrice = parseFloat(row.original.max_cena_s_dph || 0);
+        const fakturaPrice = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
+        
+        // Pokud faktura překračuje max cenu, zobraz červeně
+        const isOverLimit = fakturaPrice > 0 && maxPrice > 0 && fakturaPrice > maxPrice;
+        
         return (
-          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+          <div style={{ 
+            textAlign: 'right', 
+            fontWeight: 600, 
+            fontFamily: 'monospace', 
+            whiteSpace: 'nowrap',
+            color: isOverLimit ? '#dc2626' : 'inherit'
+          }}>
+            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
           </div>
         );
       }
