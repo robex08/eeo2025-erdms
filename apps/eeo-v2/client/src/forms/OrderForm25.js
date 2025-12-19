@@ -63,7 +63,7 @@ import {
   normalizeError,
   updateAttachmentV2
 } from '../services/apiOrderV2';
-import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
+import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/apiInvoiceV2';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
@@ -11139,7 +11139,7 @@ function OrderForm25() {
       }
 
     } catch (error) {
-      const endpoint = (!isOrderSavedToDB || !formData.id) ? 'orders25/partial-insert' : 'orders25/partial-update';
+      const endpoint = (!isOrderSavedToDB || !formData.id) ? 'order-v2/create' : 'order-v2/update';
       addDebugLog('error', 'API', endpoint, error.message);
 
       // Zpracovat HTTP 423 error (zamčeno jiným uživatelem)
