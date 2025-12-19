@@ -32,7 +32,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
-import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2 } from '../services/api25invoices';
+import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2, deleteInvoiceAttachment25 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
@@ -2894,8 +2894,83 @@ export default function InvoiceEvidencePage() {
   };
 
   // Handler: zpět na seznam
-  const handleBack = () => {
-    navigate(-1);
+  const handleBack = async () => {
+    // Pokud jsme v režimu úpravy existující faktury, jen navigujeme zpět
+    if (editingInvoiceId) {
+      navigate(-1);
+      return;
+    }
+    
+    // Pokud je formulář prázdný, rovnou zpět
+    const isFormEmpty = !formData.fa_cislo_vema && 
+                        !formData.fa_castka && 
+                        !formData.order_id &&
+                        !formData.file;
+    
+    if (isFormEmpty) {
+      navigate(-1);
+      return;
+    }
+    
+    // Pokud má formulář data, zeptat se na zrušení
+    setConfirmDialog({
+      isOpen: true,
+      title: '⚠️ Zrušit evidenci faktury?',
+      message: formData.file 
+        ? 'Máte rozdělanou fakturu s nahranou přílohou. Chcete zrušit evidenci? Všechna data a nahrané přílohy budou ztraceny.'
+        : 'Máte rozdělanou fakturu. Chcete zrušit evidenci? Všechna vyplněná data budou ztracena.',
+      onConfirm: async () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+        
+        // 🗑️ Smazat všechny nahrané přílohy před odchodem
+        const uploadedAttachments = attachments.filter(att => att.serverId);
+        if (uploadedAttachments.length > 0) {
+          console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y...`);
+          
+          for (const att of uploadedAttachments) {
+            try {
+              await deleteInvoiceAttachment25({
+                token,
+                username,
+                faktura_id: editingInvoiceId || 'temp-new-invoice',
+                priloha_id: att.serverId,
+                objednavka_id: formData.order_id || null,
+                hard_delete: 1 // Fyzicky smazat ze serveru
+              });
+              console.log(`✅ Příloha ${att.name} smazána`);
+            } catch (err) {
+              console.error(`❌ Chyba při mazání přílohy ${att.name}:`, err);
+              // Pokračovat v mazání dalších příloh i při chybě
+            }
+          }
+        }
+        
+        // Vyčistit formData aby se uvolnila reference na soubor
+        setFormData({
+          fa_cislo_vema: '',
+          fa_datum_vystaveni: '',
+          fa_datum_zdanitelneho_plneni: '',
+          fa_datum_splatnosti: '',
+          fa_castka: '',
+          order_id: '',
+          dodavatel_id: '',
+          stredisko_id: '',
+          typ_faktury: '',
+          fa_poznamka: '',
+          fa_predana_zam_id: '',
+          file: null,
+          klasifikace: null
+        });
+        
+        // Vyčistit attachments state
+        setAttachments([]);
+        
+        navigate(-1);
+      },
+      onCancel: () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      }
+    });
   };
 
   // Handler: toggle fullscreen
