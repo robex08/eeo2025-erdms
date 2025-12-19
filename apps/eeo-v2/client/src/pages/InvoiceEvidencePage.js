@@ -2839,21 +2839,22 @@ export default function InvoiceEvidencePage() {
           const spisovkaDocuments = spisovkaLastRecords || [];
           
           // Hledat dokument který byl možná použit pro tuto fakturu
-          // Můžeme propojit podle názvu souboru nebo času
+          // Propojíme podle názvu souboru přílohy
           const potentialDoc = spisovkaDocuments.find(doc => {
-            // Pokud má faktura přílohu se stejným názvem jako Spisovka dokument
-            if (formData.file && doc.nazev_souboru) {
-              return formData.file.name === doc.nazev_souboru;
+            // Pokud má faktura přílohu, hledáme Spisovka dokument s odpovídající přílohou
+            if (formData.file && doc.prilohy && doc.prilohy.length > 0) {
+              // Hledáme přílohu se stejným názvem
+              return doc.prilohy.some(priloha => priloha.filename === formData.file.name);
             }
             return false;
           });
 
           // Pokud jsme našli odpovídající dokument, označit ho jako zpracovaný
-          if (potentialDoc?.id) {
+          if (potentialDoc?.dokument_id) {
             await markSpisovkaDocumentProcessed({
               username,
               token,
-              dokument_id: potentialDoc.id,
+              dokument_id: potentialDoc.dokument_id, // SPRÁVNĚ: dokument_id, NE id!
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema,
               stav: 'ZAEVIDOVANO',
@@ -2861,10 +2862,12 @@ export default function InvoiceEvidencePage() {
             });
             
             console.log('✅ Spisovka dokument označen jako zpracovaný:', {
-              dokument_id: potentialDoc.id,
+              dokument_id: potentialDoc.dokument_id,
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema
             });
+          } else {
+            console.log('ℹ️ Nelze automaticky propojit Spisovka dokument (žádná shoda podle názvu souboru)');
           }
         } catch (spisovkaErr) {
           // Neblokujeme úspěch faktury - jen logujeme
