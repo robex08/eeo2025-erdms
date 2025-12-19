@@ -19831,8 +19831,8 @@ function OrderForm25() {
                         )}
                       </div>
                     )}
-                    </>
-                  )}
+                      </>
+                    )}
 
                   {/* 📊 INFO BOX - Zobrazí se POD checkboxy AŽ PO ULOŽENÍ DO DATABÁZE */}
                   {/* Zobrazí se pouze když workflow stav obsahuje SCHVALENA (= uloženo v DB se schválením) */}
@@ -19883,7 +19883,7 @@ function OrderForm25() {
                       </div>
                     </div>
                   )}
-                  </div>
+                </div>
                 </>
               )}
 
