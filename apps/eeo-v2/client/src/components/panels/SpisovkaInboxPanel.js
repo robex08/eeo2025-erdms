@@ -18,6 +18,7 @@ import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives'
 import styled from '@emotion/styled';
 import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR';
 import ErrorDialog from '../ErrorDialog';
+import { getSpisovkaZpracovaniList } from '../../services/apiSpisovkaZpracovani';
 
 // ============================================================
 // STYLED COMPONENTS
@@ -32,29 +33,34 @@ const InboxContainer = styled.div`
 `;
 
 const InboxHeader = styled.div`
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  padding: 0.6rem;
-  border-radius: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  padding: 0.875rem 1rem;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #60a5fa;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  margin-bottom: 0.75rem;
 `;
 
 const InboxTitle = styled.div`
-  font-size: 0.75rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: 0.5px;
+  color: white;
+  letter-spacing: 0.3px;
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  alignItems: 'center';
+  gap: 0.625rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
 const InboxStats = styled.div`
-  font-size: 0.65rem;
-  color: #cbd5e1;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
 `;
 
 const InboxContent = styled.div`
@@ -62,47 +68,98 @@ const InboxContent = styled.div`
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.3rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: #f9fafb;
+  border-radius: 8px;
   min-height: 0;
+  border: 1px solid #e5e7eb;
 
   scrollbar-width: thin;
-  scrollbar-color: #93c5fd rgba(255, 255, 255, 0.05);
+  scrollbar-color: #10b981 #f3f4f6;
 
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 10px;
   }
 
   &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    background: #f3f4f6;
+    border-radius: 5px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #93c5fd;
-    border-radius: 4px;
-    border: 2px solid rgba(15, 23, 42, 0.92);
+    background: linear-gradient(135deg, #10b981, #059669);
+    border-radius: 5px;
+    border: 2px solid #f9fafb;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #60a5fa;
+    background: linear-gradient(135deg, #059669, #047857);
   }
 `;
 
+// 📋 Status Badge pro zpracované dokumenty
+const StatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  
+  ${props => {
+    switch (props.$status) {
+      case 'ZAEVIDOVANO':
+        return `
+          background: #d1fae5;
+          color: #065f46;
+          border: 1px solid #10b981;
+        `;
+      case 'NENI_FAKTURA':
+        return `
+          background: #fef3c7;
+          color: #92400e;
+          border: 1px solid #f59e0b;
+        `;
+      case 'CHYBA':
+        return `
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #ef4444;
+        `;
+      case 'DUPLIKAT':
+        return `
+          background: #e0e7ff;
+          color: #3730a3;
+          border: 1px solid #6366f1;
+        `;
+      default:
+        return `
+          background: #f3f4f6;
+          color: #6b7280;
+          border: 1px solid #d1d5db;
+        `;
+    }
+  }}
+`;
+
 const FakturaCard = styled.div`
-  background: linear-gradient(135deg, rgba(147, 197, 253, 0.12), rgba(96, 165, 250, 0.08));
-  border: 1px solid rgba(96, 165, 250, 0.3);
-  border-radius: 8px;
-  padding: 0.7rem;
-  transition: all 0.2s;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+  transition: all 0.2s ease;
   cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
   &:hover {
-    background: linear-gradient(135deg, rgba(147, 197, 253, 0.18), rgba(96, 165, 250, 0.12));
-    border-color: rgba(96, 165, 250, 0.5);
-    transform: translateX(2px);
+    background: #f0fdf4;
+    border-color: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+    transform: translateY(-2px);
   }
 `;
 
@@ -115,29 +172,30 @@ const FakturaHeader = styled.div`
 `;
 
 const FakturaNazev = styled.div`
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #1f2937;
   line-height: 1.3;
   flex: 1;
 `;
 
 const FakturaID = styled.div`
-  font-size: 0.6rem;
-  color: #60a5fa;
+  font-size: 0.7rem;
+  color: #059669;
   font-family: 'Courier New', monospace;
-  background: rgba(96, 165, 250, 0.2);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+  background: #d1fae5;
+  padding: 0.3rem 0.6rem;
+  border-radius: 5px;
   white-space: nowrap;
+  font-weight: 600;
 `;
 
 const FakturaInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.65rem;
-  color: #cbd5e1;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #4b5563;
 `;
 
 const InfoRow = styled.div`
@@ -147,42 +205,45 @@ const InfoRow = styled.div`
 `;
 
 const InfoLabel = styled.span`
-  color: #94a3b8;
-  font-weight: 600;
+  color: #6b7280;
+  font-weight: 700;
 `;
 
 const InfoValue = styled.span`
-  color: #e2e8f0;
+  color: #374151;
+  font-weight: 500;
 `;
 
 const PrilohaSection = styled.div`
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid rgba(96, 165, 250, 0.25);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid #e5e7eb;
 `;
 
 const PrilohaTitle = styled.div`
-  font-size: 0.65rem;
-  color: #94a3b8;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.4rem;
 `;
 
 const PrilohaItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.4rem;
-  background: rgba(96, 165, 250, 0.1);
-  border-radius: 5px;
-  margin-bottom: 0.3rem;
-  transition: background 0.15s;
+  padding: 0.65rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(96, 165, 250, 0.18);
+    background: #f0fdf4;
+    border-color: #10b981;
   }
 
   &:last-child {
@@ -196,41 +257,43 @@ const PrilohaInfo = styled.div`
 `;
 
 const PrilohaFilename = styled.div`
-  font-size: 0.65rem;
-  color: #f1f5f9;
-  font-weight: 500;
+  font-size: 0.75rem;
+  color: #1f2937;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
 const PrilohaMeta = styled.div`
-  font-size: 0.55rem;
-  color: #cbd5e1;
-  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  color: #6b7280;
+  margin-top: 0.2rem;
 `;
 
 const PrilohaButton = styled.a`
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.5rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: #10b981;
   color: white;
-  border-radius: 4px;
+  border-radius: 6px;
   text-decoration: none;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
   white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    transform: scale(1.05);
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.25);
   }
 
   svg {
-    font-size: 0.65rem;
+    font-size: 0.75rem;
   }
 `;
 
@@ -238,22 +301,22 @@ const LoadingBox = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  color: #94a3b8;
-  font-size: 0.75rem;
-  gap: 0.5rem;
+  padding: 2.5rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+  gap: 0.75rem;
 `;
 
 const ErrorBox = styled.div`
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
-  padding: 0.7rem;
-  color: #fca5a5;
-  font-size: 0.7rem;
+  background: #fef2f2;
+  border: 2px solid #fca5a5;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #dc2626;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 `;
 
 const EmptyBox = styled.div`
@@ -261,31 +324,34 @@ const EmptyBox = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  color: #94a3b8;
-  font-size: 0.75rem;
+  padding: 3rem 1.5rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
   text-align: center;
-  gap: 0.5rem;
-  opacity: 0.7;
+  gap: 0.75rem;
+  opacity: 0.8;
 `;
 
 const RefreshButton = styled.button`
-  background: rgba(100, 116, 139, 0.15);
-  border: 1px solid rgba(100, 116, 139, 0.3);
-  color: #94a3b8;
-  padding: 0.3rem 0.6rem;
-  border-radius: 5px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  color: #6b7280;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  transition: all 0.2s;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
   &:hover {
-    background: rgba(16, 185, 129, 0.25);
-    border-color: rgba(16, 185, 129, 0.5);
+    background: #f0fdf4;
+    border-color: #10b981;
+    color: #10b981;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15);
   }
 
   &:disabled {
@@ -326,8 +392,9 @@ const FileModalHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, #475569, #334155);
+  background: linear-gradient(135deg, #10b981, #059669);
   color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 `;
 
 const FileModalTitle = styled.div`
@@ -387,17 +454,18 @@ const DownloadButton = styled.a`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: #10b981;
   color: white;
   border-radius: 8px;
   text-decoration: none;
   font-weight: 600;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 
   &:hover {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
   }
 `;
 
@@ -407,15 +475,16 @@ const TxtViewer = styled.pre`
   padding: 2rem;
   margin: 0;
   font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.6;
-  background: #1e293b;
-  color: #e2e8f0;
+  background: #f9fafb;
+  color: #1f2937;
   white-space: pre-wrap;
   word-wrap: break-word;
+  border: 1px solid #e5e7eb;
 
   scrollbar-width: thin;
-  scrollbar-color: #64748b #1e293b;
+  scrollbar-color: #10b981 #f9fafb;
 
   &::-webkit-scrollbar {
     width: 10px;
@@ -423,16 +492,16 @@ const TxtViewer = styled.pre`
   }
 
   &::-webkit-scrollbar-track {
-    background: #1e293b;
+    background: #f9fafb;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #64748b;
+    background: linear-gradient(180deg, #10b981, #059669);
     border-radius: 5px;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: linear-gradient(180deg, #059669, #047857);
   }
 `;
 
@@ -445,6 +514,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
+  const [zpracovaneIds, setZpracovaneIds] = useState(new Set()); // 📋 Set zpracovaných dokument_id
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
   const [fileViewerPosition, setFileViewerPosition] = useState(() => {
@@ -644,6 +714,37 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     }
   };
 
+  // 📋 Načíst zpracované dokumenty pro označení
+  const fetchZpracovaneDokumenty = useCallback(async () => {
+    try {
+      // Předpokládáme že máme token a username v localStorage nebo kontextu
+      const token = localStorage.getItem('token');
+      const username = localStorage.getItem('username');
+      
+      if (!token || !username) {
+        console.warn('⚠️ Token nebo username chybí - nelze načíst zpracované dokumenty');
+        return;
+      }
+
+      const response = await getSpisovkaZpracovaniList({
+        username,
+        token,
+        limit: 1000, // Načíst všechny zpracované dokumenty
+        offset: 0
+      });
+
+      if (response.status === 'ok' && response.data) {
+        // Vytvořit Set z dokument_id pro rychlé vyhledávání
+        const processedIds = new Set(response.data.map(item => item.dokument_id));
+        setZpracovaneIds(processedIds);
+        console.log('✅ Načteno zpracovaných dokumentů:', processedIds.size);
+      }
+    } catch (err) {
+      console.warn('⚠️ Nepodařilo se načíst zpracované dokumenty:', err);
+      // Neblokujeme - panel může fungovat i bez tohoto
+    }
+  }, []);
+
   const fetchFaktury = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -661,6 +762,9 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       if (data.status === 'success') {
         setFaktury(data.data);
         setPagination(data.pagination);
+        
+        // 📋 Načíst zpracované dokumenty po načtení faktur
+        fetchZpracovaneDokumenty();
       } else {
         throw new Error(data.message || 'Nepodařilo se načíst faktury');
       }
@@ -670,7 +774,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, pagination.offset, pagination.rok]);
+  }, [pagination.limit, pagination.offset, pagination.rok, fetchZpracovaneDokumenty]);
 
   // Initial fetch
   useEffect(() => {
@@ -707,7 +811,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   };
 
   const handleMinimize = () => {
-    setPanelState(s => ({ ...s, minimized: !s.minimized }));
+    // ✅ OPRAVENO: Minimize = zavřít celý panel (ne jen obsah)
+    if (onClose) onClose();
   };
 
   const handleClose = () => {
@@ -733,7 +838,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         style={{ cursor: 'move' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#94a3b8' }} />
+          <FontAwesomeIcon icon={faBookOpen} style={{ color: '#1f2937' }} />
           Spisovka Inbox
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
@@ -814,7 +919,14 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
                     title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte hlavičku pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
                   >
-                    <FakturaNazev>{faktura.nazev}</FakturaNazev>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                      <FakturaNazev>{faktura.nazev}</FakturaNazev>
+                      {zpracovaneIds.has(faktura.dokument_id) && (
+                        <StatusBadge $status="ZAEVIDOVANO">
+                          ✓ Zaevidováno
+                        </StatusBadge>
+                      )}
+                    </div>
                     <FakturaID>#{faktura.dokument_id}</FakturaID>
                   </FakturaHeader>
 
@@ -879,31 +991,34 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                                     handleOCRExtraction(priloha, faktura.dokument_id);
                                   }}
                                   style={{
-                                    background: 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)',
+                                    background: '#3b82f6',
                                     border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '4px 6px',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.75rem',
                                     cursor: 'pointer',
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '3px',
+                                    gap: '0.4rem',
                                     color: 'white',
-                                    fontSize: '0.65rem',
+                                    fontSize: '0.7rem',
                                     fontWeight: '600',
-                                    boxShadow: '0 1px 3px rgba(139, 92, 246, 0.3)',
-                                    transition: 'all 0.2s ease'
+                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap'
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.currentTarget.style.transform = 'scale(1.05)';
-                                    e.currentTarget.style.boxShadow = '0 2px 6px rgba(139, 92, 246, 0.5)';
+                                    e.currentTarget.style.background = '#2563eb';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.25)';
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(139, 92, 246, 0.3)';
+                                    e.currentTarget.style.background = '#3b82f6';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
                                   }}
                                   title="Vytěžit údaje pomocí OCR"
                                 >
-                                  <Sparkles size={12} />
+                                  <Sparkles size={14} />
                                   <span>OCR</span>
                                 </button>
                               )}
@@ -945,7 +1060,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                         );
                       })}
                       {faktura.prilohy.length > 3 && (
-                        <div style={{ fontSize: '0.6rem', color: '#94a3b8', marginTop: '0.3rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.4rem', textAlign: 'center', fontWeight: 600 }}>
                           +{faktura.prilohy.length - 3} další
                         </div>
                       )}
@@ -966,31 +1081,73 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(255, 255, 255, 0.95)',
+          background: 'linear-gradient(135deg, rgba(249, 250, 251, 0.98) 0%, rgba(243, 244, 246, 0.98) 100%)',
+          backdropFilter: 'blur(8px)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '1rem',
+          gap: '1.25rem',
           zIndex: 1000,
-          borderRadius: '8px'
+          borderRadius: '8px',
+          border: '2px solid #e5e7eb',
+          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
         }}>
-          <Sparkles size={48} color="#8b5cf6" style={{ animation: 'spin 2s linear infinite' }} />
-          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#1a1a1a' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            borderRadius: '50%',
+            width: '80px',
+            height: '80px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+          }}>
+            <Sparkles size={40} color="white" style={{ animation: 'spin 2s linear infinite' }} />
+          </div>
+          <div style={{ 
+            fontSize: '1.1rem', 
+            fontWeight: '700', 
+            color: '#1f2937',
+            textAlign: 'center'
+          }}>
+            <FontAwesomeIcon icon={faFileAlt} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
             OCR extrakce z PDF
           </div>
-          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+          <div style={{ 
+            fontSize: '0.9rem', 
+            color: '#6b7280',
+            textAlign: 'center',
+            maxWidth: '300px'
+          }}>
             {ocrProgress.message}
           </div>
-          <div style={{ width: '80%', maxWidth: '300px', height: '8px', backgroundColor: '#e9d5ff', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ 
+            width: '85%', 
+            maxWidth: '320px', 
+            height: '10px', 
+            backgroundColor: '#e5e7eb', 
+            borderRadius: '5px', 
+            overflow: 'hidden',
+            border: '1px solid #d1d5db',
+            boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.1)'
+          }}>
             <div style={{ 
               height: '100%', 
               width: `${ocrProgress.progress}%`, 
-              backgroundColor: '#8b5cf6', 
-              transition: 'width 0.3s ease' 
+              background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+              transition: 'width 0.3s ease',
+              boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)'
             }} />
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: '600' }}>
+          <div style={{ 
+            fontSize: '0.85rem', 
+            color: '#1e40af', 
+            fontWeight: '700',
+            background: 'rgba(59, 130, 246, 0.1)',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '12px'
+          }}>
             {Math.round(ocrProgress.progress)}%
           </div>
         </div>
