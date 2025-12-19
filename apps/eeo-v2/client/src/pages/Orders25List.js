@@ -6660,12 +6660,14 @@ const Orders25List = () => {
         if (!filterValue) return true;
 
         const cislo = row.original.cislo_objednavky || '';
+        const predmet = row.original.predmet || '';
 
-        // Case-insensitive a bez diakritiky
-        const normalizedText = removeDiacritics(cislo.toLowerCase());
+        // Case-insensitive a bez diakritiky - hledej v čísle i předmětu
+        const normalizedCislo = removeDiacritics(cislo.toLowerCase());
+        const normalizedPredmet = removeDiacritics(predmet.toLowerCase());
         const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
 
-        return normalizedText.includes(normalizedFilter);
+        return normalizedCislo.includes(normalizedFilter) || normalizedPredmet.includes(normalizedFilter);
       },
       cell: ({ row }) => (
         <div style={{
