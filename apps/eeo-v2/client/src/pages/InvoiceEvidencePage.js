@@ -2923,16 +2923,26 @@ export default function InvoiceEvidencePage() {
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
         
         // 🗑️ Smazat všechny nahrané přílohy před odchodem
+        // Pokud byl upload přílohy, faktura byla vytvořena v DB a editingInvoiceId obsahuje reálné ID
         const uploadedAttachments = attachments.filter(att => att.serverId);
-        if (uploadedAttachments.length > 0) {
-          console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y...`);
+        const hasRealInvoiceId = editingInvoiceId && Number(editingInvoiceId) > 0;
+        
+        console.log('🔍 DEBUG handleBack:', {
+          editingInvoiceId,
+          hasRealInvoiceId,
+          uploadedAttachmentsCount: uploadedAttachments.length,
+          attachments: attachments.map(a => ({ id: a.id, serverId: a.serverId, name: a.name }))
+        });
+        
+        if (uploadedAttachments.length > 0 && hasRealInvoiceId) {
+          console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y z faktury ID ${editingInvoiceId}...`);
           
           for (const att of uploadedAttachments) {
             try {
               await deleteInvoiceAttachment25({
                 token,
                 username,
-                faktura_id: editingInvoiceId || 'temp-new-invoice',
+                faktura_id: editingInvoiceId,
                 priloha_id: att.serverId,
                 objednavka_id: formData.order_id || null,
                 hard_delete: 1 // Fyzicky smazat ze serveru
@@ -2943,6 +2953,8 @@ export default function InvoiceEvidencePage() {
               // Pokračovat v mazání dalších příloh i při chybě
             }
           }
+        } else if (uploadedAttachments.length > 0 && !hasRealInvoiceId) {
+          console.log(`⚠️ Přílohy nahrány k temp-new-invoice - nemají DB záznam, nemazat přes API`);
         }
         
         // Vyčistit formData aby se uvolnila reference na soubor
