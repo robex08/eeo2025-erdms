@@ -715,6 +715,13 @@ const InvoiceAttachmentsCompact = ({
       console.log('📤 PŘIDÁVÁM', newFiles.length, 'nových souborů do UI s optimistic update');
       console.log('📋 Soubory:', newFiles.map(f => ({ name: f.name, klasifikace: f.klasifikace, status: f.status })));
       
+      // 🎯 TRACKING: Pokud je příloha ze Spisovky, nastavit aktivní dokument do LS
+      const firstFile = newFiles[0];
+      if (firstFile?.spisovka_dokument_id) {
+        localStorage.setItem('spisovka_active_dokument', firstFile.spisovka_dokument_id);
+        console.log('🎯 Aktivní Spisovka dokument uložen do LS:', firstFile.spisovka_dokument_id);
+      }
+      
       updateAttachments(prev => {
         const updated = [...prev, ...newFiles];
         console.log('📊 Celkový počet příloh po přidání:', updated.length);

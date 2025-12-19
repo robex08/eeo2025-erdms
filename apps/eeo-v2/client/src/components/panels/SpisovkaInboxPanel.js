@@ -1162,18 +1162,20 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             padding: '0.75rem 1rem',
             background: '#f9fafb',
             borderBottom: '1px solid #e5e7eb',
-            alignItems: 'center'
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}>
-            <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>Zobrazit:</span>
-            {['vse', 'nezaevidovane', 'zaevidovane'].map(mode => (
-              <button
-                key={mode}
-                onClick={() => setFilterMode(mode)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  borderRadius: '6px',
-                  border: filterMode === mode ? '2px solid #10b981' : '1px solid #d1d5db',
-                  background: filterMode === mode ? '#ecfdf5' : 'white',
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>Zobrazit:</span>
+              {['vse', 'nezaevidovane', 'zaevidovane'].map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setFilterMode(mode)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    border: filterMode === mode ? '2px solid #10b981' : '1px solid #d1d5db',
+                    background: filterMode === mode ? '#ecfdf5' : 'white',
                   color: filterMode === mode ? '#059669' : '#6b7280',
                   fontSize: '0.8rem',
                   fontWeight: filterMode === mode ? 600 : 500,
@@ -1199,6 +1201,50 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                 {mode === 'zaevidovane' && `Zaevidované (${zpracovaneIds.size})`}
               </button>
             ))}
+            </div>
+            
+            {/* 🎯 IKONA SCROLL NA AKTIVNÍ DOKUMENT */}
+            {activeDokumentId && (
+              <button
+                onClick={() => {
+                  const element = document.querySelector(`[data-section="dokument-${activeDokumentId}"]`);
+                  if (element) {
+                    element.scrollIntoView({ 
+                      behavior: 'smooth', 
+                      block: 'center',
+                      inline: 'nearest'
+                    });
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '6px',
+                  color: '#1e40af',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.25)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                  e.currentTarget.style.transform = 'scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                title="Jdi na fakturu, se kterou právě pracuji"
+              >
+                ⚡
+              </button>
+            )}
           </div>
 
           {loading && (
