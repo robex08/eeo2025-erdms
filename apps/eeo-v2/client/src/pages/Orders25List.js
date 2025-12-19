@@ -6669,88 +6669,76 @@ const Orders25List = () => {
       },
       cell: ({ row }) => (
         <div style={{
-          fontWeight: 600,
-          color: '#1e293b',
-          fontFamily: 'monospace',
           textAlign: 'left',
-          whiteSpace: 'nowrap',
+          whiteSpace: 'normal',
           overflow: 'visible',
           position: 'relative'
         }}>
-          {row.original.mimoradna_udalost && (
-            <SmartTooltip content="Mimořádná objednávka (krize/havárie)">
+          {/* První řádek - Ev. číslo */}
+          <div style={{
+            fontWeight: 600,
+            color: '#1e293b',
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap'
+          }}>
+            {row.original.mimoradna_udalost && (
+              <SmartTooltip content="Mimořádná objednávka (krize/havárie)">
+                <span style={{
+                  color: '#dc2626',
+                  fontWeight: 'bold',
+                  marginRight: '4px',
+                  fontSize: '1.1em'
+                }}>
+                  <FontAwesomeIcon icon={faBoltLightning} />
+                </span>
+              </SmartTooltip>
+            )}
+            {row.original.stav_objednavky === 'ARCHIVOVANO' && (
               <span style={{
                 color: '#dc2626',
                 fontWeight: 'bold',
                 marginRight: '4px',
                 fontSize: '1.1em'
               }}>
-                <FontAwesomeIcon icon={faBoltLightning} />
+                ⚠
               </span>
-            </SmartTooltip>
-          )}
-          {row.original.stav_objednavky === 'ARCHIVOVANO' && (
-            <span style={{
-              color: '#dc2626',
-              fontWeight: 'bold',
-              marginRight: '4px',
-              fontSize: '1.1em'
+            )}
+            {globalFilter
+              ? highlightText(row.original.cislo_objednavky || '---', globalFilter)
+              : (row.original.cislo_objednavky || '---')
+            }
+            {row.original.id && !row.original.isDraft && !row.original.je_koncept && (
+              <sup style={{
+                fontSize: '0.6rem',
+                color: '#9ca3af',
+                fontWeight: 'normal',
+                marginLeft: '2px'
+              }}>
+                #{row.original.id}
+              </sup>
+            )}
+          </div>
+          {/* Druhý řádek - Předmět */}
+          {row.original.predmet && (
+            <div style={{
+              fontSize: '0.85em',
+              color: '#64748b',
+              marginTop: '4px',
+              lineHeight: '1.3',
+              maxWidth: '300px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
             }}>
-              ⚠
-            </span>
-          )}
-          {globalFilter
-            ? highlightText(row.original.cislo_objednavky || '---', globalFilter)
-            : (row.original.cislo_objednavky || '---')
-          }
-          {row.original.id && !row.original.isDraft && !row.original.je_koncept && (
-            <sup style={{
-              fontSize: '0.6rem',
-              color: '#9ca3af',
-              fontWeight: 'normal',
-              marginLeft: '2px'
-            }}>
-              #{row.original.id}
-            </sup>
+              {globalFilter
+                ? highlightText(row.original.predmet, globalFilter)
+                : row.original.predmet
+              }
+            </div>
           )}
         </div>
       ),
-      size: 100
-    },
-    {
-      accessorKey: 'predmet',
-      header: 'Předmět',
-      sortingFn: (rowA, rowB) => {
-        const predmetA = rowA.original.predmet || '';
-        const predmetB = rowB.original.predmet || '';
-
-        // Prázdné hodnoty na konec
-        if (!predmetA && !predmetB) return 0;
-        if (!predmetA) return 1;
-        if (!predmetB) return -1;
-
-        // České třídění
-        return predmetA.localeCompare(predmetB, 'cs', { sensitivity: 'base' });
-      },
-      filterFn: (row, columnId, filterValue) => {
-        if (!filterValue) return true;
-
-        const predmet = row.original.predmet || '';
-
-        // Case-insensitive a bez diakritiky
-        const normalizedText = removeDiacritics(predmet.toLowerCase());
-        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
-
-        return normalizedText.includes(normalizedFilter);
-      },
-      cell: ({ row }) => (
-        <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {globalFilter
-            ? highlightText(row.original.predmet || '---', globalFilter)
-            : (row.original.predmet || '---')
-          }
-        </div>
-      )
+      size: 180
     },
     {
       accessorKey: 'objednatel_garant',
@@ -7398,6 +7386,69 @@ const Orders25List = () => {
       size: 150
     },
     {
+      accessorKey: 'max_cena_s_dph',
+      header: 'Max. cena s DPH',
+      sortingFn: (rowA, rowB) => {
+        const priceA = parseFloat(rowA.original.max_cena_s_dph || 0);
+        const priceB = parseFloat(rowB.original.max_cena_s_dph || 0);
+
+        // Numerické třídění (0 nebo NaN na konec)
+        const validA = !isNaN(priceA) && priceA > 0 ? priceA : -Infinity;
+        const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
+
+        return validA - validB;
+      },
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true;
+
+        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        const filterTrimmed = filterValue.trim();
+
+        // Podpora pro porovnávací operátory: =10000, <10000, >10000
+        if (filterTrimmed.match(/^[=<>]/)) {
+          const operator = filterTrimmed[0];
+          const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
+          const compareValue = parseFloat(valueStr);
+
+          // Platné číslo pro porovnání (včetně 0)
+          if (!isNaN(compareValue) && !isNaN(price)) {
+            if (operator === '=') return Math.abs(price - compareValue) < 0.01; // Rovnost s tolerancí
+            if (operator === '<') return price < compareValue;
+            if (operator === '>') return price > compareValue;
+          }
+          return false;
+        }
+
+        // Běžné vyhledávání v textu
+        if (!isNaN(price)) {
+          if (price > 0) {
+            // Formátuj cenu jako string pro vyhledávání
+            const priceText = price.toLocaleString('cs-CZ');
+
+            // Case-insensitive (čísla bez diakritiky)
+            const normalizedText = priceText.toLowerCase();
+            const normalizedFilter = filterValue.toLowerCase();
+
+            return normalizedText.includes(normalizedFilter);
+          } else {
+            // Cena je 0 - hledej "0" nebo "---"
+            return filterValue === '0' || filterValue === '---' || filterValue === '';
+          }
+        }
+
+        // Pokud nemá cenu, hledej "---"
+        return filterValue === '---' || filterValue === '';
+      },
+      cell: ({ row }) => {
+        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        return (
+          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+          </div>
+        );
+      }
+    },
+    {
       accessorKey: 'cena_s_dph',
       header: 'Cena s DPH',
       sortingFn: (rowA, rowB) => {
@@ -7462,11 +7513,11 @@ const Orders25List = () => {
       }
     },
     {
-      accessorKey: 'max_cena_s_dph',
-      header: 'Max. cena s DPH',
+      accessorKey: 'faktury_celkova_castka_s_dph',
+      header: 'Částka FA s DPH',
       sortingFn: (rowA, rowB) => {
-        const priceA = parseFloat(rowA.original.max_cena_s_dph || 0);
-        const priceB = parseFloat(rowB.original.max_cena_s_dph || 0);
+        const priceA = parseFloat(rowA.original.faktury_celkova_castka_s_dph || 0);
+        const priceB = parseFloat(rowB.original.faktury_celkova_castka_s_dph || 0);
 
         // Numerické třídění (0 nebo NaN na konec)
         const validA = !isNaN(priceA) && priceA > 0 ? priceA : -Infinity;
@@ -7477,7 +7528,7 @@ const Orders25List = () => {
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
-        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
         const filterTrimmed = filterValue.trim();
 
         // Podpora pro porovnávací operátory: =10000, <10000, >10000
@@ -7486,9 +7537,8 @@ const Orders25List = () => {
           const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
           const compareValue = parseFloat(valueStr);
 
-          // Platné číslo pro porovnání (včetně 0)
           if (!isNaN(compareValue) && !isNaN(price)) {
-            if (operator === '=') return Math.abs(price - compareValue) < 0.01; // Rovnost s tolerancí
+            if (operator === '=') return Math.abs(price - compareValue) < 0.01;
             if (operator === '<') return price < compareValue;
             if (operator === '>') return price > compareValue;
           }
@@ -7498,27 +7548,21 @@ const Orders25List = () => {
         // Běžné vyhledávání v textu
         if (!isNaN(price)) {
           if (price > 0) {
-            // Formátuj cenu jako string pro vyhledávání
             const priceText = price.toLocaleString('cs-CZ');
-
-            // Case-insensitive (čísla bez diakritiky)
             const normalizedText = priceText.toLowerCase();
             const normalizedFilter = filterValue.toLowerCase();
-
             return normalizedText.includes(normalizedFilter);
           } else {
-            // Cena je 0 - hledej "0" nebo "---"
             return filterValue === '0' || filterValue === '---' || filterValue === '';
           }
         }
 
-        // Pokud nemá cenu, hledej "---"
         return filterValue === '---' || filterValue === '';
       },
       cell: ({ row }) => {
-        const price = parseFloat(row.original.max_cena_s_dph || 0);
+        const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
         return (
-          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+          <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#059669' }}>
             {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
           </div>
         );
