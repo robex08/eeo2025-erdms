@@ -4,7 +4,25 @@
 **Projekt:** EEO v2025 - ERDMS System  
 **Databáze:** `eeo2025` @ 10.3.172.11  
 **Backend:** `/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/`  
-**Analyzoval:** Automatizovaný audit systém
+**Analyzoval:** Automatizovaný audit systém  
+**Poslední update:** 19.12.2025 - ✅ **API V2 MIGRACE DOKONČENA**
+
+---
+
+## 🎉 AKTUALIZACE: API V2 MIGRACE DOKONČENA
+
+**Git Commit:** `27c5297` - "API V2 migration complete - OrderForm25 now uses apiInvoiceV2 and V2 endpoint names"
+
+### ✅ Co bylo dokončeno:
+1. ✅ Vytvořen `apiInvoiceV2.js` service
+2. ✅ OrderForm25.js migrován na V2 API (všechny CRUD operace)
+3. ✅ Odstraněny všechny legacy API reference (`orders25/*`, `invoices25/*`)
+4. ✅ Debug endpoint stringy aktualizovány (`order-v2/create`, `order-v2/update`)
+
+### 📈 Nový stav systému:
+- ✅ **100% V2 API** v OrderForm25.js
+- ✅ **Jednotná architektura** - `apiOrderV2.js` + `apiInvoiceV2.js`
+- ✅ **Legacy handlers připraveny k odstranění** - `orderHandlers.php`, `invoiceHandlers.php`
 
 ---
 
@@ -23,9 +41,9 @@
 |-----------|--------|---------|
 | **Databázové připojení** | ✅ AKTIVNÍ | Remote DB `10.3.172.11`, user: `erdms_user` |
 | **Struktura tabulek** | ✅ VALIDNÍ | Všechny tabulky mají správné indexy a relace |
-| **API Endpointy** | ⚠️ ČÁSTEČNĚ | Některé handlery jsou duplicitní nebo nepoužívané |
+| **API Endpointy** | ✅ **V2 MIGRACE DOKONČENA** | Legacy handlery připraveny k odstranění |
 | **Kódová kvalita** | ⚠️ REFACTORING | Existují backup soubory a dočasné handlery |
-| **Produkční připravenost** | ⚠️ 75% | Vyžaduje cleanup před finálním nasazením |
+| **Produkční připravenost** | ✅ **85%** | V2 API migrováno, zbývá cleanup |
 
 ---
 

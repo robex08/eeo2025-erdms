@@ -1,12 +1,32 @@
 # 🚀 MIGRAČNÍ PLÁN: LEGACY API → V2 API
 
 **Datum:** 19. prosince 2025  
-**Priorita:** KRITICKÁ  
-**Cíl:** Eliminovat všechna volání legacy API a používat pouze V2
+**Priorita:** KRITICKÁ ✅ **DOKONČENO**  
+**Cíl:** Eliminovat všechna volání legacy API a používat pouze V2  
+**Status:** ✅ **MIGRACE DOKONČENA 19.12.2025 - Commit 27c5297**
 
 ---
 
-## 📊 AKTUÁLNÍ STAV ANALÝZY
+## 🎉 VÝSLEDEK MIGRACE
+
+### ✅ **DOKONČENÉ ÚKOLY:**
+1. ✅ Vytvořen `apiInvoiceV2.js` (kopie `api25invoices.js` s V2 endpointy)
+2. ✅ Opraven import v OrderForm25.js (řádek 66): `from '../services/apiInvoiceV2'`
+3. ✅ Aktualizován debug endpoint string (řádek 11142): `'order-v2/create'`, `'order-v2/update'`
+4. ✅ Git commit & push dokončen
+5. ✅ **OrderForm25.js nyní 100% používá V2 API**
+
+### 🔍 **OVĚŘENÍ:**
+- ✅ `createOrderV2()` - vytváření nových objednávek
+- ✅ `updateOrderV2()` - aktualizace objednávek (3x volání v kódu)
+- ✅ `deleteOrderV2()` - mazání objednávek
+- ✅ `createInvoiceV2()` / `updateInvoiceV2()` / `deleteInvoiceV2()` - z `apiInvoiceV2`
+- ✅ Žádné legacy API endpointy (`orders25/*`, `invoices25/*`) se NEpoužívají
+- ✅ Zbývající výskyty `orders25` jsou jen navigační routes (`/orders25-list`) ✓
+
+---
+
+## 📊 PŮVODNÍ STAV ANALÝZY
 
 ### ✅ CO UŽ FUNGUJE NA V2:
 - **Order Attachments** → `order-v2/attachments` ✅
