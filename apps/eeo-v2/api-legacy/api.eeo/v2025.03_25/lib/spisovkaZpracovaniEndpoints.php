@@ -151,12 +151,12 @@ function handle_spisovka_zpracovani_list($input, $config) {
         
         $where_clause = implode(' AND ', $where);
         
-        // Dotaz - JEN naše data z tracking tabulky (bez JOINů na cizí DB!)
-        // dokument_id je ID ze Spisovky (10.1.1.253), ale nepotřebujeme JOINovat
+        // Dotaz s JOIN na uživatele (naše DB!)
         $sql = "
             SELECT 
                 szl.id,
                 szl.dokument_id,
+                szl.spisovka_priloha_id,
                 szl.uzivatel_id,
                 szl.zpracovano_kdy,
                 szl.faktura_id,
@@ -164,8 +164,10 @@ function handle_spisovka_zpracovani_list($input, $config) {
                 szl.stav,
                 szl.poznamka,
                 szl.doba_zpracovani_s,
-                szl.dt_vytvoreni
+                szl.dt_vytvoreni,
+                CONCAT(u.jmeno, ' ', u.prijmeni) as uzivatel_jmeno
             FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            LEFT JOIN " . get_users_table_name() . " u ON szl.uzivatel_id = u.id
             WHERE {$where_clause}
             ORDER BY szl.zpracovano_kdy DESC
             LIMIT :limit OFFSET :offset
