@@ -6642,7 +6642,8 @@ const Orders25List = () => {
       size: 120
     },
     {
-      accessorKey: 'cislo_objednavky',
+      id: 'cislo_objednavky',
+      accessorFn: (row) => row.cislo_objednavky,
       header: 'Evidenční číslo',
       sortingFn: (rowA, rowB) => {
         const numA = rowA.original.cislo_objednavky || '';
