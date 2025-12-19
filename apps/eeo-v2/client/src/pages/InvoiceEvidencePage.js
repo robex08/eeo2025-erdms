@@ -50,6 +50,7 @@ import { notificationService, NOTIFICATION_TYPES } from '../services/notificatio
 import SpisovkaInboxPanel from '../components/panels/SpisovkaInboxPanel';
 import { InvoiceAttachmentsCompact } from '../components/invoices';
 import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/isdocParser';
+import { markSpisovkaDocumentProcessed } from '../services/apiSpisovkaZpracovani';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -173,14 +174,14 @@ const FullscreenOverlay = styled.div`
 `;
 
 const PageHeader = styled.div`
-  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-  color: white;
+  background: linear-gradient(135deg, #dbeafe 0%, #ffffff 100%);
+  color: #1f2937;
   padding: 1.5rem 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 3px solid #3498db;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-bottom: 2px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `;
 
 const PageTitle = styled.h1`
@@ -199,9 +200,9 @@ const HeaderActions = styled.div`
 `;
 
 const IconButton = styled.button`
-  background: rgba(255, 255, 255, 0.1);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  color: #6b7280;
   width: 44px;
   height: 44px;
   padding: 0;
@@ -215,10 +216,11 @@ const IconButton = styled.button`
   position: relative;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: #ffffff;
+    border-color: #3b82f6;
+    color: #3b82f6;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
   }
 
   &:active {
@@ -230,7 +232,7 @@ const NotificationBadge = styled.span`
   position: absolute;
   top: -6px;
   right: -6px;
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: #10b981;
   color: white;
   font-size: 0.7rem;
   font-weight: 700;
@@ -241,7 +243,7 @@ const NotificationBadge = styled.span`
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #0f172a;
+  border: 2px solid #ffffff;
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
 `;
 
@@ -256,11 +258,11 @@ const TooltipContent = styled.div`
   left: ${props => props.$left || 0}px;
   min-width: 350px;
   max-width: 450px;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
   border-radius: 10px;
   padding: 0.75rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   z-index: 10000;
   opacity: ${props => props.show ? 1 : 0};
   visibility: ${props => props.show ? 'visible' : 'hidden'};
@@ -274,7 +276,7 @@ const TooltipContent = styled.div`
     bottom: 100%;
     right: 20px;
     border: 6px solid transparent;
-    border-bottom-color: rgba(16, 185, 129, 0.3);
+    border-bottom-color: #e5e7eb;
   }
   
   &::after {
@@ -283,7 +285,7 @@ const TooltipContent = styled.div`
     bottom: 100%;
     right: 21px;
     border: 5px solid transparent;
-    border-bottom-color: rgba(15, 23, 42, 0.98);
+    border-bottom-color: #ffffff;
   }
 `;
 
@@ -300,10 +302,10 @@ const TooltipItem = styled.div`
   padding: 0.4rem;
   border-radius: 6px;
   margin-bottom: 0.3rem;
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: #f0fdf4;
+  border: 1px solid #d1fae5;
   font-size: 0.75rem;
-  color: #e2e8f0;
+  color: #1f2937;
 
   &:last-child {
     margin-bottom: 0;
@@ -312,13 +314,13 @@ const TooltipItem = styled.div`
 
 const TooltipItemTitle = styled.div`
   font-weight: 600;
-  color: #d1fae5;
+  color: #065f46;
   margin-bottom: 0.2rem;
 `;
 
 const TooltipItemMeta = styled.div`
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: #6b7280;
   display: flex;
   justify-content: space-between;
 `;
@@ -667,11 +669,11 @@ const Button = styled.button`
   gap: 10px;
 
   ${props => props.$variant === 'primary' && `
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: #3b82f6;
     color: white;
 
     &:hover {
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      background: #2563eb;
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
@@ -904,6 +906,144 @@ const SearchingSpinner = styled.div`
   padding: 1rem;
   text-align: center;
   color: #6b7280;
+`;
+
+// ===================================================================
+// PROGRESS MODAL - Modální okno pro zobrazení průběhu ukládání
+// ===================================================================
+
+const ProgressOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  animation: fadeIn 0.2s ease-in;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const ProgressModal = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  animation: slideIn 0.3s ease-out;
+
+  @keyframes slideIn {
+    from {
+      transform: translateY(-20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+`;
+
+const ProgressHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+`;
+
+const ProgressIconWrapper = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: ${props => {
+    if (props.status === 'success') return 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+    if (props.status === 'error') return 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+    return 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+  }};
+  color: white;
+  animation: ${props => props.status === 'loading' ? 'pulse 2s ease-in-out infinite' : 'none'};
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+`;
+
+const ProgressTitle = styled.div`
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111827;
+`;
+
+const ProgressMessage = styled.div`
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+`;
+
+const ProgressBarWrapper = styled.div`
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+`;
+
+const ProgressBarFill = styled.div`
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+  width: ${props => props.progress || 0}%;
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+`;
+
+const ProgressActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+`;
+
+const ProgressButton = styled.button`
+  padding: 0.5rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  background: ${props => props.variant === 'primary' ? '#3b82f6' : '#e5e7eb'};
+  color: ${props => props.variant === 'primary' ? 'white' : '#374151'};
+
+  &:hover {
+    background: ${props => props.variant === 'primary' ? '#2563eb' : '#d1d5db'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 // Multi-select komponenta pro střediska
@@ -1203,6 +1343,15 @@ export default function InvoiceEvidencePage() {
   // State pro zapamatování, zda měla faktura původně přiřazenou objednávku/smlouvu
   const [hadOriginalEntity, setHadOriginalEntity] = useState(false);
 
+  // 🎯 Progress Modal State - zobrazení průběhu ukládání
+  const [progressModal, setProgressModal] = useState({
+    show: false,
+    status: 'loading', // 'loading' | 'success' | 'error'
+    progress: 0,
+    title: '',
+    message: ''
+  });
+
   // Spisovka Inbox Panel - pouze pro ADMIN
   const [spisovkaInboxOpen, setSpisovkaInboxOpen] = useState(false);
   const [spisovkaInboxState, setSpisovkaInboxState] = useState({
@@ -1238,26 +1387,52 @@ export default function InvoiceEvidencePage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Form data
-  const [formData, setFormData] = useState({
-    order_id: orderId || '',
-    smlouva_id: null, // ID smlouvy (alternativa k order_id)
-    fa_cislo_vema: '',
-    fa_typ: 'BEZNA', // Výchozí typ: Běžná faktura
-    fa_datum_doruceni: formatDateForPicker(new Date()),
-    fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
-    fa_datum_splatnosti: '',
-    fa_castka: '',
-    fa_poznamka: '',
-    fa_strediska_kod: [], // Střediska - array kódů
-    // Nové položky (nepovinné, pod čárou)
-    fa_predana_zam_id: null,
-    fa_datum_predani_zam: '',
-    fa_datum_vraceni_zam: ''
+  // Form data - s localStorage persistence
+  const [formData, setFormData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('invoiceFormData');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Pokud máme orderId z URL, přepsat ho
+        if (orderId) {
+          parsed.order_id = orderId;
+        }
+        return parsed;
+      }
+    } catch (err) {
+      console.warn('Chyba při načítání formData z localStorage:', err);
+    }
+    
+    return {
+      order_id: orderId || '',
+      smlouva_id: null, // ID smlouvy (alternativa k order_id)
+      fa_cislo_vema: '',
+      fa_typ: 'BEZNA', // Výchozí typ: Běžná faktura
+      fa_datum_doruceni: formatDateForPicker(new Date()),
+      fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
+      fa_datum_splatnosti: '',
+      fa_castka: '',
+      fa_poznamka: '',
+      fa_strediska_kod: [], // Střediska - array kódů
+      // Nové položky (nepovinné, pod čárou)
+      fa_predana_zam_id: null,
+      fa_datum_predani_zam: '',
+      fa_datum_vraceni_zam: ''
+    };
   });
 
-  // Přílohy faktury - array objektů (podle vzoru OrderForm25)
-  const [attachments, setAttachments] = useState([]);
+  // Přílohy faktury - array objektů (podle vzoru OrderForm25) - s localStorage persistence
+  const [attachments, setAttachments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('invoiceAttachments');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (err) {
+      console.warn('Chyba při načítání attachments z localStorage:', err);
+    }
+    return [];
+  });
 
   // CustomSelect states
   const [selectStates, setSelectStates] = useState({});
@@ -1279,6 +1454,24 @@ export default function InvoiceEvidencePage() {
   // Tracking změn kritických polí
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
+
+  // 💾 AUTO-SAVE formData do localStorage při každé změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('invoiceFormData', JSON.stringify(formData));
+    } catch (err) {
+      console.warn('Chyba při ukládání formData do localStorage:', err);
+    }
+  }, [formData]);
+
+  // 💾 AUTO-SAVE attachments do localStorage při každé změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('invoiceAttachments', JSON.stringify(attachments));
+    } catch (err) {
+      console.warn('Chyba při ukládání attachments do localStorage:', err);
+    }
+  }, [attachments]);
 
   // Načtení středisek, typů faktur a zaměstnanců při mount (pouze pokud existuje token)
   useEffect(() => {
@@ -2123,56 +2316,40 @@ export default function InvoiceEvidencePage() {
   }, [showToast]);
 
   // 🔔 Funkce pro odeslání notifikací při změně stavu objednávky na věcnou kontrolu
+  // ✅ AKTUALIZOVÁNO: Používá organizační hierarchii místo ručního výběru příjemců
   const sendInvoiceNotifications = async (orderId, orderData) => {
     try {
-      // Získej příjemce notifikací z dat objednávky
-      const recipientUserIds = new Set();
+      console.log('════════════════════════════════════════════════════════════════');
+      console.log('🔔 Odesílání notifikací o věcné kontrole faktury');
+      console.log('   Order ID:', orderId);
+      console.log('   Event Type: ORDER_MATERIAL_CORRECTNESS');
+      console.log('   Trigger User ID:', user_id);
+      console.log('════════════════════════════════════════════════════════════════');
 
-      // 1. Objednatel (uzivatel_id nebo objednatel_id)
-      if (orderData.uzivatel_id) {
-        recipientUserIds.add(parseInt(orderData.uzivatel_id, 10));
-      } else if (orderData.objednatel_id) {
-        recipientUserIds.add(parseInt(orderData.objednatel_id, 10));
-      }
-
-      // 2. Garant
-      if (orderData.garant_uzivatel_id) {
-        recipientUserIds.add(parseInt(orderData.garant_uzivatel_id, 10));
-      }
-
-      // 3. Schvalovatel (příkazce)
-      if (orderData.prikazce_id) {
-        recipientUserIds.add(parseInt(orderData.prikazce_id, 10));
-      }
-
-      // Filtr: Odstranit nevalidní ID
-      const validRecipients = Array.from(recipientUserIds).filter(id => {
-        return id && !isNaN(id) && id > 0;
-      });
-
-      // Pokud nejsou žádní příjemci, skonči
-      if (validRecipients.length === 0) {
-        console.warn('⚠️ Žádní příjemci notifikací pro objednávku:', orderId);
-        return;
-      }
-
-      // Odeslat notifikaci o změně stavu na věcnou kontrolu
-      await notificationService.create({
-        token,
-        username,
-        type: NOTIFICATION_TYPES.ORDER_STATUS_KONTROLA_CEKA, // 'order_status_kontrola_ceka'
-        order_id: orderId,
-        action_user_id: user_id,
-        recipients: validRecipients
-      });
+      // ✅ NOVÝ SYSTÉM: Použití organizační hierarchie
+      // Backend automaticky najde správné příjemce podle hierarchie a notification profiles
+      // Podporuje generické příjemce (OBJEDNATEL, GARANT, SCHVALOVATEL_1, SCHVALOVATEL_2, ...)
+      const result = await notificationService.trigger(
+        'ORDER_MATERIAL_CORRECTNESS', // Event type code pro věcnou správnost
+        orderId,
+        user_id // ID uživatele, který vytvořil/přiřadil fakturu
+      );
 
       console.log('✅ Notifikace o věcné kontrole odeslány:', {
         orderId,
-        recipients: validRecipients,
-        type: NOTIFICATION_TYPES.ORDER_STATUS_KONTROLA_CEKA
+        eventType: 'ORDER_MATERIAL_CORRECTNESS',
+        sent: result.sent,
+        errors: result.errors
       });
+
+      if (result.errors && result.errors.length > 0) {
+        console.warn('⚠️ Některé notifikace se nepodařilo odeslat:', result.errors);
+      }
+
     } catch (error) {
       console.error('❌ Chyba při odesílání notifikací:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Error details:', error.response?.data);
       // Neblokujeme workflow kvůli chybě notifikace
     }
   };
@@ -2286,6 +2463,15 @@ export default function InvoiceEvidencePage() {
         return;
       }
     }
+    
+    // 🎯 Zobrazit progress modal ihned při startu
+    setProgressModal({
+      show: true,
+      status: 'loading',
+      progress: 10,
+      title: editingInvoiceId ? 'Ukládám změny faktury...' : 'Eviduji novou fakturu...',
+      message: 'Ověřuji zadané údaje a připravuji data k uložení...'
+    });
 
     // ✅ Validace povinných polí
     const errors = {};
@@ -2333,11 +2519,20 @@ export default function InvoiceEvidencePage() {
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setError('Opravte prosím chyby ve formuláři před odesláním');
+      // Zavřít progress modal při chybě validace
+      setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '' });
       return;
     }
 
     setLoading(true);
     setProgress?.(50);
+    
+    // 🎯 Aktualizace progress - validace prošla
+    setProgressModal(prev => ({
+      ...prev,
+      progress: 30,
+      message: 'Validace formuláře dokončena, odesílám data na server...'
+    }));
 
     try {
       // Věcná správnost podle dokumentace
@@ -2399,6 +2594,13 @@ export default function InvoiceEvidencePage() {
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
         };
 
+        // 🎯 Progress - aktualizace faktury
+        setProgressModal(prev => ({
+          ...prev,
+          progress: 60,
+          message: 'Aktualizuji údaje faktury v databázi...'
+        }));
+
         result = await updateInvoiceV2({
           token,
           username,
@@ -2407,9 +2609,26 @@ export default function InvoiceEvidencePage() {
         });
         
         setProgress?.(100);
-        showToast && showToast('✅ Faktura byla úspěšně aktualizována', 'success');
+        
+        // 🎯 Progress - úspěšná aktualizace
+        setProgressModal(prev => ({
+          ...prev,
+          progress: 100,
+          status: 'success',
+          title: 'Faktura byla aktualizována',
+          message: `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena do databáze.`
+        }));
       } else {
         // NOVÁ FAKTURA - CREATE
+        // 🎯 Progress - vytváření faktury
+        setProgressModal(prev => ({
+          ...prev,
+          progress: 60,
+          message: formData.file 
+            ? 'Nahrávám přílohu a vytvářím fakturu...' 
+            : 'Vytvářím novou fakturu v databázi...'
+        }));
+        
         if (formData.file) {
           // S přílohou
           result = await createInvoiceWithAttachmentV2({
@@ -2423,7 +2642,15 @@ export default function InvoiceEvidencePage() {
         }
 
         setProgress?.(100);
-        showToast && showToast('✅ Faktura byla úspěšně zaevidována', 'success');
+        
+        // 🎯 Progress - úspěšné vytvoření
+        setProgressModal(prev => ({
+          ...prev,
+          progress: 100,
+          status: 'success',
+          title: 'Faktura byla zaevidována',
+          message: `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena do systému.`
+        }));
       }
 
       // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav
@@ -2447,21 +2674,25 @@ export default function InvoiceEvidencePage() {
           // Získej aktuální (poslední) stav
           const currentState = stavKody.length > 0 ? stavKody[stavKody.length - 1] : null;
 
+          // ✅ DŮLEŽITÉ: Pokud editujeme fakturu která PŮVODNĚ NEMĚLA objednávku a TEĎ JI PŘIŘAZUJEME,
+          // musíme se chovat jako NOVÁ faktura pro tuto objednávku (ne jako editace)
+          const isAddingOrderToExistingInvoice = editingInvoiceId && !hadOriginalEntity && formData.order_id;
+
           // Logika pro změnu workflow stavu podle aktuálního stavu:
-          // NOVÁ FAKTURA:
+          // NOVÁ FAKTURA (nebo přiřazení k objednávce):
           // 1. NEUVEREJNIT nebo UVEREJNENA → přidat FAKTURACE → přidat VECNA_SPRAVNOST
           // 2. FAKTURACE → přidat VECNA_SPRAVNOST
           // 3. ZKONTROLOVANA → vrátit na VECNA_SPRAVNOST (faktury byly upraveny)
           // 4. VECNA_SPRAVNOST → nechat beze změny
           // 
-          // EDITACE FAKTURY:
+          // EDITACE FAKTURY (která už měla objednávku):
           // - ZKONTROLOVANA nebo DOKONCENA → vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
           // - VECNA_SPRAVNOST → nechat (už čeká na kontrolu)
           
           let needsUpdate = false;
           
-          if (editingInvoiceId) {
-            // EDITACE existující faktury
+          if (editingInvoiceId && !isAddingOrderToExistingInvoice) {
+            // EDITACE existující faktury která UŽ MĚLA objednávku
             if (currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
               // Vrátit zpět na VECNA_SPRAVNOST - musí projít novou kontrolou
               stavKody.pop(); // Odstraň poslední stav (ZKONTROLOVANA/DOKONCENA)
@@ -2477,25 +2708,41 @@ export default function InvoiceEvidencePage() {
             }
             // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
           } else {
-            // NOVÁ FAKTURA
+            // NOVÁ FAKTURA nebo PŘIŘAZENÍ FAKTURY K OBJEDNÁVCE
             if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
               // První faktura → přidat FAKTURACE a pak VECNA_SPRAVNOST
               stavKody.push('FAKTURACE');
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
+              console.log(isAddingOrderToExistingInvoice 
+                ? '✅ PŘIŘAZENÍ FAKTURY: Objednávka nastavena na věcnou správnost' 
+                : '✅ NOVÁ FAKTURA: Objednávka nastavena na věcnou správnost'
+              );
             } else if (currentState === 'FAKTURACE') {
               // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
+              console.log(isAddingOrderToExistingInvoice 
+                ? '✅ PŘIŘAZENÍ FAKTURY: Přidán stav věcná správnost' 
+                : '✅ NOVÁ FAKTURA: Přidán stav věcná správnost'
+              );
             } else if (currentState === 'ZKONTROLOVANA') {
               // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
               stavKody.pop(); // Odstraň ZKONTROLOVANA
               needsUpdate = true;
+              console.log('⚠️ Objednávka vrácena z ZKONTROLOVANA na VECNA_SPRAVNOST');
             }
             // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
           }
 
           if (needsUpdate) {
+            // 🎯 Progress - aktualizace workflow objednávky
+            setProgressModal(prev => ({
+              ...prev,
+              progress: 85,
+              message: 'Aktualizuji stav objednávky a odesílám notifikace...'
+            }));
+            
             // Aktualizuj objednávku
             // ✅ Kromě stav_workflow_kod je nutné aktualizovat i stav_objednavky (textový stav)
             await updateOrderV2(
@@ -2556,6 +2803,14 @@ export default function InvoiceEvidencePage() {
       setEditingInvoiceId(null);
       setAttachments([]); // ✅ DŮLEŽITÉ: Vyčistit seznam příloh po uložení
       
+      // 💾 Vyčistit localStorage po úspěšném uložení faktury
+      try {
+        localStorage.removeItem('invoiceFormData');
+        localStorage.removeItem('invoiceAttachments');
+      } catch (err) {
+        console.warn('Chyba při mazání localStorage:', err);
+      }
+      
       // Reset preview entity a autocomplete pokud je potřeba
       if (shouldResetEntity) {
         setOrderData(null);
@@ -2576,11 +2831,60 @@ export default function InvoiceEvidencePage() {
       setOriginalFormData(null);
       setHasChangedCriticalField(false);
 
+      // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (pouze pro nové faktury, ne editace)
+      // Toto se provede na pozadí - neblokuje úspěch uložení faktury
+      if (!editingInvoiceId && result?.data?.id) {
+        try {
+          // Zkontrolovat zda máme aktivní Spisovka dokument v panelu
+          const spisovkaDocuments = spisovkaLastRecords || [];
+          
+          // Hledat dokument který byl možná použit pro tuto fakturu
+          // Můžeme propojit podle názvu souboru nebo času
+          const potentialDoc = spisovkaDocuments.find(doc => {
+            // Pokud má faktura přílohu se stejným názvem jako Spisovka dokument
+            if (formData.file && doc.nazev_souboru) {
+              return formData.file.name === doc.nazev_souboru;
+            }
+            return false;
+          });
+
+          // Pokud jsme našli odpovídající dokument, označit ho jako zpracovaný
+          if (potentialDoc?.id) {
+            await markSpisovkaDocumentProcessed({
+              username,
+              token,
+              dokument_id: potentialDoc.id,
+              faktura_id: result.data.id,
+              fa_cislo_vema: formData.fa_cislo_vema,
+              stav: 'ZAEVIDOVANO',
+              poznamka: `Automaticky zaevidováno z InvoiceEvidencePage`
+            });
+            
+            console.log('✅ Spisovka dokument označen jako zpracovaný:', {
+              dokument_id: potentialDoc.id,
+              faktura_id: result.data.id,
+              fa_cislo_vema: formData.fa_cislo_vema
+            });
+          }
+        } catch (spisovkaErr) {
+          // Neblokujeme úspěch faktury - jen logujeme
+          console.warn('⚠️ Nepodařilo se označit Spisovka dokument jako zpracovaný:', spisovkaErr);
+        }
+      }
+
     } catch (err) {
       console.error('Error creating invoice:', err);
       setError(err.message || 'Chyba při evidenci faktury');
-      showToast && showToast(err.message || 'Chyba při evidenci faktury', 'error');
       setProgress?.(0);
+      
+      // 🎯 Progress - chyba při ukládání
+      setProgressModal({
+        show: true,
+        status: 'error',
+        progress: 0,
+        title: 'Chyba při ukládání faktury',
+        message: err.message || 'Došlo k neočekávané chybě při ukládání faktury. Zkuste to prosím znovu.'
+      });
     } finally {
       setLoading(false);
     }
@@ -3796,13 +4100,26 @@ export default function InvoiceEvidencePage() {
               }
             >
               <FontAwesomeIcon icon={loading ? faExclamationTriangle : faSave} />
-              {loading ? 'Ukládám...' : (
-                editingInvoiceId 
-                  ? 'Aktualizovat fakturu' 
-                  : (formData.order_id && orderData 
-                      ? 'Připojit fakturu' 
-                      : 'Zaevidovat fakturu')
-              )}
+              {loading ? 'Ukládám...' : (() => {
+                if (editingInvoiceId) {
+                  // Editace faktury - pokud přidáváme entitu (původně neměla), zobrazit "Přiřadit"
+                  if ((formData.order_id || formData.smlouva_id) && !hadOriginalEntity) {
+                    if (formData.smlouva_id) {
+                      return 'Přiřadit fakturu ke smlouvě';
+                    }
+                    return 'Přiřadit fakturu k objednávce';
+                  }
+                  return 'Aktualizovat fakturu';
+                }
+                // Nová faktura
+                if (formData.order_id && orderData) {
+                  return 'Přiřadit fakturu k objednávce';
+                }
+                if (formData.smlouva_id && smlouvaData) {
+                  return 'Přiřadit fakturu ke smlouvě';
+                }
+                return 'Zaevidovat fakturu';
+              })()}
             </Button>
           </ButtonGroup>
           </FormColumnContent>
@@ -3819,12 +4136,21 @@ export default function InvoiceEvidencePage() {
                 justifyContent: 'space-between', 
                 gap: '1rem', 
                 paddingBottom: '12px',
-                borderBottom: selectedType === 'smlouva' ? '2px solid #10b981' : '2px solid #3498db',
+                borderBottom: (orderData || smlouvaData) ? (selectedType === 'smlouva' ? '2px solid #10b981' : '2px solid #3498db') : '2px solid #e5e7eb',
                 marginBottom: '1rem'
               }}>
                 <SectionTitle style={{ margin: 0, border: 'none', paddingBottom: 0, whiteSpace: 'nowrap' }}>
-                  <FontAwesomeIcon icon={selectedType === 'smlouva' ? faFileContract : faBuilding} />
-                  {selectedType === 'smlouva' ? 'Náhled smlouvy' : 'Náhled objednávky'}
+                  {(orderData || smlouvaData) ? (
+                    <>
+                      <FontAwesomeIcon icon={selectedType === 'smlouva' ? faFileContract : faBuilding} />
+                      {selectedType === 'smlouva' ? 'Náhled smlouvy' : 'Náhled objednávky'}
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesomeIcon icon={faBuilding} />
+                      Náhled
+                    </>
+                  )}
                 </SectionTitle>
                 {orderData && selectedType === 'order' && (
                   <span style={{ fontWeight: 700, color: '#1e40af', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
@@ -4188,6 +4514,54 @@ export default function InvoiceEvidencePage() {
           onClose={() => setSpisovkaInboxOpen(false)}
           onOCRDataExtracted={handleOCRDataExtracted}
         />
+      )}
+
+      {/* 🎯 Progress Modal - zobrazení průběhu ukládání faktury */}
+      {progressModal.show && createPortal(
+        <ProgressOverlay>
+          <ProgressModal>
+            <ProgressHeader>
+              <ProgressIconWrapper status={progressModal.status}>
+                {progressModal.status === 'loading' && <FontAwesomeIcon icon={faSpinner} spin />}
+                {progressModal.status === 'success' && <FontAwesomeIcon icon={faCheckCircle} />}
+                {progressModal.status === 'error' && <FontAwesomeIcon icon={faTimesCircle} />}
+              </ProgressIconWrapper>
+              <ProgressTitle>{progressModal.title}</ProgressTitle>
+            </ProgressHeader>
+
+            <ProgressMessage>{progressModal.message}</ProgressMessage>
+
+            {progressModal.status === 'loading' && (
+              <ProgressBarWrapper>
+                <ProgressBarFill progress={progressModal.progress} />
+              </ProgressBarWrapper>
+            )}
+
+            <ProgressActions>
+              {progressModal.status === 'success' && (
+                <ProgressButton 
+                  variant="primary" 
+                  onClick={() => {
+                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '' });
+                  }}
+                >
+                  Pokračovat
+                </ProgressButton>
+              )}
+              {progressModal.status === 'error' && (
+                <ProgressButton 
+                  variant="primary" 
+                  onClick={() => {
+                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '' });
+                  }}
+                >
+                  Zavřít
+                </ProgressButton>
+              )}
+            </ProgressActions>
+          </ProgressModal>
+        </ProgressOverlay>,
+        document.body
       )}
     </>
   );
