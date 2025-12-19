@@ -371,7 +371,7 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, token, username }, ref) => {
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, editingInvoiceId, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1221,19 +1221,24 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
           <SectionContent $collapsed={collapsed.fakturace} $theme="blue">
             {orderData.faktury.map((faktura, index) => {
               const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
+              const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));
               return (
               <div key={faktura.id || index} style={{
-                border: '2px solid #3b82f6',
+                border: isBeingEdited ? '3px solid #f59e0b' : '2px solid #3b82f6',
                 borderRadius: '12px',
                 padding: '0',
                 marginBottom: index < orderData.faktury.length - 1 ? '1.5rem' : 0,
-                background: isVecnaPotvrzena ? '#f0fdf4' : '#ffffff',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                overflow: 'hidden'
+                background: isBeingEdited ? '#fffbeb' : (isVecnaPotvrzena ? '#f0fdf4' : '#ffffff'),
+                boxShadow: isBeingEdited ? '0 4px 16px rgba(245, 158, 11, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.08)',
+                overflow: 'hidden',
+                position: 'relative',
+                transition: 'all 0.2s ease'
               }}>
                 {/* Záhlaví faktury - výrazné */}
                 <div style={{
-                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  background: isBeingEdited 
+                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' 
+                    : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                   color: 'white',
                   padding: '1rem 1.25rem',
                   fontWeight: '700',
@@ -1242,12 +1247,12 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: '1rem',
-                  borderBottom: '3px solid #1e40af',
+                  borderBottom: isBeingEdited ? '3px solid #b45309' : '3px solid #1e40af',
                   letterSpacing: '0.5px',
                   textTransform: 'uppercase'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <FontAwesomeIcon icon={faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
+                    <FontAwesomeIcon icon={isBeingEdited ? faEdit : faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
                     Faktura #{index + 1}
                     {faktura.fa_cislo_vema && (
                       <span style={{ 
@@ -1263,7 +1268,25 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       </span>
                     )}
                   </div>
-                  {onEditInvoice && canEditInvoice && (
+                  {/* Swap: buď tlačítko Upravit NEBO badge Editace */}
+                  {isBeingEdited ? (
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.25)',
+                      color: 'white',
+                      border: '1px solid rgba(255, 255, 255, 0.4)',
+                      padding: '0.5rem 1rem',
+                      fontWeight: '600',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      letterSpacing: '0.05em'
+                    }}>
+                      <FontAwesomeIcon icon={faEdit} />
+                      PRÁVĚ EDITUJETE
+                    </div>
+                  ) : onEditInvoice && canEditInvoice && (
                     <EditInvoiceButton 
                       onClick={(e) => {
                         e.stopPropagation();

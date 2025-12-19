@@ -168,11 +168,16 @@ export const performLogoutCleanup = (options = {}) => {
   const actions = [];
 
   // 1. Vyčistit veškerý sessionStorage (citlivá data)
+  // 🎯 VÝJIMKA: Zachovat app_initialized (pro splash screen kontrolu)
   if (!dryRun) {
+    const appInitialized = sessionStorage.getItem('app_initialized');
     sessionStorage.clear();
-    actions.push('Vyčištěn celý sessionStorage');
+    if (appInitialized) {
+      sessionStorage.setItem('app_initialized', appInitialized);
+    }
+    actions.push('Vyčištěn sessionStorage (zachován app_initialized)');
   } else {
-    actions.push(`[DRY RUN] Vyčistil by se celý sessionStorage (${sessionStorage.length} items)`);
+    actions.push(`[DRY RUN] Vyčistil by se sessionStorage (${sessionStorage.length} items, zachován app_initialized)`);
   }
 
   // 2. Selektivní čištění localStorage

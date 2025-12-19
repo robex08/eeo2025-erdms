@@ -1327,7 +1327,16 @@ export default function InvoiceEvidencePage() {
   const [hasAnySectionCollapsed, setHasAnySectionCollapsed] = useState(false);
   
   // State pro sledování editace faktury
-  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  // 💾 S localStorage persistence pro F5 refresh
+  const [editingInvoiceId, setEditingInvoiceId] = useState(() => {
+    try {
+      const saved = localStorage.getItem('editingInvoiceId');
+      return saved ? JSON.parse(saved) : null;
+    } catch (err) {
+      console.warn('Chyba při načítání editingInvoiceId z localStorage:', err);
+      return null;
+    }
+  });
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
@@ -1341,7 +1350,16 @@ export default function InvoiceEvidencePage() {
   // State pro unlock entity (změna objednávky/smlouvy u existující FA)
   const [isEntityUnlocked, setIsEntityUnlocked] = useState(false);
   // State pro zapamatování, zda měla faktura původně přiřazenou objednávku/smlouvu
-  const [hadOriginalEntity, setHadOriginalEntity] = useState(false);
+  // 💾 S localStorage persistence pro F5 refresh
+  const [hadOriginalEntity, setHadOriginalEntity] = useState(() => {
+    try {
+      const saved = localStorage.getItem('hadOriginalEntity');
+      return saved ? JSON.parse(saved) : false;
+    } catch (err) {
+      console.warn('Chyba při načítání hadOriginalEntity z localStorage:', err);
+      return false;
+    }
+  });
 
   // 🎯 Progress Modal State - zobrazení průběhu ukládání
   const [progressModal, setProgressModal] = useState({
@@ -1389,18 +1407,23 @@ export default function InvoiceEvidencePage() {
 
   // Form data - s localStorage persistence
   const [formData, setFormData] = useState(() => {
-    try {
-      const saved = localStorage.getItem('invoiceFormData');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Pokud máme orderId z URL, přepsat ho
-        if (orderId) {
-          parsed.order_id = orderId;
+    // Pokud přišel z tlačítka "Zaevidovat fakturu" nebo edituje fakturu, NEPŘEČÍST localStorage
+    const shouldSkipLS = location.state?.clearForm || location.state?.editInvoiceId || location.state?.orderIdForLoad || location.state?.smlouvaIdForLoad;
+    
+    if (!shouldSkipLS) {
+      try {
+        const saved = localStorage.getItem('invoiceFormData');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Pokud máme orderId z URL, přepsat ho
+          if (orderId) {
+            parsed.order_id = orderId;
+          }
+          return parsed;
         }
-        return parsed;
+      } catch (err) {
+        console.warn('Chyba při načítání formData z localStorage:', err);
       }
-    } catch (err) {
-      console.warn('Chyba při načítání formData z localStorage:', err);
     }
     
     return {
@@ -1423,13 +1446,18 @@ export default function InvoiceEvidencePage() {
 
   // Přílohy faktury - array objektů (podle vzoru OrderForm25) - s localStorage persistence
   const [attachments, setAttachments] = useState(() => {
-    try {
-      const saved = localStorage.getItem('invoiceAttachments');
-      if (saved) {
-        return JSON.parse(saved);
+    // Pokud přišel z tlačítka "Zaevidovat fakturu" nebo edituje fakturu, NEPŘEČÍST localStorage
+    const shouldSkipLS = location.state?.clearForm || location.state?.editInvoiceId || location.state?.orderIdForLoad || location.state?.smlouvaIdForLoad;
+    
+    if (!shouldSkipLS) {
+      try {
+        const saved = localStorage.getItem('invoiceAttachments');
+        if (saved) {
+          return JSON.parse(saved);
+        }
+      } catch (err) {
+        console.warn('Chyba při načítání attachments z localStorage:', err);
       }
-    } catch (err) {
-      console.warn('Chyba při načítání attachments z localStorage:', err);
     }
     return [];
   });
@@ -1476,6 +1504,28 @@ export default function InvoiceEvidencePage() {
       console.warn('Chyba při ukládání attachments do localStorage:', err);
     }
   }, [attachments]);
+
+  // 💾 AUTO-SAVE editingInvoiceId do localStorage při každé změně
+  useEffect(() => {
+    try {
+      if (editingInvoiceId) {
+        localStorage.setItem('editingInvoiceId', JSON.stringify(editingInvoiceId));
+      } else {
+        localStorage.removeItem('editingInvoiceId');
+      }
+    } catch (err) {
+      console.warn('Chyba při ukládání editingInvoiceId do localStorage:', err);
+    }
+  }, [editingInvoiceId]);
+
+  // 💾 AUTO-SAVE hadOriginalEntity do localStorage při každé změně
+  useEffect(() => {
+    try {
+      localStorage.setItem('hadOriginalEntity', JSON.stringify(hadOriginalEntity));
+    } catch (err) {
+      console.warn('Chyba při ukládání hadOriginalEntity do localStorage:', err);
+    }
+  }, [hadOriginalEntity]);
 
   // Načtení středisek, typů faktur a zaměstnanců při mount (pouze pokud existuje token)
   useEffect(() => {
@@ -1596,13 +1646,14 @@ export default function InvoiceEvidencePage() {
     setHasChangedCriticalField(hasChanged);
   }, [formData, originalFormData, editingInvoiceId]);
 
-  // Načtení faktury při editaci (z location.state)
+  // Načtení faktury při editaci (z location.state nebo localStorage)
   useEffect(() => {
     const loadInvoiceForEdit = async () => {
-      const editInvoiceId = location.state?.editInvoiceId;
+      // ✅ ID faktury může přijít z location.state NEBO z editingInvoiceId (localStorage po F5)
+      const editIdToLoad = location.state?.editInvoiceId || editingInvoiceId;
       const orderIdForLoad = location.state?.orderIdForLoad;
       
-      if (!editInvoiceId || !token || !username) {
+      if (!editIdToLoad || !token || !username) {
         return;
       }
       
@@ -1613,15 +1664,15 @@ export default function InvoiceEvidencePage() {
       
       // Pokud už je tato faktura načtená (máme data v formData), skip
       // Kontrola přes fa_cislo_vema je spolehlivější než editingInvoiceId
-      if (editingInvoiceId === editInvoiceId && formData.fa_cislo_vema) {
+      if (editingInvoiceId === editIdToLoad && formData.fa_cislo_vema) {
         return;
       }
       setLoading(true);
-      setEditingInvoiceId(editInvoiceId);
+      setEditingInvoiceId(editIdToLoad);
       
       try {
         // Načíst data faktury
-        const invoiceData = await getInvoiceById25({ token, username, id: editInvoiceId });
+        const invoiceData = await getInvoiceById25({ token, username, id: editIdToLoad });
         
         // Naplnit formulář daty faktury
         if (invoiceData) {
@@ -1712,11 +1763,12 @@ export default function InvoiceEvidencePage() {
       }
     };
     
-    // Spustit pouze pokud existuje editInvoiceId v location.state
-    if (location.state?.editInvoiceId) {
+    // Spustit pokud existuje editInvoiceId v location.state NEBO v editingInvoiceId (z localStorage)
+    const editIdToLoad = location.state?.editInvoiceId || editingInvoiceId;
+    if (editIdToLoad) {
       loadInvoiceForEdit();
     }
-  }, [location.state?.editInvoiceId, token, username, strediskaOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [location.state?.editInvoiceId, editingInvoiceId, token, username, strediskaOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
@@ -1803,6 +1855,32 @@ export default function InvoiceEvidencePage() {
       setOrderLoading(false);
     }
   }, [token, username, showToast]);
+
+  // Načtení objednávky nebo smlouvy z location.state při mount
+  useEffect(() => {
+    const orderIdForLoad = location.state?.orderIdForLoad;
+    const smlouvaIdForLoad = location.state?.smlouvaIdForLoad;
+
+    if (orderIdForLoad && token && username) {
+      // Načíst objednávku
+      loadOrderData(orderIdForLoad);
+      setSelectedType('order');
+      setFormData(prev => ({
+        ...prev,
+        order_id: orderIdForLoad,
+        smlouva_id: null
+      }));
+    } else if (smlouvaIdForLoad && token && username) {
+      // Načíst smlouvu
+      loadSmlouvaData(smlouvaIdForLoad);
+      setSelectedType('smlouva');
+      setFormData(prev => ({
+        ...prev,
+        smlouva_id: smlouvaIdForLoad,
+        order_id: null
+      }));
+    }
+  }, [location.state?.orderIdForLoad, location.state?.smlouvaIdForLoad, token, username, loadOrderData, loadSmlouvaData]);
 
   // Search objednávek a smluv pro autocomplete
   const searchEntities = useCallback(async (search) => {
@@ -2417,17 +2495,35 @@ export default function InvoiceEvidencePage() {
       
       console.log('🔍 createInvoiceV2 result:', result);
       
-      // API vrací {status: 'ok', id: 89} ne {invoice_id: 89}
-      if (!result || (!result.invoice_id && !result.id)) {
+      // API vrací {status: 'ok', data: {invoice_id: 89}}
+      const newInvoiceId = result?.data?.invoice_id || result?.invoice_id || result?.id;
+      
+      if (!newInvoiceId) {
         console.error('❌ Neplatný result z createInvoiceV2:', result);
-        throw new Error('Nepodařilo se vytvořit fakturu v DB');
+        throw new Error('Nepodařilo se vytvořit fakturu v DB - backend nevrátil ID');
       }
 
-      const newInvoiceId = result.invoice_id || result.id;
       console.log('✅ Faktura vytvořena v DB, ID:', newInvoiceId);
 
       // Nastav editingInvoiceId, aby se další přílohy uploadovaly k této faktuře
       setEditingInvoiceId(newInvoiceId);
+      
+      // ✅ Nastav hadOriginalEntity podle toho, zda má faktura objednávku/smlouvu
+      // Tím zajistíme, že tlačítko bude "Aktualizovat" místo "Přiřadit"
+      if (formData.order_id || formData.smlouva_id) {
+        setHadOriginalEntity(true);
+        console.log('✅ hadOriginalEntity nastaveno na true (faktura má objednávku/smlouvu)');
+      }
+      
+      // 🔄 Refresh náhledu objednávky/smlouvy - aby se FA zobrazila v seznamu
+      if (formData.order_id && orderData) {
+        await loadOrderData(formData.order_id);
+        console.log('🔄 Náhled objednávky refreshnut po vytvoření FA');
+      }
+      if (formData.smlouva_id && smlouvaData) {
+        await loadSmlouvaData(formData.smlouva_id);
+        console.log('🔄 Náhled smlouvy refreshnut po vytvoření FA');
+      }
 
       return newInvoiceId;
     } catch (error) {
@@ -2666,8 +2762,12 @@ export default function InvoiceEvidencePage() {
     setError(null);
     setFieldErrors({});
 
-    // ✅ Kontrola stavu objednávky (pouze pokud není editace existující faktury)
-    if (formData.order_id && orderData && !editingInvoiceId) {
+    // ✅ Kontrola stavu objednávky
+    // - Pro NOVOU fakturu s objednávkou
+    // - Pro EDITACI faktury, kde PŘIDÁVÁME objednávku (původně neměla)
+    const isAddingOrderToExistingInvoice = editingInvoiceId && !hadOriginalEntity && formData.order_id;
+    
+    if (formData.order_id && orderData && (!editingInvoiceId || isAddingOrderToExistingInvoice)) {
       const invoiceCheck = canAddInvoiceToOrder(orderData);
       if (!invoiceCheck.allowed) {
         setError(invoiceCheck.reason);
@@ -2781,6 +2881,13 @@ export default function InvoiceEvidencePage() {
       console.log('🔍 API PARAMS:', {
         fa_typ: apiParams.fa_typ,
         fa_typ_type: typeof apiParams.fa_typ
+      });
+
+      console.log('🔍 [handleSubmit] Kontrola editingInvoiceId:', {
+        editingInvoiceId,
+        hasEditingId: !!editingInvoiceId,
+        willUpdate: !!editingInvoiceId,
+        willCreate: !editingInvoiceId
       });
 
       let result;
@@ -3019,6 +3126,8 @@ export default function InvoiceEvidencePage() {
       try {
         localStorage.removeItem('invoiceFormData');
         localStorage.removeItem('invoiceAttachments');
+        localStorage.removeItem('editingInvoiceId'); // ✅ Vymazat i editingInvoiceId
+        localStorage.removeItem('hadOriginalEntity'); // ✅ Vymazat i hadOriginalEntity
         localStorage.removeItem('spisovka_active_dokument'); // 🎯 Vyčistit aktivní Spisovka dokument
         console.log('🧹 Aktivní Spisovka dokument vymazán z LS (faktura uložena)');
       } catch (err) {
@@ -3033,10 +3142,15 @@ export default function InvoiceEvidencePage() {
         setShowSuggestions(false);
         setIsEntityUnlocked(false); // Reset unlock stavu
         setHadOriginalEntity(false);
-      } else if (!wasEditing) {
-        // Při nové faktuře (bez resetu entity) refresh objednávky pro aktualizované faktury
+      } else {
+        // ✅ Refresh objednávky/smlouvy pro aktualizované faktury (NOVÉ i EDITOVANÉ)
         if (formData.order_id && orderData) {
           await loadOrderData(formData.order_id);
+          console.log('🔄 Objednávka refreshnuta po uložení faktury');
+        }
+        if (formData.smlouva_id && smlouvaData) {
+          await loadSmlouvaData(formData.smlouva_id);
+          console.log('🔄 Smlouva refreshnuta po uložení faktury');
         }
       }
 
@@ -3141,66 +3255,82 @@ export default function InvoiceEvidencePage() {
 
   // Handler: zpět na seznam
   const handleBack = async () => {
-    // Pokud jsme v režimu úpravy existující faktury, jen navigujeme zpět
-    if (editingInvoiceId) {
+    // ✅ Kontrola neuložených změn (pro editaci i novou fakturu)
+    const hasUnsavedChanges = editingInvoiceId 
+      ? hasChangedCriticalField // Pro editaci - sledujeme kritická pole
+      : (!(!formData.fa_cislo_vema && !formData.fa_castka && !formData.order_id && !formData.file)); // Pro novou fakturu - není prázdná
+    
+    // Pokud NEJSOU neuložené změny, rovnou zpět
+    if (!hasUnsavedChanges) {
+      // Vyčistit LS i při odchodu bez změn (aby se neobjevily příště)
+      try {
+        localStorage.removeItem('invoiceFormData');
+        localStorage.removeItem('invoiceAttachments');
+        localStorage.removeItem('editingInvoiceId');
+        localStorage.removeItem('hadOriginalEntity');
+        localStorage.removeItem('spisovka_active_dokument');
+        console.log('🧹 localStorage vymazán (odchod bez změn)');
+      } catch (err) {
+        console.warn('Chyba při mazání localStorage:', err);
+      }
       navigate(-1);
       return;
     }
     
-    // Pokud je formulář prázdný, rovnou zpět
-    const isFormEmpty = !formData.fa_cislo_vema && 
-                        !formData.fa_castka && 
-                        !formData.order_id &&
-                        !formData.file;
+    // ⚠️ Pokud má formulář neuložené změny, zeptat se na zrušení
+    const dialogMessage = editingInvoiceId
+      ? 'Máte neuložené změny faktury. Chcete odejít bez uložení? Všechny změny budou ztraceny.'
+      : (formData.file 
+        ? 'Máte rozdělanou fakturu s nahranou přílohou. Chcete zrušit evidenci? Všechna data a nahrané přílohy budou ztraceny.'
+        : 'Máte rozdělanou fakturu. Chcete zrušit evidenci? Všechna vyplněná data budou ztracena.');
     
-    if (isFormEmpty) {
-      navigate(-1);
-      return;
-    }
-    
-    // Pokud má formulář data, zeptat se na zrušení
     setConfirmDialog({
       isOpen: true,
-      title: '⚠️ Zrušit evidenci faktury?',
-      message: formData.file 
-        ? 'Máte rozdělanou fakturu s nahranou přílohou. Chcete zrušit evidenci? Všechna data a nahrané přílohy budou ztraceny.'
-        : 'Máte rozdělanou fakturu. Chcete zrušit evidenci? Všechna vyplněná data budou ztracena.',
+      title: editingInvoiceId ? '⚠️ Neuložené změny' : '⚠️ Zrušit evidenci faktury?',
+      message: dialogMessage,
       onConfirm: async () => {
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
         
-        // 🗑️ Smazat všechny nahrané přílohy před odchodem
-        // Pokud byl upload přílohy, faktura byla vytvořena v DB a editingInvoiceId obsahuje reálné ID
-        const uploadedAttachments = attachments.filter(att => att.serverId);
-        const hasRealInvoiceId = editingInvoiceId && Number(editingInvoiceId) > 0;
+        // 🗑️ Smazat přílohy POUZE pokud to byla NOVÁ faktura (temp ID nebo čerstvě vytvořená)
+        // Pro EDITACI reálné faktury NEMAZAT přílohy (patří k existující faktuře v DB)
+        const wasEditingRealInvoice = editingInvoiceId && Number(editingInvoiceId) > 0 && hadOriginalEntity;
         
-        console.log('🔍 DEBUG handleBack:', {
-          editingInvoiceId,
-          hasRealInvoiceId,
-          uploadedAttachmentsCount: uploadedAttachments.length,
-          attachments: attachments.map(a => ({ id: a.id, serverId: a.serverId, name: a.name }))
-        });
-        
-        if (uploadedAttachments.length > 0 && hasRealInvoiceId) {
-          console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y z faktury ID ${editingInvoiceId}...`);
+        if (!wasEditingRealInvoice) {
+          // NOVÁ FAKTURA - smazat uploadnuté přílohy
+          const uploadedAttachments = attachments.filter(att => att.serverId);
+          const hasRealInvoiceId = editingInvoiceId && Number(editingInvoiceId) > 0;
           
-          for (const att of uploadedAttachments) {
-            try {
-              await deleteInvoiceAttachment25({
-                token,
-                username,
-                faktura_id: editingInvoiceId,
-                priloha_id: att.serverId,
-                objednavka_id: formData.order_id || null,
-                hard_delete: 1 // Fyzicky smazat ze serveru
-              });
-              console.log(`✅ Příloha ${att.name} smazána`);
-            } catch (err) {
-              console.error(`❌ Chyba při mazání přílohy ${att.name}:`, err);
-              // Pokračovat v mazání dalších příloh i při chybě
+          console.log('🔍 DEBUG handleBack (nová faktura):', {
+            editingInvoiceId,
+            hasRealInvoiceId,
+            uploadedAttachmentsCount: uploadedAttachments.length,
+            attachments: attachments.map(a => ({ id: a.id, serverId: a.serverId, name: a.name }))
+          });
+          
+          if (uploadedAttachments.length > 0 && hasRealInvoiceId) {
+            console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y z nové faktury ID ${editingInvoiceId}...`);
+            
+            for (const att of uploadedAttachments) {
+              try {
+                await deleteInvoiceAttachment25({
+                  token,
+                  username,
+                  faktura_id: editingInvoiceId,
+                  priloha_id: att.serverId,
+                  objednavka_id: formData.order_id || null,
+                  hard_delete: 1 // Fyzicky smazat ze serveru
+                });
+                console.log(`✅ Příloha ${att.name} smazána`);
+              } catch (err) {
+                console.error(`❌ Chyba při mazání přílohy ${att.name}:`, err);
+                // Pokračovat v mazání dalších příloh i při chybě
+              }
             }
+          } else if (uploadedAttachments.length > 0 && !hasRealInvoiceId) {
+            console.log(`⚠️ Přílohy nahrány k temp-new-invoice - nemají DB záznam, nemazat přes API`);
           }
-        } else if (uploadedAttachments.length > 0 && !hasRealInvoiceId) {
-          console.log(`⚠️ Přílohy nahrány k temp-new-invoice - nemají DB záznam, nemazat přes API`);
+        } else {
+          console.log('ℹ️ Editace reálné faktury - přílohy NEMAZAT (patří k existující faktuře)');
         }
         
         // Vyčistit formData aby se uvolnila reference na soubor
@@ -3222,6 +3352,18 @@ export default function InvoiceEvidencePage() {
         
         // Vyčistit attachments state
         setAttachments([]);
+        
+        // 💾 Vymazat localStorage při zrušení
+        try {
+          localStorage.removeItem('invoiceFormData');
+          localStorage.removeItem('invoiceAttachments');
+          localStorage.removeItem('editingInvoiceId'); // ✅ Vymazat i editingInvoiceId
+          localStorage.removeItem('hadOriginalEntity'); // ✅ Vymazat i hadOriginalEntity
+          localStorage.removeItem('spisovka_active_dokument');
+          console.log('🧹 localStorage vymazán (zrušení faktury)');
+        } catch (err) {
+          console.warn('Chyba při mazání localStorage:', err);
+        }
         
         navigate(-1);
       },
@@ -4698,6 +4840,7 @@ export default function InvoiceEvidencePage() {
               onCollapseChange={setHasAnySectionCollapsed}
               onEditInvoice={handleEditInvoice}
               canEditInvoice={canAddInvoiceToOrder(orderData).allowed}
+              editingInvoiceId={editingInvoiceId} // ✅ Předat ID editované faktury pro zvýraznění
               token={token}
               username={username}
             />

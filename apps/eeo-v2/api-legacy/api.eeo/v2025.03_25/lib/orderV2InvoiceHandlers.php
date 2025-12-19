@@ -433,30 +433,34 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'] === true;
         $current_user_id = (int)$token_data['id']; // Backward compatible - 'id' je vždy přítomné
         
-        // Načíst role uživatele pro kontrolu invoice_manage
+        // 🔍 DEBUG: Detailní log token_data
+        error_log("🔍 DELETE INVOICE #{$invoice_id} - Token data: " . json_encode($token_data));
+        error_log("🔍 is_admin check: isset=" . (isset($token_data['is_admin']) ? 'YES' : 'NO') . 
+                  ", value=" . (isset($token_data['is_admin']) ? var_export($token_data['is_admin'], true) : 'N/A') .
+                  ", strict_check=" . ($is_admin ? 'TRUE' : 'FALSE'));
+        
+        // ✅ Kontrola práva INVOICE_MANAGE přes NOVÝ SYSTÉM (25_role_prava + 25_prava)
         $has_invoice_manage = false;
         if (!$is_admin) {
-            $roles_sql = "SELECT r.kod_role FROM `25_role` r 
-                         JOIN `25_uzivatele_role` ur ON r.id = ur.role_id 
-                         WHERE ur.uzivatel_id = ?";
-            $roles_stmt = $db->prepare($roles_sql);
-            $roles_stmt->execute(array($current_user_id));
-            while ($role = $roles_stmt->fetch(PDO::FETCH_ASSOC)) {
-                if ($role['kod_role'] === 'INVOICE_MANAGE') {
-                    $has_invoice_manage = true;
-                    break;
-                }
-            }
+            $prava_sql = "SELECT DISTINCT p.kod_prava 
+                         FROM 25_prava p
+                         INNER JOIN 25_role_prava rp ON rp.pravo_id = p.id
+                         INNER JOIN 25_uzivatele_role ur ON ur.role_id = rp.role_id
+                         WHERE ur.uzivatel_id = ? AND p.kod_prava = 'INVOICE_MANAGE'";
+            $prava_stmt = $db->prepare($prava_sql);
+            $prava_stmt->execute(array($current_user_id));
+            $has_invoice_manage = ($prava_stmt->rowCount() > 0);
         }
         
         // DEBUG: Log pro debugging
         error_log("DELETE invoice #{$invoice_id} - user_id: {$current_user_id}, is_admin: " . ($is_admin ? 'YES' : 'NO') . ", has_invoice_manage: " . ($has_invoice_manage ? 'YES' : 'NO') . ", invoice_owner: {$invoice['vytvoril_uzivatel_id']}, order_owner: {$invoice['objednavka_uzivatel_id']}");
         
-        // HARD DELETE - pouze ADMIN
+        // HARD DELETE - pouze ADMIN (SUPERADMIN nebo ADMINISTRATOR)
+        // INVOICE_MANAGE může mazat soft delete, ale NE hard delete
         if ($hard_delete === 1 && !$is_admin) {
             $db->rollBack();
             http_response_code(403);
-            echo json_encode(array('status' => 'error', 'message' => 'Hard delete může provést pouze administrátor'));
+            echo json_encode(array('status' => 'error', 'message' => 'Hard delete může provést pouze administrátor (SUPERADMIN/ADMINISTRATOR)'));
             return;
         }
         
