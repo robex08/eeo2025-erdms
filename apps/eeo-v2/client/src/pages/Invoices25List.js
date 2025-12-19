@@ -1508,6 +1508,10 @@ const Invoices25List = () => {
         ma_prilohy: invoice.ma_prilohy || false,
         prilohy: Array.isArray(invoice.prilohy) ? invoice.prilohy : [],
         
+        // Spisovka tracking
+        from_spisovka: invoice.from_spisovka || false,
+        spisovka_dokument_id: invoice.spisovka_dokument_id || null,
+        
         // Meta - vytvoril uživatel (NOVÉ: BE vrací kompletní info)
         vytvoril_uzivatel_id: typeof invoice.vytvoril_uzivatel_id === 'string' ? 
                               parseInt(invoice.vytvoril_uzivatel_id) : invoice.vytvoril_uzivatel_id,
@@ -1562,12 +1566,6 @@ const Invoices25List = () => {
       if (response.statistiky) {
         // BE vrací kompletní statistiky za celý filtr
         
-        // Lokální počítání jen pro položky, které BE nevrací v statistikách
-        const withoutOrderCount = transformedInvoices.filter(inv => !inv.objednavka_id && !inv.smlouva_id).length;
-        const myInvoicesCount = user_id 
-          ? transformedInvoices.filter(inv => inv.vytvoril_uzivatel_id === user_id).length
-          : 0;
-        
         setStats({
           total: response.pagination?.total || 0,
           paid: response.statistiky.pocet_zaplaceno || 0,
@@ -1577,8 +1575,12 @@ const Invoices25List = () => {
           paidAmount: parseFloat(response.statistiky.celkem_zaplaceno) || 0,
           unpaidAmount: parseFloat(response.statistiky.celkem_nezaplaceno) || 0,
           overdueAmount: parseFloat(response.statistiky.celkem_po_splatnosti) || 0,
-          withoutOrder: withoutOrderCount,
-          myInvoices: response.statistiky.pocet_moje_faktury || myInvoicesCount
+          myInvoices: response.statistiky.pocet_moje_faktury || 0,
+          // ✅ Nové statistiky z BE
+          withOrder: response.statistiky.pocet_s_objednavkou || 0,
+          withContract: response.statistiky.pocet_s_smlouvou || 0,
+          withoutOrder: response.statistiky.pocet_bez_prirazeni || 0,
+          fromSpisovka: response.statistiky.pocet_ze_spisovky || 0
         });
       } else {
         // Fallback: pokud BE nevrátilo statistiky, spočítej lokálně (jen aktuální stránka!)
@@ -1603,13 +1605,28 @@ const Invoices25List = () => {
             acc.withoutOrder++;
           }
           
+          // S objednávkou
+          if (inv.objednavka_id) {
+            acc.withOrder++;
+          }
+          
+          // Se smlouvou
+          if (inv.smlouva_id) {
+            acc.withContract++;
+          }
+          
+          // Ze Spisovky
+          if (inv.from_spisovka) {
+            acc.fromSpisovka++;
+          }
+          
           // Moje faktury
           if (user_id && inv.vytvoril_uzivatel_id === user_id) {
             acc.myInvoices++;
           }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -1811,7 +1828,17 @@ const Invoices25List = () => {
       
     } catch (err) {
       console.error('Error deleting invoice:', err);
-      showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+      
+      // 🔍 Pokud je 404, faktura již byla smazána - jen refreshnout seznam
+      if (err.message?.includes('nenalezena') || err.message?.includes('404')) {
+        showToast?.(`Faktura ${invoice.cislo_faktury} již byla dříve smazána`, { type: 'info' });
+        // Zavřít dialog a refreshnout seznam
+        setDeleteDialog({ isOpen: false, invoice: null });
+        setDeleteType('soft');
+        loadData();
+      } else {
+        showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
+      }
     } finally {
       hideProgress?.();
     }
@@ -2057,6 +2084,54 @@ const Invoices25List = () => {
               </StatHeader>
               <StatValue>{stats.withoutOrder}</StatValue>
               <StatLabel>Nepřiřazené faktury</StatLabel>
+            </DashboardCard>
+
+            {/* Přiřazené k objednávce */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_order')}
+              $isActive={activeFilterStatus === 'with_order'}
+              $color="#8b5cf6"
+            >
+              <StatHeader>
+                <StatLabel>Přiřazené OBJ</StatLabel>
+                <StatIcon $color="#8b5cf6">
+                  <FontAwesomeIcon icon={faFileContract} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withOrder}</StatValue>
+              <StatLabel>S objednávkou</StatLabel>
+            </DashboardCard>
+
+            {/* Přiřazené ke smlouvě */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_contract')}
+              $isActive={activeFilterStatus === 'with_contract'}
+              $color="#0ea5e9"
+            >
+              <StatHeader>
+                <StatLabel>Přiřazené SML</StatLabel>
+                <StatIcon $color="#0ea5e9">
+                  <FontAwesomeIcon icon={faIdCard} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withContract}</StatValue>
+              <StatLabel>Se smlouvou</StatLabel>
+            </DashboardCard>
+
+            {/* Ze Spisovky */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('from_spisovka')}
+              $isActive={activeFilterStatus === 'from_spisovka'}
+              $color="#10b981"
+            >
+              <StatHeader>
+                <StatLabel>Ze Spisovky</StatLabel>
+                <StatIcon $color="#10b981">
+                  <FontAwesomeIcon icon={faDatabase} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.fromSpisovka}</StatValue>
+              <StatLabel>Import ze Spisovky</StatLabel>
             </DashboardCard>
 
             {/* Moje faktury - pouze pro admin/invoice_manage */}
@@ -2608,7 +2683,12 @@ const Invoices25List = () => {
                 
                 {/* Data rows */}
                 {!error && sortedInvoices.map(invoice => (
-                  <TableRow key={invoice.id}>
+                  <TableRow 
+                    key={invoice.id}
+                    style={{
+                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
+                    }}
+                  >
                     <TableCell className="center">
                       {invoice.datum_doruceni ? (
                         <span style={{ color: '#059669', fontWeight: 600 }}>
@@ -2745,9 +2825,14 @@ const Invoices25List = () => {
                       )}
                     </TableCell>
                     <TableCell className="center">
-                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
                         <FontAwesomeIcon icon={faPaperclip} />
                         <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
+                        {invoice.from_spisovka && (
+                          <TooltipWrapper text="Faktura ze Spisovky" preferredPosition="left">
+                            <span style={{ color: '#059669', fontSize: '1rem', marginLeft: '0.15rem' }}>📄</span>
+                          </TooltipWrapper>
+                        )}
                       </span>
                     </TableCell>
                     <TableCell className="center">
@@ -2875,9 +2960,10 @@ const Invoices25List = () => {
           onConfirm={() => confirmDeleteInvoice(deleteType === 'hard')}
           title="Odstranit fakturu"
           icon={faTrash}
-          variant="danger"
-          confirmText={isAdmin ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat (soft)") : "Smazat (soft)"}
+          variant={deleteType === 'hard' ? 'danger' : 'warning'}
+          confirmText={isAdmin ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat") : "Smazat"}
           cancelText="Zrušit"
+          key={deleteType}
         >
           <div style={{
             display: 'grid',
@@ -2904,26 +2990,29 @@ const Invoices25List = () => {
                       🔧 Vyberte typ smazání:
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '0.75rem',
-                        cursor: 'pointer',
-                        padding: '0.75rem',
-                        border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
-                        borderRadius: '6px',
-                        background: deleteType === 'soft' ? '#eff6ff' : 'white',
-                        transition: 'all 0.2s'
-                      }}>
+                      <label 
+                        onClick={() => setDeleteType('soft')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: 'pointer',
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
                         <input
                           type="radio"
                           name="deleteType"
                           value="soft"
                           checked={deleteType === 'soft'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer', pointerEvents: 'none' }}
                         />
-                        <div>
+                        <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
                             Měkké smazání (SOFT DELETE)
                           </div>
@@ -2933,26 +3022,29 @@ const Invoices25List = () => {
                         </div>
                       </label>
 
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '0.75rem',
-                        cursor: 'pointer',
-                        padding: '0.75rem',
-                        border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
-                        borderRadius: '6px',
-                        background: deleteType === 'hard' ? '#fef2f2' : 'white',
-                        transition: 'all 0.2s'
-                      }}>
+                      <label 
+                        onClick={() => setDeleteType('hard')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: 'pointer',
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
                         <input
                           type="radio"
                           name="deleteType"
                           value="hard"
                           checked={deleteType === 'hard'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer', pointerEvents: 'none' }}
                         />
-                        <div>
+                        <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
                             ⚠️ Úplné smazání (HARD DELETE)
                           </div>

@@ -501,6 +501,17 @@ const InvoiceAttachmentsCompact = ({
           error: hasError || (!fileExists ? 'Fyzický soubor chybí na disku' : null) // ⚠️ Chybová zpráva
         };
       });
+      
+      // ⚠️ OCHRANA: Nepřepisovat attachments pokud jsou v procesu uploadu
+      const hasPendingUploads = attachments.some(a => 
+        a.status === 'pending_upload' || a.status === 'uploading'
+      );
+      
+      if (hasPendingUploads && serverAttachments.length === 0) {
+        console.log('⚠️ Přeskakuji prázdnou odpověď ze serveru - máme pending uploads');
+        return; // Nepřepisovat lokální pending attachments
+      }
+      
       updateAttachments(serverAttachments);
 
       // 🔍 VERIFY - Zkontrolovat fyzickou existenci souborů na serveru
@@ -971,10 +982,11 @@ const InvoiceAttachmentsCompact = ({
         );
         showToast&&showToast(successMessage, { type: 'success' });
 
-        // � Refresh attachments ze serveru pro synchronizaci
-        await loadAttachmentsFromServer();
+        // ⚠️ NEREFRESHOVAT hned - způsobuje to zmizení přílohy z UI
+        // Místo toho spoléháme na updateAttachments výše (řádek 930)
+        // Refresh se provede automaticky při příštím načtení faktury
 
-        // �💾 Zavolat callback pro autosave s uploadnutou přílohou
+        // 💾 Zavolat callback pro autosave s uploadnutou přílohou
         if (onAttachmentUploaded) {
           const uploadedAttachment = {
             id: attachmentId,
@@ -1099,10 +1111,11 @@ const InvoiceAttachmentsCompact = ({
       );
       showToast&&showToast(successMessage, { type: 'success' });
 
-      // � Refresh attachments ze serveru pro synchronizaci
-      await loadAttachmentsFromServer();
+      // ⚠️ NEREFRESHOVAT hned - způsobuje to zmizení přílohy z UI
+      // Místo toho spoléháme na updateAttachments výše
+      // Refresh se provede automaticky při příštím načtení faktury
 
-      // �💾 Zavolat callback pro autosave s uploadnutou přílohou
+      // 💾 Zavolat callback pro autosave s uploadnutou přílohou
       if (onAttachmentUploaded) {
         const uploadedAttachment = {
           id: attachmentId,

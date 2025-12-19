@@ -163,7 +163,8 @@ export async function markSpisovkaDocumentProcessed({
   fa_cislo_vema = null,
   stav = 'ZAEVIDOVANO',
   poznamka = null,
-  doba_zpracovani_s = null
+  doba_zpracovani_s = null,
+  force = false // 🆕 Vynucení duplicity
 }) {
   try {
     const response = await apiSpisovkaZpracovani.post('/spisovka-zpracovani/mark', {
@@ -175,11 +176,22 @@ export async function markSpisovkaDocumentProcessed({
       fa_cislo_vema,
       stav,
       poznamka,
-      doba_zpracovani_s
+      doba_zpracovani_s,
+      force // 🆕 Poslat flag do BE
     });
     
-    return response.data;
+    return { success: true, data: response.data };
   } catch (err) {
+    // 🆕 409 Conflict = dokument již byl zpracován (vrátit jako validní response)
+    if (err.response?.status === 409) {
+      return {
+        success: false,
+        conflict: true,
+        message: err.response?.data?.message || 'Dokument již byl zpracován',
+        existingRecord: err.response?.data?.existing || null
+      };
+    }
+    // Ostatní chyby vyhodit
     throw new Error(normalizeError(err));
   }
 }

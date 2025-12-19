@@ -102,6 +102,33 @@ function verify_token_v2($username, $token, $db = null) {
         return false;
     }
     
+    // V2: Přidat informaci o roli uživatele (pro admin bypass)
+    try {
+        // Pokud není předáno DB spojení, vytvoř nové
+        if ($db === null) {
+            $config = require __DIR__ . '/dbconfig.php';
+            $config = $config['mysql'];
+            $db = new PDO("mysql:host={$config['host']};dbname={$config['database']};charset=utf8mb4", 
+                         $config['username'], $config['password'], array(
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ));
+        }
+        
+        $stmt = $db->prepare("SELECT role FROM 25_uzivatele WHERE id = ? AND aktivni = 1");
+        $stmt->execute(array($token_data['id']));
+        $user = $stmt->fetch();
+        
+        if ($user && isset($user['role'])) {
+            $token_data['is_admin'] = ($user['role'] === 'ADMINISTRATOR');
+        } else {
+            $token_data['is_admin'] = false;
+        }
+    } catch (Exception $e) {
+        error_log("verify_token_v2: Error loading role - " . $e->getMessage());
+        $token_data['is_admin'] = false;
+    }
+    
     return $token_data;
 }
 

@@ -22,8 +22,30 @@ import ErrorDialog from '../ErrorDialog';
 import { getSpisovkaZpracovaniList } from '../../services/apiSpisovkaZpracovani';
 
 // ============================================================
-// STYLED COMPONENTS
+// STYLED COMPONENTS + ANIMATIONS
 // ============================================================
+
+// CSS animace pro pulsující tečku
+const globalStyles = `
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(1.2);
+    }
+  }
+`;
+
+// Přidat globální styly
+if (typeof document !== 'undefined' && !document.getElementById('spisovka-pulse-animation')) {
+  const styleTag = document.createElement('style');
+  styleTag.id = 'spisovka-pulse-animation';
+  styleTag.textContent = globalStyles;
+  document.head.appendChild(styleTag);
+}
 
 const InboxContainer = styled.div`
   display: flex;
@@ -521,6 +543,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   const [filterMode, setFilterMode] = useState('vse'); // 'vse' | 'nezaevidovane' | 'zaevidovane'
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear()); // Rok (2025, 2024...)
   const [dateRange, setDateRange] = useState('dnes'); // 'dnes' | 'tyden' | 'mesic' | 'kvartal' | 'rok'
+  const [activeDokumentId, setActiveDokumentId] = useState(null); // 🎯 ID dokumentu, se kterým uživatel právě pracuje
   const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
@@ -861,6 +884,22 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
     return () => clearInterval(interval);
   }, [fetchFaktury]);
+
+  // 🎯 Polling pro aktivní dokument z localStorage
+  useEffect(() => {
+    const checkActiveDocument = () => {
+      const activeDokId = localStorage.getItem('spisovka_active_dokument');
+      setActiveDokumentId(activeDokId ? parseInt(activeDokId, 10) : null);
+    };
+
+    // Initial check
+    checkActiveDocument();
+
+    // Poll každých 500ms (rychlá reakce na změny)
+    const interval = setInterval(checkActiveDocument, 500);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -1203,10 +1242,57 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             
             return (
             <InboxContent>
-              {filteredFaktury.map((faktura) => (
+              {filteredFaktury.map((faktura) => {
+                const isActive = activeDokumentId === faktura.dokument_id;
+                const isOtherActive = activeDokumentId && !isActive;
+                
+                return (
                 <FakturaCard 
                   key={faktura.dokument_id}
+                  style={{
+                    opacity: isOtherActive ? 0.4 : 1,
+                    transition: 'opacity 0.3s ease',
+                    position: 'relative'
+                  }}
                 >
+                  {/* 🎯 Indikátor aktivního dokumentu */}
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: '4px',
+                      background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                      borderRadius: '6px 6px 0 0',
+                      zIndex: 1
+                    }} />
+                  )}
+                  {isActive && (
+                    <div style={{
+                      padding: '6px 12px',
+                      marginBottom: '12px',
+                      background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                      borderBottom: '1px solid #93c5fd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#1e40af'
+                    }}>
+                      <span style={{ fontSize: '16px' }}>⚡</span>
+                      <span>Právě pracuji s touto fakturou</span>
+                      <div style={{
+                        marginLeft: 'auto',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: '#3b82f6',
+                        animation: 'pulse 2s infinite'
+                      }} />
+                    </div>
+                  )}
                   <FakturaHeader
                     draggable={faktura.prilohy && faktura.prilohy.length > 0}
                     onDragStart={(e) => {
@@ -1235,15 +1321,19 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     style={{ cursor: (faktura.prilohy && faktura.prilohy.length > 0) ? 'grab' : 'default' }}
                     title={(faktura.prilohy && faktura.prilohy.length > 0) ? `Přetáhněte hlavičku pro nahrání všech ${faktura.prilohy.length} příloh` : ''}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-                      <FakturaNazev>{faktura.nazev}</FakturaNazev>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}>
+                        <FakturaNazev>{faktura.nazev}</FakturaNazev>
+                        <FakturaID>#{faktura.dokument_id}</FakturaID>
+                      </div>
                       {zpracovaneIds.has(faktura.dokument_id) && (
-                        <StatusBadge $status="ZAEVIDOVANO">
-                          ✓ Zaevidováno
-                        </StatusBadge>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <StatusBadge $status="ZAEVIDOVANO">
+                            ✓ Zaevidováno
+                          </StatusBadge>
+                        </div>
                       )}
                     </div>
-                    <FakturaID>#{faktura.dokument_id}</FakturaID>
                   </FakturaHeader>
 
                   <FakturaInfo>
@@ -1469,7 +1559,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     </PrilohaSection>
                   )}
                 </FakturaCard>
-              ))}
+              );
+              })}
             </InboxContent>
             );
           })()}

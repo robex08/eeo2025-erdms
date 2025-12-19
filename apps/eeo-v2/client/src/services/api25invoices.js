@@ -66,6 +66,12 @@ api25invoices.interceptors.response.use(
  * Normalize error messages from API responses
  */
 export function normalizeApi25InvoicesError(err) {
+  // ⚠️ 403 Forbidden by neměl vyvolat odhlášení - pouze zobrazit chybu
+  if (err.response?.status === 403) {
+    const msg = err.response?.data?.message || err.response?.data?.error || 'Nemáte oprávnění k této akci';
+    return msg; // Nevrátíme "Vaše přihlášení vypršelo"
+  }
+  
   if (err.response?.data?.message) return err.response.data.message;
   if (err.response?.data?.error) return err.response.data.error;
   if (err.response?.data?.err) return err.response.data.err;

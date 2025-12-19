@@ -412,11 +412,11 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         
         $db->beginTransaction();
         
-        // Kontrola existence a vlastnictví faktury
-        $sql_check = "SELECT f.id, f.objednavka_id, o.uzivatel_id 
+        // Kontrola existence faktury (LEFT JOIN - vazba na objednávku není povinná)
+        $sql_check = "SELECT f.id, f.objednavka_id, f.vytvoril_uzivatel_id, o.uzivatel_id as objednavka_uzivatel_id
                       FROM 25a_objednavky_faktury f
-                      INNER JOIN 25a_objednavky o ON f.objednavka_id = o.id
-                      WHERE f.id = ? AND f.aktivni = 1 AND o.aktivni = 1";
+                      LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
+                      WHERE f.id = ? AND f.aktivni = 1";
         
         $stmt_check = $db->prepare($sql_check);
         $stmt_check->execute(array($invoice_id));
@@ -429,13 +429,66 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
             return;
         }
         
-        // Kontrola oprávnění - uživatel musí být vlastníkem objednávky
-        if ((int)$invoice['uzivatel_id'] !== (int)$token_data['user_id']) {
+        // Kontrola oprávnění - ADMIN může mazat vše, invoice_manage může faktury bez přiřazení
+        $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'] === true;
+        $current_user_id = (int)$token_data['id']; // Backward compatible - 'id' je vždy přítomné
+        
+        // Načíst role uživatele pro kontrolu invoice_manage
+        $has_invoice_manage = false;
+        if (!$is_admin) {
+            $roles_sql = "SELECT r.kod_role FROM `25_role` r 
+                         JOIN `25_uzivatele_role` ur ON r.id = ur.role_id 
+                         WHERE ur.uzivatel_id = ?";
+            $roles_stmt = $db->prepare($roles_sql);
+            $roles_stmt->execute(array($current_user_id));
+            while ($role = $roles_stmt->fetch(PDO::FETCH_ASSOC)) {
+                if ($role['kod_role'] === 'INVOICE_MANAGE') {
+                    $has_invoice_manage = true;
+                    break;
+                }
+            }
+        }
+        
+        // DEBUG: Log pro debugging
+        error_log("DELETE invoice #{$invoice_id} - user_id: {$current_user_id}, is_admin: " . ($is_admin ? 'YES' : 'NO') . ", has_invoice_manage: " . ($has_invoice_manage ? 'YES' : 'NO') . ", invoice_owner: {$invoice['vytvoril_uzivatel_id']}, order_owner: {$invoice['objednavka_uzivatel_id']}");
+        
+        // HARD DELETE - pouze ADMIN
+        if ($hard_delete === 1 && !$is_admin) {
             $db->rollBack();
             http_response_code(403);
-            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění smazat tuto fakturu'));
+            echo json_encode(array('status' => 'error', 'message' => 'Hard delete může provést pouze administrátor'));
             return;
         }
+        
+        // Faktura BEZ přiřazení (ani OBJ ani SML) - může smazat ADMIN nebo INVOICE_MANAGE
+        $is_without_assignment = (empty($invoice['objednavka_id']) || $invoice['objednavka_id'] == 0) && 
+                                  (empty($invoice['smlouva_id']) || $invoice['smlouva_id'] == 0);
+        
+        if (!$is_admin && !$has_invoice_manage) {
+            // Non-admin bez invoice_manage: kontrola vlastnictví
+            // 1. Má objednávku? → musí být vlastníkem objednávky
+            // 2. Nemá objednávku, ale má vytvoril_uzivatel_id? → musí být tvůrce
+            // 3. Nemá žádnou vazbu (testovací data)? → povolit komukoli
+            if (!empty($invoice['objednavka_uzivatel_id'])) {
+                // Vazba na objednávku existuje
+                if ((int)$invoice['objednavka_uzivatel_id'] !== $current_user_id) {
+                    $db->rollBack();
+                    http_response_code(403);
+                    echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění smazat tuto fakturu (vlastník objednávky)'));
+                    return;
+                }
+            } elseif (!empty($invoice['vytvoril_uzivatel_id'])) {
+                // Nemá objednávku, ale má tvůrce
+                if ((int)$invoice['vytvoril_uzivatel_id'] !== $current_user_id) {
+                    $db->rollBack();
+                    http_response_code(403);
+                    echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění smazat tuto fakturu (tvůrce)'));
+                    return;
+                }
+            }
+            // Jinak (nemá žádnou vazbu) → povolit komukoli smazat (testovací data)
+        }
+        // Admin může smazat cokoliv, invoice_manage může faktury bez přiřazení
         
         if ($hard_delete === 1) {
             // ========== HARD DELETE ==========
