@@ -324,6 +324,7 @@ const InvoiceAttachmentsCompact = ({
   validateInvoiceForAttachments, // 🆕 Validační funkce pro fakturu
   isPokladna = false, // 🆕 Je to pokladní doklad? (bez validace povinných položek)
   onAttachmentUploaded, // 🆕 Callback po úspěšném uploadu jakékoliv přílohy (včetně ISDOC)
+  onAttachmentRemoved, // 🆕 Callback při smazání přílohy (pro cleanup Spisovka metadata)
   attachments: externalAttachments = [], // 🆕 Attachments z formData.faktury[].attachments (controlled)
   onAttachmentsChange, // 🆕 Callback pro aktualizaci attachments (controlled component pattern)
   onCreateInvoiceInDB, // 🆕 Callback pro vytvoření faktury v DB (temp → real ID)
@@ -688,7 +689,10 @@ const InvoiceAttachmentsCompact = ({
           klasifikace: autoKlasifikace, // ✅ Automatická klasifikace
           uploadDate: new Date().toISOString(),
           status: 'pending_upload', // ✅ Ready k uploadu s auto-klasifikací
-          je_isdoc: jeISDOC ? 1 : 0
+          je_isdoc: jeISDOC ? 1 : 0,
+          // 📋 SPISOVKA METADATA pro automatický tracking (pokud existují)
+          ...(file.spisovka_dokument_id && { spisovka_dokument_id: file.spisovka_dokument_id }),
+          ...(file.spisovka_file_id && { spisovka_file_id: file.spisovka_file_id })
         };
       } catch (err) {
         showToast&&showToast(`${file.name}: ${err.message}`, { type: 'error' });
@@ -932,7 +936,10 @@ const InvoiceAttachmentsCompact = ({
             serverId: attachmentId,
             klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
             faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
-            file: undefined // Odstraň File object
+            file: undefined, // Odstraň File object
+            // 📋 Zachovat Spisovka metadata (pokud existují)
+            ...(f.spisovka_dokument_id && { spisovka_dokument_id: f.spisovka_dokument_id }),
+            ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
           } : f
         ));
 
@@ -1136,6 +1143,11 @@ const InvoiceAttachmentsCompact = ({
         updateAttachments(prev => prev.filter(f => f.id !== fileId));
         showToast&&showToast('✅ Příloha odstraněna', { type: 'success' });
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+        
+        // 📋 Notify parent o smazání (pro Spisovka tracking cleanup)
+        if (onAttachmentRemoved) {
+          onAttachmentRemoved(file);
+        }
       }
     });
   };
@@ -1192,10 +1204,8 @@ const InvoiceAttachmentsCompact = ({
             // 🔄 RELOAD příloh ze serveru (synchronizace)
             await loadAttachmentsFromServer();
 
-            // 💾 Zavolat callback pro autosave (pokud existuje)
-            if (onAttachmentUploaded) {
-              onAttachmentUploaded();
-            }
+            // ⚠️ POZOR: onAttachmentUploaded se NEvolá při DELETE (není to upload!)
+            // Pro autosave po smazání použijte jiný callback nebo hook
           } else {
             throw new Error(response?.message || 'Neočekávaná odpověď serveru');
           }

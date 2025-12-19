@@ -11,7 +11,8 @@ import {
   faSync,
   faMinus,
   faSquare,
-  faWindowRestore
+  faWindowRestore,
+  faExpand
 } from '@fortawesome/free-solid-svg-icons';
 import { Sparkles } from 'lucide-react';
 import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives';
@@ -30,6 +31,7 @@ const InboxContainer = styled.div`
   gap: 0.5rem;
   flex: 1;
   min-height: 0;
+  /* Žádná min-width - panel si určuje šířku sám */
 `;
 
 const InboxHeader = styled.div`
@@ -513,10 +515,12 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pagination, setPagination] = useState({ total: 0, limit: 10, offset: 0, rok: 2025 });
+  const [pagination, setPagination] = useState({ total: 0, limit: 1000, offset: 0 }); // Zvýšen limit pro datum filtry
   const [zpracovaneIds, setZpracovaneIds] = useState(new Set()); // 📋 Set zpracovaných dokument_id
   const [zpracovaneDetails, setZpracovaneDetails] = useState(new Map()); // 📋 Map dokument_id → {uzivatel_jmeno, zpracovano_kdy, fa_cislo_vema}
   const [filterMode, setFilterMode] = useState('vse'); // 'vse' | 'nezaevidovane' | 'zaevidovane'
+  const [yearFilter, setYearFilter] = useState(new Date().getFullYear()); // Rok (2025, 2024...)
+  const [dateRange, setDateRange] = useState('dnes'); // 'dnes' | 'tyden' | 'mesic' | 'kvartal' | 'rok'
   const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
   const [ocrProgress, setOcrProgress] = useState({ visible: false, progress: 0, message: '' });
@@ -668,12 +672,21 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         });
       }
 
-      // Zavolat callback s daty
+      // Zavolat callback s daty + Spisovka metadata pro tracking
       if (onOCRDataExtracted) {
-        onOCRDataExtracted(data);
+        onOCRDataExtracted({
+          ...data,
+          // 📋 SPISOVKA METADATA pro automatický tracking
+          spisovka_dokument_id: dokumentId,
+          spisovka_priloha_id: priloha.priloha_id
+        });
       }
 
-      console.log('📄 OCR Data:', data);
+      console.log('📄 OCR Data + Spisovka metadata:', {
+        ...data,
+        spisovka_dokument_id: dokumentId,
+        spisovka_priloha_id: priloha.priloha_id
+      });
       
       // ✅ AUTOMATICKY OTEVŘÍT PDF pro kontrolu výsledků OCR
       console.log('📄 Opening PDF for verification...');
@@ -716,6 +729,50 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       });
     }
   };
+
+  // 📅 Helper: Výpočet datum rozsahu
+  const calculateDateRange = useCallback((range, year) => {
+    const now = new Date();
+    const currentYear = year || now.getFullYear();
+    let dateFrom, dateTo;
+
+    switch (range) {
+      case 'dnes':
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateTo = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        break;
+      case 'tyden':
+        const weekAgo = new Date(now);
+        weekAgo.setDate(now.getDate() - 7);
+        dateFrom = weekAgo;
+        dateTo = now;
+        break;
+      case 'mesic':
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(now.getMonth() - 1);
+        dateFrom = monthAgo;
+        dateTo = now;
+        break;
+      case 'kvartal':
+        const quarterAgo = new Date(now);
+        quarterAgo.setMonth(now.getMonth() - 3);
+        dateFrom = quarterAgo;
+        dateTo = now;
+        break;
+      case 'rok':
+        dateFrom = new Date(currentYear, 0, 1); // 1. ledna
+        dateTo = new Date(currentYear, 11, 31, 23, 59, 59); // 31. prosince
+        break;
+      default:
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateTo = now;
+    }
+
+    return {
+      dateFrom: dateFrom.toISOString().split('T')[0], // YYYY-MM-DD
+      dateTo: dateTo.toISOString().split('T')[0]
+    };
+  }, []);
 
   // 📋 Načíst zpracované dokumenty pro označení
   const fetchZpracovaneDokumenty = useCallback(async () => {
@@ -763,7 +820,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     setError(null);
 
     try {
-      const apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${pagination.rok}`;
+      // Načíst faktury pro zvolený rok (vždy celý rok, pak client-side filtrujeme podle dateRange)
+      const apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${yearFilter}`;
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
@@ -774,7 +832,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
       if (data.status === 'success') {
         setFaktury(data.data);
-        setPagination(data.pagination);
+        setPagination(prev => ({ ...prev, total: data.pagination?.total || data.data.length }));
         
         // 📋 Načíst zpracované dokumenty po načtení faktur
         fetchZpracovaneDokumenty();
@@ -787,12 +845,12 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, pagination.offset, pagination.rok, fetchZpracovaneDokumenty, token, username]);
+  }, [pagination.limit, pagination.offset, yearFilter, fetchZpracovaneDokumenty, token, username]);
 
-  // Initial fetch
+  // Initial fetch + refetch při změně roku
   useEffect(() => {
     fetchFaktury();
-  }, []);
+  }, [yearFilter]); // 📅 Refetch při změně roku
 
   // Background refresh every 5 minutes
   useEffect(() => {
@@ -821,6 +879,50 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleSnapRight = () => {
+    // 📌 Snap panel doprava - zjistit šířku z pravého náhledového panelu (45% okna)
+    // LAYOUT: fixed header (96px) + menubar (48px) = 144px top offset
+    // Footer: 54px
+    const headerHeight = 96; // Fixed header
+    const menubarHeight = 48; // Menubar
+    const footerHeight = 54; // Layout footer
+    const topOffset = headerHeight + menubarHeight; // 144px celkem
+    const minWidth = 620; // Minimální šířka aby tlačítka nevytekala
+    
+    // Najít pravý náhledový panel podle textu "Náhled" v SectionTitle
+    let targetWidth = panelState.w; // Fallback na aktuální šířku
+    
+    const previewHeaders = Array.from(document.querySelectorAll('div')).filter(el => 
+      el.textContent.includes('Náhled') && el.style.width && el.parentElement
+    );
+    
+    if (previewHeaders.length > 0) {
+      // Najít parent container (pravý sloupec)
+      let previewColumn = previewHeaders[0].parentElement;
+      while (previewColumn && !previewColumn.style.width?.includes('%')) {
+        previewColumn = previewColumn.parentElement;
+      }
+      if (previewColumn) {
+        const previewWidth = previewColumn.getBoundingClientRect().width;
+        targetWidth = Math.max(previewWidth, minWidth);
+      }
+    }
+    
+    if (targetWidth === panelState.w) {
+      // Fallback: použít 45% šířky okna (jako PreviewColumn)
+      targetWidth = Math.max(Math.floor(window.innerWidth * 0.45), minWidth);
+    }
+    
+    setPanelState(prev => ({
+      ...prev,
+      x: window.innerWidth - targetWidth, // Zarovnat k pravému okraji
+      y: topOffset, // Pod header + menubar
+      w: targetWidth,
+      h: window.innerHeight - topOffset - footerHeight, // Celá výška minus header, menubar, footer
+      minimized: false
+    }));
   };
 
   const handleMinimize = () => {
@@ -855,6 +957,19 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           Spisovka Inbox
         </div>
         <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <TinyBtn 
+            onClick={() => {
+              fetchFaktury();
+              fetchZpracovaneDokumenty();
+            }} 
+            title="Obnovit data (Spisovka + Tracking)"
+            style={{ opacity: loading ? 0.5 : 1 }}
+          >
+            <FontAwesomeIcon icon={faSync} spin={loading} />
+          </TinyBtn>
+          <TinyBtn onClick={handleSnapRight} title="Zarovnat doprava (celá výška)">
+            <FontAwesomeIcon icon={faExpand} />
+          </TinyBtn>
           <TinyBtn onClick={handleMinimize} title={panelState.minimized ? 'Obnovit' : 'Minimalizovat'}>
             <FontAwesomeIcon icon={panelState.minimized ? faWindowRestore : faMinus} />
           </TinyBtn>
@@ -864,19 +979,119 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         </div>
       </PanelHeader>
 
-      {!panelState.minimized && (
+      {!panelState.minimized && (() => {
+        // 📊 Spočítat filtrované faktury pro zobrazení v headeru
+        const { dateFrom, dateTo } = calculateDateRange(dateRange, yearFilter);
+        const dateFromTs = new Date(dateFrom).getTime();
+        const dateToTs = new Date(dateTo + ' 23:59:59').getTime();
+        
+        const filteredCount = faktury.filter(faktura => {
+          const fakturaDate = new Date(faktura.datum_vzniku);
+          const fakturaTs = fakturaDate.getTime();
+          if (fakturaTs < dateFromTs || fakturaTs > dateToTs) return false;
+          
+          const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+          if (filterMode === 'nezaevidovane') return !isZaevidovano;
+          if (filterMode === 'zaevidovane') return isZaevidovano;
+          return true;
+        }).length;
+        
+        return (
         <InboxContainer>
           <InboxHeader>
             <InboxTitle>
               <FontAwesomeIcon icon={faBookOpen} />
-              Faktury {pagination.rok}
+              Faktury
             </InboxTitle>
             <InboxStats>
-              {pagination.total} celkem
+              {filteredCount} / {pagination.total} celkem
             </InboxStats>
           </InboxHeader>
           
-          {/* 🔘 FILTROVACÍ TLAČÍTKA */}
+          {/* 📅 ROK + DATUM FILTRY */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            borderBottom: '1px solid #bae6fd',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* Rok selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 600 }}>Rok:</span>
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(parseInt(e.target.value))}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '6px',
+                  border: '2px solid #0284c7',
+                  background: 'white',
+                  color: '#0c4a6e',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {(() => {
+                  const currentYear = new Date().getFullYear();
+                  const startYear = 2025; // Počáteční rok evidence
+                  const years = [];
+                  for (let y = currentYear; y >= startYear; y--) {
+                    years.push(y);
+                  }
+                  return years.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ));
+                })()}
+              </select>
+            </div>
+
+            {/* Datum range filtry */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+              <span style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 600 }}>Období:</span>
+              {['dnes', 'tyden', 'mesic', 'kvartal', 'rok'].map(range => (
+                <button
+                  key={range}
+                  onClick={() => setDateRange(range)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '6px',
+                    border: dateRange === range ? '2px solid #0284c7' : '1px solid #94a3b8',
+                    background: dateRange === range ? '#e0f2fe' : 'white',
+                    color: dateRange === range ? '#0c4a6e' : '#64748b',
+                    fontSize: '0.8rem',
+                    fontWeight: dateRange === range ? 600 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (dateRange !== range) {
+                      e.currentTarget.style.borderColor = '#0284c7';
+                      e.currentTarget.style.color = '#0c4a6e';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (dateRange !== range) {
+                      e.currentTarget.style.borderColor = '#94a3b8';
+                      e.currentTarget.style.color = '#64748b';
+                    }
+                  }}
+                >
+                  {range === 'dnes' && 'Dnes'}
+                  {range === 'tyden' && 'Týden zpět'}
+                  {range === 'mesic' && 'Měsíc zpět'}
+                  {range === 'kvartal' && 'Kvartál zpět'}
+                  {range === 'rok' && 'Celý rok'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 🔘 FILTROVACÍ TLAČÍTKA (Vše / Nezaevidované / Zaevidované) */}
           <div style={{
             display: 'flex',
             gap: '0.5rem',
@@ -948,8 +1163,28 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           )}
 
           {!loading && !error && faktury.length > 0 && (() => {
-            // 🔍 Filtrování faktur podle režimu
+            // 📅 Výpočet datum rozsahu
+            const { dateFrom, dateTo } = calculateDateRange(dateRange, yearFilter);
+            const dateFromTs = new Date(dateFrom).getTime();
+            const dateToTs = new Date(dateTo + ' 23:59:59').getTime();
+            
+            // 🔍 Filtrování faktur podle režimu + datum rozsahu + název (pouze faktury)
             const filteredFaktury = faktury.filter(faktura => {
+              // 0. Filter podle názvu - pouze dokumenty obsahující "Faktura", "Fa č.", "Fač.", "FA" atd.
+              // Regex zachytí: faktura/faktúra, fa č./fa c./fač./fac., FA na začátku
+              const isFaktura = /faktur[aáuú]|fa[\s\.]*(č|c)\.?|^fa\s/i.test(faktura.nazev || '');
+              if (!isFaktura) {
+                return false; // Není faktura podle názvu
+              }
+              
+              // 1. Filter podle dateRange
+              const fakturaDate = new Date(faktura.datum_vzniku);
+              const fakturaTs = fakturaDate.getTime();
+              if (fakturaTs < dateFromTs || fakturaTs > dateToTs) {
+                return false; // Mimo datum rozsah
+              }
+              
+              // 2. Filter podle režimu (Vše / Nezaevidované / Zaevidované)
               const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
               if (filterMode === 'nezaevidovane') return !isZaevidovano;
               if (filterMode === 'zaevidovane') return isZaevidovano;
@@ -979,11 +1214,14 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                         e.stopPropagation();
                         e.currentTarget.style.cursor = 'grabbing';
                         e.currentTarget.style.opacity = '0.6';
-                        // Předat všechny přílohy jako JSON
+                        // Předat všechny přílohy jako JSON + Spisovka metadata pro tracking
                         const attachmentsData = faktura.prilohy.map(p => ({
                           url: p.download_url,
                           filename: p.filename,
-                          mime_type: p.mime_type || 'application/octet-stream'
+                          mime_type: p.mime_type || 'application/octet-stream',
+                          // 📋 SPISOVKA METADATA pro automatický tracking
+                          spisovka_dokument_id: faktura.dokument_id,
+                          spisovka_file_id: p.file_id || p.priloha_id
                         }));
                         e.dataTransfer.setData('text/spisovka-attachments', JSON.stringify(attachmentsData));
                         e.dataTransfer.effectAllowed = 'copy';
@@ -1236,7 +1474,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             );
           })()}
         </InboxContainer>
-      )}
+        );
+      })()}
 
       {/* OCR Progress Overlay */}
       {ocrProgress.visible && (
