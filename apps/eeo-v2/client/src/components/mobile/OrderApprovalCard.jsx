@@ -187,8 +187,8 @@ function OrderApprovalCard({ order, onApprove, onReject, onWait, loading }) {
             </div>
           )}
           <div className="mobile-approval-detail mobile-approval-detail-half">
-            <span className="mobile-approval-label">Max. cena s DPH:</span>
-            <span className="mobile-approval-value">{formatCurrency(maxCena)}</span>
+            <span className="mobile-approval-label">Celková cena s DPH:</span>
+            <span className="mobile-approval-value">{formatCurrency(celkovaCena)}</span>
           </div>
         </div>
         <div className="mobile-approval-detail">
