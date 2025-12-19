@@ -8694,6 +8694,9 @@ function OrderForm25() {
   // Progress indikátor a přesměrování po úspěšném uložení
   // 🔒 skipUnlock: Pro ADMIN/SUPERADMIN nezamykáme - zůstávají editovat
   const startSaveProgressAndRedirect = (orderNumber, orderId, skipUnlock = false) => {
+    // ✅ Toast zpráva o úspěšném uložení
+    showToast && showToast(formatToastMessage(`Objednávka ${orderNumber} byla úspěšně uložena do databáze`, 'success'), { type: 'success' });
+    
     // 🎯 Spustit progress přes DraftManager (automaticky zakáže autosave)
     setShowSaveProgress(true);
     setSaveProgress(0);
@@ -11125,6 +11128,9 @@ function OrderForm25() {
           disableAutosaveRef.current = false;
           draftManager.setAutosaveEnabled(true, 'SUPERADMIN/ADMIN stays on form after UPDATE');
           addDebugLog('info', 'UPDATE', 'stay-on-form', `SUPERADMIN/ADMIN zůstává na formuláři - koncept NENÍ smazán`);
+
+          // 🎉 TOAST NOTIFIKACE pro SUPERADMIN/ADMIN při UPDATE
+          showToast && showToast(formatToastMessage(`Objednávka ${orderNumber} byla úspěšně aktualizována`, 'success'), { type: 'success' });
 
           // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
           // Uživatel má možnost pokračovat tam, kde skončil

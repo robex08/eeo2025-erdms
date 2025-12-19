@@ -1474,13 +1474,13 @@ function mapRecipientRoleToPriority($recipientRole) {
 /**
  * Načte placeholder data z databáze podle object typu
  */
-function loadOrderPlaceholders($db, $objectId) {
-    error_log("[loadOrderPlaceholders] START for order $objectId");
+function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
+    error_log("[loadOrderPlaceholders] START for order $objectId, trigger user: " . ($triggerUserId ?? 'NULL'));
     
     // DEBUG do DB
     try {
         $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
-        $stmt->execute(['loadOrderPlaceholders START', json_encode(['object_id' => $objectId])]);
+        $stmt->execute(['loadOrderPlaceholders START', json_encode(['object_id' => $objectId, 'trigger_user' => $triggerUserId])]);
     } catch (Exception $e) {
         error_log("DEBUG LOG FAILED: " . $e->getMessage());
     }
@@ -1515,15 +1515,15 @@ function loadOrderPlaceholders($db, $objectId) {
         } catch (Exception $e) {}
         
         // Načti objednávku s JOINy na všechny účastníky
+        // ⚠️ DŮLEŽITÉ: creator_name = objednatel (ne uzivatel_id, ten je jen tech. creator v DB)
         $sql = "
             SELECT o.*, 
-                   CONCAT(creator.jmeno, ' ', creator.prijmeni) as creator_name,
+                   CONCAT(objednatel.jmeno, ' ', objednatel.prijmeni) as creator_name,
                    CONCAT(objednatel.jmeno, ' ', objednatel.prijmeni) as objednatel_name,
                    CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_name,
                    CONCAT(garant.jmeno, ' ', garant.prijmeni) as garant_name,
                    CONCAT(schvalovatel.jmeno, ' ', schvalovatel.prijmeni) as schvalovatel_name
             FROM $orders_table o
-            LEFT JOIN $users_table creator ON o.uzivatel_id = creator.id
             LEFT JOIN $users_table objednatel ON o.objednatel_id = objednatel.id
             LEFT JOIN $users_table prikazce ON o.prikazce_id = prikazce.id
             LEFT JOIN $users_table garant ON o.garant_uzivatel_id = garant.id
@@ -1567,6 +1567,18 @@ function loadOrderPlaceholders($db, $objectId) {
         if (!$order) {
             error_log("[loadOrderPlaceholders] Order not found: $objectId");
             return array();
+        }
+        
+        // Načíst jméno trigger uživatele (toho kdo akci vykonal)
+        $trigger_user_name = 'Neznámý';
+        if ($triggerUserId) {
+            $stmt_trigger = $db->prepare("SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM $users_table WHERE id = :user_id");
+            $stmt_trigger->execute([':user_id' => $triggerUserId]);
+            $trigger_row = $stmt_trigger->fetch(PDO::FETCH_ASSOC);
+            if ($trigger_row) {
+                $trigger_user_name = $trigger_row['full_name'];
+            }
+            error_log("[loadOrderPlaceholders] Trigger user: $trigger_user_name (ID: $triggerUserId)");
         }
         
         // Načti položky
@@ -1670,6 +1682,8 @@ function loadOrderPlaceholders($db, $objectId) {
             'garant_name' => $order['garant_name'] ?? 'Nepřiřazen',
             'schvalovatel_name' => $approver_display,  // použije schvalovatele NEBO příkazce
             'approver_name' => $approver_display,  // alias
+            'approval_date' => !empty($order['dt_schvaleni']) ? date('d.m.Y', strtotime($order['dt_schvaleni'])) : '-',
+            'trigger_user_name' => $trigger_user_name,  // Ten kdo akci vykonal (schvalovatel/zamítač)
             
             // Střediska a financování
             'strediska' => $strediska_text,
@@ -2236,7 +2250,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $stmt->execute(['Before loadOrderPlaceholders', json_encode(['object_id' => $objectId])]);
             } catch (Exception $e) {}
             
-            $dbPlaceholders = loadOrderPlaceholders($db, $objectId);
+            $dbPlaceholders = loadOrderPlaceholders($db, $objectId, $triggerUserId);
             error_log("📊 [NotificationRouter] DB placeholders loaded: " . count($dbPlaceholders) . " keys");
             if (!empty($dbPlaceholders)) {
                 error_log("   Keys: " . implode(', ', array_keys($dbPlaceholders)));
@@ -2383,7 +2397,10 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
                 
                 $placeholderDataWithUser = $placeholderData;
-                $placeholderDataWithUser['user_name'] = $user_data ? trim($user_data['jmeno'] . ' ' . $user_data['prijmeni']) : 'Uživatel';
+                // ✅ OPRAVA: Použít recipient_name místo user_name pro univerzální oslovení
+                $recipientFullName = $user_data ? trim($user_data['jmeno'] . ' ' . $user_data['prijmeni']) : 'Uživatel';
+                $placeholderDataWithUser['recipient_name'] = $recipientFullName;
+                $placeholderDataWithUser['user_name'] = $recipientFullName; // Backward compatibility
                 
                 // 🔍 DEBUG: Vypsat VŠECHNY placeholdery před nahrazením
                 error_log("   🔍 FINANCOVÁNÍ DEBUG pro User {$recipient['uzivatel_id']}:");

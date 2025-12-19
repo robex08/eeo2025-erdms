@@ -1091,6 +1091,22 @@ function handle_order_v2_update($input, $config, $queries) {
         $dbData['dt_aktualizace'] = TimezoneHelper::getCzechDateTime();
         // $dbData['uzivatel_akt_id'] = $current_user_id; // Commented out - sloupec možná neexistuje v produkci
         
+        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu na SCHVALENA
+        if (isset($dbData['stav_workflow_kod'])) {
+            $new_workflow_decoded = json_decode($dbData['stav_workflow_kod'], true);
+            $old_workflow_array = isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod']) 
+                ? $existingOrder['stav_workflow_kod'] 
+                : array();
+            
+            // Pokud se přidává SCHVALENA stav (dříve nebyl, teď je)
+            if (is_array($new_workflow_decoded) && in_array('SCHVALENA', $new_workflow_decoded) &&
+                !in_array('SCHVALENA', $old_workflow_array)) {
+                $dbData['dt_schvaleni'] = TimezoneHelper::getCzechDateTime();
+                $dbData['schvalovatel_id'] = $current_user_id; // Nastavit schvalovatele
+                error_log("Order V2 UPDATE: Auto-setting dt_schvaleni=" . $dbData['dt_schvaleni'] . " and schvalovatel_id=$current_user_id for order $order_id");
+            }
+        }
+        
         try {
             // ========== UPDATE HLAVNÍ OBJEDNÁVKY ==========
             $setParts = array();
