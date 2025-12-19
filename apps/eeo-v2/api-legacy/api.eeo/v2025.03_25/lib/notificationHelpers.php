@@ -408,6 +408,7 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
             // AKCE
             'action_performed_by' => $actionUserData['action_performed_by'],
             'action_performed_by_id' => $actionUserData['action_performed_by_id'],
+            'trigger_user_name' => $actionUserData['action_performed_by'], // Alias pro trigger uživatele
             'action_date' => formatDateTime(date('Y-m-d H:i:s')),
             'action_date_short' => formatDate(date('Y-m-d')),
             'action_time' => formatTime(date('Y-m-d H:i:s')),
