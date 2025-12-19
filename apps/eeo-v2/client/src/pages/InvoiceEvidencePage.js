@@ -3284,8 +3284,11 @@ export default function InvoiceEvidencePage() {
 
       // ⚠️ RESET FORMULÁŘE se provede až po kliknutí na "Pokračovat" v progress dialogu
       // Uložíme data potřebná pro reset do stavu progress dialogu
-      const keepEntity = !editingInvoiceId;
-      const shouldResetEntity = !keepEntity || searchTerm.trim().length > 0;
+      // ✅ PŘI UPDATE (editaci) - smazat všechno (keepEntity = false)
+      // ✅ PŘI CREATE (nové) - ponechat objednávku (keepEntity = true)
+      const wasEditing = !!editingInvoiceId;
+      const keepEntity = !wasEditing; // false při editaci, true při nové faktuře
+      const shouldResetEntity = !keepEntity; // true při editaci, false při nové faktuře
       
       // 💾 Uložit reset parametry do progress dialogu (použije se při kliknutí na "Pokračovat")
       setProgressModal(prev => ({
@@ -3293,7 +3296,7 @@ export default function InvoiceEvidencePage() {
         resetData: {
           keepEntity,
           shouldResetEntity,
-          wasEditing: !!editingInvoiceId,
+          wasEditing,
           currentOrderId: formData.order_id,
           currentSmlouvaId: formData.smlouva_id
         }
