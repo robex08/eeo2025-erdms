@@ -724,25 +724,28 @@ const InvoiceAttachmentsCompact = ({
       // New files added
 
       // 🆕 Automatický upload všech souborů (mají již klasifikaci)
-      // 🚫 Toast "Nahrávám..." odstraněn - zbytečné info, uživatel vidí progress
+      // 🎯 OKAMŽITÝ FEEDBACK: Soubory jsou VIDITELNÉ hned s progress barem
 
       // 🆕 Pro temp faktury pouze uložit lokálně, pro reálné faktury uploadnout
       const isTempFaktura = String(fakturaId).startsWith('temp-');
       
-      // Auto-uploading files
+      // 🎬 SIMULACE UPLOADU S PROGRESS BAREM
+      // Spustíme upload asynchronně a pak refreshneme z DB
+      const uploadPromises = newFiles.map(file => 
+        uploadFileToServer(file.id, file.klasifikace, file)
+      );
       
-      // ⚠️ State update je async, musíme počkat na další render
-      // Místo toho používáme newFiles přímo
-      if (!isTempFaktura) {
-        // Starting upload for non-temp faktura
-        for (const file of newFiles) {
-          await uploadFileToServer(file.id, file.klasifikace, file);
-        }
-      } else {
-        // Starting upload for temp faktura
-        // Pro temp faktury zavolat uploadFileToServer (který je uloží lokálně s pending_upload)
-        for (const file of newFiles) {
-          await uploadFileToServer(file.id, file.klasifikace, file);
+      // ⏳ Počkat na všechny uploady
+      await Promise.all(uploadPromises);
+      
+      // 🔄 PO DOKONČENÍ UPLOADU: Refresh příloh z DB (načtení skutečných dat)
+      if (!isTempFaktura && fakturaId) {
+        console.log('🔄 Refreshing attachments from DB after upload...');
+        try {
+          await loadAttachmentsFromServer();
+          console.log('✅ Attachments refreshed from DB');
+        } catch (refreshErr) {
+          console.error('⚠️ Failed to refresh attachments:', refreshErr);
         }
       }
     }
@@ -1056,10 +1059,23 @@ const InvoiceAttachmentsCompact = ({
       }
     }
 
-    // Status -> uploading
+    // Status -> uploading s progress barem (simulace 0%)
     updateAttachments(prev => prev.map(f =>
-      f.id === fileId ? { ...f, status: 'uploading' } : f
+      f.id === fileId ? { ...f, status: 'uploading', progress: 0 } : f
     ));
+    
+    // 🎬 SIMULACE PROGRESS BARU (150ms intervaly pro plynulost)
+    const progressInterval = setInterval(() => {
+      updateAttachments(prev => prev.map(f => {
+        if (f.id === fileId && f.status === 'uploading') {
+          const currentProgress = f.progress || 0;
+          const newProgress = Math.min(currentProgress + Math.random() * 20, 95);
+          return { ...f, progress: newProgress };
+        }
+        return f;
+      }));
+    }, 150);
+    
     try {
       const response = await uploadInvoiceAttachment25({
         token: token,
@@ -1083,14 +1099,18 @@ const InvoiceAttachmentsCompact = ({
                           response.id;
 
       // Attachment ID
+      
+      // 🛑 ZASTAVIT PROGRESS BAR
+      clearInterval(progressInterval);
 
-      // Update s server ID
+      // Update s server ID a 100% progress
       updateAttachments(prev => {
         console.log('🔄 UPDATE ATTACHMENTS (reálná faktura) - PŘED:', prev.length, 'příloh');
         const updated = prev.map(f =>
           f.id === fileId ? {
             ...f,
             status: 'uploaded',
+            progress: 100,
             serverId: attachmentId,
             klasifikace: klasifikace, // ✅ Uložit klasifikaci
             faktura_typ_nazev: typPrilohy?.nazev || klasifikace, // Název pro zobrazení
@@ -1150,10 +1170,12 @@ const InvoiceAttachmentsCompact = ({
       }
 
     } catch (err) {
-
+      // 🛑 ZASTAVIT PROGRESS BAR
+      clearInterval(progressInterval);
+      
       // Status -> error (pending znovu)
       updateAttachments(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'pending_classification' } : f
+        f.id === fileId ? { ...f, status: 'pending_classification', progress: 0 } : f
       ));
 
       showToast&&showToast('Nepodařilo se nahrát přílohu', { type: 'error' });
@@ -2045,7 +2067,9 @@ const InvoiceAttachmentsCompact = ({
               borderRadius: '6px',
               backgroundColor: getFileBackgroundColor(file),
               marginBottom: '0.5rem',
-              opacity: file.status === 'uploading' ? 0.6 : 1
+              opacity: file.status === 'uploading' ? 0.6 : 1,
+              position: 'relative',
+              overflow: 'hidden'
             }}>
               {/* Ikona s indikátorem stavu - 32x44px aby se vešly 2 řádky textu */}
               <div style={{
@@ -2097,6 +2121,30 @@ const InvoiceAttachmentsCompact = ({
                 )}
               </div>
 
+              {/* 🎬 PROGRESS BAR pro uploading status - musí být před obsahem */}
+              {file.status === 'uploading' && file.progress !== undefined && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: '4px',
+                  backgroundColor: '#fef3c7',
+                  borderRadius: '0 0 6px 6px',
+                  overflow: 'hidden',
+                  zIndex: 10
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${file.progress}%`,
+                    backgroundColor: 'linear-gradient(90deg, #f59e0b 0%, #fb923c 100%)',
+                    background: 'linear-gradient(90deg, #f59e0b 0%, #fb923c 100%)',
+                    transition: 'width 0.3s ease',
+                    boxShadow: '0 0 10px rgba(245, 158, 11, 0.6)'
+                  }} />
+                </div>
+              )}
+              
               {/* Informace o souboru - 2 řádky */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* ŘÁDEK 1: Název + velikost + akce (stažení + koš) */}
