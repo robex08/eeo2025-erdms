@@ -889,7 +889,10 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   useEffect(() => {
     const checkActiveDocument = () => {
       const activeDokId = localStorage.getItem('spisovka_active_dokument');
-      setActiveDokumentId(activeDokId ? parseInt(activeDokId, 10) : null);
+      const parsedDokId = activeDokId ? parseInt(activeDokId, 10) : null;
+      
+      // Pouze update stavu, scroll se provede v samostatném effectu
+      setActiveDokumentId(parsedDokId);
     };
 
     // Initial check
@@ -900,6 +903,28 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
     return () => clearInterval(interval);
   }, []);
+
+  // 🎯 SCROLL NA AKTIVNÍ DOKUMENT po načtení seznamu
+  useEffect(() => {
+    if (activeDokumentId && faktury.length > 0) {
+      // Počkat na render a pak scrollovat
+      const timeoutId = setTimeout(() => {
+        const element = document.querySelector(`[data-section="dokument-${activeDokumentId}"]`);
+        if (element) {
+          console.log('📜 Scrolling to active document:', activeDokumentId);
+          element.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+          });
+        } else {
+          console.log('⚠️ Active document element not found:', activeDokumentId);
+        }
+      }, 300); // Delay pro zajištění renderování
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeDokumentId, faktury]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -1249,6 +1274,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                 return (
                 <FakturaCard 
                   key={faktura.dokument_id}
+                  data-section={`dokument-${faktura.dokument_id}`}
                   style={{
                     opacity: isOtherActive ? 0.4 : 1,
                     transition: 'opacity 0.3s ease',
