@@ -1609,6 +1609,8 @@ const InvoiceAttachmentsCompact = ({
     const spisovkaFileUrl = e.dataTransfer.getData('text/spisovka-file-url');
     const spisovkaFileName = e.dataTransfer.getData('text/spisovka-file-name');
     const spisovkaFileMime = e.dataTransfer.getData('text/spisovka-file-mime');
+    const spisovkaFileId = e.dataTransfer.getData('text/spisovka-file-id'); // 🆕 ID přílohy
+    const spisovkaDokumentId = e.dataTransfer.getData('text/spisovka-dokument-id'); // 🆕 ID dokumentu
     
     if (spisovkaFileUrl && spisovkaFileName) {
       // ✅ VALIDACE PŘED STAŽENÍM (pro běžné soubory)
@@ -1686,6 +1688,14 @@ const InvoiceAttachmentsCompact = ({
         
         const blob = await response.blob();
         const file = new File([blob], finalFilename, { type: spisovkaFileMime || blob.type });
+        
+        // 🆕 Přidat Spisovka metadata jako custom properties pro tracking
+        if (spisovkaFileId) {
+          file.spisovka_file_id = parseInt(spisovkaFileId);
+        }
+        if (spisovkaDokumentId) {
+          file.spisovka_dokument_id = parseInt(spisovkaDokumentId);
+        }
         
         // Zpracovat jako běžný soubor
         await handleFileUpload([file]);
