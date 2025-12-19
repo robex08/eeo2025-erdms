@@ -103,6 +103,7 @@ function verify_token_v2($username, $token, $db = null) {
     }
     
     // V2: Přidat informaci o roli uživatele (pro admin bypass)
+    // ✅ NOVÝ SYSTÉM: Kontrola přes 25_uzivatele_role + 25_role
     try {
         // Pokud není předáno DB spojení, vytvoř nové
         if ($db === null) {
@@ -115,15 +116,23 @@ function verify_token_v2($username, $token, $db = null) {
             ));
         }
         
-        $stmt = $db->prepare("SELECT role FROM 25_uzivatele WHERE id = ? AND aktivni = 1");
+        // ✅ Kontrola admin rolí přes NOVÝ SYSTÉM (25_uzivatele_role + 25_role)
+        $stmt = $db->prepare("
+            SELECT r.kod_role 
+            FROM 25_role r
+            INNER JOIN 25_uzivatele_role ur ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = ?
+        ");
         $stmt->execute(array($token_data['id']));
-        $user = $stmt->fetch();
+        $roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
-        if ($user && isset($user['role'])) {
-            $token_data['is_admin'] = ($user['role'] === 'ADMINISTRATOR');
-        } else {
-            $token_data['is_admin'] = false;
-        }
+        // Admin může být SUPERADMIN nebo ADMINISTRATOR
+        $token_data['is_admin'] = !empty(array_intersect($roles, array('SUPERADMIN', 'ADMINISTRATOR')));
+        
+        // DEBUG log
+        $roles_str = !empty($roles) ? implode(', ', $roles) : 'ŽÁDNÉ ROLE';
+        error_log("🔍 verify_token_v2: user_id={$token_data['id']}, roles={$roles_str}, is_admin=" . ($token_data['is_admin'] ? 'TRUE' : 'FALSE'));
+        
     } catch (Exception $e) {
         error_log("verify_token_v2: Error loading role - " . $e->getMessage());
         $token_data['is_admin'] = false;

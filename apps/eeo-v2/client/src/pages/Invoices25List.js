@@ -1264,7 +1264,33 @@ const Invoices25List = () => {
   
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
-    navigate('/invoice-evidence');
+    // Vymazat localStorage aby se otevřel čistý formulář
+    localStorage.removeItem('invoiceFormData');
+    localStorage.removeItem('invoiceAttachments');
+    navigate('/invoice-evidence', {
+      state: {
+        clearForm: true // Flag pro InvoiceEvidencePage
+      }
+    });
+  };
+
+  // Handler: Přidat fakturu k objednávce/smlouvě kliknutím na číslo
+  const handleAddInvoiceToEntity = (invoice) => {
+    if (invoice.objednavka_id) {
+      // Přidat fakturu k objednávce
+      navigate('/invoice-evidence', {
+        state: {
+          orderIdForLoad: invoice.objednavka_id
+        }
+      });
+    } else if (invoice.smlouva_id) {
+      // Přidat fakturu ke smlouvě
+      navigate('/invoice-evidence', {
+        state: {
+          smlouvaIdForLoad: invoice.smlouva_id
+        }
+      });
+    }
   };
   
   // Handler pro kliknutí na dashboard kartu - filtrování
@@ -1832,13 +1858,18 @@ const Invoices25List = () => {
       // 🔍 Pokud je 404, faktura již byla smazána - jen refreshnout seznam
       if (err.message?.includes('nenalezena') || err.message?.includes('404')) {
         showToast?.(`Faktura ${invoice.cislo_faktury} již byla dříve smazána`, { type: 'info' });
-        // Zavřít dialog a refreshnout seznam
-        setDeleteDialog({ isOpen: false, invoice: null });
-        setDeleteType('soft');
         loadData();
+      } else if (err.message?.includes('oprávnění') || err.message?.includes('administrátor') || err.message?.includes('SUPERADMIN')) {
+        // ⚠️ 403 Forbidden - permission error (NEODHLAŠOVAT!)
+        showToast?.(err.message || 'Nemáte oprávnění k této akci', { type: 'error', duration: 5000 });
       } else {
         showToast?.(err.message || 'Chyba při mazání faktury', { type: 'error' });
       }
+      
+      // ✅ VŽDY zavřít dialog při jakékoliv chybě
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
     } finally {
       hideProgress?.();
     }
@@ -2729,15 +2760,42 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell>
                       {invoice.cislo_smlouvy ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <div>
+                        <div 
+                          style={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: '0.25rem',
+                            cursor: 'pointer',
+                            color: '#3b82f6'
+                          }}
+                          onClick={() => handleAddInvoiceToEntity(invoice)}
+                          title="Klikněte pro přidání další faktury k této smlouvě"
+                        >
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                          >
                             <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
                             {invoice.cislo_smlouvy}
                           </div>
                         </div>
                       ) : invoice.cislo_objednavky ? (
-                        <div>
-                          <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#94a3b8' }} />
+                        <div
+                          style={{
+                            cursor: 'pointer',
+                            color: '#3b82f6',
+                            transition: 'opacity 0.2s'
+                          }}
+                          onClick={() => handleAddInvoiceToEntity(invoice)}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                          title="Klikněte pro přidání další faktury k této objednávce"
+                        >
+                          <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
                           {invoice.cislo_objednavky}
                         </div>
                       ) : (

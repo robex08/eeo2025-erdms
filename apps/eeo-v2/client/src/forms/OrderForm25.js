@@ -9568,11 +9568,16 @@ function OrderForm25() {
             }
           }
         } else {
-          // Nemá být zveřejněno (false, 0, undefined, null) → přidat NEUVEREJNIT
+          // Nemá být zveřejněno (false, 0, undefined, null) → přidat NEUVEREJNIT + FAKTURACE
           workflowStates = workflowStates.filter(s => s !== 'UVEREJNIT' && s !== 'UVEREJNENA');
           if (!workflowStates.includes('NEUVEREJNIT')) {
             workflowStates.push('NEUVEREJNIT');
-            addDebugLog('info', 'SAVE', 'workflow-update', `Přidán stav NEUVEREJNIT (ma_byt_zverejnena = ${formData.ma_byt_zverejnena}) → přejít na FAKTURACE`);
+            addDebugLog('info', 'SAVE', 'workflow-update', `Přidán stav NEUVEREJNIT (ma_byt_zverejnena = ${formData.ma_byt_zverejnena})`);
+          }
+          // ✅ AUTOMATICKY přidat FAKTURACE (ale ne VECNA_SPRAVNOST - ta se přidá až po přidání faktury)
+          if (!workflowStates.includes('FAKTURACE')) {
+            workflowStates.push('FAKTURACE');
+            addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE (automaticky po NEUVEREJNIT) → čeká na přidání faktury');
           }
         }
       }
@@ -9603,24 +9608,18 @@ function OrderForm25() {
       }
 
       // 8. FAKTURACE - při přidání faktury (pouze když NENÍ pokladna)
-
+      // ✅ Pokud má objednávka faktury → přidat FAKTURACE (pokud ještě není) + VECNA_SPRAVNOST
       if (!isPokladna && formData.faktury && formData.faktury.length > 0 && !formData.stav_stornovano) {
+        // Ujisti se že má FAKTURACE
         if (!workflowStates.includes('FAKTURACE')) {
           workflowStates.push('FAKTURACE');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE → FÁZE 6/8');
+          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav FAKTURACE (má faktury) → FÁZE 6/8');
         }
 
-        // ✅ Automaticky přidat VECNA_SPRAVNOST (věcná kontrola) po FAKTURACI
+        // ✅ Automaticky přidat VECNA_SPRAVNOST (věcná kontrola) po FAKTURACI - AŽ KDYŽ JSOU FAKTURY
         if (workflowStates.includes('FAKTURACE') && !workflowStates.includes('VECNA_SPRAVNOST')) {
           workflowStates.push('VECNA_SPRAVNOST');
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav VECNA_SPRAVNOST - faktury uloženy → FÁZE 7/8 (Věcná kontrola)');
-        }
-      } else if (!formData.faktury || formData.faktury.length === 0 || isPokladna) {
-        // Pokud nejsou faktury NEBO je pokladna, odeber FAKTURACE a VECNA_SPRAVNOST
-        const hadFakturace = workflowStates.includes('FAKTURACE');
-        workflowStates = workflowStates.filter(s => s !== 'FAKTURACE' && s !== 'VECNA_SPRAVNOST');
-        if (hadFakturace && isPokladna) {
-          addDebugLog('info', 'SAVE', 'workflow-update', 'Odebrán stav FAKTURACE a VECNA_SPRAVNOST (režim POKLADNA)');
+          addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav VECNA_SPRAVNOST (má faktury) → FÁZE 7/8');
         }
       }
 

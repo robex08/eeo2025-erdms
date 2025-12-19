@@ -67,7 +67,8 @@ root.render(
 );
 
 // Skryje HTML splash screen po načtení React aplikace
-// Zobrazí se pouze při první návštěvě (nový tab/okno), pak už ne při F5
+// 🎯 OPTIMALIZACE: Zobrazí se pouze při prvním spuštění (cold start = nový tab/okno)
+// Při F5/reload se skryje OKAMŽITĚ bez prodlevy
 const isFirstLoad = !sessionStorage.getItem('app_initialized');
 
 const hideSplashScreen = () => {
@@ -81,16 +82,16 @@ const hideSplashScreen = () => {
       splashScreen.style.display = 'none';
       // Uvolnění z DOM pro jistotu
       splashScreen.remove();
-    }, 500);
+    }, 300); // Zkráceno z 500ms na 300ms
   }
 };
 
 if (isFirstLoad) {
-  // První načtení - zobrazit splash minimálně 5 sekund
+  // ✅ První načtení (cold start) - zobrazit splash minimálně 2 sekundy
   sessionStorage.setItem('app_initialized', 'true');
   
   const startTime = window.splashStartTime || Date.now();
-  const minDisplayTime = 5000; // 5 sekund při prvním načtení
+  const minDisplayTime = 2000; // Zkráceno z 5s na 2s - stačí pro načtení
   const elapsedTime = Date.now() - startTime;
   const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
 
@@ -99,17 +100,17 @@ if (isFirstLoad) {
     hideSplashScreen();
   }, remainingTime);
 
-  // Záložní mechanismus - force skrytí po max 10 sekundách (ochrana proti zamrznutí)
+  // Záložní mechanismus - force skrytí po max 8 sekundách
   setTimeout(() => {
     const splashScreen = document.getElementById('splash-screen');
     if (splashScreen && splashScreen.style.display !== 'none') {
-      console.warn('⚠️ Force hiding splash screen after 10s timeout');
+      console.warn('⚠️ Force hiding splash screen after 8s timeout');
       clearTimeout(splashTimeout);
       hideSplashScreen();
     }
-  }, 10000);
+  }, 8000);
 } else {
-  // Další reloady - skrýt splash okamžitě
+  // ⚡ Reload/refresh - skrýt splash OKAMŽITĚ bez jakékoliv prodlevy
   const splashScreen = document.getElementById('splash-screen');
   if (splashScreen) {
     splashScreen.style.display = 'none';

@@ -712,7 +712,14 @@ const InvoiceAttachmentsCompact = ({
     }).filter(Boolean);
 
     if (newFiles.length > 0) {
-      updateAttachments(prev => [...prev, ...newFiles]);
+      console.log('📤 PŘIDÁVÁM', newFiles.length, 'nových souborů do UI s optimistic update');
+      console.log('📋 Soubory:', newFiles.map(f => ({ name: f.name, klasifikace: f.klasifikace, status: f.status })));
+      
+      updateAttachments(prev => {
+        const updated = [...prev, ...newFiles];
+        console.log('📊 Celkový počet příloh po přidání:', updated.length);
+        return updated;
+      });
 
       // New files added
 
@@ -940,19 +947,25 @@ const InvoiceAttachmentsCompact = ({
         // Attachment ID (temp upload)
 
         // Update s server ID
-        updateAttachments(prev => prev.map(f =>
-          f.id === fileId ? {
-            ...f,
-            status: 'uploaded',
-            serverId: attachmentId,
-            klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
-            faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
-            file: undefined, // Odstraň File object
-            // 📋 Zachovat Spisovka metadata (pokud existují)
-            ...(f.spisovka_dokument_id && { spisovka_dokument_id: f.spisovka_dokument_id }),
-            ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
-          } : f
-        ));
+        updateAttachments(prev => {
+          console.log('🔄 UPDATE ATTACHMENTS (temp faktura) - PŘED:', prev.length, 'příloh');
+          const updated = prev.map(f =>
+            f.id === fileId ? {
+              ...f,
+              status: 'uploaded',
+              serverId: attachmentId,
+              klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
+              faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
+              file: undefined, // Odstraň File object
+              // 📋 Zachovat Spisovka metadata (pokud existují)
+              ...(f.spisovka_dokument_id && { spisovka_dokument_id: f.spisovka_dokument_id }),
+              ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
+            } : f
+          );
+          console.log('🔄 UPDATE ATTACHMENTS (temp faktura) - PO:', updated.length, 'příloh');
+          console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
+          return updated;
+        });
 
         // ✅ Příloha úspěšně nahrána - JEDINÝ toast pro temp fakturu
         const successMessage = (
@@ -1072,16 +1085,22 @@ const InvoiceAttachmentsCompact = ({
       // Attachment ID
 
       // Update s server ID
-      updateAttachments(prev => prev.map(f =>
-        f.id === fileId ? {
-          ...f,
-          status: 'uploaded',
-          serverId: attachmentId,
-          klasifikace: klasifikace, // ✅ Uložit klasifikaci
-          faktura_typ_nazev: typPrilohy?.nazev || klasifikace, // Název pro zobrazení
-          file: undefined // Odstraň File object
-        } : f
-      ));
+      updateAttachments(prev => {
+        console.log('🔄 UPDATE ATTACHMENTS (reálná faktura) - PŘED:', prev.length, 'příloh');
+        const updated = prev.map(f =>
+          f.id === fileId ? {
+            ...f,
+            status: 'uploaded',
+            serverId: attachmentId,
+            klasifikace: klasifikace, // ✅ Uložit klasifikaci
+            faktura_typ_nazev: typPrilohy?.nazev || klasifikace, // Název pro zobrazení
+            file: undefined // Odstraň File object
+          } : f
+        );
+        console.log('🔄 UPDATE ATTACHMENTS (reálná faktura) - PO:', updated.length, 'příloh');
+        console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
+        return updated;
+      });
 
       // ✅ JEDINÝ success toast pro existující fakturu
       const successMessage = (

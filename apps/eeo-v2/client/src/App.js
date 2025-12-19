@@ -104,13 +104,10 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
     }
   }, [isLoggedIn]);
   
-  // Pokud stále kontrolujeme, zobrazíme loading
+  // Pokud stále kontrolujeme - ŽÁDNÝ splash screen při reload
+  // (pouze při cold start je splash z HTML, který se skryje v index.js)
   if (checking) {
-    return (
-      <Suspense fallback={null}>
-        <SplashScreen message="Kontrola stavu systému..." />
-      </Suspense>
-    );
+    return null; // Tichá kontrola na pozadí, žádný loading
   }
   
   // Pokud je údržba aktivní a uživatel NENÍ SUPERADMIN a JE přihlášen
@@ -433,19 +430,16 @@ function App() {
   // If auth initialization is still in progress, don't mount the Router/routes.
   // This avoids a premature redirect to /login when a stored token is being validated
   // and preserves current location (so refresh on /orders-new doesn't lose the form).
+  // 🎯 OPTIMALIZACE: Žádný splash screen při reload - pouze při cold start (viz index.js)
   if (loading) {
-    return (
-      <Suspense fallback={null}>
-        <SplashScreen message="Načítání autentizace..." />
-      </Suspense>
-    );
+    return null; // Tichá kontrola tokenu na pozadí
   }
 
   // 📱 MOBILE VERSION: Pokud je zařízení mobilní, zobrazí se mobilní verze
   if (isMobile) {
     return (
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <Suspense fallback={<SplashScreen message="Načítání mobilní aplikace..." />}>
+        <Suspense fallback={<div style={{display:'none'}}></div>}>
           {!isLoggedIn ? (
             <MobileLoginPage />
           ) : (

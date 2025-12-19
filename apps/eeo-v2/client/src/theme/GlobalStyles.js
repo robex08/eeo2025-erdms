@@ -63,7 +63,7 @@ export const GlobalStyles = () => (
       text-rendering: optimizeLegibility;
       font-feature-settings: "liga", "kern";
     }
-  body { margin:0; background-color:#f0f0f0; color:#333; }
+  body { margin:0; background-color:#ffffff; color:#333; }
 
     code { font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace; }
 

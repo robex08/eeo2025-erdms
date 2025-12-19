@@ -6014,12 +6014,6 @@ const Orders25List = () => {
         firstOrder: filteredOrders[0] || null,
         rawData: filteredOrders
       });
-
-      // Zobraz toast o aktualizaci
-      showToast?.(`Seznam objednávek aktualizován (${filteredOrders.length} obj)`, {
-        type: 'info',
-        duration: 3000
-      });
     };
 
     bgTasksContext.registerOrdersRefreshCallback?.(refreshCallback);

@@ -165,6 +165,14 @@ export const AuthProvider = ({ children }) => {
       // ✅ BROADCAST: Oznámit ostatním záložkám, že došlo k přihlášení
       broadcastLogin(loginData.id, loginData.username);
 
+      // 🎯 SPLASH SCREEN: Nastavit příznak, že aplikace byla inicializována
+      // (aby se splash screen již nezobrazoval při dalších načteních)
+      try {
+        sessionStorage.setItem('app_initialized', 'true');
+      } catch (e) {
+        // Ignorovat chyby se sessionStorage
+      }
+
       // 🎉 UVÍTACÍ TOAST: Zobraz uvítání s jmeninami
       setTimeout(async () => {
         try {
@@ -353,7 +361,12 @@ export const AuthProvider = ({ children }) => {
       // Fallback - základní čištění
       try {
         // Vymaž veškerý sessionStorage (citlivá data)
+        // 🎯 VÝJIMKA: Zachovat app_initialized (pro splash screen kontrolu)
+        const appInitialized = sessionStorage.getItem('app_initialized');
         sessionStorage.clear();
+        if (appInitialized) {
+          sessionStorage.setItem('app_initialized', appInitialized);
+        }
 
         // Zachovej pouze kritické lokální data
         const keep = {};
