@@ -27,13 +27,16 @@ import {
   faFileContract,
   faLock,
   faUnlock,
-  faBookOpen
+  faBookOpen,
+  faEnvelope,
+  faPhone,
+  faClock
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
 import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2, deleteInvoiceAttachment25 } from '../services/api25invoices';
-import { getOrderV2, updateOrderV2 } from '../services/apiOrderV2';
+import { getOrderV2, updateOrderV2, lockOrderV2, unlockOrderV2 } from '../services/apiOrderV2';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { fetchAllUsers } from '../services/api2auth';
@@ -147,6 +150,92 @@ function CurrencyInput({ fieldName, value, onChange, onBlur, disabled, hasError,
 // ===================================================================
 // STYLED COMPONENTS - Recyklované z OrderForm25 + nové pro layout
 // ===================================================================
+
+// 🔒 LOCK Dialog komponenty
+const UserInfo = styled.div`
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+`;
+
+const InfoText = styled.p`
+  margin: 0.75rem 0;
+  color: #64748b;
+  line-height: 1.6;
+`;
+
+const WarningText = styled.p`
+  margin: 0.75rem 0;
+  color: #dc2626;
+  font-weight: 600;
+  line-height: 1.6;
+`;
+
+const ContactInfo = styled.div`
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+`;
+
+const ContactItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  color: #1e40af;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid #e0e7ff;
+  }
+
+  svg {
+    color: #3b82f6;
+    width: 18px;
+    height: 18px;
+  }
+
+  a {
+    color: #1e40af;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #1e3a8a;
+      text-decoration: underline;
+    }
+  }
+`;
+
+const ContactLabel = styled.span`
+  font-weight: 600;
+  min-width: 80px;
+  color: #64748b;
+`;
+
+const LockTimeInfo = styled.div`
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  svg {
+    color: #f59e0b;
+    width: 16px;
+    height: 16px;
+  }
+`;
 
 const PageContainer = styled.div`
   position: relative;
@@ -1346,6 +1435,10 @@ export default function InvoiceEvidencePage() {
     onConfirm: null,
     onCancel: null
   });
+  
+  // 🔒 State pro LOCK dialog system
+  const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
+  const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
 
   // State pro unlock entity (změna objednávky/smlouvy u existující FA)
   const [isEntityUnlocked, setIsEntityUnlocked] = useState(false);
@@ -1780,7 +1873,12 @@ export default function InvoiceEvidencePage() {
     setError(null);
 
     try {
-      // ✅ Načti plná data objednávky s enriched daty (faktury, položky, atd.)
+      // 🔒 KROK 1: Zamknout objednávku pro editaci (přidávání faktur)
+      console.log('🔒 InvoiceEvidencePage - Zamykám objednávku #', orderIdToLoad);
+      await lockOrderV2(orderIdToLoad, token, username, false);
+      console.log('✅ Objednávka úspěšně zamčena pro přidávání faktur');
+
+      // ✅ KROK 2: Načti plná data objednávky s enriched daty (faktury, položky, atd.)
       const orderData = await getOrderV2(orderIdToLoad, token, username, true);
 
       if (orderData && orderData.id) {
@@ -1790,10 +1888,14 @@ export default function InvoiceEvidencePage() {
         setSearchTerm(evCislo);
       } else {
         setError('Nepodařilo se načíst data objednávky');
+        // Odemkni pokud se načtení nezdařilo
+        await unlockOrderV2(orderIdToLoad, token, username).catch(e => console.warn('⚠️ Unlock failed:', e));
       }
     } catch (err) {
       setError(err.message || 'Chyba při načítání objednávky');
       showToast && showToast(err.message || 'Chyba při načítání objednávky', 'error');
+      // Odemkni při jakékoliv chybě
+      await unlockOrderV2(orderIdToLoad, token, username).catch(e => console.warn('⚠️ Unlock failed:', e));
     } finally {
       setOrderLoading(false);
     }
@@ -1856,20 +1958,79 @@ export default function InvoiceEvidencePage() {
     }
   }, [token, username, showToast]);
 
+  // 🔓 UNLOCK objednávky při unmount komponenty (opuštění stránky)
+  useEffect(() => {
+    return () => {
+      // Cleanup při unmount - odemkni objednávku pokud byla zamčená
+      if (formData.order_id && token && username) {
+        console.log('🔓 InvoiceEvidencePage unmount - odemykám objednávku #', formData.order_id);
+        unlockOrderV2(formData.order_id, token, username)
+          .then(() => console.log('✅ Objednávka odemčena při opuštění InvoiceEvidencePage'))
+          .catch(err => console.warn('⚠️ Nepodařilo se odemknout objednávku:', err));
+      }
+    };
+  }, [formData.order_id, token, username]); // Aktuální hodnoty pro unlock
+
   // Načtení objednávky nebo smlouvy z location.state při mount
   useEffect(() => {
     const orderIdForLoad = location.state?.orderIdForLoad;
     const smlouvaIdForLoad = location.state?.smlouvaIdForLoad;
 
     if (orderIdForLoad && token && username) {
-      // Načíst objednávku
-      loadOrderData(orderIdForLoad);
-      setSelectedType('order');
-      setFormData(prev => ({
-        ...prev,
-        order_id: orderIdForLoad,
-        smlouva_id: null
-      }));
+      // 🔒 Před načtením zkontrolovat LOCK
+      (async () => {
+        try {
+          const orderCheck = await getOrderV2(orderIdForLoad, token, username, false);
+          
+          if (orderCheck?.lock_info?.locked === true) {
+            const lockInfo = orderCheck.lock_info;
+            const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+            const lockedByEmail = lockInfo.locked_by_user_email || '';
+            const lockedByPhone = lockInfo.locked_by_user_telefon || '';
+            
+            let contactInfo = '';
+            if (lockedByEmail || lockedByPhone) {
+              contactInfo = ' 📞 Kontakt:';
+              if (lockedByEmail) contactInfo += ` Email: ${lockedByEmail}`;
+              if (lockedByPhone) contactInfo += ` Telefon: ${lockedByPhone}`;
+            }
+            
+            const evCislo = orderCheck.cislo_objednavky || orderCheck.evidencni_cislo || `#${orderIdForLoad}`;
+            
+            setConfirmDialog({
+              isOpen: true,
+              title: '🔒 Objednávka je zamčená',
+              message: `Objednávka ${evCislo} je zamčena uživatelem ${lockedByUserName}. Nelze ji otevřít pro přidávání faktur.${contactInfo} ✋ Počkejte, až uživatel dokončí editaci objednávky.`,
+              onConfirm: () => {
+                setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+                // Zůstat na seznamu
+                setSelectedType('list');
+              },
+              onCancel: null
+            });
+            return;
+          }
+          
+          // ✅ Není zamčená - načíst
+          loadOrderData(orderIdForLoad);
+          setSelectedType('order');
+          setFormData(prev => ({
+            ...prev,
+            order_id: orderIdForLoad,
+            smlouva_id: null
+          }));
+        } catch (err) {
+          console.warn('⚠️ Chyba při kontrole LOCK:', err);
+          // I při chybě zkusit načíst
+          loadOrderData(orderIdForLoad);
+          setSelectedType('order');
+          setFormData(prev => ({
+            ...prev,
+            order_id: orderIdForLoad,
+            smlouva_id: null
+          }));
+        }
+      })();
     } else if (smlouvaIdForLoad && token && username) {
       // Načíst smlouvu
       loadSmlouvaData(smlouvaIdForLoad);
@@ -2131,16 +2292,17 @@ export default function InvoiceEvidencePage() {
 
         setOrderLoading(false);
         
-        // Zobraz dialog
-        setConfirmDialog({
-          isOpen: true,
-          title: '🔒 Objednávka je zamčená',
-          message: `Objednávka ${evCislo} je právě otevřená na editaci uživatelem ${lockedByUserName}.\n\n⚠️ NEJDŘÍVE MUSÍ ${lockedByUserName.toUpperCase()} ZAVŘÍT OBJEDNÁVKU!\n\nObjednávka je zamčená a nelze ji zpracovávat, dokud ji jiný uživatel uzamkl pro editaci.`,
-          onConfirm: () => {
-            setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-          },
-          onCancel: null
+        // Ulož info o zamčení pro vizuální dialog
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock: false,
+          orderId: order.id
         });
+        setShowLockedOrderDialog(true);
         return;
       }
     } catch (err) {
@@ -2150,22 +2312,52 @@ export default function InvoiceEvidencePage() {
     }
 
     // ✅ VŠE OK - pokračuj s načtením
-    proceedWithOrderLoad(order, evCislo);
+    await proceedWithOrderLoad(order, evCislo);
   };
 
   // Helper funkce pro načtení objednávky
-  const proceedWithOrderLoad = (order, evCislo) => {
+  const proceedWithOrderLoad = async (order, evCislo) => {
+    // 🔒 KONTROLA LOCK před načtením
+    setOrderLoading(true);
+    try {
+      const orderCheck = await getOrderV2(order.id, token, username, false);
+      
+      if (orderCheck?.lock_info?.locked === true) {
+        const lockInfo = orderCheck.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        setOrderLoading(false);
+        
+        // Ulož info o zamčení pro vizuální dialog
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock: false,
+          orderId: order.id
+        });
+        setShowLockedOrderDialog(true);
+        return;
+      }
+    } catch (err) {
+      console.warn('⚠️ Nepodařilo se zkontrolovat lock status:', err);
+    } finally {
+      setOrderLoading(false);
+    }
+    
+    // ✅ Není zamčená - pokračuj s načtením
     setFormData(prev => ({
       ...prev,
       order_id: order.id,
-      smlouva_id: null // Vyčistit smlouvu pokud byla předtím
+      smlouva_id: null
     }));
     setSearchTerm(evCislo);
     setShowSuggestions(false);
     setSelectedType('order');
-    setSmlouvaData(null); // Vyčistit data smlouvy
+    setSmlouvaData(null);
     
-    // 🎯 Nastavit pro OrderForm25 - načte z localStorage
     localStorage.setItem('activeOrderEditId', order.id);
     
     loadOrderData(order.id);
@@ -4958,6 +5150,71 @@ export default function InvoiceEvidencePage() {
         <PageContainer>
           {PageContent}
         </PageContainer>
+      )}
+
+      {/* 🔒 Modal pro zamčenou objednávku - informační dialog */}
+      {lockedOrderInfo && createPortal(
+        <ConfirmDialog
+          isOpen={showLockedOrderDialog}
+          onClose={() => {
+            setShowLockedOrderDialog(false);
+            setLockedOrderInfo(null);
+          }}
+          onConfirm={() => {
+            setShowLockedOrderDialog(false);
+            setLockedOrderInfo(null);
+          }}
+          title="Objednávka není dostupná"
+          icon={faLock}
+          variant="warning"
+          confirmText="Zavřít"
+          showCancel={false}
+        >
+          <InfoText>
+            Objednávka je aktuálně editována uživatelem:
+          </InfoText>
+          <UserInfo>
+            <strong>{lockedOrderInfo.lockedByUserName}</strong>
+          </UserInfo>
+
+          {/* Kontaktní údaje */}
+          {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+            <ContactInfo>
+              {lockedOrderInfo.lockedByUserEmail && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  <ContactLabel>Email:</ContactLabel>
+                  <a href={`mailto:${lockedOrderInfo.lockedByUserEmail}`}>
+                    {lockedOrderInfo.lockedByUserEmail}
+                  </a>
+                </ContactItem>
+              )}
+              {lockedOrderInfo.lockedByUserTelefon && (
+                <ContactItem>
+                  <FontAwesomeIcon icon={faPhone} />
+                  <ContactLabel>Telefon:</ContactLabel>
+                  <a href={`tel:${lockedOrderInfo.lockedByUserTelefon}`}>
+                    {lockedOrderInfo.lockedByUserTelefon}
+                  </a>
+                </ContactItem>
+              )}
+            </ContactInfo>
+          )}
+
+          {/* Čas zamčení */}
+          {lockedOrderInfo.lockAgeMinutes !== null && lockedOrderInfo.lockAgeMinutes !== undefined && (
+            <LockTimeInfo>
+              <FontAwesomeIcon icon={faClock} />
+              Zamčeno před {lockedOrderInfo.lockAgeMinutes} {lockedOrderInfo.lockAgeMinutes === 1 ? 'minutou' : lockedOrderInfo.lockAgeMinutes < 5 ? 'minutami' : 'minutami'}
+            </LockTimeInfo>
+          )}
+
+          <InfoText>
+            Objednávku nelze načíst, dokud ji má otevřenou jiný uživatel.
+            Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
+          </InfoText>
+        </ConfirmDialog>,
+        document.body
       )}
 
       {/* 🔔 Custom Confirm Dialog - VŽDY v portálu nad vším */}

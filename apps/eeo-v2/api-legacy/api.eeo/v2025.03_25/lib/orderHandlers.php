@@ -5378,3 +5378,153 @@ function handle_orders25_complete_order($input, $config, $queries) {
         echo json_encode(['err' => 'Chyba při dokončování objednávky: ' . $e->getMessage()]);
     }
 }
+
+/**
+ * 🔒 LOCK objednávky pro editaci
+ * POST /order-v2/{id}/lock
+ */
+function handle_order_v2_lock($input, $config, $queries, $order_id) {
+    try {
+        $token = isset($input['token']) ? $input['token'] : '';
+        $request_username = isset($input['username']) ? $input['username'] : '';
+        
+        $db = get_db($config);
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný nebo chybějící token']);
+            return;
+        }
+        
+        $current_user_id = $token_data['id'];
+        
+        $force = isset($input['force']) && $input['force'] === true;
+        
+        // Kontrola zda objednávka existuje
+        $stmt = $db->prepare("SELECT id, zamek_uzivatel_id, dt_zamek FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->execute([':id' => $order_id]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Objednávka nenalezena']);
+            return;
+        }
+        
+        // Kontrola zda je už zamčená jiným uživatelem
+        if ($order['zamek_uzivatel_id'] && $order['zamek_uzivatel_id'] != $current_user_id) {
+            // Už je zamčená jiným
+            if (!$force) {
+                // Získat jméno uživatele
+                $user_data = getUserDataForLockInfo($db, $order['zamek_uzivatel_id']);
+                
+                http_response_code(423); // 423 Locked
+                echo json_encode([
+                    'status' => 'error',
+                    'code' => 'LOCKED',
+                    'message' => 'Objednávka je zamčená uživatelem: ' . $user_data['fullname'],
+                    'lock_info' => [
+                        'locked_by_user_id' => $order['zamek_uzivatel_id'],
+                        'locked_by_user_fullname' => $user_data['fullname'],
+                        'locked_by_user_email' => $user_data['email'],
+                        'locked_by_user_telefon' => $user_data['telefon'],
+                        'locked_at' => $order['dt_zamek']
+                    ]
+                ]);
+                return;
+            }
+            
+            // Force unlock - pouze pro SUPERADMIN/ADMINISTRATOR
+            if (!$token_data['is_admin']) {
+                http_response_code(403);
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'Pouze administrátor může převzít zamčenou objednávku'
+                ]);
+                return;
+            }
+        }
+        
+        // Zamkni objednávku
+        $lock_stmt = $db->prepare(lockOrderQuery());
+        $lock_stmt->execute([
+            ':id' => $order_id,
+            ':user_id' => $current_user_id
+        ]);
+        
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka zamčena pro editaci',
+            'data' => [
+                'order_id' => $order_id,
+                'locked_by_user_id' => $current_user_id,
+                'locked_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při zamykání: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * 🔓 UNLOCK objednávky
+ * POST /order-v2/{id}/unlock
+ */
+function handle_order_v2_unlock($input, $config, $queries, $order_id) {
+    try {
+        $token = isset($input['token']) ? $input['token'] : '';
+        $request_username = isset($input['username']) ? $input['username'] : '';
+        
+        $db = get_db($config);
+        $token_data = verify_token_v2($request_username, $token, $db);
+        
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný nebo chybějící token']);
+            return;
+        }
+        
+        $current_user_id = $token_data['id'];
+        
+        // Kontrola zda objednávka existuje
+        $stmt = $db->prepare("SELECT id, zamek_uzivatel_id FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->execute([':id' => $order_id]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Objednávka nenalezena']);
+            return;
+        }
+        
+        // Může odemknout pouze ten, kdo zamkl, nebo admin
+        if ($order['zamek_uzivatel_id'] && $order['zamek_uzivatel_id'] != $current_user_id && !$token_data['is_admin']) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nemůžete odemknout objednávku zamčenou jiným uživatelem'
+            ]);
+            return;
+        }
+        
+        // Odemkni
+        $unlock_stmt = $db->prepare(unlockOrderQuery());
+        $unlock_stmt->execute([':id' => $order_id]);
+        
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Objednávka odemčena',
+            'data' => [
+                'order_id' => $order_id,
+                'unlocked_at' => date('Y-m-d H:i:s')
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba při odemykání: ' . $e->getMessage()]);
+    }
+}
