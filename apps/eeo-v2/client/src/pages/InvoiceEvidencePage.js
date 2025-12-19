@@ -1985,29 +1985,20 @@ export default function InvoiceEvidencePage() {
           if (orderCheck?.lock_info?.locked === true) {
             const lockInfo = orderCheck.lock_info;
             const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
-            const lockedByEmail = lockInfo.locked_by_user_email || '';
-            const lockedByPhone = lockInfo.locked_by_user_telefon || '';
             
-            let contactInfo = '';
-            if (lockedByEmail || lockedByPhone) {
-              contactInfo = ' 📞 Kontakt:';
-              if (lockedByEmail) contactInfo += ` Email: ${lockedByEmail}`;
-              if (lockedByPhone) contactInfo += ` Telefon: ${lockedByPhone}`;
-            }
-            
-            const evCislo = orderCheck.cislo_objednavky || orderCheck.evidencni_cislo || `#${orderIdForLoad}`;
-            
-            setConfirmDialog({
-              isOpen: true,
-              title: '🔒 Objednávka je zamčená',
-              message: `Objednávka ${evCislo} je zamčena uživatelem ${lockedByUserName}. Nelze ji otevřít pro přidávání faktur.${contactInfo} ✋ Počkejte, až uživatel dokončí editaci objednávky.`,
-              onConfirm: () => {
-                setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
-                // Zůstat na seznamu
-                setSelectedType('list');
-              },
-              onCancel: null
+            // Ulož info o zamčení pro vizuální dialog
+            setLockedOrderInfo({
+              lockedByUserName,
+              lockedByUserEmail: lockInfo.locked_by_user_email || null,
+              lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+              lockedAt: lockInfo.locked_at || null,
+              lockAgeMinutes: lockInfo.lock_age_minutes || null,
+              canForceUnlock: false,
+              orderId: orderIdForLoad
             });
+            setShowLockedOrderDialog(true);
+            // Zůstat na seznamu
+            setSelectedType('list');
             return;
           }
           
