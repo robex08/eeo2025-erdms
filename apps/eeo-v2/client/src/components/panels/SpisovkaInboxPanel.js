@@ -966,6 +966,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                               e.dataTransfer.setData('text/spisovka-file-url', priloha.download_url);
                               e.dataTransfer.setData('text/spisovka-file-name', priloha.filename);
                               e.dataTransfer.setData('text/spisovka-file-mime', priloha.mime_type || 'application/octet-stream');
+                              e.dataTransfer.setData('text/spisovka-file-id', priloha.file_id); // 🆕 ID přílohy
+                              e.dataTransfer.setData('text/spisovka-dokument-id', faktura.dokument_id); // 🆕 ID dokumentu
                               e.dataTransfer.effectAllowed = 'copy';
                             }}
                             style={{ cursor: 'grab' }}

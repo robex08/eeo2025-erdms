@@ -445,6 +445,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         // Parametry
         $dokument_id = (int)$input['dokument_id'];
+        $spisovka_priloha_id = isset($input['spisovka_priloha_id']) ? (int)$input['spisovka_priloha_id'] : null; // 🆕
         $faktura_id = isset($input['faktura_id']) ? (int)$input['faktura_id'] : null;
         $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema']) : null;
         $stav = isset($input['stav']) ? $input['stav'] : 'ZAEVIDOVANO';
@@ -481,6 +482,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         $sql = "
             INSERT INTO " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " (
                 dokument_id,
+                spisovka_priloha_id,
                 uzivatel_id,
                 zpracovano_kdy,
                 faktura_id,
@@ -491,6 +493,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
                 dt_vytvoreni
             ) VALUES (
                 :dokument_id,
+                :spisovka_priloha_id,
                 :uzivatel_id,
                 NOW(),
                 :faktura_id,
@@ -504,6 +507,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         $stmt = $pdo->prepare($sql);
         $stmt->bindValue(':dokument_id', $dokument_id, PDO::PARAM_INT);
+        $stmt->bindValue(':spisovka_priloha_id', $spisovka_priloha_id, PDO::PARAM_INT); // 🆕
         $stmt->bindValue(':uzivatel_id', $current_user_id, PDO::PARAM_INT);
         $stmt->bindValue(':faktura_id', $faktura_id, PDO::PARAM_INT);
         $stmt->bindValue(':fa_cislo_vema', $fa_cislo_vema);

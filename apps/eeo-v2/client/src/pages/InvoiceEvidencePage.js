@@ -2832,42 +2832,59 @@ export default function InvoiceEvidencePage() {
       setHasChangedCriticalField(false);
 
       // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (pouze pro nové faktury, ne editace)
+      // 📋 AUTO-TRACKING: Označit Spisovka dokument jako zpracovaný
       // Toto se provede na pozadí - neblokuje úspěch uložení faktury
       if (!editingInvoiceId && result?.data?.id) {
         try {
-          // Zkontrolovat zda máme aktivní Spisovka dokument v panelu
-          const spisovkaDocuments = spisovkaLastRecords || [];
-          
-          // Hledat dokument který byl možná použit pro tuto fakturu
-          // Propojíme podle názvu souboru přílohy
-          const potentialDoc = spisovkaDocuments.find(doc => {
-            // Pokud má faktura přílohu, hledáme Spisovka dokument s odpovídající přílohou
-            if (formData.file && doc.prilohy && doc.prilohy.length > 0) {
-              // Hledáme přílohu se stejným názvem
-              return doc.prilohy.some(priloha => priloha.filename === formData.file.name);
-            }
-            return false;
-          });
-
-          // Pokud jsme našli odpovídající dokument, označit ho jako zpracovaný
-          if (potentialDoc?.dokument_id) {
+          // 🆕 PRIORITA 1: Pokud má soubor Spisovka metadata (file_id, dokument_id)
+          if (formData.file?.spisovka_file_id && formData.file?.spisovka_dokument_id) {
+            // ✅ PŘESNÉ PROPOJENÍ podle file_id
             await markSpisovkaDocumentProcessed({
               username,
               token,
-              dokument_id: potentialDoc.dokument_id, // SPRÁVNĚ: dokument_id, NE id!
+              dokument_id: formData.file.spisovka_dokument_id,
+              spisovka_priloha_id: formData.file.spisovka_file_id, // 🆕 Přesné ID přílohy
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema,
               stav: 'ZAEVIDOVANO',
-              poznamka: `Automaticky zaevidováno z InvoiceEvidencePage`
+              poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${formData.file.spisovka_file_id})`
             });
             
-            console.log('✅ Spisovka dokument označen jako zpracovaný:', {
-              dokument_id: potentialDoc.dokument_id,
+            console.log('✅ Spisovka dokument označen jako zpracovaný (přesné propojení):', {
+              dokument_id: formData.file.spisovka_dokument_id,
+              spisovka_priloha_id: formData.file.spisovka_file_id,
               faktura_id: result.data.id,
               fa_cislo_vema: formData.fa_cislo_vema
             });
-          } else {
-            console.log('ℹ️ Nelze automaticky propojit Spisovka dokument (žádná shoda podle názvu souboru)');
+          }
+          // FALLBACK: Pokud není Spisovka metadata, zkusit párovat podle názvu souboru (starý způsob)
+          else if (formData.file && spisovkaLastRecords && spisovkaLastRecords.length > 0) {
+            const potentialDoc = spisovkaLastRecords.find(doc => {
+              if (doc.prilohy && doc.prilohy.length > 0) {
+                return doc.prilohy.some(priloha => priloha.filename === formData.file.name);
+              }
+              return false;
+            });
+
+            if (potentialDoc?.dokument_id) {
+              await markSpisovkaDocumentProcessed({
+                username,
+                token,
+                dokument_id: potentialDoc.dokument_id,
+                faktura_id: result.data.id,
+                fa_cislo_vema: formData.fa_cislo_vema,
+                stav: 'ZAEVIDOVANO',
+                poznamka: `Auto-tracking: Párování podle názvu souboru (fallback)`
+              });
+              
+              console.log('✅ Spisovka dokument označen jako zpracovaný (fallback podle názvu):', {
+                dokument_id: potentialDoc.dokument_id,
+                faktura_id: result.data.id,
+                filename: formData.file.name
+              });
+            } else {
+              console.log('ℹ️ Nelze automaticky propojit Spisovka dokument (žádná shoda podle názvu souboru)');
+            }
           }
         } catch (spisovkaErr) {
           // Neblokujeme úspěch faktury - jen logujeme
