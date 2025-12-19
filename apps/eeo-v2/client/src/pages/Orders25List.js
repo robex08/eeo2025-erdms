@@ -6721,8 +6721,8 @@ const Orders25List = () => {
           {/* Druhý řádek - Předmět */}
           {row.original.predmet && (
             <div style={{
-              fontSize: '0.85em',
-              color: '#64748b',
+              fontSize: '0.95em',
+              color: '#475569',
               marginTop: '4px',
               lineHeight: '1.3',
               maxWidth: '300px',
@@ -7514,7 +7514,7 @@ const Orders25List = () => {
     },
     {
       accessorKey: 'faktury_celkova_castka_s_dph',
-      header: 'Částka FA s DPH',
+      header: 'Cena FA s DPH',
       sortingFn: (rowA, rowB) => {
         const priceA = parseFloat(rowA.original.faktury_celkova_castka_s_dph || 0);
         const priceB = parseFloat(rowB.original.faktury_celkova_castka_s_dph || 0);
