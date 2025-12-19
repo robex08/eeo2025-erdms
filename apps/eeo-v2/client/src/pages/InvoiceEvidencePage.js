@@ -3275,72 +3275,22 @@ export default function InvoiceEvidencePage() {
         }
       }
 
-      // 🔄 ZŮSTAT NA FORMULÁŘI - pouze resetovat formulář faktury
-      // Při editaci vymazat entity, při nové faktuře zachovat pro další evidenci
+      // ⚠️ RESET FORMULÁŘE se provede až po kliknutí na "Pokračovat" v progress dialogu
+      // Uložíme data potřebná pro reset do stavu progress dialogu
       const keepEntity = !editingInvoiceId;
-      
-      // ✅ VÝJIMKA: Pokud je vyplněno "Vyberte obj/sml" (searchTerm není prázdný),
-      // resetovat entity i při nové faktuře
       const shouldResetEntity = !keepEntity || searchTerm.trim().length > 0;
       
-      setFormData({
-        order_id: shouldResetEntity ? '' : formData.order_id,
-        smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
-        fa_cislo_vema: '',
-        fa_typ: 'BEZNA',
-        fa_datum_doruceni: formatDateForPicker(new Date()),
-        fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
-        fa_datum_splatnosti: '',
-        fa_castka: '',
-        fa_poznamka: '',
-        fa_strediska_kod: [],
-        file: null,
-        fa_predana_zam_id: null,
-        fa_datum_predani_zam: '',
-        fa_datum_vraceni_zam: ''
-      });
-
-      // Reset editace faktury a příloh
-      const wasEditing = !!editingInvoiceId;
-      setEditingInvoiceId(null);
-      setAttachments([]); // ✅ DŮLEŽITÉ: Vyčistit seznam příloh po uložení
-      
-      // 💾 Vyčistit localStorage po úspěšném uložení faktury
-      try {
-        localStorage.removeItem('invoiceFormData');
-        localStorage.removeItem('invoiceAttachments');
-        localStorage.removeItem('editingInvoiceId'); // ✅ Vymazat i editingInvoiceId
-        localStorage.removeItem('hadOriginalEntity'); // ✅ Vymazat i hadOriginalEntity
-        localStorage.removeItem('spisovka_active_dokument'); // 🎯 Vyčistit aktivní Spisovka dokument
-        console.log('🧹 Aktivní Spisovka dokument vymazán z LS (faktura uložena)');
-      } catch (err) {
-        console.warn('Chyba při mazání localStorage:', err);
-      }
-      
-      // Reset preview entity a autocomplete pokud je potřeba
-      if (shouldResetEntity) {
-        setOrderData(null);
-        setSmlouvaData(null);
-        setSearchTerm('');
-        setShowSuggestions(false);
-        setIsEntityUnlocked(false); // Reset unlock stavu
-        setHadOriginalEntity(false);
-      } else {
-        // ✅ Refresh objednávky/smlouvy pro aktualizované faktury (NOVÉ i EDITOVANÉ)
-        if (formData.order_id && orderData) {
-          await loadOrderData(formData.order_id);
-          console.log('🔄 Objednávka refreshnuta po uložení faktury');
+      // 💾 Uložit reset parametry do progress dialogu (použije se při kliknutí na "Pokračovat")
+      setProgressModal(prev => ({
+        ...prev,
+        resetData: {
+          keepEntity,
+          shouldResetEntity,
+          wasEditing: !!editingInvoiceId,
+          currentOrderId: formData.order_id,
+          currentSmlouvaId: formData.smlouva_id
         }
-        if (formData.smlouva_id && smlouvaData) {
-          await loadSmlouvaData(formData.smlouva_id);
-          console.log('🔄 Smlouva refreshnuta po uložení faktury');
-        }
-      }
-
-      // Reset pole errors a tracking změn
-      setFieldErrors({});
-      setOriginalFormData(null);
-      setHasChangedCriticalField(false);
+      }));
 
       // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (pouze pro nové faktury, ne editace)
       // 📋 AUTO-TRACKING: Označit Spisovka dokument jako zpracovaný
@@ -5271,8 +5221,72 @@ export default function InvoiceEvidencePage() {
               {progressModal.status === 'success' && (
                 <ProgressButton 
                   variant="primary" 
-                  onClick={() => {
-                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '' });
+                  onClick={async () => {
+                    // 🎯 RESET FORMULÁŘE PO ÚSPĚŠNÉM ULOŽENÍ
+                    const resetData = progressModal.resetData || {};
+                    const { keepEntity, shouldResetEntity, wasEditing, currentOrderId, currentSmlouvaId } = resetData;
+                    
+                    // Reset formData
+                    setFormData({
+                      order_id: shouldResetEntity ? '' : currentOrderId,
+                      smlouva_id: shouldResetEntity ? null : currentSmlouvaId,
+                      fa_cislo_vema: '',
+                      fa_typ: 'BEZNA',
+                      fa_datum_doruceni: formatDateForPicker(new Date()),
+                      fa_datum_vystaveni: '',
+                      fa_datum_splatnosti: '',
+                      fa_castka: '',
+                      fa_poznamka: '',
+                      fa_strediska_kod: [],
+                      file: null,
+                      fa_predana_zam_id: null,
+                      fa_datum_predani_zam: '',
+                      fa_datum_vraceni_zam: ''
+                    });
+
+                    // Reset editace faktury a příloh
+                    setEditingInvoiceId(null);
+                    setAttachments([]);
+                    
+                    // 💾 Vyčistit localStorage
+                    try {
+                      localStorage.removeItem('invoiceFormData');
+                      localStorage.removeItem('invoiceAttachments');
+                      localStorage.removeItem('editingInvoiceId');
+                      localStorage.removeItem('hadOriginalEntity');
+                      localStorage.removeItem('spisovka_active_dokument');
+                      console.log('🧹 LocalStorage vyčištěn po uložení faktury');
+                    } catch (err) {
+                      console.warn('Chyba při mazání localStorage:', err);
+                    }
+                    
+                    // Reset preview entity a autocomplete pokud je potřeba
+                    if (shouldResetEntity) {
+                      setOrderData(null);
+                      setSmlouvaData(null);
+                      setSearchTerm('');
+                      setShowSuggestions(false);
+                      setIsEntityUnlocked(false);
+                      setHadOriginalEntity(false);
+                    } else {
+                      // ✅ Refresh objednávky/smlouvy pro aktualizované faktury
+                      if (currentOrderId && orderData) {
+                        await loadOrderData(currentOrderId);
+                        console.log('🔄 Objednávka refreshnuta po uložení faktury');
+                      }
+                      if (currentSmlouvaId && smlouvaData) {
+                        await loadSmlouvaData(currentSmlouvaId);
+                        console.log('🔄 Smlouva refreshnuta po uložení faktury');
+                      }
+                    }
+
+                    // Reset pole errors a tracking změn
+                    setFieldErrors({});
+                    setOriginalFormData(null);
+                    setHasChangedCriticalField(false);
+                    
+                    // Zavřít progress dialog
+                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
                   }}
                 >
                   Pokračovat
