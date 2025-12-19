@@ -1997,13 +1997,14 @@ export function formatFileSize(bytes) {
 
 /**
  * 🔒 LOCK objednávky pro editaci
- * @param {number} orderId - ID objednávky
- * @param {string} token - Auth token
- * @param {string} username - Username
- * @param {boolean} force - Vynutit zámek (admin může odemknout a převzít)
+ * @param {Object} params - Parametry
+ * @param {number} params.orderId - ID objednávky
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {boolean} params.force - Vynutit zámek (admin může odemknout a převzít)
  * @returns {Promise<Object>} Response data
  */
-export async function lockOrderV2(orderId, token, username, force = false) {
+export async function lockOrderV2({ orderId, token, username, force = false }) {
   try {
     const response = await apiOrderV2.post(
       `/order-v2/${orderId}/lock`,
@@ -2031,12 +2032,13 @@ export async function lockOrderV2(orderId, token, username, force = false) {
 
 /**
  * 🔓 UNLOCK objednávky
- * @param {number} orderId - ID objednávky
- * @param {string} token - Auth token
- * @param {string} username - Username
+ * @param {Object} params - Parametry
+ * @param {number} params.orderId - ID objednávky
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
  * @returns {Promise<Object>} Response data
  */
-export async function unlockOrderV2(orderId, token, username) {
+export async function unlockOrderV2({ orderId, token, username }) {
   try {
     const response = await apiOrderV2.post(
       `/order-v2/${orderId}/unlock`,

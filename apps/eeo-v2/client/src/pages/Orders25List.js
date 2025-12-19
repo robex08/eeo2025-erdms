@@ -8303,6 +8303,7 @@ const Orders25List = () => {
       // ✅ JEDNODUCHÁ kontrola podle nové BE sémantiky
       if (dbOrder.lock_info?.locked === true) {
         // ❌ Zamčená JINÝM uživatelem - ZOBRAZ dialog a BLOKUJ editaci
+        console.log('🔒 LOCK Orders25List: Obj #' + orderIdToCheck + ' je ZAMČENÁ jiným uživatelem');
         const lockInfo = dbOrder.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 
@@ -8327,7 +8328,9 @@ const Orders25List = () => {
       } else {
         // ✅ locked === false znamená můžu editovat (volná NEBO moje zamčená)
         if (dbOrder.lock_info?.is_owned_by_me === true) {
+          console.log('✅ LOCK Orders25List: Obj #' + orderIdToCheck + ' je moje zamčená - pokračuji');
         } else if (dbOrder.lock_info?.lock_status === 'unlocked' || dbOrder.lock_info?.lock_status === 'expired') {
+          console.log('✅ LOCK Orders25List: Obj #' + orderIdToCheck + ' je ODEMČENÁ - pokračuji');
         }
       }
     } catch (error) {
