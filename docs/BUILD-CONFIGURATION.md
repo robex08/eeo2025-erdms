@@ -88,6 +88,76 @@ WorkingDirectory=/var/www/erdms-dev/auth-api
 WorkingDirectory=/var/www/erdms-builds/current/auth-api
 ```
 
+## Produkční struktura - EEO-V2
+
+### Potvrzené prostředí
+- **Production root**: `/var/www/erdms-platform/apps/eeo-v2/`
+- **Development root**: `/var/www/erdms-dev/apps/eeo-v2/`
+
+### Struktura produkčního adresáře
+
+#### ✅ SPRÁVNÁ struktura (FLAT - bez client/ subdirectory)
+```
+/var/www/erdms-platform/apps/eeo-v2/
+├── index.html              # Root HTML (production info page nebo build)
+├── static/                 # Build assets (JS, CSS, images)
+├── manifest.json          # PWA manifest
+├── robots.txt
+└── api/                   # PHP backend (production kód)
+```
+
+#### ❌ NESPRÁVNÁ struktura (NESTed)
+```
+/var/www/erdms-platform/apps/eeo-v2/
+└── client/                # ❌ NESMÍ BÝT v produkci
+    ├── index.html
+    ├── static/
+    └── src/               # ❌ Source code NESMÍ být v produkci
+```
+
+### Pravidla pro produkci
+
+1. **Build artifacts ONLY** - žádný source code
+   - ✅ Kopírovat: `index.html`, `static/`, `manifest.json`, etc.
+   - ❌ NEkopírovat: `src/`, `node_modules/`, `package.json`, `vite.config.js`
+
+2. **Flat structure** - build přímo v root aplikace
+   - ✅ `/var/www/erdms-platform/apps/eeo-v2/index.html`
+   - ❌ `/var/www/erdms-platform/apps/eeo-v2/client/index.html`
+
+3. **Deployment command**
+   ```bash
+   # Vyčistit produkci (kromě api/)
+   cd /var/www/erdms-platform/apps/eeo-v2
+   find . -maxdepth 1 -not -name 'api' -not -name '.' -delete
+   
+   # Nakopírovat build artifacts
+   cp -r /var/www/erdms-dev/apps/eeo-v2/client/build/* .
+   
+   # Nastavit oprávnění
+   chown -R www-data:www-data .
+   ```
+
+4. **URL mapping**
+   - Production: `https://erdms.zachranka.cz/eeo-v2`
+   - Development: `https://erdms.zachranka.cz/dev/eeo-v2`
+   - Beta testers: Link z produkce na `/dev/eeo-v2`
+
+5. **Apache configuration**
+   ```apache
+   # Production
+   Alias /eeo-v2 /var/www/erdms-platform/apps/eeo-v2
+   
+   # Development
+   Alias /dev/eeo-v2 /var/www/erdms-dev/apps/eeo-v2/client/build
+   ```
+
+### Best Practices
+- ✅ Odpovídá standardům: Vercel, Netlify, Nginx, Apache
+- ✅ Oddělený development a production
+- ✅ Clear separation of concerns
+- ✅ Bezpečnost (žádný source code v produkci)
+
 ## Checklist před deployem
 
 - [ ] Všechny `vite.config.js` mají `outDir: 'build'`
@@ -98,6 +168,9 @@ WorkingDirectory=/var/www/erdms-builds/current/auth-api
 - [ ] Po změně .env proveden rebuild: `npm run build`
 - [ ] Po změně Apache konfigurace: `systemctl restart apache2`
 - [ ] Po změně systemd service: `systemctl daemon-reload && systemctl restart <service>`
+- [ ] **EEO-V2: Build artifacts kopírovány FLAT (bez client/ subdirectory)**
+- [ ] **EEO-V2: Production neobsahuje source code (src/, package.json, etc.)**
+- [ ] **EEO-V2: Info page vytvořena s beta tester linkem na /dev/eeo-v2**
 
 ## Debugging
 

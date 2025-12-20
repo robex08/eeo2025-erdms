@@ -139,23 +139,33 @@ const layoutStyle = css`
   position: relative;
   overflow: hidden; /* vnější stránka bez scrollbaru – scroll uvnitř Content */
 `;
-const Header = styled.header(({ theme }) => `
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%);
-  color: #fff;
-  height: var(--app-header-height, 96px);
-  padding: 10px 20px 14px 20px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  transition: background .3s ease;
-`);
+const Header = styled.header(({ theme }) => {
+  // Detekce dev prostředí z URL
+  const isDevEnv = typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/');
+  
+  // Dev: tmavě hnědá → tmavě červená, Produkce: modrý gradient
+  const gradient = isDevEnv
+    ? 'linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%)'
+    : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%)`;
+  
+  return `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: ${gradient};
+    color: #fff;
+    height: var(--app-header-height, 96px);
+    padding: 10px 20px 14px 20px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    transition: background .3s ease;
+  `;
+});
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
@@ -228,7 +238,7 @@ const MenuLeft = styled.div`
   border-radius: 1.2em;
   box-shadow: 0 2px 8px rgba(34, 197, 94, 0.04);
   min-width:0;
-  overflow-x:hidden;
+  overflow-x:visible; /* Změněno z hidden - aby scrollWidth fungoval pro detekci */
 `;
 const MenuRight = styled.div`
   display: flex;
@@ -1436,6 +1446,15 @@ const Layout = ({ children }) => {
   const analyticsButtonRef = useRef(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
+  // State pro submenu - Přehled (dynamické menu)
+  const [prehledMenuOpen, setPrehledMenuOpen] = useState(false);
+  const prehledMenuRef = useRef(null);
+  const prehledButtonRef = useRef(null);
+  const [prehledDropdownPosition, setPrehledDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  // State pro detekci přetečení menu
+  const menuLeftRef = useRef(null);
+
   // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
   // Pozice dropdownu pro Manažerské analýzy se počítá synchronně v onClick handleru
@@ -1469,6 +1488,21 @@ const Layout = ({ children }) => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [analyticsMenuOpen]);
+
+  // Zavřít submenu při kliku mimo - Přehled
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (prehledMenuRef.current && !prehledMenuRef.current.contains(event.target) &&
+          prehledButtonRef.current && !prehledButtonRef.current.contains(event.target)) {
+        setPrehledMenuOpen(false);
+      }
+    };
+    
+    if (prehledMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [prehledMenuOpen]);
 
   // State pro blikací efekt a aktuální databázi
   const [dbSourceBlinking, setDbSourceBlinking] = useState(false);
@@ -2440,6 +2474,19 @@ const Layout = ({ children }) => {
             <HeaderTitle>
               Systém správy a workflow objednávek
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+                {/* DEVELOP label pro dev prostředí */}
+                {typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/') && (
+                  <span style={{ 
+                    color: '#ff6b6b', 
+                    fontWeight: '700',
+                    backgroundColor: 'rgba(220, 38, 38, 0.2)',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    marginRight: '6px',
+                    border: '1px solid rgba(220, 38, 38, 0.4)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)'
+                  }}>DEVELOP</span>
+                )}
                 {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
                 {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
                   <span style={{ 
@@ -2609,7 +2656,7 @@ const Layout = ({ children }) => {
       </Header>
       {isLoggedIn && (
         <MenuBar>
-          <MenuLeft>
+          <MenuLeft ref={menuLeftRef}>
             { hasAdminRole && hasAdminRole() && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
@@ -2682,21 +2729,24 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faAddressBook} /> Kontakty
               </MenuLinkLeft>
             ) : null }
+            
+            {/* Menu položky pro přehledy */}
             { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('INVOICE_MANAGE'))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Přehled faktur
+                <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
             { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Obj před 2026
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt;2026)
               </MenuLinkLeft>
             ) }
             { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Přehled objednávek
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
               </MenuLinkLeft>
             ) }
+            
             { hasAdminRole && hasAdminRole() && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 

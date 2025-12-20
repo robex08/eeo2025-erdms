@@ -19,9 +19,12 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
   const { isLoggedIn, token, user } = useContext(AuthContext);
   const [hierarchyInfo, setHierarchyInfo] = useState(null);
   
-  // Získat verzi z ENV proměnné a extrahovat číslo verze
+  // Ziskát verzi z ENV proměnné a extrahovat číslo verze
   const fullVersion = process.env.REACT_APP_VERSION || '1.88';
   const versionNumber = fullVersion.match(/(\d+\.\d+[a-z]?)/)?.[1] || fullVersion;
+  
+  // Detekce dev prostředí
+  const isDevEnv = typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/');
   
   // 🌲 HIERARCHIE: Načíst stav hierarchie při přihlášení (stejně jako v Layout.js)
   useEffect(() => {
@@ -63,7 +66,14 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
   }, [isLoggedIn, token, user?.username, user?.id]);
   
   return (
-    <header className="mobile-header">
+    <header 
+      className="mobile-header"
+      style={{
+        background: isDevEnv 
+          ? 'linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%)'
+          : 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)'
+      }}
+    >
       <div className="mobile-header-container">
         {/* Tlačítko zpět (pokud je showBackButton) */}
         {showBackButton ? (
@@ -93,6 +103,20 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
                 color: '#fbbf24',
                 textShadow: '0 1px 2px rgba(0,0,0,0.3)'
               }}>
+                {/* DEVELOP label pro dev prostředí */}
+                {isDevEnv && (
+                  <span style={{ 
+                    color: '#ff6b6b', 
+                    fontWeight: '700',
+                    backgroundColor: 'rgba(220, 38, 38, 0.2)',
+                    padding: '1px 4px',
+                    borderRadius: '2px',
+                    marginRight: '4px',
+                    border: '1px solid rgba(220, 38, 38, 0.4)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    fontSize: '0.95em'
+                  }}>DEVELOP</span>
+                )}
                 {versionNumber}
                 {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
                   <span style={{ 
