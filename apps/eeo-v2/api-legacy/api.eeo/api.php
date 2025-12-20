@@ -3654,14 +3654,13 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Získat parametry - preferuje lp_id, fallback na cislo_lp
                 $lp_id = isset($input['lp_id']) ? (int)$input['lp_id'] : null;
@@ -4046,9 +4045,8 @@ switch ($endpoint) {
                 }
                 
                 // Připojení k databázi - PDO
-                try {
-                    $pdo = get_pdo_connection();
-                } catch (Exception $e) {
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
@@ -4176,9 +4174,8 @@ switch ($endpoint) {
                 }
                 
                 // Připojení k databázi - PDO
-                try {
-                    $pdo = get_pdo_connection();
-                } catch (Exception $e) {
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
@@ -4565,9 +4562,8 @@ switch ($endpoint) {
                 }
                 
                 // Připojení k databázi - PDO
-                try {
-                    $pdo = get_pdo_connection();
-                } catch (Exception $e) {
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
@@ -4614,9 +4610,8 @@ switch ($endpoint) {
                 }
                 
                 // Připojení k databázi - PDO
-                try {
-                    $pdo = get_pdo_connection();
-                } catch (Exception $e) {
+                global $pdo;
+                if (!$pdo) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
