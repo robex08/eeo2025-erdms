@@ -4384,39 +4384,45 @@ switch ($endpoint) {
                     
                 } elseif ($user_id) {
                     // REŽIM 2: Všechna LP pro uživatele
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.user_id = $user_id
-                        AND c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.celkovy_limit,
+                                lp.cislo_uctu,
+                                lp.nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                c.skutecne_cerpano,
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.user_id = ?
+                            AND c.rok = ?
+                            ORDER BY c.kategorie, c.cislo_lp
+                        ");
+                        $stmt->execute([$user_id, $rok]);
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
+                        break;
+                    }
                     
-                    $result = mysqli_query($conn, $sql);
                     $lp_list = array();
-                    
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -4445,7 +4451,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'count' => count($lp_list),
                             'timestamp' => date('Y-m-d H:i:s')
@@ -4454,40 +4460,46 @@ switch ($endpoint) {
                     
                 } elseif ($usek_id) {
                     // REŽIM 3: Všechna LP pro úsek
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            u.prijmeni,
-                            u.jmeno
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        WHERE c.usek_id = $usek_id
-                        AND c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.celkovy_limit,
+                                lp.cislo_uctu,
+                                lp.nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                c.skutecne_cerpano,
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                u.prijmeni,
+                                u.jmeno
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
+                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                            WHERE c.usek_id = ?
+                            AND c.rok = ?
+                            ORDER BY c.kategorie, c.cislo_lp
+                        ");
+                        $stmt->execute([$usek_id, $rok]);
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
+                        break;
+                    }
                     
-                    $result = mysqli_query($conn, $sql);
                     $lp_list = array();
-                    
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -4519,7 +4531,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'count' => count($lp_list),
                             'timestamp' => date('Y-m-d H:i:s')
@@ -4531,7 +4543,6 @@ switch ($endpoint) {
                     echo json_encode(array('status' => 'error', 'message' => 'Chybí parametr cislo_lp, user_id nebo usek_id'));
                 }
                 
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET.'));
