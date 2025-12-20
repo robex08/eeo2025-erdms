@@ -3317,6 +3317,19 @@ const Layout = ({ children }) => {
         <FooterCenter>
           <span style={{ display: 'block', textAlign: 'center', lineHeight: '1.5' }}>
             © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_VERSION}
+            {' | '}
+            <span style={{ 
+              fontFamily: 'monospace', 
+              fontSize: '0.85em',
+              color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#fbbf24' : '#94a3b8',
+              fontWeight: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '600' : '400'
+            }}>
+              {(() => {
+                const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                const match = apiUrl.match(/\/(dev\/)?api\.eeo/);
+                return match ? (match[1] ? '/dev/api.eeo' : '/api.eeo') : '/api.eeo';
+              })()}
+            </span>
           </span>
         </FooterCenter>
       </Footer>
