@@ -128,7 +128,7 @@ function handle_universal_search($input, $config) {
             $results['invoices'] = array(
                 'category_label' => getCategoryLabel('invoices'),
                 'total' => 0,
-                'results' => searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin)
+                'results' => searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $auth_result['id'])
             );
             $results['invoices']['total'] = count($results['invoices']['results']);
         }
@@ -346,9 +346,10 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
  * @param string $likeQuery Escapovaný query s % wildcardy
  * @param int $limit Max počet výsledků
  * @param bool $includeInactive Zahrnout neaktivní
+ * @param int $userId ID uživatele pro permission filtering
  * @return array Pole výsledků
  */
-function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin) {
+function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $userId) {
     try {
         $sql = getSqlSearchInvoices();
         $stmt = $db->prepare($sql);
@@ -356,6 +357,7 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
         $stmt->bindValue(':include_inactive', $includeInactive ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':is_admin', $isAdmin ? 1 : 0, PDO::PARAM_INT);
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
         
