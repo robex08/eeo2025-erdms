@@ -100,6 +100,7 @@ function createHighlight($matchType, $value) {
         'variabilni_symbol' => 'Variabilní symbol',
         'poznamka' => 'Poznámka',
         'objednavka_cislo' => 'Číslo objednávky',
+        'smlouva_cislo' => 'Číslo smlouvy',
         'priloha_nazev' => 'Název přílohy',
         'priloha_typ' => 'Typ přílohy',
         'predano_kym' => 'Předáno komu',

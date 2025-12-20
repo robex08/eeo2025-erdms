@@ -446,6 +446,7 @@ function getSqlSearchInvoices() {
             f.fa_predana_zam_id,
             f.vytvoril_uzivatel_id,
             o.cislo_objednavky as objednavka_cislo,
+            sm.cislo_smlouvy as smlouva_cislo,
             o.dodavatel_nazev,
             o.dodavatel_ico,
             d.nazev as dodavatel_nazev_z_ciselniku,
@@ -484,6 +485,7 @@ function getSqlSearchInvoices() {
                      'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                      LIKE :query_normalized THEN 'poznamka'
                 WHEN o.cislo_objednavky LIKE :query THEN 'objednavka_cislo'
+                WHEN sm.cislo_smlouvy LIKE :query THEN 'smlouva_cislo'
                 WHEN o.dodavatel_nazev LIKE :query THEN 'dodavatel_nazev'
                 WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
@@ -537,6 +539,7 @@ function getSqlSearchInvoices() {
             END as match_type
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+        LEFT JOIN " . TBL_SMLOUVY . " sm ON f.smlouva_id = sm.id
         LEFT JOIN " . TBL_UZIVATELE . " u ON f.vytvoril_uzivatel_id = u.id
         LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
@@ -554,6 +557,7 @@ function getSqlSearchInvoices() {
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
             OR o.cislo_objednavky LIKE :query
+            OR sm.cislo_smlouvy LIKE :query
             OR o.dodavatel_nazev LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
