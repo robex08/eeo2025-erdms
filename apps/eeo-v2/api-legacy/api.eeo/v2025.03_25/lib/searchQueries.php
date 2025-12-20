@@ -610,7 +610,7 @@ function getSqlSearchInvoices() {
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
         )
-        AND (:is_admin = 1 OR f.aktivni = 1 OR :include_inactive = 1)
+        AND f.aktivni = 1
         AND (
             :is_admin = 1
             OR f.fa_predana_zam_id = :user_id
