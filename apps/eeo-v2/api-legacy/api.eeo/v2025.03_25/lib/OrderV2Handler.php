@@ -616,8 +616,8 @@ class OrderV2Handler {
             return get_users_table_name();
         }
         
-        // Fallback
-        return '25_uzivatele';
+        // Fallback - použít TBL_ konstantu
+        return TBL_UZIVATELE;
     }
     
     private function getOrdersTableName() {
@@ -626,8 +626,8 @@ class OrderV2Handler {
             return get_orders_table_name();
         }
         
-        // Fallback
-        return '25a_objednavky';
+        // Fallback - použít TBL_ konstantu
+        return TBL_OBJEDNAVKY;
     }
     
     /**
