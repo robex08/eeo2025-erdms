@@ -2027,31 +2027,57 @@ export function isPreviewableInBrowser(filename) {
 }
 
 /**
- * Stáhne soubor přímo bez otevírání dialogu
+ * Otevře soubor v prohlížeči (PDF náhled) nebo stáhne
  * @param {Blob} blob - Blob data souboru
  * @param {string} filename - Název souboru
- * @returns {boolean} True pokud se podařilo stáhnout
+ * @returns {boolean} True pokud se podařilo otevřít/stáhnout
  */
 export function openInBrowser25(blob, filename) {
   try {
-    // Místo window.open používáme přímé stažení
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || 'soubor';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const ext = filename.toLowerCase().split('.').pop();
     
-    // Uvolnění URL po krátké pauze
-    setTimeout(() => {
-      window.URL.revokeObjectURL(url);
-    }, 100);
-    
-    return true;
+    // Pro PDF a obrázky otevři v novém okně (náhled)
+    if (['pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+      // Otevři v novém okně pro náhled
+      const newWindow = window.open(url, '_blank');
+      
+      if (newWindow) {
+        // Nastavení titulku okna
+        newWindow.document.title = filename;
+        
+        // Uvolnění URL po načtení
+        newWindow.addEventListener('load', () => {
+          setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+          }, 1000);
+        });
+        
+        return true;
+      } else {
+        // Pokud se nepodařilo otevřít okno, stáhni soubor
+        window.URL.revokeObjectURL(url);
+        return false;
+      }
+    } else {
+      // Pro ostatní soubory přímé stažení
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'soubor';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Uvolnění URL po krátké pauze
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      return true;
+    }
   } catch (error) {
-    console.error('Chyba při stahování souboru:', error);
+    console.error('Chyba při otevírání/stahování souboru:', error);
     return false;
   }
 }
