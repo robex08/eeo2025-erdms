@@ -1908,10 +1908,7 @@ export default function InvoiceEvidencePage() {
     setError(null);
 
     try {
-      console.log('🔍 Načítám smlouvu ID:', smlouvaId);
       const smlouvaData = await getSmlouvaDetail({ token, username, id: smlouvaId });
-      
-      console.log('📦 RAW API RESPONSE - smlouvaData:', JSON.stringify(smlouvaData, null, 2));
 
       if (smlouvaData) {
         // API vrací data v objektu { smlouva: {...}, objednavky: [], statistiky: {} }
