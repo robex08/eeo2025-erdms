@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -2850,9 +2850,9 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faUser} />
               </MenuIconLink>
             </SmartTooltip>
-            <SmartTooltip text="Změnit přihlašovací heslo" icon="warning" preferredPosition="bottom">
-              <MenuIconLink to="/change-password" title="">
-                <FontAwesomeIcon icon={faKey} />
+            <SmartTooltip text="Nápověda" icon="info" preferredPosition="bottom">
+              <MenuIconLink to="/help" title="">
+                <FontAwesomeIcon icon={faQuestionCircle} />
               </MenuIconLink>
             </SmartTooltip>
             <SmartTooltip text="O aplikaci" icon="info" preferredPosition="bottom">

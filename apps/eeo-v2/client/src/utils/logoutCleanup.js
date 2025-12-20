@@ -93,6 +93,7 @@ export const LOGOUT_CLEANUP_CONFIG = {
     'app_current_user_id',  // 🔒 KRITICKÉ: User ID musí být smazáno při logout
     'app_lastRoute',        // ⚠️ Poslední route může obsahovat per-user context
     'addressBook_activeTab_*', // 📇 Aktivní záložky address book (session state)
+    'profile_active_tab_*',    // 📋 Aktivní záložka profilu (session state)
 
     // Dočasné soubory a uploady
     'temp_upload_*',

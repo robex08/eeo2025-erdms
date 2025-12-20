@@ -83,6 +83,19 @@ const RightIcons = styled.div`
   z-index: 2;
 `;
 
+const ShortcutHint = styled.div`
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+  user-select: none;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  z-index: 1;
+`;
+
 const IconButton = styled.button`
   background: none;
   border: none;
@@ -183,6 +196,7 @@ const UniversalSearchInput = () => {
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1);
   const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
   const [resultActionTrigger, setResultActionTrigger] = useState(0);
+  const [resultActionType, setResultActionType] = useState('enter'); // 'enter', 'expand', 'collapse'
   const navigableItemsRef = useRef([]);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -205,6 +219,25 @@ const UniversalSearchInput = () => {
       setSearchHistory(getSearchHistory(user_id));
     }
   }, [user_id]);
+  
+  /**
+   * Globální keyboard shortcut: Win+G nebo Cmd+G = focus do search
+   */
+  useEffect(() => {
+    const handleGlobalKeydown = (e) => {
+      // Win+G (Windows/Linux) nebo Cmd+G (Mac) - POUZE metaKey
+      if (e.metaKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select(); // Vybere celý text pokud nějaký je
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeydown);
+    return () => document.removeEventListener('keydown', handleGlobalKeydown);
+  }, []);
   
   /**
    * Spočítat celkový počet výsledků pro navigaci
@@ -297,10 +330,35 @@ const UniversalSearchInput = () => {
         return;
       }
       
+      // ArrowRight - rozbalit kategorii (pokud je vybraná kategorie)
+      if (e.key === 'ArrowRight' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedItem = navigableItemsRef.current[selectedResultIndex];
+        if (selectedItem && selectedItem.type === 'category') {
+          setResultActionType('expand');
+          setResultActionTrigger(prev => prev + 1);
+        }
+        return;
+      }
+      
+      // ArrowLeft - sbalit kategorii (pokud je vybraná kategorie)
+      if (e.key === 'ArrowLeft' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        const selectedItem = navigableItemsRef.current[selectedResultIndex];
+        if (selectedItem && selectedItem.type === 'category') {
+          setResultActionType('collapse');
+          setResultActionTrigger(prev => prev + 1);
+        }
+        return;
+      }
+      
       // Enter - otevři detail vybraného výsledku
       if (e.key === 'Enter' && selectedResultIndex >= 0) {
         e.preventDefault();
         e.stopPropagation();
+        setResultActionType('enter');
         setResultActionTrigger(prev => prev + 1); // Trigger akce v SearchResultsDropdown
         return;
       }
@@ -452,6 +510,11 @@ const UniversalSearchInput = () => {
           placeholder="Hledat cokoliv kdekoliv 😊"
           $hasError={!!error && query.length > 0}
         />
+        
+        {/* Shortcut hint - zobrazit pouze když není focus a není text */}
+        {!inputFocused && !query && (
+          <ShortcutHint>Win+G</ShortcutHint>
+        )}
 
         <RightIcons>
           {loading && (
@@ -494,6 +557,7 @@ const UniversalSearchInput = () => {
           selectedResultIndex={selectedResultIndex}
           onResultAction={resultActionTrigger}
           onNavigableItemsChange={handleNavigableItemsChange}
+          resultActionType={resultActionType}
         />
       )}
     </SearchWrapper>
