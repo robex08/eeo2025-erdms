@@ -411,7 +411,7 @@ const SearchResultsDropdown = ({
   selectedResultIndex = -1,
   onResultAction = null,
   onNavigableItemsChange = null,
-  onSelectedIndexAdjust = null
+  resultActionType = 'enter'
 }) => {
   const navigate = useNavigate();
   
@@ -625,17 +625,24 @@ const SearchResultsDropdown = ({
       const selectedItem = navigableItems[selectedResultIndex];
       
       if (selectedItem.type === 'category') {
-        // Je to kategorie - toggle rozbalení
-        const wasExpanded = expandedCategories.has(selectedItem.categoryKey);
-        toggleCategory(selectedItem.categoryKey);
+        const isExpanded = expandedCategories.has(selectedItem.categoryKey);
         
-        // Po rozbalení kategorie - zůstat na kategorii (index se nemění)
-        // Po sbalení kategorie - zůstat na kategorii (index se nemění)
-        // Uživatel pak šipkou dolů jde na další položku
+        if (resultActionType === 'expand' && !isExpanded) {
+          // Šipka doprava - rozbalit kategorii (pokud je sbalená)
+          toggleCategory(selectedItem.categoryKey);
+        } else if (resultActionType === 'collapse' && isExpanded) {
+          // Šipka doleva - sbalit kategorii (pokud je rozbalená)
+          toggleCategory(selectedItem.categoryKey);
+        } else if (resultActionType === 'enter') {
+          // Enter - toggle rozbalení/sbalení
+          toggleCategory(selectedItem.categoryKey);
+        }
         
       } else if (selectedItem.type === 'result') {
-        // Je to položka - otevři detail
-        handleOpenDetail(selectedItem.result, selectedItem.categoryKey);
+        // Je to položka - otevři detail (pouze na Enter, ne na šipky)
+        if (resultActionType === 'enter') {
+          handleOpenDetail(selectedItem.result, selectedItem.categoryKey);
+        }
       }
     }
   }, [onResultAction]);

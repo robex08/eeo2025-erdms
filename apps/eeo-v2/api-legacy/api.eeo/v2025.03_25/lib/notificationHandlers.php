@@ -2994,7 +2994,16 @@ function getObjectTypeFromEvent($eventType) {
 
 /**
  * Načte uživatelské preference pro notifikace
- * Kombinuje Global Settings + User Profile Settings
+ * 
+ * HIERARCHIE (od nejvyšší priority):
+ * 1. GLOBAL SETTINGS (app_global_settings) - Celá aplikace ON/OFF
+ * 2. USER PROFILE SETTINGS (25_uzivatel_nastaveni) - Uživatel si může vypnout doručení
+ * 3. ORGANIZATION HIERARCHY (25_hierarchie_profily) - Definuje jaké typy notifikací vůbec existují
+ * 
+ * Logika:
+ * - Global Settings = OFF → NIČEHO se nepošle
+ * - User Settings inapp/email = OFF → Uživatel nedostane notifikace tímto kanálem
+ * - Org Hierarchy definuje sendEmail/sendInApp pro konkrétní typ události → Pokud není definováno, notifikace se nevygeneruje
  * 
  * @param PDO $db
  * @param int $userId

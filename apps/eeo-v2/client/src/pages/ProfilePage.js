@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
-import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
+import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { fetchFreshUserDetail, fetchCiselniky } from '../services/api2auth';
@@ -2758,7 +2758,7 @@ const ProfilePage = () => {
                     onClick={handleChangePassword}
                     title="Změnit heslo"
                   >
-                    <Lock size={20} />
+                    <Key size={20} />
                   </ActionButton>
                 </ActionButtons>
               )}
@@ -3647,33 +3647,8 @@ const ProfilePage = () => {
                     Vyberte, jakým způsobem chcete dostávat oznámení o důležitých událostech v aplikaci.
                   </SettingDescription>
 
-                  {/* Hlavní vypínač */}
-                  <div style={{ marginBottom: '2rem', padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '2px solid #e9ecef' }}>
-                    <ToggleSettingItem>
-                      <ToggleSettingLabel>
-                        <ToggleSettingTitle style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                          Povolit notifikace
-                        </ToggleSettingTitle>
-                        <SettingDescription>
-                          Hlavní vypínač pro všechny notifikace. Pokud vypnete, nebudete dostávat žádné oznámení.
-                        </SettingDescription>
-                      </ToggleSettingLabel>
-                      <ToggleSwitch>
-                        <input
-                          type="checkbox"
-                          checked={userSettings.notifikace.povoleny}
-                          onChange={(e) => setUserSettings(prev => ({
-                            ...prev,
-                            notifikace: { ...prev.notifikace, povoleny: e.target.checked }
-                          }))}
-                        />
-                        <span></span>
-                      </ToggleSwitch>
-                    </ToggleSettingItem>
-                  </div>
-
                   {/* Kanály notifikací */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem', opacity: userSettings.notifikace.povoleny ? 1 : 0.5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
                     
                     {/* In-app notifikace */}
                     <ToggleSettingItem>
@@ -3688,7 +3663,6 @@ const ProfilePage = () => {
                         <input
                           type="checkbox"
                           checked={userSettings.notifikace.inapp_povoleny}
-                          disabled={!userSettings.notifikace.povoleny}
                           onChange={(e) => setUserSettings(prev => ({
                             ...prev,
                             notifikace: { ...prev.notifikace, inapp_povoleny: e.target.checked }
@@ -3710,7 +3684,6 @@ const ProfilePage = () => {
                         <input
                           type="checkbox"
                           checked={userSettings.notifikace.email_povoleny}
-                          disabled={!userSettings.notifikace.povoleny}
                           onChange={(e) => setUserSettings(prev => ({
                             ...prev,
                             notifikace: { ...prev.notifikace, email_povoleny: e.target.checked }
@@ -3727,7 +3700,7 @@ const ProfilePage = () => {
                     <SettingDescription style={{ marginBottom: '1rem', fontWeight: 600 }}>
                       Vyberte, ze kterých modulů chcete dostávat notifikace:
                     </SettingDescription>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: userSettings.notifikace.povoleny ? 1 : 0.5 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                       
                       {/* Objednávky */}
                       <ToggleSettingItem>
@@ -3741,7 +3714,6 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.notifikace.kategorie.objednavky}
-                            disabled={!userSettings.notifikace.povoleny}
                             onChange={(e) => setUserSettings(prev => ({
                               ...prev,
                               notifikace: { 
@@ -3766,7 +3738,6 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.notifikace.kategorie.faktury}
-                            disabled={!userSettings.notifikace.povoleny}
                             onChange={(e) => setUserSettings(prev => ({
                               ...prev,
                               notifikace: { 
@@ -3791,7 +3762,6 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.notifikace.kategorie.smlouvy}
-                            disabled={!userSettings.notifikace.povoleny}
                             onChange={(e) => setUserSettings(prev => ({
                               ...prev,
                               notifikace: { 
@@ -3816,7 +3786,6 @@ const ProfilePage = () => {
                           <input
                             type="checkbox"
                             checked={userSettings.notifikace.kategorie.pokladna}
-                            disabled={!userSettings.notifikace.povoleny}
                             onChange={(e) => setUserSettings(prev => ({
                               ...prev,
                               notifikace: { 
