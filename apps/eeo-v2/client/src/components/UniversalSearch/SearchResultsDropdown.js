@@ -234,9 +234,10 @@ const TableRow = styled.tr`
   transition: background 0.15s ease;
   cursor: text;
   user-select: text;
+  background: ${props => props.$selected ? '#eff6ff' : 'white'};
 
   &:hover {
-    background: #f8fafc;
+    background: ${props => props.$selected ? '#dbeafe' : '#f8fafc'};
   }
 
   &:last-child {
@@ -398,12 +399,49 @@ const highlightMatch = (text, query) => {
 /**
  * Search Results Dropdown Component
  */
-const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, username, token }) => {
+const SearchResultsDropdown = ({ 
+  results, 
+  loading, 
+  query, 
+  onClose, 
+  inputRef, 
+  username, 
+  token,
+  selectedResultIndex = -1,
+  onResultAction = null
+}) => {
   const navigate = useNavigate();
   
   // State pro rozbalené kategorie
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [position, setPosition] = useState({ top: 0, left: 0, width: 800, maxHeight: 600 });
+  
+  // Flatten všech výsledků pro keyboard navigation
+  const flattenedResults = useMemo(() => {
+    if (!results?.categories) return [];
+    
+    const flattened = [];
+    Object.entries(results.categories).forEach(([key, category]) => {
+      if (category.results && category.results.length > 0) {
+        category.results.forEach((result, idx) => {
+          flattened.push({
+            result,
+            categoryKey: key,
+            categoryIndex: idx
+          });
+        });
+      }
+    });
+    return flattened;
+  }, [results]);
+  
+  // Callback pro akci na vybraný výsledek (z UniversalSearchInput)
+  useEffect(() => {
+    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < flattenedResults.length) {
+      const selected = flattenedResults[selectedResultIndex];
+      handleOpenDetail(selected.result, selected.categoryKey);
+    }
+  }, [onResultAction]);
   
   // State pro slide-in panel
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -857,9 +895,15 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                     </TableHeader>
                     <tbody>
                       {category.results.map((result, idx) => {
+                        // Najdi globální index tohoto výsledku
+                        const globalIndex = flattenedResults.findIndex(
+                          item => item.result === result && item.categoryKey === category.key
+                        );
+                        
                         return (
                         <TableRow 
                           key={result.id || idx}
+                          $selected={globalIndex === selectedResultIndex}
                           onDoubleClick={() => handleOpenDetail(result, category.key)}
                         >
                           {/* Users */}
