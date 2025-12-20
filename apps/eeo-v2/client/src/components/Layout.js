@@ -3326,8 +3326,8 @@ const Layout = ({ children }) => {
             }}>
               {(() => {
                 const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-                const match = apiUrl.match(/\/(dev\/)?api\.eeo/);
-                return match ? (match[1] ? '/dev/api.eeo' : '/api.eeo') : '/api.eeo';
+                // Check if URL contains /dev/ anywhere (handles both full URLs and relative paths)
+                return apiUrl.includes('/dev/') ? '/dev/api.eeo' : '/api.eeo';
               })()}
             </span>
           </span>
