@@ -50,7 +50,6 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
             enabled: true,
             isImmune: hasImmunity
           });
-          console.log('📱 [MobileHeader] Hierarchie načtena:', settings.hierarchy_profile_id, 'Imunita:', hasImmunity);
         } else {
           setHierarchyInfo({ enabled: false });
         }
