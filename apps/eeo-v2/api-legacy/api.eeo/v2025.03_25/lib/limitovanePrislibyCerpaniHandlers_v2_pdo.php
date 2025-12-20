@@ -16,17 +16,9 @@
  * 
  * REFACTOR: mysqli -> PDO prepared statements (PHP 5.6+, MySQL 5.5.43)
  * Datum: 2025-12-20
+ * 
+ * ✅ POUŽÍVÁ GLOBÁLNÍ TBL_* KONSTANTY Z api.php
  */
-
-// Table constants (define only if not already defined)
-if (!defined('TBL_LP_MASTER')) define('TBL_LP_MASTER', '25_limitovane_prisliby');
-if (!defined('TBL_LP_CERPANI')) define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
-if (!defined('TBL_OBJEDNAVKY')) define('TBL_OBJEDNAVKY', '25a_objednavky');
-if (!defined('TBL_OBJEDNAVKY_POLOZKY')) define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
-if (!defined('TBL_POKLADNI_KNIHY')) define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
-if (!defined('TBL_POKLADNI_POLOZKY')) define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
-if (!defined('TBL_UZIVATELE')) define('TBL_UZIVATELE', '25_uzivatele');
-if (!defined('TBL_USEKY')) define('TBL_USEKY', '25_useky');
 
 /**
  * Přepočítá agregované čerpání pro konkrétní LP podle ID s TŘEMI TYPY ČERPÁNÍ
