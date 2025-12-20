@@ -14,6 +14,13 @@ last_updated: 2025-12-20
 
 ## 🎯 KRITICKÁ PRAVIDLA (vždy dodržovat)
 
+### Testování a Debugging
+- ❌ **NIKDY nepoužívej curl/wget/http požadavky na produkční URL** `https://erdms.zachranka.cz/api.eeo/`
+- ❌ Nemáš k dispozici přístup k testování produkčních endpointů přes HTTP
+- ✅ Místo toho používej: `php -l` pro syntax check, `grep` pro analýzu kódu
+- ✅ Pro debugging spoléhej na PHP error logy: `/var/log/apache2/error.log`
+- ✅ Kontroluj konzistenci kódu bez spouštění HTTP requestů
+
 ### Databázové připojení
 - ❌ NIKDY nepoužívej `localhost` - databáze běží na vzdáleném serveru
 - ✅ Všechny přístupy najdeš v: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php`
