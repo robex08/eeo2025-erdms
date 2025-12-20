@@ -435,13 +435,11 @@ function getSqlSearchInvoices() {
         SELECT 
             f.id,
             f.fa_cislo_vema,
-            f.fa_cislo_dodavatele,
-            f.variabilni_symbol,
-            f.castka_s_dph,
-            f.datum_vystaveni,
-            f.datum_splatnosti,
-            f.datum_uhrazeni,
-            f.poznamka,
+            f.fa_castka as castka,
+            f.fa_datum_vystaveni as datum_vystaveni,
+            f.fa_datum_splatnosti as datum_splatnosti,
+            f.fa_datum_zaplaceni as datum_uhrazeni,
+            f.fa_poznamka as poznamka,
             f.fa_typ,
             f.fa_zaplacena,
             f.fa_dorucena,
@@ -467,7 +465,6 @@ function getSqlSearchInvoices() {
                 WHEN f.fa_datum_splatnosti < CURDATE() THEN 'po_splatnosti'
                 ELSE 'nezaplaceno'
             END as stav_platby,
-            f.dt_nahrani,
             f.aktivni,
             f.dt_vytvoreni,
             f.dt_aktualizace,
@@ -476,14 +473,12 @@ function getSqlSearchInvoices() {
             COUNT(DISTINCT fp.id) as pocet_priloh,
             CASE
                 WHEN f.fa_cislo_vema LIKE :query THEN 'fa_cislo_vema'
-                WHEN f.fa_cislo_dodavatele LIKE :query THEN 'fa_cislo_dodavatele'
-                WHEN f.variabilni_symbol LIKE :query THEN 'variabilni_symbol'
                 WHEN f.fa_typ LIKE :query THEN 'fa_typ'
-                WHEN f.poznamka LIKE :query THEN 'poznamka'
+                WHEN f.fa_poznamka LIKE :query THEN 'poznamka'
                 WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                     f.poznamka,
+                     f.fa_poznamka,
                      'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
                      'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                      'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
@@ -542,20 +537,18 @@ function getSqlSearchInvoices() {
             END as match_type
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-        LEFT JOIN " . TBL_UZIVATELE . " u ON f.nahrano_uzivatel_id = u.id
+        LEFT JOIN " . TBL_UZIVATELE . " u ON f.vytvoril_uzivatel_id = u.id
         LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
         LEFT JOIN 25a_faktury_prilohy fp ON f.id = fp.faktura_id
         WHERE (
             f.fa_cislo_vema LIKE :query
-            OR f.fa_cislo_dodavatele LIKE :query
-            OR f.variabilni_symbol LIKE :query
             OR f.fa_typ LIKE :query
-            OR f.poznamka LIKE :query
+            OR f.fa_poznamka LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-               f.poznamka,
+               f.fa_poznamka,
                'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
                'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
