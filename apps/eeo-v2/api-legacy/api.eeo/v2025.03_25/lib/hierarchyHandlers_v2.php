@@ -31,13 +31,13 @@ function handle_hierarchy_save_v2($data, $pdo) {
         $profilId = isset($data['profile_id']) ? (int)$data['profile_id'] : 1;
         
         // Smazat všechny vztahy v profilu
-        $stmt = $pdo->prepare("DELETE FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ?");
+        $stmt = $pdo->prepare("DELETE FROM ".TBL_HIERARCHIE_VZTAHY." WHERE profil_id = ?");
         $stmt->execute(array($profilId));
         
         // Vložit nové vztahy
         if (!empty($relations)) {
             $sql = "
-                INSERT INTO ".TABLE_HIERARCHIE_VZTAHY." (
+                INSERT INTO ".TBL_HIERARCHIE_VZTAHY." (
                     profil_id, typ_vztahu,
                     user_id_1, user_id_2, lokalita_id, usek_id, template_id, role_id,
                     pozice_node_1, pozice_node_2,
@@ -118,7 +118,7 @@ function handle_hierarchy_structure_v2($data, $pdo) {
     
     // Pokud není zadán profil, použít aktivní
     if (!$profilId) {
-        $stmt = $pdo->query("SELECT id FROM ".TABLE_HIERARCHIE_PROFILY." WHERE aktivni = 1 LIMIT 1");
+        $stmt = $pdo->query("SELECT id FROM ".TBL_HIERARCHIE_PROFILY." WHERE aktivni = 1 LIMIT 1");
         $activeProfile = $stmt->fetch(PDO::FETCH_ASSOC);
         $profilId = $activeProfile ? (int)$activeProfile['id'] : 1;
     }
@@ -174,17 +174,17 @@ function handle_hierarchy_structure_v2($data, $pdo) {
                 t.name as template_name,
                 r.nazev_role as role_nazev,
                 r.Popis as role_popis
-            FROM ".TABLE_HIERARCHIE_VZTAHY." v
-            LEFT JOIN ".TABLE_UZIVATELE." u1 ON v.user_id_1 = u1.id
-            LEFT JOIN ".TABLE_POZICE." p1 ON u1.pozice_id = p1.id
-            LEFT JOIN ".TABLE_LOKALITY." l1 ON u1.lokalita_id = l1.id
-            LEFT JOIN ".TABLE_USEKY." us1 ON u1.usek_id = us1.id
-            LEFT JOIN ".TABLE_UZIVATELE." u2 ON v.user_id_2 = u2.id
-            LEFT JOIN ".TABLE_POZICE." p2 ON u2.pozice_id = p2.id
-            LEFT JOIN ".TABLE_LOKALITY." l2 ON u2.lokalita_id = l2.id
-            LEFT JOIN ".TABLE_USEKY." us2 ON u2.usek_id = us2.id
-            LEFT JOIN ".TABLE_LOKALITY." l ON v.lokalita_id = l.id
-            LEFT JOIN ".TABLE_USEKY." us ON v.usek_id = us.id
+            FROM ".TBL_HIERARCHIE_VZTAHY." v
+            LEFT JOIN ".TBL_UZIVATELE." u1 ON v.user_id_1 = u1.id
+            LEFT JOIN ".TBL_POZICE." p1 ON u1.pozice_id = p1.id
+            LEFT JOIN ".TBL_LOKALITY." l1 ON u1.lokalita_id = l1.id
+            LEFT JOIN ".TBL_USEKY." us1 ON u1.usek_id = us1.id
+            LEFT JOIN ".TBL_UZIVATELE." u2 ON v.user_id_2 = u2.id
+            LEFT JOIN ".TBL_POZICE." p2 ON u2.pozice_id = p2.id
+            LEFT JOIN ".TBL_LOKALITY." l2 ON u2.lokalita_id = l2.id
+            LEFT JOIN ".TBL_USEKY." us2 ON u2.usek_id = us2.id
+            LEFT JOIN ".TBL_LOKALITY." l ON v.lokalita_id = l.id
+            LEFT JOIN ".TBL_USEKY." us ON v.usek_id = us.id
             LEFT JOIN ".TABLE_NOTIFIKACE_SABLONY." t ON v.template_id = t.id
             LEFT JOIN 25_role r ON v.role_id = r.id
             WHERE v.profil_id = ? AND v.aktivni = 1

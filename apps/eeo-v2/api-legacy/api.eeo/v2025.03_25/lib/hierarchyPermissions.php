@@ -286,7 +286,7 @@ function getUsersByLocationAndDepartment($pdo, $locationId, $departmentId) {
 
 function getRecordCreatorId($pdo, $module, $recordId) {
     $tables = [
-        'orders' => TABLE_OBJEDNAVKY,  // ⚠️ Používá konstantu z queries.php
+        'orders' => TBL_OBJEDNAVKY,  // ⚠️ Používá konstantu z queries.php
         'invoices' => '25_faktury',
         'cashbook' => '25_pokladna',
         'contracts' => '25_smlouvy'
@@ -317,7 +317,7 @@ $hierarchyFilter = getHierarchyFilterSQL($pdo, $userId, 'orders', 'o');
 
 $sql = "
     SELECT o.*, u.jmeno, u.prijmeni
-    FROM " . TABLE_OBJEDNAVKY . " o
+    FROM " . TBL_OBJEDNAVKY . " o
     INNER JOIN 25_uzivatele u ON o.vytvoril_user_id = u.uzivatel_id
     WHERE $hierarchyFilter
       AND o.aktivni = 1

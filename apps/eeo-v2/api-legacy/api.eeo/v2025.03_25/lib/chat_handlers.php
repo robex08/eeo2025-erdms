@@ -308,7 +308,7 @@ function handle_chat_messages_send($input, $config, $queries) {
                     $pozice_end = $pozice_start + strlen('@' . $username);
                     
                     // Najít uživatele podle username
-                    $user_stmt = $db->prepare("SELECT id FROM ".TABLE_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1");
+                    $user_stmt = $db->prepare("SELECT id FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1");
                     $user_stmt->bindValue(':username', $username, PDO::PARAM_STR);
                     $user_stmt->execute();
                     $mentioned_user = $user_stmt->fetch(PDO::FETCH_ASSOC);
