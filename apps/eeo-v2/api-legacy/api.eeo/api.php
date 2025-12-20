@@ -4175,14 +4175,14 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $pdo = get_pdo_connection();
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry dotazu (z $input)
                 $cislo_lp = isset($input['cislo_lp']) ? $input['cislo_lp'] : null;
@@ -4194,54 +4194,55 @@ switch ($endpoint) {
                 
                 // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE bez filtrování
                 if ($is_admin) {
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.usek_id,
-                            c.user_id,
-                            c.rok,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            c.posledni_prepocet,
-                            u.prijmeni,
-                            u.jmeno,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.rok = $rok
-                        ORDER BY c.kategorie, c.cislo_lp
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql);
-                    $lp_list = array();
-                    
-                    if ($result === false) {
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.usek_id,
+                                c.user_id,
+                                c.rok,
+                                c.celkovy_limit,
+                                lp.cislo_uctu,
+                                lp.nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                c.skutecne_cerpano,
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                c.posledni_prepocet,
+                                u.prijmeni,
+                                u.jmeno,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
+                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.rok = ?
+                            ORDER BY c.kategorie, c.cislo_lp
+                        ");
+                        $stmt->execute([$rok]);
+                        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
                         echo json_encode(array(
                             'status' => 'error',
                             'message' => 'SQL error',
-                            'error' => mysqli_error($conn)
+                            'error' => $e->getMessage()
                         ));
-                        exit;
+                        break;
                     }
                     
-                    while ($row = mysqli_fetch_assoc($result)) {
+                    $lp_list = array();
+                    foreach ($result as $row) {
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'cislo_lp' => $row['cislo_lp'],
@@ -4275,7 +4276,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $lp_list,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'admin_mode' => true,
                             'count' => count($lp_list),
@@ -4283,7 +4284,6 @@ switch ($endpoint) {
                         )
                     ));
                     
-                    $conn->close();
                     break;
                 }
                 
