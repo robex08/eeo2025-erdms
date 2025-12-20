@@ -2,10 +2,10 @@
 // v2025.03_25/lib/hierarchyHandlers.php
 
 // ============================================================================================================
-// DEPRECATED: Tento soubor obsahuje ZASTARALÉ funkce pro původní hierarchii (25_uzivatele_hierarchie)
+// DEPRECATED: Tento soubor obsahuje ZASTARALÉ funkce pro původní hierarchii (TBL_UZIVATELE_HIERARCHIE (25_uzivatele_hierarchie))
 // Tabulka 25_uzivatele_hierarchie byla SMAZÁNA 13.12.2025
 // 
-// NOVÉ API pro hierarchii: používá structure_json v tabulce 25_hierarchie_profily
+// NOVÉ API pro hierarchii: používá structure_json v tabulce TBL_HIERARCHIE_PROFILY (25_hierarchie_profily)
 // Tyto funkce jsou ponechány pouze pro zpětnou kompatibilitu s legacy endpointy, které už se nepoužívají
 // ============================================================================================================
 
@@ -148,7 +148,7 @@ function handle_hierarchy_add_relation($data, $pdo) {
         $pdo->beginTransaction();
         
         // Kontrola existence uživatelů
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM 25_uzivatele WHERE id IN (:nadrizeny_id, :podrizeny_id) AND aktivni = 1");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM " . TBL_UZIVATELE . " WHERE id IN (:nadrizeny_id, :podrizeny_id) AND aktivni = 1");
         $stmt->bindParam(':nadrizeny_id', $data['nadrizeny_id'], PDO::PARAM_INT);
         $stmt->bindParam(':podrizeny_id', $data['podrizeny_id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -348,7 +348,7 @@ function handle_substitution_create($data, $pdo) {
         $pdo->beginTransaction();
         
         // Kontrola existence uživatelů
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM 25_uzivatele WHERE id IN (:zastupovany_id, :zastupce_id) AND aktivni = 1");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM " . TBL_UZIVATELE . " WHERE id IN (:zastupovany_id, :zastupce_id) AND aktivni = 1");
         $stmt->bindParam(':zastupovany_id', $data['zastupovany_id'], PDO::PARAM_INT);
         $stmt->bindParam(':zastupce_id', $data['zastupce_id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -600,10 +600,10 @@ function handle_hierarchy_users_list($data, $pdo) {
                 us.usek_nazev as usek,
                 us.usek_zkr,
                 u.aktivni
-            FROM 25_uzivatele u
-            LEFT JOIN 25_lokality l ON u.lokalita_id = l.id
-            LEFT JOIN 25_useky us ON u.usek_id = us.id
-            LEFT JOIN 25_pozice p ON u.pozice_id = p.id
+            FROM " . TBL_UZIVATELE . " u
+            LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+            LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+            LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
             WHERE u.aktivni = 1
             ORDER BY u.prijmeni, u.jmeno
         ";
@@ -624,8 +624,8 @@ function handle_hierarchy_users_list($data, $pdo) {
                 (isset($row['prijmeni'][0]) ? $row['prijmeni'][0] : '')
             );
             
-            // Načíst role uživatele z 25_uzivatele_role
-            $roleStmt = $pdo->prepare("SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = ?");
+            // Načíst role uživatele z TBL_UZIVATELE_ROLE (25_uzivatele_role)
+            $roleStmt = $pdo->prepare("SELECT role_id FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id = ?");
             $roleStmt->execute(array($row['id']));
             $userRoles = $roleStmt->fetchAll(PDO::FETCH_COLUMN);
             
@@ -681,8 +681,8 @@ function handle_hierarchy_locations_list($data, $pdo) {
                 l.kod,
                 l.typ,
                 COUNT(u.id) as userCount
-            FROM 25_lokality l
-            LEFT JOIN 25_uzivatele u ON u.lokalita_id = l.id AND u.aktivni = 1
+            FROM " . TBL_LOKALITY . " l
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.lokalita_id = l.id AND u.aktivni = 1
             GROUP BY l.id, l.nazev, l.kod, l.typ
             ORDER BY l.nazev
         ";
@@ -743,8 +743,8 @@ function handle_hierarchy_departments_list($data, $pdo) {
                 us.usek_zkr,
                 us.usek_nazev,
                 COUNT(u.id) as userCount
-            FROM 25_useky us
-            LEFT JOIN 25_uzivatele u ON u.usek_id = us.id AND u.aktivni = 1
+            FROM " . TBL_USEKY . " us
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.usek_id = us.id AND u.aktivni = 1
             GROUP BY us.id, us.usek_zkr, us.usek_nazev
             ORDER BY us.usek_nazev
         ";
@@ -801,7 +801,7 @@ function handle_hierarchy_structure($data, $pdo) {
     
     // Pokud není zadán profil_id, načti aktivní profil
     if ($profilId === null) {
-        $stmt = $pdo->query("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt = $pdo->query("SELECT id FROM " . TBL_HIERARCHIE_PROFILY . " WHERE aktivni = 1 LIMIT 1");
         $activeProfile = $stmt->fetch(PDO::FETCH_ASSOC);
         $profilId = $activeProfile ? (int)$activeProfile['id'] : 1;
     }
@@ -817,10 +817,10 @@ function handle_hierarchy_structure($data, $pdo) {
                 p.nazev_pozice as pozice,
                 l.nazev as lokalita,
                 us.usek_nazev as usek
-            FROM 25_uzivatele u
-            LEFT JOIN 25_lokality l ON u.lokalita_id = l.id
-            LEFT JOIN 25_useky us ON u.usek_id = us.id
-            LEFT JOIN 25_pozice p ON u.pozice_id = p.id
+            FROM " . TBL_UZIVATELE . " u
+            LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+            LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+            LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
             WHERE u.aktivni = 1
             AND u.id IN (
                 SELECT DISTINCT user_id_1 FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_1 IS NOT NULL
@@ -881,7 +881,7 @@ function handle_hierarchy_structure($data, $pdo) {
                 h.dt_od,
                 h.dt_do,
                 h.aktivni
-            FROM 25_uzivatele_hierarchie h
+            FROM " . TBL_UZIVATELE_HIERARCHIE . " h
             WHERE h.aktivni = 1
               AND h.profil_id = ?
               AND (h.dt_od IS NULL OR h.dt_od <= CURDATE())
@@ -975,7 +975,7 @@ function handle_hierarchy_structure($data, $pdo) {
         if (!empty($locationIds)) {
             $locationIdsArray = array_keys($locationIds);
             $placeholders = implode(',', array_fill(0, count($locationIdsArray), '?'));
-            $sqlLocations = "SELECT id, nazev FROM 25_lokality WHERE id IN ($placeholders) AND aktivni = 1";
+            $sqlLocations = "SELECT id, nazev FROM " . TBL_LOKALITY . " WHERE id IN ($placeholders) AND aktivni = 1";
             $stmtLoc = $pdo->prepare($sqlLocations);
             $stmtLoc->execute($locationIdsArray);
             
@@ -995,7 +995,7 @@ function handle_hierarchy_structure($data, $pdo) {
         if (!empty($departmentIds)) {
             $departmentIdsArray = array_keys($departmentIds);
             $placeholders = implode(',', array_fill(0, count($departmentIdsArray), '?'));
-            $sqlDepartments = "SELECT id, usek_nazev FROM 25_useky WHERE id IN ($placeholders) AND aktivni = 1";
+            $sqlDepartments = "SELECT id, usek_nazev FROM " . TBL_USEKY . " WHERE id IN ($placeholders) AND aktivni = 1";
             $stmtDept = $pdo->prepare($sqlDepartments);
             $stmtDept->execute($departmentIdsArray);
             
@@ -1012,7 +1012,7 @@ function handle_hierarchy_structure($data, $pdo) {
         }
         
         // Načíst pozice z DB a přidat je do nodes
-        $posStmt = $pdo->prepare("SELECT nadrizeny_id, podrizeny_id, layout_pozice, rozsirene_lokality, rozsirene_useky FROM 25_uzivatele_hierarchie WHERE profil_id = ? AND aktivni = 1 AND layout_pozice IS NOT NULL");
+        $posStmt = $pdo->prepare("SELECT nadrizeny_id, podrizeny_id, layout_pozice, rozsirene_lokality, rozsirene_useky FROM " . TBL_UZIVATELE_HIERARCHIE . " WHERE profil_id = ? AND aktivni = 1 AND layout_pozice IS NOT NULL");
         $posStmt->execute(array($profilId));
         $nodePositions = array();
         while ($posRow = $posStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1094,7 +1094,7 @@ function handle_hierarchy_save($data, $pdo) {
         
         // Smazat všechny vztahy v daném profilu (DELETE strategie)
         $stmt = $pdo->prepare("
-            DELETE FROM 25_uzivatele_hierarchie 
+            DELETE FROM " . TBL_UZIVATELE_HIERARCHIE . " 
             WHERE profil_id = ?
         ");
         $stmt->execute(array($profilId));
@@ -1113,7 +1113,7 @@ function handle_hierarchy_save($data, $pdo) {
         // Vložit nové vztahy
         if (!empty($edges)) {
             $sql = "
-                INSERT INTO 25_uzivatele_hierarchie (
+                INSERT INTO " . TBL_UZIVATELE_HIERARCHIE . " (
                     nadrizeny_id, podrizeny_id, profil_id, typ_vztahu, uroven_opravneni,
                     viditelnost_objednavky, viditelnost_faktury, viditelnost_smlouvy,
                     viditelnost_pokladna, viditelnost_uzivatele, viditelnost_lp,
@@ -1264,8 +1264,8 @@ function handle_hierarchy_profiles_list($data, $pdo) {
                 p.structure_json,
                 u.jmeno,
                 u.prijmeni
-            FROM 25_hierarchie_profily p
-            LEFT JOIN 25_uzivatele u ON p.vytvoril_user_id = u.id
+            FROM " . TBL_HIERARCHIE_PROFILY . " p
+            LEFT JOIN " . TBL_UZIVATELE . " u ON p.vytvoril_user_id = u.id
             ORDER BY p.aktivni DESC, p.nazev ASC
         ");
         
@@ -1328,7 +1328,7 @@ function handle_hierarchy_profiles_create($data, $pdo) {
         $pdo->beginTransaction();
         
         // Zkontrolovat zda profil s tímto názvem již existuje
-        $stmt = $pdo->prepare("SELECT id FROM 25_hierarchie_profily WHERE nazev = ?");
+        $stmt = $pdo->prepare("SELECT id FROM " . TBL_HIERARCHIE_PROFILY . " WHERE nazev = ?");
         $stmt->execute(array($nazev));
         if ($stmt->fetch()) {
             return array('success' => false, 'error' => 'Profil s timto nazvem jiz existuje', 'code' => 'PROFILE_EXISTS');
@@ -1336,12 +1336,12 @@ function handle_hierarchy_profiles_create($data, $pdo) {
         
         // Deaktivovat všechny profily pokud nastavujeme tento jako aktivní
         if ($setActive) {
-            $pdo->exec("UPDATE 25_hierarchie_profily SET aktivni = 0");
+            $pdo->exec("UPDATE " . TBL_HIERARCHIE_PROFILY . " SET aktivni = 0");
         }
         
         // Vytvořit nový profil
         $stmt = $pdo->prepare("
-            INSERT INTO 25_hierarchie_profily (nazev, popis, aktivni, vytvoril_user_id)
+            INSERT INTO " . TBL_HIERARCHIE_PROFILY . " (nazev, popis, aktivni, vytvoril_user_id)
             VALUES (?, ?, ?, ?)
         ");
         $stmt->execute(array($nazev, $popis, $setActive ? 1 : 0, $token_data['id']));
@@ -1387,14 +1387,14 @@ function handle_hierarchy_profiles_delete($data, $pdo) {
     
     try {
         // Zkontrolovat, zda není poslední profil
-        $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM 25_hierarchie_profily");
+        $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM " . TBL_HIERARCHIE_PROFILY . "");
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row['cnt'] <= 1) {
             return array('success' => false, 'error' => 'Nelze smazat posledni profil');
         }
         
         // Smazat profil (structure_json je součástí profilu, smaže se automaticky)
-        $stmt = $pdo->prepare("DELETE FROM 25_hierarchie_profily WHERE id = ?");
+        $stmt = $pdo->prepare("DELETE FROM " . TBL_HIERARCHIE_PROFILY . " WHERE id = ?");
         $stmt->execute(array($profilId));
         
         return array('success' => true, 'message' => 'Profil uspesne smazan');
@@ -1432,10 +1432,10 @@ function handle_hierarchy_profiles_set_active($data, $pdo) {
         $pdo->beginTransaction();
         
         // Deaktivovat všechny
-        $pdo->exec("UPDATE 25_hierarchie_profily SET aktivni = 0");
+        $pdo->exec("UPDATE " . TBL_HIERARCHIE_PROFILY . " SET aktivni = 0");
         
         // Aktivovat vybraný
-        $stmt = $pdo->prepare("UPDATE 25_hierarchie_profily SET aktivni = 1 WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE " . TBL_HIERARCHIE_PROFILY . " SET aktivni = 1 WHERE id = ?");
         $stmt->execute(array($profilId));
         
         $pdo->commit();
@@ -1473,7 +1473,7 @@ function handle_hierarchy_profiles_toggle_active($data, $pdo) {
     }
     
     try {
-        $stmt = $pdo->prepare("UPDATE 25_hierarchie_profily SET aktivni = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE " . TBL_HIERARCHIE_PROFILY . " SET aktivni = ? WHERE id = ?");
         $stmt->execute(array($isActive, $profilId));
         
         $statusText = $isActive ? 'aktivovan' : 'deaktivovan';
@@ -1523,7 +1523,7 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
     
     try {
         $stmt = $pdo->prepare("
-            UPDATE 25_hierarchie_profily 
+            UPDATE " . TBL_HIERARCHIE_PROFILY . " 
             SET structure_json = :structure, dt_upraveno = NOW() 
             WHERE id = :profileId
         ");
@@ -1569,10 +1569,10 @@ function handle_hierarchy_profiles_load_structure($data, $pdo) {
     
     if ($profileId <= 0) {
         // Načíst aktivní profil
-        $stmt = $pdo->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE aktivni = 1 LIMIT 1");
         $stmt->execute();
     } else {
-        $stmt = $pdo->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE id = :profileId");
+        $stmt = $pdo->prepare("SELECT id, structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE id = :profileId");
         $stmt->execute(['profileId' => $profileId]);
     }
     

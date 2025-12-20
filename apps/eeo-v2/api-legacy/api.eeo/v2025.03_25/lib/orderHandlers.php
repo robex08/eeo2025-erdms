@@ -602,7 +602,7 @@ function getFinancovaniTypNazev($db, $kod) {
     if (empty($kod)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT nazev_stavu FROM 25_ciselnik_stavy WHERE typ_objektu = 'FINANCOVANI_ZDROJ' AND kod_stavu = :kod AND aktivni = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'FINANCOVANI_ZDROJ' AND kod_stavu = :kod AND aktivni = 1 LIMIT 1");
         $stmt->bindParam(':kod', $kod, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -622,7 +622,7 @@ function getLPDetaily($db, $lp_id) {
     if (empty($lp_id)) return null;
     
     try {
-        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM 25_limitovane_prisliby WHERE id = :lp_id LIMIT 1");
+        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
         $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -742,7 +742,7 @@ function loadUserById($db, $user_id) {
     if (!$user_id) return null;
     
     try {
-        $stmt = $db->prepare("SELECT id, username, jmeno, prijmeni, email, telefon, titul_pred, titul_za, aktivni FROM 25_uzivatele WHERE id = :id AND id > 0");
+        $stmt = $db->prepare("SELECT id, username, jmeno, prijmeni, email, telefon, titul_pred, titul_za, aktivni FROM " . TBL_UZIVATELE . " WHERE id = :id AND id > 0");
         $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -804,7 +804,7 @@ function loadStrediskaByKod($db, $strediska_kod) {
         $placeholders = implode(',', array_fill(0, count($search_values), '?'));
         
         $sql = "SELECT kod_stavu as kod, nazev_stavu as nazev, popis, aktivni 
-                FROM 25_ciselnik_stavy 
+                FROM " . TBL_CISELNIK_STAVY . " 
                 WHERE typ_objektu = 'STREDISKA' AND kod_stavu IN ($placeholders)
                 ORDER BY nazev_stavu";
         $stmt = $db->prepare($sql);
@@ -840,7 +840,7 @@ function loadStavByKod($db, $kod_stavu) {
     
     try {
         // DŮLEŽITÉ: NEFILTRUJEME podle aktivni=1, aby se načetly i stavy archivovaných objednávek
-        $stmt = $db->prepare("SELECT kod_stavu, nazev_stavu, popis, aktivni FROM 25_ciselnik_stavy WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT kod_stavu, nazev_stavu, popis, aktivni FROM " . TBL_CISELNIK_STAVY . " WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
         $stmt->bindParam(':kod', $kod_stavu, PDO::PARAM_STR);
         $stmt->execute();
         $stav = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -895,7 +895,7 @@ function loadDruhObjednavkyByKod($db, $druh_kod) {
     
     try {
         // Načteme z 25_ciselnik_stavy kde typ_objektu='DRUH_OBJEDNAVKY'
-        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis FROM 25_ciselnik_stavy WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
+        $stmt = $db->prepare("SELECT kod_stavu as kod, nazev_stavu as nazev, popis FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'DRUH_OBJEDNAVKY' AND kod_stavu = :druh LIMIT 1");
         $stmt->bindParam(':druh', $druh_kod, PDO::PARAM_STR);
         $stmt->execute();
         $druh = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1068,7 +1068,7 @@ function getStavObjednavkyFromWorkflow($db, $stav_workflow_kod) {
         }
         
         // Najdeme název stavu v číselníku
-        $stmt = $db->prepare("SELECT nazev_stavu FROM 25_ciselnik_stavy WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE kod_stavu = :kod AND typ_objektu = 'OBJEDNAVKA'");
         $stmt->bindParam(':kod', $posledni_stav, PDO::PARAM_STR);
         $stmt->execute();
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1266,7 +1266,7 @@ function handle_orders25_list($input, $config, $queries) {
     }
 
     // Dynamické sestavení SQL dotazu s filtrem pro archivované objednávky
-    $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1";
+    $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1";
     
     if ($rok !== null) {
         $sql .= " AND YEAR(dt_vytvoreni) = :rok";
@@ -1603,7 +1603,7 @@ function handle_orders25_by_user($input, $config, $queries) {
         if ($user_id <= 0) {
             // Admin režim - všechny objednávky
             // Dynamické sestavení SQL dotazu
-            $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1";
+            $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1";
             
             if ($rok !== null) {
                 $sql .= " AND YEAR(dt_vytvoreni) = :rok";
@@ -1633,7 +1633,7 @@ function handle_orders25_by_user($input, $config, $queries) {
             }
         } else {
             // User režim - objednávky kde je user objednatel nebo garant
-            $sql = "SELECT * FROM 25a_objednavky WHERE aktivni = 1 AND (objednatel_id = :uzivatel_id OR garant_uzivatel_id = :uzivatel_id)";
+            $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1 AND (objednatel_id = :uzivatel_id OR garant_uzivatel_id = :uzivatel_id)";
             
             if ($rok !== null) {
                 $sql .= " AND YEAR(dt_vytvoreni) = :rok";
@@ -3711,8 +3711,8 @@ function handle_orders25_delete($input, $config, $queries) {
         try {
             $stmtInvPaths = $db->prepare("
                 SELECT fp.systemova_cesta 
-                FROM 25a_faktury_prilohy fp
-                INNER JOIN 25a_objednavky_faktury f ON fp.faktura_id = f.id
+                FROM " . TBL_FAKTURY_PRILOHY . " fp
+                INNER JOIN " . TBL_FAKTURY . " f ON fp.faktura_id = f.id
                 WHERE f.objednavka_id = :objednavka_id
             ");
             $stmtInvPaths->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
@@ -3731,8 +3731,8 @@ function handle_orders25_delete($input, $config, $queries) {
         // 4. Delete INVOICE attachments from database (CASCADE od faktur to nesmaže soubory!)
         try {
             $stmtDelInvAtt = $db->prepare("
-                DELETE fp FROM 25a_faktury_prilohy fp
-                INNER JOIN 25a_objednavky_faktury f ON fp.faktura_id = f.id
+                DELETE fp FROM " . TBL_FAKTURY_PRILOHY . " fp
+                INNER JOIN " . TBL_FAKTURY . " f ON fp.faktura_id = f.id
                 WHERE f.objednavka_id = :objednavka_id
             ");
             $stmtDelInvAtt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
