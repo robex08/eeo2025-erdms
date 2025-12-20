@@ -175,8 +175,15 @@ cat .env | grep REACT_APP_API2_BASE_URL
 
 ### Po Apache DEV Alias:
 ```bash
-# 5. Test DEV API ping
-curl -s https://erdms.zachranka.cz/dev/api.eeo/ping | jq .
+# ⚠️ VAROVÁNÍ: curl na HTTPS může trvat dlouho nebo zamrznout
+# Raději test v prohlížeči nebo grep config:
+
+# 5. Verify Apache aliases
+grep -n "Alias.*dev/eeo-v2\|Alias.*eeo-v2" /etc/apache2/sites-available/erdms.zachranka.cz.conf
+# Expected: /dev/eeo-v2 a /eeo-v2 aliasy
+
+# 6. Test DEV API ping (pokud rychlé)
+# curl -s https://erdms.zachranka.cz/dev/api.eeo/ping | jq .
 
 # 6. Test PROD API ping (stávající)
 curl -s https://erdms.zachranka.cz/api.eeo/ping | jq .
