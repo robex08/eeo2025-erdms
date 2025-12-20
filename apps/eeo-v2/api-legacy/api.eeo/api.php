@@ -3671,16 +3671,20 @@ switch ($endpoint) {
                 if ($lp_id || $cislo_lp) {
                     // Pokud je cislo_lp, převést na lp_id
                     if (!$lp_id && $cislo_lp) {
-                        $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                        $sql_get_id = "SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = '$cislo_lp_safe' LIMIT 1";
-                        $result_id = mysqli_query($conn, $sql_get_id);
-                        if ($result_id && mysqli_num_rows($result_id) > 0) {
-                            $row_id = mysqli_fetch_assoc($result_id);
-                            $lp_id = (int)$row_id['id'];
-                        } else {
-                            http_response_code(404);
-                            echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' neexistuje"));
-                            $conn->close();
+                        try {
+                            $stmt = $pdo->prepare("SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = ? LIMIT 1");
+                            $stmt->execute([$cislo_lp]);
+                            $row_id = $stmt->fetch(PDO::FETCH_ASSOC);
+                            if ($row_id) {
+                                $lp_id = (int)$row_id['id'];
+                            } else {
+                                http_response_code(404);
+                                echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' neexistuje"));
+                                break;
+                            }
+                        } catch (PDOException $e) {
+                            http_response_code(500);
+                            echo json_encode(array('status' => 'error', 'message' => 'Chyba databáze: ' . $e->getMessage()));
                             break;
                         }
                     }
@@ -3688,264 +3692,25 @@ switch ($endpoint) {
                     // Přepočet jednoho LP podle ID
                     $lp_id = (int)$lp_id;
                     
-                    // KROK 1: Získat metadata o LP podle ID
-                    $sql_meta = "
-                        SELECT 
-                            lp.id as lp_id,
-                            lp.cislo_lp,
-                            lp.kategorie,
-                            lp.usek_id,
-                            lp.user_id,
-                            YEAR(MIN(lp.platne_od)) as rok,
-                            SUM(lp.vyse_financniho_kryti) as celkovy_limit,
-                            COUNT(*) as pocet_zaznamu,
-                            (COUNT(*) > 1) as ma_navyseni,
-                            MIN(lp.platne_od) as nejstarsi_platnost,
-                            MAX(lp.platne_do) as nejnovejsi_platnost
-                        FROM " . TBL_LP_MASTER . " lp
-                        WHERE lp.id = $lp_id
-                        GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id
-                        LIMIT 1
-                    ";
+                    // Použít PDO handler funkci
+                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id);
                     
-                    $result_meta = mysqli_query($conn, $sql_meta);
-                    
-                    if (!$result_meta || mysqli_num_rows($result_meta) === 0) {
-                        http_response_code(404);
-                        echo json_encode(array('status' => 'error', 'message' => "LP ID '$lp_id' neexistuje"));
-                        $conn->close();
-                        break;
-                    }
-                    
-                    $meta = mysqli_fetch_assoc($result_meta);
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $meta['cislo_lp']);
-                    
-                    // KROK 2: REZERVACE - parsovat JSON a dělit max_cena_s_dph (POUZE SCHVALENA)
-                    $sql_rezervace = "
-                        SELECT obj.id, obj.max_cena_s_dph, obj.financovani
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                    ";
-                    
-                    $result_rez = mysqli_query($conn, $sql_rezervace);
-                    $rezervovano = 0;
-                    
-                    if ($result_rez) {
-                        while ($row = mysqli_fetch_assoc($result_rez)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['max_cena_s_dph'] / $pocet_lp) : 0;
-                                    $rezervovano += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 3: PŘEDPOKLAD - parsovat JSON a dělit SUM(cena_s_dph) (SCHVALENA BEZ faktury)
-                    $sql_predpoklad = "
-                        SELECT obj.id, obj.financovani, SUM(pol.cena_s_dph) as suma_cena
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                        AND NOT EXISTS (
-                            SELECT 1 FROM 25a_objednavky_faktury fakt 
-                            WHERE fakt.objednavka_id = obj.id
-                        )
-                        GROUP BY obj.id, obj.financovani
-                    ";
-                    
-                    $result_pred = mysqli_query($conn, $sql_predpoklad);
-                    $predpokladane_cerpani = 0;
-                    
-                    if ($result_pred) {
-                        while ($row = mysqli_fetch_assoc($result_pred)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
-                                    $predpokladane_cerpani += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 4: SKUTEČNOST - parsovat JSON a dělit SUM(fa_castka) z faktur
-                    $sql_fakturovano = "
-                        SELECT obj.id, obj.financovani, SUM(fakt.fa_castka) as suma_faktur
-                        FROM " . TBL_OBJEDNAVKY . " obj
-                        INNER JOIN 25a_objednavky_faktury fakt ON obj.id = fakt.objednavka_id
-                        WHERE obj.financovani IS NOT NULL
-                        AND obj.financovani != ''
-                        AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                        AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
-                        AND DATE(obj.dt_vytvoreni) BETWEEN '{$meta['nejstarsi_platnost']}' AND '{$meta['nejnovejsi_platnost']}'
-                        GROUP BY obj.id, obj.financovani
-                    ";
-                    
-                    $result_fakt = mysqli_query($conn, $sql_fakturovano);
-                    $fakturovano = 0;
-                    
-                    if ($result_fakt) {
-                        while ($row = mysqli_fetch_assoc($result_fakt)) {
-                            $financovani = json_decode($row['financovani'], true);
-                            
-                            if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
-                                $lp_ids = $financovani['lp_kody'];
-                                
-                                // Normalizovat pole na inty pro porovnání
-                                $lp_ids_int = array_map('intval', $lp_ids);
-                                
-                                if (in_array($lp_id, $lp_ids_int)) {
-                                    $pocet_lp = count($lp_ids);
-                                    $podil = $pocet_lp > 0 ? ((float)$row['suma_faktur'] / $pocet_lp) : 0;
-                                    $fakturovano += $podil;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // KROK 5: Čerpání z pokladny (pouze VÝDAJE - příjmy nenavyšují limit příslib)
-                    $sql_pokladna = "
-                        SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-                        FROM " . TBL_POKLADNI_KNIHY . " pkn
-                        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON pkn.id = pol.pokladni_kniha_id
-                        WHERE pol.lp_kod = '$cislo_lp_safe'
-                        AND pkn.rok = {$meta['rok']}
-                        AND pkn.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
-                    ";
-                    
-                    $result_pokl = mysqli_query($conn, $sql_pokladna);
-                    $cerpano_pokladna = 0;
-                    
-                    if ($result_pokl) {
-                        $row = mysqli_fetch_assoc($result_pokl);
-                        $cerpano_pokladna = (float)$row['cerpano_pokl'];
-                    }
-                    
-                    $skutecne_cerpano = $fakturovano + $cerpano_pokladna;
-                    
-                    // KROK 6: Vypočítat zůstatky a procenta
-                    $celkovy_limit = (float)$meta['celkovy_limit'];
-                    
-                    $zbyva_rezervace = $celkovy_limit - $rezervovano;
-                    $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
-                    $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
-                    
-                    $procento_rezervace = $celkovy_limit > 0 ? round(($rezervovano / $celkovy_limit) * 100, 2) : 0;
-                    $procento_predpoklad = $celkovy_limit > 0 ? round(($predpokladane_cerpani / $celkovy_limit) * 100, 2) : 0;
-                    $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano / $celkovy_limit) * 100, 2) : 0;
-                    
-                    // KROK 7: Upsert do agregační tabulky
-                    $sql_upsert = "
-                        INSERT INTO " . TBL_LP_CERPANI . " 
-                        (cislo_lp, kategorie, usek_id, user_id, rok, 
-                         celkovy_limit, 
-                         rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
-                         zbyva_rezervace, zbyva_predpoklad, zbyva_skutecne,
-                         procento_rezervace, procento_predpoklad, procento_skutecne,
-                         pocet_zaznamu, ma_navyseni, posledni_prepocet)
-                        VALUES (
-                            '$cislo_lp_safe',
-                            '{$meta['kategorie']}',
-                            {$meta['usek_id']},
-                            {$meta['user_id']},
-                            {$meta['rok']},
-                            $celkovy_limit,
-                            $rezervovano,
-                            $predpokladane_cerpani,
-                            $skutecne_cerpano,
-                            $cerpano_pokladna,
-                            $zbyva_rezervace,
-                            $zbyva_predpoklad,
-                            $zbyva_skutecne,
-                            $procento_rezervace,
-                            $procento_predpoklad,
-                            $procento_skutecne,
-                            {$meta['pocet_zaznamu']},
-                            {$meta['ma_navyseni']},
-                            NOW()
-                        )
-                        ON DUPLICATE KEY UPDATE
-                            celkovy_limit = $celkovy_limit,
-                            rezervovano = $rezervovano,
-                            predpokladane_cerpani = $predpokladane_cerpani,
-                            skutecne_cerpano = $skutecne_cerpano,
-                            cerpano_pokladna = $cerpano_pokladna,
-                            zbyva_rezervace = $zbyva_rezervace,
-                            zbyva_predpoklad = $zbyva_predpoklad,
-                            zbyva_skutecne = $zbyva_skutecne,
-                            procento_rezervace = $procento_rezervace,
-                            procento_predpoklad = $procento_predpoklad,
-                            procento_skutecne = $procento_skutecne,
-                            pocet_zaznamu = {$meta['pocet_zaznamu']},
-                            ma_navyseni = {$meta['ma_navyseni']},
-                            posledni_prepocet = NOW()
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql_upsert);
-                    
-                    if (!$result) {
+                    if (!$result_handler['success']) {
                         http_response_code(500);
-                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při uložení: ' . mysqli_error($conn)));
-                        $conn->close();
+                        echo json_encode(array('status' => 'error', 'message' => $result_handler['error']));
                         break;
                     }
                     
                     echo json_encode(array(
                         'status' => 'ok',
                         'message' => 'Přepočet dokončen',
-                        'cislo_lp' => $cislo_lp,
+                        'lp_id' => $lp_id,
+                        'cislo_lp' => $result_handler['cislo_lp'],
                         'rok' => $rok,
-                        'data' => array(
-                            'cislo_lp' => $cislo_lp,
-                            'kategorie' => $meta['kategorie'],
-                            'usek_id' => (int)$meta['usek_id'],
-                            'user_id' => (int)$meta['user_id'],
-                            'rok' => (int)$meta['rok'],
-                            'celkovy_limit' => (float)$celkovy_limit,
-                            
-                            'rezervovano' => (float)$rezervovano,
-                            'predpokladane_cerpani' => (float)$predpokladane_cerpani,
-                            'skutecne_cerpano' => (float)$skutecne_cerpano,
-                            'cerpano_pokladna' => (float)$cerpano_pokladna,
-                            
-                            'zbyva_rezervace' => (float)$zbyva_rezervace,
-                            'zbyva_predpoklad' => (float)$zbyva_predpoklad,
-                            'zbyva_skutecne' => (float)$zbyva_skutecne,
-                            
-                            'procento_rezervace' => (float)$procento_rezervace,
-                            'procento_predpoklad' => (float)$procento_predpoklad,
-                            'procento_skutecne' => (float)$procento_skutecne,
-                            
-                            'pocet_zaznamu' => (int)$meta['pocet_zaznamu'],
-                            'ma_navyseni' => (int)$meta['ma_navyseni'],
-                            'posledni_prepocet' => date('Y-m-d H:i:s')
-                        ),
+                        'data' => $result_handler['data'],
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         )
@@ -3953,33 +3718,42 @@ switch ($endpoint) {
                     
                 } else {
                     // Přepočet všech LP pro daný rok - získáme ID místo cislo_lp
+                    global $pdo;
+                    
+                    if (!$pdo) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
+                        break;
+                    }
+                    
                     $sql_kody = "
                         SELECT DISTINCT id, cislo_lp
                         FROM " . TBL_LP_MASTER . "
-                        WHERE YEAR(platne_od) = $rok
+                        WHERE YEAR(platne_od) = :rok
                         ORDER BY cislo_lp
                     ";
                     
-                    $result_kody = mysqli_query($conn, $sql_kody);
-                    
-                    if (!$result_kody) {
+                    try {
+                        $stmt_kody = $pdo->prepare($sql_kody);
+                        $stmt_kody->execute([':rok' => $rok]);
+                        $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
                         http_response_code(500);
-                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP'));
-                        $conn->close();
+                        echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . $e->getMessage()));
                         break;
                     }
                     
                     $updated = 0;
                     $failed = 0;
                     
-                    // Použít handler funkci pro každé LP
-                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
+                    // Použít PDO handler funkci pro každé LP
+                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
                     
-                    while ($row = mysqli_fetch_assoc($result_kody)) {
+                    foreach ($lp_list as $row) {
                         $lp_id_batch = (int)$row['id'];
-                        $result_handler = prepocetCerpaniPodleIdLP($conn, $lp_id_batch);
+                        $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch);
                         
-                        if ($result_handler['status'] === 'ok') {
+                        if ($result_handler['success']) {
                             $updated++;
                         } else {
                             $failed++;
@@ -3996,13 +3770,15 @@ switch ($endpoint) {
                             SUM(skutecne_cerpano) as celkem_skutecne,
                             SUM(cerpano_pokladna) as celkem_pokladna
                         FROM " . TBL_LP_CERPANI . "
-                        WHERE rok = $rok
+                        WHERE rok = :rok
                     ";
                     
-                    $result_stats = mysqli_query($conn, $sql_stats);
-                    $stats = null;
-                    if ($result_stats) {
-                        $stats = mysqli_fetch_assoc($result_stats);
+                    try {
+                        $stmt_stats = $pdo->prepare($sql_stats);
+                        $stmt_stats->execute([':rok' => $rok]);
+                        $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        $stats = null;
                     }
                     
                     echo json_encode(array(
@@ -4014,7 +3790,7 @@ switch ($endpoint) {
                             'statistika' => $stats
                         ),
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         ),
@@ -4022,7 +3798,6 @@ switch ($endpoint) {
                     ));
                 }
                 
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
