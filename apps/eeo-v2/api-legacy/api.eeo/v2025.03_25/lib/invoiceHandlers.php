@@ -531,13 +531,13 @@ function handle_invoices25_delete($input, $config, $queries) {
         if ($hard_delete === 1) {
             // ========== HARD DELETE ==========
             // 1. Načti přílohy před smazáním (abychom věděli, co mazat z disku)
-            $sql_get_prilohy = "SELECT systemova_cesta FROM `25a_faktury_prilohy` WHERE faktura_id = ?";
+            $sql_get_prilohy = "SELECT systemova_cesta FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE faktura_id = ?";
             $stmt_get = $db->prepare($sql_get_prilohy);
             $stmt_get->execute(array($faktura_id));
             $prilohy = $stmt_get->fetchAll(PDO::FETCH_ASSOC);
 
             // 2. Smaž přílohy z databáze
-            $sql_delete_prilohy = "DELETE FROM `25a_faktury_prilohy` WHERE faktura_id = ?";
+            $sql_delete_prilohy = "DELETE FROM `" . TBL_FAKTURY_PRILOHY . "` WHERE faktura_id = ?";
             $stmt_prilohy = $db->prepare($sql_delete_prilohy);
             $stmt_prilohy->execute(array($faktura_id));
 
@@ -582,7 +582,7 @@ function handle_invoices25_delete($input, $config, $queries) {
 
             // 2. Soft delete příloh - nastavíme je jako neaktivní
             // (Přílohy v DB zůstanou, soubory na disku zůstanou)
-            $sql_deactivate_prilohy = "UPDATE `25a_faktury_prilohy` SET dt_aktualizace = NOW() WHERE faktura_id = ?";
+            $sql_deactivate_prilohy = "UPDATE `" . TBL_FAKTURY_PRILOHY . "` SET dt_aktualizace = NOW() WHERE faktura_id = ?";
             $stmt_prilohy = $db->prepare($sql_deactivate_prilohy);
             $stmt_prilohy->execute(array($faktura_id));
 
@@ -671,7 +671,7 @@ function handle_invoices25_by_id($input, $config, $queries) {
                 u_predana.titul_za as fa_predana_zam_titul_za,
                 u_predana.email as fa_predana_zam_email
             FROM `$faktury_table` f
-            LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+            LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
             LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
             LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
             LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
@@ -886,7 +886,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
         // 3. VYTVOŘ ZÁZNAM PŘÍLOHY
         $je_isdoc = ($ext === 'isdoc') ? 1 : 0;
 
-        $sql_priloha = "INSERT INTO `25a_faktury_prilohy` (
+        $sql_priloha = "INSERT INTO `" . TBL_FAKTURY_PRILOHY . "` (
             faktura_id,
             objednavka_id,
             guid,
@@ -928,7 +928,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
                 fp.*,
                 u.jmeno AS nahrano_uzivatel_jmeno,
                 u.prijmeni AS nahrano_uzivatel_prijmeni
-            FROM `25a_faktury_prilohy` fp
+            FROM `" . TBL_FAKTURY_PRILOHY . "` fp
             LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
             WHERE fp.id = ?
         ");
@@ -1094,7 +1094,7 @@ function handle_invoices25_list($input, $config, $queries) {
         // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury svých objednávek
         if (!$is_admin) {
             // Najít objednávky uživatele
-            $user_orders_sql = "SELECT id FROM `25a_objednavky` WHERE uzivatel_id = ?";
+            $user_orders_sql = "SELECT id FROM `" . TBL_OBJEDNAVKY . "` WHERE uzivatel_id = ?";
             $user_orders_stmt = $db->prepare($user_orders_sql);
             $user_orders_stmt->execute(array($user_id));
             $user_order_ids = array();
@@ -1420,7 +1420,7 @@ function handle_invoices25_list($input, $config, $queries) {
             COUNT(CASE WHEN (f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0) THEN 1 END) as pocet_bez_prirazeni,
             COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky
         FROM `$faktury_table` f
-        LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
@@ -1492,13 +1492,13 @@ function handle_invoices25_list($input, $config, $queries) {
             szl.dokument_id AS spisovka_dokument_id,
             szl.spisovka_priloha_id AS spisovka_priloha_id
         FROM `$faktury_table` f
-        LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+        LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
         LEFT JOIN `25_uzivatele` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_obj ON o.uzivatel_id = u_obj.id
         LEFT JOIN `25_organizace_vizitka` org ON u_obj.organizace_id = org.id
         LEFT JOIN `25_useky` us_obj ON u_obj.usek_id = us_obj.id
-        LEFT JOIN `25a_faktury_prilohy` prilohy ON f.id = prilohy.faktura_id
+        LEFT JOIN `" . TBL_FAKTURY_PRILOHY . "` prilohy ON f.id = prilohy.faktura_id
         LEFT JOIN `25_ciselnik_stavy` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
@@ -1687,7 +1687,7 @@ function handle_invoices25_list($input, $config, $queries) {
                 u.titul_za AS nahrano_titul_za,
                 u.email AS nahrano_email,
                 u.telefon AS nahrano_telefon
-            FROM `25a_faktury_prilohy` p
+            FROM `" . TBL_FAKTURY_PRILOHY . "` p
             LEFT JOIN `25_uzivatele` u ON p.nahrano_uzivatel_id = u.id
             WHERE p.faktura_id IN ($ids_placeholder)
             ORDER BY p.dt_vytvoreni DESC";

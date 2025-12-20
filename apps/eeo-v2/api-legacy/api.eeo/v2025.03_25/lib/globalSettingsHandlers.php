@@ -73,7 +73,7 @@ function handle_global_settings($input, $db) {
  */
 function handle_get_settings($db) {
     try {
-        $stmt = $db->prepare("SELECT klic, hodnota FROM 25a_nastaveni_globalni");
+        $stmt = $db->prepare("SELECT klic, hodnota FROM " . TBL_NASTAVENI_GLOBALNI . "");
         $stmt->execute();
         
         $settings = array();
@@ -140,7 +140,7 @@ function handle_save_settings($db, $settings, $isSuperAdmin) {
             
             // INSERT nebo UPDATE
             $sql = "
-                INSERT INTO 25a_nastaveni_globalni (klic, hodnota, vytvoreno) 
+                INSERT INTO " . TBL_NASTAVENI_GLOBALNI . " (klic, hodnota, vytvoreno) 
                 VALUES (:klic, :hodnota, NOW())
                 ON DUPLICATE KEY UPDATE hodnota = :hodnota, aktualizovano = NOW()
             ";
@@ -416,7 +416,7 @@ function handle_maintenance_message($input, $db) {
     }
     
     try {
-        $stmt = $db->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'maintenance_message'");
+        $stmt = $db->prepare("SELECT hodnota FROM " . TBL_NASTAVENI_GLOBALNI . " WHERE klic = 'maintenance_message'");
         $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         
