@@ -9,7 +9,7 @@
  * - Enter = okamžité hledání
  */
 
-import React, { useRef, useEffect, useState, useContext } from 'react';
+import React, { useRef, useEffect, useState, useContext, useCallback } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons';
@@ -153,6 +153,16 @@ const UniversalSearchInput = () => {
     hasPermission('ADMIN')
   );
   
+  // Callback po úspěšném vyhledání - uložíme do historie
+  const handleSearchSuccess = useCallback((searchQuery, categories) => {
+    if (user_id && searchQuery && searchQuery.length >= 2) {
+      saveSearchToHistory(user_id, searchQuery, categories);
+      // Reload historie
+      const updatedHistory = getSearchHistory(user_id);
+      setSearchHistory(updatedHistory);
+    }
+  }, [user_id]);
+  
   const {
     query,
     updateQuery,
@@ -164,12 +174,13 @@ const UniversalSearchInput = () => {
     clearResults,
     hasResults,
     isEmpty
-  } = useUniversalSearch();
+  } = useUniversalSearch(handleSearchSuccess);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [searchHistory, setSearchHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -193,9 +204,11 @@ const UniversalSearchInput = () => {
     if (newQuery.length < 2) {
       setShowHistory(true);
       setShowDropdown(false);
+      setSelectedHistoryIndex(-1);
     } else {
       setShowHistory(false);
       setShowDropdown(true);
+      setSelectedHistoryIndex(-1);
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
@@ -205,29 +218,50 @@ const UniversalSearchInput = () => {
   };
 
   /**
-   * Handle Enter key - immediate search
+   * Handle keyboard navigation
    */
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && query.length >= 2) {
+    // Arrow navigation v historii
+    if (showHistory && searchHistory.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedHistoryIndex(prev => 
+          prev < searchHistory.length - 1 ? prev + 1 : prev
+        );
+        return;
+      }
+      
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedHistoryIndex(prev => prev > 0 ? prev - 1 : -1);
+        return;
+      }
+      
+      // Enter - vyber položku z historie
+      if (e.key === 'Enter' && selectedHistoryIndex >= 0) {
+        e.preventDefault();
+        const selectedItem = searchHistory[selectedHistoryIndex];
+        if (selectedItem) {
+          handleSelectFromHistory(selectedItem.query);
+        }
+        return;
+      }
+    }
+    
+    // Enter - immediate search
+    if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
-      
-      // Ulož do historie
-      if (user_id && query.length >= 2) {
-        saveSearchToHistory(user_id, query, []); // categories doplníme později
-        setSearchHistory(getSearchHistory(user_id));
-      }
-      
-      if (query.length >= 4) {
-        immediateSearch(query, { search_all: canViewAllOrders });
-        setShowDropdown(true);
-        setShowHistory(false);
-      }
+      immediateSearch(query, { search_all: canViewAllOrders });
+      setShowDropdown(true);
+      setShowHistory(false);
+      setSelectedHistoryIndex(-1);
     }
 
     // Escape - zavři dropdown
     if (e.key === 'Escape') {
       setShowDropdown(false);
       setShowHistory(false);
+      setSelectedHistoryIndex(-1);
       inputRef.current?.blur();
     }
   };
@@ -238,6 +272,7 @@ const UniversalSearchInput = () => {
   const handleSelectFromHistory = (selectedQuery) => {
     updateQuery(selectedQuery);
     setShowHistory(false);
+    setSelectedHistoryIndex(-1);
     
     // Proveď hledání
     if (selectedQuery.length >= 4) {
@@ -252,7 +287,9 @@ const UniversalSearchInput = () => {
   const handleRemoveFromHistory = (queryToRemove) => {
     if (user_id) {
       removeSearchFromHistory(user_id, queryToRemove);
-      setSearchHistory(getSearchHistory(user_id));
+      const updated = getSearchHistory(user_id);
+      setSearchHistory(updated);
+      setSelectedHistoryIndex(-1);
     }
   };
 
@@ -263,6 +300,7 @@ const UniversalSearchInput = () => {
     if (user_id) {
       clearSearchHistory(user_id);
       setSearchHistory([]);
+      setSelectedHistoryIndex(-1);
     }
   };
 
@@ -375,16 +413,15 @@ const UniversalSearchInput = () => {
       </SearchInputContainer>
 
       {/* Search History - zobrazit když je input krátký a má focus */}
-      {showHistory && inputFocused && searchHistory.length > 0 && (
-        <SearchHistory
-          history={searchHistory}
-          onSelectQuery={handleSelectFromHistory}
-          onRemoveItem={handleRemoveFromHistory}
-          onClearAll={handleClearHistory}
-        />
-      )}
-
-      {/* Results dropdown */}
+        {showHistory && inputFocused && searchHistory.length > 0 && (
+          <SearchHistory
+            history={searchHistory}
+            onSelectQuery={handleSelectFromHistory}
+            onRemoveItem={handleRemoveFromHistory}
+            onClearAll={handleClearHistory}
+            selectedIndex={selectedHistoryIndex}
+          />
+        )}      {/* Results dropdown */}
       {showDropdown && query.length > 0 && (
         <SearchResultsDropdown
           results={results}
