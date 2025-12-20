@@ -2016,13 +2016,6 @@ const ProfilePage = () => {
         zobrazit_ikony_nastroju: userSettings.zobrazit_ikony_nastroju
       };
 
-      console.log('💾 SAVING TO DB - cleanSettings:', cleanSettings);
-      console.log('💾 vychozi_rok being saved:', cleanSettings.vychozi_rok);
-      console.log('💾 vychozi_obdobi being saved:', cleanSettings.vychozi_obdobi);
-      console.log('💾 zobrazit_ikony_nastroju being saved:', cleanSettings.zobrazit_ikony_nastroju);
-      console.log('💾 vychozi_filtry_stavu_objednavek being saved:', cleanSettings.vychozi_filtry_stavu_objednavek);
-      console.log('💾 Full userSettings before save:', userSettings);
-
       // Krok 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
       const dbResponse = await saveUserSettings({
         token,
