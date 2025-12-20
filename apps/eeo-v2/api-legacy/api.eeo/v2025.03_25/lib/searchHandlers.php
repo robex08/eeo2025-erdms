@@ -64,9 +64,8 @@ function handle_universal_search($input, $config) {
         // TRUE = pouze smlouvy pro obj. formulář
         $filterObjForm = isset($input['filter_obj_form']) ? normalizeBool($input['filter_obj_form']) : false;
         
-        // Admin check - SUPERADMIN nebo ADMINISTRATOR = plný přístup bez permissions
-        $user_roles = isset($auth_result['roles']) ? $auth_result['roles'] : array();
-        $isAdmin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        // Admin check - používá is_admin z verify_token_v2 (kontroluje SUPERADMIN nebo ADMINISTRATOR role)
+        $isAdmin = isset($auth_result['is_admin']) && $auth_result['is_admin'];
         
         // Pokud je search_all=true, chovej se jako admin (všechny výsledky)
         if ($searchAll) {
@@ -76,8 +75,7 @@ function handle_universal_search($input, $config) {
         // DEBUG logging
         error_log("UniversalSearch DEBUG: search_all=" . ($searchAll ? 'true' : 'false') . 
                   ", isAdmin=" . ($isAdmin ? 'true' : 'false') . 
-                  ", user_id=" . $auth_result['id'] . 
-                  ", roles=" . implode(',', $user_roles));
+                  ", user_id=" . $auth_result['id']);
         
         // Escapujeme query pro LIKE
         $escapedQuery = escapeLikeWildcards($query);
