@@ -844,8 +844,6 @@ export async function deletePravo({ token, username, id }) {
 
 export async function createRole({ token, username, nazev_role, popis, aktivni }) {
   try {
-    console.log('🟢 createRole REQUEST:', { nazev_role, popis, aktivni });
-    
     const response = await api.post('ciselniky/role/insert', {
       username,
       token,
@@ -853,8 +851,6 @@ export async function createRole({ token, username, nazev_role, popis, aktivni }
       popis,
       aktivni: aktivni ? 1 : 0
     });
-
-    console.log('🟢 createRole RESPONSE:', response.data);
 
     const data = checkResponse(response, 'Vytváření role');
     return data.data || null;
@@ -908,12 +904,8 @@ export async function assignPravoToRole({ token, username, role_id, pravo_id }) 
       pravo_id: parseInt(pravo_id, 10)  // Ensure integer
     };
     
-    console.log('🔵 assignPravoToRole REQUEST:', payload);
-    
     const response = await api.post('ciselniky/role/assign-pravo', payload);
     
-    console.log('🔵 assignPravoToRole RESPONSE:', response.data);
-
     const data = checkResponse(response, 'Přidělení práva k roli');
     return data;
   } catch (error) {
@@ -932,12 +924,8 @@ export async function removePravoFromRole({ token, username, role_id, pravo_id }
       pravo_id: parseInt(pravo_id, 10)  // Ensure integer
     };
     
-    console.log('🟡 removePravoFromRole REQUEST:', payload);
-    
     const response = await api.post('ciselniky/role/remove-pravo', payload);
     
-    console.log('🟡 removePravoFromRole RESPONSE:', response.data);
-
     const data = checkResponse(response, 'Odebrání práva z role');
     return data;
   } catch (error) {
@@ -959,8 +947,6 @@ export async function removePravoFromRole({ token, username, role_id, pravo_id }
  */
 export async function cleanupDuplicatePrava({ token, username, dry_run = false }) {
   try {
-    console.log('🔵 REQUEST cleanupDuplicatePrava:', { username, dry_run });
-    
     const response = await api.post('ciselniky/role/cleanup-duplicates', {
       username,
       token,
@@ -968,7 +954,6 @@ export async function cleanupDuplicatePrava({ token, username, dry_run = false }
       dry_run
     });
 
-    console.log('🔵 RESPONSE cleanupDuplicatePrava:', response.data);
     return checkResponse(response, dry_run ? 'Náhled duplicit načten' : 'Duplicity byly vyčištěny');
   } catch (error) {
     console.error('🔴 ERROR cleanupDuplicatePrava:', error);
@@ -1103,9 +1088,6 @@ export async function updateDocxSablona({ token, username, id, nazev, popis, typ
         ? docx_mapping
         : JSON.stringify(docx_mapping);
     }
-
-    console.log('🚀 [API] updateDocxSablona - odesílám requestData:', requestData);
-    console.log('🚀 [API] castka v requestData:', requestData.castka, typeof requestData.castka);
 
     const response = await api.post('sablona_docx/update', requestData);
 

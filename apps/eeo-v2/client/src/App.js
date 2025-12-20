@@ -194,7 +194,6 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
               // Fallback: Použij první dostupnou sekci
               targetSection = getFirstAvailableSection(hasPermission, userDetail);
               targetRoute = sectionMap[targetSection] || '/profile';
-              console.log('🔄 Redirecting to first available section:', targetSection, '→', targetRoute);
             }
             
             // ✅ Fallback pokud route není v mapě

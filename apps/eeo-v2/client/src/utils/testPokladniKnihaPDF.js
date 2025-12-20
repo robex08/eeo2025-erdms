@@ -133,8 +133,6 @@ export const sampleData = {
  */
 export const generateTestPDF = async () => {
   try {
-    console.log('📄 Generování testovacího PDF...');
-
     const blob = await pdf(
       <PokladniKnihaPDF
         organizationInfo={sampleData.organizationInfo}
@@ -167,8 +165,6 @@ export const generateTestPDF = async () => {
  */
 export const previewTestPDF = async () => {
   try {
-    console.log('👁️ Náhled testovacího PDF...');
-
     const blob = await pdf(
       <PokladniKnihaPDF
         organizationInfo={sampleData.organizationInfo}
@@ -194,8 +190,6 @@ export const previewTestPDF = async () => {
  */
 export const generateLargePDF = async () => {
   try {
-    console.log('📄 Generování velkého PDF s testovacími daty...');
-
     // Vytvoříme 50 testovacích záznamů
     const largeEntries = Array.from({ length: 50 }, (_, index) => ({
       id: index + 1,
@@ -287,8 +281,6 @@ export const testDiacriticsData = {
  */
 export const testDiacritics = async () => {
   try {
-    console.log('🔤 Test diakritiky v PDF...');
-
     const blob = await pdf(
       <PokladniKnihaPDF
         organizationInfo={testDiacriticsData.organizationInfo}
