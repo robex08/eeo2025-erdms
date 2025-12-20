@@ -953,8 +953,6 @@ const UserManagementModal = ({
           return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
-      console.log('🔍 UserManagementModal - Role IDs po mapování:', rolesIds);
-      console.log('🔍 UserManagementModal - userData.roles:', userData.roles);
 
       // Zpracuj práva - najdi ID podle kod_prava v načtených právech
       let rightsIds = [];
@@ -979,8 +977,6 @@ const UserManagementModal = ({
           return id != null ? Number(id) : null;
         }).filter(x => x != null);
       }
-      console.log('🔍 UserManagementModal - Rights IDs po mapování:', rightsIds);
-      console.log('🔍 UserManagementModal - userData.direct_rights:', userData.direct_rights);
 
       const newFormData = {
         username: userData.username || '',
@@ -1000,8 +996,6 @@ const UserManagementModal = ({
         direct_rights: rightsIds
       };
 
-      console.log('📝 UserManagementModal - Nastavuji formData:', newFormData);
-      console.log('📝 UserManagementModal - formData.roles:', newFormData.roles, 'typy:', newFormData.roles.map(id => typeof id));
       setFormData(newFormData);
       setErrors({});
       setSuccessMessage('');
