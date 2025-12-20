@@ -1,11 +1,41 @@
 <?php
 // Konfigurace databáze pro API
+
+// ============================================
+// NAČTENÍ .ENV SOUBORU
+// ============================================
+$env_file = __DIR__ . '/../../.env';
+if (file_exists($env_file)) {
+    $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        // Skip comments
+        if (strpos(trim($line), '#') === 0) {
+            continue;
+        }
+        
+        // Parse KEY=VALUE
+        if (strpos($line, '=') !== false) {
+            list($key, $value) = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value);
+            
+            // Set as environment variable if not already set
+            if (!getenv($key)) {
+                putenv("$key=$value");
+            }
+        }
+    }
+}
+
+// ============================================
+// DATABÁZOVÁ KONFIGURACE Z .ENV
+// ============================================
 return [
     'mysql' => [
-        'host' => '10.3.172.11', // Remote DB server
-        'username' => 'erdms_user', // Nový uživatel pro eeo2025
-        'password' => 'AhchohTahnoh7eim', // Heslo z .env
-        'database' => 'eeo2025' // Nová databáze
+        'host' => getenv('DB_HOST') ?: '10.3.172.11',
+        'username' => getenv('DB_USER') ?: 'erdms_user',
+        'password' => getenv('DB_PASSWORD') ?: 'AhchohTahnoh7eim',
+        'database' => getenv('DB_NAME') ?: 'eeo2025'
     ],
     'upload' => [
         // Root cesta pro nahrávání příloh - jednotná pro dev i produkci

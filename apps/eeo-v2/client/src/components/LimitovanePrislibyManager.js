@@ -1027,7 +1027,7 @@ const LimitovanePrislibyManager = () => {
   const loadLPData = useCallback(async () => {
     setLoading(true);
     try {
-      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
       const currentYear = new Date().getFullYear();
       
       let endpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
@@ -1369,7 +1369,7 @@ const LimitovanePrislibyManager = () => {
   const performInitializace = async () => {
     setInitializing(true);
     try {
-      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
       const currentYear = new Date().getFullYear();
       
       const response = await fetch(`${API_BASE_URL}limitovane-prisliby/inicializace`, {
@@ -1417,7 +1417,7 @@ const LimitovanePrislibyManager = () => {
   const handlePrepocet = async () => {
     setLoading(true);
     try {
-      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
       const currentYear = new Date().getFullYear();
       
       const response = await fetch(`${API_BASE_URL}limitovane-prisliby/prepocet`, {

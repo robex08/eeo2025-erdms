@@ -2003,7 +2003,7 @@ const highlightJsonSyntax = (jsonString) => {
 // =============================================================================
 
 // Base URL pro API - včetně api.eeo prefixu
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 // Helper funkce pro vytvoření docxApi s aktuálním username - NOVÁ VERZE
 const createDocxApi = (username) => ({
@@ -2094,7 +2094,7 @@ const createDocxApi = (username) => ({
   // Legacy method pro kompatibilitu
   getDownloadUrl(token, id) {
     // Toto by se už nemělo používat, ale zachováváme pro kompatibilitu
-    return `${process.env.REACT_APP_API2_BASE_URL || 'https://eeo.zachranka.cz/api.eeo/'}sablona_docx/download?username=${username || 'system'}&token=${token}&id=${id}`;
+    return `${process.env.REACT_APP_API2_BASE_URL || '/api.eeo/'}sablona_docx/download?username=${username || 'system'}&token=${token}&id=${id}`;
   }
 });
 
