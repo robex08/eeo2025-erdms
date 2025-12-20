@@ -115,7 +115,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 obj.financovani,
                 COALESCE(SUM(pol.cena_s_dph), 0) as suma_polozek
             FROM " . TBL_OBJEDNAVKY . " obj
-            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.order_id = obj.id
+            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'

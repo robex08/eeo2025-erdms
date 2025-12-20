@@ -1074,6 +1074,16 @@ const LimitovanePrislibyManager = () => {
       const responseText = await response.text();
       const result = JSON.parse(responseText);
       
+      // 🔍 DEBUG: Co vrací BE
+      console.log('🔍 LP API Response:', {
+        endpoint: endpoint,
+        payload: payload,
+        status: result.status,
+        dataType: Array.isArray(result.data) ? 'array' : typeof result.data,
+        dataLength: Array.isArray(result.data) ? result.data.length : 'N/A',
+        fullResult: result
+      });
+      
       // Kontrola status z API
       if (result.status === 'error') {
         console.error('LP API returned error:', result.message);
