@@ -182,11 +182,6 @@ const UniversalSearchInput = () => {
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
-        console.log('🔐 [UniversalSearchInput] Debounced search - oprávnění:', {
-          username,
-          canViewAllOrders,
-          search_all: canViewAllOrders
-        });
         search(newQuery, { search_all: canViewAllOrders });
       }
     } else {
@@ -200,11 +195,6 @@ const UniversalSearchInput = () => {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
-      console.log('🔐 [UniversalSearchInput] Immediate search (Enter) - oprávnění:', {
-        username,
-        canViewAllOrders,
-        search_all: canViewAllOrders
-      });
       immediateSearch(query, { search_all: canViewAllOrders });
       setShowDropdown(true);
     }
