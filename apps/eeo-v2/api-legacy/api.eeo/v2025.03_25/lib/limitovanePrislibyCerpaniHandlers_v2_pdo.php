@@ -204,59 +204,72 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
         $row_pokl = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
         $cerpano_pokladna = (float)($row_pokl['suma_pokladna'] ?? 0);
         
-        // KROK 6: UPSERT do čerpání tabulky
-        $zbyvajici = $meta['celkovy_limit'] - $rezervovano;
-        $zbyvajici_pred = $meta['celkovy_limit'] - $predpokladane_cerpani;
-        $zbyvajici_skut = $meta['celkovy_limit'] - $skutecne_cerpano - $cerpano_pokladna;
+        // KROK 6: Vypočítat zůstatky a procenta
+        $celkovy_limit = (float)$meta['celkovy_limit'];
         
+        $zbyva_rezervace = $celkovy_limit - $rezervovano;
+        $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
+        $skutecne_cerpano_celkem = $skutecne_cerpano + $cerpano_pokladna;
+        $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano_celkem;
+        
+        $procento_rezervace = $celkovy_limit > 0 ? round(($rezervovano / $celkovy_limit) * 100, 2) : 0;
+        $procento_predpoklad = $celkovy_limit > 0 ? round(($predpokladane_cerpani / $celkovy_limit) * 100, 2) : 0;
+        $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano_celkem / $celkovy_limit) * 100, 2) : 0;
+        
+        // KROK 7: UPSERT do čerpání tabulky
         $sql_upsert = "
             INSERT INTO " . TBL_LP_CERPANI . " (
-                lp_id, cislo_lp, usek_id, user_id, kategorie, rok,
-                celkovy_limit, rezervovano, zbyvajici,
-                predpokladane_cerpani, zbyvajici_pred,
-                skutecne_cerpano, cerpano_pokladna, zbyvajici_skut,
-                ma_navyseni, pocet_zaznamu_master,
-                dt_aktualizace
+                cislo_lp, kategorie, usek_id, user_id, rok,
+                celkovy_limit, 
+                rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
+                zbyva_rezervace, zbyva_predpoklad, zbyva_skutecne,
+                procento_rezervace, procento_predpoklad, procento_skutecne,
+                pocet_zaznamu, ma_navyseni, posledni_prepocet
             ) VALUES (
-                :lp_id, :cislo_lp, :usek_id, :user_id, :kategorie, :rok,
-                :celkovy_limit, :rezervovano, :zbyvajici,
-                :predpokladane_cerpani, :zbyvajici_pred,
-                :skutecne_cerpano, :cerpano_pokladna, :zbyvajici_skut,
-                :ma_navyseni, :pocet_zaznamu_master,
-                NOW()
+                :cislo_lp, :kategorie, :usek_id, :user_id, :rok,
+                :celkovy_limit,
+                :rezervovano, :predpokladane_cerpani, :skutecne_cerpano, :cerpano_pokladna,
+                :zbyva_rezervace, :zbyva_predpoklad, :zbyva_skutecne,
+                :procento_rezervace, :procento_predpoklad, :procento_skutecne,
+                :pocet_zaznamu, :ma_navyseni, NOW()
             )
             ON DUPLICATE KEY UPDATE
                 celkovy_limit = VALUES(celkovy_limit),
                 rezervovano = VALUES(rezervovano),
-                zbyvajici = VALUES(zbyvajici),
                 predpokladane_cerpani = VALUES(predpokladane_cerpani),
-                zbyvajici_pred = VALUES(zbyvajici_pred),
                 skutecne_cerpano = VALUES(skutecne_cerpano),
                 cerpano_pokladna = VALUES(cerpano_pokladna),
-                zbyvajici_skut = VALUES(zbyvajici_skut),
+                zbyva_rezervace = VALUES(zbyva_rezervace),
+                zbyva_predpoklad = VALUES(zbyva_predpoklad),
+                zbyva_skutecne = VALUES(zbyva_skutecne),
+                procento_rezervace = VALUES(procento_rezervace),
+                procento_predpoklad = VALUES(procento_predpoklad),
+                procento_skutecne = VALUES(procento_skutecne),
+                pocet_zaznamu = VALUES(pocet_zaznamu),
                 ma_navyseni = VALUES(ma_navyseni),
-                pocet_zaznamu_master = VALUES(pocet_zaznamu_master),
-                dt_aktualizace = NOW()
+                posledni_prepocet = NOW()
         ";
         
         $stmt_upsert = $pdo->prepare($sql_upsert);
         $stmt_upsert->execute([
-            'lp_id' => $lp_id,
             'cislo_lp' => $meta['cislo_lp'],
+            'kategorie' => $meta['kategorie'],
             'usek_id' => $meta['usek_id'],
             'user_id' => $meta['user_id'],
-            'kategorie' => $meta['kategorie'],
             'rok' => $meta['rok'],
-            'celkovy_limit' => $meta['celkovy_limit'],
+            'celkovy_limit' => $celkovy_limit,
             'rezervovano' => $rezervovano,
-            'zbyvajici' => $zbyvajici,
             'predpokladane_cerpani' => $predpokladane_cerpani,
-            'zbyvajici_pred' => $zbyvajici_pred,
             'skutecne_cerpano' => $skutecne_cerpano,
             'cerpano_pokladna' => $cerpano_pokladna,
-            'zbyvajici_skut' => $zbyvajici_skut,
-            'ma_navyseni' => $meta['ma_navyseni'],
-            'pocet_zaznamu_master' => $meta['pocet_zaznamu']
+            'zbyva_rezervace' => $zbyva_rezervace,
+            'zbyva_predpoklad' => $zbyva_predpoklad,
+            'zbyva_skutecne' => $zbyva_skutecne,
+            'procento_rezervace' => $procento_rezervace,
+            'procento_predpoklad' => $procento_predpoklad,
+            'procento_skutecne' => $procento_skutecne,
+            'pocet_zaznamu' => $meta['pocet_zaznamu'],
+            'ma_navyseni' => $meta['ma_navyseni']
         ]);
         
         return [
@@ -264,14 +277,29 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
             'lp_id' => $lp_id,
             'cislo_lp' => $meta['cislo_lp'],
             'data' => [
-                'celkovy_limit' => $meta['celkovy_limit'],
-                'rezervovano' => $rezervovano,
-                'zbyvajici' => $zbyvajici,
-                'predpokladane_cerpani' => $predpokladane_cerpani,
-                'zbyvajici_pred' => $zbyvajici_pred,
-                'skutecne_cerpano' => $skutecne_cerpano,
-                'cerpano_pokladna' => $cerpano_pokladna,
-                'zbyvajici_skut' => $zbyvajici_skut
+                'cislo_lp' => $meta['cislo_lp'],
+                'kategorie' => $meta['kategorie'],
+                'usek_id' => (int)$meta['usek_id'],
+                'user_id' => (int)$meta['user_id'],
+                'rok' => (int)$meta['rok'],
+                'celkovy_limit' => (float)$celkovy_limit,
+                
+                'rezervovano' => (float)$rezervovano,
+                'predpokladane_cerpani' => (float)$predpokladane_cerpani,
+                'skutecne_cerpano' => (float)$skutecne_cerpano,
+                'cerpano_pokladna' => (float)$cerpano_pokladna,
+                
+                'zbyva_rezervace' => (float)$zbyva_rezervace,
+                'zbyva_predpoklad' => (float)$zbyva_predpoklad,
+                'zbyva_skutecne' => (float)$zbyva_skutecne,
+                
+                'procento_rezervace' => (float)$procento_rezervace,
+                'procento_predpoklad' => (float)$procento_predpoklad,
+                'procento_skutecne' => (float)$procento_skutecne,
+                
+                'pocet_zaznamu' => (int)$meta['pocet_zaznamu'],
+                'ma_navyseni' => (int)$meta['ma_navyseni'],
+                'posledni_prepocet' => date('Y-m-d H:i:s')
             ]
         ];
         
