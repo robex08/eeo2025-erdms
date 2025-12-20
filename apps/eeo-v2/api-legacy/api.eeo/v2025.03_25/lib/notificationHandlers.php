@@ -2036,7 +2036,7 @@ function resolveRecipients($db, $recipientType, $recipientData, $entityType, $en
                 $groupId = isset($recipientData['groupId']) ? $recipientData['groupId'] : (isset($recipientData['group_id']) ? $recipientData['group_id'] : null);
                 if ($groupId) {
                     $stmt = $db->prepare("
-                        SELECT uzivatel_id FROM 25_user_groups_members WHERE group_id = ?
+                        SELECT uzivatel_id FROM " . TBL_USER_GROUPS_MEMBERS . " WHERE group_id = ?
                     ");
                     $stmt->execute([$groupId]);
                     $recipients = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -2567,7 +2567,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         error_log("   🔍 Hledám aktivní hierarchický profil...");
         $stmt = $db->prepare("
             SELECT id, structure_json 
-            FROM 25_hierarchie_profily 
+            FROM " . TBL_HIERARCHIE_PROFILY . " 
             WHERE aktivni = 1 
             LIMIT 1
         ");
@@ -3026,7 +3026,7 @@ function getUserNotificationPreferences($db, $userId) {
         // 1. GLOBAL SETTINGS - Systémová úroveň (má nejvyšší prioritu)
         $stmt = $db->prepare("
             SELECT klic, hodnota 
-            FROM 25a_nastaveni_globalni 
+            FROM " . TBL_NASTAVENI_GLOBALNI . " 
             WHERE klic IN (
                 'notifications_enabled',
                 'notifications_email_enabled', 
@@ -3057,7 +3057,7 @@ function getUserNotificationPreferences($db, $userId) {
         // Načtení z tabulky 25_uzivatel_nastaveni
         $stmt = $db->prepare("
             SELECT nastaveni_data 
-            FROM 25_uzivatel_nastaveni 
+            FROM " . TBL_UZIVATEL_NASTAVENI . " 
             WHERE uzivatel_id = :uzivatel_id
         ");
         $stmt->execute([':uzivatel_id' => $userId]);
@@ -3232,7 +3232,7 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         
         // Uložit do DB (INSERT nebo UPDATE)
         $stmt = $db->prepare("
-            INSERT INTO 25_uzivatel_nastaveni (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
+            INSERT INTO " . TBL_UZIVATEL_NASTAVENI . " (uzivatel_id, nastaveni_data, nastaveni_verze, vytvoreno)
             VALUES (:uzivatel_id, :settings, '1.0', NOW())
             ON DUPLICATE KEY UPDATE 
                 nastaveni_data = :settings,
@@ -3281,7 +3281,7 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
         // 1. Načíst email uživatele z DB
         $stmt = $db->prepare("
             SELECT email, jmeno, prijmeni 
-            FROM 25_uzivatele 
+            FROM " . TBL_UZIVATELE . " 
             WHERE id = :user_id AND aktivni = 1
         ");
         $stmt->execute([':user_id' => $userId]);

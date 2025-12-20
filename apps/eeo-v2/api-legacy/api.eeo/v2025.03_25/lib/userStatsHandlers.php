@@ -86,7 +86,7 @@ function handle_user_active_with_stats($input, $config, $queries) {
             // POUŽIJ: 25a_objednavky (NE 25_objednavky - DEPRECATED!)
             $stmt_obj = $db->prepare("
                 SELECT COUNT(*) as pocet
-                FROM 25a_objednavky
+                FROM " . TBL_OBJEDNAVKY . "
                 WHERE (
                         uzivatel_id = :user_id 
                         OR garant_uzivatel_id = :user_id
@@ -110,8 +110,8 @@ function handle_user_active_with_stats($input, $config, $queries) {
             // - uživatel má roli v objednávce (uzivatel_id, garant, příkazce, schvalovatel)
             $stmt_fa = $db->prepare("
                 SELECT COUNT(DISTINCT f.id) as pocet
-                FROM 25a_objednavky_faktury f
-                INNER JOIN 25a_objednavky o ON f.objednavka_id = o.id
+                FROM " . TBL_FAKTURY . " f
+                INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                 WHERE (
                         f.vytvoril_uzivatel_id = :user_id 
                         OR f.potvrdil_vecnou_spravnost_id = :user_id
@@ -138,7 +138,7 @@ function handle_user_active_with_stats($input, $config, $queries) {
                     pk.id,
                     CONCAT('PKL ', pk.cislo_pokladny, ' (', pk.rok, '-', LPAD(pk.mesic, 2, '0'), ')') as nazev,
                     pk.koncovy_stav
-                FROM 25a_pokladni_knihy pk
+                FROM " . TBL_POKLADNI_KNIHY . " pk
                 WHERE pk.uzivatel_id = :user_id 
                     AND pk.stav_knihy = 'aktivni'
                 ORDER BY pk.rok DESC, pk.mesic DESC

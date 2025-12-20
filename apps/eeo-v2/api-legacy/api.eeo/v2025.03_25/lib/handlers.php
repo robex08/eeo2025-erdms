@@ -65,7 +65,7 @@ function verify_token($token, $db = null) {
             ));
         }
         
-        $stmt = $db->prepare("SELECT id, username FROM 25_uzivatele WHERE username = ? AND aktivni = 1");
+        $stmt = $db->prepare("SELECT id, username FROM " . TBL_UZIVATELE . " WHERE username = ? AND aktivni = 1");
         $stmt->execute(array($username));
         $user = $stmt->fetch();
         
@@ -119,8 +119,8 @@ function verify_token_v2($username, $token, $db = null) {
         // ✅ Kontrola admin rolí přes NOVÝ SYSTÉM (25_uzivatele_role + 25_role)
         $stmt = $db->prepare("
             SELECT r.kod_role 
-            FROM 25_role r
-            INNER JOIN 25_uzivatele_role ur ON ur.role_id = r.id
+            FROM " . TBL_ROLE . " r
+            INNER JOIN " . TBL_UZIVATELE_ROLE . " ur ON ur.role_id = r.id
             WHERE ur.uzivatel_id = ?
         ");
         $stmt->execute(array($token_data['id']));
@@ -1161,7 +1161,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
                 $lp_placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
                 
                 try {
-                    $stmt_lp = $db->prepare("SELECT cislo_lp FROM 25_limitovane_prisliby WHERE id IN ($lp_placeholders)");
+                    $stmt_lp = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id IN ($lp_placeholders)");
                     $stmt_lp->execute($lp_ids);
                     $lp_cisla = $stmt_lp->fetchAll(PDO::FETCH_COLUMN);
                     
@@ -1249,8 +1249,8 @@ function handle_notifications_send_dual($input, $config, $queries) {
         try {
             $stmt_user = $db->prepare("
                 SELECT u.id, u.username, u.email, u.jmeno, u.prijmeni, s.nastaveni_data as nastaveni
-                FROM 25_uzivatele u
-                LEFT JOIN 25_uzivatel_nastaveni s ON u.id = s.uzivatel_id
+                FROM " . TBL_UZIVATELE . " u
+                LEFT JOIN " . TBL_UZIVATEL_NASTAVENI . " s ON u.id = s.uzivatel_id
                 WHERE u.id = ? 
                 LIMIT 1
             ");
@@ -1331,7 +1331,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
             // Načíst jméno příkazce (schvalovatele) pro {approver_name}
             $approver_name = 'Schvalovatel';
             if ($order_data['prikazce_id']) {
-                $stmt_approver = $db->prepare("SELECT jmeno, prijmeni FROM 25_uzivatele WHERE id = ? LIMIT 1");
+                $stmt_approver = $db->prepare("SELECT jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
                 $stmt_approver->execute([$order_data['prikazce_id']]);
                 $approver = $stmt_approver->fetch();
                 if ($approver) {
@@ -5115,11 +5115,11 @@ function handle_deactivate_attachment($config, $queries) {
 
         // Deaktivuj přílohu v databázi (soft delete)
         if (!empty($guid)) {
-            $sql = "UPDATE 25a_objednavky_prilohy SET aktivni = 0, dt_aktualizace = NOW() WHERE guid = :guid";
+            $sql = "UPDATE " . TBL_OBJEDNAVKY_PRILOHY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE guid = :guid";
             $stmt = $db->prepare($sql);
             $stmt->execute(array(':guid' => $guid));
         } else {
-            $sql = "UPDATE 25a_objednavky_prilohy SET aktivni = 0, dt_aktualizace = NOW() WHERE id = :id";
+            $sql = "UPDATE " . TBL_OBJEDNAVKY_PRILOHY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute(array(':id' => $id));
         }
@@ -6948,7 +6948,7 @@ function handle_stavy_list($input, $config, $queries) {
         
         // Query pro stavy
         $sql = "SELECT id, nazev, popis, barva, poradi, aktivni 
-                FROM 25_ciselnik_stavy 
+                FROM " . TBL_CISELNIK_STAVY . " 
                 WHERE aktivni = 1 
                 ORDER BY poradi ASC";
         
@@ -7101,7 +7101,7 @@ function handle_stavy_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_ciselnik_stavy (typ_objektu, kod_stavu, nazev_stavu, popis, dt_vytvoreni) 
+        $sql = "INSERT INTO " . TBL_CISELNIK_STAVY . " (typ_objektu, kod_stavu, nazev_stavu, popis, dt_vytvoreni) 
                 VALUES (:typ_objektu, :kod_stavu, :nazev_stavu, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':typ_objektu', $typ_objektu);
@@ -7174,7 +7174,7 @@ function handle_stavy_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_ciselnik_stavy SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_CISELNIK_STAVY . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7211,7 +7211,7 @@ function handle_stavy_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_ciselnik_stavy WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_CISELNIK_STAVY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $stav_id, PDO::PARAM_INT);
         $stmt->execute();
@@ -7259,7 +7259,7 @@ function handle_role_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_role (kod_role, nazev_role, popis, dt_vytvoreni) VALUES (:kod_role, :nazev_role, :popis, NOW())";
+        $sql = "INSERT INTO " . TBL_ROLE . " (kod_role, nazev_role, popis, dt_vytvoreni) VALUES (:kod_role, :nazev_role, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':kod_role', $kod_role);
         $stmt->bindParam(':nazev_role', $nazev_role);
@@ -7326,7 +7326,7 @@ function handle_role_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_role SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_ROLE . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7363,7 +7363,7 @@ function handle_role_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_role WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $role_id, PDO::PARAM_INT);
         $stmt->execute();
@@ -7404,7 +7404,7 @@ function handle_prava_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "INSERT INTO 25_prava (kod_prava, popis, dt_vytvoreni) VALUES (:kod_prava, :popis, NOW())";
+        $sql = "INSERT INTO " . TBL_PRAVA . " (kod_prava, popis, dt_vytvoreni) VALUES (:kod_prava, :popis, NOW())";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':kod_prava', $kod_prava);
         $popis = isset($input['popis']) ? trim($input['popis']) : '';
@@ -7466,7 +7466,7 @@ function handle_prava_update($input, $config, $queries) {
             return;
         }
         
-        $sql = "UPDATE 25_prava SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_PRAVA . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
 
@@ -7503,7 +7503,7 @@ function handle_prava_delete($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "DELETE FROM 25_prava WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_PRAVA . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $pravo_id, PDO::PARAM_INT);
         $stmt->execute();
