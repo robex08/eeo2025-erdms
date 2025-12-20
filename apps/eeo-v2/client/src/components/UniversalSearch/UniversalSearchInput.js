@@ -235,8 +235,8 @@ const UniversalSearchInput = () => {
    * Handle keyboard navigation
    */
   const handleKeyDown = (e) => {
-    // Arrow navigation v historii
-    if (showHistory && searchHistory.length > 0) {
+    // Arrow navigation v historii (jen když je historie viditelná)
+    if (showHistory && searchHistory.length > 0 && !showDropdown) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedHistoryIndex(prev => 
@@ -261,9 +261,8 @@ const UniversalSearchInput = () => {
         return;
       }
     }
-    
-    // Arrow navigation ve výsledcích vyhledávání
-    if (showDropdown && totalResults > 0) {
+    // Arrow navigation ve výsledcích vyhledávání (jen když jsou výsledky viditelné)
+    else if (showDropdown && totalResults > 0 && !showHistory) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedResultIndex(prev => 
