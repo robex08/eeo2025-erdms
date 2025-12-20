@@ -17,15 +17,15 @@
  * Datum: 2025-12-20
  */
 
-// Table constants
-define('TBL_LP_MASTER_V2', '25_limitovane_prisliby');
-define('TBL_LP_CERPANI_V2', '25_limitovane_prisliby_cerpani');
-define('TBL_OBJEDNAVKY_V2', '25a_objednavky');
-define('TBL_OBJEDNAVKY_POLOZKY_V2', '25a_objednavky_polozky');
-define('TBL_POKLADNI_KNIHY_V2', '25a_pokladni_knihy');
-define('TBL_POKLADNI_POLOZKY_V2', '25a_pokladni_polozky');
-define('TBL_UZIVATELE_V2', '25_uzivatele');
-define('TBL_USEKY_V2', '25_useky');
+// Table constants (define only if not already defined)
+if (!defined('TBL_LP_MASTER')) define('TBL_LP_MASTER', '25_limitovane_prisliby');
+if (!defined('TBL_LP_CERPANI')) define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
+if (!defined('TBL_OBJEDNAVKY')) define('TBL_OBJEDNAVKY', '25a_objednavky');
+if (!defined('TBL_OBJEDNAVKY_POLOZKY')) define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
+if (!defined('TBL_POKLADNI_KNIHY')) define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
+if (!defined('TBL_POKLADNI_POLOZKY')) define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
+if (!defined('TBL_UZIVATELE')) define('TBL_UZIVATELE', '25_uzivatele');
+if (!defined('TBL_USEKY')) define('TBL_USEKY', '25_useky');
 
 /**
  * Přepočítá agregované čerpání pro konkrétní LP podle ID s TŘEMI TYPY ČERPÁNÍ
@@ -54,7 +54,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 (COUNT(*) > 1) as ma_navyseni,
                 MIN(lp.platne_od) as nejstarsi_platnost,
                 MAX(lp.platne_do) as nejnovejsi_platnost
-            FROM " . TBL_LP_MASTER_V2 . " lp
+            FROM " . TBL_LP_MASTER . " lp
             WHERE lp.id = :lp_id
             GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id
             LIMIT 1
@@ -78,7 +78,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 obj.id,
                 obj.max_cena_s_dph,
                 obj.financovani
-            FROM " . TBL_OBJEDNAVKY_V2 . " obj
+            FROM " . TBL_OBJEDNAVKY . " obj
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -114,8 +114,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 obj.id,
                 obj.financovani,
                 COALESCE(SUM(pol.cena_s_dph), 0) as suma_polozek
-            FROM " . TBL_OBJEDNAVKY_V2 . " obj
-            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY_V2 . " pol ON pol.order_id = obj.id
+            FROM " . TBL_OBJEDNAVKY . " obj
+            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.order_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -152,7 +152,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 obj.id,
                 obj.financovani,
                 COALESCE(SUM(fakt.castka_fakturovana), 0) as suma_faktur
-            FROM " . TBL_OBJEDNAVKY_V2 . " obj
+            FROM " . TBL_OBJEDNAVKY . " obj
             LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
@@ -187,8 +187,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
         // KROK 5: POKLADNA - čerpání z pokladny
         $sql_pokladna = "
             SELECT COALESCE(SUM(pp.castka), 0) as suma_pokladna
-            FROM " . TBL_POKLADNI_KNIHY_V2 . " pk
-            JOIN " . TBL_POKLADNI_POLOZKY_V2 . " pp ON pp.pokladni_kniha_id = pk.id
+            FROM " . TBL_POKLADNI_KNIHY . " pk
+            JOIN " . TBL_POKLADNI_POLOZKY . " pp ON pp.pokladni_kniha_id = pk.id
             WHERE pk.uzivatel_id = :user_id
             AND pp.lp_kod = :cislo_lp
             AND YEAR(pp.datum_transakce) = :rok
@@ -210,7 +210,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
         $zbyvajici_skut = $meta['celkovy_limit'] - $skutecne_cerpano - $cerpano_pokladna;
         
         $sql_upsert = "
-            INSERT INTO " . TBL_LP_CERPANI_V2 . " (
+            INSERT INTO " . TBL_LP_CERPANI . " (
                 lp_id, cislo_lp, usek_id, user_id, kategorie, rok,
                 celkovy_limit, rezervovano, zbyvajici,
                 predpokladane_cerpani, zbyvajici_pred,
@@ -292,7 +292,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
 function inicializaceVsechLP_PDO($pdo) {
     try {
         // Získat všechna unikátní LP podle ID
-        $sql_lp_ids = "SELECT DISTINCT id FROM " . TBL_LP_MASTER_V2 . " ORDER BY id";
+        $sql_lp_ids = "SELECT DISTINCT id FROM " . TBL_LP_MASTER . " ORDER BY id";
         $stmt = $pdo->query($sql_lp_ids);
         $lp_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
@@ -341,9 +341,9 @@ function getStavLP_PDO($pdo, $lp_id) {
                 u.jmeno as user_jmeno,
                 u.prijmeni as user_prijmeni,
                 us.nazev as usek_nazev
-            FROM " . TBL_LP_CERPANI_V2 . " c
-            LEFT JOIN " . TBL_UZIVATELE_V2 . " u ON u.id = c.user_id
-            LEFT JOIN " . TBL_USEKY_V2 . " us ON us.id = c.usek_id
+            FROM " . TBL_LP_CERPANI . " c
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = c.user_id
+            LEFT JOIN " . TBL_USEKY . " us ON us.id = c.usek_id
             WHERE c.lp_id = :lp_id
             LIMIT 1
         ";
@@ -385,7 +385,7 @@ function getCerpaniPodleUzivatele_PDO($pdo, $lp_id) {
         $sql_meta = "
             SELECT cislo_lp, kategorie, usek_id, user_id, 
                    MIN(platne_od) as platne_od, MAX(platne_do) as platne_do
-            FROM " . TBL_LP_MASTER_V2 . "
+            FROM " . TBL_LP_MASTER . "
             WHERE id = :lp_id
             GROUP BY cislo_lp, kategorie, usek_id, user_id
             LIMIT 1
