@@ -1,7 +1,7 @@
 <?php
 /**
  * CashbookAuditModel.php
- * Model pro audit logging pokladních knih (25a_pokladni_audit)
+ * Model pro audit logging pokladních knih (TBL_POKLADNI_AUDIT (25a_pokladni_audit))
  * PHP 5.6 kompatibilní
  */
 
@@ -21,7 +21,7 @@ class CashbookAuditModel {
         $userAgent = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
         
         $stmt = $this->db->prepare("
-            INSERT INTO 25a_pokladni_audit (
+            INSERT INTO " . TBL_POKLADNI_AUDIT . " (
                 typ_entity, entita_id, akce, uzivatel_id,
                 stare_hodnoty, nove_hodnoty, ip_adresa, user_agent, vytvoreno
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
@@ -49,7 +49,7 @@ class CashbookAuditModel {
                 a.*,
                 u.username,
                 CONCAT(u.jmeno, ' ', u.prijmeni) AS user_name
-            FROM 25a_pokladni_audit a
+            FROM " . TBL_POKLADNI_AUDIT . " a
             LEFT JOIN 25_uzivatele u ON a.uzivatel_id = u.id
             WHERE a.typ_entity = ? AND a.entita_id = ?
             ORDER BY a.vytvoreno DESC
@@ -70,11 +70,11 @@ class CashbookAuditModel {
                 a.*,
                 u.username,
                 CONCAT(u.jmeno, ' ', u.prijmeni) AS user_name
-            FROM 25a_pokladni_audit a
+            FROM " . TBL_POKLADNI_AUDIT . " a
             LEFT JOIN 25_uzivatele u ON a.uzivatel_id = u.id
             WHERE (a.typ_entity = 'kniha' AND a.entita_id = ?)
                OR (a.typ_entity = 'polozka' AND a.entita_id IN (
-                   SELECT id FROM 25a_pokladni_polozky WHERE pokladni_kniha_id = ?
+                   SELECT id FROM " . TBL_POKLADNI_POLOZKY . " WHERE pokladni_kniha_id = ?
                ))
             ORDER BY a.vytvoreno DESC
             LIMIT " . $limit . "
