@@ -627,7 +627,7 @@ function getSqlSearchInvoices() {
             OR o.potvrdil_vecnou_spravnost_id = :user_id
         )
         GROUP BY f.id
-        ORDER BY f.datum_vystaveni DESC
+        ORDER BY f.fa_datum_vystaveni DESC
         LIMIT :limit
     ";
 }
