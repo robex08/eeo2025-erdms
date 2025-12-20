@@ -611,12 +611,20 @@ function getSqlSearchInvoices() {
         AND (
             :is_admin = 1
             OR f.fa_predana_zam_id = :user_id
-            OR o.garant_uzivatel_id = :user_id
-            OR o.ucetni_uzivatel_id = :user_id
-            OR o.prikazce_id = :user_id
             OR f.potvrdil_vecnou_spravnost_id = :user_id
-            OR o.uzivatel_id = :user_id
             OR f.vytvoril_uzivatel_id = :user_id
+            OR o.uzivatel_id = :user_id
+            OR o.uzivatel_akt_id = :user_id
+            OR o.garant_uzivatel_id = :user_id
+            OR o.objednatel_id = :user_id
+            OR o.schvalovatel_id = :user_id
+            OR o.prikazce_id = :user_id
+            OR o.odesilatel_id = :user_id
+            OR o.dodavatel_potvrdil_id = :user_id
+            OR o.zverejnil_id = :user_id
+            OR o.fakturant_id = :user_id
+            OR o.dokoncil_id = :user_id
+            OR o.potvrdil_vecnou_spravnost_id = :user_id
         )
         GROUP BY f.id
         ORDER BY f.datum_vystaveni DESC
