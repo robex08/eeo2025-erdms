@@ -232,11 +232,9 @@ export const createHierarchyHook = () => {
     const now = Date.now();
     
     if (!forceRefresh && cachedConfig && (now - cacheTime < CACHE_DURATION)) {
-      console.log('🔄 [HierarchyService] Using cached config');
       return cachedConfig;
     }
     
-    console.log('📡 [HierarchyService] Fetching fresh config');
     cachedConfig = await getHierarchyConfig(token, username);
     cacheTime = now;
     

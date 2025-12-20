@@ -34,11 +34,8 @@ const mobileDataService = {
       // Načti data paralelně pro rychlejší načítání
       const currentMonth = new Date().getMonth() + 1; // 1-12
       
-      console.log('[MobileData] Loading data for year:', year, 'token:', token ? 'present' : 'MISSING', 'username:', username);
-      
       // 🏢 Načtení hierarchie (pro metadata)
       const hierarchyConfig = await hierarchyService.getHierarchyConfigCached(token, username);
-      console.log('[MobileData] 🏢 Hierarchy status:', hierarchyConfig.status, 'for orders:', hierarchyConfig.modules.orders);
       
       const [ordersResult, invoicesResult, cashbookResult] = await Promise.allSettled([
         // 1. Objednávky pro daný rok - SPRÁVNÉ POŘADÍ PARAMETRŮ!
@@ -52,14 +49,9 @@ const mobileDataService = {
         cashbookAPI.getCashboxListByPeriod(year, currentMonth, true, true)
       ]);
 
-      console.log('[MobileData] Orders result:', ordersResult.status, ordersResult.status === 'fulfilled' ? `${ordersResult.value?.length || 0} items` : ordersResult.reason);
-      console.log('[MobileData] Invoices result:', invoicesResult.status, invoicesResult.status === 'fulfilled' ? `${invoicesResult.value?.faktury?.length || 0} items` : invoicesResult.reason);
-      console.log('[MobileData] Cashbook result:', cashbookResult.status, cashbookResult.status === 'fulfilled' ? cashbookResult.value?.status : cashbookResult.reason);
-
       // === OBJEDNÁVKY ===
       let ordersData = null;
       if (ordersResult.status === 'fulfilled' && Array.isArray(ordersResult.value)) {
-        console.log('[MobileData] ✅ Processing orders from API:', ordersResult.value.length);
         ordersData = this.calculateOrdersStats(ordersResult.value, userId, isAdmin, showArchived);
       } else {
         console.error('[MobileData] ❌ Orders API FAILED! Reason:', ordersResult.reason);
@@ -69,7 +61,6 @@ const mobileDataService = {
       // === FAKTURY ===
       let invoicesData = null;
       if (invoicesResult.status === 'fulfilled' && invoicesResult.value?.faktury) {
-        console.log('[MobileData] ✅ Processing invoices from API:', invoicesResult.value.faktury.length);
         invoicesData = this.calculateInvoicesStats(invoicesResult.value.faktury);
       } else {
         console.error('[MobileData] ❌ Invoices API FAILED! Reason:', invoicesResult.reason);
@@ -79,7 +70,6 @@ const mobileDataService = {
       // === POKLADNA ===
       let cashbookData = null;
       if (cashbookResult.status === 'fulfilled' && cashbookResult.value?.status === 'ok') {
-        console.log('[MobileData] ✅ Processing cashbook from API');
         cashbookData = this.calculateCashbookStats(cashbookResult.value.data);
       } else {
         console.error('[MobileData] ❌ Cashbook API FAILED! Reason:', cashbookResult.reason);
@@ -143,13 +133,9 @@ const mobileDataService = {
    * @returns {Object} - Statistiky ve formátu { pending: {count, amount}, ... }
    */
   calculateOrdersStats(orders, userId = null, isAdmin = false, showArchived = false) {
-    console.log('[MobileData] calculateOrdersStats called with:', orders.length, 'orders, userId:', userId, 'isAdmin:', isAdmin, 'showArchived:', showArchived);
-
     // 🎯 POUŽIJ SPOLEČNÉ FUNKCE pro filtrování a výpočet statistik
     const filteredOrders = filterOrders(orders, { showArchived, userId, isAdmin });
     const stats = calculateOrderStats(filteredOrders);
-
-    console.log('[MobileData] Stats result:', stats);
 
     // Přepočítej částky pro jednotlivé stavy
     const getAmountForStatus = (status) => {

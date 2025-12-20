@@ -191,8 +191,6 @@ export function filterOrders(orders, options = {}) {
  * @returns {Object} Statistiky ve formátu { total, byStatus, totalAmount, ... }
  */
 export function calculateOrderStats(orders) {
-  console.log('[calculateOrderStats] Calculating stats for', orders.length, 'orders');
-
   const total = orders.length;
   
   // Počty podle stavů
@@ -220,14 +218,6 @@ export function calculateOrderStats(orders) {
   }, 0);
 
   const pendingAmount = totalAmount - completedAmount;
-
-  console.log('[calculateOrderStats] Results:', {
-    total,
-    totalAmount,
-    completedAmount,
-    pendingAmount,
-    byStatus
-  });
 
   return {
     total,
