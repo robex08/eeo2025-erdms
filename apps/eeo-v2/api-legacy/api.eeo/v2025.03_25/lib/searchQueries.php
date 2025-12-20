@@ -519,6 +519,25 @@ function getSqlSearchInvoices() {
                      'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                      LIKE :query_normalized THEN 'priloha_nazev'
                 WHEN fp.typ_prilohy LIKE :query THEN 'priloha_typ'
+                WHEN f.fa_typ LIKE :query THEN 'fa_typ'
+                WHEN CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query THEN 'predano_kym'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni),
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'predano_kym'
+                WHEN CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query THEN 'nahrano_kym'
+                WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                     CONCAT(u.jmeno, ' ', u.prijmeni),
+                     'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+                     'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+                     'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+                     LIKE :query_normalized THEN 'nahrano_kym'
                 ELSE 'other'
             END as match_type
         FROM " . TBL_FAKTURY . " f
@@ -572,8 +591,36 @@ function getSqlSearchInvoices() {
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
             OR fp.typ_prilohy LIKE :query
+            OR CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni),
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
+            OR CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+               CONCAT(u.jmeno, ' ', u.prijmeni),
+               'á','a'),'Á','A'),'č','c'),'Č','C'),'ď','d'),'Ď','D'),'é','e'),'É','E'),'ě','e'),'Ě','E'),
+               'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
+               'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
+               LIKE :query_normalized
         )
         AND (:is_admin = 1 OR f.aktivni = 1 OR :include_inactive = 1)
+        AND (
+            :is_admin = 1
+            OR f.fa_predana_zam_id = :user_id
+            OR o.garant_uzivatel_id = :user_id
+            OR o.ucetni_uzivatel_id = :user_id
+            OR o.prikazce_id = :user_id
+            OR f.potvrdil_vecnou_spravnost_id = :user_id
+            OR o.uzivatel_id = :user_id
+            OR f.vytvoril_uzivatel_id = :user_id
+        )
         GROUP BY f.id
         ORDER BY f.datum_vystaveni DESC
         LIMIT :limit
