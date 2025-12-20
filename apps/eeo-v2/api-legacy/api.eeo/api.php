@@ -4291,54 +4291,55 @@ switch ($endpoint) {
                 
                 if ($cislo_lp) {
                     // REŽIM 1: Konkrétní kód LP
-                    $cislo_lp_safe = mysqli_real_escape_string($conn, $cislo_lp);
-                    
-                    $sql = "
-                        SELECT 
-                            c.id,
-                            c.cislo_lp,
-                            c.kategorie,
-                            c.usek_id,
-                            c.user_id,
-                            c.rok,
-                            c.celkovy_limit,
-                            lp.cislo_uctu,
-                            lp.nazev_uctu,
-                            c.rezervovano,
-                            c.predpokladane_cerpani,
-                            c.skutecne_cerpano,
-                            c.cerpano_pokladna,
-                            c.zbyva_rezervace,
-                            c.zbyva_predpoklad,
-                            c.zbyva_skutecne,
-                            c.procento_rezervace,
-                            c.procento_predpoklad,
-                            c.procento_skutecne,
-                            c.pocet_zaznamu,
-                            c.ma_navyseni,
-                            c.posledni_prepocet,
-                            u.prijmeni,
-                            u.jmeno,
-                            us.usek_nazev
-                        FROM " . TBL_LP_CERPANI . " c
-                        LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                        LEFT JOIN 25_useky us ON c.usek_id = us.id
-                        WHERE c.cislo_lp = '$cislo_lp_safe'
-                        AND c.rok = $rok
-                        LIMIT 1
-                    ";
-                    
-                    $result = mysqli_query($conn, $sql);
-                    
-                    if (!$result || mysqli_num_rows($result) === 0) {
-                        http_response_code(404);
-                        echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' nebyl nalezen pro rok $rok"));
-                        $conn->close();
+                    try {
+                        $stmt = $pdo->prepare("
+                            SELECT 
+                                c.id,
+                                c.cislo_lp,
+                                c.kategorie,
+                                c.usek_id,
+                                c.user_id,
+                                c.rok,
+                                c.celkovy_limit,
+                                lp.cislo_uctu,
+                                lp.nazev_uctu,
+                                c.rezervovano,
+                                c.predpokladane_cerpani,
+                                c.skutecne_cerpano,
+                                c.cerpano_pokladna,
+                                c.zbyva_rezervace,
+                                c.zbyva_predpoklad,
+                                c.zbyva_skutecne,
+                                c.procento_rezervace,
+                                c.procento_predpoklad,
+                                c.procento_skutecne,
+                                c.pocet_zaznamu,
+                                c.ma_navyseni,
+                                c.posledni_prepocet,
+                                u.prijmeni,
+                                u.jmeno,
+                                us.usek_nazev
+                            FROM " . TBL_LP_CERPANI . " c
+                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
+                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                            LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            WHERE c.cislo_lp = ?
+                            AND c.rok = ?
+                            LIMIT 1
+                        ");
+                        $stmt->execute([$cislo_lp, $rok]);
+                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    } catch (PDOException $e) {
+                        http_response_code(500);
+                        echo json_encode(array('status' => 'error', 'message' => 'SQL error: ' . $e->getMessage()));
                         break;
                     }
                     
-                    $row = mysqli_fetch_assoc($result);
+                    if (!$row) {
+                        http_response_code(404);
+                        echo json_encode(array('status' => 'error', 'message' => "LP '$cislo_lp' nebyl nalezen pro rok $rok"));
+                        break;
+                    }
                     
                     $data = array(
                         'id' => (int)$row['id'],
@@ -4375,7 +4376,7 @@ switch ($endpoint) {
                         'status' => 'ok',
                         'data' => $data,
                         'meta' => array(
-                            'version' => 'v3.0',
+                            'version' => 'v2.0',
                             'tri_typy_cerpani' => true,
                             'timestamp' => date('Y-m-d H:i:s')
                         )
