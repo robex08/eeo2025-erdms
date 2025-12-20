@@ -1624,7 +1624,6 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     const loadStrediska = async () => {
       if (!token || !username) {
-        console.log('⏳ Token nebo username ještě není k dispozici, čekám...');
         return;
       }
       
@@ -1634,7 +1633,6 @@ export default function InvoiceEvidencePage() {
         if (data && Array.isArray(data)) {
           // API vrací přímo objekty s value a label, není potřeba nic mapovat
           setStrediskaOptions(data);
-          console.log('✅ Střediska načtena:', data.length);
         }
       } catch (err) {
         console.error('Chyba při načítání středisek:', err);
@@ -1651,7 +1649,6 @@ export default function InvoiceEvidencePage() {
         const data = await getTypyFaktur25({ token, username, aktivni: 1 });
         if (data && Array.isArray(data)) {
           setTypyFakturOptions(data);
-          console.log('✅ Typy faktur načteny:', data.length);
         }
       } catch (err) {
         console.error('Chyba při načítání typů faktur:', err);
@@ -1678,7 +1675,6 @@ export default function InvoiceEvidencePage() {
               return aName.localeCompare(bName, 'cs');
             });
           setZamestnanci(aktivni);
-          console.log('✅ Zaměstnanci načteni:', aktivni.length);
         }
       } catch (err) {
         console.error('Chyba při načítání zaměstnanců:', err);
