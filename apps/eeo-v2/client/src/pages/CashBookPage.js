@@ -1112,11 +1112,6 @@ const CashBookPage = () => {
     if (entry.detailItems && entry.detailItems.length > 0) {
       payload.detail_items = entry.detailItems;
       payload.castka_celkem = entry.detailItems.reduce((sum, item) => sum + (item.castka || 0), 0);
-      console.log('📦 MULTI-LP payload:', { 
-        detail_items_count: entry.detailItems.length, 
-        castka_celkem: payload.castka_celkem,
-        detail_items: entry.detailItems
-      });
       // Master LP kód je prázdný, když jsou detaily
     } else if (entry.lpCode) {
       // Původní flow - pouze pokud NENÍ multi-LP
@@ -2465,12 +2460,10 @@ const CashBookPage = () => {
 
         if (updatedEntry.db_id) {
           // Update existující entry
-          console.log('🔹 UPDATE payload:', { entry_id: updatedEntry.db_id, cislo_dokladu: payload.cislo_dokladu, typeChanged });
           const updateResult = await cashbookAPI.updateEntry(updatedEntry.db_id, payload);
 
           // ✅ Pokud se změnil typ (typeChanged), použít číslo z frontendu, ne z backendu
           if (updateResult.status === 'ok') {
-            console.log('🔹 UPDATE result:', { backend_cislo: updateResult.data?.entry?.cislo_dokladu, frontend_cislo: documentNumber, typeChanged });
             setCashBookEntries(prev => prev.map(e =>
               e.id === id ? {
                 ...e,
@@ -2484,11 +2477,9 @@ const CashBookPage = () => {
           }
         } else {
           // Create novou entry
-          console.log('🔹 CREATE payload:', { cislo_dokladu: payload.cislo_dokladu, typeChanged });
           const result = await cashbookAPI.createEntry(payload);
 
           if (result.status === 'ok' && result.data?.entry) {
-            console.log('🔹 CREATE result:', { backend_cislo: result.data?.entry?.cislo_dokladu, frontend_cislo: documentNumber });
             // Aktualizovat s DB ID a číslem dokladu
             // ✅ Pokud jsme vygenerovali číslo na frontendu (typeChanged), použít to, jinak číslo z backendu
             setCashBookEntries(prev => prev.map(e =>
