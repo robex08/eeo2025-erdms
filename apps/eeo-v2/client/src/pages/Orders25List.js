@@ -4229,13 +4229,6 @@ const Orders25List = () => {
         const { getHierarchyConfig } = await import('../services/hierarchyService');
         const config = await getHierarchyConfig(token, username);
         setHierarchyConfig(config);
-        
-        console.log('🏢 [Orders25List] Hierarchie načtena:', {
-          status: config.status,
-          enabled: config.enabled,
-          profileId: config.profileId,
-          profileName: config.profileName
-        });
       } catch (error) {
         console.error('❌ [Orders25List] Chyba při načítání hierarchie:', error);
         setHierarchyConfig({
@@ -5704,17 +5697,11 @@ const Orders25List = () => {
 
       // 🎯 SPOLEČNÉ FILTROVÁNÍ: Použij stejnou funkci jako mobile
       // Filtrování: id > 1, !isLocalConcept, archivované (pokud showArchived=false), příkazce (pokud !canViewAll)
-      console.log('[Orders25List] Using shared filterOrders function');
-      console.log('[Orders25List] Input orders:', (ordersData || []).length);
-      console.log('[Orders25List] Params: showArchived=', showArchived, ', canViewAll=', canViewAllOrders, ', userId=', user_id);
-      
       let finalOrders = filterOrdersShared(ordersData || [], {
         showArchived: showArchived,  // Desktop používá showArchived přímo
         userId: canViewAllOrders ? null : user_id,  // Filtruj podle userId pouze pokud není admin
         isAdmin: canViewAllOrders   // canViewAll = isAdmin
       });
-      
-      console.log('[Orders25List] After shared filtering:', finalOrders.length);
 
       // Označit existující DB řádky, které mají rozpracované změny - DRAFT MANAGER
       draftManager.setCurrentUser(user_id);
@@ -6340,9 +6327,6 @@ const Orders25List = () => {
   const stats = useMemo(() => {
     // ✅ OPRAVA: orders už jsou vyfiltrované společnou funkcí (včetně archivovaných pokud showArchived=false)
     // Už NENÍ potřeba filtrovat archivované znovu!
-    console.log('[Orders25List Stats] Total orders in state (already filtered):', orders.length);
-    console.log('[Orders25List Stats] showArchived:', showArchived);
-    
     const dataToCount = orders; // Už jsou vyfiltrované!
     
     const total = dataToCount.length;
@@ -8363,12 +8347,6 @@ const Orders25List = () => {
 
     // ✅ KONCEPT - pokračovat v tvorbě nové objednávky (není v DB)
     if (order.isDraft && !order.objednavka_id) {
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to concept:', {
-        orderId: order.id,
-        isDraft: order.isDraft,
-        url: '/order-form-25?mode=concept',
-        reason: 'Continuing draft (not in DB yet)'
-      });
       navigate(`/order-form-25?mode=concept`);
       return;
     }
@@ -8386,12 +8364,6 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to edit (with draft):', {
-        orderId: order.objednavka_id,
-        hasLocalDraftChanges: order.hasLocalDraftChanges,
-        url: `/order-form-25?edit=${order.objednavka_id}`,
-        reason: 'Continuing edit with local changes'
-      });
       navigate(`/order-form-25?edit=${order.objednavka_id}`);
       return;
     }
@@ -8428,7 +8400,6 @@ const Orders25List = () => {
       // ✅ JEDNODUCHÁ kontrola podle nové BE sémantiky
       if (dbOrder.lock_info?.locked === true) {
         // ❌ Zamčená JINÝM uživatelem - ZOBRAZ dialog a BLOKUJ editaci
-        console.log('🔒 LOCK Orders25List: Obj #' + orderIdToCheck + ' je ZAMČENÁ jiným uživatelem');
         const lockInfo = dbOrder.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 
@@ -8452,11 +8423,6 @@ const Orders25List = () => {
         return; // ZASTAVIT - čekáme na rozhodnutí uživatele
       } else {
         // ✅ locked === false znamená můžu editovat (volná NEBO moje zamčená)
-        if (dbOrder.lock_info?.is_owned_by_me === true) {
-          console.log('✅ LOCK Orders25List: Obj #' + orderIdToCheck + ' je moje zamčená - pokračuji');
-        } else if (dbOrder.lock_info?.lock_status === 'unlocked' || dbOrder.lock_info?.lock_status === 'expired') {
-          console.log('✅ LOCK Orders25List: Obj #' + orderIdToCheck + ' je ODEMČENÁ - pokračuji');
-        }
       }
     } catch (error) {
       showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
@@ -8512,12 +8478,6 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate from row (draft matches):', {
-        orderId: order.id,
-        isDraftForThisOrder: true,
-        url: `/order-form-25?edit=${order.id}`,
-        reason: 'Draft belongs to this order - no reload needed'
-      });
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       // NEMAZAT draft, NENAČÍTAT znovu z DB
       navigate(`/order-form-25?edit=${order.id}`);
@@ -8611,13 +8571,6 @@ const Orders25List = () => {
         console.error('❌ Chyba při ukládání highlightOrderId:', e);
       }
       
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate from archived modal (draft matches):', {
-        orderId: orderToEdit.id,
-        isDraftForThisOrder: true,
-        isArchived: true,
-        url: `/order-form-25?edit=${orderToEdit.id}&archivovano=1`,
-        reason: 'Draft belongs to this archived order - no reload needed'
-      });
       // Draft už existuje pro tuto objednávku - pouze naviguj na formulář
       navigate(`/order-form-25?edit=${orderToEdit.id}&archivovano=1`);
       return;
@@ -8915,10 +8868,6 @@ const Orders25List = () => {
       setShowEditConfirmModal(true);
     } else {
       // Rovnou přesměruj na prázdný formulář
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to new order (direct):', {
-        url: '/order-form-25',
-        reason: 'No existing draft - creating new order'
-      });
       navigate('/order-form-25');
     }
   };
@@ -8942,19 +8891,9 @@ const Orders25List = () => {
     
     if (isOnOrderForm) {
       // Jsme na formuláři - použij window.location pro hard reload
-      console.log('🔍 [ORDERS25LIST DEBUG] Hard reload to new order:', {
-        url: '/order-form-25',
-        method: 'window.location.href',
-        reason: 'Already on form - forcing hard reload after draft deletion'
-      });
       window.location.href = '/order-form-25';
     } else {
       // Nejsme na formuláři - normální navigate
-      console.log('🔍 [ORDERS25LIST DEBUG] Navigate to new order (after confirm):', {
-        url: '/order-form-25',
-        method: 'navigate',
-        reason: 'Not on form - normal navigate after draft deletion'
-      });
       navigate('/order-form-25');
     }
   };
@@ -16262,9 +16201,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     }
 
                     // TODO: Implementovat hromadné generování
-                    console.log('Generuji DOCX pro objednávky:', bulkDocxOrders);
-                    console.log('S podepisovateli:', bulkDocxSigners);
-                    console.log('S šablonami:', bulkDocxTemplates);
                     alert('TODO: Implementovat hromadné generování DOCX');
                     setShowBulkDocxDialog(false);
                   }}
