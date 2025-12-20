@@ -149,11 +149,11 @@ function handle_docx_templates_list($mysqli, $user) {
             u1.id AS vytvoril_id, u1.jmeno AS vytvoril_jmeno, u1.prijmeni AS vytvoril_prijmeni,
             u2.id AS aktualizoval_id, u2.jmeno AS aktualizoval_jmeno, u2.prijmeni AS aktualizoval_prijmeni,
             s.dt_aktualizace,
-            (SELECT COUNT(*) FROM 25_docx_mapovani m WHERE m.sablona_id = s.id AND m.aktivni = 1) AS pocet_poli
-        FROM 25_docx_sablony s
-        LEFT JOIN 25_docx_kategorie k ON s.kategorie_id = k.id
-        LEFT JOIN 25_uzivatele u1 ON s.vytvoril_uzivatel_id = u1.id
-        LEFT JOIN 25_uzivatele u2 ON s.aktualizoval_uzivatel_id = u2.id
+            (SELECT COUNT(*) FROM " . TBL_DOCX_MAPOVANI . " m WHERE m.sablona_id = s.id AND m.aktivni = 1) AS pocet_poli
+        FROM " . TBL_DOCX_SABLONY . " s
+        LEFT JOIN " . TBL_DOCX_KATEGORIE . " k ON s.kategorie_id = k.id
+        LEFT JOIN " . TBL_UZIVATELE . " u1 ON s.vytvoril_uzivatel_id = u1.id
+        LEFT JOIN " . TBL_UZIVATELE . " u2 ON s.aktualizoval_uzivatel_id = u2.id
         WHERE $where_sql
         ORDER BY s.nazev ASC
     ";
@@ -220,10 +220,10 @@ function handle_docx_template_detail($mysqli, $user) {
                k.nazev AS kategorie_nazev, k.barva AS kategorie_barva,
                u1.jmeno AS vytvoril_jmeno, u1.prijmeni AS vytvoril_prijmeni,
                u2.jmeno AS aktualizoval_jmeno, u2.prijmeni AS aktualizoval_prijmeni
-        FROM 25_docx_sablony s
-        LEFT JOIN 25_docx_kategorie k ON s.kategorie_id = k.id
-        LEFT JOIN 25_uzivatele u1 ON s.vytvoril_uzivatel_id = u1.id
-        LEFT JOIN 25_uzivatele u2 ON s.aktualizoval_uzivatel_id = u2.id
+        FROM " . TBL_DOCX_SABLONY . " s
+        LEFT JOIN " . TBL_DOCX_KATEGORIE . " k ON s.kategorie_id = k.id
+        LEFT JOIN " . TBL_UZIVATELE . " u1 ON s.vytvoril_uzivatel_id = u1.id
+        LEFT JOIN " . TBL_UZIVATELE . " u2 ON s.aktualizoval_uzivatel_id = u2.id
         WHERE s.id = ?
     ");
     $stmt->bind_param("i", $id);
@@ -241,7 +241,7 @@ function handle_docx_template_detail($mysqli, $user) {
     
     // Načíst mapování
     $stmt = $mysqli->prepare("
-        SELECT * FROM 25_docx_mapovani 
+        SELECT * FROM " . TBL_DOCX_MAPOVANI . " 
         WHERE sablona_id = ? AND aktivni = 1 
         ORDER BY poradi ASC
     ");
@@ -342,7 +342,7 @@ function handle_docx_template_upload($mysqli, $user) {
     
     // Uložit do databáze
     $stmt = $mysqli->prepare("
-        INSERT INTO 25_docx_sablony 
+        INSERT INTO " . TBL_DOCX_SABLONY . " 
         (nazev, popis, nazev_souboru, nazev_souboru_ulozeny, cesta_souboru, 
          velikost_souboru, md5_hash, platnost_od, platnost_do, aktivni, 
          usek_omezeni, vytvoril_uzivatel_id, dt_vytvoreni, verze, 
@@ -436,7 +436,7 @@ function handle_docx_template_update($mysqli, $user) {
     $params[] = $id;
     $types .= "i";
     
-    $sql = "UPDATE 25_docx_sablony SET " . implode(", ", $updates) . " WHERE id = ?";
+    $sql = "UPDATE " . TBL_DOCX_SABLONY . " SET " . implode(", ", $updates) . " WHERE id = ?";
     
     $stmt = $mysqli->prepare($sql);
     $bind_params = array_merge(array($types), $params);
@@ -457,7 +457,7 @@ function handle_docx_template_delete($mysqli, $user) {
     $id = intval($_GET['id']);
     
     // Načíst info o šabloně
-    $stmt = $mysqli->prepare("SELECT nazev_souboru_ulozeny, cesta_souboru FROM 25_docx_sablony WHERE id = ?");
+    $stmt = $mysqli->prepare("SELECT nazev_souboru_ulozeny, cesta_souboru FROM " . TBL_DOCX_SABLONY . " WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $sablona = $stmt->get_result()->fetch_assoc();
@@ -467,14 +467,14 @@ function handle_docx_template_delete($mysqli, $user) {
     }
     
     // Kontrola zda existují vygenerované dokumenty
-    $stmt = $mysqli->prepare("SELECT COUNT(*) AS cnt FROM 25_docx_generovane WHERE sablona_id = ?");
+    $stmt = $mysqli->prepare("SELECT COUNT(*) AS cnt FROM " . TBL_DOCX_GENEROVANE . " WHERE sablona_id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $count = $stmt->get_result()->fetch_assoc()['cnt'];
     
     if ($count > 0) {
         // Pouze deaktivovat, nesmazat
-        $stmt = $mysqli->prepare("UPDATE 25_docx_sablony SET aktivni = 0 WHERE id = ?");
+        $stmt = $mysqli->prepare("UPDATE " . TBL_DOCX_SABLONY . " SET aktivni = 0 WHERE id = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
         
@@ -491,7 +491,7 @@ function handle_docx_template_delete($mysqli, $user) {
     }
     
     // Smazat z databáze (cascade smaže i mapování)
-    $stmt = $mysqli->prepare("DELETE FROM 25_docx_sablony WHERE id = ?");
+    $stmt = $mysqli->prepare("DELETE FROM " . TBL_DOCX_SABLONY . " WHERE id = ?");
     $stmt->bind_param("i", $id);
     
     if ($stmt->execute()) {
@@ -567,7 +567,7 @@ function handle_docx_mapping_save($mysqli, $user) {
 function handle_docx_categories_list($mysqli, $user) {
     $stmt = $mysqli->query("
         SELECT id, nazev, popis, barva, poradi
-        FROM 25_docx_kategorie 
+        FROM " . TBL_DOCX_KATEGORIE . " 
         WHERE aktivni = 1 
         ORDER BY poradi ASC, nazev ASC
     ");
