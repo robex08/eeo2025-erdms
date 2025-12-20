@@ -225,10 +225,8 @@ export const registerProductionFonts = () => {
   const isLocal = process.env.NODE_ENV === 'production';
 
   if (isLocal) {
-    console.log('🏭 Produkční prostředí: Načítám lokální fonty');
     registerRobotoLocal();
   } else {
-    console.log('🔧 Vývojové prostředí: Načítám fonty z Google Fonts');
     registerRobotoFromGoogle();
   }
 };

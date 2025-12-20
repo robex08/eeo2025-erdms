@@ -797,23 +797,8 @@ class NotificationService {
         placeholder_data: placeholderData
       };
 
-      console.log('════════════════════════════════════════════════════════════════');
-      console.log('🔔 [NotificationService] TRIGGER organizational hierarchy notification');
-      console.log('   Token:', token ? (typeof token === 'string' ? `${token.substring(0, 20)}...` : '[OBJECT]') : 'NULL');
-      console.log('   Username:', user?.username);
-      console.log('   Event Type:', eventType);
-      console.log('   Object ID:', objectId);
-      console.log('   Trigger User ID:', triggerUserId);
-      console.log('   Placeholder Data:', placeholderData);
-      console.log('   FULL PAYLOAD:', payload);
-      console.log('════════════════════════════════════════════════════════════════');
-
       const response = await notificationsApi.post('/notifications/trigger', payload);
       const result = handleApiResponse(response);
-
-      console.log('✅ [NotificationService] Trigger odpověď:', result);
-      console.log('   Sent:', result.sent);
-      console.log('   Errors:', result.errors);
 
       return result;
 
