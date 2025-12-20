@@ -9,7 +9,7 @@
  * - Enter = okamžité hledání
  */
 
-import React, { useRef, useEffect, useState, useContext, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useContext, useCallback, useMemo } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons';
@@ -181,6 +181,8 @@ const UniversalSearchInput = () => {
   const [searchHistory, setSearchHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1);
+  const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
+  const [resultActionTrigger, setResultActionTrigger] = useState(0);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -192,6 +194,16 @@ const UniversalSearchInput = () => {
       setSearchHistory(getSearchHistory(user_id));
     }
   }, [user_id]);
+  
+  /**
+   * Spočítat celkový počet výsledků pro navigaci
+   */
+  const totalResults = useMemo(() => {
+    if (!results?.categories) return 0;
+    return Object.values(results.categories).reduce((sum, cat) => 
+      sum + (cat.results?.length || 0), 0
+    );
+  }, [results]);
 
   /**
    * Handle input change
@@ -205,10 +217,12 @@ const UniversalSearchInput = () => {
       setShowHistory(true);
       setShowDropdown(false);
       setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
     } else {
       setShowHistory(false);
       setShowDropdown(true);
       setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
@@ -248,6 +262,30 @@ const UniversalSearchInput = () => {
       }
     }
     
+    // Arrow navigation ve výsledcích vyhledávání
+    if (showDropdown && totalResults > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedResultIndex(prev => 
+          prev < totalResults - 1 ? prev + 1 : prev
+        );
+        return;
+      }
+      
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedResultIndex(prev => prev > 0 ? prev - 1 : -1);
+        return;
+      }
+      
+      // Enter - otevři detail vybraného výsledku
+      if (e.key === 'Enter' && selectedResultIndex >= 0) {
+        e.preventDefault();
+        setResultActionTrigger(prev => prev + 1); // Trigger akce v SearchResultsDropdown
+        return;
+      }
+    }
+    
     // Enter - immediate search
     if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
@@ -255,6 +293,7 @@ const UniversalSearchInput = () => {
       setShowDropdown(true);
       setShowHistory(false);
       setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
     }
 
     // Escape - zavři dropdown
@@ -262,6 +301,7 @@ const UniversalSearchInput = () => {
       setShowDropdown(false);
       setShowHistory(false);
       setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
       inputRef.current?.blur();
     }
   };
@@ -431,6 +471,8 @@ const UniversalSearchInput = () => {
           inputRef={inputRef}
           username={username}
           token={token}
+          selectedResultIndex={selectedResultIndex}
+          onResultAction={resultActionTrigger}
         />
       )}
     </SearchWrapper>
