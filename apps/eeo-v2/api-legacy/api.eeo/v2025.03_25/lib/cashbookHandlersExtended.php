@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * cashbookHandlersExtended.php
  * Rozšířené handlery pro Cashbook API podle FE požadavků

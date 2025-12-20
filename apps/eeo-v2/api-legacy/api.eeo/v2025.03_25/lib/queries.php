@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 define('OLD_TABLE_USERS', 'users');
 define('OLD_TABLE_RIGHTS', 'rights');
 define('OLD_TABLE_GROUPS', 'groups');

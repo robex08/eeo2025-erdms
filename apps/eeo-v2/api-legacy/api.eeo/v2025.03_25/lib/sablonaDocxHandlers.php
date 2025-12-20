@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * DOCX Šablony - CRUD Handlers
  * Správa šablon DOCX dokumentů

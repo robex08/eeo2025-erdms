@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * DOCX Template Handlers
  * Správa šablon DOCX dokumentů a jejich generování
