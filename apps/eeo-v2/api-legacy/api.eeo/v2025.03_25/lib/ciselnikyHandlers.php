@@ -12,7 +12,7 @@
  */
 
 // =============================================================================
-// 1. LOKALITY - 25_lokality
+// 1. LOKALITY - TBL_LOKALITY (25_lokality)
 // =============================================================================
 
 /**
@@ -50,8 +50,8 @@ function handle_ciselniky_lokality_list($input, $config, $queries) {
                 SELECT 
                     l.*,
                     COUNT(DISTINCT u.id) as pocet_uzivatelu
-                FROM 25_lokality l
-                LEFT JOIN 25_uzivatele u ON u.lokalita_id = l.id
+                FROM " . TBL_LOKALITY . " l
+                LEFT JOIN " . TBL_UZIVATELE . " u ON u.lokalita_id = l.id
                 GROUP BY l.id
                 ORDER BY l.nazev ASC
             ";
@@ -60,8 +60,8 @@ function handle_ciselniky_lokality_list($input, $config, $queries) {
                 SELECT 
                     l.*,
                     COUNT(DISTINCT u.id) as pocet_uzivatelu
-                FROM 25_lokality l
-                LEFT JOIN 25_uzivatele u ON u.lokalita_id = l.id
+                FROM " . TBL_LOKALITY . " l
+                LEFT JOIN " . TBL_UZIVATELE . " u ON u.lokalita_id = l.id
                 WHERE l.aktivni = 1
                 GROUP BY l.id
                 ORDER BY l.nazev ASC
@@ -113,7 +113,7 @@ function handle_ciselniky_lokality_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_lokality WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_LOKALITY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -166,7 +166,7 @@ function handle_ciselniky_lokality_insert($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO 25_lokality (nazev, typ, parent_id, aktivni) VALUES (:nazev, :typ, :parent_id, :aktivni)";
+        $sql = "INSERT INTO " . TBL_LOKALITY . " (nazev, typ, parent_id, aktivni) VALUES (:nazev, :typ, :parent_id, :aktivni)";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -221,7 +221,7 @@ function handle_ciselniky_lokality_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE 25_lokality SET nazev = :nazev, typ = :typ, parent_id = :parent_id, aktivni = :aktivni WHERE id = :id";
+        $sql = "UPDATE " . TBL_LOKALITY . " SET nazev = :nazev, typ = :typ, parent_id = :parent_id, aktivni = :aktivni WHERE id = :id";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -281,7 +281,7 @@ function handle_ciselniky_lokality_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Soft delete - nastavíme aktivni = 0
-        $sql = "UPDATE 25_lokality SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_LOKALITY . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -340,8 +340,8 @@ function handle_ciselniky_pozice_list($input, $config, $queries) {
                     u.id AS usek_id_detail,
                     u.usek_nazev,
                     u.usek_zkr 
-                FROM 25_pozice p 
-                LEFT JOIN 25_useky u ON p.usek_id = u.id 
+                FROM " . TBL_POZICE . " p 
+                LEFT JOIN " . TBL_USEKY . " u ON p.usek_id = u.id 
                 ORDER BY p.nazev_pozice ASC
             ";
         } else {
@@ -351,8 +351,8 @@ function handle_ciselniky_pozice_list($input, $config, $queries) {
                     u.id AS usek_id_detail,
                     u.usek_nazev,
                     u.usek_zkr 
-                FROM 25_pozice p 
-                LEFT JOIN 25_useky u ON p.usek_id = u.id 
+                FROM " . TBL_POZICE . " p 
+                LEFT JOIN " . TBL_USEKY . " u ON p.usek_id = u.id 
                 WHERE p.aktivni = 1
                 ORDER BY p.nazev_pozice ASC
             ";
@@ -365,9 +365,9 @@ function handle_ciselniky_pozice_list($input, $config, $queries) {
         // Pro každou pozici spočítat počet uživatelů
         foreach ($pozice as &$pozice_item) {
             if ($show_inactive) {
-                $sql_users = "SELECT COUNT(*) as pocet FROM 25_uzivatele WHERE pozice_id = :pozice_id";
+                $sql_users = "SELECT COUNT(*) as pocet FROM " . TBL_UZIVATELE . " WHERE pozice_id = :pozice_id";
             } else {
-                $sql_users = "SELECT COUNT(*) as pocet FROM 25_uzivatele WHERE pozice_id = :pozice_id AND aktivni = 1";
+                $sql_users = "SELECT COUNT(*) as pocet FROM " . TBL_UZIVATELE . " WHERE pozice_id = :pozice_id AND aktivni = 1";
             }
             
             $stmt_users = $db->prepare($sql_users);
@@ -425,8 +425,8 @@ function handle_ciselniky_pozice_by_id($input, $config, $queries) {
                 u.id AS usek_id_detail,
                 u.usek_nazev,
                 u.usek_zkr 
-            FROM 25_pozice p 
-            LEFT JOIN 25_useky u ON p.usek_id = u.id 
+            FROM " . TBL_POZICE . " p 
+            LEFT JOIN " . TBL_USEKY . " u ON p.usek_id = u.id 
             WHERE p.id = :id
         ";
         $stmt = $db->prepare($sql);
@@ -481,7 +481,7 @@ function handle_ciselniky_pozice_insert($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO 25_pozice (nazev_pozice, parent_id, usek_id, aktivni) VALUES (:nazev_pozice, :parent_id, :usek_id, :aktivni)";
+        $sql = "INSERT INTO " . TBL_POZICE . " (nazev_pozice, parent_id, usek_id, aktivni) VALUES (:nazev_pozice, :parent_id, :usek_id, :aktivni)";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -536,7 +536,7 @@ function handle_ciselniky_pozice_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE 25_pozice SET nazev_pozice = :nazev_pozice, parent_id = :parent_id, usek_id = :usek_id, aktivni = :aktivni WHERE id = :id";
+        $sql = "UPDATE " . TBL_POZICE . " SET nazev_pozice = :nazev_pozice, parent_id = :parent_id, usek_id = :usek_id, aktivni = :aktivni WHERE id = :id";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -596,7 +596,7 @@ function handle_ciselniky_pozice_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // SOFT DELETE - nastavení aktivni = 0 místo skutečného smazání
-        $sql = "UPDATE 25_pozice SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_POZICE . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -618,7 +618,7 @@ function handle_ciselniky_pozice_delete($input, $config, $queries) {
 }
 
 // =============================================================================
-// 3. ÚSEKY - 25_useky
+// 3. ÚSEKY - TBL_USEKY (25_useky)
 // =============================================================================
 
 /**
@@ -649,9 +649,9 @@ function handle_ciselniky_useky_list($input, $config, $queries) {
         $show_inactive = isset($input['show_inactive']) ? (bool)$input['show_inactive'] : false;
         
         if ($show_inactive) {
-            $sql = "SELECT * FROM 25_useky ORDER BY usek_nazev ASC";
+            $sql = "SELECT * FROM " . TBL_USEKY . " ORDER BY usek_nazev ASC";
         } else {
-            $sql = "SELECT * FROM 25_useky WHERE aktivni = 1 ORDER BY usek_nazev ASC";
+            $sql = "SELECT * FROM " . TBL_USEKY . " WHERE aktivni = 1 ORDER BY usek_nazev ASC";
         }
         
         $stmt = $db->prepare($sql);
@@ -661,9 +661,9 @@ function handle_ciselniky_useky_list($input, $config, $queries) {
         // Pro každý úsek spočítat počet uživatelů
         foreach ($useky as &$usek) {
             if ($show_inactive) {
-                $sql_users = "SELECT COUNT(*) as pocet FROM 25_uzivatele WHERE usek_id = :usek_id";
+                $sql_users = "SELECT COUNT(*) as pocet FROM " . TBL_UZIVATELE . " WHERE usek_id = :usek_id";
             } else {
-                $sql_users = "SELECT COUNT(*) as pocet FROM 25_uzivatele WHERE usek_id = :usek_id AND aktivni = 1";
+                $sql_users = "SELECT COUNT(*) as pocet FROM " . TBL_UZIVATELE . " WHERE usek_id = :usek_id AND aktivni = 1";
             }
             
             $stmt_users = $db->prepare($sql_users);
@@ -715,7 +715,7 @@ function handle_ciselniky_useky_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_useky WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_USEKY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -768,7 +768,7 @@ function handle_ciselniky_useky_insert($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO 25_useky (usek_nazev, usek_zkr, aktivni) VALUES (:nazev, :zkr, :aktivni)";
+        $sql = "INSERT INTO " . TBL_USEKY . " (usek_nazev, usek_zkr, aktivni) VALUES (:nazev, :zkr, :aktivni)";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -822,7 +822,7 @@ function handle_ciselniky_useky_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE 25_useky SET usek_nazev = :nazev, usek_zkr = :zkr, aktivni = :aktivni WHERE id = :id";
+        $sql = "UPDATE " . TBL_USEKY . " SET usek_nazev = :nazev, usek_zkr = :zkr, aktivni = :aktivni WHERE id = :id";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -881,7 +881,7 @@ function handle_ciselniky_useky_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // SOFT DELETE - nastavení aktivni = 0 místo skutečného smazání
-        $sql = "UPDATE 25_useky SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_USEKY . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -903,7 +903,7 @@ function handle_ciselniky_useky_delete($input, $config, $queries) {
 }
 
 // =============================================================================
-// 4. ORGANIZACE - 25_organizace_vizitka
+// 4. ORGANIZACE - TBL_ORGANIZACE_VIZITKA (25_organizace_vizitka)
 // =============================================================================
 
 /**
@@ -936,13 +936,13 @@ function handle_ciselniky_organizace_list($input, $config, $queries) {
         
         if ($aktivni === 1 || $aktivni === '1' || $aktivni === true) {
             // Vrátit POUZE aktivní
-            $sql = "SELECT * FROM 25_organizace_vizitka WHERE aktivni = 1 ORDER BY nazev_organizace ASC";
+            $sql = "SELECT * FROM " . TBL_ORGANIZACE_VIZITKA . " WHERE aktivni = 1 ORDER BY nazev_organizace ASC";
         } elseif ($aktivni === 0 || $aktivni === '0' || $aktivni === false) {
             // Vrátit POUZE neaktivní
-            $sql = "SELECT * FROM 25_organizace_vizitka WHERE aktivni = 0 ORDER BY nazev_organizace ASC";
+            $sql = "SELECT * FROM " . TBL_ORGANIZACE_VIZITKA . " WHERE aktivni = 0 ORDER BY nazev_organizace ASC";
         } else {
             // Není specifikováno -> vrátit VŠECHNY
-            $sql = "SELECT * FROM 25_organizace_vizitka ORDER BY nazev_organizace ASC";
+            $sql = "SELECT * FROM " . TBL_ORGANIZACE_VIZITKA . " ORDER BY nazev_organizace ASC";
         }
         
         $stmt = $db->prepare($sql);
@@ -951,7 +951,7 @@ function handle_ciselniky_organizace_list($input, $config, $queries) {
 
         // Pro každou organizaci spočítat počet uživatelů (vždy pouze aktivní)
         foreach ($organizace as &$org) {
-            $sql_users = "SELECT COUNT(*) as pocet FROM 25_uzivatele WHERE organizace_id = :organizace_id AND aktivni = 1";
+            $sql_users = "SELECT COUNT(*) as pocet FROM " . TBL_UZIVATELE . " WHERE organizace_id = :organizace_id AND aktivni = 1";
             
             $stmt_users = $db->prepare($sql_users);
             $stmt_users->execute(array(':organizace_id' => $org['id']));
@@ -1002,7 +1002,7 @@ function handle_ciselniky_organizace_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_organizace_vizitka WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_ORGANIZACE_VIZITKA . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -1060,7 +1060,7 @@ function handle_ciselniky_organizace_insert($input, $config, $queries) {
         $db = get_db($config);
         
         $sql = "
-            INSERT INTO 25_organizace_vizitka 
+            INSERT INTO " . TBL_ORGANIZACE_VIZITKA . " 
             (ico, dic, nazev_organizace, ulice_cislo, mesto, psc, zastoupeny, datova_schranka, email, telefon, aktivni, dt_aktualizace) 
             VALUES (:ico, :dic, :nazev_organizace, :ulice_cislo, :mesto, :psc, :zastoupeny, :datova_schranka, :email, :telefon, :aktivni, NOW())
         ";
@@ -1136,7 +1136,7 @@ function handle_ciselniky_organizace_update($input, $config, $queries) {
         $db = get_db($config);
         
         $sql = "
-            UPDATE 25_organizace_vizitka 
+            UPDATE " . TBL_ORGANIZACE_VIZITKA . " 
             SET ico = :ico, dic = :dic, nazev_organizace = :nazev_organizace, 
                 ulice_cislo = :ulice_cislo, mesto = :mesto, psc = :psc, 
                 zastoupeny = :zastoupeny, datova_schranka = :datova_schranka, 
@@ -1209,7 +1209,7 @@ function handle_ciselniky_organizace_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // SOFT DELETE - nastavení aktivni = 0 místo skutečného smazání
-        $sql = "UPDATE 25_organizace_vizitka SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_ORGANIZACE_VIZITKA . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -1231,7 +1231,7 @@ function handle_ciselniky_organizace_delete($input, $config, $queries) {
 }
 
 // =============================================================================
-// 5. DODAVATELÉ - 25_dodavatele
+// 5. DODAVATELÉ - TBL_DODAVATELE (25_dodavatele)
 // =============================================================================
 
 /**
@@ -1262,9 +1262,9 @@ function handle_ciselniky_dodavatele_list($input, $config, $queries) {
         $show_inactive = isset($input['show_inactive']) ? (bool)$input['show_inactive'] : false;
         
         if ($show_inactive) {
-            $sql = "SELECT * FROM 25_dodavatele ORDER BY nazev ASC";
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev ASC";
         } else {
-            $sql = "SELECT * FROM 25_dodavatele WHERE aktivni = 1 ORDER BY nazev ASC";
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE aktivni = 1 ORDER BY nazev ASC";
         }
         
         $stmt = $db->prepare($sql);
@@ -1312,7 +1312,7 @@ function handle_ciselniky_dodavatele_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_dodavatele WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -1387,7 +1387,7 @@ function handle_ciselniky_dodavatele_insert($input, $config, $queries) {
             }
         }
         
-        $sql = "INSERT INTO 25_dodavatele (
+        $sql = "INSERT INTO " . TBL_DODAVATELE . " (
             nazev, ico, dic, ulice, cp, mesto, psc, stat, 
             kontaktni_osoba, telefon, email, poznamka, user_id, usek_zkr, aktivni
         ) VALUES (
@@ -1474,7 +1474,7 @@ function handle_ciselniky_dodavatele_update($input, $config, $queries) {
             }
         }
         
-        $sql = "UPDATE 25_dodavatele SET 
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET 
             nazev = :nazev,
             ico = :ico,
             dic = :dic,
@@ -1554,7 +1554,7 @@ function handle_ciselniky_dodavatele_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // SOFT DELETE - nastavení aktivni = 0 místo skutečného smazání
-        $sql = "UPDATE 25_dodavatele SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -1576,7 +1576,7 @@ function handle_ciselniky_dodavatele_delete($input, $config, $queries) {
 }
 
 // =============================================================================
-// 6. STAVY - 25_ciselnik_stavy (READ-ONLY)
+// 6. STAVY - TBL_CISELNIK_STAVY (READ-ONLY)
 // =============================================================================
 
 /**
@@ -1610,7 +1610,7 @@ function handle_ciselniky_stavy_list($input, $config, $queries) {
         $zobrazit_prosle = isset($input['zobrazit_prosle']) ? (bool)$input['zobrazit_prosle'] : false;
         
         // Volitelný filtr podle typu objektu
-        $sql = "SELECT * FROM 25_ciselnik_stavy";
+        $sql = "SELECT * FROM " . TBL_CISELNIK_STAVY . "";
         $params = array();
         $where_conditions = array();
         
@@ -1684,9 +1684,9 @@ function handle_ciselniky_role_list($input, $config, $queries) {
         $show_inactive = isset($input['show_inactive']) ? (bool)$input['show_inactive'] : false;
         
         if ($show_inactive) {
-            $sql = "SELECT * FROM 25_role ORDER BY nazev_role ASC";
+            $sql = "SELECT * FROM " . TBL_ROLE . " ORDER BY nazev_role ASC";
         } else {
-            $sql = "SELECT * FROM 25_role WHERE aktivni = 1 ORDER BY nazev_role ASC";
+            $sql = "SELECT * FROM " . TBL_ROLE . " WHERE aktivni = 1 ORDER BY nazev_role ASC";
         }
         
         $stmt = $db->prepare($sql);
@@ -1697,8 +1697,8 @@ function handle_ciselniky_role_list($input, $config, $queries) {
         foreach ($roles as &$role) {
             $pravaStmt = $db->prepare("
                 SELECT p.kod_prava, p.popis
-                FROM 25_role_prava rp
-                JOIN 25_prava p ON rp.pravo_id = p.id
+                FROM " . TBL_ROLE_PRAVA . " rp
+                JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
                 WHERE rp.role_id = ? AND rp.aktivni = 1
             ");
             $pravaStmt->execute(array($role['id']));
@@ -1770,7 +1770,7 @@ function handle_ciselniky_role_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_role WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -1836,7 +1836,7 @@ function handle_ciselniky_role_insert($input, $config, $queries) {
         }
         
         // INSERT do databáze
-        $sql = "INSERT INTO 25_role (nazev_role, popis, aktivni) 
+        $sql = "INSERT INTO " . TBL_ROLE . " (nazev_role, popis, aktivni) 
                 VALUES (:nazev_role, :popis, :aktivni)";
         
         $stmt = $db->prepare($sql);
@@ -1849,7 +1849,7 @@ function handle_ciselniky_role_insert($input, $config, $queries) {
         
         // Načtení vytvořené role pro response
         $sql_select = "SELECT id, nazev_role, popis, aktivni 
-                       FROM 25_role WHERE id = :id";
+                       FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -1900,7 +1900,7 @@ function handle_ciselniky_role_update($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola existence role
-        $sql_check = "SELECT id FROM 25_role WHERE id = :id";
+        $sql_check = "SELECT id FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt_check = $db->prepare($sql_check);
         $stmt_check->bindParam(':id', $role_id, PDO::PARAM_INT);
         $stmt_check->execute();
@@ -1941,13 +1941,13 @@ function handle_ciselniky_role_update($input, $config, $queries) {
         }
         
         // UPDATE
-        $sql = "UPDATE 25_role SET " . implode(', ', $updates) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_ROLE . " SET " . implode(', ', $updates) . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         
         // Načtení aktualizované role pro response
         $sql_select = "SELECT id, nazev_role, popis, aktivni 
-                       FROM 25_role WHERE id = :id";
+                       FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $role_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -1993,9 +1993,9 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
         
         // 1. Načtení všech rolí
         if ($show_inactive) {
-            $sql_roles = "SELECT * FROM 25_role ORDER BY nazev_role ASC";
+            $sql_roles = "SELECT * FROM " . TBL_ROLE . " ORDER BY nazev_role ASC";
         } else {
-            $sql_roles = "SELECT * FROM 25_role WHERE aktivni = 1 ORDER BY nazev_role ASC";
+            $sql_roles = "SELECT * FROM " . TBL_ROLE . " WHERE aktivni = 1 ORDER BY nazev_role ASC";
         }
         
         $stmt = $db->prepare($sql_roles);
@@ -2014,8 +2014,8 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                         p.popis,
                         p.aktivni as pravo_aktivni,
                         rp.aktivni as vazba_aktivni
-                    FROM 25_role_prava rp
-                    JOIN 25_prava p ON rp.pravo_id = p.id
+                    FROM " . TBL_ROLE_PRAVA . " rp
+                    JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
                     WHERE rp.role_id = :role_id
                       AND rp.user_id = -1
                     ORDER BY p.kod_prava ASC
@@ -2028,8 +2028,8 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                         p.popis,
                         p.aktivni as pravo_aktivni,
                         rp.aktivni as vazba_aktivni
-                    FROM 25_role_prava rp
-                    JOIN 25_prava p ON rp.pravo_id = p.id
+                    FROM " . TBL_ROLE_PRAVA . " rp
+                    JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
                     WHERE rp.role_id = :role_id
                       AND rp.user_id = -1
                       AND rp.aktivni = 1
@@ -2046,14 +2046,14 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
             if ($show_inactive) {
                 $sql_users_for_role = "
                     SELECT COUNT(DISTINCT ur.uzivatel_id) as pocet 
-                    FROM 25_uzivatele_role ur
+                    FROM " . TBL_UZIVATELE_ROLE . " ur
                     WHERE ur.role_id = :role_id
                 ";
             } else {
                 $sql_users_for_role = "
                     SELECT COUNT(DISTINCT ur.uzivatel_id) as pocet 
-                    FROM 25_uzivatele_role ur
-                    JOIN 25_uzivatele u ON u.id = ur.uzivatel_id
+                    FROM " . TBL_UZIVATELE_ROLE . " ur
+                    JOIN " . TBL_UZIVATELE . " u ON u.id = ur.uzivatel_id
                     WHERE ur.role_id = :role_id 
                       AND u.aktivni = 1
                 ";
@@ -2076,9 +2076,9 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                         FROM (
                             -- Uživatelé z rolí, které mají toto právo globálně
                             SELECT DISTINCT ur.uzivatel_id as user_id
-                            FROM 25_uzivatele_role ur
+                            FROM " . TBL_UZIVATELE_ROLE . " ur
                             WHERE EXISTS (
-                                SELECT 1 FROM 25_role_prava rp
+                                SELECT 1 FROM " . TBL_ROLE_PRAVA . " rp
                                 WHERE rp.role_id = ur.role_id
                                   AND rp.pravo_id = :pravo_id
                                   AND rp.user_id = -1
@@ -2088,7 +2088,7 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                             
                             -- Uživatelé s personalizovaným přiřazením tohoto práva
                             SELECT DISTINCT rp.user_id
-                            FROM 25_role_prava rp
+                            FROM " . TBL_ROLE_PRAVA . " rp
                             WHERE rp.pravo_id = :pravo_id
                               AND rp.user_id != -1
                         ) AS combined_users
@@ -2099,11 +2099,11 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                         FROM (
                             -- Aktivní uživatelé z rolí, které mají toto právo globálně
                             SELECT DISTINCT ur.uzivatel_id as user_id
-                            FROM 25_uzivatele_role ur
-                            JOIN 25_uzivatele u ON u.id = ur.uzivatel_id
+                            FROM " . TBL_UZIVATELE_ROLE . " ur
+                            JOIN " . TBL_UZIVATELE . " u ON u.id = ur.uzivatel_id
                             WHERE u.aktivni = 1
                               AND EXISTS (
-                                SELECT 1 FROM 25_role_prava rp
+                                SELECT 1 FROM " . TBL_ROLE_PRAVA . " rp
                                 WHERE rp.role_id = ur.role_id
                                   AND rp.pravo_id = :pravo_id
                                   AND rp.user_id = -1
@@ -2114,8 +2114,8 @@ function handle_ciselniky_role_list_enriched($input, $config, $queries) {
                             
                             -- Aktivní uživatelé s personalizovaným právem
                             SELECT DISTINCT rp.user_id
-                            FROM 25_role_prava rp
-                            JOIN 25_uzivatele u ON u.id = rp.user_id
+                            FROM " . TBL_ROLE_PRAVA . " rp
+                            JOIN " . TBL_UZIVATELE . " u ON u.id = rp.user_id
                             WHERE rp.pravo_id = :pravo_id
                               AND rp.user_id != -1
                               AND rp.aktivni = 1
@@ -2189,9 +2189,9 @@ function handle_ciselniky_prava_list($input, $config, $queries) {
         $show_inactive = isset($input['show_inactive']) && $input['show_inactive'] === true;
         
         if ($show_inactive) {
-            $sql = "SELECT * FROM 25_prava ORDER BY kod_prava ASC";
+            $sql = "SELECT * FROM " . TBL_PRAVA . " ORDER BY kod_prava ASC";
         } else {
-            $sql = "SELECT * FROM 25_prava WHERE aktivni = 1 ORDER BY kod_prava ASC";
+            $sql = "SELECT * FROM " . TBL_PRAVA . " WHERE aktivni = 1 ORDER BY kod_prava ASC";
         }
         
         $stmt = $db->prepare($sql);
@@ -2209,9 +2209,9 @@ function handle_ciselniky_prava_list($input, $config, $queries) {
                     FROM (
                         -- Uživatelé z rolí, které mají toto právo globálně
                         SELECT DISTINCT ur.uzivatel_id as user_id
-                        FROM 25_uzivatele_role ur
+                        FROM " . TBL_UZIVATELE_ROLE . " ur
                         WHERE EXISTS (
-                            SELECT 1 FROM 25_role_prava rp
+                            SELECT 1 FROM " . TBL_ROLE_PRAVA . " rp
                             WHERE rp.role_id = ur.role_id
                               AND rp.pravo_id = :pravo_id
                               AND rp.user_id = -1
@@ -2221,7 +2221,7 @@ function handle_ciselniky_prava_list($input, $config, $queries) {
                         
                         -- Uživatelé s personalizovaným přiřazením tohoto práva
                         SELECT DISTINCT rp.user_id
-                        FROM 25_role_prava rp
+                        FROM " . TBL_ROLE_PRAVA . " rp
                         WHERE rp.pravo_id = :pravo_id
                           AND rp.user_id != -1
                     ) AS combined_users
@@ -2232,11 +2232,11 @@ function handle_ciselniky_prava_list($input, $config, $queries) {
                     FROM (
                         -- Aktivní uživatelé z rolí, které mají toto právo globálně
                         SELECT DISTINCT ur.uzivatel_id as user_id
-                        FROM 25_uzivatele_role ur
-                        JOIN 25_uzivatele u ON u.id = ur.uzivatel_id
+                        FROM " . TBL_UZIVATELE_ROLE . " ur
+                        JOIN " . TBL_UZIVATELE . " u ON u.id = ur.uzivatel_id
                         WHERE u.aktivni = 1
                           AND EXISTS (
-                            SELECT 1 FROM 25_role_prava rp
+                            SELECT 1 FROM " . TBL_ROLE_PRAVA . " rp
                             WHERE rp.role_id = ur.role_id
                               AND rp.pravo_id = :pravo_id
                               AND rp.user_id = -1
@@ -2247,8 +2247,8 @@ function handle_ciselniky_prava_list($input, $config, $queries) {
                         
                         -- Aktivní uživatelé s personalizovaným právem
                         SELECT DISTINCT rp.user_id
-                        FROM 25_role_prava rp
-                        JOIN 25_uzivatele u ON u.id = rp.user_id
+                        FROM " . TBL_ROLE_PRAVA . " rp
+                        JOIN " . TBL_UZIVATELE . " u ON u.id = rp.user_id
                         WHERE rp.pravo_id = :pravo_id
                           AND rp.user_id != -1
                           AND rp.aktivni = 1
@@ -2307,7 +2307,7 @@ function handle_ciselniky_prava_by_id($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "SELECT * FROM 25_prava WHERE id = :id";
+        $sql = "SELECT * FROM " . TBL_PRAVA . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -2361,7 +2361,7 @@ function handle_ciselniky_prava_insert($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO 25_prava (kod_prava, popis, aktivni) VALUES (:kod_prava, :popis, :aktivni)";
+        $sql = "INSERT INTO " . TBL_PRAVA . " (kod_prava, popis, aktivni) VALUES (:kod_prava, :popis, :aktivni)";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -2422,7 +2422,7 @@ function handle_ciselniky_prava_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE 25_prava SET kod_prava = :kod_prava, popis = :popis, aktivni = :aktivni WHERE id = :id";
+        $sql = "UPDATE " . TBL_PRAVA . " SET kod_prava = :kod_prava, popis = :popis, aktivni = :aktivni WHERE id = :id";
         $stmt = $db->prepare($sql);
         
         $params = array(
@@ -2481,7 +2481,7 @@ function handle_ciselniky_prava_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Soft delete - nastavíme aktivni = 0
-        $sql = "UPDATE 25_prava SET aktivni = 0 WHERE id = :id";
+        $sql = "UPDATE " . TBL_PRAVA . " SET aktivni = 0 WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -2503,7 +2503,7 @@ function handle_ciselniky_prava_delete($input, $config, $queries) {
 }
 
 // =============================================================================
-// 9. SPRÁVA PRÁV ROLÍ - 25_role_prava
+// 9. SPRÁVA PRÁV ROLÍ - TBL_ROLE_PRAVA (25_role_prava)
 // =============================================================================
 
 /**
@@ -2560,7 +2560,7 @@ function handle_ciselniky_role_assign_pravo($input, $config, $queries) {
         // Kontrola, zda vazba již neexistuje (POUZE pro globální práva role, user_id = -1)
         $sql_check = "
             SELECT COUNT(*) as count
-            FROM 25_role_prava
+            FROM " . TBL_ROLE_PRAVA . "
             WHERE role_id = :role_id 
               AND pravo_id = :pravo_id 
               AND user_id = -1
@@ -2583,7 +2583,7 @@ function handle_ciselniky_role_assign_pravo($input, $config, $queries) {
         
         // Přiřazení práva k roli (user_id = -1 = globální práva role)
         $sql_insert = "
-            INSERT INTO 25_role_prava (user_id, role_id, pravo_id, aktivni)
+            INSERT INTO " . TBL_ROLE_PRAVA . " (user_id, role_id, pravo_id, aktivni)
             VALUES (-1, :role_id, :pravo_id, 1)
         ";
         $stmt_insert = $db->prepare($sql_insert);
@@ -2660,7 +2660,7 @@ function handle_ciselniky_role_remove_pravo($input, $config, $queries) {
         // KRITICKÉ: Smazat POUZE globální práva role (user_id = -1), 
         // NIKDY ne individuální uživatelská práva (user_id > 0)!
         $sql_delete = "
-            DELETE FROM 25_role_prava
+            DELETE FROM " . TBL_ROLE_PRAVA . "
             WHERE role_id = :role_id 
               AND pravo_id = :pravo_id 
               AND user_id = -1
@@ -2746,9 +2746,9 @@ function handle_ciselniky_role_cleanup_duplicates($input, $config, $queries) {
                 r.nazev_role,
                 p.kod_prava,
                 GROUP_CONCAT(rp.id ORDER BY rp.id) as duplicate_ids
-            FROM 25_role_prava rp
-            LEFT JOIN 25_role r ON rp.role_id = r.id
-            LEFT JOIN 25_prava p ON rp.pravo_id = p.id
+            FROM " . TBL_ROLE_PRAVA . " rp
+            LEFT JOIN " . TBL_ROLE . " r ON rp.role_id = r.id
+            LEFT JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
             WHERE rp.user_id = -1
               AND rp.role_id > 0
             GROUP BY rp.user_id, rp.role_id, rp.pravo_id
@@ -2806,8 +2806,8 @@ function handle_ciselniky_role_cleanup_duplicates($input, $config, $queries) {
         // KROK 3: Smaž duplicity (ponechej nejstarší záznam = nejmenší ID)
         $sql_delete_duplicates = "
             DELETE rp1 
-            FROM 25_role_prava rp1
-            INNER JOIN 25_role_prava rp2 
+            FROM " . TBL_ROLE_PRAVA . " rp1
+            INNER JOIN " . TBL_ROLE_PRAVA . " rp2 
             ON rp1.user_id = rp2.user_id 
                AND rp1.role_id = rp2.role_id 
                AND rp1.pravo_id = rp2.pravo_id
@@ -2836,7 +2836,7 @@ function handle_ciselniky_role_cleanup_duplicates($input, $config, $queries) {
         
         if (!$constraint_exists) {
             $sql_add_constraint = "
-                ALTER TABLE 25_role_prava
+                ALTER TABLE TBL_ROLE_PRAVA (25_role_prava)
                 ADD UNIQUE KEY unique_user_role_pravo (user_id, role_id, pravo_id)
             ";
             $stmt_alter = $db->prepare($sql_add_constraint);
@@ -2953,7 +2953,7 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
         $db = get_db($config);
         
         // Ověř, že role existuje
-        $stmt_check_role = $db->prepare("SELECT id, nazev_role FROM 25_role WHERE id = :role_id");
+        $stmt_check_role = $db->prepare("SELECT id, nazev_role FROM " . TBL_ROLE . " WHERE id = :role_id");
         $stmt_check_role->execute(array(':role_id' => $role_id));
         $role = $stmt_check_role->fetch(PDO::FETCH_ASSOC);
         
@@ -3004,7 +3004,7 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
                     $ids_placeholder[] = $param_name;
                     $ids_params[$param_name] = $pravo_id;
                 }
-                $sql_details = "SELECT id, kod_prava FROM 25_prava WHERE id IN (" . implode(',', $ids_placeholder) . ")";
+                $sql_details = "SELECT id, kod_prava FROM " . TBL_PRAVA . " WHERE id IN (" . implode(',', $ids_placeholder) . ")";
                 $stmt_details = $db->prepare($sql_details);
                 $stmt_details->execute($ids_params);
                 
@@ -3027,7 +3027,7 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
                 $ids_placeholder_select[] = $param_name;
                 $ids_params_select[$param_name] = $pravo_id;
             }
-            $sql_details = "SELECT id, kod_prava FROM 25_prava WHERE id IN (" . implode(',', $ids_placeholder_select) . ")";
+            $sql_details = "SELECT id, kod_prava FROM " . TBL_PRAVA . " WHERE id IN (" . implode(',', $ids_placeholder_select) . ")";
             $stmt_details = $db->prepare($sql_details);
             $stmt_details->execute($ids_params_select);
             
@@ -3047,7 +3047,7 @@ function handle_ciselniky_role_bulk_update_prava($input, $config, $queries) {
                 $ids_params_delete[$param_name] = $pravo_id;
             }
             $sql_delete = "
-                DELETE FROM 25_role_prava 
+                DELETE FROM " . TBL_ROLE_PRAVA . " 
                 WHERE user_id = -1 
                   AND role_id = :role_id 
                   AND pravo_id IN (" . implode(',', $ids_placeholder_delete) . ")
