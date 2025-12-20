@@ -2,31 +2,31 @@
 
 // Define table names for new order queries - PHP 5.6 compatible
 function get_orders_table_name() {
-    return '25a_objednavky';
+    return TBL_OBJEDNAVKY;
 }
 
 function get_order_items_table_name() {
-    return '25a_objednavky_polozky';
+    return TBL_OBJEDNAVKY_POLOZKY;
 }
 
 function get_order_attachments_table_name() {
-    return '25a_objednavky_prilohy';
+    return TBL_OBJEDNAVKY_PRILOHY;
 }
 
 function get_states_table_name() {
-    return '25_ciselnik_stavy';
+    return TBL_CISELNIK_STAVY;
 }
 
 function get_users_table_name() {
-    return '25_uzivatele';
+    return TBL_UZIVATELE;
 }
 
 function get_invoices_table_name() {
-    return '25a_objednavky_faktury';
+    return TBL_FAKTURY;
 }
 
 function get_invoice_attachments_table_name() {
-    return '25a_faktury_prilohy';
+    return TBL_FAKTURY_PRILOHY;
 }
 
 // ========== SELECT QUERIES ==========
