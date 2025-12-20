@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 // TODO/NOTES API Handlers (Final Design v2025.03_25)
 // Konzistentní API struktura s ostatními endpointy
 

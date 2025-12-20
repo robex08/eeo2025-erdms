@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * ============================================================================
  * HIERARCHY PERMISSIONS - Kontrola práv na základě workflow hierarchie

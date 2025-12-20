@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * Universal Search - SQL Query Builder
  * PHP 5.6 + MySQL 5.5.43 compatible

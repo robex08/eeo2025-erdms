@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * API handlers pro přepočet a správu čerpání limitovaných příslibů - VERZE 2.0
  * 

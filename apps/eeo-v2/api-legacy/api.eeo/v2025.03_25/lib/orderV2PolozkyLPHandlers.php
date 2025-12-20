@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * Order V2 - Handlers pro práci s LP kódy na úrovni položek
  * 

@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 // Handlers pro API endpointy
 
 // Debug mode - set to true to enable detailed logging
