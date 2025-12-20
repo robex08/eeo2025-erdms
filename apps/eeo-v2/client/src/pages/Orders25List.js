@@ -7490,8 +7490,14 @@ const Orders25List = () => {
         const maxPrice = parseFloat(row.original.max_cena_s_dph || 0);
         const fakturaPrice = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
         
+        // Zkontroluj, zda existují položky
+        const hasItems = row.original.polozky && Array.isArray(row.original.polozky) && row.original.polozky.length > 0;
+        
         // Pokud faktura překračuje max cenu, zobraz červeně
         const isOverLimit = fakturaPrice > 0 && maxPrice > 0 && fakturaPrice > maxPrice;
+        
+        // Zobraz max cenu pouze když NEJSOU položky (jinak by se zobrazovala cena z položek)
+        const shouldShowMaxPrice = !hasItems && maxPrice > 0;
         
         return (
           <div style={{ 
@@ -7501,7 +7507,7 @@ const Orders25List = () => {
             whiteSpace: 'nowrap',
             color: isOverLimit ? '#dc2626' : 'inherit'
           }}>
-            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+            {shouldShowMaxPrice ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
           </div>
         );
       }
