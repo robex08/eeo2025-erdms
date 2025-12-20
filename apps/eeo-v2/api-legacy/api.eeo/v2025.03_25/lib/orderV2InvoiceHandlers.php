@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * Order V2 Invoice Management Handlers
  * PHP 5.6 Compatible - uses array() syntax, string status codes

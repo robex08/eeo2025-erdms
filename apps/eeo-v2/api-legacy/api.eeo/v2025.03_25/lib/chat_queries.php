@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 // ========================================
 // CHAT SYSTÉM - SQL QUERIES
 // Pro přidání do queries.php

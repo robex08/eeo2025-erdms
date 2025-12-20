@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * cashbookHandlers.php
  * Handlery pro Cashbook (Pokladní kniha) API

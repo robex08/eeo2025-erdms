@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * Invoice Handlers - Faktury API
  * PHP 5.6 kompatibilní

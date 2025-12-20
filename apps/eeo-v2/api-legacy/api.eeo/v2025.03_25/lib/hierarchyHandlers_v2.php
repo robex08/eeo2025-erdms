@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * NOVÝ REFACTORED SYSTÉM PRO HIERARCHII
  * Jednoduché, přímočaré API pro ukládání a načítání vztahů

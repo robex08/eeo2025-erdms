@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 
 require_once 'dbconfig.php';
 require_once 'orderQueries.php';

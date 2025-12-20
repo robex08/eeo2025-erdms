@@ -1,6 +1,5 @@
 <?php
 
-require_once __DIR__ . '/../../api.php';
 /**
  * Hierarchy Order Filters - Hierarchie workflow pro filtraci objednávek
  * 
