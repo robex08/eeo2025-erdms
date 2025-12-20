@@ -402,7 +402,7 @@ export const createExchangeRatesTask = (onRatesUpdated) => ({
       // 🪙 Crypto API - načtení krypto kurzů přes backend proxy (řeší CORS problém)
       try {
         // ✅ OPRAVENO: Použít API2_BASE_URL který už obsahuje /api.eeo/
-        const API2_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+        const API2_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const cryptoApiUrl = `${API2_BASE_URL}crypto-rates-proxy.php`;
 
         // Získat token pro autentizaci (pokud je vyžadován)

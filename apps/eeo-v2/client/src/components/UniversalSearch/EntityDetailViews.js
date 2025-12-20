@@ -1858,7 +1858,7 @@ export const InvoiceDetailView = ({ data, username, token }) => {
                   const { default: downloadAndPreviewAttachment } = await import('../../utils/attachmentDownloader');
                   
                   // Stáhni přílohu z API
-                  const API_BASE = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+                  const API_BASE = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
                   const response = await fetch(`${API_BASE}invoices25/attachments/download`, {
                     method: 'POST',
                     headers: {

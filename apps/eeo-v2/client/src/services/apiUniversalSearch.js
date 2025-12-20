@@ -8,7 +8,7 @@
 
 import { loadAuthData, getStoredUsername } from '../utils/authStorage';
 
-const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/';
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 /**
  * Univerzální vyhledávání
