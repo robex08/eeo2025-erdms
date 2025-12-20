@@ -5888,12 +5888,6 @@ function OrderForm25() {
   const formatValidationErrors = React.useCallback((errors) => {
     if (!errors || Object.keys(errors).length === 0) return null;
 
-    console.log('📝 formatValidationErrors - vstup:', {
-      errorKeys: Object.keys(errors),
-      errorCount: Object.keys(errors).length,
-      errors
-    });
-
     // ✅ SJEDNOCENO S FloatingNavigator.categorizeErrorKey() - MUSÍ BÝT 100% STEJNÉ!
     // Kategorizace chyb podle sekcí NAVIGÁTORU (odpovídá FloatingNavigator.js sekce IDs)
     const categories = {
@@ -6505,19 +6499,6 @@ function OrderForm25() {
       return jeAktivni;
     });
 
-    console.log('🎯 LP filtrování:', {
-      prikazce: `${selectedPrikazce.jmeno} ${selectedPrikazce.prijmeni}`,
-      prikazceUsekId,
-      dnesniDatum: today.toISOString().split('T')[0],
-      vsechnyLP: lpKodyOptions.length,
-      filtrovaneLP: filtered.length,
-      filtrovaneKody: filtered.map(lp => ({
-        kod: lp.cislo_lp || lp.kod,
-        platneOd: lp.platne_od,
-        platneDo: lp.platne_do
-      }))
-    });
-
     return filtered;
   }, [formData.prikazce_id, lpKodyOptions, approvers, allUsers]);
 
@@ -6788,11 +6769,8 @@ function OrderForm25() {
           } else {
             // Objednávka není zamčená - normální lock
             try {
-              console.log('🔒 LOCK OrderForm25: Zamykám obj #' + editOrderId);
               const lockResult = await lockOrderV2({ token, username, orderId: editOrderId });
               if (lockResult.success) {
-                // NOTE: unlockOrderIdRef removed - formData.id is used for unlock
-                console.log('✅ LOCK OrderForm25: OK - obj #' + editOrderId);
                 showToast?.(
                   `Objednávka zamknuta pro editaci`,
                   'info'
@@ -8707,9 +8685,7 @@ function OrderForm25() {
     const unlockOrderId = orderId; // NOTE: sourceOrderIdForUnlock removed, using orderId directly
     if (unlockOrderId && token && username && !skipUnlock) {
       try {
-        console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (po uložení do DB)');
         await unlockOrderV2({ token, username, orderId: unlockOrderId });
-        console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
       } catch (error) {
         console.warn('⚠️ Unlock FAILED po uložení:', error.message);
         // Ignoruj chybu odemykání - pokračuj s navigací
@@ -8762,14 +8738,6 @@ function OrderForm25() {
   // Backend automaticky naplní 50+ placeholderů z order_id
   // 🔔 ROZŠÍŘENÁ PRAVIDLA NOTIFIKACÍ (01.11.2025)
   const sendOrderNotifications = async (orderId, orderNumber, newWorkflowState, oldWorkflowState, formData) => {
-    console.log('════════════════════════════════════════════════════════════════');
-    console.log('🔔 [sendOrderNotifications] ZAČÁTEK');
-    console.log('   Order ID:', orderId);
-    console.log('   Order Number:', orderNumber);
-    console.log('   Old Workflow State:', oldWorkflowState);
-    console.log('   New Workflow State:', newWorkflowState);
-    console.log('════════════════════════════════════════════════════════════════');
-    
     try {
       // Pokud se stav nezměnil, nic neposílej
       if (oldWorkflowState && newWorkflowState === oldWorkflowState) {
@@ -8988,8 +8956,6 @@ function OrderForm25() {
 
       // ❌ DISABLED - Notifikace se odesílají v saveOrderToAPI s plnými daty
       // await notificationService.trigger(eventType, orderId, user_id);
-
-      console.log('⚠️ [sendOrderNotifications] DEPRECATED - notifikace se odesílají v saveOrderToAPI');
 
     } catch (error) {
       console.error('❌ [sendOrderNotifications] Chyba při odesílání notifikací:', error);
@@ -11430,7 +11396,6 @@ function OrderForm25() {
   const saveDraft = async (isAutoSave = false, isAfterDbSave = false, customFormData = null) => {
     // 🚨 KRITICKÁ KONTROLA: Pokud se formulář zavírá, ZABLOKOVAT save
     if (isClosingRef.current) {
-      console.log('🚫 saveDraft BLOCKED - formulář se zavírá');
       return { success: false, reason: 'form_closing' };
     }
     
@@ -12344,11 +12309,6 @@ function OrderForm25() {
     const hasInvalidLp = selectedLpIds.some(lpId => !validLpIds.includes(lpId));
 
     if (hasInvalidLp) {
-      console.log('🗑️ Mazání LP kódů po změně příkazce:', {
-        puvodniLP: selectedLpIds,
-        platneLP: validLpIds
-      });
-
       setFormData(prev => ({
         ...prev,
         lp_kod: []
@@ -15537,13 +15497,10 @@ function OrderForm25() {
         // Odemkni objednávku (pokud je editace) - použij editOrderId nebo formData.id
         // ✅ FIX: editOrderId je stabilnější než formData.id (může být undefined po smazání draftu)
         const unlockOrderId = editOrderId || formData.id;
-        console.log('🔍 UNLOCK DEBUG OrderForm25: editOrderId=' + editOrderId + ', formData.id=' + formData.id + ', unlockOrderId=' + unlockOrderId + ', token=' + !!token + ', username=' + !!username);
         
         if (unlockOrderId && token && username) {
           try {
-            console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (zavření konečného stavu)');
             await unlockOrderV2({ token, username, orderId: unlockOrderId });
-            console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
             // 🔒 KRITICKÉ: Zabránit duplicitnímu unlock z useEffect cleanup (již neexistuje)
           } catch (error) {
             console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
