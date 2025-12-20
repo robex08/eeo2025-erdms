@@ -74,7 +74,6 @@ function MobileDashboard() {
       try {
         const stavy = await getStavyWorkflow25({ token, username });
         setStavyWorkflowMap(stavy || {});
-        console.log('[MobileDashboard] Číselník stavů načten:', Object.keys(stavy || {}).length, 'stavů');
       } catch (error) {
         console.error('[MobileDashboard] Chyba načítání číselníku stavů:', error);
       }
@@ -85,7 +84,6 @@ function MobileDashboard() {
   // Helper funkce pro získání názvu stavu z číselníku
   const getStavObjednavky = (workflowKod) => {
     const stavZCiselniku = stavyWorkflowMap[workflowKod];
-    console.log('[getStavObjednavky]', workflowKod, '→', stavZCiselniku ? stavZCiselniku.nazev : 'FALLBACK');
     if (stavZCiselniku) {
       return stavZCiselniku.nazev;
     }
@@ -209,14 +207,6 @@ function MobileDashboard() {
       // Backend automaticky filtruje podle oprávnění (aktivni=1 + role-based filter nebo hierarchie)
       const orders = await listOrdersV2({ rok: selectedYear }, token, username, false, true);
       
-      console.log('📊 [MobileDashboard] Načteno objednávek:', orders?.length);
-      console.log('📊 [MobileDashboard] Sample objednávky (první 3):', orders?.slice(0, 3).map(o => ({
-        id: o.id,
-        aktivni: o.aktivni,
-        stav: o.stav_objednavky,
-        workflow: o.stav_workflow_kod
-      })));
-      
       if (Array.isArray(orders)) {
         // Debug: kolik objednávek má ODESLANA_KE_SCHVALENI
         const allPending = orders.filter(order => {
@@ -259,8 +249,6 @@ function MobileDashboard() {
         return;
       }
 
-      console.log('[MobileDashboard] Loading real data for year:', selectedYear, 'token:', token ? 'present' : 'MISSING', 'username:', username);
-
       // Načti ostrá data s tokenem
       const result = await mobileDataService.getAllMobileData({ 
         token, 
@@ -270,9 +258,6 @@ function MobileDashboard() {
         isAdmin: isAdmin,        // Admin vidí všechny objednávky
         showArchived: false      // 🔧 FIX: Mobile vždy filtruje archivované objednávky
       });
-      
-      console.log('[MobileDashboard] Result received:', result);
-      console.log('[MobileDashboard] Data sources:', result.meta?.dataSource);
       
       if (result.success) {
         setData(result.data);
