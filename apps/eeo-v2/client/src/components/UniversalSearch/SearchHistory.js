@@ -23,6 +23,28 @@ const HistoryDropdown = styled.div`
   z-index: 1000;
   max-height: 400px;
   overflow-y: auto;
+  
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 0 8px 8px 0;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
 `;
 
 const HistoryHeader = styled.div`

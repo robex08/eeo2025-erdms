@@ -183,8 +183,19 @@ const UniversalSearchInput = () => {
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1);
   const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
   const [resultActionTrigger, setResultActionTrigger] = useState(0);
+  const navigableItemsRef = useRef([]);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
+  
+  // Callback pro update navigovatelných položek
+  const handleNavigableItemsChange = useCallback((items) => {
+    navigableItemsRef.current = items || [];
+    
+    // Pokud je selectedResultIndex >= počtu položek, resetuj ho
+    if (selectedResultIndex >= items.length) {
+      setSelectedResultIndex(items.length > 0 ? items.length - 1 : -1);
+    }
+  }, [selectedResultIndex]);
 
   /**
    * Načíst historii při mount nebo změně user_id
@@ -235,8 +246,8 @@ const UniversalSearchInput = () => {
    * Handle keyboard navigation
    */
   const handleKeyDown = (e) => {
-    // Arrow navigation v historii (jen když je historie viditelná)
-    if (showHistory && searchHistory.length > 0 && !showDropdown) {
+    // Arrow navigation v historii (priorita ma historie pokud je zobrazena)
+    if (showHistory && searchHistory.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedHistoryIndex(prev => 
@@ -261,25 +272,35 @@ const UniversalSearchInput = () => {
         return;
       }
     }
-    // Arrow navigation ve výsledcích vyhledávání (jen když jsou výsledky viditelné)
-    else if (showDropdown && totalResults > 0 && !showHistory) {
-      if (e.key === 'ArrowDown') {
+    
+    // Arrow navigation ve výsledcích vyhledávání (když NEJSOU zobrazena historie)
+    if (!showHistory && showDropdown) {
+      const maxIndex = navigableItemsRef.current.length - 1;
+      
+      if (e.key === 'ArrowDown' && maxIndex >= 0) {
         e.preventDefault();
-        setSelectedResultIndex(prev => 
-          prev < totalResults - 1 ? prev + 1 : prev
-        );
+        e.stopPropagation();
+        setSelectedResultIndex(prev => {
+          if (prev === -1) return 0; // První položka
+          return prev < maxIndex ? prev + 1 : prev;
+        });
         return;
       }
       
-      if (e.key === 'ArrowUp') {
+      if (e.key === 'ArrowUp' && maxIndex >= 0) {
         e.preventDefault();
-        setSelectedResultIndex(prev => prev > 0 ? prev - 1 : -1);
+        e.stopPropagation();
+        setSelectedResultIndex(prev => {
+          if (prev <= 0) return -1; // Zpět na input
+          return prev - 1;
+        });
         return;
       }
       
       // Enter - otevři detail vybraného výsledku
       if (e.key === 'Enter' && selectedResultIndex >= 0) {
         e.preventDefault();
+        e.stopPropagation();
         setResultActionTrigger(prev => prev + 1); // Trigger akce v SearchResultsDropdown
         return;
       }
@@ -472,6 +493,7 @@ const UniversalSearchInput = () => {
           token={token}
           selectedResultIndex={selectedResultIndex}
           onResultAction={resultActionTrigger}
+          onNavigableItemsChange={handleNavigableItemsChange}
         />
       )}
     </SearchWrapper>

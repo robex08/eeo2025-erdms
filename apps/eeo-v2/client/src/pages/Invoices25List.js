@@ -3040,18 +3040,19 @@ const Invoices25List = () => {
                       )}
                     </TableCell>
                     <TableCell className="center">
-                      <TooltipWrapper 
-                        text={invoice.from_spisovka ? "Příloha vložena ze Spisovky 📄" : "Počet příloh"}
-                        preferredPosition="left"
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
-                          <FontAwesomeIcon icon={faPaperclip} />
-                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
-                          {invoice.from_spisovka && (
-                            <span style={{ color: '#059669', fontSize: '1rem', marginLeft: '0.15rem' }}>📄</span>
-                          )}
-                        </span>
-                      </TooltipWrapper>
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
+                        <TooltipWrapper text="Počet příloh" preferredPosition="left">
+                          <span style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <FontAwesomeIcon icon={faPaperclip} />
+                            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
+                          </span>
+                        </TooltipWrapper>
+                        {invoice.from_spisovka && (
+                          <TooltipWrapper text="Příloha vložena ze Spisovky" preferredPosition="left">
+                            <span style={{ color: '#059669', fontSize: '1rem', marginLeft: '0.15rem', cursor: 'default' }}>📄</span>
+                          </TooltipWrapper>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>

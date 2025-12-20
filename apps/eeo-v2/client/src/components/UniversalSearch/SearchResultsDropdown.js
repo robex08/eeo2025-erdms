@@ -8,7 +8,7 @@
  * - Loading/Empty states
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useNavigate } from 'react-router-dom';
@@ -153,16 +153,17 @@ const CategorySection = styled.div`
 
 const CategoryHeader = styled.div`
   padding: 12px 16px;
-  background: ${props => props.$expanded ? '#f8fafc' : 'white'};
+  background: ${props => props.$selected ? '#eff6ff' : props.$expanded ? '#f8fafc' : 'white'};
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
   transition: all 0.2s ease;
   user-select: none;
+  border-left: ${props => props.$selected ? '4px solid #3b82f6' : '4px solid transparent'};
 
   &:hover {
-    background: #f8fafc;
+    background: ${props => props.$selected ? '#dbeafe' : '#f8fafc'};
   }
 
   &:active {
@@ -232,7 +233,7 @@ const TableHeader = styled.thead`
 const TableRow = styled.tr`
   border-bottom: 1px solid #e2e8f0;
   transition: background 0.15s ease;
-  cursor: text;
+  cursor: pointer;
   user-select: text;
   background: ${props => props.$selected ? '#eff6ff' : 'white'};
 
@@ -408,13 +409,19 @@ const SearchResultsDropdown = ({
   username, 
   token,
   selectedResultIndex = -1,
-  onResultAction = null
+  onResultAction = null,
+  onNavigableItemsChange = null,
+  onSelectedIndexAdjust = null
 }) => {
   const navigate = useNavigate();
   
   // State pro rozbalené kategorie
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [position, setPosition] = useState({ top: 0, left: 0, width: 800, maxHeight: 600 });
+  const selectedRowRef = useRef(null);
+  
+  // Ref pro tracking aktuálně vybrané položky (aby přežila rozbalení/sbalení)
+  const selectedItemRef = useRef(null);
   
   // Flatten všech výsledků pro keyboard navigation
   const flattenedResults = useMemo(() => {
@@ -427,13 +434,82 @@ const SearchResultsDropdown = ({
           flattened.push({
             result,
             categoryKey: key,
-            categoryIndex: idx
+            categoryIndex: idx,
+            resultId: result.id || result.user_id || result.order_id || `${key}-${idx}`
           });
         });
       }
     });
     return flattened;
   }, [results]);
+  
+  // Vytvoř navigovatelné položky (kategorie + jejich rozbalené položky)
+  const navigableItems = useMemo(() => {
+    if (!results?.categories) return [];
+    
+    const items = [];
+    const sortedCats = Object.entries(results.categories)
+      .filter(([_, cat]) => cat.total > 0)
+      .sort(([_, a], [__, b]) => b.total - a.total)
+      .map(([key, cat]) => ({ key, ...cat }));
+    
+    sortedCats.forEach(category => {
+      // Přidej kategorii jako navigovatelnou položku
+      items.push({
+        type: 'category',
+        categoryKey: category.key,
+        categoryLabel: category.category_label,
+        total: category.total,
+        // ID pro tracking
+        itemId: `cat-${category.key}`
+      });
+      
+      // Pokud je kategorie rozbalená, přidej její položky
+      if (expandedCategories.has(category.key)) {
+        category.results.forEach((result, idx) => {
+          items.push({
+            type: 'result',
+            categoryKey: category.key,
+            result,
+            resultIndex: idx,
+            resultId: result.id || result.user_id || result.order_id || `${category.key}-${idx}`,
+            // ID pro tracking
+            itemId: `result-${category.key}-${result.id || result.user_id || result.order_id || idx}`
+          });
+        });
+      }
+    });
+    
+    return items;
+  }, [results, expandedCategories]);
+  
+  // Pošli navigableItems (ne jen počet) zpět do UniversalSearchInput
+  useEffect(() => {
+    if (onNavigableItemsChange) {
+      onNavigableItemsChange(navigableItems);
+    }
+  }, [navigableItems, onNavigableItemsChange]);
+  
+  // Sleduj změny navigableItems a ulož ID aktuálně vybrané položky
+  useEffect(() => {
+    if (selectedResultIndex >= 0 && selectedResultIndex < navigableItems.length) {
+      const currentItem = navigableItems[selectedResultIndex];
+      if (currentItem) {
+        selectedItemRef.current = currentItem.itemId;
+      }
+    }
+  }, [selectedResultIndex, navigableItems]);
+  
+  // Auto-scroll na vybranou položku
+  useEffect(() => {
+    if (selectedResultIndex >= 0 && selectedRowRef.current) {
+      selectedRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
+    }
+  }, [selectedResultIndex]);
   
   // State pro slide-in panel
   const [selectedEntity, setSelectedEntity] = useState(null);
@@ -513,7 +589,7 @@ const SearchResultsDropdown = ({
   /**
    * Toggle kategorie
    */
-  const toggleCategory = (categoryKey) => {
+  const toggleCategory = useCallback((categoryKey) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
       if (next.has(categoryKey)) {
@@ -523,7 +599,7 @@ const SearchResultsDropdown = ({
       }
       return next;
     });
-  };
+  }, []);
 
   /**
    * Otevřít detail entity
@@ -545,11 +621,24 @@ const SearchResultsDropdown = ({
   // Callback pro akci na vybraný výsledek (z UniversalSearchInput)
   // MUSÍ být za definicí handleOpenDetail!
   useEffect(() => {
-    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < flattenedResults.length) {
-      const selected = flattenedResults[selectedResultIndex];
-      handleOpenDetail(selected.result, selected.categoryKey);
+    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < navigableItems.length) {
+      const selectedItem = navigableItems[selectedResultIndex];
+      
+      if (selectedItem.type === 'category') {
+        // Je to kategorie - toggle rozbalení
+        const wasExpanded = expandedCategories.has(selectedItem.categoryKey);
+        toggleCategory(selectedItem.categoryKey);
+        
+        // Po rozbalení kategorie - zůstat na kategorii (index se nemění)
+        // Po sbalení kategorie - zůstat na kategorii (index se nemění)
+        // Uživatel pak šipkou dolů jde na další položku
+        
+      } else if (selectedItem.type === 'result') {
+        // Je to položka - otevři detail
+        handleOpenDetail(selectedItem.result, selectedItem.categoryKey);
+      }
     }
-  }, [onResultAction, selectedResultIndex, flattenedResults, handleOpenDetail]);
+  }, [onResultAction]);
 
   /**
    * Zavřít detail panel
@@ -801,12 +890,21 @@ const SearchResultsDropdown = ({
         {sortedCategories.map(category => {
           const isExpanded = expandedCategories.has(category.key);
           const iconData = getCategoryIcon(category.key);
+          
+          // Je tato kategorie vybraná?
+          const categoryItemId = `cat-${category.key}`;
+          const categoryNavIndex = navigableItems.findIndex(
+            item => item.itemId === categoryItemId
+          );
+          const isCategorySelected = categoryNavIndex === selectedResultIndex;
 
           return (
             <CategorySection key={category.key}>
               <CategoryHeader
+                ref={isCategorySelected ? selectedRowRef : null}
                 onClick={() => toggleCategory(category.key)}
                 $expanded={isExpanded}
+                $selected={isCategorySelected}
               >
                 <CategoryIcon $color={iconData.color}>
                   <FontAwesomeIcon icon={iconData.icon} />
@@ -896,15 +994,19 @@ const SearchResultsDropdown = ({
                     </TableHeader>
                     <tbody>
                       {category.results.map((result, idx) => {
-                        // Najdi globální index tohoto výsledku
-                        const globalIndex = flattenedResults.findIndex(
-                          item => item.result === result && item.categoryKey === category.key
+                        // Najdi globální index tohoto výsledku v navigableItems
+                        const itemId = `result-${category.key}-${result.id || result.user_id || result.order_id || idx}`;
+                        const globalIndex = navigableItems.findIndex(
+                          item => item.itemId === itemId
                         );
+                        const isSelected = globalIndex === selectedResultIndex;
                         
                         return (
                         <TableRow 
                           key={result.id || idx}
-                          $selected={globalIndex === selectedResultIndex}
+                          ref={isSelected ? selectedRowRef : null}
+                          $selected={isSelected}
+                          onClick={() => handleOpenDetail(result, category.key)}
                           onDoubleClick={() => handleOpenDetail(result, category.key)}
                         >
                           {/* Users */}
