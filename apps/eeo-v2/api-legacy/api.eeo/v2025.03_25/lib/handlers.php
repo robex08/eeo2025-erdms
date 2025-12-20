@@ -1000,15 +1000,12 @@ function handle_notify_email($input, $config, $queries) {
     // Verify token
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
-    error_log("📧 TOKEN: " . substr($token, 0, 20) . "... USERNAME: " . $username);
     
     $token_data = verify_token($token);
     if (!$token_data || ($username && $token_data['username'] !== $username)) {
-        error_log("📧 TOKEN VERIFICATION FAILED!");
         api_error(401, 'Neplatný token', 'UNAUTHORIZED');
         return;
     }
-    error_log("📧 TOKEN OK, user: " . $token_data['username']);
 
     $to = isset($input['to']) ? $input['to'] : '';
     $subject = isset($input['subject']) ? $input['subject'] : '';

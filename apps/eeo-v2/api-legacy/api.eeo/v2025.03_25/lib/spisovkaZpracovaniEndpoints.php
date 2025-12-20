@@ -71,8 +71,6 @@ function handle_spisovka_zpracovani_list($input, $config) {
     $username = isset($input['username']) ? $input['username'] : '';
     $token = isset($input['token']) ? $input['token'] : '';
     
-    error_log("Username: $username, Token length: " . strlen($token));
-    
     if (!function_exists('verify_token_v2')) {
         $err_msg = "verify_token_v2 function NOT FOUND!";
         error_log("❌ " . $err_msg);
