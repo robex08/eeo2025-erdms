@@ -8,7 +8,7 @@
  * - Loading/Empty states
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useNavigate } from 'react-router-dom';
@@ -435,14 +435,6 @@ const SearchResultsDropdown = ({
     return flattened;
   }, [results]);
   
-  // Callback pro akci na vybraný výsledek (z UniversalSearchInput)
-  useEffect(() => {
-    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < flattenedResults.length) {
-      const selected = flattenedResults[selectedResultIndex];
-      handleOpenDetail(selected.result, selected.categoryKey);
-    }
-  }, [onResultAction]);
-  
   // State pro slide-in panel
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -536,7 +528,7 @@ const SearchResultsDropdown = ({
   /**
    * Otevřít detail entity
    */
-  const handleOpenDetail = (entity, categoryKey) => {
+  const handleOpenDetail = useCallback((entity, categoryKey) => {
     const entityId = entity.id || entity.user_id || entity.order_id;
     
     // Rovnou použij data ze search výsledků - mají už všechny potřebné fieldy
@@ -548,7 +540,16 @@ const SearchResultsDropdown = ({
     setDetailLoading(false);
     setDetailError(null);
     setPanelOpen(true);
-  };
+  }, []);
+
+  // Callback pro akci na vybraný výsledek (z UniversalSearchInput)
+  // MUSÍ být za definicí handleOpenDetail!
+  useEffect(() => {
+    if (onResultAction && selectedResultIndex >= 0 && selectedResultIndex < flattenedResults.length) {
+      const selected = flattenedResults[selectedResultIndex];
+      handleOpenDetail(selected.result, selected.categoryKey);
+    }
+  }, [onResultAction, selectedResultIndex, flattenedResults, handleOpenDetail]);
 
   /**
    * Zavřít detail panel

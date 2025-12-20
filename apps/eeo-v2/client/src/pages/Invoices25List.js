@@ -3044,7 +3044,7 @@ const Invoices25List = () => {
                         <FontAwesomeIcon icon={faPaperclip} />
                         <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
                         {invoice.from_spisovka && (
-                          <TooltipWrapper text="Faktura ze Spisovky" preferredPosition="left">
+                          <TooltipWrapper text="Příloha vložena ze Spisovky" preferredPosition="left">
                             <span style={{ color: '#059669', fontSize: '1rem', marginLeft: '0.15rem' }}>📄</span>
                           </TooltipWrapper>
                         )}
