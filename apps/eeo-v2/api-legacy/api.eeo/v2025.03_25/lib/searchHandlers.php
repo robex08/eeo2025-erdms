@@ -72,10 +72,13 @@ function handle_universal_search($input, $config) {
             $isAdmin = true;
         }
         
-        // DEBUG logging
-        error_log("UniversalSearch DEBUG: search_all=" . ($searchAll ? 'true' : 'false') . 
-                  ", isAdmin=" . ($isAdmin ? 'true' : 'false') . 
-                  ", user_id=" . $auth_result['id']);
+        // DEBUG logging - DETAILNÍ INFO
+        error_log("🔍 UniversalSearch DEBUG:");
+        error_log("  - Query: '$query'");
+        error_log("  - User ID: " . $auth_result['id']);
+        error_log("  - is_admin from token: " . (isset($auth_result['is_admin']) ? ($auth_result['is_admin'] ? 'TRUE' : 'FALSE') : 'NOT SET'));
+        error_log("  - Final isAdmin: " . ($isAdmin ? 'TRUE' : 'FALSE'));
+        error_log("  - search_all: " . ($searchAll ? 'TRUE' : 'FALSE'));
         
         // Escapujeme query pro LIKE
         $escapedQuery = escapeLikeWildcards($query);
@@ -349,6 +352,13 @@ function searchContracts($db, $likeQuery, $normalizedQuery, $limit, $includeInac
  */
 function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $userId) {
     try {
+        // DEBUG: Log parameters
+        error_log("📋 searchInvoices called:");
+        error_log("  - likeQuery: '$likeQuery'");
+        error_log("  - isAdmin: " . ($isAdmin ? 'TRUE (1)' : 'FALSE (0)'));
+        error_log("  - userId: $userId");
+        error_log("  - limit: $limit");
+        
         $sql = getSqlSearchInvoices();
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
@@ -361,6 +371,9 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
+        // DEBUG: Log result count
+        error_log("  ✅ Found " . count($results) . " invoices");
+        
         // Přidáme highlight
         foreach ($results as &$row) {
             $highlightValue = isset($row[$row['match_type']]) ? $row[$row['match_type']] : '';
@@ -370,6 +383,8 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
         return $results;
         
     } catch (Exception $e) {
+        error_log("❌ searchInvoices ERROR: " . $e->getMessage());
+        error_log("   SQL Error: " . print_r($stmt->errorInfo(), true));
         logSearchError('searchInvoices failed: ' . $e->getMessage());
         return array();
     }
