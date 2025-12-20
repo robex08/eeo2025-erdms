@@ -43,7 +43,7 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
             (COUNT(*) > 1) as ma_navyseni,
             MIN(lp.platne_od) as nejstarsi_platnost,
             MAX(lp.platne_do) as nejnovejsi_platnost
-        FROM 25_limitovane_prisliby lp
+        FROM " . TBL_LP_MASTER . " lp
         WHERE lp.id = $lp_id
         GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id
         LIMIT 1
@@ -66,7 +66,7 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
             obj.id,
             obj.max_cena_s_dph,
             obj.financovani
-        FROM 25a_objednavky obj
+        FROM " . TBL_OBJEDNAVKY . " obj
         WHERE obj.financovani IS NOT NULL
         AND obj.financovani != ''
         AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -104,8 +104,8 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
             obj.id,
             obj.financovani,
             SUM(pol.cena_s_dph) as suma_cena
-        FROM 25a_objednavky obj
-        INNER JOIN 25a_objednavky_polozky pol ON obj.id = pol.objednavka_id
+        FROM " . TBL_OBJEDNAVKY . " obj
+        INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
         WHERE obj.financovani IS NOT NULL
         AND obj.financovani != ''
         AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -142,8 +142,8 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
             obj.id,
             obj.financovani,
             SUM(fakt.fa_castka) as suma_faktur
-        FROM 25a_objednavky obj
-        INNER JOIN 25a_objednavky_faktury fakt ON obj.id = fakt.objednavka_id
+        FROM " . TBL_OBJEDNAVKY . " obj
+        INNER JOIN " . TBL_FAKTURY . " fakt ON obj.id = fakt.objednavka_id
         WHERE obj.financovani IS NOT NULL
         AND obj.financovani != ''
         AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -177,8 +177,8 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
     // KROK 5: Čerpání z pokladny (jen VÝDAJE z uzavřených/zamknutých knih)
     $sql_pokladna = "
         SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-        FROM 25a_pokladni_knihy p
-        JOIN 25a_pokladni_polozky pol ON p.id = pol.pokladni_kniha_id
+        FROM " . TBL_POKLADNI_KNIHY . " p
+        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON p.id = pol.pokladni_kniha_id
         WHERE pol.lp_kod = '$cislo_lp_safe'
         AND p.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
         AND p.rok = {$meta['rok']}
@@ -214,7 +214,7 @@ function prepocetCerpaniPodleIdLP($conn, $lp_id) {
     
     // KROK 7: Upsert do agregační tabulky 25_limitovane_prisliby_cerpani
     $sql_upsert = "
-        INSERT INTO 25_limitovane_prisliby_cerpani 
+        INSERT INTO " . TBL_LP_CERPANI . " 
         (cislo_lp, kategorie, usek_id, user_id, rok, 
          celkovy_limit,
          rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
@@ -284,7 +284,7 @@ function prepocetVsechLP($conn, $rok = null) {
     
     $sql_kody = "
         SELECT DISTINCT cislo_lp
-        FROM 25_limitovane_prisliby
+        FROM " . TBL_LP_MASTER . "
         WHERE YEAR(platne_od) = $rok
         ORDER BY cislo_lp
     ";
@@ -343,7 +343,7 @@ function inicializaceCerpaniLP($conn, $rok = null) {
     $log = array();
     
     // 1. Vymazat staré záznamy z tabulky čerpání pro daný rok
-    $sql_delete = "DELETE FROM 25_limitovane_prisliby_cerpani WHERE rok = $rok";
+    $sql_delete = "DELETE FROM " . TBL_LP_CERPANI . " WHERE rok = $rok";
     
     if (mysqli_query($conn, $sql_delete)) {
         $deleted_count = mysqli_affected_rows($conn);
@@ -391,7 +391,7 @@ function inicializaceCerpaniLP($conn, $rok = null) {
             COUNT(CASE WHEN zbyva_rezervace < 0 THEN 1 END) as prekroceno_rezervace,
             COUNT(CASE WHEN zbyva_predpoklad < 0 THEN 1 END) as prekroceno_predpoklad,
             COUNT(CASE WHEN zbyva_skutecne < 0 THEN 1 END) as prekroceno_skutecne
-        FROM 25_limitovane_prisliby_cerpani
+        FROM " . TBL_LP_CERPANI . "
         WHERE rok = $rok
     ";
     
@@ -448,9 +448,9 @@ function getStavLP($conn, $cislo_lp, $rok = null) {
             u.prijmeni,
             u.jmeno,
             us.nazev as usek_nazev
-        FROM 25_limitovane_prisliby_cerpani c
-        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-        LEFT JOIN 25_useky us ON c.usek_id = us.id
+        FROM " . TBL_LP_CERPANI . " c
+        LEFT JOIN " . TBL_UZIVATELE . " u ON c.user_id = u.id
+        LEFT JOIN " . TBL_USEKY . " us ON c.usek_id = us.id
         WHERE c.cislo_lp = '$cislo_lp_safe'
         AND c.rok = $rok
         LIMIT 1
@@ -539,8 +539,8 @@ function getStavLPProUzivatele($conn, $user_id, $rok = null) {
             c.pocet_zaznamu,
             c.ma_navyseni,
             us.nazev as usek_nazev
-        FROM 25_limitovane_prisliby_cerpani c
-        LEFT JOIN 25_useky us ON c.usek_id = us.id
+        FROM " . TBL_LP_CERPANI . " c
+        LEFT JOIN " . TBL_USEKY . " us ON c.usek_id = us.id
         WHERE c.user_id = $user_id
         AND c.rok = $rok
         ORDER BY c.kategorie, c.cislo_lp
@@ -611,8 +611,8 @@ function getStavLPProUsek($conn, $usek_id, $rok = null) {
             c.ma_navyseni,
             u.prijmeni,
             u.jmeno
-        FROM 25_limitovane_prisliby_cerpani c
-        LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+        FROM " . TBL_LP_CERPANI . " c
+        LEFT JOIN " . TBL_UZIVATELE . " u ON c.user_id = u.id
         WHERE c.usek_id = $usek_id
         AND c.rok = $rok
         ORDER BY c.kategorie, c.cislo_lp
@@ -674,7 +674,7 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
             MAX(lp.platne_do) as nejnovejsi_platnost,
             u.prijmeni as prikazce_prijmeni,
             u.jmeno as prikazce_jmeno
-        FROM 25_limitovane_prisliby lp
+        FROM " . TBL_LP_MASTER . " lp
         LEFT JOIN users u ON lp.user_id = u.id
         WHERE lp.id = $lp_id
         GROUP BY lp.id, lp.cislo_lp, lp.kategorie, lp.usek_id, lp.user_id, u.prijmeni, u.jmeno
@@ -696,7 +696,7 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
     // KROK 2: Získat seznam uživatelů, kteří vytvořili objednávky s tímto LP
     $sql_users = "
         SELECT DISTINCT obj.vytvoril_user_id
-        FROM 25a_objednavky obj
+        FROM " . TBL_OBJEDNAVKY . " obj
         WHERE obj.financovani IS NOT NULL
         AND obj.financovani != ''
         AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -728,7 +728,7 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
             // REZERVACE pro tohoto uživatele
             $sql_rez = "
                 SELECT obj.id, obj.max_cena_s_dph, obj.financovani
-                FROM 25a_objednavky obj
+                FROM " . TBL_OBJEDNAVKY . " obj
                 WHERE obj.financovani IS NOT NULL
                 AND obj.financovani != ''
                 AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -762,8 +762,8 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
             // PŘEDPOKLAD pro tohoto uživatele (všechny schválené objednávky)
             $sql_pred = "
                 SELECT obj.id, obj.financovani, SUM(pol.cena_s_dph) as suma_cena
-                FROM 25a_objednavky obj
-                JOIN 25a_objednavky_polozky pol ON obj.id = pol.objednavka_id
+                FROM " . TBL_OBJEDNAVKY . " obj
+                JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON obj.id = pol.objednavka_id
                 WHERE obj.financovani IS NOT NULL
                 AND obj.financovani != ''
                 AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -796,8 +796,8 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
             // SKUTEČNOST (faktury) pro tohoto uživatele
             $sql_fakt = "
                 SELECT obj.id, obj.financovani, SUM(fakt.fa_castka) as suma_faktur
-                FROM 25a_objednavky obj
-                INNER JOIN 25a_objednavky_faktury fakt ON obj.id = fakt.objednavka_id
+                FROM " . TBL_OBJEDNAVKY . " obj
+                INNER JOIN " . TBL_FAKTURY . " fakt ON obj.id = fakt.objednavka_id
                 WHERE obj.financovani IS NOT NULL
                 AND obj.financovani != ''
                 AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -855,8 +855,8 @@ function getCerpaniPodleUzivatele($conn, $lp_id) {
     // KROK 3: Přidat čerpání z pokladny (pokud existuje)
     $sql_pokladna = "
         SELECT COALESCE(SUM(pol.castka_vydaj), 0) as cerpano_pokl
-        FROM 25a_pokladni_knihy p
-        JOIN 25a_pokladni_polozky pol ON p.id = pol.pokladni_kniha_id
+        FROM " . TBL_POKLADNI_KNIHY . " p
+        JOIN " . TBL_POKLADNI_POLOZKY . " pol ON p.id = pol.pokladni_kniha_id
         WHERE pol.lp_kod = '$cislo_lp_safe'
         AND p.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
         AND p.rok = {$meta['rok']}
@@ -945,7 +945,7 @@ function getCerpaniPodleUseku($conn, $usek_id, $rok = null) {
     // KROK 2: Získat všechna LP pro tento úsek
     $sql_lp_list = "
         SELECT DISTINCT id, cislo_lp
-        FROM 25_limitovane_prisliby
+        FROM " . TBL_LP_MASTER . "
         WHERE usek_id = $usek_id
         AND YEAR(platne_od) = $rok
         ORDER BY cislo_lp
