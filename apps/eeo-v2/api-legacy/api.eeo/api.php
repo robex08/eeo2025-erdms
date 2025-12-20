@@ -16,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// ============ ENV DETECTION ============
+// Detekuje DEV/PROD prostředí podle REQUEST_URI
+define('IS_DEV_ENV', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
+define('ENV_NAME', IS_DEV_ENV ? 'DEV' : 'PROD');
+
 define('VERSION', 'v2025.03_25');
 
 // ============ JMENINY - DATA PRO ENDPOINT ============
