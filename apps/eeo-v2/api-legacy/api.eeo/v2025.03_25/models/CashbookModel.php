@@ -1,7 +1,7 @@
 <?php
 /**
  * CashbookModel.php
- * Model pro práci s pokladními knihami (25a_pokladni_knihy)
+ * Model pro práci s pokladními knihami (TBL_POKLADNI_KNIHY (25a_pokladni_knihy))
  * PHP 5.6 kompatibilní
  */
 
@@ -51,7 +51,7 @@ class CashbookModel {
                 us.id AS usek_id,
                 us.usek_nazev AS usek_nazev,
                 us.usek_zkr AS usek_zkratka
-            FROM 25a_pokladni_knihy kb
+            FROM " . TBL_POKLADNI_KNIHY . " kb
             LEFT JOIN 25_uzivatele u ON u.id = kb.uzivatel_id
             LEFT JOIN 25_uzivatele s ON s.id = kb.zamknuta_spravcem_kym
             LEFT JOIN 25_lokality lok ON lok.id = u.lokalita_id
@@ -151,7 +151,7 @@ class CashbookModel {
                 us.id AS usek_id,
                 us.usek_nazev AS usek_nazev,
                 us.usek_zkr AS usek_zkratka
-            FROM 25a_pokladni_knihy kb
+            FROM " . TBL_POKLADNI_KNIHY . " kb
             LEFT JOIN 25_uzivatele u ON u.id = kb.uzivatel_id
             LEFT JOIN 25_uzivatele s ON s.id = kb.zamknuta_spravcem_kym
             LEFT JOIN 25_lokality lok ON lok.id = u.lokalita_id
@@ -167,7 +167,7 @@ class CashbookModel {
      */
     public function getBookByUserPeriod($userId, $year, $month) {
         $stmt = $this->db->prepare("
-            SELECT * FROM 25a_pokladni_knihy 
+            SELECT * FROM " . TBL_POKLADNI_KNIHY . " 
             WHERE uzivatel_id = ? AND rok = ? AND mesic = ?
         ");
         $stmt->execute(array($userId, $year, $month));
@@ -239,7 +239,7 @@ class CashbookModel {
         $pocatecniStav = isset($data['pocatecni_stav']) ? floatval($data['pocatecni_stav']) : $prevodZPredchoziho;
         
         $sql = "
-            INSERT INTO 25a_pokladni_knihy (
+            INSERT INTO " . TBL_POKLADNI_KNIHY . " (
                 prirazeni_id, pokladna_id, uzivatel_id,
                 rok, mesic,
                 cislo_pokladny, kod_pracoviste, nazev_pracoviste,
@@ -334,7 +334,7 @@ class CashbookModel {
         
         $params[] = $bookId;
         
-        $sql = "UPDATE 25a_pokladni_knihy SET " . implode(', ', $fields) . " WHERE id = ?";
+        $sql = "UPDATE " . TBL_POKLADNI_KNIHY . " SET " . implode(', ', $fields) . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
     }
@@ -344,7 +344,7 @@ class CashbookModel {
      */
     public function updateBookSummary($bookId, $totalIncome, $totalExpense, $closingBalance, $entryCount) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_knihy 
+            UPDATE " . TBL_POKLADNI_KNIHY . " 
             SET 
                 celkove_prijmy = ?,
                 celkove_vydaje = ?,
@@ -362,7 +362,7 @@ class CashbookModel {
         // ⚠️ DŮLEŽITÉ: WHERE obsahuje pouze id, protože oprávnění je zkontrolováno v handleru
         // Admin nebo vlastník může uzavřít knihu (kontrola: canCloseBook)
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_knihy 
+            UPDATE " . TBL_POKLADNI_KNIHY . " 
             SET stav_knihy = 'uzavrena_uzivatelem', 
                 uzavrena_uzivatelem_kdy = NOW()
             WHERE id = ?
@@ -375,7 +375,7 @@ class CashbookModel {
      */
     public function lockBookByAdmin($bookId, $adminId) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_knihy 
+            UPDATE " . TBL_POKLADNI_KNIHY . " 
             SET stav_knihy = 'zamknuta_spravcem', 
                 zamknuta_spravcem_kdy = NOW(),
                 zamknuta_spravcem_kym = ?
@@ -389,7 +389,7 @@ class CashbookModel {
      */
     public function unlockBook($bookId) {
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_knihy 
+            UPDATE " . TBL_POKLADNI_KNIHY . " 
             SET stav_knihy = 'aktivni', 
                 uzavrena_uzivatelem_kdy = NULL,
                 zamknuta_spravcem_kdy = NULL, 
@@ -403,7 +403,7 @@ class CashbookModel {
      * Smazat knihu
      */
     public function deleteBook($bookId) {
-        $stmt = $this->db->prepare("DELETE FROM 25a_pokladni_knihy WHERE id = ?");
+        $stmt = $this->db->prepare("DELETE FROM " . TBL_POKLADNI_KNIHY . " WHERE id = ?");
         return $stmt->execute(array($bookId));
     }
     
@@ -418,7 +418,7 @@ class CashbookModel {
         
         $stmt = $this->db->prepare("
             SELECT koncovy_stav 
-            FROM 25a_pokladni_knihy 
+            FROM " . TBL_POKLADNI_KNIHY . " 
             WHERE uzivatel_id = ? 
               AND pokladna_id = ?
               AND rok = ? 
@@ -450,7 +450,7 @@ class CashbookModel {
                 SELECT 
                     COALESCE(SUM(castka_prijem), 0) as total_income,
                     COALESCE(SUM(castka_vydaj), 0) as total_expense
-                FROM 25a_pokladni_polozky 
+                FROM " . TBL_POKLADNI_POLOZKY . " 
                 WHERE pokladni_kniha_id = ?
             ");
             $stmt->execute(array($bookId));
@@ -462,7 +462,7 @@ class CashbookModel {
         }
         
         $stmt = $this->db->prepare("
-            UPDATE 25a_pokladni_knihy 
+            UPDATE " . TBL_POKLADNI_KNIHY . " 
             SET prevod_z_predchoziho = ?,
                 pocatecni_stav = ?,
                 koncovy_stav = ?
@@ -497,7 +497,7 @@ class CashbookModel {
             // Zkontrolovat, zda existuje kniha v následujícím měsíci
             $stmt = $this->db->prepare("
                 SELECT id, koncovy_stav 
-                FROM 25a_pokladni_knihy 
+                FROM " . TBL_POKLADNI_KNIHY . " 
                 WHERE uzivatel_id = ? 
                   AND pokladna_id = ?
                   AND rok = ? 
@@ -515,7 +515,7 @@ class CashbookModel {
             // Načíst koncový stav aktuálního měsíce
             $stmt = $this->db->prepare("
                 SELECT koncovy_stav 
-                FROM 25a_pokladni_knihy 
+                FROM " . TBL_POKLADNI_KNIHY . " 
                 WHERE uzivatel_id = ? 
                   AND pokladna_id = ?
                   AND rok = ? 
