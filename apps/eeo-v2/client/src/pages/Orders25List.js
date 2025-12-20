@@ -29,6 +29,12 @@ import {
   filterByAmountRange,
   filterByRegistrStatus
 } from '../utils/orderFiltersAdvanced';
+import { 
+  filterOrders as filterOrdersShared,
+  calculateOrderStats, 
+  getOrderSystemStatus,
+  getOrderTotalPriceWithDPH 
+} from '../utils/orderStatsUtils';
 import ordersCacheService from '../services/ordersCacheService';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -213,11 +219,18 @@ const getLighterColor = (color, opacity = 0.9) => {
 
 // Funkce pro mapování uživatelského stavu na systémový kód
 const mapUserStatusToSystemCode = (userStatus) => {
+  // Kontrola na začátek textu pro různé varianty
+  if (userStatus && typeof userStatus === 'string') {
+    if (userStatus.startsWith('Zamítnut')) return 'ZAMITNUTA';
+    if (userStatus.startsWith('Schválen')) return 'SCHVALENA';
+    if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
+    if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
+    if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+  }
+  
   const mapping = {
     'Ke schválení': 'KE_SCHVALENI',
     'Nová': 'NOVA',
-    'Schválená': 'SCHVALENA',
-    'Zamítnutá': 'ZAMITNUTA',
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
     'Potvrzená dodavatelem': 'POTVRZENA',
@@ -226,10 +239,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
-    'Dokončená': 'DOKONCENA',
-    'Zrušená': 'ZRUSENA',
     'Smazaná': 'SMAZANA',
-    'Archivováno': 'ARCHIVOVANO',
     'Koncept': 'NOVA' // Koncepty se mapují jako nové objednávky
   };
   return mapping[userStatus] || userStatus;
@@ -5692,8 +5702,19 @@ const Orders25List = () => {
         setStrediskaList([]);
       }
 
-      // Koncepty již byly zpracovány výše po načtení users
-      let finalOrders = ordersData || [];
+      // 🎯 SPOLEČNÉ FILTROVÁNÍ: Použij stejnou funkci jako mobile
+      // Filtrování: id > 1, !isLocalConcept, archivované (pokud showArchived=false), příkazce (pokud !canViewAll)
+      console.log('[Orders25List] Using shared filterOrders function');
+      console.log('[Orders25List] Input orders:', (ordersData || []).length);
+      console.log('[Orders25List] Params: showArchived=', showArchived, ', canViewAll=', canViewAllOrders, ', userId=', user_id);
+      
+      let finalOrders = filterOrdersShared(ordersData || [], {
+        showArchived: showArchived,  // Desktop používá showArchived přímo
+        userId: canViewAllOrders ? null : user_id,  // Filtruj podle userId pouze pokud není admin
+        isAdmin: canViewAllOrders   // canViewAll = isAdmin
+      });
+      
+      console.log('[Orders25List] After shared filtering:', finalOrders.length);
 
       // Označit existující DB řádky, které mají rozpracované změny - DRAFT MANAGER
       draftManager.setCurrentUser(user_id);
@@ -6195,8 +6216,45 @@ const Orders25List = () => {
 
     // ��� SPECIÁLNÍ LOGIKA PRO UVEŘEJNĚNÍ V REGISTRU SMLUV
     // Kontroluj data o publikaci - má přednost před obecným stavem
-    if (order.registr_smluv) {
-      if (order.registr_smluv.ma_byt_zverejnena && !order.registr_smluv.registr_iddt) {
+    if (order.registr_smluv || order.stav_workflow_kod) {
+      const registr = order.registr_smluv;
+      
+      // Pokud má dt_zverejneni A registr_iddt, je již zveřejněno
+      if (registr?.dt_zverejneni && registr?.registr_iddt) {
+        return 'UVEREJNENA';
+      }
+      
+      // Získej workflow status pro kontrolu UVEREJNIT
+      let workflowStatus = null;
+      if (order.stav_workflow_kod) {
+        try {
+          let workflowStates = [];
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+            if (!Array.isArray(workflowStates)) {
+              workflowStates = [];
+            }
+          }
+          if (workflowStates.length > 0) {
+            const lastState = workflowStates[workflowStates.length - 1];
+            workflowStatus = typeof lastState === 'object' ? lastState.kod_stavu : lastState;
+          }
+        } catch (e) {
+          // Pokud parsing selže, ignoruj
+        }
+      }
+      
+      // Pokud má být zveřejněna (3 podmínky jako checkbox):
+      // 1. workflow status je UVEREJNIT
+      // 2. registr.zverejnit === 'ANO'
+      // 3. registr.ma_byt_zverejnena === true/1
+      const maZverejnit = workflowStatus === 'UVEREJNIT' || 
+                          registr?.zverejnit === 'ANO' || 
+                          registr?.ma_byt_zverejnena;
+      
+      if (maZverejnit && !registr?.registr_iddt) {
         return 'K_UVEREJNENI_DO_REGISTRU';
       }
     }
@@ -6247,13 +6305,13 @@ const Orders25List = () => {
   // �💰 Helper funkce pro získání celkové ceny s DPH Z POLOŽEK OBJEDNÁVKY
   // Počítá POUZE ze součtu položek (cena_s_dph), NIKDY z max_cena_s_dph
   const getOrderTotalPriceWithDPH = useCallback((order) => {
-    // 🆕 1. PRIORITA: Faktury (pokud existují)
+    // 1. PRIORITA: Faktury (pokud existují) - skutečně utracené peníze
     if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
       const value = parseFloat(order.faktury_celkova_castka_s_dph);
       if (!isNaN(value) && value > 0) return value;
     }
     
-    // 2. PRIORITA: Položky - zkus vrácené pole z BE (polozky_celkova_cena_s_dph je již součet)
+    // 2. PRIORITA: Položky - objednané ale ještě nefakturované
     if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
       const value = parseFloat(order.polozky_celkova_cena_s_dph);
       if (!isNaN(value) && value > 0) return value;
@@ -6268,23 +6326,25 @@ const Orders25List = () => {
       if (total > 0) return total;
     }
 
-    // ⚠️ NEPOUŽÍVAT max_cena_s_dph jako fallback!
-    // max_cena_s_dph je limit, ne skutečná cena
-    // Pokud objednávka nemá faktury ani položky, vrať 0
+    // 3. PRIORITA: Max cena ke schválení - schválený limit, se kterým musíme počítat
+    if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
+      const value = parseFloat(order.max_cena_s_dph);
+      if (!isNaN(value) && value > 0) return value;
+    }
+
+    // Pokud objednávka nemá žádnou částku, vrať 0
     return 0;
   }, [orders]);
 
   // Stats calculation
   const stats = useMemo(() => {
-    // OPRAVA: Počítej stats z orders, ale aplikuj showArchived filtr
-    // Aby dlaždice odpovídaly tomu, co se zobrazuje v tabulce
-    const dataToCount = showArchived
-      ? orders
-      : orders.filter(order => {
-          const status = getOrderSystemStatus(order);
-          return status !== 'ARCHIVOVANO';
-        });
-
+    // ✅ OPRAVA: orders už jsou vyfiltrované společnou funkcí (včetně archivovaných pokud showArchived=false)
+    // Už NENÍ potřeba filtrovat archivované znovu!
+    console.log('[Orders25List Stats] Total orders in state (already filtered):', orders.length);
+    console.log('[Orders25List Stats] showArchived:', showArchived);
+    
+    const dataToCount = orders; // Už jsou vyfiltrované!
+    
     const total = dataToCount.length;
     const byStatus = dataToCount.reduce((acc, order) => {
       const systemStatus = getOrderSystemStatus(order);
@@ -7771,8 +7831,8 @@ const Orders25List = () => {
       // 4. Filtr podle statusu (pole stavů)
       if (!filterByStatusArray(order, statusFilter, getOrderSystemStatus)) return false;
 
-      // 5. Filtr archivovaných
-      if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
+      // 5. ❌ ODSTRANĚNO: Filtr archivovaných - už jsou vyfiltrované společnou funkcí filterOrders()!
+      // if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
 
       // 6. Filtr podle uživatele
       if (!filterByUser(order, userFilter)) return false;
@@ -10060,8 +10120,8 @@ const Orders25List = () => {
         'rozpracovana': 'Rozpracovaná',
         'odeslana': 'Odeslaná dodavateli',
         'potvrzena': 'Potvrzená dodavatelem',
-        'k_uverejneni_do_registru': 'Má být zveřejněna',
-        'uverejnena': 'Uveřejněná',
+        'k_uverejneni_do_registru': 'Ke zveřejnění', // 🔧 FIX: Změněno z "Má být zveřejněna"
+        'uverejnena': 'Zveřejněno', // 🔧 FIX: Opraveno na "Zveřejněno" (tak jak je v DB)
         'vecna_spravnost': 'Věcná správnost',
         'dokoncena': 'Dokončená',
         'nova': 'Nová',
@@ -13495,7 +13555,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
 
@@ -13510,7 +13570,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{stats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
 
@@ -13835,7 +13895,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
                       if (hasActiveFilters && filteredData.length < orders.length) {
                         const filteredAmount = filteredData.reduce((sum, order) => {
-                          const amount = parseFloat(order.polozky_celkova_cena_s_dph || 0);
+                          const amount = getOrderTotalPriceWithDPH(order);
                           return sum + (isNaN(amount) ? 0 : amount);
                         }, 0);
 
@@ -13975,7 +14035,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={getStatusIcon('k_uverejneni_do_registru')} />
                       </StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
                 {stats.uverejnena > 0 && (
@@ -13991,7 +14051,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={getStatusIcon('uverejnena')} />
                       </StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
                 {stats.vecna_spravnost > 0 && (
@@ -14341,7 +14401,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Má být zveřejněna</StatLabel>
+                    <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
 
@@ -14356,7 +14416,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{stats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Uveřejněná</StatLabel>
+                    <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
 

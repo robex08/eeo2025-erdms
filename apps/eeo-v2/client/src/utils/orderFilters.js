@@ -353,7 +353,24 @@ export const applyColumnFilters = (order, columnFilters, getOrderDate, getOrderD
   // Filtr podle dodavatele
   if (!filterByDodavatel(order, columnFilters.dodavatel_nazev)) return false;
 
-  // Filtry podle rolí
+  // 🔧 FIX: Sloučené sloupce - hledačky používají objednatel_garant a prikazce_schvalovatel
+  // Pro objednatel_garant hledej v objednateli i garantovi
+  if (columnFilters.objednatel_garant) {
+    const filterValue = columnFilters.objednatel_garant;
+    const objednatelMatch = filterByObjednatel(order, filterValue, getUserDisplayName);
+    const garantMatch = filterByUserRole(order, filterValue, 'garant', getUserDisplayName);
+    if (!objednatelMatch && !garantMatch) return false;
+  }
+
+  // Pro prikazce_schvalovatel hledej v příkazci i schvalovateli
+  if (columnFilters.prikazce_schvalovatel) {
+    const filterValue = columnFilters.prikazce_schvalovatel;
+    const prikazceMatch = filterByUserRole(order, filterValue, 'prikazce', getUserDisplayName);
+    const schvalovatelMatch = filterByUserRole(order, filterValue, 'schvalovatel', getUserDisplayName);
+    if (!prikazceMatch && !schvalovatelMatch) return false;
+  }
+
+  // Filtry podle rolí (separátní klíče pro rozšířený filtr)
   if (!filterByUserRole(order, columnFilters.garant, 'garant', getUserDisplayName)) return false;
   if (!filterByUserRole(order, columnFilters.prikazce, 'prikazce', getUserDisplayName)) return false;
   if (!filterByUserRole(order, columnFilters.schvalovatel, 'schvalovatel', getUserDisplayName)) return false;

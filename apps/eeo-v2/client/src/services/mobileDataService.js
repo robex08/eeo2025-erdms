@@ -3,12 +3,19 @@
  * Servis pro získávání dat pro mobilní dashboard
  * 
  * ✅ Používá centrální hierarchyService pro konzistentní chování s desktop verzí
+ * ✅ Používá společné utility (orderStatsUtils) pro identické výsledky s desktop verzí
  */
 
 import { listOrdersV2 } from './apiOrderV2';
 import { listInvoices25 } from './api25invoices';
 import cashbookAPI from './cashbookService';
 import hierarchyService, { HierarchyModules } from './hierarchyService';
+import { 
+  filterOrders, 
+  calculateOrderStats, 
+  getOrderSystemStatus,
+  getOrderTotalPriceWithDPH 
+} from '../utils/orderStatsUtils';
 
 const mobileDataService = {
   /**
@@ -20,8 +27,9 @@ const mobileDataService = {
    * 
    * @param {number} userId - ID aktuálního uživatele (pro filtrování objednávek dle přikázce)
    * @param {boolean} isAdmin - Pokud true, zobrazí všechny objednávky; jinak jen ty, kde je userId přikázce
+   * @param {boolean} showArchived - Pokud true, zahrne archivované objednávky; jinak je vyfiltruje
    */
-  async getAllMobileData({ token, username, year = new Date().getFullYear(), userId = null, isAdmin = false }) {
+  async getAllMobileData({ token, username, year = new Date().getFullYear(), userId = null, isAdmin = false, showArchived = false }) {
     try {
       // Načti data paralelně pro rychlejší načítání
       const currentMonth = new Date().getMonth() + 1; // 1-12
@@ -52,7 +60,7 @@ const mobileDataService = {
       let ordersData = null;
       if (ordersResult.status === 'fulfilled' && Array.isArray(ordersResult.value)) {
         console.log('[MobileData] ✅ Processing orders from API:', ordersResult.value.length);
-        ordersData = this.calculateOrdersStats(ordersResult.value, userId, isAdmin);
+        ordersData = this.calculateOrdersStats(ordersResult.value, userId, isAdmin, showArchived);
       } else {
         console.error('[MobileData] ❌ Orders API FAILED! Reason:', ordersResult.reason);
         ordersData = { total: 0, totalAmount: 0, pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, inProgress: { count: 0, amount: 0 }, completed: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 }, cancelled: { count: 0, amount: 0 } };
@@ -127,139 +135,64 @@ const mobileDataService = {
   },
 
   /**
-   * Počítá statistiky ze seznamu objednávek - PŘESNĚ PODLE ORDERS25LIST!
+   * Počítá statistiky ze seznamu objednávek - POUŽÍVÁ SPOLEČNÉ FUNKCE!
    * @param {Array} orders - Seznam objednávek z API
    * @param {number} userId - ID aktuálního uživatele (pro filtrování objednávek dle přikázce)
    * @param {boolean} isAdmin - Pokud true, zobrazí všechny objednávky; jinak jen ty, kde je userId přikázce
+   * @param {boolean} showArchived - Pokud true, zahrne archivované objednávky; jinak je vyfiltruje
    * @returns {Object} - Statistiky ve formátu { pending: {count, amount}, ... }
    */
-  calculateOrdersStats(orders, userId = null, isAdmin = false) {
-    // PŘESNĚ KOPIE Z ORDERS25LIST - getOrderTotalPriceWithDPH
-    const getOrderAmount = (order) => {
-      const status = getOrderSystemStatus(order);
-      
-      // DOKONČENÁ → součet faktur
-      if (status === 'DOKONCENA' || status === 'VYRIZENA' || status === 'COMPLETED') {
-        if (order.faktury && Array.isArray(order.faktury) && order.faktury.length > 0) {
-          const fakturyTotal = order.faktury.reduce((sum, faktura) => {
-            const castka = parseFloat(faktura.fa_castka || 0);
-            return sum + (isNaN(castka) ? 0 : castka);
-          }, 0);
-          if (fakturyTotal > 0) return fakturyTotal;
-        }
-      }
-      
-      // DALŠÍ FÁZE → součet položek (pokud existují)
-      // 1. Zkus vrácené pole z BE (polozky_celkova_cena_s_dph je již součet)
-      if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
-        const value = parseFloat(order.polozky_celkova_cena_s_dph);
-        if (!isNaN(value) && value > 0) return value;
-      }      // 2. Spočítej z položek (Order V2 API vrací polozky přímo v order objektu)
-      if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
-        const total = order.polozky.reduce((sum, item) => {
-          const cena = parseFloat(item.cena_s_dph || 0);
-          return sum + (isNaN(cena) ? 0 : cena);
-        }, 0);
-        if (total > 0) return total;
-      }
+  calculateOrdersStats(orders, userId = null, isAdmin = false, showArchived = false) {
+    console.log('[MobileData] calculateOrdersStats called with:', orders.length, 'orders, userId:', userId, 'isAdmin:', isAdmin, 'showArchived:', showArchived);
 
-      // POČÁTEČNÍ FÁZE → max_cena_s_dph (limit)
-      if (order.max_cena_s_dph != null && order.max_cena_s_dph !== '') {
-        const value = parseFloat(order.max_cena_s_dph);
-        if (!isNaN(value)) return value;
-      }
+    // 🎯 POUŽIJ SPOLEČNÉ FUNKCE pro filtrování a výpočet statistik
+    const filteredOrders = filterOrders(orders, { showArchived, userId, isAdmin });
+    const stats = calculateOrderStats(filteredOrders);
 
-      return 0;
+    console.log('[MobileData] Stats result:', stats);
+
+    // Přepočítej částky pro jednotlivé stavy
+    const getAmountForStatus = (status) => {
+      return filteredOrders
+        .filter(o => getOrderSystemStatus(o) === status)
+        .reduce((sum, o) => sum + getOrderTotalPriceWithDPH(o), 0);
     };
-
-    // PŘESNĚ KOPIE Z ORDERS25LIST - getOrderSystemStatus
-    const getOrderSystemStatus = (order) => {
-      // Speciální případ pro koncepty
-      if (order.isDraft || order.je_koncept) {
-        return 'NOVA';
-      }
-
-      let systemStatus;
-
-      // Získej stav z stav_workflow_kod (je to pole!)
-      if (order.stav_workflow_kod) {
-        try {
-          const workflowStates = Array.isArray(order.stav_workflow_kod) 
-            ? order.stav_workflow_kod 
-            : JSON.parse(order.stav_workflow_kod);
-          systemStatus = Array.isArray(workflowStates) 
-            ? workflowStates[workflowStates.length - 1] 
-            : order.stav_workflow_kod;
-        } catch {
-          systemStatus = order.stav_workflow_kod;
-        }
-      } else {
-        systemStatus = 'DRAFT';
-      }
-
-      return systemStatus;
-    };
-
-    // PŘESNĚ PODLE ORDERS25LIST - vyfiltruj koncepty/drafty (nemají reálné ID) a systémovou obj id=1
-    // V Orders25List se koncepty nepočítají do celkového počtu v tabulce
-    let validOrders = orders.filter(o => o.id && o.id > 1 && !o.isLocalConcept);
-    
-    // ⚠️ Filtrování pro non-admin uživatele: zobraz jen objednávky, kde je uživatel přikázce
-    if (!isAdmin && userId) {
-      validOrders = validOrders.filter(o => o.prikazce_id === userId);
-      console.log('[MobileData] Non-admin user', userId, '- filtered to', validOrders.length, 'orders (where prikazce_id matches)');
-    }
-    
-    const total = validOrders.length;
-    const byStatus = validOrders.reduce((acc, order) => {
-      const systemStatus = getOrderSystemStatus(order);
-      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
-      return acc;
-    }, {});
-
-    const totalAmount = validOrders.reduce((sum, order) => {
-      const amount = getOrderAmount(order);
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
-
-    console.log('[MobileData] Stats:', { total, totalAmount, validOrders: validOrders.length, allOrders: orders.length, byStatus });
 
     return {
-      total,
-      totalAmount,
-      // Mapování stavů - používáme validOrders pro filtrování
-      // ⚠️ KE_SCHVALENI je legacy pozůstatek - vše dle OrderV2 používá ODESLANA_KE_SCHVALENI
+      total: stats.total,
+      totalAmount: stats.totalAmount,
+      // Mapování stavů
       pending: { 
-        count: byStatus.ODESLANA_KE_SCHVALENI || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ODESLANA_KE_SCHVALENI').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.ODESLANA_KE_SCHVALENI || 0, 
+        amount: getAmountForStatus('ODESLANA_KE_SCHVALENI')
       },
       approved: { 
-        count: byStatus.SCHVALENA || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'SCHVALENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.SCHVALENA || 0, 
+        amount: getAmountForStatus('SCHVALENA')
       },
       maBytZverejnena: { 
-        count: byStatus.K_UVEREJNENI_DO_REGISTRU || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'K_UVEREJNENI_DO_REGISTRU').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.K_UVEREJNENI_DO_REGISTRU || 0, 
+        amount: getAmountForStatus('K_UVEREJNENI_DO_REGISTRU')
       },
       uverejnena: { 
-        count: byStatus.UVEREJNENA || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'UVEREJNENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.UVEREJNENA || 0, 
+        amount: getAmountForStatus('UVEREJNENA')
       },
       vecnaSpravnost: { 
-        count: byStatus.VECNA_SPRAVNOST || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'VECNA_SPRAVNOST').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.VECNA_SPRAVNOST || 0, 
+        amount: getAmountForStatus('VECNA_SPRAVNOST')
       },
       completed: { 
-        count: byStatus.DOKONCENA || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'DOKONCENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.DOKONCENA || 0, 
+        amount: getAmountForStatus('DOKONCENA')
       },
       rejected: { 
-        count: byStatus.ZAMITNUTA || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ZAMITNUTA').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.ZAMITNUTA || 0, 
+        amount: getAmountForStatus('ZAMITNUTA')
       },
       cancelled: { 
-        count: byStatus.ZRUSENA || 0, 
-        amount: validOrders.filter(o => getOrderSystemStatus(o) === 'ZRUSENA').reduce((s, o) => s + getOrderAmount(o), 0)
+        count: stats.byStatus.ZRUSENA || 0, 
+        amount: getAmountForStatus('ZRUSENA')
       }
     };
   },
