@@ -942,7 +942,7 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                           {category.key === 'invoices' && (
                             <>
                               <TableCell dangerouslySetInnerHTML={{ __html: highlightMatch(result.fa_cislo_vema, query) }} />
-                              <TableCell>{result.objednavka_cislo || '-'}</TableCell>
+                              <TableCell>{result.smlouva_cislo || result.objednavka_cislo || '-'}</TableCell>
                               <TableCell $noWrap>{parseFloat(result.castka || 0).toLocaleString('cs-CZ')} Kč</TableCell>
                               <TableCell $noWrap>{result.datum_vystaveni}</TableCell>
                               <TableCell>
