@@ -1,5 +1,8 @@
 <?php
 
+// Include api.php for TBL_ constants
+require_once __DIR__ . '/../../api.php';
+
 // Define table names for new order queries - PHP 5.6 compatible
 function get_orders_table_name() {
     return TBL_OBJEDNAVKY;

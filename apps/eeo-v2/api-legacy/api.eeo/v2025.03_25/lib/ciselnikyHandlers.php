@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * ČÍSELNÍKY HANDLERS - PHP 5.6 Compatible
  * Handlers pro všechny číselníky podle vzoru Orders25

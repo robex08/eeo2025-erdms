@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * Invoice Attachment Handlers - Přílohy faktur API
  * PHP 5.6 kompatibilní, MySQL 5.5.43

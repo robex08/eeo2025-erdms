@@ -1,4 +1,6 @@
 <?php
+
+require_once __DIR__ . '/../../api.php';
 /**
  * API Handlers pro globální nastavení systému
  * Pattern: POST /global-settings s token a username v body
