@@ -15632,7 +15632,6 @@ function OrderForm25() {
       // 2. Odemkni objednávku (pokud je editace) - graceful handling
       // ✅ FIX: Použít editOrderId místo formData.id (po smazání draftu může být formData prázdné)
       const unlockOrderId = editOrderId || formData.id;
-      console.log('🔍 UNLOCK DEBUG OrderForm25: editOrderId=' + editOrderId + ', formData.id=' + formData.id + ', unlockOrderId=' + unlockOrderId + ', token=' + !!token + ', username=' + !!username);
       
       if (unlockOrderId && token && username) {
         try {

@@ -292,12 +292,6 @@ function handle_order_v2_list($input, $config, $queries) {
         // 🔥 KRITICKÉ FIX: Načítanie user rolí pre SUPERADMIN/ADMINISTRATOR detekciu 
         $user_roles = getUserRoles($current_user_id, $db);
         
-        // 🔥 DEBUG: Explicitní log permissions
-        error_log("=== ORDER V2 DEBUG: User $current_user_id ===");
-        error_log("Raw permissions array: " . print_r($user_permissions, true));
-        error_log("Raw roles array: " . print_r($user_roles, true));
-        error_log("in_array('ORDER_OLD', permissions): " . (in_array('ORDER_OLD', $user_permissions) ? 'TRUE' : 'FALSE'));
-        
         // Pagination parametry - volitelné, bez limitu vrátí všechny záznamy
         $limit = isset($input['limit']) ? (int)$input['limit'] : null;
         $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
