@@ -448,29 +448,8 @@ function handle_cashbook_close_post($config, $input) {
             }
             
             // === PŘEPOČET LIMITOVANÝCH PŘÍSLIBŮ ===
-            // TODO: Implementovat přepočet LP po uzavření měsíce
-            // Prozatím zakomentováno kvůli kompatibilitě PDO/mysqli
-            /*
-            if ($akce === 'uzavrit_mesic' || $akce === 'zamknout_spravcem') {
-                // Získat všechna LP použitá v položkách této knihy
-                $sql_lp = "
-                    SELECT DISTINCT lp_kod 
-                    FROM " . TBL_POKLADNI_POLOZKY . " 
-                    WHERE pokladni_kniha_id = :book_id
-                    AND lp_kod IS NOT NULL
-                    AND lp_kod != ''
-                ";
-                
-                $stmt_lp = $db->prepare($sql_lp);
-                $stmt_lp->bindValue(':book_id', $input['book_id']);
-                $stmt_lp->execute();
-                
-                // Přepočítat každé LP (vyžaduje mysqli connection)
-                while ($row_lp = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
-                    // prepocetCerpaniPodleCislaLP($mysqli_conn, $row_lp['lp_kod']);
-                }
-            }
-            */
+            // ✅ LP přepočty jsou nyní automatické v background tasků
+            // Tato funkcionalita je nyní řešena v limitovanePrislibyCerpaniHandlers_v2_pdo.php
             
             // Commit transakce až po všech operacích
             $db->commit();
