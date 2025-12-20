@@ -166,64 +166,21 @@ export function filterOrders(orders, options = {}) {
     isAdmin = false           // Je uživatel admin? (admin vidí všechny)
   } = options;
 
-  console.log('[filterOrders] Input:', orders.length, 'orders, options:', options);
-  
-  // 🔍 KOMPLETNÍ SEZNAM ID PŘED FILTROVÁNÍM
-  const allIds = orders.map(o => o.id).sort((a, b) => a - b);
-  
-  // 💾 ULOŽ DO WINDOW PRO DEBUGGING
-  if (typeof window !== 'undefined') {
-    if (!window.DEBUG_ORDER_IDS) window.DEBUG_ORDER_IDS = {};
-    const source = userId === null && isAdmin ? 'DESKTOP' : 'MOBILE';
-    window.DEBUG_ORDER_IDS[source] = allIds;
-    console.log(`[filterOrders] 💾 Saved ${allIds.length} IDs to window.DEBUG_ORDER_IDS.${source}`);
-  }
-  
-  console.log('[filterOrders] 📋 ALL IDs before filtering:', allIds);
-  console.log('[filterOrders] 📋 First 5 order IDs:', orders.slice(0, 5).map(o => o.id));
-
   // 1. Základní filtrování: ID > 1 (systémová obj) a !isLocalConcept
   let filtered = orders.filter(o => o.id && o.id > 1 && !o.isLocalConcept);
-  console.log('[filterOrders] After id>1 and !isLocalConcept:', filtered.length);
-  console.log('[filterOrders] Removed by id<=1:', orders.filter(o => !o.id || o.id <= 1).map(o => o.id));
-  console.log('[filterOrders] Removed by isLocalConcept:', orders.filter(o => o.isLocalConcept).map(o => o.id));
 
   // 2. Archivované objednávky
   if (!showArchived) {
-    const beforeArchive = filtered.length;
-    const archivedOrders = [];
     filtered = filtered.filter(o => {
       const status = getOrderSystemStatus(o);
-      const isArchived = status === 'ARCHIVOVANO';
-      if (isArchived) archivedOrders.push({ id: o.id, status });
-      return !isArchived;
+      return status !== 'ARCHIVOVANO';
     });
-    console.log('[filterOrders] After archive filter:', filtered.length, '(removed:', beforeArchive - filtered.length, ')');
-    if (archivedOrders.length > 0) {
-      console.log('[filterOrders] Archived order IDs:', archivedOrders.map(o => o.id));
-    }
   }
 
   // 3. Filtrování podle příkazce (pouze pro non-admin)
   if (!isAdmin && userId) {
-    const beforeUser = filtered.length;
-    const nonMatchingOrders = [];
-    filtered = filtered.filter(o => {
-      const matches = o.prikazce_id === userId;
-      if (!matches) nonMatchingOrders.push({ id: o.id, prikazce_id: o.prikazce_id });
-      return matches;
-    });
-    console.log('[filterOrders] After user filter (prikazce_id):', filtered.length, '(removed:', beforeUser - filtered.length, ')');
-    if (nonMatchingOrders.length > 0 && nonMatchingOrders.length < 10) {
-      console.log('[filterOrders] Non-matching prikazce_id (first 10):', nonMatchingOrders.slice(0, 10));
-    }
+    filtered = filtered.filter(o => o.prikazce_id === userId);
   }
-
-  // 🔍 KOMPLETNÍ SEZNAM ID PO FILTROVÁNÍ
-  const finalIds = filtered.map(o => o.id).sort((a, b) => a - b);
-  console.log('[filterOrders] 📋 FINAL IDs after filtering:', finalIds);
-  console.log('[filterOrders] Final order IDs (first 10):', filtered.slice(0, 10).map(o => o.id));
-  console.log('[filterOrders] Final count:', filtered.length);
 
   return filtered;
 }
