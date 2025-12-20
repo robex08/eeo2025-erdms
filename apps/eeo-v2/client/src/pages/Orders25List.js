@@ -7490,14 +7490,8 @@ const Orders25List = () => {
         const maxPrice = parseFloat(row.original.max_cena_s_dph || 0);
         const fakturaPrice = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
         
-        // Zkontroluj, zda existují položky
-        const hasItems = row.original.polozky && Array.isArray(row.original.polozky) && row.original.polozky.length > 0;
-        
         // Pokud faktura překračuje max cenu, zobraz červeně
         const isOverLimit = fakturaPrice > 0 && maxPrice > 0 && fakturaPrice > maxPrice;
-        
-        // Zobraz max cenu pouze když NEJSOU položky (jinak by se zobrazovala cena z položek)
-        const shouldShowMaxPrice = !hasItems && maxPrice > 0;
         
         return (
           <div style={{ 
@@ -7507,7 +7501,7 @@ const Orders25List = () => {
             whiteSpace: 'nowrap',
             color: isOverLimit ? '#dc2626' : 'inherit'
           }}>
-            {shouldShowMaxPrice ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
           </div>
         );
       }
@@ -7567,8 +7561,21 @@ const Orders25List = () => {
         return filterValue === '---' || filterValue === '';
       },
       cell: ({ row }) => {
-        // 💰 Použij helper funkci pro přesný výpočet ceny s DPH
-        const price = getOrderTotalPriceWithDPH(row.original);
+        // 💰 Zobraz pouze cenu z položek objednávky (ne max_cena_s_dph!)
+        let price = 0;
+        
+        // 1. PRIORITA: Položky - vypočítaná cena z položek
+        if (row.original.polozky_celkova_cena_s_dph != null && row.original.polozky_celkova_cena_s_dph !== '') {
+          const value = parseFloat(row.original.polozky_celkova_cena_s_dph);
+          if (!isNaN(value) && value > 0) price = value;
+        } else if (row.original.polozky && Array.isArray(row.original.polozky) && row.original.polozky.length > 0) {
+          // Spočítej z položek jako fallback
+          price = row.original.polozky.reduce((sum, item) => {
+            const cena = parseFloat(item.cena_s_dph || 0);
+            return sum + (isNaN(cena) ? 0 : cena);
+          }, 0);
+        }
+        
         return (
           <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
             {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
