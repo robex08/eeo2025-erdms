@@ -443,6 +443,10 @@ function getSqlSearchInvoices() {
             f.datum_uhrazeni,
             f.poznamka,
             f.fa_typ,
+            f.fa_zaplacena,
+            f.fa_dorucena,
+            f.fa_predana_zam_id,
+            f.vytvoril_uzivatel_id,
             o.cislo_objednavky as objednavka_cislo,
             o.dodavatel_nazev,
             o.dodavatel_ico,
@@ -453,6 +457,16 @@ function getSqlSearchInvoices() {
                 ' ', 
                 COALESCE(u.prijmeni, '')
             ) as nahrano_kym,
+            CONCAT(
+                COALESCE(u_predana.jmeno, ''), 
+                ' ', 
+                COALESCE(u_predana.prijmeni, '')
+            ) as predano_kym,
+            CASE 
+                WHEN f.fa_zaplacena = 1 THEN 'zaplaceno'
+                WHEN f.fa_datum_splatnosti < CURDATE() THEN 'po_splatnosti'
+                ELSE 'nezaplaceno'
+            END as stav_platby,
             f.dt_nahrani,
             f.aktivni,
             f.dt_vytvoreni,
@@ -464,6 +478,7 @@ function getSqlSearchInvoices() {
                 WHEN f.fa_cislo_vema LIKE :query THEN 'fa_cislo_vema'
                 WHEN f.fa_cislo_dodavatele LIKE :query THEN 'fa_cislo_dodavatele'
                 WHEN f.variabilni_symbol LIKE :query THEN 'variabilni_symbol'
+                WHEN f.fa_typ LIKE :query THEN 'fa_typ'
                 WHEN f.poznamka LIKE :query THEN 'poznamka'
                 WHEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
@@ -509,12 +524,14 @@ function getSqlSearchInvoices() {
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
         LEFT JOIN " . TBL_UZIVATELE . " u ON f.nahrano_uzivatel_id = u.id
+        LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
         LEFT JOIN 25a_faktury_prilohy fp ON f.id = fp.faktura_id
         WHERE (
             f.fa_cislo_vema LIKE :query
             OR f.fa_cislo_dodavatele LIKE :query
             OR f.variabilni_symbol LIKE :query
+            OR f.fa_typ LIKE :query
             OR f.poznamka LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
