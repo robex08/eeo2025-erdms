@@ -107,6 +107,15 @@ export const universalSearch = async (params) => {
       ok: response.ok,
       data: data
     });
+    
+    // DEBUG: Log invoices specifically
+    if (data.categories && data.categories.invoices) {
+      console.log('📋 INVOICES DEBUG:', {
+        total: data.categories.invoices.total,
+        results_count: data.categories.invoices.results ? data.categories.invoices.results.length : 0,
+        first_result: data.categories.invoices.results && data.categories.invoices.results.length > 0 ? data.categories.invoices.results[0] : null
+      });
+    }
 
     // Error handling
     if (!response.ok) {
