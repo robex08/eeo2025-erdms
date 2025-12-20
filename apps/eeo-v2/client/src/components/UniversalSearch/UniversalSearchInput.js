@@ -15,7 +15,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faTimes, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import useUniversalSearch from '../../hooks/useUniversalSearch';
 import SearchResultsDropdown from './SearchResultsDropdown';
+import SearchHistory from './SearchHistory';
 import { AuthContext } from '../../context/AuthContext';
+import { getSearchHistory, saveSearchToHistory, removeSearchFromHistory, clearSearchHistory } from '../../utils/searchHistory';
 
 // Styled components
 const SearchWrapper = styled.div`
@@ -142,7 +144,7 @@ const HintText = styled.div`
  * Universal Search Input Component
  */
 const UniversalSearchInput = () => {
-  const { username, token, hasPermission } = useContext(AuthContext) || {};
+  const { username, token, hasPermission, userId } = useContext(AuthContext) || {};
   
   // Kontrola oprávnění - admin vidí všechny výsledky
   const canViewAllOrders = hasPermission && (
@@ -166,8 +168,19 @@ const UniversalSearchInput = () => {
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
+
+  /**
+   * Načíst historii při mount nebo změně userId
+   */
+  useEffect(() => {
+    if (userId) {
+      setSearchHistory(getSearchHistory(userId));
+    }
+  }, [userId]);
 
   /**
    * Handle input change
@@ -176,16 +189,18 @@ const UniversalSearchInput = () => {
     const newQuery = e.target.value;
     updateQuery(newQuery);
 
-    // Zobrazit dropdown pokud je něco napsáno
-    if (newQuery.length > 0) {
+    // Zobrazit historii pokud je input prázdný nebo < 2 znaky
+    if (newQuery.length < 2) {
+      setShowHistory(true);
+      setShowDropdown(false);
+    } else {
+      setShowHistory(false);
       setShowDropdown(true);
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
         search(newQuery, { search_all: canViewAllOrders });
       }
-    } else {
-      setShowDropdown(false);
     }
   };
 
@@ -193,16 +208,61 @@ const UniversalSearchInput = () => {
    * Handle Enter key - immediate search
    */
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && query.length >= 4) {
+    if (e.key === 'Enter' && query.length >= 2) {
       e.preventDefault();
-      immediateSearch(query, { search_all: canViewAllOrders });
-      setShowDropdown(true);
+      
+      // Ulož do historie
+      if (userId && query.length >= 2) {
+        saveSearchToHistory(userId, query, []); // categories doplníme později
+        setSearchHistory(getSearchHistory(userId));
+      }
+      
+      if (query.length >= 4) {
+        immediateSearch(query, { search_all: canViewAllOrders });
+        setShowDropdown(true);
+        setShowHistory(false);
+      }
     }
 
     // Escape - zavři dropdown
     if (e.key === 'Escape') {
       setShowDropdown(false);
+      setShowHistory(false);
       inputRef.current?.blur();
+    }
+  };
+
+  /**
+   * Vyber query z historie
+   */
+  const handleSelectFromHistory = (selectedQuery) => {
+    updateQuery(selectedQuery);
+    setShowHistory(false);
+    
+    // Proveď hledání
+    if (selectedQuery.length >= 4) {
+      immediateSearch(selectedQuery, { search_all: canViewAllOrders });
+      setShowDropdown(true);
+    }
+  };
+
+  /**
+   * Odstraň položku z historie
+   */
+  const handleRemoveFromHistory = (queryToRemove) => {
+    if (userId) {
+      removeSearchFromHistory(userId, queryToRemove);
+      setSearchHistory(getSearchHistory(userId));
+    }
+  };
+
+  /**
+   * Vymaž celou historii
+   */
+  const handleClearHistory = () => {
+    if (userId) {
+      clearSearchHistory(userId);
+      setSearchHistory([]);
     }
   };
 
@@ -212,6 +272,7 @@ const UniversalSearchInput = () => {
   const handleClear = () => {
     clearResults();
     setShowDropdown(false);
+    setShowHistory(false);
     inputRef.current?.focus();
   };
 
@@ -225,6 +286,7 @@ const UniversalSearchInput = () => {
       
       if (wrapperRef.current && !wrapperRef.current.contains(e.target) && !isClickOnSlidePanel) {
         setShowDropdown(false);
+        setShowHistory(false);
       }
     };
 
@@ -251,11 +313,12 @@ const UniversalSearchInput = () => {
         // Kontrola, jestli není otevřený slide panel
         const isSlidePanel = document.querySelector('[data-slide-panel]');
         
-        // ESC zavře dropdown pouze pokud není otevřený slide panel
-        if (showDropdown && !isSlidePanel) {
+        // ESC zavře dropdown/history pouze pokud není otevřený slide panel
+        if ((showDropdown || showHistory) && !isSlidePanel) {
           e.preventDefault();
           e.stopPropagation();
           setShowDropdown(false);
+          setShowHistory(false);
           inputRef.current?.focus();
         }
       }
@@ -263,7 +326,7 @@ const UniversalSearchInput = () => {
 
     document.addEventListener('keydown', handleEscKey);
     return () => document.removeEventListener('keydown', handleEscKey);
-  }, [showDropdown]);
+  }, [showDropdown, showHistory]);
 
   return (
     <SearchWrapper ref={wrapperRef}>
@@ -280,7 +343,10 @@ const UniversalSearchInput = () => {
           onKeyDown={handleKeyDown}
           onFocus={() => {
             setInputFocused(true);
-            if (query.length > 0) {
+            // Pokud je input prázdný, zobraz historii
+            if (query.length < 2) {
+              setShowHistory(true);
+            } else if (query.length > 0) {
               setShowDropdown(true);
             }
           }}
@@ -307,6 +373,16 @@ const UniversalSearchInput = () => {
           )}
         </RightIcons>
       </SearchInputContainer>
+
+      {/* Search History - zobrazit když je input krátký a má focus */}
+      {showHistory && inputFocused && searchHistory.length > 0 && (
+        <SearchHistory
+          history={searchHistory}
+          onSelectQuery={handleSelectFromHistory}
+          onRemoveItem={handleRemoveFromHistory}
+          onClearAll={handleClearHistory}
+        />
+      )}
 
       {/* Results dropdown */}
       {showDropdown && query.length > 0 && (
