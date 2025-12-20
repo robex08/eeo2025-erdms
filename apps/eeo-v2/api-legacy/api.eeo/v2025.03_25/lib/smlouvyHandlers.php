@@ -240,7 +240,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         $where_sql = empty($where) ? '' : 'WHERE ' . implode(' AND ', $where);
         
         // Count query
-        $count_sql = "SELECT COUNT(*) as total FROM 25_smlouvy s $where_sql";
+        $count_sql = "SELECT COUNT(*) as total FROM " . TBL_SMLOUVY . " s $where_sql";
         $stmt = $db->prepare($count_sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
@@ -261,13 +261,13 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                 u.usek_nazev,
                 (
                     SELECT COUNT(*)
-                    FROM 25a_objednavky o
+                    FROM " . TBL_OBJEDNAVKY . " o
                     WHERE o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
                       AND o.aktivni = 1
                       AND o.stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
                 ) AS pocet_objednavek
-            FROM 25_smlouvy s
-            LEFT JOIN 25_useky u ON s.usek_id = u.id
+            FROM " . TBL_SMLOUVY . " s
+            LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
             $where_sql
             ORDER BY s.dt_vytvoreni DESC
             LIMIT $limit OFFSET $offset
@@ -346,8 +346,8 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         
         // Get contract
         $sql = "SELECT s.*, u.usek_zkr, u.usek_nazev 
-                FROM 25_smlouvy s
-                LEFT JOIN 25_useky u ON s.usek_id = u.id
+                FROM " . TBL_SMLOUVY . " s
+                LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
                 WHERE s.id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
@@ -384,7 +384,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 o.stav_objednavky AS stav,
                 o.max_cena_s_dph AS castka_s_dph,
                 o.dt_vytvoreni AS dt_prirazeni
-            FROM 25a_objednavky o
+            FROM " . TBL_OBJEDNAVKY . " o
             WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
               AND o.aktivni = 1
             ORDER BY o.dt_vytvoreni DESC
@@ -409,7 +409,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 COALESCE(AVG(max_cena_s_dph), 0) as prumerna_objednavka,
                 COALESCE(MAX(max_cena_s_dph), 0) as nejvetsi_objednavka,
                 COALESCE(MIN(max_cena_s_dph), 0) as nejmensi_objednavka
-            FROM 25a_objednavky
+            FROM " . TBL_OBJEDNAVKY . "
             WHERE financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
               AND aktivni = 1
               AND stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA')
@@ -479,7 +479,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $db = get_db($config);
         
         // Check duplicate cislo_smlouvy
-        $sql = "SELECT id FROM 25_smlouvy WHERE cislo_smlouvy = :cislo_smlouvy";
+        $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE cislo_smlouvy = :cislo_smlouvy";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':cislo_smlouvy', $input['cislo_smlouvy'], PDO::PARAM_STR);
         $stmt->execute();
@@ -490,7 +490,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         }
         
         // Get usek_zkr
-        $sql = "SELECT usek_zkr FROM 25_useky WHERE id = :usek_id";
+        $sql = "SELECT usek_zkr FROM " . TBL_USEKY . " WHERE id = :usek_id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':usek_id', (int)$input['usek_id'], PDO::PARAM_INT);
         $stmt->execute();
@@ -515,7 +515,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         
         // Insert
         $sql = "
-            INSERT INTO 25_smlouvy (
+            INSERT INTO " . TBL_SMLOUVY . " (
                 cislo_smlouvy, usek_id, usek_zkr, druh_smlouvy,
                 nazev_firmy, ico, dic, nazev_smlouvy, popis_smlouvy,
                 platnost_od, platnost_do,
@@ -626,7 +626,7 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         $db = get_db($config);
         
         // Check exists
-        $sql = "SELECT id FROM 25_smlouvy WHERE id = :id";
+        $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
         $stmt->execute();
@@ -659,7 +659,7 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         
         // Get usek_zkr if usek_id changed
         if (isset($input['usek_id'])) {
-            $sql = "SELECT usek_zkr FROM 25_useky WHERE id = :usek_id";
+            $sql = "SELECT usek_zkr FROM " . TBL_USEKY . " WHERE id = :usek_id";
             $stmt = $db->prepare($sql);
             $stmt->bindValue(':usek_id', (int)$input['usek_id'], PDO::PARAM_INT);
             $stmt->execute();
@@ -673,7 +673,7 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         // Automatický přepočet stavu (pokud se změnily relevantní pole)
         if (isset($input['aktivni']) || isset($input['platnost_od']) || isset($input['platnost_do'])) {
             // Načteme aktuální hodnoty z DB
-            $sql_current = "SELECT aktivni, platnost_od, platnost_do FROM 25_smlouvy WHERE id = :id";
+            $sql_current = "SELECT aktivni, platnost_od, platnost_do FROM " . TBL_SMLOUVY . " WHERE id = :id";
             $stmt_current = $db->prepare($sql_current);
             $stmt_current->bindValue(':id', $id, PDO::PARAM_INT);
             $stmt_current->execute();
@@ -693,7 +693,7 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         $set[] = "dt_aktualizace = NOW()";
         $set[] = "upravil_user_id = :upravil_user_id";
         
-        $sql = "UPDATE 25_smlouvy SET " . implode(', ', $set) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SMLOUVY . " SET " . implode(', ', $set) . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
@@ -751,7 +751,7 @@ function handle_ciselniky_smlouvy_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Soft delete - set aktivni = 0 a přepočítej stav na "NEAKTIVNI"
-        $sql = "UPDATE 25_smlouvy SET aktivni = 0, stav = 'NEAKTIVNI', dt_aktualizace = NOW(), upravil_user_id = :upravil_user_id WHERE id = :id";
+        $sql = "UPDATE " . TBL_SMLOUVY . " SET aktivni = 0, stav = 'NEAKTIVNI', dt_aktualizace = NOW(), upravil_user_id = :upravil_user_id WHERE id = :id";
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':id', $id, PDO::PARAM_INT);
         $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
@@ -827,7 +827,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
             
             // Map usek_zkr to usek_id
             if (isset($row['usek_zkr'])) {
-                $sql = "SELECT id, usek_zkr FROM 25_useky WHERE usek_zkr = :usek_zkr";
+                $sql = "SELECT id, usek_zkr FROM " . TBL_USEKY . " WHERE usek_zkr = :usek_zkr";
                 $stmt = $db->prepare($sql);
                 $stmt->bindValue(':usek_zkr', $row['usek_zkr'], PDO::PARAM_STR);
                 $stmt->execute();
@@ -857,7 +857,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
             }
             
             // Check if exists
-            $sql = "SELECT id FROM 25_smlouvy WHERE cislo_smlouvy = :cislo_smlouvy";
+            $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE cislo_smlouvy = :cislo_smlouvy";
             $stmt = $db->prepare($sql);
             $stmt->bindValue(':cislo_smlouvy', $row['cislo_smlouvy'], PDO::PARAM_STR);
             $stmt->execute();
@@ -878,7 +878,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stav = calculateSmlouvaStav($aktivni, $row['platnost_od'], $row['platnost_do']);
                 
                 $sql_update = "
-                    UPDATE 25_smlouvy SET
+                    UPDATE " . TBL_SMLOUVY . " SET
                         usek_id = :usek_id,
                         usek_zkr = :usek_zkr,
                         druh_smlouvy = :druh_smlouvy,
@@ -952,7 +952,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stav = calculateSmlouvaStav($aktivni, $row['platnost_od'], $row['platnost_do']);
                 
                 $sql = "
-                    INSERT INTO 25_smlouvy (
+                    INSERT INTO " . TBL_SMLOUVY . " (
                         cislo_smlouvy, usek_id, usek_zkr, druh_smlouvy,
                         nazev_firmy, ico, dic, nazev_smlouvy, popis_smlouvy,
                         platnost_od, platnost_do,
@@ -1133,7 +1133,7 @@ function handle_ciselniky_smlouvy_prepocet_cerpani($input, $config, $queries) {
             $where[] = "aktivni = 1";
         }
         
-        $sql = "SELECT COUNT(*) as pocet FROM 25_smlouvy WHERE " . implode(' AND ', $where);
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE " . implode(' AND ', $where);
         $stmt = $db->prepare($sql);
         
         foreach ($params as $key => $value) {
