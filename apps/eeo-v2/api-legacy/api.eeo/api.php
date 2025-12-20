@@ -4402,12 +4402,9 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Zavolat mysqli handler funkci (dočasně, později převést)
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                $conn->set_charset('utf8');
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
-                $result = getCerpaniPodleUseku($conn, $usek_id, $rok);
-                $conn->close();
+                // Zavolat PDO handler funkci
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                $result = getCerpaniPodleUseku_PDO($pdo, $usek_id, $rok);
                 
                 if ($result['status'] === 'error') {
                     http_response_code(404);

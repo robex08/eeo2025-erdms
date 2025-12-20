@@ -419,3 +419,174 @@ function getCerpaniPodleUzivatele_PDO($pdo, $lp_id) {
         ];
     }
 }
+
+/**
+ * PDO VERZE: Získá agregované čerpání LP podle úseku (všechna LP + jejich uživatelé)
+ * 
+ * @param PDO $pdo Databázové spojení (PDO)
+ * @param int $usek_id ID úseku
+ * @param int|null $rok Rok (default aktuální rok)
+ * @return array Agregované čerpání LP podle úseku
+ */
+function getCerpaniPodleUseku_PDO($pdo, $usek_id, $rok = null) {
+    $usek_id = (int)$usek_id;
+    $rok = $rok ? (int)$rok : (int)date('Y');
+    
+    try {
+        // KROK 1: Získat informace o úseku
+        $sql_usek = "
+            SELECT id, usek_nazev
+            FROM 25a_useky
+            WHERE id = :usek_id
+            LIMIT 1
+        ";
+        
+        $stmt_usek = $pdo->prepare($sql_usek);
+        $stmt_usek->execute([':usek_id' => $usek_id]);
+        $usek_info = $stmt_usek->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$usek_info) {
+            return array(
+                'status' => 'error',
+                'message' => 'Úsek s tímto ID neexistuje'
+            );
+        }
+        
+        // KROK 2: Získat všechna LP pro tento úsek
+        $sql_lp_list = "
+            SELECT DISTINCT id, cislo_lp
+            FROM 25_limitovane_prisliby
+            WHERE usek_id = :usek_id
+            AND YEAR(platne_od) = :rok
+            ORDER BY cislo_lp
+        ";
+        
+        $stmt_lp_list = $pdo->prepare($sql_lp_list);
+        $stmt_lp_list->execute([':usek_id' => $usek_id, ':rok' => $rok]);
+        $lp_list = $stmt_lp_list->fetchAll(PDO::FETCH_ASSOC);
+        
+        $lp_data = array();
+        $celkovy_limit_usek = 0;
+        $celkem_rezervovano_usek = 0;
+        $celkem_predpoklad_usek = 0;
+        $celkem_skutecne_usek = 0;
+        $celkem_pokladna_usek = 0;
+        $celkem_lp = 0;
+        
+        foreach ($lp_list as $lp_row) {
+            $lp_id = (int)$lp_row['id'];
+            
+            // Pro každé LP získat detail čerpání podle uživatelů
+            $lp_detail = getCerpaniPodleUzivatele_PDO($pdo, $lp_id);
+            
+            if ($lp_detail['success']) {
+                $lp_data[] = array(
+                    'lp_id' => $lp_id,
+                    'cislo_lp' => $lp_detail['cislo_lp'],
+                    'kategorie' => $lp_detail['kategorie'],
+                    'celkovy_limit' => $lp_detail['celkovy_limit'],
+                    'prikazce_user_id' => $lp_detail['prikazce_user_id'],
+                    'prikazce_prijmeni' => $lp_detail['prikazce_prijmeni'],
+                    'prikazce_jmeno' => $lp_detail['prikazce_jmeno'],
+                    'cerpani_podle_uzivatelu' => $lp_detail['users'],
+                    'cerpano_pokladna' => $lp_detail['cerpano_pokladna'],
+                    'celkem' => array(
+                        'rezervovano' => $lp_detail['celkem_rezervovano'],
+                        'predpokladane_cerpani' => $lp_detail['celkem_predpoklad'],
+                        'skutecne_cerpano' => $lp_detail['celkem_skutecne']
+                    )
+                );
+                
+                // Agregace za celý úsek
+                $celkovy_limit_usek += $lp_detail['celkovy_limit'];
+                $celkem_rezervovano_usek += $lp_detail['celkem_rezervovano'];
+                $celkem_predpoklad_usek += $lp_detail['celkem_predpoklad'];
+                $celkem_skutecne_usek += $lp_detail['celkem_skutecne'];
+                $celkem_pokladna_usek += $lp_detail['cerpano_pokladna'];
+                $celkem_lp++;
+            }
+        }
+        
+        // KROK 3: Agregace uživatelů napříč všemi LP úseku
+        $users_aggregate = array();
+        
+        foreach ($lp_data as $lp) {
+            foreach ($lp['cerpani_podle_uzivatelu'] as $user) {
+                $user_id = $user['user_id'];
+                
+                if (!isset($users_aggregate[$user_id])) {
+                    $users_aggregate[$user_id] = array(
+                        'user_id' => $user_id,
+                        'prijmeni' => $user['prijmeni'],
+                        'jmeno' => $user['jmeno'],
+                        'pocet_objednavek' => 0,
+                        'rezervovano' => 0,
+                        'predpokladane_cerpani' => 0,
+                        'skutecne_cerpano' => 0
+                    );
+                }
+                
+                $users_aggregate[$user_id]['pocet_objednavek'] += $user['pocet_objednavek'];
+                $users_aggregate[$user_id]['rezervovano'] += $user['rezervovano'];
+                $users_aggregate[$user_id]['predpokladane_cerpani'] += $user['predpokladane_cerpani'];
+                $users_aggregate[$user_id]['skutecne_cerpano'] += $user['skutecne_cerpano'];
+            }
+        }
+        
+        // Zaokrouhlit a převést na pole
+        $users_aggregate_array = array_values($users_aggregate);
+        foreach ($users_aggregate_array as &$user) {
+            $user['rezervovano'] = round($user['rezervovano'], 2);
+            $user['predpokladane_cerpani'] = round($user['predpokladane_cerpani'], 2);
+            $user['skutecne_cerpano'] = round($user['skutecne_cerpano'], 2);
+            
+            // Procenta z celkového limitu úseku
+            $user['procento_rezervace'] = $celkovy_limit_usek > 0 ? round(($user['rezervovano'] / $celkovy_limit_usek) * 100, 2) : 0;
+            $user['procento_predpoklad'] = $celkovy_limit_usek > 0 ? round(($user['predpokladane_cerpani'] / $celkovy_limit_usek) * 100, 2) : 0;
+            $user['procento_skutecne'] = $celkovy_limit_usek > 0 ? round(($user['skutecne_cerpano'] / $celkovy_limit_usek) * 100, 2) : 0;
+        }
+        
+        // Seřadit podle rezervovano DESC
+        usort($users_aggregate_array, function($a, $b) {
+            return $b['rezervovano'] <=> $a['rezervovano'];
+        });
+        
+        return array(
+            'status' => 'ok',
+            'data' => array(
+                'usek_info' => array(
+                    'usek_id' => $usek_id,
+                    'usek_nazev' => $usek_info['usek_nazev'],
+                    'rok' => $rok
+                ),
+                'lp_seznam' => $lp_data,
+                'cerpani_podle_uzivatelu_agregace' => $users_aggregate_array,
+                'celkem_usek' => array(
+                    'pocet_lp' => $celkem_lp,
+                    'celkovy_limit' => round($celkovy_limit_usek, 2),
+                    'rezervovano' => round($celkem_rezervovano_usek, 2),
+                    'predpokladane_cerpani' => round($celkem_predpoklad_usek, 2),
+                    'skutecne_cerpano' => round($celkem_skutecne_usek, 2),
+                    'cerpano_pokladna' => round($celkem_pokladna_usek, 2),
+                    'zbyva_rezervace' => round($celkovy_limit_usek - $celkem_rezervovano_usek, 2),
+                    'zbyva_predpoklad' => round($celkovy_limit_usek - $celkem_predpoklad_usek, 2),
+                    'zbyva_skutecne' => round($celkovy_limit_usek - $celkem_skutecne_usek, 2),
+                    'procento_rezervace' => $celkovy_limit_usek > 0 ? round(($celkem_rezervovano_usek / $celkovy_limit_usek) * 100, 2) : 0,
+                    'procento_predpoklad' => $celkovy_limit_usek > 0 ? round(($celkem_predpoklad_usek / $celkovy_limit_usek) * 100, 2) : 0,
+                    'procento_skutecne' => $celkovy_limit_usek > 0 ? round(($celkem_skutecne_usek / $celkovy_limit_usek) * 100, 2) : 0
+                )
+            ),
+            'meta' => array(
+                'version' => 'v2.0',
+                'timestamp' => date('Y-m-d H:i:s')
+            )
+        );
+        
+    } catch (PDOException $e) {
+        return array(
+            'status' => 'error',
+            'message' => 'Database error: ' . $e->getMessage()
+        );
+    }
+}
+
