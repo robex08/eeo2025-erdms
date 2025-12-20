@@ -19,7 +19,7 @@
 require_once __DIR__ . '/orderQueries.php';
 require_once __DIR__ . '/OrderV2Handler.php';
 require_once __DIR__ . '/TimezoneHelper.php';
-require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
 require_once __DIR__ . '/smlouvyHandlers.php';
 require_once __DIR__ . '/hierarchyOrderFilters.php';
 
