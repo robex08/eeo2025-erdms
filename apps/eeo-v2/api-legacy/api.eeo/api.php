@@ -4601,14 +4601,14 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $pdo = get_pdo_connection();
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $usek_id = isset($input['usek_id']) ? (int)$input['usek_id'] : null;
@@ -4617,20 +4617,21 @@ switch ($endpoint) {
                 if (!$usek_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr usek_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
-                // Zavolat handler funkci
+                // Zavolat mysqli handler funkci (dočasně, později převést)
+                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
+                $conn->set_charset('utf8');
                 require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
                 $result = getCerpaniPodleUseku($conn, $usek_id, $rok);
+                $conn->close();
                 
                 if ($result['status'] === 'error') {
                     http_response_code(404);
                 }
                 
                 echo json_encode($result);
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
