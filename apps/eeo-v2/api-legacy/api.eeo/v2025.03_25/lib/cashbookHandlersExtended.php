@@ -294,7 +294,7 @@ function handle_cashbox_assignment_delete_post($config, $input) {
         
         // Zkontrolovat, zda nejsou s pokladnou spojené knihy
         $bookModel = new CashbookModel($db);
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM 25a_pokladni_knihy WHERE pokladna_id = ? AND uzivatel_id = ?");
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM " . TBL_POKLADNI_KNIHY . " WHERE pokladna_id = ? AND uzivatel_id = ?");
         $stmt->execute(array($assignment['pokladna_id'], $assignment['uzivatel_id']));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -523,9 +523,9 @@ function handle_cashbox_list_post($config, $input) {
                         vytvoril_u.jmeno AS vytvoril_jmeno,
                         vytvoril_u.prijmeni AS vytvoril_prijmeni
                         
-                    FROM 25a_pokladny_uzivatele pu
-                    JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-                    LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+                    FROM " . TBL_POKLADNY_UZIVATELE . " pu
+                    JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+                    LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
                     WHERE pu.pokladna_id = ?
                       AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
                     ORDER BY pu.je_hlavni DESC, u.prijmeni, u.jmeno
@@ -653,7 +653,7 @@ function handle_cashbox_update_post($config, $input) {
         // Spočítat kolik uživatelů to ovlivní
         $sqlCount = "
             SELECT COUNT(*) as pocet
-            FROM 25a_pokladny_uzivatele
+            FROM " . TBL_POKLADNY_UZIVATELE . "
             WHERE pokladna_id = ?
               AND (platne_do IS NULL OR platne_do >= CURDATE())
         ";
@@ -732,7 +732,7 @@ function handle_cashbox_delete_post($config, $input) {
         
         // Zkontrolovat závislosti - přiřazení uživatelů
         $sqlCheckUsers = "
-            SELECT COUNT(*) as pocet FROM 25a_pokladny_uzivatele
+            SELECT COUNT(*) as pocet FROM " . TBL_POKLADNY_UZIVATELE . "
             WHERE pokladna_id = ?
         ";
         $stmt = $db->prepare($sqlCheckUsers);
@@ -741,7 +741,7 @@ function handle_cashbox_delete_post($config, $input) {
         
         // Zkontrolovat závislosti - knihy
         $sqlCheckKnihy = "
-            SELECT COUNT(*) as pocet FROM 25a_pokladni_knihy
+            SELECT COUNT(*) as pocet FROM " . TBL_POKLADNI_KNIHY . "
             WHERE pokladna_id = ?
         ";
         $stmt = $db->prepare($sqlCheckKnihy);
@@ -806,7 +806,7 @@ function handle_cashbox_assign_user_post($config, $input) {
         
         // Zkontrolovat duplicitu (aktivní přiřazení)
         $sqlCheck = "
-            SELECT id FROM 25a_pokladny_uzivatele
+            SELECT id FROM " . TBL_POKLADNY_UZIVATELE . "
             WHERE pokladna_id = ?
               AND uzivatel_id = ?
               AND (platne_do IS NULL OR platne_do >= CURDATE())
@@ -823,7 +823,7 @@ function handle_cashbox_assign_user_post($config, $input) {
         // Pokud se nastavuje jako hlavní, deaktivovat ostatní hlavní
         if (isset($input['je_hlavni']) && $input['je_hlavni'] == 1) {
             $sqlUnsetMain = "
-                UPDATE 25a_pokladny_uzivatele
+                UPDATE " . TBL_POKLADNY_UZIVATELE . "
                 SET je_hlavni = 0
                 WHERE uzivatel_id = ?
                   AND je_hlavni = 1
@@ -834,7 +834,7 @@ function handle_cashbox_assign_user_post($config, $input) {
         
         // Vytvořit přiřazení
         $sqlInsert = "
-            INSERT INTO 25a_pokladny_uzivatele (
+            INSERT INTO " . TBL_POKLADNY_UZIVATELE . " (
                 pokladna_id,
                 uzivatel_id,
                 je_hlavni,
@@ -926,7 +926,7 @@ function handle_cashbox_unassign_user_post($config, $input) {
         }
         
         // Zkontrolovat existenci přiřazení
-        $sqlCheck = "SELECT * FROM 25a_pokladny_uzivatele WHERE id = ?";
+        $sqlCheck = "SELECT * FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = ?";
         $stmt = $db->prepare($sqlCheck);
         $stmt->execute(array($input['prirazeni_id']));
         $prirazeni = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -940,7 +940,7 @@ function handle_cashbox_unassign_user_post($config, $input) {
         
         // ✅ HARD DELETE - skutečné smazání záznamu
         // (soft delete by byl UPDATE platne_do)
-        $sqlDelete = "DELETE FROM 25a_pokladny_uzivatele WHERE id = ?";
+        $sqlDelete = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = ?";
         
         error_log("UNASSIGN USER: SQL DELETE - id={$input['prirazeni_id']}");
         
@@ -1008,10 +1008,10 @@ function handle_cashbox_available_users_post($config, $input) {
                 u.prijmeni,
                 CONCAT(u.jmeno, ' ', u.prijmeni) AS cele_jmeno,
                 u.email
-            FROM 25_uzivatele u
+            FROM " . TBL_UZIVATELE . " u
             WHERE u.id NOT IN (
                 SELECT uzivatel_id 
-                FROM 25a_pokladny_uzivatele
+                FROM " . TBL_POKLADNY_UZIVATELE . "
                 WHERE pokladna_id = ?
                   AND (platne_do IS NULL OR platne_do >= CURDATE())
             )
@@ -1102,7 +1102,7 @@ function handle_cashbox_sync_users_post($config, $input) {
         }
         
         // Zkontrolovat existenci pokladny
-        $sqlCheck = "SELECT id FROM 25a_pokladny WHERE id = ? AND aktivni = 1";
+        $sqlCheck = "SELECT id FROM " . TBL_POKLADNY . " WHERE id = ? AND aktivni = 1";
         $stmt = $db->prepare($sqlCheck);
         $stmt->execute(array($input['pokladna_id']));
         $pokladna = $stmt->fetch(PDO::FETCH_ASSOC);
