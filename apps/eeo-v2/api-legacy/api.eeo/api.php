@@ -122,22 +122,54 @@ function cz_get_namedays_list() {
 // DATABASE TABLE NAMES - LP ČERPÁNÍ
 define('TBL_OBJEDNAVKY', '25a_objednavky');
 define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
+define('TBL_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
 define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
 define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
+define('TBL_POKLADNI_POLOZKY_DETAIL', '25a_pokladni_polozky_detail');
 define('TBL_LP_MASTER', '25_limitovane_prisliby');
 define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
+
+// DATABASE TABLE NAMES - POKLADNY (CASHBOX)
+define('TBL_POKLADNY', '25a_pokladny');
+define('TBL_POKLADNY_UZIVATELE', '25a_pokladny_uzivatele');
+define('TBL_POKLADNI_AUDIT', '25a_pokladni_audit');
 
 // DATABASE TABLE NAMES - CORE ENTITIES
 define('TBL_UZIVATELE', '25_uzivatele');
 // define('TBL_OBJEDNAVKY_LEGACY', '25_objednavky'); // DEPRECATED - nepoužívá se
 define('TBL_SMLOUVY', '25_smlouvy');
+define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
 define('TBL_FAKTURY', '25a_objednavky_faktury');
+define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
 define('TBL_DODAVATELE', '25_dodavatele');
+
+// DATABASE TABLE NAMES - AUTORIZACE & ROLE
+define('TBL_PRAVA', '25_prava');
+define('TBL_ROLE', '25_role');
+define('TBL_ROLE_PRAVA', '25_role_prava');
+define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
+define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
+
+// DATABASE TABLE NAMES - HIERARCHIE
+define('TBL_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
+define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+
+// DATABASE TABLE NAMES - NASTAVENÍ
+define('TBL_NASTAVENI_GLOBALNI', '25a_nastaveni_globalni');
+define('TBL_UZIVATEL_NASTAVENI', '25_uzivatel_nastaveni');
 
 // DATABASE TABLE NAMES - ČÍSELNÍKY
 define('TBL_POZICE', '25_pozice');
 define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
 define('TBL_USEKY', '25_useky');
+define('TBL_LOKALITY', '25_lokality');
+
+// DATABASE TABLE NAMES - DOCX ŠABLONY
+define('TBL_SABLONY_DOCX', '25_sablony_docx');
+define('TBL_DOCX_SABLONY', '25_docx_sablony'); // Alternativní název
+define('TBL_DOCX_MAPOVANI', '25_docx_mapovani');
+define('TBL_DOCX_KATEGORIE', '25_docx_kategorie');
+define('TBL_DOCX_GENEROVANE', '25_docx_generovane');
 
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
