@@ -219,11 +219,13 @@ if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     }
 }
 
-// DEBUG: zobrazíme, co se rozpoznává
-error_log("URI: $request_uri, Endpoint: $endpoint, Method: $request_method, X-Endpoint: " . (isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : 'not set'));
+// DEBUG: zobrazíme, co se rozpoznává (pouze DEV mode)
+if (defined('DEBUG_MODE') && DEBUG_MODE) {
+    error_log("URI: $request_uri, Endpoint: $endpoint, Method: $request_method, X-Endpoint: " . (isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : 'not set'));
+}
 
-// 🔍 CRITICAL DEBUG pro order attachments download
-if (strpos($endpoint, 'attachments') !== false && strpos($endpoint, 'download') !== false) {
+// 🔍 DEBUG pro order attachments download (pouze DEV mode)
+if (defined('DEBUG_MODE') && DEBUG_MODE && strpos($endpoint, 'attachments') !== false && strpos($endpoint, 'download') !== false) {
     header('X-Debug-Endpoint: ' . $endpoint);
     header('X-Debug-Method: ' . $request_method);
     header('X-Debug-Raw-Input-Length: ' . strlen($raw_input));
