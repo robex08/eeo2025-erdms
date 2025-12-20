@@ -444,6 +444,8 @@ function getSqlSearchInvoices() {
             f.fa_zaplacena,
             f.fa_dorucena,
             f.fa_predana_zam_id,
+            f.fa_datum_predani_zam as datum_predani_zam,
+            f.fa_datum_vraceni_zam as datum_vraceni_zam,
             f.vytvoril_uzivatel_id,
             o.cislo_objednavky as objednavka_cislo,
             sm.cislo_smlouvy as smlouva_cislo,

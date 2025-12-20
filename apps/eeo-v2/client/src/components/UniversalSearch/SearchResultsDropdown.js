@@ -825,9 +825,14 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                         {category.key === 'invoices' && (
                           <>
                             <TableHeaderCell>Číslo faktury</TableHeaderCell>
-                            <TableHeaderCell>Objednávka</TableHeaderCell>
+                            <TableHeaderCell>Typ</TableHeaderCell>
+                            <TableHeaderCell>Objednávka/Smlouva</TableHeaderCell>
                             <TableHeaderCell>Částka</TableHeaderCell>
                             <TableHeaderCell>Datum</TableHeaderCell>
+                            <TableHeaderCell>Zaevidoval</TableHeaderCell>
+                            <TableHeaderCell>Předáno ZAM</TableHeaderCell>
+                            <TableHeaderCell>Datum předání</TableHeaderCell>
+                            <TableHeaderCell>Datum vrácení</TableHeaderCell>
                             <TableHeaderCell style={{ width: '40px' }}></TableHeaderCell>
                           </>
                         )}
@@ -942,9 +947,14 @@ const SearchResultsDropdown = ({ results, loading, query, onClose, inputRef, use
                           {category.key === 'invoices' && (
                             <>
                               <TableCell dangerouslySetInnerHTML={{ __html: highlightMatch(result.fa_cislo_vema, query) }} />
+                              <TableCell>{result.fa_typ || '-'}</TableCell>
                               <TableCell>{result.smlouva_cislo || result.objednavka_cislo || '-'}</TableCell>
                               <TableCell $noWrap>{parseFloat(result.castka || 0).toLocaleString('cs-CZ')} Kč</TableCell>
-                              <TableCell $noWrap>{result.datum_vystaveni}</TableCell>
+                              <TableCell $noWrap>{result.datum_vystaveni ? new Date(result.datum_vystaveni).toLocaleDateString('cs-CZ') : '-'}</TableCell>
+                              <TableCell>{result.nahrano_kym || '-'}</TableCell>
+                              <TableCell>{result.predano_kym || '-'}</TableCell>
+                              <TableCell $noWrap>{result.datum_predani_zam ? new Date(result.datum_predani_zam).toLocaleDateString('cs-CZ') : '-'}</TableCell>
+                              <TableCell $noWrap>{result.datum_vraceni_zam ? new Date(result.datum_vraceni_zam).toLocaleDateString('cs-CZ') : '-'}</TableCell>
                               <TableCell>
                                 <IconButton 
                                   onClick={(e) => { e.stopPropagation(); handleOpenDetail(result, category.key); }}
