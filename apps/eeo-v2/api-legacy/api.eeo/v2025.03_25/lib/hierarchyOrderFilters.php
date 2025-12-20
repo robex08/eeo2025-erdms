@@ -27,7 +27,7 @@
  */
 function getUserRelationshipsFromStructure($userId, $db) {
     // Načíst aktivní profil
-    $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+    $stmt = $db->prepare("SELECT id, structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE aktivni = 1 LIMIT 1");
     $stmt->execute();
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -55,7 +55,7 @@ function getUserRelationshipsFromStructure($userId, $db) {
     
     // Najít role uživatele
     $userRoles = [];
-    $stmt = $db->prepare("SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId");
+    $stmt = $db->prepare("SELECT role_id FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id = :userId");
     $stmt->execute(['userId' => $userId]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $userRoles[] = $row['role_id'];
@@ -152,7 +152,7 @@ function getHierarchySettings($db) {
     // Načítání jednotlivých nastavení z key-value tabulky
     $query = "
         SELECT klic, hodnota
-        FROM 25a_nastaveni_globalni
+        FROM " . TBL_NASTAVENI_GLOBALNI . "
         WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id', 'hierarchy_logic')
     ";
     
@@ -212,9 +212,9 @@ function isUserHierarchyImmune($userId, $db) {
     // Check práv přes role uživatele (HIERARCHY_IMMUNE je přiřazeno k rolím SUPERADMIN/ADMINISTRATOR)
     $queryRoles = "
         SELECT COUNT(*) as cnt
-        FROM 25_uzivatele_role ur
-        INNER JOIN 25_role_prava rp ON rp.role_id = ur.role_id
-        INNER JOIN 25_prava p ON p.id = rp.pravo_id
+        FROM " . TBL_UZIVATELE_ROLE . " ur
+        INNER JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
+        INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
         WHERE ur.uzivatel_id = :userId
           AND p.kod_prava = 'HIERARCHY_IMMUNE'
           AND p.aktivni = 1
@@ -452,9 +452,9 @@ function applyHierarchyFilterToOrders($userId, $db) {
         $uskyIdsList = implode(',', array_map('intval', $visibleUskyIds));
         // Objednávky přes uživatele z daných úseků
         $conditions[] = "(
-            o.uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
-            OR o.objednatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
-            OR o.garant_uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE usek_id IN ($uskyIdsList))
+            o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
+            OR o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
+            OR o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
         )";
     }
     
@@ -462,9 +462,9 @@ function applyHierarchyFilterToOrders($userId, $db) {
         $lokalityList = implode(',', array_map('intval', $visibleLokality));
         // Objednávky přes uživatele z daných lokalit
         $conditions[] = "(
-            o.uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
-            OR o.objednatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
-            OR o.garant_uzivatel_id IN (SELECT id FROM 25_uzivatele WHERE lokalita_id IN ($lokalityList))
+            o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
+            OR o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
+            OR o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
         )";
     }
     
@@ -542,7 +542,7 @@ function canUserViewOrder($orderId, $userId, $db) {
             o.uzivatel_id,
             o.objednatel_id,
             o.garant_uzivatel_id
-        FROM 25a_objednavky o
+        FROM " . TBL_OBJEDNAVKY . " o
         WHERE o.id = :orderId AND o.aktivni = 1
     ";
     
@@ -598,7 +598,7 @@ function canUserViewOrder($orderId, $userId, $db) {
         
         // Location vztah - zkontrolovat, zda některý účastník je z této lokality
         if ($rel['typ_vztahu'] === 'user-location' && $rel['lokalita_id']) {
-            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND lokalita_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM " . TBL_UZIVATELE . " WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND lokalita_id = ?");
             $stmt->execute([$rel['lokalita_id']]);
             if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
                 error_log("HIERARCHY: User $userId CAN view order $orderId (location relationship)");
@@ -608,7 +608,7 @@ function canUserViewOrder($orderId, $userId, $db) {
         
         // Department vztah
         if ($rel['typ_vztahu'] === 'user-department' && $rel['usek_id']) {
-            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND usek_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM " . TBL_UZIVATELE . " WHERE id IN (".implode(',', array_map('intval', $participantIds)).") AND usek_id = ?");
             $stmt->execute([$rel['usek_id']]);
             if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
                 error_log("HIERARCHY: User $userId CAN view order $orderId (department relationship)");
@@ -618,7 +618,7 @@ function canUserViewOrder($orderId, $userId, $db) {
         
         // Role vztah - zkontrolovat, zda některý účastník má tuto roli
         if ($rel['typ_vztahu'] === 'user-role' && $rel['role_id']) {
-            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM 25_uzivatele_role WHERE uzivatel_id IN (".implode(',', array_map('intval', $participantIds)).") AND role_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id IN (".implode(',', array_map('intval', $participantIds)).") AND role_id = ?");
             $stmt->execute([$rel['role_id']]);
             if ($stmt->fetch(PDO::FETCH_ASSOC)['cnt'] > 0) {
                 error_log("HIERARCHY: User $userId CAN view order $orderId (role relationship)");

@@ -43,7 +43,7 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         $db->beginTransaction();
         
         // Create invoice record
-        $sql_insert = "INSERT INTO 25a_objednavky_faktury (
+        $sql_insert = "INSERT INTO " . TBL_FAKTURY . " (
             objednavka_id, smlouva_id, fa_dorucena, fa_castka, fa_cislo_vema, 
             fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
             fa_strediska_kod, fa_poznamka, rozsirujici_data,
@@ -86,7 +86,7 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         }
         
         // Create attachment record in faktury_prilohy table
-        $sql_att = "INSERT INTO 25a_faktury_prilohy (
+        $sql_att = "INSERT INTO " . TBL_FAKTURY_PRILOHY . " (
             faktura_id, nazev_souboru, nazev_originalu, 
             cesta_k_souboru, typ_souboru, velikost_souboru,
             dt_nahrani, aktivni
@@ -155,7 +155,7 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         
         // Create invoice record
-        $sql_insert = "INSERT INTO 25a_objednavky_faktury (
+        $sql_insert = "INSERT INTO " . TBL_FAKTURY . " (
             objednavka_id, smlouva_id, fa_dorucena, fa_zaplacena, fa_castka, fa_cislo_vema, 
             fa_typ, fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
             fa_strediska_kod, fa_poznamka,
@@ -231,7 +231,7 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         
         // Načíst současný stav faktury
-        $sql_current = "SELECT * FROM 25a_objednavky_faktury WHERE id = ? AND aktivni = 1";
+        $sql_current = "SELECT * FROM " . TBL_FAKTURY . " WHERE id = ? AND aktivni = 1";
         $stmt_current = $db->prepare($sql_current);
         $stmt_current->execute(array($invoice_id));
         $current_invoice = $stmt_current->fetch(PDO::FETCH_ASSOC);
@@ -343,7 +343,7 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         
         $updateValues[] = $invoice_id;
         
-        $sql_update = "UPDATE 25a_objednavky_faktury SET " . implode(', ', $updateFields) . " WHERE id = ? AND aktivni = 1";
+        $sql_update = "UPDATE " . TBL_FAKTURY . " SET " . implode(', ', $updateFields) . " WHERE id = ? AND aktivni = 1";
         
         $stmt = $db->prepare($sql_update);
         $stmt->execute($updateValues);
@@ -414,8 +414,8 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         
         // Kontrola existence faktury (LEFT JOIN - vazba na objednávku není povinná)
         $sql_check = "SELECT f.id, f.objednavka_id, f.vytvoril_uzivatel_id, o.uzivatel_id as objednavka_uzivatel_id
-                      FROM 25a_objednavky_faktury f
-                      LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
+                      FROM " . TBL_FAKTURY . " f
+                      LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                       WHERE f.id = ? AND f.aktivni = 1";
         
         $stmt_check = $db->prepare($sql_check);
@@ -443,9 +443,9 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         $has_invoice_manage = false;
         if (!$is_admin) {
             $prava_sql = "SELECT DISTINCT p.kod_prava 
-                         FROM 25_prava p
-                         INNER JOIN 25_role_prava rp ON rp.pravo_id = p.id
-                         INNER JOIN 25_uzivatele_role ur ON ur.role_id = rp.role_id
+                         FROM " . TBL_PRAVA . " p
+                         INNER JOIN " . TBL_ROLE_PRAVA . " rp ON rp.pravo_id = p.id
+                         INNER JOIN " . TBL_UZIVATELE_ROLE . " ur ON ur.role_id = rp.role_id
                          WHERE ur.uzivatel_id = ? AND p.kod_prava = 'INVOICE_MANAGE'";
             $prava_stmt = $db->prepare($prava_sql);
             $prava_stmt->execute(array($current_user_id));
@@ -497,13 +497,13 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         if ($hard_delete === 1) {
             // ========== HARD DELETE ==========
             // 1. Načtení příloh před smazáním (pro smazání souborů z disku)
-            $sql_get_attachments = "SELECT systemova_cesta FROM 25a_faktury_prilohy WHERE faktura_id = ?";
+            $sql_get_attachments = "SELECT systemova_cesta FROM " . TBL_FAKTURY_PRILOHY . " WHERE faktura_id = ?";
             $stmt_get_att = $db->prepare($sql_get_attachments);
             $stmt_get_att->execute(array($invoice_id));
             $attachments = $stmt_get_att->fetchAll(PDO::FETCH_ASSOC);
             
             // 2. Smazání příloh z databáze
-            $sql_delete_att = "DELETE FROM 25a_faktury_prilohy WHERE faktura_id = ?";
+            $sql_delete_att = "DELETE FROM " . TBL_FAKTURY_PRILOHY . " WHERE faktura_id = ?";
             $stmt_del_att = $db->prepare($sql_delete_att);
             $stmt_del_att->execute(array($invoice_id));
             
@@ -516,7 +516,7 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
             }
             
             // 4. Smazání faktury z databáze (HARD DELETE)
-            $sql_delete = "DELETE FROM 25a_objednavky_faktury WHERE id = ?";
+            $sql_delete = "DELETE FROM " . TBL_FAKTURY . " WHERE id = ?";
             $stmt_delete = $db->prepare($sql_delete);
             $stmt_delete->execute(array($invoice_id));
             
@@ -525,7 +525,7 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         } else {
             // ========== SOFT DELETE (default) ==========
             // 1. Soft delete faktury - nastavení aktivni = 0
-            $sql_update = "UPDATE 25a_objednavky_faktury SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
+            $sql_update = "UPDATE " . TBL_FAKTURY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
             $stmt_update = $db->prepare($sql_update);
             $stmt_update->execute(array($invoice_id));
             
@@ -538,7 +538,7 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
             
             // 2. Soft delete příloh - nastavení jako neaktivní (pokud má tabulka sloupec aktivni)
             // Poznámka: Přílohy v DB zůstanou, soubory na disku zůstanou
-            $sql_deactivate_att = "UPDATE 25a_faktury_prilohy SET dt_aktualizace = NOW() WHERE faktura_id = ?";
+            $sql_deactivate_att = "UPDATE " . TBL_FAKTURY_PRILOHY . " SET dt_aktualizace = NOW() WHERE faktura_id = ?";
             $stmt_deact_att = $db->prepare($sql_deactivate_att);
             $stmt_deact_att->execute(array($invoice_id));
             
