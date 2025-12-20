@@ -12,7 +12,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { universalSearch } from '../services/apiUniversalSearch';
 
-export const useUniversalSearch = () => {
+export const useUniversalSearch = (onSearchSuccess = null) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
@@ -57,6 +57,11 @@ export const useUniversalSearch = () => {
       // ✅ OPRAVA: Backend posílá "categories" místo "results"
       setResults(data);
       setError(null);
+      
+      // Zavolej callback po úspěšném vyhledání
+      if (onSearchSuccess && typeof onSearchSuccess === 'function') {
+        onSearchSuccess(searchQuery, data.categories || {});
+      }
     } catch (err) {
       console.error('❌ useUniversalSearch error:', err);
       setError(err.message || 'Nastala chyba při vyhledávání');
@@ -64,7 +69,7 @@ export const useUniversalSearch = () => {
     } finally {
       setLoading(false);
     }
-  }, [cancelRequest]);
+  }, [cancelRequest, onSearchSuccess]);
 
   /**
    * Debounced search - čeká 500ms před provedením

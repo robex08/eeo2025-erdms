@@ -74,13 +74,18 @@ const HistoryItem = styled.div`
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid #f3f4f6;
+  background: ${props => props.$selected ? '#eff6ff' : 'white'};
   
   &:last-child {
     border-bottom: none;
   }
   
   &:hover {
-    background: #f9fafb;
+    background: ${props => props.$selected ? '#dbeafe' : '#f9fafb'};
+    
+    button {
+      opacity: 1;
+    }
   }
 `;
 
@@ -128,10 +133,6 @@ const RemoveButton = styled.button`
   justify-content: center;
   opacity: 0;
   transition: all 0.2s;
-  
-  ${HistoryItem}:hover & {
-    opacity: 1;
-  }
   
   &:hover {
     background: #fee2e2;
@@ -194,7 +195,8 @@ export const SearchHistory = ({
   history, 
   onSelectQuery, 
   onRemoveItem, 
-  onClearAll 
+  onClearAll,
+  selectedIndex = -1
 }) => {
   if (!history || history.length === 0) {
     return (
@@ -210,7 +212,7 @@ export const SearchHistory = ({
     <HistoryDropdown>
       <HistoryHeader>
         <h4>📋 Poslední hledání</h4>
-        <ClearAllButton onClick={onClearAll}>
+        <ClearAllButton onMouseDown={(e) => { e.preventDefault(); onClearAll(); }}>
           <FontAwesomeIcon icon={faTrash} />
           Vymazat
         </ClearAllButton>
@@ -219,7 +221,8 @@ export const SearchHistory = ({
       {history.map((item, index) => (
         <HistoryItem 
           key={index}
-          onClick={() => onSelectQuery(item.query)}
+          $selected={index === selectedIndex}
+          onMouseDown={(e) => { e.preventDefault(); onSelectQuery(item.query); }}
         >
           <HistoryItemContent>
             <HistoryIcon>
@@ -240,7 +243,8 @@ export const SearchHistory = ({
           </HistoryItemContent>
           
           <RemoveButton 
-            onClick={(e) => {
+            onMouseDown={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               onRemoveItem(item.query);
             }}
