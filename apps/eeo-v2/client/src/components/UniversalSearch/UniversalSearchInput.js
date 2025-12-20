@@ -144,7 +144,7 @@ const HintText = styled.div`
  * Universal Search Input Component
  */
 const UniversalSearchInput = () => {
-  const { username, token, hasPermission, userId } = useContext(AuthContext) || {};
+  const { username, token, hasPermission, user_id } = useContext(AuthContext) || {};
   
   // Kontrola oprávnění - admin vidí všechny výsledky
   const canViewAllOrders = hasPermission && (
@@ -174,13 +174,13 @@ const UniversalSearchInput = () => {
   const wrapperRef = useRef(null);
 
   /**
-   * Načíst historii při mount nebo změně userId
+   * Načíst historii při mount nebo změně user_id
    */
   useEffect(() => {
-    if (userId) {
-      setSearchHistory(getSearchHistory(userId));
+    if (user_id) {
+      setSearchHistory(getSearchHistory(user_id));
     }
-  }, [userId]);
+  }, [user_id]);
 
   /**
    * Handle input change
@@ -212,9 +212,9 @@ const UniversalSearchInput = () => {
       e.preventDefault();
       
       // Ulož do historie
-      if (userId && query.length >= 2) {
-        saveSearchToHistory(userId, query, []); // categories doplníme později
-        setSearchHistory(getSearchHistory(userId));
+      if (user_id && query.length >= 2) {
+        saveSearchToHistory(user_id, query, []); // categories doplníme později
+        setSearchHistory(getSearchHistory(user_id));
       }
       
       if (query.length >= 4) {
@@ -250,9 +250,9 @@ const UniversalSearchInput = () => {
    * Odstraň položku z historie
    */
   const handleRemoveFromHistory = (queryToRemove) => {
-    if (userId) {
-      removeSearchFromHistory(userId, queryToRemove);
-      setSearchHistory(getSearchHistory(userId));
+    if (user_id) {
+      removeSearchFromHistory(user_id, queryToRemove);
+      setSearchHistory(getSearchHistory(user_id));
     }
   };
 
@@ -260,8 +260,8 @@ const UniversalSearchInput = () => {
    * Vymaž celou historii
    */
   const handleClearHistory = () => {
-    if (userId) {
-      clearSearchHistory(userId);
+    if (user_id) {
+      clearSearchHistory(user_id);
       setSearchHistory([]);
     }
   };
