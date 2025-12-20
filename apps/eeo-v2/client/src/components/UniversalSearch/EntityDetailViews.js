@@ -2162,10 +2162,6 @@ export const SupplierDetailView = ({ data, onCloseAll }) => {
                 <InfoContent style={{ gridColumn: '1 / -1' }}>
                   <button
                     onClick={async () => {
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('🔔 Kliknutí na Otevřít nejnovější objednávku, ID:', data.nejnovejsi_objednavka_id);
-                      }
-                      
                       // Zavři panel
                       if (onCloseAll) onCloseAll();
                       
