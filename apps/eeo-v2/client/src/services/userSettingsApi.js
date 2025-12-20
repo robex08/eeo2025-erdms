@@ -8,7 +8,7 @@ import axios from 'axios';
 
 // Axios instance pro User Settings API
 const settingsApi = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL || 'https://erdms.zachranka.cz/api.eeo/',
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 
     'Content-Type': 'application/json',
     'X-Endpoint': 'user/settings'
