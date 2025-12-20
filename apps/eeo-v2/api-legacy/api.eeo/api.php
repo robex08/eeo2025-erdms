@@ -4045,59 +4045,57 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $pdo = get_pdo_connection();
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 $rok = isset($input['rok']) ? (int)$input['rok'] : (int)date('Y');
                 $log = array();
                 
                 // KROK 1: Vymazat staré záznamy z tabulky čerpání pro daný rok
-                $sql_delete = "DELETE FROM " . TBL_LP_CERPANI . " WHERE rok = $rok";
-                
-                if (mysqli_query($conn, $sql_delete)) {
-                    $deleted_count = mysqli_affected_rows($conn);
+                try {
+                    $stmt_delete = $pdo->prepare("DELETE FROM " . TBL_LP_CERPANI . " WHERE rok = ?");
+                    $stmt_delete->execute([$rok]);
+                    $deleted_count = $stmt_delete->rowCount();
                     $log[] = "Vymazáno $deleted_count starých záznamů čerpání pro rok $rok";
-                } else {
+                } catch (PDOException $e) {
                     http_response_code(500);
-                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání starých záznamů: ' . mysqli_error($conn)));
-                    $conn->close();
+                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při mazání starých záznamů: ' . $e->getMessage()));
                     break;
                 }
                 
-                // KROK 2: Provést kompletní přepočet všech kódů LP pomocí handler funkce
-                $sql_kody = "
-                    SELECT DISTINCT id, cislo_lp
-                    FROM " . TBL_LP_MASTER . "
-                    WHERE YEAR(platne_od) = $rok
-                    ORDER BY cislo_lp
-                ";
+                // KROK 2: Provést kompletní přepočet všech kódů LP pomocí PDO handler funkce
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
                 
-                $result_kody = mysqli_query($conn, $sql_kody);
-                
-                if (!$result_kody) {
+                try {
+                    $stmt_kody = $pdo->prepare("
+                        SELECT DISTINCT id, cislo_lp
+                        FROM " . TBL_LP_MASTER . "
+                        WHERE YEAR(platne_od) = ?
+                        ORDER BY cislo_lp
+                    ");
+                    $stmt_kody->execute([$rok]);
+                    $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
+                } catch (PDOException $e) {
                     http_response_code(500);
-                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . mysqli_error($conn)));
-                    $conn->close();
+                    echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . $e->getMessage()));
                     break;
                 }
                 
                 $updated = 0;
                 $failed = 0;
                 
-                // Použít handler funkci pro každé LP
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
-                
-                while ($row = mysqli_fetch_assoc($result_kody)) {
+                // Použít PDO handler funkci pro každé LP
+                foreach ($lp_list as $row) {
                     $lp_id_batch = (int)$row['id'];
-                    $result_handler = prepocetCerpaniPodleIdLP($conn, $lp_id_batch);
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch);
                     
-                    if ($result_handler['status'] === 'ok') {
+                    if ($result_handler['success']) {
                         $updated++;
                     } else {
                         $failed++;
@@ -4111,33 +4109,33 @@ switch ($endpoint) {
                 $log[] = "Inicializace dokončena";
                 
                 // KROK 3: Získat statistiku z agregační tabulky
-                $sql_stats = "
-                    SELECT 
-                        COUNT(*) as celkem_kodu,
-                        SUM(celkovy_limit) as celkovy_limit,
-                        SUM(rezervovano) as celkem_rezervovano,
-                        SUM(predpokladane_cerpani) as celkem_predpoklad,
-                        SUM(skutecne_cerpano) as celkem_skutecne,
-                        SUM(cerpano_pokladna) as celkem_pokladna,
-                        SUM(zbyva_rezervace) as celkem_zbyva_rezervace,
-                        SUM(zbyva_predpoklad) as celkem_zbyva_predpoklad,
-                        SUM(zbyva_skutecne) as celkem_zbyva_skutecne,
-                        AVG(procento_rezervace) as prumerne_procento_rezervace,
-                        AVG(procento_predpoklad) as prumerne_procento_predpoklad,
-                        AVG(procento_skutecne) as prumerne_procento_skutecne,
-                        SUM(pocet_zaznamu) as celkem_zaznamu,
-                        SUM(ma_navyseni) as pocet_s_navysenim,
-                        COUNT(CASE WHEN zbyva_rezervace < 0 THEN 1 END) as prekroceno_rezervace,
-                        COUNT(CASE WHEN zbyva_predpoklad < 0 THEN 1 END) as prekroceno_predpoklad,
-                        COUNT(CASE WHEN zbyva_skutecne < 0 THEN 1 END) as prekroceno_skutecne
-                    FROM " . TBL_LP_CERPANI . "
-                    WHERE rok = $rok
-                ";
-                
-                $result_stats = mysqli_query($conn, $sql_stats);
-                $stats = null;
-                if ($result_stats) {
-                    $stats = mysqli_fetch_assoc($result_stats);
+                try {
+                    $stmt_stats = $pdo->prepare("
+                        SELECT 
+                            COUNT(*) as celkem_kodu,
+                            SUM(celkovy_limit) as celkovy_limit,
+                            SUM(rezervovano) as celkem_rezervovano,
+                            SUM(predpokladane_cerpani) as celkem_predpoklad,
+                            SUM(skutecne_cerpano) as celkem_skutecne,
+                            SUM(cerpano_pokladna) as celkem_pokladna,
+                            SUM(zbyva_rezervace) as celkem_zbyva_rezervace,
+                            SUM(zbyva_predpoklad) as celkem_zbyva_predpoklad,
+                            SUM(zbyva_skutecne) as celkem_zbyva_skutecne,
+                            AVG(procento_rezervace) as prumerne_procento_rezervace,
+                            AVG(procento_predpoklad) as prumerne_procento_predpoklad,
+                            AVG(procento_skutecne) as prumerne_procento_skutecne,
+                            SUM(pocet_zaznamu) as celkem_zaznamu,
+                            SUM(ma_navyseni) as pocet_s_navysenim,
+                            COUNT(CASE WHEN zbyva_rezervace < 0 THEN 1 END) as prekroceno_rezervace,
+                            COUNT(CASE WHEN zbyva_predpoklad < 0 THEN 1 END) as prekroceno_predpoklad,
+                            COUNT(CASE WHEN zbyva_skutecne < 0 THEN 1 END) as prekroceno_skutecne
+                        FROM " . TBL_LP_CERPANI . "
+                        WHERE rok = ?
+                    ");
+                    $stmt_stats->execute([$rok]);
+                    $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+                } catch (PDOException $e) {
+                    $stats = null;
                 }
                 
                 echo json_encode(array(
@@ -4150,14 +4148,12 @@ switch ($endpoint) {
                         'log' => $log
                     ),
                     'meta' => array(
-                        'version' => 'v3.0',
+                        'version' => 'v2.0',
                         'tri_typy_cerpani' => true,
                         'timestamp' => date('Y-m-d H:i:s')
                     ),
                     'message' => 'Inicializace čerpání LP úspěšně dokončena'
                 ));
-                
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
