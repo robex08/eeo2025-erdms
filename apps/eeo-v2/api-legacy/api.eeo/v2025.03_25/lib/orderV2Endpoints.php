@@ -163,8 +163,8 @@ function getUserRoles($user_id, $db) {
     try {
         $sql = "
             SELECT DISTINCT r.kod_role
-            FROM 25_role r
-            JOIN 25_uzivatele_role ur ON r.id = ur.role_id
+            FROM " . TBL_ROLE . " r
+            JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
             WHERE ur.uzivatel_id = :user_id
         ";
         
@@ -202,19 +202,19 @@ function getUserOrderPermissions($user_id, $db) {
         // MySQL 5.5.43 kompatibilní SQL - bez složitých EXISTS subqueries
         $sql = "
             SELECT DISTINCT p.kod_prava
-            FROM 25_prava p
+            FROM " . TBL_PRAVA . " p
             WHERE p.kod_prava LIKE 'ORDER_%'
             AND p.id IN (
                 -- Přímá práva (user_id v 25_role_prava)
-                SELECT rp.pravo_id FROM 25_role_prava rp 
+                SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
                 WHERE rp.user_id = :user_id
                 
                 UNION
                 
                 -- Práva z rolí (user_id = -1 znamená právo z role)
                 SELECT rp.pravo_id 
-                FROM 25_uzivatele_role ur
-                JOIN 25_role_prava rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
                 WHERE ur.uzivatel_id = :user_id
             )
         ";

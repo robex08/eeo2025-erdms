@@ -52,10 +52,10 @@ class CashbookModel {
                 us.usek_nazev AS usek_nazev,
                 us.usek_zkr AS usek_zkratka
             FROM " . TBL_POKLADNI_KNIHY . " kb
-            LEFT JOIN 25_uzivatele u ON u.id = kb.uzivatel_id
-            LEFT JOIN 25_uzivatele s ON s.id = kb.zamknuta_spravcem_kym
-            LEFT JOIN 25_lokality lok ON lok.id = u.lokalita_id
-            LEFT JOIN 25_useky us ON us.id = u.usek_id
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = kb.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " s ON s.id = kb.zamknuta_spravcem_kym
+            LEFT JOIN " . TBL_LOKALITY . " lok ON lok.id = u.lokalita_id
+            LEFT JOIN " . TBL_USEKY . " us ON us.id = u.usek_id
             WHERE 1=1
         ";
         
@@ -152,10 +152,10 @@ class CashbookModel {
                 us.usek_nazev AS usek_nazev,
                 us.usek_zkr AS usek_zkratka
             FROM " . TBL_POKLADNI_KNIHY . " kb
-            LEFT JOIN 25_uzivatele u ON u.id = kb.uzivatel_id
-            LEFT JOIN 25_uzivatele s ON s.id = kb.zamknuta_spravcem_kym
-            LEFT JOIN 25_lokality lok ON lok.id = u.lokalita_id
-            LEFT JOIN 25_useky us ON us.id = u.usek_id
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = kb.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " s ON s.id = kb.zamknuta_spravcem_kym
+            LEFT JOIN " . TBL_LOKALITY . " lok ON lok.id = u.lokalita_id
+            LEFT JOIN " . TBL_USEKY . " us ON us.id = u.usek_id
             WHERE kb.id = ?
         ");
         $stmt->execute(array($bookId));
@@ -195,8 +195,8 @@ class CashbookModel {
                     p.nazev_pracoviste,
                     p.ciselna_rada_vpd,
                     p.ciselna_rada_ppd
-                FROM 25a_pokladny_uzivatele pu
-                JOIN 25a_pokladny p ON pu.pokladna_id = p.id
+                FROM " . TBL_POKLADNY_UZIVATELE . " pu
+                JOIN " . TBL_POKLADNY . " p ON pu.pokladna_id = p.id
                 WHERE pu.id = ?
             ");
             $stmt->execute(array($data['prirazeni_id']));
@@ -289,8 +289,8 @@ class CashbookModel {
                     p.nazev_pracoviste,
                     p.ciselna_rada_vpd,
                     p.ciselna_rada_ppd
-                FROM 25a_pokladny_uzivatele pu
-                JOIN 25a_pokladny p ON pu.pokladna_id = p.id
+                FROM " . TBL_POKLADNY_UZIVATELE . " pu
+                JOIN " . TBL_POKLADNY . " p ON pu.pokladna_id = p.id
                 WHERE pu.id = ?
             ");
             $stmt->execute(array($data['prirazeni_id']));

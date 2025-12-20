@@ -26,7 +26,7 @@
 function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null) {
     // Načíst aktivní profil
     if (!$profileId) {
-        $stmt = $pdo->prepare("SELECT id FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id FROM " . TBL_HIERARCHIE_PROFILY . " WHERE aktivni = 1 LIMIT 1");
         $stmt->execute();
         $profile = $stmt->fetch(PDO::FETCH_ASSOC);
         $profileId = $profile ? $profile['id'] : null;
@@ -37,7 +37,7 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
     }
     
     // Načíst structure_json
-    $stmt = $pdo->prepare("SELECT structure_json FROM 25_hierarchie_profily WHERE id = :profileId");
+    $stmt = $pdo->prepare("SELECT structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE id = :profileId");
     $stmt->execute(['profileId' => $profileId]);
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -242,7 +242,7 @@ function getHierarchyFilterSQL($pdo, $userId, $module, $alias = 'o', $profileId 
 function getUserById($pdo, $userId) {
     $stmt = $pdo->prepare("
         SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
-        FROM 25_uzivatele
+        FROM " . TBL_UZIVATELE . "
         WHERE uzivatel_id = :userId AND aktivni = 1
     ");
     $stmt->execute(['userId' => $userId]);
@@ -252,7 +252,7 @@ function getUserById($pdo, $userId) {
 function getUsersByDepartment($pdo, $departmentId) {
     $stmt = $pdo->prepare("
         SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
-        FROM 25_uzivatele
+        FROM " . TBL_UZIVATELE . "
         WHERE usek_id = :deptId AND aktivni = 1
     ");
     $stmt->execute(['deptId' => $departmentId]);
@@ -262,7 +262,7 @@ function getUsersByDepartment($pdo, $departmentId) {
 function getUsersByLocation($pdo, $locationId) {
     $stmt = $pdo->prepare("
         SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
-        FROM 25_uzivatele
+        FROM " . TBL_UZIVATELE . "
         WHERE lokalita_id = :locationId AND aktivni = 1
     ");
     $stmt->execute(['locationId' => $locationId]);
@@ -272,7 +272,7 @@ function getUsersByLocation($pdo, $locationId) {
 function getUsersByLocationAndDepartment($pdo, $locationId, $departmentId) {
     $stmt = $pdo->prepare("
         SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
-        FROM 25_uzivatele
+        FROM " . TBL_UZIVATELE . "
         WHERE lokalita_id = :locationId 
           AND usek_id = :deptId 
           AND aktivni = 1
@@ -318,7 +318,7 @@ $hierarchyFilter = getHierarchyFilterSQL($pdo, $userId, 'orders', 'o');
 $sql = "
     SELECT o.*, u.jmeno, u.prijmeni
     FROM " . TBL_OBJEDNAVKY . " o
-    INNER JOIN 25_uzivatele u ON o.vytvoril_user_id = u.uzivatel_id
+    INNER JOIN " . TBL_UZIVATELE . " u ON o.vytvoril_user_id = u.uzivatel_id
     WHERE $hierarchyFilter
       AND o.aktivni = 1
     ORDER BY o.dt_vytvoreni DESC

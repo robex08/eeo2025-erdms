@@ -65,7 +65,7 @@ function getSqlSearchUsers() {
         FROM " . TBL_UZIVATELE . " u
         LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
         LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
-        LEFT JOIN 25_lokality l ON u.lokalita_id = l.id
+        LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
         WHERE (
             u.telefon LIKE :query
             OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.telefon, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '') LIKE :query_normalized
@@ -140,8 +140,8 @@ function getSqlSearchOrders2025() {
                 ' ', 
                 COALESCE(u_prikazce.prijmeni, '')
             ) as prikazce,
-            (SELECT COUNT(*) FROM 25a_objednavky_prilohy WHERE objednavka_id = o.id) as pocet_priloh_obj,
-            (SELECT COUNT(*) FROM 25a_objednavky_faktury WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
+            (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " WHERE objednavka_id = o.id) as pocet_priloh_obj,
+            (SELECT COUNT(*) FROM " . TBL_FAKTURY . " WHERE objednavka_id = o.id AND aktivni = 1) as pocet_faktur,
             DATE(o.dt_objednavky) as datum_objednavky,
             DATE(o.dt_schvaleni) as datum_schvaleni,
             DATE(o.dt_odeslani) as datum_odeslani,
@@ -546,7 +546,7 @@ function getSqlSearchInvoices() {
         LEFT JOIN " . TBL_UZIVATELE . " u ON f.vytvoril_uzivatel_id = u.id
         LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
-        LEFT JOIN 25a_faktury_prilohy fp ON f.id = fp.faktura_id
+        LEFT JOIN " . TBL_FAKTURY_PRILOHY . " fp ON f.id = fp.faktura_id
         WHERE (
             f.fa_cislo_vema LIKE :query
             OR f.fa_typ LIKE :query
