@@ -1154,7 +1154,7 @@ function handle_order_v2_update($input, $config, $queries) {
             $invoices_updated = false;
             
             if (isset($input['faktury']) && is_array($input['faktury'])) {
-                $faktury_table = get_invoices_table_name(); // 25a_objednavky_faktury
+                $faktury_table = get_invoices_table_name(); // TBL_FAKTURY (25a_objednavky_faktury)
                 
                 foreach ($input['faktury'] as $faktura) {
                     $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
@@ -1346,7 +1346,7 @@ function handle_order_v2_update($input, $config, $queries) {
                 // Získat LP kódy z JSON financovani (PŘED COMMIT)
                 $sql_lp = "
                     SELECT financovani 
-                    FROM 25a_objednavky 
+                    FROM " . TBL_OBJEDNAVKY . " 
                     WHERE id = :order_id
                 ";
                 
@@ -1397,7 +1397,7 @@ function handle_order_v2_update($input, $config, $queries) {
                 }
             } else {
                 // Zkontrolovat existující financování (pokud nebylo aktualizováno)
-                $sql_check_fin = "SELECT financovani FROM 25a_objednavky WHERE id = :order_id";
+                $sql_check_fin = "SELECT financovani FROM " . TBL_OBJEDNAVKY . " WHERE id = :order_id";
                 $stmt_check = $db->prepare($sql_check_fin);
                 $stmt_check->bindValue(':order_id', $order_id);
                 $stmt_check->execute();
@@ -1918,7 +1918,7 @@ function handle_order_v2_get_dt_aktualizace($input, $config, $queries) {
 // ========== ORDER V2 ITEMS MANAGEMENT FUNCTIONS ==========
 
 /**
- * Vloží položky objednávky pro Order V2 (25a_objednavky_polozky)
+ * Vloží položky objednávky pro Order V2 (TBL_OBJEDNAVKY_POLOZKY (25a_objednavky_polozky))
  * Batch insert pro lepší výkon - PHP 5.6 kompatibilní
  * @param PDO $db - Databázové spojení
  * @param int $order_id - ID objednávky
