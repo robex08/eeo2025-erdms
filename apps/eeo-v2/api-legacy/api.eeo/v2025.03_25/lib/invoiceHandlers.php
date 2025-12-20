@@ -1253,15 +1253,17 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         
         // Filtr: filter_ma_prilohy (filtrace podle přítomnosti příloh)
+        // NOTE: Tento filtr se aplikuje pomocí HAVING, ne WHERE (pocet_priloh je agregace)
+        $having_ma_prilohy = null;
         if (isset($filters['filter_ma_prilohy']) && $filters['filter_ma_prilohy'] !== '') {
             if ((int)$filters['filter_ma_prilohy'] === 1) {
                 // Pouze s přílohami
-                $where_conditions[] = 'pocet_priloh > 0';
-                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 1 (s přílohami)");
+                $having_ma_prilohy = 'COUNT(DISTINCT prilohy.id) > 0';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 1 (s přílohami) via HAVING");
             } else if ((int)$filters['filter_ma_prilohy'] === 0) {
                 // Pouze bez příloh
-                $where_conditions[] = '(pocet_priloh = 0 OR pocet_priloh IS NULL)';
-                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 0 (bez příloh)");
+                $having_ma_prilohy = 'COUNT(DISTINCT prilohy.id) = 0';
+                error_log("Invoices25 LIST: Applying filter_ma_prilohy = 0 (bez příloh) via HAVING");
             }
         }
         
@@ -1502,8 +1504,14 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql
-        GROUP BY f.id
-        ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
+        GROUP BY f.id";
+        
+        // Přidat HAVING pokud je filtr na přílohy
+        if ($having_ma_prilohy !== null) {
+            $sql .= " HAVING $having_ma_prilohy";
+        }
+        
+        $sql .= " ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
         
         // Přidat LIMIT pouze pokud FE požaduje stránkování
         if ($use_pagination) {
