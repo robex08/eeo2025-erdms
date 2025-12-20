@@ -266,8 +266,9 @@ function MobileDashboard() {
         token, 
         username,
         year: selectedYear,
-        userId: userDetail?.id,  // Pro filtrování objednávek podle přikázce (non-admin)
-        isAdmin: isAdmin         // Admin vidí všechny objednávky
+        userId: isAdmin ? null : userDetail?.id,  // ✅ FIX: Admin nemá userId (vidí všechny), non-admin má userId (vidí jen své)
+        isAdmin: isAdmin,        // Admin vidí všechny objednávky
+        showArchived: false      // 🔧 FIX: Mobile vždy filtruje archivované objednávky
       });
       
       console.log('[MobileDashboard] Result received:', result);

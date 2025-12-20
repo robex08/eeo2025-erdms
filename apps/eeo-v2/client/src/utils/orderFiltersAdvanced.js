@@ -242,30 +242,39 @@ export const filterByGlobalSearch = (order, searchText, getUserDisplayName, getO
 export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) => {
   if (!statusFilter || !Array.isArray(statusFilter) || statusFilter.length === 0) return true;
 
-  // 🔧 POROVNÁVEJ PŘÍMO ČESKÉ NÁZVY z order.stav_objednavky
-  const orderStatus = order.stav_objednavky;
-
-  if (!orderStatus) {
-    // Pokud objednávka nemá stav, počítej jako NOVA nebo koncept
-    return statusFilter.includes('Nová') || statusFilter.includes('Koncept') || statusFilter.includes('NOVA') || statusFilter.includes('DRAFT');
-  }
-
-  // Normalizuj název stavu (bez diakritiky, lowercase, bez extra mezer)
-  const normalizeStatus = (status) => {
-    return String(status)
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Odstraň diakritiku
-      .replace(/\s+/g, ' '); // Normalizuj mezery
+  // 🔧 MAPOVÁNÍ: České názvy → Systémové kódy
+  const czechToSystemCode = {
+    'Nová': 'NOVA',
+    'Ke schválení': 'KE_SCHVALENI',
+    'Schválená': 'SCHVALENA',
+    'Zamítnutá': 'ZAMITNUTA',
+    'Čeká se': 'CEKA_SE',
+    'Rozpracovaná': 'ROZPRACOVANA',
+    'Odeslaná dodavateli': 'ODESLANA',
+    'Potvrzená dodavatelem': 'POTVRZENA',
+    'Ke zveřejnění': 'K_UVEREJNENI_DO_REGISTRU',
+    'Zveřejněno': 'UVEREJNENA',
+    'Čeká na potvrzení': 'CEKA_POTVRZENI',
+    'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Dokončená': 'DOKONCENA',
+    'Vyřízená': 'VYRIZENA',
+    'Zrušená': 'ZRUSENA',
+    'Smazaná': 'SMAZANA',
+    'Archivováno': 'ARCHIVOVANO'
   };
 
-  const normalizedOrderStatus = normalizeStatus(orderStatus);
+  // Získej systémový stav objednávky (bere v úvahu registr_smluv)
+  const systemStatus = getOrderSystemStatus(order);
+  
+  if (!systemStatus) {
+    return statusFilter.includes('Nová') || statusFilter.includes('Koncept');
+  }
 
-  // Porovnej s normalizovanými hodnotami z filtru
+  // Porovnej systémový stav s filtrem
   return statusFilter.some(filterValue => {
-    const normalizedFilterValue = normalizeStatus(filterValue);
-    return normalizedFilterValue === normalizedOrderStatus;
+    const expectedSystemCode = czechToSystemCode[filterValue];
+    // Porovnej buď systémový kód nebo přímou shodu
+    return expectedSystemCode === systemStatus || filterValue === systemStatus;
   });
 };
 
