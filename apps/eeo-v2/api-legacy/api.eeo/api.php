@@ -164,6 +164,9 @@ define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
 define('TBL_USEKY', '25_useky');
 define('TBL_LOKALITY', '25_lokality');
 
+// DATABASE TABLE NAMES - ORGANIZACE
+define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
+
 // DATABASE TABLE NAMES - DOCX ŠABLONY
 define('TBL_SABLONY_DOCX', '25_sablony_docx');
 define('TBL_DOCX_SABLONY', '25_docx_sablony'); // Alternativní název
