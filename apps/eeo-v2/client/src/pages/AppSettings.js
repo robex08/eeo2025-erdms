@@ -353,7 +353,6 @@ const AppSettings = () => {
       // Filtrovat pouze aktivní profily pro AppSettings
       const activeProfiles = profiles.filter(p => p.isActive === true);
       setHierarchyProfiles(activeProfiles);
-      console.log('📋 Loaded hierarchy profiles for AppSettings:', activeProfiles.length, 'active profiles');
     } catch (error) {
       console.error('Chyba při načítání profilů hierarchie:', error);
       // Tichá chyba - profily nejsou kritické pro načtení stránky
@@ -361,8 +360,6 @@ const AppSettings = () => {
   };
   
   const handleSave = async () => {
-    console.log('💾 handleSave called with settings:', settings);
-    
     // Validace: pokud je hierarchie povolena, musí být vybrán profil
     if (settings.hierarchy_enabled && !settings.hierarchy_profile_id) {
       console.warn('⚠️ Validation failed: hierarchy enabled but no profile');
@@ -372,7 +369,6 @@ const AppSettings = () => {
     
     setSaving(true);
     try {
-      console.log('📤 Calling saveGlobalSettings with:', settings);
       const { saveGlobalSettings } = await import('../services/globalSettingsApi');
       await saveGlobalSettings(settings, token, username);
       
@@ -553,7 +549,6 @@ const AppSettings = () => {
                       value={settings.hierarchy_profile_id || ''}
                       onChange={(e) => {
                         const newValue = e.target.value ? parseInt(e.target.value) : null;
-                        console.log('🔄 Profile changed to:', newValue);
                         setSettings(prev => ({
                           ...prev,
                           hierarchy_profile_id: newValue

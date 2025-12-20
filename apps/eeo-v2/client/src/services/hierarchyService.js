@@ -249,7 +249,6 @@ export const getHierarchyConfigCached = createHierarchyHook();
  * 🧹 Vyčistí cache hierarchie
  */
 export const clearHierarchyCache = () => {
-  console.log('🧹 [HierarchyService] Cache cleared');
   // Cache se resetuje automaticky při příštím volání
 };
 

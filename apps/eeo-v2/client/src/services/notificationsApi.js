@@ -767,19 +767,8 @@ export const createNotification = async (notificationData) => {
       ...notificationData
     };
 
-    console.log('════════════════════════════════════════════════════════════════');
-    console.log('🔔 [NotificationsAPI] Odesílám notifikaci');
-    console.log('   Type:', notificationData.type);
-    console.log('   Order ID:', notificationData.order_id);
-    console.log('   Recipients:', notificationData.recipients);
-    console.log('   Action User ID:', notificationData.action_user_id);
-    console.log('   Full Payload:', payload);
-    console.log('════════════════════════════════════════════════════════════════');
-
     const response = await notificationsApi.post('/notifications/create', payload);
     const result = handleApiResponse(response);
-
-    console.log('✅ [NotificationsAPI] Odpověď ze serveru:', result);
 
     return result;
 
@@ -811,20 +800,8 @@ export const triggerNotification = async (eventType, objectId, triggerUserId, pl
       placeholder_data: placeholderData
     };
 
-    console.log('════════════════════════════════════════════════════════════════');
-    console.log('🔔 [NotificationsAPI] TRIGGER organizational hierarchy notification');
-    console.log('   Event Type:', eventType);
-    console.log('   Object ID:', objectId);
-    console.log('   Trigger User ID:', triggerUserId);
-    console.log('   Placeholder Data:', placeholderData);
-    console.log('════════════════════════════════════════════════════════════════');
-
     const response = await notificationsApi.post('/notifications/trigger', payload);
     const result = handleApiResponse(response);
-
-    console.log('✅ [NotificationsAPI] Trigger odpověď:', result);
-    console.log('   Sent:', result.sent);
-    console.log('   Errors:', result.errors);
 
     return result;
 
