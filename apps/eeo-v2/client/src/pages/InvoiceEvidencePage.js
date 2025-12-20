@@ -1872,9 +1872,7 @@ export default function InvoiceEvidencePage() {
 
     try {
       // 🔒 KROK 1: Zamknout objednávku pro editaci (přidávání faktur)
-      console.log('🔒 InvoiceEvidencePage - Zamykám objednávku #', orderIdToLoad);
       await lockOrderV2({ orderId: orderIdToLoad, token, username, force: false });
-      console.log('✅ Objednávka úspěšně zamčena pro přidávání faktur');
 
       // ✅ KROK 2: Načti plná data objednávky s enriched daty (faktury, položky, atd.)
       const orderData = await getOrderV2(orderIdToLoad, token, username, true);
@@ -1958,9 +1956,7 @@ export default function InvoiceEvidencePage() {
     return () => {
       // Cleanup při unmount - odemkni objednávku pokud byla zamčená
       if (formData.order_id && token && username) {
-        console.log('🔓 InvoiceEvidencePage unmount - odemykám objednávku #', formData.order_id);
         unlockOrderV2({ orderId: formData.order_id, token, username })
-          .then(() => console.log('✅ Objednávka odemčena při opuštění InvoiceEvidencePage'))
           .catch(err => console.warn('⚠️ Nepodařilo se odemknout objednávku:', err));
       }
     };
@@ -2393,18 +2389,6 @@ export default function InvoiceEvidencePage() {
 
   // 📎 Handler: změna příloh (controlled component pattern)
   const handleAttachmentsChange = useCallback((newAttachments) => {
-    console.log('🔍 handleAttachmentsChange called:', {
-      count: newAttachments.length,
-      firstAttachment: newAttachments[0] ? {
-        id: newAttachments[0].id,
-        name: newAttachments[0].name,
-        spisovka_dokument_id: newAttachments[0].spisovka_dokument_id,
-        spisovka_file_id: newAttachments[0].spisovka_file_id,
-        allKeys: Object.keys(newAttachments[0])
-      } : null,
-      currentMetadata: pendingSpisovkaMetadataRef.current
-    });
-    
     setAttachments(newAttachments);
     
     // 📋 Při přidání prvního attachmentu zkontrolovat Spisovka metadata a uložit je
@@ -2419,12 +2403,6 @@ export default function InvoiceEvidencePage() {
       if (firstAttachment.spisovka_dokument_id && 
           firstAttachment.spisovka_file_id && 
           !firstAttachment.serverId) {
-        console.log('📋 Uložení Spisovka metadata z prvního attachmentu (lokální soubor):', {
-          dokument_id: firstAttachment.spisovka_dokument_id,
-          file_id: firstAttachment.spisovka_file_id,
-          filename: firstAttachment.name,
-          serverId: firstAttachment.serverId
-        });
         pendingSpisovkaMetadataRef.current = {
           dokument_id: firstAttachment.spisovka_dokument_id,
           spisovka_priloha_id: firstAttachment.spisovka_file_id,
@@ -2433,22 +2411,15 @@ export default function InvoiceEvidencePage() {
         
         // 🎯 Označit v localStorage, že s tímto dokumentem pracuji
         localStorage.setItem('spisovka_active_dokument', firstAttachment.spisovka_dokument_id);
-        console.log('🎯 Aktivní Spisovka dokument uložen do LS:', firstAttachment.spisovka_dokument_id);
       } else if (firstAttachment.serverId) {
-        console.log('ℹ️ Attachment už je uploadovaný (serverId:', firstAttachment.serverId, '), přeskakuji uložení metadata');
+        // Attachment už je uploadovaný, přeskakuji uložení metadata
       } else {
-        console.log('⚠️ První attachment nemá Spisovka metadata:', {
-          has_dokument_id: !!firstAttachment.spisovka_dokument_id,
-          has_file_id: !!firstAttachment.spisovka_file_id
-        });
       }
     }
   }, []);
 
   // 🗑️ Handler: při smazání přílohy - vyčistit pending metadata
   const handleAttachmentRemoved = useCallback((removedAttachment) => {
-    console.log('🗑️ handleAttachmentRemoved called:', removedAttachment);
-    
     // Pokud byla příloha ze Spisovky a ještě nebyla uložena do DB, vyčistit metadata
     if (pendingSpisovkaMetadataRef.current) {
       const metadata = pendingSpisovkaMetadataRef.current;
@@ -2456,11 +2427,9 @@ export default function InvoiceEvidencePage() {
       // Zkontrolovat, jestli mazaný soubor odpovídá pending metadata
       if (removedAttachment?.spisovka_dokument_id === metadata.dokument_id ||
           removedAttachment?.spisovka_file_id === metadata.spisovka_priloha_id) {
-        console.log('🚮 Zrušení Spisovka trackingu pro smazanou přílohu:', metadata);
         pendingSpisovkaMetadataRef.current = null;
         // Vyčistit aktivní dokument z localStorage
         localStorage.removeItem('spisovka_active_dokument');
-        console.log('🧹 Aktivní Spisovka dokument vymazán z LS (příloha smazána)');
       }
     }
   }, []);
@@ -2527,7 +2496,6 @@ export default function InvoiceEvidencePage() {
           resolve(true);
         },
         onCancel: () => {
-          console.log('🚫 Uživatel zrušil přidání duplicitní přílohy');
           setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           resolve(false);
         }
@@ -2537,8 +2505,6 @@ export default function InvoiceEvidencePage() {
 
   // 📎 Handler: po úspěšném uploadu přílohy - volá se z InvoiceAttachmentsCompact
   const handleAttachmentUploaded = useCallback(async (fakturaId, uploadedAttachment) => {
-    console.log('📎 handleAttachmentUploaded called:', { fakturaId, uploadedAttachment });
-    
     // Guard: Pokud není fakturaId, není co trackovat
     if (!fakturaId) {
       console.log('⚠️ handleAttachmentUploaded: Chybí fakturaId, přeskakuji tracking');
@@ -2548,7 +2514,6 @@ export default function InvoiceEvidencePage() {
     // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (po uploadu přílohy)
     try {
       const metadata = pendingSpisovkaMetadataRef.current;
-      console.log('🔍 pendingSpisovkaMetadata (from ref):', metadata);
       
       if (metadata) {
         const result = await markSpisovkaDocumentProcessed({
@@ -2565,11 +2530,6 @@ export default function InvoiceEvidencePage() {
         
         // 🔍 Kontrola výsledku
         if (result.success) {
-          console.log('✅ Spisovka dokument označen jako zpracovaný:', {
-            dokument_id: metadata.dokument_id,
-            spisovka_priloha_id: metadata.spisovka_priloha_id,
-            faktura_id: fakturaId
-          });
           // Vyčistit metadata po úspěšném zápisu
           pendingSpisovkaMetadataRef.current = null;
           // ⚠️ NEvyčišťovat LS zde - uživatel může přidat další přílohy ze stejné faktury
@@ -2591,7 +2551,6 @@ export default function InvoiceEvidencePage() {
       pendingSpisovkaMetadataRef.current = null;
       // ✅ Při chybě vyčistit LS - uživatel musí začít znovu
       localStorage.removeItem('spisovka_active_dokument');
-      console.log('🧹 Aktivní Spisovka dokument vymazán z LS (chyba trackingu)');
     }
   }, [username, token, formData.fa_cislo_vema, handleSpisovkaConflict]);
 
@@ -2651,8 +2610,6 @@ export default function InvoiceEvidencePage() {
 
   // 🆕 Handler: Vytvoření faktury v DB (pro temp faktury před uploadem přílohy)
   const handleCreateInvoiceInDB = useCallback(async (tempFakturaId) => {
-    console.log('🔄 handleCreateInvoiceInDB - vytvářím fakturu v DB před uploadem přílohy', { tempFakturaId });
-
     try {
       const apiParams = {
         token,
@@ -2675,8 +2632,6 @@ export default function InvoiceEvidencePage() {
 
       // Vytvoř fakturu bez přílohy
       const result = await createInvoiceV2(apiParams);
-      
-      console.log('🔍 createInvoiceV2 result:', result);
       
       // API vrací {status: 'ok', data: {invoice_id: 89}}
       const newInvoiceId = result?.data?.invoice_id || result?.invoice_id || result?.id;
@@ -2701,11 +2656,9 @@ export default function InvoiceEvidencePage() {
       // 🔄 Refresh náhledu objednávky/smlouvy - aby se FA zobrazila v seznamu
       if (formData.order_id && orderData) {
         await loadOrderData(formData.order_id);
-        console.log('🔄 Náhled objednávky refreshnut po vytvoření FA');
       }
       if (formData.smlouva_id && smlouvaData) {
         await loadSmlouvaData(formData.smlouva_id);
-        console.log('🔄 Náhled smlouvy refreshnut po vytvoření FA');
       }
 
       return newInvoiceId;
@@ -2784,10 +2737,6 @@ export default function InvoiceEvidencePage() {
             spisovka_dokument_id: ocrData.spisovka_dokument_id,
             spisovka_file_id: ocrData.spisovka_priloha_id
           };
-          console.log('📋 Spisovka metadata přidána do file objektu:', {
-            dokument_id: ocrData.spisovka_dokument_id,
-            file_id: ocrData.spisovka_priloha_id
-          });
         }
         
         return {
@@ -2796,7 +2745,6 @@ export default function InvoiceEvidencePage() {
         };
       });
       
-      console.log('✅ OCR data úspěšně aplikována do formuláře:', ocrData);
     } catch (error) {
       console.error('❌ Chyba při aplikaci OCR dat:', error);
       showToast && showToast(
@@ -2810,13 +2758,6 @@ export default function InvoiceEvidencePage() {
   // ✅ AKTUALIZOVÁNO: Používá organizační hierarchii místo ručního výběru příjemců
   const sendInvoiceNotifications = async (orderId, orderData) => {
     try {
-      console.log('════════════════════════════════════════════════════════════════');
-      console.log('🔔 Odesílání notifikací o věcné kontrole faktury');
-      console.log('   Order ID:', orderId);
-      console.log('   Event Type: ORDER_MATERIAL_CORRECTNESS');
-      console.log('   Trigger User ID:', user_id);
-      console.log('════════════════════════════════════════════════════════════════');
-
       // ✅ NOVÝ SYSTÉM: Použití organizační hierarchie
       // Backend automaticky najde správné příjemce podle hierarchie a notification profiles
       // Podporuje generické příjemce (OBJEDNATEL, GARANT, SCHVALOVATEL_1, SCHVALOVATEL_2, ...)
@@ -2825,13 +2766,6 @@ export default function InvoiceEvidencePage() {
         orderId,
         user_id // ID uživatele, který vytvořil/přiřadil fakturu
       );
-
-      console.log('✅ Notifikace o věcné kontrole odeslány:', {
-        orderId,
-        eventType: 'ORDER_MATERIAL_CORRECTNESS',
-        sent: result.sent,
-        errors: result.errors
-      });
 
       if (result.errors && result.errors.length > 0) {
         console.warn('⚠️ Některé notifikace se nepodařilo odeslat:', result.errors);
@@ -3035,11 +2969,6 @@ export default function InvoiceEvidencePage() {
         return new Date().toISOString().slice(0, 19).replace('T', ' ');
       };
 
-      console.log('🔍 FORM DATA před API:', {
-        fa_typ: formData.fa_typ,
-        fa_typ_type: typeof formData.fa_typ
-      });
-
       const apiParams = {
         token,
         username,
@@ -3060,18 +2989,6 @@ export default function InvoiceEvidencePage() {
         fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
         fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null
       };
-
-      console.log('🔍 API PARAMS:', {
-        fa_typ: apiParams.fa_typ,
-        fa_typ_type: typeof apiParams.fa_typ
-      });
-
-      console.log('🔍 [handleSubmit] Kontrola editingInvoiceId:', {
-        editingInvoiceId,
-        hasEditingId: !!editingInvoiceId,
-        willUpdate: !!editingInvoiceId,
-        willCreate: !editingInvoiceId
-      });
 
       let result;
 
@@ -3299,19 +3216,6 @@ export default function InvoiceEvidencePage() {
           // 🆕 PRIORITA 1: Hledat Spisovka metadata v prvním attachmentu
           const firstAttachment = attachments?.[0];
           
-          console.log('🔍 SPISOVKA TRACKING DEBUG:', {
-            editingInvoiceId,
-            resultId: result?.data?.id,
-            attachmentsCount: attachments?.length,
-            firstAttachment: firstAttachment ? {
-              id: firstAttachment.id,
-              name: firstAttachment.name,
-              spisovka_file_id: firstAttachment.spisovka_file_id,
-              spisovka_dokument_id: firstAttachment.spisovka_dokument_id,
-              allKeys: Object.keys(firstAttachment)
-            } : null
-          });
-          
           if (firstAttachment?.spisovka_file_id && firstAttachment?.spisovka_dokument_id) {
             // ✅ PŘESNÉ PROPOJENÍ podle file_id z attachmentu
             await markSpisovkaDocumentProcessed({
@@ -3325,12 +3229,6 @@ export default function InvoiceEvidencePage() {
               poznamka: `Auto-tracking: Příloha ze Spisovky (file_id: ${firstAttachment.spisovka_file_id})`
             });
             
-            console.log('✅ Spisovka dokument označen jako zpracovaný (přesné propojení):', {
-              dokument_id: firstAttachment.spisovka_dokument_id,
-              spisovka_priloha_id: firstAttachment.spisovka_file_id,
-              faktura_id: result.data.id,
-              fa_cislo_vema: formData.fa_cislo_vema
-            });
           }
           // FALLBACK: Pokud není Spisovka metadata, zkusit párovat podle názvu souboru (starý způsob)
           else if (formData.file && spisovkaLastRecords && spisovkaLastRecords.length > 0) {
@@ -3401,7 +3299,6 @@ export default function InvoiceEvidencePage() {
         localStorage.removeItem('editingInvoiceId');
         localStorage.removeItem('hadOriginalEntity');
         localStorage.removeItem('spisovka_active_dokument');
-        console.log('🧹 localStorage vymazán (odchod bez změn)');
       } catch (err) {
         console.warn('Chyba při mazání localStorage:', err);
       }
@@ -3432,15 +3329,7 @@ export default function InvoiceEvidencePage() {
           const uploadedAttachments = attachments.filter(att => att.serverId);
           const hasRealInvoiceId = editingInvoiceId && Number(editingInvoiceId) > 0;
           
-          console.log('🔍 DEBUG handleBack (nová faktura):', {
-            editingInvoiceId,
-            hasRealInvoiceId,
-            uploadedAttachmentsCount: uploadedAttachments.length,
-            attachments: attachments.map(a => ({ id: a.id, serverId: a.serverId, name: a.name }))
-          });
-          
           if (uploadedAttachments.length > 0 && hasRealInvoiceId) {
-            console.log(`🗑️ Mažu ${uploadedAttachments.length} nahranou/é přílohu/y z nové faktury ID ${editingInvoiceId}...`);
             
             for (const att of uploadedAttachments) {
               try {
@@ -3492,7 +3381,6 @@ export default function InvoiceEvidencePage() {
           localStorage.removeItem('editingInvoiceId'); // ✅ Vymazat i editingInvoiceId
           localStorage.removeItem('hadOriginalEntity'); // ✅ Vymazat i hadOriginalEntity
           localStorage.removeItem('spisovka_active_dokument');
-          console.log('🧹 localStorage vymazán (zrušení faktury)');
         } catch (err) {
           console.warn('Chyba při mazání localStorage:', err);
         }
@@ -4215,7 +4103,6 @@ export default function InvoiceEvidencePage() {
                   field="fa_typ"
                   value={formData.fa_typ}
                   onChange={(e) => {
-                    console.log('🔍 FA_TYP CHANGE:', e.target.value, typeof e.target.value);
                     setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
                   }}
                   options={[
@@ -5238,7 +5125,6 @@ export default function InvoiceEvidencePage() {
                       localStorage.removeItem('editingInvoiceId');
                       localStorage.removeItem('hadOriginalEntity');
                       localStorage.removeItem('spisovka_active_dokument');
-                      console.log('🧹 LocalStorage vyčištěn IHNED po kliknutí na Pokračovat');
                     } catch (err) {
                       console.warn('Chyba při mazání localStorage:', err);
                     }
@@ -5281,11 +5167,9 @@ export default function InvoiceEvidencePage() {
                       // ✅ Refresh objednávky/smlouvy pro aktualizované faktury
                       if (currentOrderId && orderData) {
                         await loadOrderData(currentOrderId);
-                        console.log('🔄 Objednávka refreshnuta po uložení faktury');
                       }
                       if (currentSmlouvaId && smlouvaData) {
                         await loadSmlouvaData(currentSmlouvaId);
-                        console.log('🔄 Smlouva refreshnuta po uložení faktury');
                       }
                     }
 
