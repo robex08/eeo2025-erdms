@@ -194,8 +194,6 @@ const SmlouvaPreview = ({ smlouvaData, loading }) => {
     );
   }
 
-  console.log('🎨 SmlouvaPreview rendering with data:', smlouva);
-
   return (
     <PreviewContainer>
       <PreviewHeader>
