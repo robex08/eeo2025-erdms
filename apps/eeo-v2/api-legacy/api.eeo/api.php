@@ -263,6 +263,14 @@ require_once __DIR__ . '/v2025.03_25/lib/reportsHandlers.php';
 // SPISOVKA ZPRACOVANI - Tracking zpracovaných dokumentů ze Spisovka InBox
 require_once __DIR__ . '/v2025.03_25/lib/spisovkaZpracovaniEndpoints.php';
 
+// === CORS PREFLIGHT HANDLER - Handle OPTIONS requests first ===
+// This allows localhost:3000 development to work properly
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    // CORS headers are already set in .htaccess, just return 200 OK
+    http_response_code(200);
+    exit;
+}
+
 // Routing endpointů
 $request_uri = $_SERVER['REQUEST_URI'];
 $request_method = $_SERVER['REQUEST_METHOD'];
@@ -289,7 +297,7 @@ if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     // Normalize request_uri - remove duplicate slashes
     $normalized_uri = preg_replace('#/+#', '/', $request_uri);
     
-    if (preg_match('~/(api\.eeo/)?(.+?)(?:\?.*)?$~', $normalized_uri, $matches)) {
+    if (preg_match('~/(dev/)?api\.eeo/(.+?)(?:\?.*)?$~', $normalized_uri, $matches)) {
         $endpoint = rtrim($matches[2], '/');
         error_log("Using URI endpoint: $endpoint (normalized from: $request_uri)");
     }
@@ -345,6 +353,32 @@ if ($endpoint === 'test-invoice-debug') {
             'invoice_attachments' => function_exists('get_invoice_attachments_table_name') ? get_invoice_attachments_table_name() : 'FUNCTION_NOT_EXISTS'
         )
     ));
+    exit;
+}
+
+// === VERSION ENDPOINT - GET /api.eeo/version (no auth required) ===
+if ($endpoint === 'version') {
+    if ($request_method === 'GET') {
+        // Get database name from config
+        $db_name = 'unknown';
+        if (getenv('DB_NAME')) {
+            $db_name = getenv('DB_NAME');
+        } elseif (isset($config['database'])) {
+            $db_name = $config['database'];
+        }
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'version' => VERSION,
+            'environment' => ENV_NAME,
+            'database' => $db_name,
+            'last_modified' => date('Y-m-d H:i:s', filemtime(__FILE__)),
+            'timestamp' => filemtime(__FILE__)
+        ));
+    } else {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+    }
     exit;
 }
 

@@ -1454,6 +1454,9 @@ const Layout = ({ children }) => {
 
   // State pro detekci přetečení menu
   const menuLeftRef = useRef(null);
+  
+  // State pro název databáze (načte se z API)
+  const [databaseName, setDatabaseName] = useState(null);
 
   // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
@@ -1614,6 +1617,26 @@ const Layout = ({ children }) => {
       return { notes: true, todo: true, chat: true, kalkulacka: true };
     }
   }, [user_id, toolsVisibilityKey]); // Re-calculate only when user_id or toolsVisibilityKey changes
+
+  // Fetch database name from API version endpoint (only in DEV environment)
+  useEffect(() => {
+    const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+    const isDev = apiUrl.includes('/dev/');
+    
+    if (isDev) {
+      // Only fetch database name in DEV environment
+      fetch(`${apiUrl}version`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'ok' && data.database) {
+            setDatabaseName(data.database);
+          }
+        })
+        .catch(error => {
+          console.warn('Nepodařilo se načíst název databáze:', error);
+        });
+    }
+  }, []); // Run only once on mount
 
   // Listen for settings changes (triggered after saving settings in ProfilePage)
   useEffect(() => {
@@ -3321,13 +3344,27 @@ const Layout = ({ children }) => {
             <span style={{ 
               fontFamily: 'monospace', 
               fontSize: '0.85em',
-              color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#fbbf24' : '#94a3b8',
-              fontWeight: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '600' : '400'
+              color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#ff6b6b' : '#94a3b8',
+              fontWeight: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '700' : '400'
             }}>
               {(() => {
                 const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
                 // Check if URL contains /dev/ anywhere (handles both full URLs and relative paths)
-                return apiUrl.includes('/dev/') ? '/dev/api.eeo' : '/api.eeo';
+                const isDev = apiUrl.includes('/dev/');
+                const apiEndpoint = isDev ? '/dev/api.eeo' : '/api.eeo';
+                
+                // Show database name only in DEV environment
+                if (isDev && databaseName) {
+                  return (
+                    <span style={{ display: 'block' }}>
+                      <span>{apiEndpoint}</span>
+                      <br />
+                      <span style={{ fontSize: '0.9em', opacity: 0.8 }}>{databaseName}</span>
+                    </span>
+                  );
+                }
+                
+                return apiEndpoint;
               })()}
             </span>
           </span>

@@ -20,7 +20,7 @@ import axios from 'axios';
 
 // Axios instance pro Order V2 API
 const apiOrderV2 = axios.create({
-  baseURL: process.env.REACT_APP_API2_BASE_URL,
+  baseURL: process.env.REACT_APP_API2_BASE_URL || '/api.eeo/',
   headers: { 'Content-Type': 'application/json' }
 });
 
