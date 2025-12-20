@@ -25,7 +25,7 @@ require_once __DIR__ . '/handlers.php';
 require_once __DIR__ . '/orderQueries.php';
 
 // === TABLE CONSTANTS ===
-define('TABLE_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
+define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
 
 /**
  * GET /api/spisovka-zpracovani/list
@@ -164,7 +164,7 @@ function handle_spisovka_zpracovani_list($input, $config) {
                 szl.doba_zpracovani_s,
                 szl.dt_vytvoreni,
                 CONCAT(u.jmeno, ' ', u.prijmeni) as uzivatel_jmeno
-            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            FROM " . TBL_SPISOVKA_ZPRACOVANI_LOG . " szl
             LEFT JOIN " . get_users_table_name() . " u ON szl.uzivatel_id = u.id
             WHERE {$where_clause}
             ORDER BY szl.zpracovano_kdy DESC
@@ -186,7 +186,7 @@ function handle_spisovka_zpracovani_list($input, $config) {
         // Počet celkových záznamů pro stránkování
         $count_sql = "
             SELECT COUNT(*) as total
-            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            FROM " . TBL_SPISOVKA_ZPRACOVANI_LOG . " szl
             WHERE {$where_clause}
         ";
         $count_stmt = $pdo->prepare($count_sql);
@@ -328,7 +328,7 @@ function handle_spisovka_zpracovani_stats($input, $config) {
                 AVG(doba_zpracovani_s) as prumerna_doba_s,
                 MIN(zpracovano_kdy) as prvni_zpracovani,
                 MAX(zpracovano_kdy) as posledni_zpracovani
-            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . "
+            FROM " . TBL_SPISOVKA_ZPRACOVANI_LOG . "
             WHERE {$where_clause}
         ";
         
@@ -344,7 +344,7 @@ function handle_spisovka_zpracovani_stats($input, $config) {
             SELECT 
                 szl.uzivatel_id,
                 COUNT(*) as pocet_zpracovanych
-            FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " szl
+            FROM " . TBL_SPISOVKA_ZPRACOVANI_LOG . " szl
             WHERE {$where_clause}
             GROUP BY szl.uzivatel_id
             ORDER BY pocet_zpracovanych DESC
@@ -460,7 +460,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         // Kontrola zda dokument už není zpracovaný (duplikát)
         $check_sql = "
-            SELECT id FROM " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " 
+            SELECT id FROM " . TBL_SPISOVKA_ZPRACOVANI_LOG . " 
             WHERE dokument_id = :dokument_id 
             LIMIT 1
         ";
@@ -480,7 +480,7 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         
         // INSERT záznamu
         $sql = "
-            INSERT INTO " . TABLE_SPISOVKA_ZPRACOVANI_LOG . " (
+            INSERT INTO " . TBL_SPISOVKA_ZPRACOVANI_LOG . " (
                 dokument_id,
                 spisovka_priloha_id,
                 uzivatel_id,

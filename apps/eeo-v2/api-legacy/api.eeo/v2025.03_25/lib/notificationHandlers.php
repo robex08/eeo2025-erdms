@@ -1770,7 +1770,7 @@ function getEntityParticipants($db, $entityType, $entityId) {
                 // Pokladna: autor
                 $stmt = $db->prepare("
                     SELECT created_by_user_id as user_id 
-                    FROM " . TABLE_CASHBOOK . " 
+                    FROM " . TBL_POKLADNI_KNIHA . " 
                     WHERE id = :entity_id
                 ");
                 $stmt->execute([':entity_id' => $entityId]);
@@ -2109,7 +2109,7 @@ function getEntityAuthor($db, $entityType, $entityId) {
                 $stmt = $db->prepare("SELECT created_by_user_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             case 'cashbook':
-                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_CASHBOOK . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TBL_POKLADNI_KNIHA . " WHERE id = ?");
                 break;
             default:
                 return null;

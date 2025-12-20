@@ -87,7 +87,7 @@ function handle_notifications_templates_list($input, $config, $queries) {
             ? "WHERE " . implode(' AND ', $where_conditions) 
             : "";
         
-        $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " 
+        $sql = "SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " 
                 {$where_sql}
                 ORDER BY typ ASC";
         
@@ -155,7 +155,7 @@ function handle_notifications_templates_detail($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $stmt = $db->prepare("SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE id = ?");
+        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         $template = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -228,7 +228,7 @@ function handle_notifications_templates_create($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola, zda typ již neexistuje
-        $stmt = $db->prepare("SELECT id FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE typ = ?");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = ?");
         $stmt->execute([$input['typ']]);
         if ($stmt->fetch()) {
             http_response_code(400);
@@ -239,7 +239,7 @@ function handle_notifications_templates_create($input, $config, $queries) {
         // Příprava dat
         $current_time = TimezoneHelper::getCzechDateTime();
         
-        $sql = "INSERT INTO " . TABLE_NOTIFIKACE_SABLONY . " (
+        $sql = "INSERT INTO " . TBL_NOTIFIKACE_SABLONY . " (
                     typ, nazev, email_predmet, email_telo, app_nadpis, app_message,
                     odeslat_email_default, priorita_vychozi, aktivni, dt_created
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -310,7 +310,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola existence
-        $stmt = $db->prepare("SELECT id FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE id = ?");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         if (!$stmt->fetch()) {
             http_response_code(404);
@@ -353,7 +353,7 @@ function handle_notifications_templates_update($input, $config, $queries) {
         // Přidat template_id na konec
         $params[] = $template_id;
         
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_SABLONY . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
                 SET " . implode(', ', $update_fields) . "
                 WHERE id = ?";
         
@@ -409,7 +409,7 @@ function handle_notifications_templates_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Kontrola existence
-        $stmt = $db->prepare("SELECT typ FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE id = ?");
+        $stmt = $db->prepare("SELECT typ FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $stmt->execute([$template_id]);
         $template = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -420,7 +420,7 @@ function handle_notifications_templates_delete($input, $config, $queries) {
         }
         
         // Smazání
-        $stmt = $db->prepare("DELETE FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE id = ?");
+        $stmt = $db->prepare("DELETE FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ?");
         $result = $stmt->execute([$template_id]);
         
         if (!$result) {
@@ -474,7 +474,7 @@ function handle_notifications_templates_deactivate($input, $config, $queries) {
         $db = get_db($config);
         
         $current_time = TimezoneHelper::getCzechDateTime();
-        $stmt = $db->prepare("UPDATE " . TABLE_NOTIFIKACE_SABLONY . " 
+        $stmt = $db->prepare("UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
                              SET aktivni = 0, dt_updated = ? 
                              WHERE id = ?");
         $result = $stmt->execute([$current_time, $template_id]);
@@ -529,7 +529,7 @@ function handle_notifications_templates_activate($input, $config, $queries) {
         $db = get_db($config);
         
         $current_time = TimezoneHelper::getCzechDateTime();
-        $stmt = $db->prepare("UPDATE " . TABLE_NOTIFIKACE_SABLONY . " 
+        $stmt = $db->prepare("UPDATE " . TBL_NOTIFIKACE_SABLONY . " 
                              SET aktivni = 1, dt_updated = ? 
                              WHERE id = ?");
         $result = $stmt->execute([$current_time, $template_id]);

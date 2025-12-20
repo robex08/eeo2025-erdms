@@ -207,6 +207,9 @@ define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
 define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
 
+// DATABASE TABLE NAMES - SPISOVKA
+define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
+
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
 $config = $_config['mysql'];
