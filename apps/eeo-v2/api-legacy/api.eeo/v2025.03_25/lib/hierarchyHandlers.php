@@ -823,9 +823,9 @@ function handle_hierarchy_structure($data, $pdo) {
             LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
             WHERE u.aktivni = 1
             AND u.id IN (
-                SELECT DISTINCT user_id_1 FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_1 IS NOT NULL
+                SELECT DISTINCT user_id_1 FROM ".TBL_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_1 IS NOT NULL
                 UNION
-                SELECT DISTINCT user_id_2 FROM ".TABLE_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_2 IS NOT NULL
+                SELECT DISTINCT user_id_2 FROM ".TBL_HIERARCHIE_VZTAHY." WHERE profil_id = ? AND aktivni = 1 AND user_id_2 IS NOT NULL
             )
         ";
         

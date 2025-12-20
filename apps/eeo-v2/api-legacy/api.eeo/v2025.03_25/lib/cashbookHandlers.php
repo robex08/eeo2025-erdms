@@ -454,7 +454,7 @@ function handle_cashbook_close_post($config, $input) {
                 // Získat všechna LP použitá v položkách této knihy
                 $sql_lp = "
                     SELECT DISTINCT lp_kod 
-                    FROM " . TABLE_POKLADNI_POLOZKY . " 
+                    FROM " . TBL_POKLADNI_POLOZKY . " 
                     WHERE pokladni_kniha_id = :book_id
                     AND lp_kod IS NOT NULL
                     AND lp_kod != ''

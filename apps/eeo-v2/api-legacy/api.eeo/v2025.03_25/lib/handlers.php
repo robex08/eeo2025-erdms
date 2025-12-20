@@ -237,11 +237,11 @@ function handle_users_approvers($input, $config, $queries) {
             SELECT DISTINCT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za,
                    CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as cele_jmeno,
                    u.usek_id, us.usek_zkr
-            FROM ".TABLE_UZIVATELE." u
-            LEFT JOIN ".TABLE_USEKY." us ON u.usek_id = us.id
-            JOIN ".TABLE_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
-            JOIN ".TABLE_ROLE_PRAVA." rp ON ur.role_id = rp.role_id
-            JOIN ".TABLE_PRAVA." p ON rp.pravo_id = p.id
+            FROM ".TBL_UZIVATELE." u
+            LEFT JOIN ".TBL_USEKY." us ON u.usek_id = us.id
+            JOIN ".TBL_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
+            JOIN ".TBL_ROLE_PRAVA." rp ON ur.role_id = rp.role_id
+            JOIN ".TBL_PRAVA." p ON rp.pravo_id = p.id
             WHERE p.kod_prava = 'ORDER_APPROVE' AND u.aktivni = 1
             ORDER BY u.prijmeni, u.jmeno
         ");
@@ -369,7 +369,7 @@ function handle_login($input, $config, $queries) {
                 try {
                     $newHash = password_hash($password, PASSWORD_DEFAULT);
                     if ($newHash) {
-                        $stmtRehash = $db->prepare("UPDATE " . TABLE_UZIVATELE . " SET password_hash = :hash WHERE id = :id");
+                        $stmtRehash = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash WHERE id = :id");
                         $stmtRehash->bindParam(':hash', $newHash);
                         $stmtRehash->bindParam(':id', $user['id'], PDO::PARAM_INT);
                         $stmtRehash->execute();
@@ -697,7 +697,7 @@ function handle_user_update_activity($input, $config, $queries) {
         $db = get_db($config);
         
         // Nejdřív zkontroluj, že uživatel existuje
-        $checkStmt = $db->prepare("SELECT id, username, aktivni FROM " . TABLE_UZIVATELE . " WHERE id = :id");
+        $checkStmt = $db->prepare("SELECT id, username, aktivni FROM " . TBL_UZIVATELE . " WHERE id = :id");
         $checkStmt->bindParam(':id', $user_id, PDO::PARAM_INT);
         $checkStmt->execute();
         $userExists = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -713,7 +713,7 @@ function handle_user_update_activity($input, $config, $queries) {
         }
         
         // Proveď UPDATE aktivity
-        $updateSQL = "UPDATE " . TABLE_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
+        $updateSQL = "UPDATE " . TBL_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
         
         $stmt = $db->prepare($updateSQL);
         $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
@@ -816,13 +816,13 @@ function handle_orders_create($input, $config, $queries) {
         // Pokud stav odpovídá schvalovacím stavům (SCHVALENA, ZAMITNUTA, CEKA_SE), nastavíme schválení
         if (isset($params[':stav_id']) && (int)$params[':stav_id'] > 0) {
             try {
-                $stmtSt = $db->prepare("SELECT kod_stavu, typ_objektu FROM ".TABLE_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
+                $stmtSt = $db->prepare("SELECT kod_stavu, typ_objektu FROM ".TBL_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
                 $stmtSt->execute([':id' => (int)$params[':stav_id']]);
                 $stavRow = $stmtSt->fetch();
                 if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
                     $kod = strtoupper($stavRow['kod_stavu']);
                     if (in_array($kod, array('SCHVALENA','ZAMITNUTA','CEKA_SE'))) {
-                        $stmtUpdSchv = $db->prepare("UPDATE ".TABLE_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u WHERE id = :oid LIMIT 1");
+                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u WHERE id = :oid LIMIT 1");
                         $stmtUpdSchv->execute([':u' => $params[':objednatel_id'], ':oid' => $order_id]);
                     }
                 }
@@ -1115,7 +1115,7 @@ function handle_notifications_send_dual($input, $config, $queries) {
     // Načtení šablony z DB (typ = order_status_ke_schvaleni)
     try {
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
-        $stmt = $db->prepare("SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE typ = 'order_status_ke_schvaleni' AND aktivni = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = 'order_status_ke_schvaleni' AND aktivni = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);
@@ -1454,7 +1454,7 @@ function handle_user_change_password($input, $config, $queries) {
     try {
         $db = get_db($config);
         // Fetch current stored hash
-        $stmt = $db->prepare("SELECT id, username, password_hash FROM " . TABLE_UZIVATELE . " WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id, username, password_hash FROM " . TBL_UZIVATELE . " WHERE id = :id LIMIT 1");
         $stmt->bindParam(':id', $token_data['id'], PDO::PARAM_INT);
         $stmt->execute();
         $user = $stmt->fetch();
@@ -1501,7 +1501,7 @@ function handle_user_change_password($input, $config, $queries) {
             return;
         }
 
-        $stmtU = $db->prepare("UPDATE " . TABLE_UZIVATELE . " SET password_hash = :hash, dt_aktualizace = NOW() WHERE id = :id");
+        $stmtU = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash, dt_aktualizace = NOW() WHERE id = :id");
         $stmtU->bindParam(':hash', $newHash);
         $stmtU->bindParam(':id', $user['id'], PDO::PARAM_INT);
         $stmtU->execute();
@@ -1542,7 +1542,7 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         // DB spojení již existuje z verify_token() výše
 
         // Build query to return full LP records with all columns
-        // Accept filtering by usek_id (int) or usek_zkr (string) which joins to TABLE_USEKY
+        // Accept filtering by usek_id (int) or usek_zkr (string) which joins to TBL_USEKY
         $params = array();
         $usekId = isset($input['usek_id']) ? intval($input['usek_id']) : null;
         $usekZkr = isset($input['usek_zkr']) ? trim($input['usek_zkr']) : null;
@@ -1550,8 +1550,8 @@ function handle_limitovane_prisliby($input, $config, $queries) {
 
         // Unified query builder - always include usek info via LEFT JOIN
         $sql = "SELECT lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, lp.cislo_uctu, lp.nazev_uctu, lp.vyse_financniho_kryti, lp.platne_od, lp.platne_do, u.usek_zkr, u.usek_nazev 
-                FROM " . TABLE_LIMITOVANE_PRISLIBY . " lp 
-                LEFT JOIN " . TABLE_USEKY . " u ON lp.usek_id = u.id 
+                FROM " . TBL_LP_MASTER . " lp 
+                LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id 
                 WHERE lp.cislo_lp IS NOT NULL";
 
         // Add filters dynamically
@@ -1848,7 +1848,7 @@ function handle_dodavatele_search($input, $config, $queries) {
             $params[':ico'] = $ico;
         }
         
-        $sql = "SELECT * FROM " . TABLE_DODAVATELE . " WHERE " . implode(' OR ', $whereConditions) . " ORDER BY nazev";
+        $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE " . implode(' OR ', $whereConditions) . " ORDER BY nazev";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
@@ -1957,8 +1957,8 @@ function handle_dodavatele_contacts($input, $config, $queries) {
     try {
         // Načti informace o uživateli včetně úseku
         $stmtUser = $db->prepare("SELECT u.id, u.username, us.usek_zkr 
-                                  FROM " . TABLE_UZIVATELE . " u 
-                                  LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id 
+                                  FROM " . TBL_UZIVATELE . " u 
+                                  LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id 
                                   WHERE u.id = :user_id");
         $stmtUser->bindValue(':user_id', $user_id, PDO::PARAM_INT);
         $stmtUser->execute();
@@ -1983,11 +1983,11 @@ function handle_dodavatele_contacts($input, $config, $queries) {
         // Sestavení SQL - buď všechny kontakty nebo filtrované
         if ($load_all) {
             // Načti všechny kontakty bez filtrování
-            $sql = "SELECT * FROM " . TABLE_DODAVATELE . " ORDER BY nazev";
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev";
             $params = array();
         } else {
             // Filtrované načítání (původní logika)
-            $sql = "SELECT * FROM " . TABLE_DODAVATELE . " WHERE 
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE 
                 (user_id = 0) OR 
                 (user_id = :user_id)";
             
@@ -2136,7 +2136,7 @@ function handle_dodavatele_contacts_admin($input, $config, $queries) {
     
     try {
         // Načti všechny kontakty bez filtrování
-        $sql = "SELECT * FROM " . TABLE_DODAVATELE . " ORDER BY nazev";
+        $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev";
         
         if (API_DEBUG_MODE) {
             error_log("Admin dodavatele contacts SQL: " . $sql);
@@ -2343,7 +2343,7 @@ function handle_dodavatele_update($input, $config, $queries) {
         // Vždy aktualizuj dt_aktualizace
         $updateFields[] = "dt_aktualizace = NOW()";
         
-        $sql = "UPDATE " . TABLE_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE id = :id";
         $params[':id'] = $dodavatel_id;
         
         $stmt = $db->prepare($sql);
@@ -2483,7 +2483,7 @@ function handle_dodavatele_update_by_ico($input, $config, $queries) {
         $updateFields[] = "dt_aktualizace = NOW()";
         
         // Sestav finální SQL
-        $sql = "UPDATE " . TABLE_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE ico = :ico";
+        $sql = "UPDATE " . TBL_DODAVATELE . " SET " . implode(', ', $updateFields) . " WHERE ico = :ico";
         
         if (API_DEBUG_MODE) {
             error_log("Partial update SQL: " . $sql);
@@ -2799,13 +2799,13 @@ function handle_templates_select($input, $config, $queries) {
         // Build SQL: always include kategorie filter (default 'OBJEDNAVKA'), optionally also typ
         if ($typ !== null && $typ !== '') {
             // filter by both kategorie and typ
-            $sql = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie AND typ = :typ ORDER BY id";
+            $sql = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie AND typ = :typ ORDER BY id";
             $params[':user_id'] = $userId;
             $params[':kategorie'] = $kategorie;
             $params[':typ'] = $typ;
         } else {
             // filter by kategorie only
-            $sql = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie ORDER BY id";
+            $sql = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0 OR user_id IS NULL) AND kategorie = :kategorie ORDER BY id";
             $params[':user_id'] = $userId;
             $params[':kategorie'] = $kategorie;
         }
@@ -2980,7 +2980,7 @@ function handle_templates_update($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        $sql = "UPDATE " . TABLE_SABLONY_OBJEDNAVEK . " SET " . $set_sql . " WHERE id = :id";
+        $sql = "UPDATE " . TBL_SABLONY_OBJEDNAVEK . " SET " . $set_sql . " WHERE id = :id";
         $stmt = $db->prepare($sql);
         // bind dynamic params
         foreach ($params as $pname => $pval) {
@@ -3150,11 +3150,11 @@ function handle_users_list($input, $config, $queries) {
                     
                     CONCAT_WS(' ', MIN(u_nadrizeny.titul_pred), MIN(u_nadrizeny.jmeno), MIN(u_nadrizeny.prijmeni), MIN(u_nadrizeny.titul_za)) as nadrizeny_cely_jmeno
 
-                FROM " . TABLE_UZIVATELE . " u
-                    LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
-                    LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
-                    LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
-                    LEFT JOIN " . TABLE_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
+                FROM " . TBL_UZIVATELE . " u
+                    LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
+                    LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+                    LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+                    LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
                 GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
@@ -3622,7 +3622,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($userIds)) {
             $userIds = array_values(array_unique($userIds));
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-            $sqlUsers = "SELECT id, titul_pred, jmeno, prijmeni, titul_za, email, telefon FROM " . TABLE_UZIVATELE . " WHERE id IN (" . $placeholders . ")";
+            $sqlUsers = "SELECT id, titul_pred, jmeno, prijmeni, titul_za, email, telefon FROM " . TBL_UZIVATELE . " WHERE id IN (" . $placeholders . ")";
             $stmtUsers = $db->prepare($sqlUsers);
             $stmtUsers->execute($userIds);
             $fetchedUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
@@ -3636,7 +3636,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($dodavIds)) {
             $dodavIds = array_values(array_unique($dodavIds));
             $ph = implode(',', array_fill(0, count($dodavIds), '?'));
-            $sqlDod = "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM " . TABLE_DODAVATELE . " WHERE id IN (" . $ph . ")";
+            $sqlDod = "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM " . TBL_DODAVATELE . " WHERE id IN (" . $ph . ")";
             $stmtDod = $db->prepare($sqlDod);
             $stmtDod->execute($dodavIds);
             foreach ($stmtDod->fetchAll(PDO::FETCH_ASSOC) as $d) {
@@ -3649,7 +3649,7 @@ function handle_orders_list($input, $config, $queries) {
         if (!empty($lokalityIds)) {
             $lokalityIds = array_values(array_unique($lokalityIds));
             $ph = implode(',', array_fill(0, count($lokalityIds), '?'));
-            $sqlLok = "SELECT id, nazev, typ, parent_id FROM " . TABLE_LOKALITY . " WHERE id IN (" . $ph . ")";
+            $sqlLok = "SELECT id, nazev, typ, parent_id FROM " . TBL_LOKALITY . " WHERE id IN (" . $ph . ")";
             $stmtLok = $db->prepare($sqlLok);
             $stmtLok->execute($lokalityIds);
             foreach ($stmtLok->fetchAll(PDO::FETCH_ASSOC) as $l) {
@@ -3663,7 +3663,7 @@ function handle_orders_list($input, $config, $queries) {
             $stavIds = array_values(array_unique($stavIds));
             $ph = implode(',', array_fill(0, count($stavIds), '?'));
             // fetch new schema columns for stavy
-            $sqlStav = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM " . TABLE_CISELNIK_STAVY . " WHERE id IN (" . $ph . ")";
+            $sqlStav = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM " . TBL_CISELNIK_STAVY . " WHERE id IN (" . $ph . ")";
             $stmtStav = $db->prepare($sqlStav);
             $stmtStav->execute($stavIds);
             foreach ($stmtStav->fetchAll(PDO::FETCH_ASSOC) as $s) {
@@ -3824,7 +3824,7 @@ function handle_order_detail($input, $config, $queries) {
 
         // Obohacení schvalil_uzivatel_id o jméno uživatele
         if (!empty($row['schvalil_uzivatel_id'])) {
-            $stmt_user = $db->prepare("SELECT CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM " . TABLE_UZIVATELE . " WHERE id = :user_id AND aktivni = 1");
+            $stmt_user = $db->prepare("SELECT CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM " . TBL_UZIVATELE . " WHERE id = :user_id AND aktivni = 1");
             $stmt_user->bindValue(':user_id', $row['schvalil_uzivatel_id'], PDO::PARAM_INT);
             $stmt_user->execute();
             $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
@@ -4324,7 +4324,7 @@ function handle_update_order($input, $config, $queries) {
     if ($incomingStavId) {
         try {
             $dbLookup = get_db($config);
-            $stmtSt = $dbLookup->prepare("SELECT kod_stavu, typ_objektu FROM ".TABLE_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
+            $stmtSt = $dbLookup->prepare("SELECT kod_stavu, typ_objektu FROM ".TBL_CISELNIK_STAVY." WHERE id = :id LIMIT 1");
             $stmtSt->execute([':id' => $incomingStavId]);
             $stavRow = $stmtSt->fetch();
             if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
@@ -4347,7 +4347,7 @@ function handle_update_order($input, $config, $queries) {
     $params[':updated_by_uzivatel_id'] = $token_data['id'];
     $setParts[] = 'dt_aktualizace = NOW()';
 
-    $sql = 'UPDATE '.TABLE_OBJEDNAVKY.' SET '.implode(', ', $setParts).' WHERE id = :id LIMIT 1';
+    $sql = 'UPDATE '.TBL_OBJEDNAVKY.' SET '.implode(', ', $setParts).' WHERE id = :id LIMIT 1';
 
     $debug = (!empty($input['debugSql'])) || (!empty($payload['debugSql']));
     $debugData = [];
@@ -4357,7 +4357,7 @@ function handle_update_order($input, $config, $queries) {
         $db->beginTransaction();
 
         // Ověření existence objednávky
-        $stmtExist = $db->prepare('SELECT id, cislo_objednavky FROM '.TABLE_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
+        $stmtExist = $db->prepare('SELECT id, cislo_objednavky FROM '.TBL_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
         $stmtExist->execute([':id' => $orderId]);
         $existingRow = $stmtExist->fetch();
         if (!$existingRow) {
@@ -4381,11 +4381,11 @@ function handle_update_order($input, $config, $queries) {
         // Položky: úplná náhrada, pokud přišly
         $itemsChanged = false;
         if (isset($payload['polozky']) && is_array($payload['polozky'])) {
-            $stmtDel = $db->prepare('DELETE FROM '.TABLE_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = :oid');
+            $stmtDel = $db->prepare('DELETE FROM '.TBL_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = :oid');
             $stmtDel->execute([':oid' => $orderId]);
             $itemsChanged = true; // i kdyby žádné nové nepřišly, smazali jsme staré
             if ($debug) {
-                $debugData['itemsDelete'] = 'DELETE FROM '.TABLE_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = '.(int)$orderId;
+                $debugData['itemsDelete'] = 'DELETE FROM '.TBL_OBJEDNAVKY_POLOZKY.' WHERE objednavka_id = '.(int)$orderId;
             }
             $insertSql = $queries['objednavky_polozky_insert'];
             $stmtItem = $db->prepare($insertSql);
@@ -4419,7 +4419,7 @@ function handle_update_order($input, $config, $queries) {
         if ($orderNumber === '') {
             // fallback reread (edge)
             try {
-                $stmtNum = $db->prepare('SELECT cislo_objednavky FROM '.TABLE_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
+                $stmtNum = $db->prepare('SELECT cislo_objednavky FROM '.TBL_OBJEDNAVKY.' WHERE id = :id LIMIT 1');
                 $stmtNum->execute([':id' => $orderId]);
                 $tmp = $stmtNum->fetch();
                 if ($tmp && !empty($tmp['cislo_objednavky'])) {
@@ -4565,7 +4565,7 @@ function handle_upload_attachment($config, $queries) {
         }
         
         // Kontrola existence objednávky
-        $stmt = $db->prepare("SELECT id FROM ".TABLE_OBJEDNAVKY." WHERE id = :id LIMIT 1");
+        $stmt = $db->prepare("SELECT id FROM ".TBL_OBJEDNAVKY." WHERE id = :id LIMIT 1");
         $stmt->execute(array(':id' => $objednavka_id));
         if (!$stmt->fetch()) {
             api_error(404, 'Objednávka nenalezena');
@@ -4735,7 +4735,7 @@ function handle_get_attachments($config, $queries) {
         if (!empty($userIds)) {
             $userIds = array_unique($userIds);
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-            $stmtUsers = $db->prepare("SELECT id, jmeno, prijmeni, email FROM ".TABLE_UZIVATELE." WHERE id IN ($placeholders)");
+            $stmtUsers = $db->prepare("SELECT id, jmeno, prijmeni, email FROM ".TBL_UZIVATELE." WHERE id IN ($placeholders)");
             $stmtUsers->execute($userIds);
             $users = $stmtUsers->fetchAll();
             foreach ($users as $u) {
@@ -4821,7 +4821,7 @@ function handle_verify_attachments($config, $queries) {
         }
         
         // Ověření existence objednávky
-        $stmtOrder = $db->prepare("SELECT id FROM ".TABLE_OBJEDNAVKY." WHERE id = :id LIMIT 1");
+        $stmtOrder = $db->prepare("SELECT id FROM ".TBL_OBJEDNAVKY." WHERE id = :id LIMIT 1");
         $stmtOrder->execute(array(':id' => $objednavka_id));
         if (!$stmtOrder->fetch()) {
             api_error(404, 'Objednávka s ID ' . $objednavka_id . ' nenalezena');
@@ -5013,7 +5013,7 @@ function handle_delete_attachment($config, $queries) {
             $stmt->execute(array(':guid' => $guid));
             $attachment = $stmt->fetch();
         } elseif ($id > 0) {
-            $stmt = $db->prepare("SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE id = :id LIMIT 1");
+            $stmt = $db->prepare("SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE id = :id LIMIT 1");
             $stmt->execute(array(':id' => $id));
             $attachment = $stmt->fetch();
         }
@@ -5313,7 +5313,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         // 2. Načteme všechny číselníky pro překlad ID na názvy
         
         // Lokality
-        $stmt = $db->prepare("SELECT id, nazev, typ FROM ".TABLE_LOKALITY);
+        $stmt = $db->prepare("SELECT id, nazev, typ FROM ".TBL_LOKALITY);
         $stmt->execute();
         $lokality = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $lokalityMap = array();
@@ -5322,7 +5322,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Uživatelé
-        $stmt = $db->prepare("SELECT id, CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM ".TABLE_UZIVATELE." WHERE aktivni = 1");
+        $stmt = $db->prepare("SELECT id, CONCAT_WS(' ', titul_pred, jmeno, prijmeni, titul_za) as cely_jmeno FROM ".TBL_UZIVATELE." WHERE aktivni = 1");
         $stmt->execute();
         $uzivatele = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $uzivateleMap = array();
@@ -5331,7 +5331,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Dodavatelé
-        $stmt = $db->prepare("SELECT id, nazev FROM ".TABLE_DODAVATELE);
+        $stmt = $db->prepare("SELECT id, nazev FROM ".TBL_DODAVATELE);
         $stmt->execute();
         $dodavatele = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $dodavateleMap = array();
@@ -5340,7 +5340,7 @@ function handle_orders_list_enriched($input, $config, $queries) {
         }
         
         // Stavy
-        $stmt = $db->prepare("SELECT id, nazev_stavu, kod_stavu FROM ".TABLE_CISELNIK_STAVY." WHERE typ_objektu = 'OBJEDNAVKA'");
+        $stmt = $db->prepare("SELECT id, nazev_stavu, kod_stavu FROM ".TBL_CISELNIK_STAVY." WHERE typ_objektu = 'OBJEDNAVKA'");
         $stmt->execute();
         $stavy = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $stavyMap = array();
@@ -5839,7 +5839,7 @@ function handle_organizace_create($input, $config, $queries) {
 
         // Kontrola jedinečnosti IČO
         if (!empty($data['ico'])) {
-            $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE ico = :ico");
+            $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE ico = :ico");
             $check_stmt->bindParam(':ico', $data['ico']);
             $check_stmt->execute();
             $result = $check_stmt->fetch();
@@ -5917,7 +5917,7 @@ function handle_organizace_update($input, $config, $queries) {
         $data = $validation_result['data'];
 
         // Kontrola existence organizace
-        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE id = :id");
+        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id");
         $check_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
         $check_stmt->execute();
         $result = $check_stmt->fetch();
@@ -5930,7 +5930,7 @@ function handle_organizace_update($input, $config, $queries) {
 
         // Kontrola jedinečnosti IČO (kromě současné organizace)
         if (!empty($data['ico'])) {
-            $check_ico_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE ico = :ico AND id != :id");
+            $check_ico_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE ico = :ico AND id != :id");
             $check_ico_stmt->bindParam(':ico', $data['ico']);
             $check_ico_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
             $check_ico_stmt->execute();
@@ -5994,7 +5994,7 @@ function handle_organizace_update($input, $config, $queries) {
             return;
         }
 
-        $sql = "UPDATE ".TABLE_ORGANIZACE." SET " . implode(', ', $update_fields) . " WHERE id = :id";
+        $sql = "UPDATE ".TBL_ORGANIZACE_VIZITKA." SET " . implode(', ', $update_fields) . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
@@ -6039,7 +6039,7 @@ function handle_organizace_delete($input, $config, $queries) {
         $db = get_db($config);
 
         // Kontrola existence organizace
-        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TABLE_ORGANIZACE." WHERE id = :id");
+        $check_stmt = $db->prepare("SELECT COUNT(*) as count FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id");
         $check_stmt->bindParam(':id', $organizace_id, PDO::PARAM_INT);
         $check_stmt->execute();
         $result = $check_stmt->fetch();
@@ -6304,8 +6304,8 @@ function handle_role_detail($input, $config, $queries) {
         // Načtení práv role
         $stmt = $db->prepare("
             SELECT p.id, p.kod_prava, p.popis 
-            FROM " . TABLE_PRAVA . " p
-            INNER JOIN " . TABLE_ROLE_PRAVA . " rp ON p.id = rp.pravo_id
+            FROM " . TBL_PRAVA . " p
+            INNER JOIN " . TBL_ROLE_PRAVA . " rp ON p.id = rp.pravo_id
             WHERE rp.role_id = :role_id
             ORDER BY p.kod_prava
         ");
@@ -6429,7 +6429,7 @@ function handle_lokality_create($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO " . TABLE_LOKALITY . " 
+        $sql = "INSERT INTO " . TBL_LOKALITY . " 
                 (nazev, typ, parent_id) 
                 VALUES (:nazev, :typ, :parent_id)";
         
@@ -6441,7 +6441,7 @@ function handle_lokality_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_LOKALITY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6492,7 +6492,7 @@ function handle_lokality_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE " . TABLE_LOKALITY . " 
+        $sql = "UPDATE " . TBL_LOKALITY . " 
                 SET nazev = :nazev, 
                     typ = :typ, 
                     parent_id = :parent_id
@@ -6505,7 +6505,7 @@ function handle_lokality_update($input, $config, $queries) {
         $stmt->bindParam(':parent_id', $parent_id, PDO::PARAM_INT);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_LOKALITY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6548,7 +6548,7 @@ function handle_lokality_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_LOKALITY . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_LOKALITY . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6597,7 +6597,7 @@ function handle_pozice_create($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "INSERT INTO " . TABLE_POZICE . " 
+        $sql = "INSERT INTO " . TBL_POZICE . " 
                 (nazev_pozice, parent_id, usek_id) 
                 VALUES (:nazev_pozice, :parent_id, :usek_id)";
         
@@ -6609,7 +6609,7 @@ function handle_pozice_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_POZICE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6660,7 +6660,7 @@ function handle_pozice_update($input, $config, $queries) {
     try {
         $db = get_db($config);
         
-        $sql = "UPDATE " . TABLE_POZICE . " 
+        $sql = "UPDATE " . TBL_POZICE . " 
                 SET nazev_pozice = :nazev_pozice, 
                     parent_id = :parent_id,
                     usek_id = :usek_id
@@ -6673,7 +6673,7 @@ function handle_pozice_update($input, $config, $queries) {
         $stmt->bindParam(':usek_id', $usek_id, PDO::PARAM_INT);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_POZICE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6716,7 +6716,7 @@ function handle_pozice_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_POZICE . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_POZICE . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6766,7 +6766,7 @@ function handle_useky_create($input, $config, $queries) {
         
         // Kontrola duplicity zkratky
         if (!empty($zkr)) {
-            $sql_check = "SELECT id FROM " . TABLE_USEKY . " WHERE zkr = :zkr LIMIT 1";
+            $sql_check = "SELECT id FROM " . TBL_USEKY . " WHERE zkr = :zkr LIMIT 1";
             $stmt_check = $db->prepare($sql_check);
             $stmt_check->bindParam(':zkr', $zkr);
             $stmt_check->execute();
@@ -6778,7 +6778,7 @@ function handle_useky_create($input, $config, $queries) {
             }
         }
         
-        $sql = "INSERT INTO " . TABLE_USEKY . " (nazev, zkr) VALUES (:nazev, :zkr)";
+        $sql = "INSERT INTO " . TBL_USEKY . " (nazev, zkr) VALUES (:nazev, :zkr)";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':nazev', $nazev);
@@ -6787,7 +6787,7 @@ function handle_useky_create($input, $config, $queries) {
         
         $new_id = $db->lastInsertId();
         
-        $sql_select = "SELECT * FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_USEKY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6839,7 +6839,7 @@ function handle_useky_update($input, $config, $queries) {
         
         // Kontrola duplicity zkratky (kromě aktuálního záznamu)
         if (!empty($zkr)) {
-            $sql_check = "SELECT id FROM " . TABLE_USEKY . " WHERE zkr = :zkr AND id != :id LIMIT 1";
+            $sql_check = "SELECT id FROM " . TBL_USEKY . " WHERE zkr = :zkr AND id != :id LIMIT 1";
             $stmt_check = $db->prepare($sql_check);
             $stmt_check->bindParam(':zkr', $zkr);
             $stmt_check->bindParam(':id', $id, PDO::PARAM_INT);
@@ -6852,7 +6852,7 @@ function handle_useky_update($input, $config, $queries) {
             }
         }
         
-        $sql = "UPDATE " . TABLE_USEKY . " 
+        $sql = "UPDATE " . TBL_USEKY . " 
                 SET nazev = :nazev, 
                     zkr = :zkr
                 WHERE id = :id";
@@ -6863,7 +6863,7 @@ function handle_useky_update($input, $config, $queries) {
         $stmt->bindParam(':zkr', $zkr);
         $stmt->execute();
         
-        $sql_select = "SELECT * FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql_select = "SELECT * FROM " . TBL_USEKY . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt_select->execute();
@@ -6906,7 +6906,7 @@ function handle_useky_delete($input, $config, $queries) {
         $db = get_db($config);
         
         // Hard delete - skutečné smazání z databáze
-        $sql = "DELETE FROM " . TABLE_USEKY . " WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_USEKY . " WHERE id = :id";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);

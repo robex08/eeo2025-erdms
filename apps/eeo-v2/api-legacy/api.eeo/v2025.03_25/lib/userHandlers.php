@@ -569,7 +569,7 @@ function handle_users_update($input, $config, $queries) {
         
         // Update username (pokud je zadán new_username)
         if ($new_username !== null) {
-            $sql = "UPDATE " . TABLE_UZIVATELE . " SET username = :new_username, dt_aktualizace = NOW() WHERE id = :id AND id > 0";
+            $sql = "UPDATE " . TBL_UZIVATELE . " SET username = :new_username, dt_aktualizace = NOW() WHERE id = :id AND id > 0";
             $stmt = $db->prepare($sql);
             $stmt->bindParam(':new_username', $new_username, PDO::PARAM_STR);
             $stmt->bindParam(':id', $user_id, PDO::PARAM_INT);
@@ -580,7 +580,7 @@ function handle_users_update($input, $config, $queries) {
         
         // Update ostatních dat (pokud jsou nějaká)
         if (!empty($update_fields)) {
-            $sql = "UPDATE " . TABLE_UZIVATELE . " SET " . implode(', ', $update_fields) . ", dt_aktualizace = NOW() WHERE id = :id AND id > 0";
+            $sql = "UPDATE " . TBL_UZIVATELE . " SET " . implode(', ', $update_fields) . ", dt_aktualizace = NOW() WHERE id = :id AND id > 0";
             error_log("SQL: " . $sql);
             error_log("Values: " . json_encode($update_values));
             $stmt = $db->prepare($sql);

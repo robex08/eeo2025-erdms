@@ -19,7 +19,7 @@ require_once __DIR__ . '/TimezoneHelper.php';
 // Include notification helpers (nové funkce pro placeholdery)
 require_once __DIR__ . '/notificationHelpers.php';
 
-// Include queries.php for table constants (TABLE_UZIVATELE, TABLE_OBJEDNAVKY, etc.)
+// Include queries.php for table constants (TBL_UZIVATELE, TBL_OBJEDNAVKY, etc.)
 require_once __DIR__ . '/queries.php';
 
 // ==========================================
@@ -40,7 +40,7 @@ function createNotification($db, $params) {
         $params[':aktivni'] = 1;
     }
     
-    $sql = "INSERT INTO " . TABLE_NOTIFIKACE . " 
+    $sql = "INSERT INTO " . TBL_NOTIFIKACE . " 
             (typ, nadpis, zprava, data_json, od_uzivatele_id, pro_uzivatele_id, prijemci_json, pro_vsechny, 
              priorita, kategorie, odeslat_email, objekt_typ, objekt_id, dt_expires, dt_created, aktivni) 
             VALUES 
@@ -62,7 +62,7 @@ function createNotification($db, $params) {
         
         // Vytvořit záznam v read tabulce pro příjemce
         if ($notifikace_id && isset($params[':pro_uzivatele_id']) && $params[':pro_uzivatele_id']) {
-            $read_sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " 
+            $read_sql = "INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . " 
                         (notifikace_id, uzivatel_id, precteno, dt_precteno, skryto, dt_skryto, dt_created, smazano, dt_smazano)
                         VALUES (:notifikace_id, :uzivatel_id, 0, NULL, 0, NULL, :dt_created, 0, NULL)";
             
@@ -87,7 +87,7 @@ function createNotification($db, $params) {
  * Načte template pro daný typ notifikace
  */
 function getNotificationTemplate($db, $typ) {
-    $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE LOWER(typ) = LOWER(:typ) AND aktivni = 1";
+    $sql = "SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE LOWER(typ) = LOWER(:typ) AND aktivni = 1";
     $stmt = $db->prepare($sql);
     $stmt->execute(array(':typ' => $typ));
     return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -122,7 +122,7 @@ function replacePlaceholders($text, $data) {
  * Načte notifikace pro uživatele podle 2-tabulkové struktury FE
  * POST /notifications/list
  * 
- * Používá INNER JOIN s " . TABLE_NOTIFIKACE_PRECTENI . " - uživatel vidí jen notifikace,
+ * Používá INNER JOIN s " . TBL_NOTIFIKACE_PRECTENI . " - uživatel vidí jen notifikace,
  * pro které má záznam v read tabulce
  */
 function handle_notifications_list($input, $config, $queries) {
@@ -197,8 +197,8 @@ function handle_notifications_list($input, $config, $queries) {
                     nr.dt_skryto";
 
         $sql = "SELECT " . $select_columns . "
-                FROM " . TABLE_NOTIFIKACE . " n
-                INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
+                FROM " . TBL_NOTIFIKACE . " n
+                INNER JOIN " . TBL_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
                 WHERE " . implode(' AND ', $where_conditions) . "
                 ORDER BY n.dt_created DESC
                 LIMIT :limit OFFSET :offset";
@@ -240,8 +240,8 @@ function handle_notifications_list($input, $config, $queries) {
 
         // Počet celkem pro stránkování
         $count_sql = "SELECT COUNT(*) as total
-                      FROM " . TABLE_NOTIFIKACE . " n
-                      INNER JOIN " . TABLE_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
+                      FROM " . TBL_NOTIFIKACE . " n
+                      INNER JOIN " . TBL_NOTIFIKACE_PRECTENI . " nr ON n.id = nr.notifikace_id
                       WHERE " . implode(' AND ', $where_conditions);
         
         $count_stmt = $db->prepare($count_sql);
@@ -302,7 +302,7 @@ function handle_notifications_mark_read($input, $config, $queries) {
         $uzivatel_id = $token_data['id'];
 
         $current_time = TimezoneHelper::getCzechDateTime();
-        $sql = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (notifikace_id, uzivatel_id, precteno, dt_precteno, dt_created)
+        $sql = "INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . " (notifikace_id, uzivatel_id, precteno, dt_precteno, dt_created)
                 VALUES (:notifikace_id, :uzivatel_id, 1, :dt_precteno, :dt_created)
                 ON DUPLICATE KEY UPDATE 
                   precteno = 1, 
@@ -350,7 +350,7 @@ function handle_notifications_dismiss_all($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Aktualizovat všechny nepřečtené/neskryté notifikace uživatele
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                 SET skryto = 1, 
                     dt_skryto = :dt_skryto 
                 WHERE uzivatel_id = :uzivatel_id 
@@ -404,7 +404,7 @@ function handle_notifications_restore($input, $config, $queries) {
         $uzivatel_id = $token_data['id'];
 
         // Nastavit skryto zpět na 0
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                 SET skryto = 0, 
                     dt_skryto = NULL 
                 WHERE notifikace_id = :notifikace_id 
@@ -461,7 +461,7 @@ function handle_notifications_delete($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Soft delete - nastavit smazano = 1 v read tabulce
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                 SET smazano = 1, 
                     dt_smazano = :dt_smazano 
                 WHERE notifikace_id = :notifikace_id 
@@ -519,7 +519,7 @@ function handle_notifications_delete_all($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
 
         // Soft delete všech notifikací uživatele
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                 SET smazano = 1, 
                     dt_smazano = :dt_smazano 
                 WHERE uzivatel_id = :uzivatel_id 
@@ -571,9 +571,9 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
         $db = get_db($config);
         $uzivatel_id = $token_data['id'];
 
-        // Označ všechny nepřečtené záznamy v " . TABLE_NOTIFIKACE_PRECTENI . "
+        // Označ všechny nepřečtené záznamy v " . TBL_NOTIFIKACE_PRECTENI . "
         $current_time = TimezoneHelper::getCzechDateTime();
-        $sql = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                 SET precteno = 1, dt_precteno = :dt_precteno
                 WHERE uzivatel_id = :uzivatel_id 
                   AND precteno = 0";
@@ -631,11 +631,11 @@ function handle_notifications_unread_count($input, $config, $queries) {
         
         error_log("🔔 [UnreadCount] Počítám nepřečtené pro user_id=$uzivatel_id...");
 
-        // Spočítej nepřečtené z " . TABLE_NOTIFIKACE_PRECTENI . "
+        // Spočítej nepřečtené z " . TBL_NOTIFIKACE_PRECTENI . "
         // MUSÍ být: nepřečtené (precteno=0), NEsmazané (smazano=0), NEdismissnuté (skryto=0)
         $sql = "SELECT COUNT(*) as unread_count
-                FROM " . TABLE_NOTIFIKACE_PRECTENI . " nr
-                INNER JOIN " . TABLE_NOTIFIKACE . " n ON nr.notifikace_id = n.id
+                FROM " . TBL_NOTIFIKACE_PRECTENI . " nr
+                INNER JOIN " . TBL_NOTIFIKACE . " n ON nr.notifikace_id = n.id
                 WHERE nr.uzivatel_id = :uzivatel_id
                   AND nr.precteno = 0
                   AND nr.skryto = 0
@@ -669,8 +669,8 @@ function handle_notifications_unread_count($input, $config, $queries) {
  * ROZŠÍŘENO: Podpora order_id pro automatické naplnění placeholderů
  * 
  * Struktura:
- * 1. Vytvoří 1 záznam v " . TABLE_NOTIFIKACE . " (master data)
- * 2. Vytvoří záznamy v " . TABLE_NOTIFIKACE_PRECTENI . " pro každého příjemce
+ * 1. Vytvoří 1 záznam v " . TBL_NOTIFIKACE . " (master data)
+ * 2. Vytvoří záznamy v " . TBL_NOTIFIKACE_PRECTENI . " pro každého příjemce
  */
 function handle_notifications_create($input, $config, $queries) {
     // DEBUG: Log vstupních dat
@@ -863,7 +863,7 @@ function handle_notifications_create($input, $config, $queries) {
         
         error_log("[Notifications] Final recipients: " . json_encode($recipient_uzivatel_ids));
         
-        // 1. VYTVOŘ MASTER ZÁZNAM v " . TABLE_NOTIFIKACE . " (pouze 1 záznam)
+        // 1. VYTVOŘ MASTER ZÁZNAM v " . TBL_NOTIFIKACE . " (pouze 1 záznam)
         $priorita = isset($input['priorita']) ? $input['priorita'] : $template['priorita_vychozi'];
         $kategorie = isset($input['kategorie']) ? $input['kategorie'] : 'general';
         $odeslat_email = isset($input['odeslat_email']) ? (int)$input['odeslat_email'] : (int)$template['email_vychozi'];
@@ -871,7 +871,7 @@ function handle_notifications_create($input, $config, $queries) {
         $objekt_id = isset($input['objekt_id']) ? (int)$input['objekt_id'] : $order_id;
         
         $stmt = $db->prepare("
-            INSERT INTO " . TABLE_NOTIFIKACE . " (
+            INSERT INTO " . TBL_NOTIFIKACE . " (
                 typ, 
                 nadpis, 
                 zprava, 
@@ -915,9 +915,9 @@ function handle_notifications_create($input, $config, $queries) {
         
         $notifikace_id = $db->lastInsertId();
         
-        // 2. VYTVOŘ READ ZÁZNAMY v " . TABLE_NOTIFIKACE_PRECTENI . " (pro každého příjemce)
+        // 2. VYTVOŘ READ ZÁZNAMY v " . TBL_NOTIFIKACE_PRECTENI . " (pro každého příjemce)
         $stmt_read = $db->prepare("
-            INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " (
+            INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . " (
                 notifikace_id,
                 uzivatel_id,
                 precteno,
@@ -946,7 +946,7 @@ function handle_notifications_create($input, $config, $queries) {
             }
             
             // Označit jako odeslaný
-            $stmt_email = $db->prepare("UPDATE " . TABLE_NOTIFIKACE . " SET email_odeslan = 1, email_odeslan_kdy = NOW() WHERE id = ?");
+            $stmt_email = $db->prepare("UPDATE " . TBL_NOTIFIKACE . " SET email_odeslan = 1, email_odeslan_kdy = NOW() WHERE id = ?");
             $stmt_email->execute(array($notifikace_id));
             $email_odeslan = true;
         }
@@ -999,7 +999,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
         $current_time = TimezoneHelper::getCzechDateTime();
         
         // KROK 1: Zkus UPDATE (pokud záznam existuje)
-        $sql_update = "UPDATE " . TABLE_NOTIFIKACE_PRECTENI . " 
+        $sql_update = "UPDATE " . TBL_NOTIFIKACE_PRECTENI . " 
                        SET skryto = 1, 
                            dt_skryto = :dt_skryto 
                        WHERE notifikace_id = :notifikace_id 
@@ -1014,7 +1014,7 @@ function handle_notifications_dismiss($input, $config, $queries) {
 
         // KROK 2: Pokud UPDATE nezměnil žádný řádek, udělej INSERT
         if ($stmt->rowCount() == 0) {
-            $sql_insert = "INSERT INTO " . TABLE_NOTIFIKACE_PRECTENI . " 
+            $sql_insert = "INSERT INTO " . TBL_NOTIFIKACE_PRECTENI . " 
                            (notifikace_id, uzivatel_id, precteno, skryto, dt_skryto, dt_created)
                            VALUES (:notifikace_id, :uzivatel_id, 0, 1, :dt_skryto, :dt_created)";
             
@@ -1168,7 +1168,7 @@ function handle_notifications_templates($input, $config, $queries) {
         $active_only = isset($input['active_only']) ? (bool)$input['active_only'] : true;
         
         // Sestavení dotazu
-        $sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . "";
+        $sql = "SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . "";
         if ($active_only) {
             $sql .= " WHERE aktivni = 1";
         }
@@ -1732,15 +1732,15 @@ function getEntityParticipants($db, $entityType, $entityId) {
                 $stmt = $db->prepare("
                     SELECT DISTINCT user_id
                     FROM (
-                        SELECT uzivatel_id as user_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id
+                        SELECT uzivatel_id as user_id FROM " . TBL_OBJEDNAVKY . " WHERE id = :entity_id
                         UNION
-                        SELECT objednatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND objednatel_id IS NOT NULL
+                        SELECT objednatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = :entity_id AND objednatel_id IS NOT NULL
                         UNION
-                        SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND garant_uzivatel_id IS NOT NULL
+                        SELECT garant_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = :entity_id AND garant_uzivatel_id IS NOT NULL
                         UNION
-                        SELECT schvalovatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND schvalovatel_id IS NOT NULL
+                        SELECT schvalovatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = :entity_id AND schvalovatel_id IS NOT NULL
                         UNION
-                        SELECT prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = :entity_id AND prikazce_id IS NOT NULL
+                        SELECT prikazce_id FROM " . TBL_OBJEDNAVKY . " WHERE id = :entity_id AND prikazce_id IS NOT NULL
                     ) as participants
                     WHERE user_id IS NOT NULL
                 ");
@@ -1753,11 +1753,11 @@ function getEntityParticipants($db, $entityType, $entityId) {
                 $stmt = $db->prepare("
                     SELECT DISTINCT user_id
                     FROM (
-                        SELECT created_by_user_id as user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id
+                        SELECT created_by_user_id as user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id
                         UNION
-                        SELECT approver_user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id AND approver_user_id IS NOT NULL
+                        SELECT approver_user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND approver_user_id IS NOT NULL
                         UNION
-                        SELECT accountant_user_id FROM " . TABLE_FAKTURY . " WHERE id = :entity_id AND accountant_user_id IS NOT NULL
+                        SELECT accountant_user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND accountant_user_id IS NOT NULL
                     ) as participants
                     WHERE user_id IS NOT NULL
                 ");
@@ -1927,10 +1927,10 @@ function getEntityField($db, $entityType, $entityId, $fieldName) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT $fieldName FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT $fieldName FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT $fieldName FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT $fieldName FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -1951,10 +1951,10 @@ function getEntityLocation($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT lokalita_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT lokalita_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT location_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT location_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -1974,10 +1974,10 @@ function getEntityDepartment($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT usek_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT usek_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT department_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT department_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2021,8 +2021,8 @@ function resolveRecipients($db, $recipientType, $recipientData, $entityType, $en
                 if ($roleId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT u.id 
-                        FROM ".TABLE_UZIVATELE." u
-                        JOIN ".TABLE_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
+                        FROM ".TBL_UZIVATELE." u
+                        JOIN ".TBL_UZIVATELE_ROLE." ur ON u.id = ur.uzivatel_id
                         WHERE ur.role_id = ? AND u.aktivni = 1
                     ");
                     $stmt->execute([$roleId]);
@@ -2102,10 +2102,10 @@ function getEntityAuthor($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             case 'cashbook':
                 $stmt = $db->prepare("SELECT created_by_user_id FROM " . TABLE_CASHBOOK . " WHERE id = ?");
@@ -2128,7 +2128,7 @@ function getEntityOwner($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT prikazce_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT prikazce_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2148,7 +2148,7 @@ function getEntityGuarantor($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT garant_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT garant_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2168,10 +2168,10 @@ function getEntityApprover($db, $entityType, $entityId) {
     try {
         switch ($entityType) {
             case 'orders':
-                $stmt = $db->prepare("SELECT schvalovatel_uzivatel_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT schvalovatel_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT approver_user_id FROM " . TABLE_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT approver_user_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2340,7 +2340,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 
                 // 3. Načíst template z DB
                 $stmt = $db->prepare("
-                    SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " 
+                    SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " 
                     WHERE id = :template_id AND aktivni = 1
                 ");
                 $stmt->execute([':template_id' => $recipient['templateId']]);
@@ -2392,7 +2392,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 } catch (Exception $e) {}
                 
                 // 5. Načíst jméno příjemce a doplnit do placeholderů
-                $stmt_user = $db->prepare("SELECT jmeno, prijmeni FROM " . TABLE_UZIVATELE . " WHERE id = :user_id");
+                $stmt_user = $db->prepare("SELECT jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = :user_id");
                 $stmt_user->execute([':user_id' => $recipient['uzivatel_id']]);
                 $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
                 
@@ -2672,7 +2672,7 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 // 7. Načíst data entity jednou pro všechny (potřeba pro source_info_recipients)
                 $entityData = null;
                 if ($objectType === 'orders') {
-                    $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id FROM " . TABLE_OBJEDNAVKY . " WHERE id = ?");
+                    $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                     $stmt->execute([$objectId]);
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
@@ -2888,8 +2888,8 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                 if ($roleId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT ur.uzivatel_id 
-                        FROM ".TABLE_UZIVATELE_ROLE." ur
-                        JOIN ".TABLE_UZIVATELE." u ON ur.uzivatel_id = u.id
+                        FROM ".TBL_UZIVATELE_ROLE." ur
+                        JOIN ".TBL_UZIVATELE." u ON ur.uzivatel_id = u.id
                         WHERE ur.role_id = :role_id AND u.aktivni = 1
                     ");
                     $stmt->execute([':role_id' => $roleId]);
@@ -2905,7 +2905,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                 if ($locationId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT id 
-                        FROM ".TABLE_UZIVATELE." 
+                        FROM ".TBL_UZIVATELE." 
                         WHERE location_id = :location_id AND aktivni = 1
                     ");
                     $stmt->execute([':location_id' => $locationId]);
@@ -2921,7 +2921,7 @@ function resolveTargetUsers($db, $node, $objectId, $triggerUserId) {
                 if ($departmentId) {
                     $stmt = $db->prepare("
                         SELECT DISTINCT id 
-                        FROM ".TABLE_UZIVATELE." 
+                        FROM ".TBL_UZIVATELE." 
                         WHERE department_id = :department_id AND aktivni = 1
                     ");
                     $stmt->execute([':department_id' => $departmentId]);

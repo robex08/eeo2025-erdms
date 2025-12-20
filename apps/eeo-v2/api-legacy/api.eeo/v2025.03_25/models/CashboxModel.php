@@ -2,7 +2,7 @@
 /**
  * Model pro správu pokladen (master data)
  * 
- * Spravuje tabulku 25a_pokladny
+ * Spravuje tabulku TBL_POKLADNY (25a_pokladny)
  * - Definice pokladen (číslo, název, pracoviště)
  * - VPD/PPD číselné řady
  * - Aktivace/deaktivace pokladen
@@ -47,12 +47,12 @@ class CashboxModel {
                 
                 -- Počet přiřazených uživatelů (aktivních)
                 (SELECT COUNT(*) 
-                 FROM 25a_pokladny_uzivatele pu 
+                 FROM " . TBL_POKLADNY_UZIVATELE . " pu 
                  WHERE pu.pokladna_id = p.id 
                    AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
                 ) AS pocet_uzivatelu
                 
-            FROM 25a_pokladny p
+            FROM " . TBL_POKLADNY . " p
         ";
         
         if ($activeOnly) {
@@ -78,11 +78,11 @@ class CashboxModel {
             SELECT 
                 p.*,
                 (SELECT COUNT(*) 
-                 FROM 25a_pokladny_uzivatele pu 
+                 FROM " . TBL_POKLADNY_UZIVATELE . " pu 
                  WHERE pu.pokladna_id = p.id 
                    AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
                 ) AS pocet_uzivatelu
-            FROM 25a_pokladny p
+            FROM " . TBL_POKLADNY . " p
             WHERE p.id = ?
         ";
         
@@ -103,11 +103,11 @@ class CashboxModel {
             SELECT 
                 p.*,
                 (SELECT COUNT(*) 
-                 FROM 25a_pokladny_uzivatele pu 
+                 FROM " . TBL_POKLADNY_UZIVATELE . " pu 
                  WHERE pu.pokladna_id = p.id 
                    AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
                 ) AS pocet_uzivatelu
-            FROM 25a_pokladny p
+            FROM " . TBL_POKLADNY . " p
             WHERE p.cislo_pokladny = ?
         ";
         
@@ -132,7 +132,7 @@ class CashboxModel {
         }
         
         $sql = "
-            INSERT INTO 25a_pokladny (
+            INSERT INTO " . TBL_POKLADNY . " (
                 cislo_pokladny,
                 nazev,
                 kod_pracoviste,
@@ -183,7 +183,7 @@ class CashboxModel {
         }
         
         $sql = "
-            UPDATE 25a_pokladny
+            UPDATE " . TBL_POKLADNY . "
             SET
                 nazev = ?,
                 kod_pracoviste = ?,
@@ -224,7 +224,7 @@ class CashboxModel {
      */
     public function deactivateCashbox($cashboxId, $updatedBy) {
         $sql = "
-            UPDATE 25a_pokladny
+            UPDATE " . TBL_POKLADNY . "
             SET
                 aktivni = 0,
                 aktualizovano = NOW(),
@@ -245,7 +245,7 @@ class CashboxModel {
      */
     public function activateCashbox($cashboxId, $updatedBy) {
         $sql = "
-            UPDATE 25a_pokladny
+            UPDATE " . TBL_POKLADNY . "
             SET
                 aktivni = 1,
                 aktualizovano = NOW(),
@@ -265,7 +265,7 @@ class CashboxModel {
      */
     public function deleteCashbox($cashboxId) {
         // Zkontrolovat, zda pokladna nemá přiřazení
-        $sql = "SELECT COUNT(*) as cnt FROM 25a_pokladny_uzivatele WHERE pokladna_id = ?";
+        $sql = "SELECT COUNT(*) as cnt FROM " . TBL_POKLADNY_UZIVATELE . " WHERE pokladna_id = ?";
         $stmt = $this->db->prepare($sql);
         $stmt->execute(array($cashboxId));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -275,7 +275,7 @@ class CashboxModel {
         }
         
         // Smazat pokladnu
-        $sql = "DELETE FROM 25a_pokladny WHERE id = ?";
+        $sql = "DELETE FROM " . TBL_POKLADNY . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         
         return $stmt->execute(array($cashboxId));
