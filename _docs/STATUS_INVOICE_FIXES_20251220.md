@@ -24,15 +24,17 @@
 | ID | Kód práva | Popis |
 |----|-----------|-------|
 | 94 | INVOICE_VIEW | Faktury - prohlížení všech faktur (read-only) |
-| 95 | INVOICE_VECNA_KONTROLA | Faktury - věcná kontrola faktur |
+| 95 | INVOICE_MATERIAL_CORRECTNESS | Faktury - věcná správnost (material correctness verification) |
 
 **Příkaz**:
 ```sql
 INSERT INTO 25_prava (kod_prava, popis, aktivni) VALUES 
 ('INVOICE_VIEW', 'Faktury - prohlížení všech faktur (read-only)', 1),
-('INVOICE_VECNA_KONTROLA', 'Faktury - věcná kontrola faktur', 1)
+('INVOICE_MATERIAL_CORRECTNESS', 'Faktury - věcná správnost (material correctness verification)', 1)
 ON DUPLICATE KEY UPDATE popis = VALUES(popis), aktivni = VALUES(aktivni);
 ```
+
+**Poznámka**: Původní `INVOICE_VECNA_KONTROLA` přejmenováno na `INVOICE_MATERIAL_CORRECTNESS`
 
 **DB Připojení**: 
 - Host: `10.3.172.11`
@@ -72,23 +74,24 @@ LEFT JOIN " . TBL_UZIVATELE . " u_predana ON f.fa_predana_zam_id = u_predana.id
 
 ---
 
-## ⏳ ZBÝVÁ IMPLEMENTOVAT
+## ✅ HOTOVO (pokračování)
 
-### 1. Permission-based Filtering
+### 4. Permission-based Filtering (commit `4aed05f`)
 **Požadavek**: Non-admin uživatelé vidí pouze "své faktury"
 
 **Definice "své faktury"**:
-1. Faktura je předdána danému uživateli (`f.fa_predana_zam_id = user_id`)
+1. Faktura je předána danému uživateli (`f.fa_predana_zam_id = user_id`)
 2. Faktura je součástí objednávky kde je uživatel v jakékoli pozici:
    - Garant (`o.garant_uzivatel_id`)
    - Účetní (`o.ucetni_uzivatel_id`)
    - Příkazce (`o.prikazce_id`)
-   - Věcná kontrola (`f.potvrdil_vecnou_spravnost_id`)
+   - Věcná správnost (`f.potvrdil_vecnou_spravnost_id`)
    - Vytvořil objednávku (`o.uzivatel_id`)
+   - Vytvořil fakturu (`f.vytvoril_uzivatel_id`)
 
 **Implementace**:
 ```sql
--- Přidat do WHERE klauzule v searchQueries.php::getSqlSearchInvoices()
+-- Přidáno do WHERE klauzule v searchQueries.php::getSqlSearchInvoices()
 AND (
     :is_admin = 1 
     OR f.fa_predana_zam_id = :user_id
@@ -102,30 +105,46 @@ AND (
 ```
 
 **Změny v kódu**:
-- `searchHandlers.php::searchInvoices()` - přidat parametr `$userId`
-- `searchHandlers.php::handle_universal_search()` - získat user_id z tokenu
-- `searchQueries.php::getSqlSearchInvoices()` - přidat `:user_id` parametr
-- `searchHandlers.php::searchInvoices()` - bind `:user_id` parametr
+- ✅ `searchHandlers.php::searchInvoices()` - přidán parametr `$userId`
+- ✅ `searchHandlers.php::handle_universal_search()` - získává user_id z `$auth_result['id']`
+- ✅ `searchQueries.php::getSqlSearchInvoices()` - přidán `:user_id` parametr
+- ✅ `searchHandlers.php::searchInvoices()` - bind `:user_id` parametr s PDO::PARAM_INT
+- ✅ `searchQueries.php` - WHERE AND klauzule s 7 podmínkami vztahu uživatele
 
 ---
 
-### 2. Rozšíření vyhledávání - Textová pole
-**Požadované vyhledávání v**:
+### 5. Rozšíření vyhledávání - Jména uživatelů (commit `4aed05f`)
+**Přidáno vyhledávání v**:
 
-1. **Typ faktury** (`f.fa_typ`): ✅ ČÁSTEČNĚ (WHERE přidáno, chybí CASE match_type)
+1. **Typ faktury** (`f.fa_typ`): ✅ KOMPLETNÍ
    - Hodnoty: BEZNA, ZALOHA, KONECNA, PROFORMA, DOBROPIS, STORNOVACI
+   - WHERE: `f.fa_typ LIKE :query`
+   - CASE match_type: `WHEN f.fa_typ LIKE :query THEN 'fa_typ'`
    
-2. **Předáno komu** (`u_predana.jmeno`, `u_predana.prijmeni`): ❌ CHYBÍ
-   - Přidat do WHERE s CONCAT + diacritics normalization
+2. **Předáno komu** (`u_predana.jmeno`, `u_predana.prijmeni`): ✅ KOMPLETNÍ
+   - WHERE: `CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query`
+   - WHERE normalized: 30-line REPLACE chain pro diakritiku
+   - CASE match_type: `WHEN CONCAT(u_predana.jmeno, ...) LIKE :query THEN 'predano_kym'`
+   - CASE match_type normalized: s REPLACE řetězcem
+   
+3. **Zaevidoval** (`u.jmeno`, `u.prijmeni`): ✅ KOMPLETNÍ
+   - WHERE: `CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query`
+   - WHERE normalized: 30-line REPLACE chain pro diakritiku
+   - CASE match_type: `WHEN CONCAT(u.jmeno, ...) LIKE :query THEN 'nahrano_kym'`
+   - CASE match_type normalized: s REPLACE řetězcem
 
-3. **Kdo zaevidoval** (`u.jmeno`, `u.prijmeni`): ❌ CHYBÍ  
-   - Přidat do WHERE s CONCAT + diacritics normalization
+---
 
-4. **Zaplaceno/Nezaplaceno** - speciální handling: ❌ CHYBÍ
+## ⏳ ZBÝVÁ IMPLEMENTOVAT
+
+### 1. Rozšíření vyhledávání - Speciální klíčová slova
+**Požadované funkce**:
+
+1. **Zaplaceno/Nezaplaceno** - speciální handling: ❌ CHYBÍ
    - Pokud query obsahuje "zaplacen", filtrovat `f.fa_zaplacena = 1`
    - Pokud obsahuje "nezaplacen", filtrovat `f.fa_zaplacena = 0`
 
-5. **Po splatnosti** - kalkulované pole: ❌ CHYBÍ
+2. **Po splatnosti** - kalkulované pole: ❌ CHYBÍ
    - Pokud query obsahuje "po splatnosti", filtrovat:
    ```sql
    f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()
@@ -134,8 +153,6 @@ AND (
 **Implementace**:
 Přidat do WHERE sekce v `searchQueries.php`:
 ```sql
-OR CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query
-OR CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query
 OR (f.fa_zaplacena = 1 AND 'zaplaceno' LIKE :query)
 OR (f.fa_zaplacena = 0 AND 'nezaplaceno' LIKE :query)
 OR (f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() AND 'po splatnosti' LIKE :query)
@@ -143,9 +160,10 @@ OR (f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() AND 'po splatnosti'
 
 Přidat CASE podmínky pro match_type:
 ```sql
-WHEN CONCAT(u_predana.jmeno, ' ', u_predana.prijmeni) LIKE :query THEN 'predano_kym'
-WHEN CONCAT(u.jmeno, ' ', u.prijmeni) LIKE :query THEN 'nahrano_kym'
-WHEN f.fa_typ LIKE :query THEN 'fa_typ'
+WHEN (f.fa_zaplacena = 1 AND 'zaplaceno' LIKE :query) THEN 'stav_platby'
+WHEN (f.fa_zaplacena = 0 AND 'nezaplaceno' LIKE :query) THEN 'stav_platby'
+WHEN (f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() AND 'po splatnosti' LIKE :query) THEN 'stav_platby'
+```
 ```
 
 ---
