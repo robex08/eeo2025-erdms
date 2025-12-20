@@ -44,7 +44,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   
   // OBJEDNÁVKY PŘED 2026 - ORDER_MANAGE nebo ORDER_OLD
   if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD'))) {
-    sections.push({ value: 'orders-old', label: 'Objednávky před 2026' });
+    sections.push({ value: 'orders-old', label: 'Objednávky (<2026)' });
   }
   
   // REPORTY - pouze pro ADMIN (v menu Layout je to hasAdminRole())
@@ -92,12 +92,12 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   
   // OBJEDNÁVKY - ORDER_MANAGE nebo ORDER_2025
   if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025'))) {
-    sections.push({ value: 'orders25-list', label: 'Přehled objednávek' });
+    sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
   }
   
   // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW (v Layout je to INVOICE_MANAGE)
   if (isAdmin || (hasPermission && hasPermission('INVOICE_MANAGE'))) {
-    sections.push({ value: 'invoices25-list', label: 'Přehled faktur' });
+    sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
   }
   
   // UŽIVATELÉ - USER_VIEW nebo USER_MANAGE
