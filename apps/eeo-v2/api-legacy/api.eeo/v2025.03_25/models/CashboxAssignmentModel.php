@@ -2,14 +2,14 @@
 /**
  * Model pro přiřazení pokladen k uživatelům
  * 
- * Spravuje tabulku 25a_pokladny_uzivatele
+ * Spravuje tabulky TBL_POKLADNY_UZIVATELE a TBL_POKLADNY
  * - Více pokladen na uživatele
  * - Zástupy (dočasné přiřazení)
  * - Historie přiřazení
  * - Definice číselných řad VPD/PPD
  * 
  * @package CashbookAPI
- * @version 1.0
+ * @version 1.1 (refactored: table constants)
  */
 
 class CashboxAssignmentModel {
@@ -303,7 +303,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         // 1a) Zkusit najít existující pokladnu podle čísla
-        $sqlFind = "SELECT id FROM 25a_pokladny WHERE cislo_pokladny = ? LIMIT 1";
+        $sqlFind = "SELECT id FROM " . TBL_POKLADNY . " WHERE cislo_pokladny = ? LIMIT 1";
         $stmtFind = $this->db->prepare($sqlFind);
         $stmtFind->execute(array($data['cislo_pokladny']));
         $existing = $stmtFind->fetch(PDO::FETCH_ASSOC);
@@ -319,7 +319,7 @@ class CashboxAssignmentModel {
         } else {
             // 1b) Vytvořit novou pokladnu
             $sqlCreatePokladna = "
-                INSERT INTO 25a_pokladny (
+                INSERT INTO " . TBL_POKLADNY . " (
                     cislo_pokladny,
                     nazev,
                     kod_pracoviste,
@@ -357,7 +357,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         $sqlCreateAssignment = "
-            INSERT INTO 25a_pokladny_uzivatele (
+            INSERT INTO " . TBL_POKLADNY_UZIVATELE . " (
                 pokladna_id,
                 uzivatel_id,
                 je_hlavni,
@@ -421,7 +421,7 @@ class CashboxAssignmentModel {
         
         if ($vpdPpdChanged) {
             // Zjistit, kolik uživatelů bude ovlivněno
-            $sqlCount = "SELECT COUNT(*) as cnt FROM 25a_pokladny_uzivatele WHERE pokladna_id = ?";
+            $sqlCount = "SELECT COUNT(*) as cnt FROM " . TBL_POKLADNY_UZIVATELE . " WHERE pokladna_id = ?";
             $stmtCount = $this->db->prepare($sqlCount);
             $stmtCount->execute(array($assignment['pokladna_id']));
             $result = $stmtCount->fetch(PDO::FETCH_ASSOC);
@@ -486,7 +486,7 @@ class CashboxAssignmentModel {
      * @return bool Úspěch operace
      */
     public function deleteAssignment($assignmentId) {
-        $sql = "DELETE FROM 25a_pokladny_uzivatele WHERE id = :id";
+        $sql = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE id = :id";
         
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':id', $assignmentId, PDO::PARAM_INT);
@@ -503,7 +503,7 @@ class CashboxAssignmentModel {
      */
     private function unsetMainAssignment($userId, $exceptId = null) {
         $sql = "
-            UPDATE 25a_pokladny_uzivatele
+            UPDATE " . TBL_POKLADNY_UZIVATELE . "
             SET je_hlavni = 0
             WHERE uzivatel_id = :userId
               AND je_hlavni = 1
@@ -587,7 +587,7 @@ class CashboxAssignmentModel {
             $this->db->beginTransaction();
             
             // 1. Smazat všechny stávající přiřazení
-            $sqlDelete = "DELETE FROM 25a_pokladny_uzivatele WHERE pokladna_id = ?";
+            $sqlDelete = "DELETE FROM " . TBL_POKLADNY_UZIVATELE . " WHERE pokladna_id = ?";
             $stmtDelete = $this->db->prepare($sqlDelete);
             $stmtDelete->execute(array($pokladnaId));
             $deleted = $stmtDelete->rowCount();

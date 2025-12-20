@@ -2,12 +2,12 @@
 /**
  * Model pro globální nastavení systému
  * 
- * Spravuje tabulku 25a_nastaveni_globalni
+ * Spravuje tabulku TBL_NASTAVENI_GLOBALNI (25a_nastaveni_globalni)
  * - Uložení konfiguračních hodnot
  * - cashbook_use_prefix (prefix v číslování dokladů)
  * 
  * @package CashbookAPI
- * @version 1.0
+ * @version 1.1 (refactored: table constants)
  */
 
 class GlobalSettingsModel {
@@ -26,7 +26,7 @@ class GlobalSettingsModel {
     public function getSetting($key) {
         $sql = "
             SELECT hodnota
-            FROM 25a_nastaveni_globalni
+            FROM " . TBL_NASTAVENI_GLOBALNI . "
             WHERE klic = :key
             LIMIT 1
         ";
@@ -48,7 +48,7 @@ class GlobalSettingsModel {
     public function getAllSettings() {
         $sql = "
             SELECT klic, hodnota, popis
-            FROM 25a_nastaveni_globalni
+            FROM " . TBL_NASTAVENI_GLOBALNI . "
             ORDER BY klic
         ";
         
@@ -83,7 +83,7 @@ class GlobalSettingsModel {
         if ($existing !== null) {
             // UPDATE
             $sql = "
-                UPDATE 25a_nastaveni_globalni
+                UPDATE " . TBL_NASTAVENI_GLOBALNI . "
                 SET hodnota = :value,
                     aktualizovano = NOW()
             ";
@@ -106,7 +106,7 @@ class GlobalSettingsModel {
         } else {
             // INSERT
             $sql = "
-                INSERT INTO 25a_nastaveni_globalni (
+                INSERT INTO " . TBL_NASTAVENI_GLOBALNI . " (
                     klic,
                     hodnota,
                     popis,
@@ -135,7 +135,7 @@ class GlobalSettingsModel {
      * @return bool Úspěch operace
      */
     public function deleteSetting($key) {
-        $sql = "DELETE FROM 25a_nastaveni_globalni WHERE klic = :key";
+        $sql = "DELETE FROM " . TBL_NASTAVENI_GLOBALNI . " WHERE klic = :key";
         
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':key', $key, PDO::PARAM_STR);
