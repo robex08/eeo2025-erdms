@@ -203,6 +203,10 @@ define('TBL_CHAT_MENTIONS', '25_chat_mentions');
 // DATABASE TABLE NAMES - AUDIT
 define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 
+// DATABASE TABLE NAMES - LIMITOVANÉ PŘÍSLIBY
+define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
+define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
+
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
 $config = $_config['mysql'];
