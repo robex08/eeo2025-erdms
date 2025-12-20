@@ -133,6 +133,7 @@ define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
 define('TBL_POKLADNY', '25a_pokladny');
 define('TBL_POKLADNY_UZIVATELE', '25a_pokladny_uzivatele');
 define('TBL_POKLADNI_AUDIT', '25a_pokladni_audit');
+define('TBL_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
 
 // DATABASE TABLE NAMES - CORE ENTITIES
 define('TBL_UZIVATELE', '25_uzivatele');
@@ -148,11 +149,17 @@ define('TBL_PRAVA', '25_prava');
 define('TBL_ROLE', '25_role');
 define('TBL_ROLE_PRAVA', '25_role_prava');
 define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
+define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
 define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
+
+// DATABASE TABLE NAMES - UŽIVATELÉ (EXTENDED)
+define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
+define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
 // DATABASE TABLE NAMES - HIERARCHIE
 define('TBL_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
 define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+define('TBL_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
 
 // DATABASE TABLE NAMES - NASTAVENÍ
 define('TBL_NASTAVENI_GLOBALNI', '25a_nastaveni_globalni');
@@ -173,6 +180,28 @@ define('TBL_DOCX_SABLONY', '25_docx_sablony'); // Alternativní název
 define('TBL_DOCX_MAPOVANI', '25_docx_mapovani');
 define('TBL_DOCX_KATEGORIE', '25_docx_kategorie');
 define('TBL_DOCX_GENEROVANE', '25_docx_generovane');
+define('TBL_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
+
+// DATABASE TABLE NAMES - NOTIFIKACE
+define('TBL_NOTIFIKACE', '25_notifikace');
+define('TBL_NOTIFIKACE_FRONTA', '25_notifikace_fronta');
+define('TBL_NOTIFIKACE_AUDIT', '25_notifikace_audit');
+define('TBL_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');
+define('TBL_NOTIFIKACE_SABLONY', '25_notifikace_sablony');
+define('TBL_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti');
+define('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni');
+
+// DATABASE TABLE NAMES - CHAT
+define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
+define('TBL_CHAT_ZPRAVY', '25_chat_zpravy');
+define('TBL_CHAT_UCASTNICI', '25_chat_ucastnici');
+define('TBL_CHAT_REAKCE', '25_chat_reakce');
+define('TBL_CHAT_PRECTENE_ZPRAVY', '25_chat_prectene_zpravy');
+define('TBL_CHAT_ONLINE_STATUS', '25_chat_online_status');
+define('TBL_CHAT_MENTIONS', '25_chat_mentions');
+
+// DATABASE TABLE NAMES - AUDIT
+define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 
 // Načtení konfigurace a dotazů
 $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';

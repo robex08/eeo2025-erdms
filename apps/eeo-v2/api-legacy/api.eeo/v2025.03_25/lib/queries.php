@@ -1,54 +1,46 @@
 <?php
-// Konstanty pro tabulky
-// --- generováno podle aktuální DB struktury ---
-define('TABLE_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
-define('TABLE_CISELNIK_STAVY', '25_ciselnik_stavy');
-define('TABLE_DODAVATELE', '25_dodavatele');
-define('TABLE_LOKALITY', '25_lokality');
-define('TABLE_OBJEDNAVKY', '25a_objednavky');              // ⚠️ SPRÁVNĚ: 25a_objednavky (NE 25_objednavky!)
-define('TABLE_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
-define('TABLE_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
-define('TABLE_OBJEDNAVKY_FAKTURY', '25a_objednavky_faktury');
-define('TABLE_FAKTURY', '25a_objednavky_faktury');         // Alias pro faktury (hlavní tabulka faktur)
-define('TABLE_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
-define('TABLE_ORGANIZACE', '25_organizace_vizitka');
-define('TABLE_POZICE', '25_pozice');
-define('TABLE_PRAVA', '25_prava');
-define('TABLE_ROLE', '25_role');
-define('TABLE_ROLE_PRAVA', '25_role_prava');
-define('TABLE_USEKY', '25_useky');
-define('TABLE_UZIVATELE', '25_uzivatele');
-define('TABLE_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
-// DEPRECATED: Old hierarchy table (kept for backward compatibility, but table doesn't exist)
-define('TABLE_UZIVATELE_HIERARCHIE', '25_hierarchie_vztahy');
-define('TABLE_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
-define('TABLE_HIERARCHIE_PROFILY', '25_hierarchie_profily');
-define('TABLE_UZIVATELE_ROLE', '25_uzivatele_role');
-define('TABLE_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
+define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
+define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
+define('TBL_DODAVATELE', '25_dodavatele');
+define('TBL_LOKALITY', '25_lokality');
+define('TBL_OBJEDNAVKY', '25a_objednavky');              // ⚠️ SPRÁVNĚ: 25a_objednavky (NE 25_objednavky!)
+define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
+define('TBL_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
+define('TBL_FAKTURY', '25a_objednavky_faktury');
+define('TBL_FAKTURY', '25a_objednavky_faktury');         // Alias pro faktury (hlavní tabulka faktur)
+define('TBL_LP_MASTER', '25_limitovane_prisliby');
+define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
+define('TBL_POZICE', '25_pozice');
+define('TBL_PRAVA', '25_prava');
+define('TBL_ROLE', '25_role');
+define('TBL_ROLE_PRAVA', '25_role_prava');
+define('TBL_USEKY', '25_useky');
+define('TBL_UZIVATELE', '25_uzivatele');
+define('TBL_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
+define('TBL_UZIVATELE_HIERARCHIE', '25_hierarchie_vztahy');
+define('TBL_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
+define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
+define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
-// === NOTIFICATION SYSTEM CONSTANTS (České názvy) ===
-define('TABLE_NOTIFIKACE', '25_notifikace');                              // Hlavní tabulka notifikací
-define('TABLE_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');           // Read state pro příjemce
-define('TABLE_NOTIFIKACE_SABLONY', '25_notifikace_sablony');             // Šablony emailů/notifikací
-define('TABLE_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti'); // Katalog EVENT_TYPES
-define('TABLE_NOTIFIKACE_FRONTA', '25_notifikace_fronta');               // Fronta pro plánované odesílání
-define('TABLE_NOTIFIKACE_AUDIT', '25_notifikace_audit');                 // Audit log doručení
-define('TABLE_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni'); // User preferences
+define('TBL_NOTIFIKACE', '25_notifikace');                              // Hlavní tabulka notifikací
+define('TBL_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');           // Read state pro příjemce
+define('TBL_NOTIFIKACE_SABLONY', '25_notifikace_sablony');             // Šablony emailů/notifikací
+define('TBL_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti'); // Katalog EVENT_TYPES
+define('TBL_NOTIFIKACE_FRONTA', '25_notifikace_fronta');               // Fronta pro plánované odesílání
+define('TBL_NOTIFIKACE_AUDIT', '25_notifikace_audit');                 // Audit log doručení
+define('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni'); // User preferences
 
 // === CASHBOOK (POKLADNA) CONSTANTS ===
-define('TABLE_POKLADNI_KNIHY', '25a_pokladni_knihy');
-define('TABLE_POKLADNI_POLOZKY', '25a_pokladni_polozky');
-define('TABLE_POKLADNI_AUDIT', '25a_pokladni_audit');
-define('TABLE_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
 
 // === CHAT SYSTEM CONSTANTS ===
-define('TABLE_CHAT_KONVERZACE', '25_chat_konverzace');
-define('TABLE_CHAT_UCASTNICI', '25_chat_ucastnici');
-define('TABLE_CHAT_ZPRAVY', '25_chat_zpravy');
-define('TABLE_CHAT_PRECTENE_ZPRAVY', '25_chat_prectene_zpravy');
-define('TABLE_CHAT_MENTIONS', '25_chat_mentions');
-define('TABLE_CHAT_REAKCE', '25_chat_reakce');
-define('TABLE_CHAT_ONLINE_STATUS', '25_chat_online_status');
+define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
+define('TBL_CHAT_UCASTNICI', '25_chat_ucastnici');
+define('TBL_CHAT_ZPRAVY', '25_chat_zpravy');
+define('TBL_CHAT_PRECTENE_ZPRAVY', '25_chat_prectene_zpravy');
+define('TBL_CHAT_MENTIONS', '25_chat_mentions');
+define('TBL_CHAT_REAKCE', '25_chat_reakce');
+define('TBL_CHAT_ONLINE_STATUS', '25_chat_online_status');
 // --- konec generovaných konstant ---
 
 // --- konstanty pro starou (OLD) DB z /v2025.03_25/old/config.php ---
@@ -57,7 +49,7 @@ define('OLD_TABLE_RIGHTS', 'rights');
 define('OLD_TABLE_GROUPS', 'groups');
 define('OLD_TABLE_LOCATION', 'locations');
 define('OLD_TABLE_SMLUVY', 'smlouvy');
-define('OLD_TABLE_OBJEDNAVKY', 'r_objednavky');
+define('OLD_TBL_OBJEDNAVKY', 'r_objednavky');
 define('OLD_TABLE_UMISTENI', 'umisteni');
 define('OLD_TABLE_PARTNER', 'partner');
 define('OLD_TABLE_OKRESY', 'okresy');
@@ -77,83 +69,83 @@ define('OLD_TABLE_OBJMD', 'r_objMetaData');
 // SQL dotazy
 
 // --- GENEROVANÉ SELECTY PRO VŠECHNY TABULKY ---
-$queries['auditni_zaznamy_select_all'] = "SELECT * FROM ".TABLE_AUDITNI_ZAZNAMY;
-$queries['auditni_zaznamy_select_by_id'] = "SELECT * FROM ".TABLE_AUDITNI_ZAZNAMY." WHERE id = :id";
-$queries['ciselnik_stavy_select_all'] = "SELECT * FROM ".TABLE_CISELNIK_STAVY;
-$queries['ciselnik_stavy_select_by_id'] = "SELECT * FROM ".TABLE_CISELNIK_STAVY." WHERE id = :id";
+$queries['auditni_zaznamy_select_all'] = "SELECT * FROM ".TBL_AUDITNI_ZAZNAMY;
+$queries['auditni_zaznamy_select_by_id'] = "SELECT * FROM ".TBL_AUDITNI_ZAZNAMY." WHERE id = :id";
+$queries['ciselnik_stavy_select_all'] = "SELECT * FROM ".TBL_CISELNIK_STAVY;
+$queries['ciselnik_stavy_select_by_id'] = "SELECT * FROM ".TBL_CISELNIK_STAVY." WHERE id = :id";
 // Select status entries by their type (e.g. 'OBJEDNAVKA') - expects a parameter :typ
-$queries['ciselnik_stavy_select_by_typ'] = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM ".TABLE_CISELNIK_STAVY." WHERE typ_objektu = :typ ORDER BY id";
-$queries['dodavatele_select_all'] = "SELECT * FROM ".TABLE_DODAVATELE;
-$queries['dodavatele_select_by_id'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE id = :id";
-$queries['dodavatele_select_by_ico'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE ico = :ico LIMIT 1";
-$queries['dodavatele_update_by_ico'] = "UPDATE ".TABLE_DODAVATELE." SET dt_aktualizace = NOW() WHERE ico = :ico";
-$queries['dodavatele_insert'] = "INSERT INTO ".TABLE_DODAVATELE." (nazev, adresa, ico, dic, zastoupeny, kontakt_jmeno, kontakt_email, kontakt_telefon, dt_vytvoreni, dt_aktualizace) VALUES (:nazev, :adresa, :ico, :dic, :zastoupeny, :kontakt_jmeno, :kontakt_email, :kontakt_telefon, NOW(), NOW())";
-$queries['dodavatele_update'] = "UPDATE ".TABLE_DODAVATELE." SET nazev = :nazev, adresa = :adresa, ico = :ico, dic = :dic, zastoupeny = :zastoupeny, kontakt_jmeno = :kontakt_jmeno, kontakt_email = :kontakt_email, kontakt_telefon = :kontakt_telefon, dt_aktualizace = NOW() WHERE id = :id";
-$queries['lokality_select_all'] = "SELECT * FROM ".TABLE_LOKALITY;
-$queries['lokality_select_by_id'] = "SELECT * FROM ".TABLE_LOKALITY." WHERE id = :id";
+$queries['ciselnik_stavy_select_by_typ'] = "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM ".TBL_CISELNIK_STAVY." WHERE typ_objektu = :typ ORDER BY id";
+$queries['dodavatele_select_all'] = "SELECT * FROM ".TBL_DODAVATELE;
+$queries['dodavatele_select_by_id'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE id = :id";
+$queries['dodavatele_select_by_ico'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE ico = :ico LIMIT 1";
+$queries['dodavatele_update_by_ico'] = "UPDATE ".TBL_DODAVATELE." SET dt_aktualizace = NOW() WHERE ico = :ico";
+$queries['dodavatele_insert'] = "INSERT INTO ".TBL_DODAVATELE." (nazev, adresa, ico, dic, zastoupeny, kontakt_jmeno, kontakt_email, kontakt_telefon, dt_vytvoreni, dt_aktualizace) VALUES (:nazev, :adresa, :ico, :dic, :zastoupeny, :kontakt_jmeno, :kontakt_email, :kontakt_telefon, NOW(), NOW())";
+$queries['dodavatele_update'] = "UPDATE ".TBL_DODAVATELE." SET nazev = :nazev, adresa = :adresa, ico = :ico, dic = :dic, zastoupeny = :zastoupeny, kontakt_jmeno = :kontakt_jmeno, kontakt_email = :kontakt_email, kontakt_telefon = :kontakt_telefon, dt_aktualizace = NOW() WHERE id = :id";
+$queries['lokality_select_all'] = "SELECT * FROM ".TBL_LOKALITY;
+$queries['lokality_select_by_id'] = "SELECT * FROM ".TBL_LOKALITY." WHERE id = :id";
 // RAW SELECT - surová data z DB bez jakýchkoli úprav
-$queries['objednavky_select_all_raw'] = "SELECT * FROM ".TABLE_OBJEDNAVKY." ORDER BY id DESC";
+$queries['objednavky_select_all_raw'] = "SELECT * FROM ".TBL_OBJEDNAVKY." ORDER BY id DESC";
 
 // ENRICHED SELECT - surová data + rozšířené JSON pole s názvy z číselníků
 // Kompatibilní s MySQL 5.6 a PHP 5.6 - parsuje JSON v PHP místo SQL
 $queries['objednavky_select_all_enriched'] = "
-    SELECT * FROM ".TABLE_OBJEDNAVKY." o
+    SELECT * FROM ".TBL_OBJEDNAVKY." o
     ORDER BY o.id DESC
 ";
 
 // LEGACY - původní dotaz pro zpětnou kompatibilitu
-$queries['objednavky_select_all'] = "SELECT id, cislo_objednavky, datum_objednavky, predmet, strediska, financovani_dodatek, prikazce_id, max_cena_s_dph, zdroj_financovani, druh_objednavky, schvalil_uzivatel_id, datum_schvaleni, garant_uzivatel_id, objednatel_id, created_by_uzivatel_id, updated_by_uzivatel_id, dodavatel_id, dodavatel_nazev, dodavatel_adresa, dodavatel_ico, dodavatel_dic, dodavatel_zastoupeny, dodavatel_kontakt_jmeno, dodavatel_kontakt_email, dodavatel_kontakt_telefon, predpokladany_termin_dodani, misto_dodani, zaruka, stav_odeslano, datum_odeslani, potvrzeno_dodavatelem, datum_akceptace, potvrzeno_zpusob, zpusob_platby, zverejnit_registr_smluv, datum_zverejneni, registr_smluv_id, poznamka, stav_id, stav_komentar, aktivni, dt_vytvoreni, dt_aktualizace FROM ".TABLE_OBJEDNAVKY; 
-$queries['objednavky_check_number'] = "SELECT id, objednatel_id FROM ".TABLE_OBJEDNAVKY." WHERE cislo_objednavky = :cislo_objednavky LIMIT 1";
+$queries['objednavky_select_all'] = "SELECT id, cislo_objednavky, datum_objednavky, predmet, strediska, financovani_dodatek, prikazce_id, max_cena_s_dph, zdroj_financovani, druh_objednavky, schvalil_uzivatel_id, datum_schvaleni, garant_uzivatel_id, objednatel_id, created_by_uzivatel_id, updated_by_uzivatel_id, dodavatel_id, dodavatel_nazev, dodavatel_adresa, dodavatel_ico, dodavatel_dic, dodavatel_zastoupeny, dodavatel_kontakt_jmeno, dodavatel_kontakt_email, dodavatel_kontakt_telefon, predpokladany_termin_dodani, misto_dodani, zaruka, stav_odeslano, datum_odeslani, potvrzeno_dodavatelem, datum_akceptace, potvrzeno_zpusob, zpusob_platby, zverejnit_registr_smluv, datum_zverejneni, registr_smluv_id, poznamka, stav_id, stav_komentar, aktivni, dt_vytvoreni, dt_aktualizace FROM ".TBL_OBJEDNAVKY; 
+$queries['objednavky_check_number'] = "SELECT id, objednatel_id FROM ".TBL_OBJEDNAVKY." WHERE cislo_objednavky = :cislo_objednavky LIMIT 1";
 $queries['objednavky_next_number'] = "
     SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(SUBSTRING(cislo_objednavky, 3), '/', 1) AS UNSIGNED)), 0) as last_used_number 
-    FROM ".TABLE_OBJEDNAVKY." 
+    FROM ".TBL_OBJEDNAVKY." 
     WHERE SUBSTRING_INDEX(SUBSTRING_INDEX(cislo_objednavky, '/', -2), '/', 1) = YEAR(NOW()) AND cislo_objednavky LIKE 'O-%'
 ";
-$queries['objednavky_polozky_select_all'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_POLOZKY;
-$queries['objednavky_polozky_select_by_id'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_POLOZKY." WHERE id = :id";
-$queries['objednavky_prilohy_select_all'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY;
-$queries['objednavky_prilohy_select_by_id'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE id = :id";
+$queries['objednavky_polozky_select_all'] = "SELECT * FROM ".TBL_OBJEDNAVKY_POLOZKY;
+$queries['objednavky_polozky_select_by_id'] = "SELECT * FROM ".TBL_OBJEDNAVKY_POLOZKY." WHERE id = :id";
+$queries['objednavky_prilohy_select_all'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY;
+$queries['objednavky_prilohy_select_by_id'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE id = :id";
 // Limitovane prisliby
-$queries['limitovane_prisliby_select_all'] = "SELECT * FROM ".TABLE_LIMITOVANE_PRISLIBY;
-$queries['limitovane_prisliby_select_by_filters'] = "SELECT id, user_id, usek_id, kategorie, cislo_lp, cislo_uctu, nazev_uctu, vyse_financniho_kryti, platne_od, platne_do FROM ".TABLE_LIMITOVANE_PRISLIBY." WHERE 1=1";
-$queries['limitovane_prisliby_select_basic_info'] = "SELECT id, cislo_lp, nazev_uctu, vyse_financniho_kryti FROM ".TABLE_LIMITOVANE_PRISLIBY;
-$queries['limitovane_prisliby_select_by_id'] = "SELECT * FROM ".TABLE_LIMITOVANE_PRISLIBY." WHERE id = :id";
+$queries['limitovane_prisliby_select_all'] = "SELECT * FROM ".TBL_LP_MASTER;
+$queries['limitovane_prisliby_select_by_filters'] = "SELECT id, user_id, usek_id, kategorie, cislo_lp, cislo_uctu, nazev_uctu, vyse_financniho_kryti, platne_od, platne_do FROM ".TBL_LP_MASTER." WHERE 1=1";
+$queries['limitovane_prisliby_select_basic_info'] = "SELECT id, cislo_lp, nazev_uctu, vyse_financniho_kryti FROM ".TBL_LP_MASTER;
+$queries['limitovane_prisliby_select_by_id'] = "SELECT * FROM ".TBL_LP_MASTER." WHERE id = :id";
 
 // Templates for orders (legacy/new)
-$queries['sablony_objednavek_select_all'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " ORDER BY id";
-$queries['sablony_objednavek_select_by_user_or_global'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0) ORDER BY id";
-$queries['sablony_objednavek_select_by_id'] = "SELECT * FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE id = :id LIMIT 1";
-$queries['sablony_objednavek_insert'] = "INSERT INTO " . TABLE_SABLONY_OBJEDNAVEK . " (user_id, dt_vytvoreni, dt_aktualizace, nazev_sablony, polozky_po, polozky_detail, typ, kategorie, usek_zkr) VALUES (:user_id, NOW(), NOW(), :nazev_sablony, :polozky_po, :polozky_detail, :typ, :kategorie, :usek_zkr)";
-$queries['sablony_objednavek_update'] = "UPDATE " . TABLE_SABLONY_OBJEDNAVEK . " SET dt_aktualizace = NOW(), nazev_sablony = :nazev_sablony, polozky_po = :polozky_po, polozky_detail = :polozky_detail, typ = :typ, kategorie = :kategorie WHERE id = :id";
-$queries['sablony_objednavek_delete'] = "DELETE FROM " . TABLE_SABLONY_OBJEDNAVEK . " WHERE id = :id";
-$queries['pozice_select_all'] = "SELECT * FROM ".TABLE_POZICE;
-$queries['pozice_select_by_id'] = "SELECT * FROM ".TABLE_POZICE." WHERE id = :id";
+$queries['sablony_objednavek_select_all'] = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " ORDER BY id";
+$queries['sablony_objednavek_select_by_user_or_global'] = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE (user_id = :user_id OR user_id = 0) ORDER BY id";
+$queries['sablony_objednavek_select_by_id'] = "SELECT * FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE id = :id LIMIT 1";
+$queries['sablony_objednavek_insert'] = "INSERT INTO " . TBL_SABLONY_OBJEDNAVEK . " (user_id, dt_vytvoreni, dt_aktualizace, nazev_sablony, polozky_po, polozky_detail, typ, kategorie, usek_zkr) VALUES (:user_id, NOW(), NOW(), :nazev_sablony, :polozky_po, :polozky_detail, :typ, :kategorie, :usek_zkr)";
+$queries['sablony_objednavek_update'] = "UPDATE " . TBL_SABLONY_OBJEDNAVEK . " SET dt_aktualizace = NOW(), nazev_sablony = :nazev_sablony, polozky_po = :polozky_po, polozky_detail = :polozky_detail, typ = :typ, kategorie = :kategorie WHERE id = :id";
+$queries['sablony_objednavek_delete'] = "DELETE FROM " . TBL_SABLONY_OBJEDNAVEK . " WHERE id = :id";
+$queries['pozice_select_all'] = "SELECT * FROM ".TBL_POZICE;
+$queries['pozice_select_by_id'] = "SELECT * FROM ".TBL_POZICE." WHERE id = :id";
 // Hierarchical/tree select for pozice with parent name and usek info
 $queries['pozice_tree_select'] = "
     SELECT p.id, p.nazev_pozice, p.parent_id, p.usek_id,
            parent.nazev_pozice AS parent_nazev,
            us.usek_zkr, us.usek_nazev
-    FROM " . TABLE_POZICE . " p
-    LEFT JOIN " . TABLE_POZICE . " parent ON p.parent_id = parent.id
-    LEFT JOIN " . TABLE_USEKY . " us ON p.usek_id = us.id
+    FROM " . TBL_POZICE . " p
+    LEFT JOIN " . TBL_POZICE . " parent ON p.parent_id = parent.id
+    LEFT JOIN " . TBL_USEKY . " us ON p.usek_id = us.id
     ORDER BY COALESCE(p.parent_id, 0), p.nazev_pozice
 ";
 
 // Select positions for a given usek (department)
-$queries['pozice_select_by_usek'] = "SELECT id, nazev_pozice, parent_id, usek_id FROM " . TABLE_POZICE . " WHERE usek_id = :usek_id ORDER BY nazev_pozice";
+$queries['pozice_select_by_usek'] = "SELECT id, nazev_pozice, parent_id, usek_id FROM " . TBL_POZICE . " WHERE usek_id = :usek_id ORDER BY nazev_pozice";
 
 // Select direct children of a parent position
-$queries['pozice_select_children'] = "SELECT id, nazev_pozice, parent_id, usek_id FROM " . TABLE_POZICE . " WHERE parent_id = :parent_id ORDER BY nazev_pozice";
-$queries['prava_select_all'] = "SELECT * FROM ".TABLE_PRAVA;
-$queries['prava_select_by_id'] = "SELECT * FROM ".TABLE_PRAVA." WHERE id = :id";
+$queries['pozice_select_children'] = "SELECT id, nazev_pozice, parent_id, usek_id FROM " . TBL_POZICE . " WHERE parent_id = :parent_id ORDER BY nazev_pozice";
+$queries['prava_select_all'] = "SELECT * FROM ".TBL_PRAVA;
+$queries['prava_select_by_id'] = "SELECT * FROM ".TBL_PRAVA." WHERE id = :id";
 // Readable list of rights (code + description)
-$queries['prava_list'] = "SELECT id, kod_prava, popis FROM " . TABLE_PRAVA . " ORDER BY kod_prava";
-$queries['prava_select_by_kod'] = "SELECT id, kod_prava, popis FROM " . TABLE_PRAVA . " WHERE kod_prava = :kod_prava LIMIT 1";
-$queries['role_select_all'] = "SELECT * FROM ".TABLE_ROLE;
-$queries['role_select_by_id'] = "SELECT * FROM ".TABLE_ROLE." WHERE id = :id";
+$queries['prava_list'] = "SELECT id, kod_prava, popis FROM " . TBL_PRAVA . " ORDER BY kod_prava";
+$queries['prava_select_by_kod'] = "SELECT id, kod_prava, popis FROM " . TBL_PRAVA . " WHERE kod_prava = :kod_prava LIMIT 1";
+$queries['role_select_all'] = "SELECT * FROM ".TBL_ROLE;
+$queries['role_select_by_id'] = "SELECT * FROM ".TBL_ROLE." WHERE id = :id";
 // Readable list of roles and lookup by name
-$queries['role_list'] = "SELECT id, kod_role, nazev_role, popis FROM " . TABLE_ROLE . " ORDER BY nazev_role";
-$queries['role_select_by_nazev'] = "SELECT id, kod_role, nazev_role, popis FROM " . TABLE_ROLE . " WHERE nazev_role = :nazev_role LIMIT 1";
+$queries['role_list'] = "SELECT id, kod_role, nazev_role, popis FROM " . TBL_ROLE . " ORDER BY nazev_role";
+$queries['role_select_by_nazev'] = "SELECT id, kod_role, nazev_role, popis FROM " . TBL_ROLE . " WHERE nazev_role = :nazev_role LIMIT 1";
 
 // Detail role s právy
 $queries['role_detail_with_rights'] = "
@@ -161,24 +153,24 @@ $queries['role_detail_with_rights'] = "
            GROUP_CONCAT(DISTINCT p.id) as prava_ids,
            GROUP_CONCAT(DISTINCT p.kod_prava) as prava_kody,
            GROUP_CONCAT(DISTINCT p.popis SEPARATOR '|') as prava_popisy
-    FROM " . TABLE_ROLE . " r
-    LEFT JOIN " . TABLE_ROLE_PRAVA . " rp ON r.id = rp.role_id
-    LEFT JOIN " . TABLE_PRAVA . " p ON rp.pravo_id = p.id
+    FROM " . TBL_ROLE . " r
+    LEFT JOIN " . TBL_ROLE_PRAVA . " rp ON r.id = rp.role_id
+    LEFT JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
     WHERE r.id = :id
     GROUP BY r.id, r.nazev_role, r.popis, r.aktivni
 ";
 
-$queries['role_prava_select_all'] = "SELECT * FROM ".TABLE_ROLE_PRAVA;
-$queries['role_prava_select_by_id'] = "SELECT * FROM ".TABLE_ROLE_PRAVA." WHERE role_id = :role_id AND pravo_id = :pravo_id";
+$queries['role_prava_select_all'] = "SELECT * FROM ".TBL_ROLE_PRAVA;
+$queries['role_prava_select_by_id'] = "SELECT * FROM ".TBL_ROLE_PRAVA." WHERE role_id = :role_id AND pravo_id = :pravo_id";
 
 // === ORGANIZACE QUERIES ===
-$queries['organizace_select_all'] = "SELECT * FROM ".TABLE_ORGANIZACE." ORDER BY nazev_organizace";
-$queries['organizace_select_by_id'] = "SELECT * FROM ".TABLE_ORGANIZACE." WHERE id = :id";
-$queries['organizace_list'] = "SELECT id, nazev_organizace as nazev, ico, dic FROM " . TABLE_ORGANIZACE . " ORDER BY nazev_organizace";
+$queries['organizace_select_all'] = "SELECT * FROM ".TBL_ORGANIZACE_VIZITKA." ORDER BY nazev_organizace";
+$queries['organizace_select_by_id'] = "SELECT * FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id";
+$queries['organizace_list'] = "SELECT id, nazev_organizace as nazev, ico, dic FROM " . TBL_ORGANIZACE_VIZITKA . " ORDER BY nazev_organizace";
 
 // ORGANIZACE CRUD
 $queries['organizace_insert'] = "
-    INSERT INTO ".TABLE_ORGANIZACE." (
+    INSERT INTO ".TBL_ORGANIZACE_VIZITKA." (
         nazev_organizace, ico, dic, ulice_cislo, mesto, psc, 
         zastoupeny, datova_schranka, email, telefon
     ) VALUES (
@@ -188,7 +180,7 @@ $queries['organizace_insert'] = "
 ";
 
 $queries['organizace_update'] = "
-    UPDATE ".TABLE_ORGANIZACE." SET
+    UPDATE ".TBL_ORGANIZACE_VIZITKA." SET
         nazev_organizace = :nazev_organizace,
         ico = :ico,
         dic = :dic,
@@ -202,22 +194,22 @@ $queries['organizace_update'] = "
     WHERE id = :id
 ";
 
-$queries['organizace_delete'] = "DELETE FROM ".TABLE_ORGANIZACE." WHERE id = :id";
+$queries['organizace_delete'] = "DELETE FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id";
 
 // Kontrola existence organizace pro FK
 $queries['organizace_check_usage'] = "
     SELECT 
-        (SELECT COUNT(*) FROM ".TABLE_UZIVATELE." WHERE organizace_id = :id) as users_count
+        (SELECT COUNT(*) FROM ".TBL_UZIVATELE." WHERE organizace_id = :id) as users_count
 ";
 
 // Extended organizace detail pro admin
-$queries['organizace_detail_full'] = "SELECT * FROM ".TABLE_ORGANIZACE." WHERE id = :id";
+$queries['organizace_detail_full'] = "SELECT * FROM ".TBL_ORGANIZACE_VIZITKA." WHERE id = :id";
 
-$queries['useky_select_all'] = "SELECT * FROM ".TABLE_USEKY;
-$queries['useky_select_by_id'] = "SELECT * FROM ".TABLE_USEKY." WHERE id = :id";
+$queries['useky_select_all'] = "SELECT * FROM ".TBL_USEKY;
+$queries['useky_select_by_id'] = "SELECT * FROM ".TBL_USEKY." WHERE id = :id";
 // Simple list of useky (departments)
-$queries['useky_list'] = "SELECT id, usek_zkr, usek_nazev FROM " . TABLE_USEKY . " ORDER BY usek_zkr";
-$queries['useky_select_by_zkr'] = "SELECT id, usek_zkr, usek_nazev FROM " . TABLE_USEKY . " WHERE usek_zkr = :usek_zkr LIMIT 1";
+$queries['useky_list'] = "SELECT id, usek_zkr, usek_nazev FROM " . TBL_USEKY . " ORDER BY usek_zkr";
+$queries['useky_select_by_zkr'] = "SELECT id, usek_zkr, usek_nazev FROM " . TBL_USEKY . " WHERE usek_zkr = :usek_zkr LIMIT 1";
 $queries['uzivatele_select_all'] = "
     SELECT 
         u.id,
@@ -245,22 +237,22 @@ $queries['uzivatele_select_all'] = "
         
         CONCAT_WS(' ', MIN(u_nadrizeny.titul_pred), MIN(u_nadrizeny.jmeno), MIN(u_nadrizeny.prijmeni), MIN(u_nadrizeny.titul_za)) as nadrizeny_cely_jmeno
 
-    FROM " . TABLE_UZIVATELE . " u
-        LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
-        LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
-    LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
-        LEFT JOIN " . TABLE_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
+    FROM " . TBL_UZIVATELE . " u
+        LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
+        LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+    LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+        LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
     WHERE u.id > 0
     GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
     ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
 ";
-$queries['uzivatele_select_by_id'] = "SELECT * FROM ".TABLE_UZIVATELE." WHERE id = :id";
+$queries['uzivatele_select_by_id'] = "SELECT * FROM ".TBL_UZIVATELE." WHERE id = :id";
 // Update last activity timestamp for a user
-$queries['uzivatele_update_last_activity'] = "UPDATE " . TABLE_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
+$queries['uzivatele_update_last_activity'] = "UPDATE " . TBL_UZIVATELE . " SET dt_posledni_aktivita = NOW() WHERE id = :id";
 // Select active users from last 5 minutes - opraveno pro PHP 5.6/MySQL 5.5 kompatibilitu
-$queries['uzivatele_active_last_5_minutes'] = "SELECT id, username, CONCAT(jmeno, ' ', prijmeni) AS cele_jmeno, dt_posledni_aktivita FROM " . TABLE_UZIVATELE . " WHERE dt_posledni_aktivita IS NOT NULL AND dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) AND aktivni = 1 ORDER BY dt_posledni_aktivita DESC";
-$queries['uzivatele_hierarchie_select_all'] = "SELECT * FROM ".TABLE_UZIVATELE_HIERARCHIE;
-$queries['uzivatele_hierarchie_select_by_id'] = "SELECT * FROM ".TABLE_UZIVATELE_HIERARCHIE." WHERE nadrizeny_id = :nadrizeny_id AND podrizeny_id = :podrizeny_id";
+$queries['uzivatele_active_last_5_minutes'] = "SELECT id, username, CONCAT(jmeno, ' ', prijmeni) AS cele_jmeno, dt_posledni_aktivita FROM " . TBL_UZIVATELE . " WHERE dt_posledni_aktivita IS NOT NULL AND dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) AND aktivni = 1 ORDER BY dt_posledni_aktivita DESC";
+$queries['uzivatele_hierarchie_select_all'] = "SELECT * FROM ".TBL_UZIVATELE_HIERARCHIE;
+$queries['uzivatele_hierarchie_select_by_id'] = "SELECT * FROM ".TBL_UZIVATELE_HIERARCHIE." WHERE nadrizeny_id = :nadrizeny_id AND podrizeny_id = :podrizeny_id";
 // --- KONEC GENEROVANÝCH SELECTŮ ---
 
 // --- SELECTY pro STARÉ tabulky (prefix old_) - převzato z /old/queries.php ---
@@ -286,12 +278,12 @@ $queries['old_delete_user'] = "UPDATE " . OLD_TABLE_USERS . " SET state = 'delet
 
 $queries['old_login_user'] = "SELECT id, username FROM " . OLD_TABLE_USERS . " WHERE username = :username AND password = :password LIMIT 1";
 
-$queries['old_get_order_id'] = "SELECT * FROM " . OLD_TABLE_OBJEDNAVKY . " WHERE id = :id";
-$queries['old_insert_order'] = "INSERT INTO " . OLD_TABLE_OBJEDNAVKY . " (user_id, amount) VALUES (:user_id, :amount)";
-$queries['old_update_order'] = "UPDATE " . OLD_TABLE_OBJEDNAVKY . " SET amount = :amount WHERE id = :id";
-$queries['old_delete_order'] = "DELETE FROM " . OLD_TABLE_OBJEDNAVKY . " WHERE id = :id";
+$queries['old_get_order_id'] = "SELECT * FROM " . OLD_TBL_OBJEDNAVKY . " WHERE id = :id";
+$queries['old_insert_order'] = "INSERT INTO " . OLD_TBL_OBJEDNAVKY . " (user_id, amount) VALUES (:user_id, :amount)";
+$queries['old_update_order'] = "UPDATE " . OLD_TBL_OBJEDNAVKY . " SET amount = :amount WHERE id = :id";
+$queries['old_delete_order'] = "DELETE FROM " . OLD_TBL_OBJEDNAVKY . " WHERE id = :id";
 
-$queries['old_react_update_order_id'] = "UPDATE " . OLD_TABLE_OBJEDNAVKY . " SET %s WHERE id = :id";
+$queries['old_react_update_order_id'] = "UPDATE " . OLD_TBL_OBJEDNAVKY . " SET %s WHERE id = :id";
 
 $queries['old_react_all_garants'] = "SELECT * FROM " . OLD_TABLE_GARANT . " ORDER BY garant;";
 $queries['old_react_all_lps'] = "SELECT  *, DATE_FORMAT(platne_do , '%d.%m.%Y') as platne_do, DATE_FORMAT(platne_do , '%d.%m.%Y') as platne_od, "
@@ -300,7 +292,7 @@ $queries['old_react_all_lps'] = "SELECT  *, DATE_FORMAT(platne_do , '%d.%m.%Y') 
 $queries['old_react_all_types'] = "SELECT * FROM " . OLD_TABLE_DRUH . " ORDER BY druh;";
 
 $queries['old_react_attachment_id'] = "SELECT * FROM " . OLD_TABLE_OPRILOHY . " WHERE (id_smlouvy= :id) ORDER BY soubor;";
-$queries['old_react_order_raw_id'] = "SELECT * FROM " . OLD_TABLE_OBJEDNAVKY . " WHERE id= :id";
+$queries['old_react_order_raw_id'] = "SELECT * FROM " . OLD_TBL_OBJEDNAVKY . " WHERE id= :id";
 
 $queries['old_react_get_year_orders'] =
     "SELECT id,  evidencni_c, DATE_FORMAT(datum_u , '%d.%m.%Y') as datum_p, dodatek_sml_id, vypovedni_lhuta, "
@@ -314,10 +306,10 @@ $queries['old_react_get_year_orders'] =
     . "DATE_FORMAT(dt_modifikace, '%d.%m.%Y %H:%i:%s') as dt_modifikace,"
     . "(SELECT TRIM(CONCAT(surname,' ', name)) FROM " . OLD_TABLE_USERS . " WHERE " . OLD_TABLE_USERS . ".id = upd_user_id) as userUpdater,"
     . "partner_nazev, partner_ic, partner_adresa, obsah, cena, cena_rok, platnost_do, ukonceno, DATE_FORMAT(dt_zverejneni, '%d.%m.%Y') as dt_zverejneni, zverejnit, idds,"
-    . "(SELECT COUNT(id_smlouvy) FROM " . OLD_TABLE_OPRILOHY . "  WHERE " . OLD_TABLE_OPRILOHY . ".id_smlouvy = " . OLD_TABLE_OBJEDNAVKY . ".id) as prilohy,"
+    . "(SELECT COUNT(id_smlouvy) FROM " . OLD_TABLE_OPRILOHY . "  WHERE " . OLD_TABLE_OPRILOHY . ".id_smlouvy = " . OLD_TBL_OBJEDNAVKY . ".id) as prilohy,"
     . "poznamka, poznamka_garant,"
-    . "(SELECT metadata FROM " . OLD_TABLE_OBJMD . " WHERE " . OLD_TABLE_OBJMD . ".objednavka_id = " . OLD_TABLE_OBJEDNAVKY . ".id) as objMetaData"
-    . " FROM " . OLD_TABLE_OBJEDNAVKY
+    . "(SELECT metadata FROM " . OLD_TABLE_OBJMD . " WHERE " . OLD_TABLE_OBJMD . ".objednavka_id = " . OLD_TBL_OBJEDNAVKY . ".id) as objMetaData"
+    . " FROM " . OLD_TBL_OBJEDNAVKY
     . " WHERE datum_u BETWEEN :yearFrom AND :yearTo;";
 
 $queries['old_react_order_id'] =
@@ -332,47 +324,47 @@ $queries['old_react_order_id'] =
     . "DATE_FORMAT(dt_modifikace, '%d.%m.%Y %H:%i:%s') as dt_modifikace,"
     . "(SELECT TRIM(CONCAT(surname,' ', name)) FROM " . OLD_TABLE_USERS . " WHERE " . OLD_TABLE_USERS . ".id = upd_user_id) as userUpdater,"
     . "partner_nazev, partner_ic, partner_adresa, obsah, cena, cena_rok, platnost_do, ukonceno, DATE_FORMAT(dt_zverejneni, '%d.%m.%Y') as dt_zverejneni, zverejnit, idds,"
-    . "(SELECT COUNT(id_smlouvy) FROM " . OLD_TABLE_OPRILOHY . "  WHERE " . OLD_TABLE_OPRILOHY . ".id_smlouvy = " . OLD_TABLE_OBJEDNAVKY . ".id) as prilohy,"
+    . "(SELECT COUNT(id_smlouvy) FROM " . OLD_TABLE_OPRILOHY . "  WHERE " . OLD_TABLE_OPRILOHY . ".id_smlouvy = " . OLD_TBL_OBJEDNAVKY . ".id) as prilohy,"
     . "poznamka, poznamka_garant,"
-    . "(SELECT metadata FROM " . OLD_TABLE_OBJMD . " WHERE " . OLD_TABLE_OBJMD . ".objednavka_id = " . OLD_TABLE_OBJEDNAVKY . ".id) as objMetaData"
-    . " FROM " . OLD_TABLE_OBJEDNAVKY
-    . " WHERE " . OLD_TABLE_OBJEDNAVKY . ".id = :id";
+    . "(SELECT metadata FROM " . OLD_TABLE_OBJMD . " WHERE " . OLD_TABLE_OBJMD . ".objednavka_id = " . OLD_TBL_OBJEDNAVKY . ".id) as objMetaData"
+    . " FROM " . OLD_TBL_OBJEDNAVKY
+    . " WHERE " . OLD_TBL_OBJEDNAVKY . ".id = :id";
 // --- konec old selectů ---
 
 // INSERT dotazy
-$queries['objednavky_insert'] = "INSERT INTO ".TABLE_OBJEDNAVKY." 
+$queries['objednavky_insert'] = "INSERT INTO ".TBL_OBJEDNAVKY." 
     (uzivatel_id, dodavatel_id, lokalita_id, stav_id, nazev_objednavky, popis, poznamka, dt_vytvoreni, dt_aktualizace) 
     VALUES (:uzivatel_id, :dodavatel_id, :lokalita_id, :stav_id, :nazev_objednavky, :popis, :poznamka, NOW(), NOW())";
 
-$queries['objednavky_insert_full'] = "INSERT INTO ".TABLE_OBJEDNAVKY." 
+$queries['objednavky_insert_full'] = "INSERT INTO ".TBL_OBJEDNAVKY." 
     (cislo_objednavky, datum_objednavky, objednatel_id, created_by_uzivatel_id, updated_by_uzivatel_id, garant_uzivatel_id, predmet, prikazce_id, max_cena_s_dph, stav_id, strediska, financovani_dodatek, stav_komentar, dt_vytvoreni, dt_aktualizace) 
     VALUES (:cislo_objednavky, :datum_objednavky, :objednatel_id, :created_by_uzivatel_id, :updated_by_uzivatel_id, :garant_uzivatel_id, :predmet, :prikazce_id, :max_cena_s_dph, :stav_id, :strediska, :financovani_dodatek, :stav_komentar, NOW(), NOW())";
 
-$queries['objednavky_polozky_insert'] = "INSERT INTO ".TABLE_OBJEDNAVKY_POLOZKY."
+$queries['objednavky_polozky_insert'] = "INSERT INTO ".TBL_OBJEDNAVKY_POLOZKY."
     (objednavka_id, popis, cena_bez_dph, sazba_dph, cena_s_dph, dt_vytvoreni)
     VALUES (:objednavka_id, :popis, :cena_bez_dph, :sazba_dph, :cena_s_dph, NOW())";
 
 // Opravené dotazy pro přílohy podle skutečné DB struktury
-$queries['objednavky_prilohy_select_by_objednavka'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE objednavka_id = :objednavka_id ORDER BY dt_vytvoreni";
-$queries['objednavky_prilohy_select_by_guid'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE guid = :guid LIMIT 1";
-$queries['objednavky_prilohy_insert'] = "INSERT INTO ".TABLE_OBJEDNAVKY_PRILOHY."
+$queries['objednavky_prilohy_select_by_objednavka'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE objednavka_id = :objednavka_id ORDER BY dt_vytvoreni";
+$queries['objednavky_prilohy_select_by_guid'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE guid = :guid LIMIT 1";
+$queries['objednavky_prilohy_insert'] = "INSERT INTO ".TBL_OBJEDNAVKY_PRILOHY."
     (objednavka_id, guid, typ_prilohy, originalni_nazev_souboru, systemova_cesta, velikost_souboru_b, nahrano_uzivatel_id, dt_vytvoreni)
     VALUES (:objednavka_id, :guid, :typ_prilohy, :originalni_nazev_souboru, :systemova_cesta, :velikost_souboru_b, :nahrano_uzivatel_id, NOW())";
-$queries['objednavky_prilohy_update'] = "UPDATE ".TABLE_OBJEDNAVKY_PRILOHY." SET 
+$queries['objednavky_prilohy_update'] = "UPDATE ".TBL_OBJEDNAVKY_PRILOHY." SET 
     typ_prilohy = :typ_prilohy, dt_aktualizace = NOW() WHERE id = :id";
-$queries['objednavky_prilohy_delete'] = "DELETE FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE id = :id";
-$queries['objednavky_prilohy_delete_by_guid'] = "DELETE FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE guid = :guid";
+$queries['objednavky_prilohy_delete'] = "DELETE FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE id = :id";
+$queries['objednavky_prilohy_delete_by_guid'] = "DELETE FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE guid = :guid";
 
 // Číselníky pro formuláře
 $queries['ciselniky_pro_formular'] = [
-    'stavy' => "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM ".TABLE_CISELNIK_STAVY." ORDER BY id",
-    'dodavatele' => "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM ".TABLE_DODAVATELE." WHERE aktivni = 1 ORDER BY nazev",
-    'lokality' => "SELECT id, nazev, typ FROM ".TABLE_LOKALITY." ORDER BY nazev"
+    'stavy' => "SELECT id, typ_objektu, kod_stavu, nazev_stavu, popis FROM ".TBL_CISELNIK_STAVY." ORDER BY id",
+    'dodavatele' => "SELECT id, nazev AS dodavatel_nazev, ico, dic FROM ".TBL_DODAVATELE." WHERE aktivni = 1 ORDER BY nazev",
+    'lokality' => "SELECT id, nazev, typ FROM ".TBL_LOKALITY." ORDER BY nazev"
 ];
 
 // LOGIN dotaz pro uživatele (username + aktivni)
-$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email, role_id FROM ".TABLE_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
-$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email FROM ".TABLE_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
+$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email, role_id FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
+$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
 
 // KOMPLETNÍ dotaz pro uživatele s JOIN na všechny související tabulky
 $queries['uzivatele_detail'] = "
@@ -420,22 +412,22 @@ $queries['uzivatele_detail'] = "
         CONCAT_WS(' ', u_nadrizeny.titul_pred, u_nadrizeny.jmeno, u_nadrizeny.prijmeni, u_nadrizeny.titul_za) as nadrizeny_cely_jmeno
     /* role join removed: roles come from 25_uzivatele_role */
 
-    FROM " . TABLE_UZIVATELE . " u
+    FROM " . TBL_UZIVATELE . " u
         /* role join removed: roles come from 25_uzivatele_role */
-        LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
-        LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
-        LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
-        LEFT JOIN " . TABLE_ORGANIZACE . " o ON u.organizace_id = o.id
-        LEFT JOIN " . TABLE_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
+        LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
+        LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+        LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+        LEFT JOIN " . TBL_ORGANIZACE_VIZITKA . " o ON u.organizace_id = o.id
+        LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
     WHERE u.id = :id AND u.id > 0
 ";
 
 // Rights for a given role (returns all columns from prava)
-$queries['uzivatele_prava_by_role'] = "SELECT pr.* FROM " . TABLE_ROLE_PRAVA . " rp JOIN " . TABLE_PRAVA . " pr ON pr.id = rp.pravo_id WHERE rp.role_id = :role_id ORDER BY pr.id";
+$queries['uzivatele_prava_by_role'] = "SELECT pr.* FROM " . TBL_ROLE_PRAVA . " rp JOIN " . TBL_PRAVA . " pr ON pr.id = rp.pravo_id WHERE rp.role_id = :role_id ORDER BY pr.id";
 // Roles for a given user via join table
-$queries['uzivatele_roles_by_user'] = "SELECT r.* FROM " . TABLE_UZIVATELE_ROLE . " ur JOIN " . TABLE_ROLE . " r ON r.id = ur.role_id WHERE ur.uzivatel_id = :uzivatel_id ORDER BY r.id";
+$queries['uzivatele_roles_by_user'] = "SELECT r.* FROM " . TBL_UZIVATELE_ROLE . " ur JOIN " . TBL_ROLE . " r ON r.id = ur.role_id WHERE ur.uzivatel_id = :uzivatel_id ORDER BY r.id";
 // Přímá práva přiřazená uživateli přes user_id ve 25_role_prava
-$queries['uzivatele_prava_direct_by_user'] = "SELECT pr.* FROM " . TABLE_ROLE_PRAVA . " rp JOIN " . TABLE_PRAVA . " pr ON pr.id = rp.pravo_id WHERE rp.user_id = :user_id ORDER BY pr.id";
+$queries['uzivatele_prava_direct_by_user'] = "SELECT pr.* FROM " . TBL_ROLE_PRAVA . " rp JOIN " . TBL_PRAVA . " pr ON pr.id = rp.pravo_id WHERE rp.user_id = :user_id ORDER BY pr.id";
 // Dotaz pro získání uživatele podle username s kompletními daty
 $queries['uzivatele_detail_by_username'] = "
     SELECT 
@@ -474,12 +466,12 @@ $queries['uzivatele_detail_by_username'] = "
         o.email as organizace_email,
         o.telefon as organizace_telefon
         
-    FROM ".TABLE_UZIVATELE." u
+    FROM ".TBL_UZIVATELE." u
     /* role join removed: roles come from 25_uzivatele_role */
-    LEFT JOIN ".TABLE_POZICE." p ON u.pozice_id = p.id
-    LEFT JOIN ".TABLE_LOKALITY." l ON u.lokalita_id = l.id
-    LEFT JOIN ".TABLE_USEKY." us ON p.usek_id = us.id
-    LEFT JOIN ".TABLE_ORGANIZACE." o ON u.organizace_id = o.id
+    LEFT JOIN ".TBL_POZICE." p ON u.pozice_id = p.id
+    LEFT JOIN ".TBL_LOKALITY." l ON u.lokalita_id = l.id
+    LEFT JOIN ".TBL_USEKY." us ON p.usek_id = us.id
+    LEFT JOIN ".TBL_ORGANIZACE_VIZITKA." o ON u.organizace_id = o.id
     WHERE u.username = :username AND u.aktivni = 1
 ";
 
@@ -487,27 +479,27 @@ $queries['uzivatele_org_data_by_id'] = "
     SELECT 
         IFNULL(us.usek_zkr, '') as usek_zkr,
         o.ico as organizace_ico
-    FROM ".TABLE_UZIVATELE." u
-    LEFT JOIN ".TABLE_POZICE." p ON u.pozice_id = p.id
-    LEFT JOIN ".TABLE_USEKY." us ON p.usek_id = us.id
-    LEFT JOIN ".TABLE_ORGANIZACE." o ON u.organizace_id = o.id
+    FROM ".TBL_UZIVATELE." u
+    LEFT JOIN ".TBL_POZICE." p ON u.pozice_id = p.id
+    LEFT JOIN ".TBL_USEKY." us ON p.usek_id = us.id
+    LEFT JOIN ".TBL_ORGANIZACE_VIZITKA." o ON u.organizace_id = o.id
     WHERE u.id = :id AND u.aktivni = 1
 ";
 $queries['uzivatele_org_data_by_username'] = "
     SELECT 
         IFNULL(us.usek_zkr, '') as usek_zkr,
         o.ico as organizace_ico
-    FROM ".TABLE_UZIVATELE." u
-    LEFT JOIN ".TABLE_POZICE." p ON u.pozice_id = p.id
-    LEFT JOIN ".TABLE_USEKY." us ON p.usek_id = us.id
-    LEFT JOIN ".TABLE_ORGANIZACE." o ON u.organizace_id = o.id
+    FROM ".TBL_UZIVATELE." u
+    LEFT JOIN ".TBL_POZICE." p ON u.pozice_id = p.id
+    LEFT JOIN ".TBL_USEKY." us ON p.usek_id = us.id
+    LEFT JOIN ".TBL_ORGANIZACE_VIZITKA." o ON u.organizace_id = o.id
     WHERE u.username = :username AND u.aktivni = 1
 ";
 
 // === USERS MANAGEMENT API (CREATE, UPDATE, DELETE) ===
 
 // Insert new user
-$queries['uzivatele_insert'] = "INSERT INTO " . TABLE_UZIVATELE . " (
+$queries['uzivatele_insert'] = "INSERT INTO " . TBL_UZIVATELE . " (
     username, password_hash, jmeno, prijmeni, titul_pred, titul_za, 
     email, telefon, usek_id, lokalita_id, pozice_id, organizace_id,
     aktivni, dt_vytvoreni, dt_aktualizace, dt_posledni_aktivita
@@ -518,7 +510,7 @@ $queries['uzivatele_insert'] = "INSERT INTO " . TABLE_UZIVATELE . " (
 )";
 
 // Update user by ID
-$queries['uzivatele_update_by_id'] = "UPDATE " . TABLE_UZIVATELE . " SET 
+$queries['uzivatele_update_by_id'] = "UPDATE " . TBL_UZIVATELE . " SET 
     username = :username,
     jmeno = :jmeno,
     prijmeni = :prijmeni,
@@ -535,41 +527,41 @@ $queries['uzivatele_update_by_id'] = "UPDATE " . TABLE_UZIVATELE . " SET
 WHERE id = :id AND id > 0";
 
 // Update user password
-$queries['uzivatele_update_password'] = "UPDATE " . TABLE_UZIVATELE . " SET 
+$queries['uzivatele_update_password'] = "UPDATE " . TBL_UZIVATELE . " SET 
     password_hash = :password_hash,
     dt_aktualizace = NOW()
 WHERE id = :id AND id > 0";
 
 // Deactivate user (soft delete)
-$queries['uzivatele_deactivate'] = "UPDATE " . TABLE_UZIVATELE . " SET 
+$queries['uzivatele_deactivate'] = "UPDATE " . TBL_UZIVATELE . " SET 
     aktivni = 0,
     dt_aktualizace = NOW()
 WHERE id = :id AND id > 0";
 
 // Delete user (hard delete) - kompletní smazání ze systému
-$queries['uzivatele_delete'] = "DELETE FROM " . TABLE_UZIVATELE . " WHERE id = :id AND id > 0";
+$queries['uzivatele_delete'] = "DELETE FROM " . TBL_UZIVATELE . " WHERE id = :id AND id > 0";
 
 // Check if username exists
-$queries['uzivatele_check_username'] = "SELECT COUNT(*) as count FROM " . TABLE_UZIVATELE . " WHERE username = :username AND id != :exclude_id";
+$queries['uzivatele_check_username'] = "SELECT COUNT(*) as count FROM " . TBL_UZIVATELE . " WHERE username = :username AND id != :exclude_id";
 
 // Check if email exists  
-$queries['uzivatele_check_email'] = "SELECT COUNT(*) as count FROM " . TABLE_UZIVATELE . " WHERE email = :email AND id != :exclude_id";
+$queries['uzivatele_check_email'] = "SELECT COUNT(*) as count FROM " . TBL_UZIVATELE . " WHERE email = :email AND id != :exclude_id";
 
 // User roles management
-$queries['uzivatele_roles_delete_all'] = "DELETE FROM " . TABLE_UZIVATELE_ROLE . " WHERE uzivatel_id = :uzivatel_id";
-$queries['uzivatele_roles_insert'] = "INSERT INTO " . TABLE_UZIVATELE_ROLE . " (uzivatel_id, role_id) VALUES (:uzivatel_id, :role_id)";
+$queries['uzivatele_roles_delete_all'] = "DELETE FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id = :uzivatel_id";
+$queries['uzivatele_roles_insert'] = "INSERT INTO " . TBL_UZIVATELE_ROLE . " (uzivatel_id, role_id) VALUES (:uzivatel_id, :role_id)";
 
 // Direct user rights management  
-$queries['uzivatele_direct_rights_delete_all'] = "DELETE FROM " . TABLE_ROLE_PRAVA . " WHERE user_id = :user_id AND role_id = -1";
-$queries['uzivatele_direct_rights_insert'] = "INSERT INTO " . TABLE_ROLE_PRAVA . " (user_id, role_id, pravo_id) VALUES (:user_id, -1, :pravo_id)";
+$queries['uzivatele_direct_rights_delete_all'] = "DELETE FROM " . TBL_ROLE_PRAVA . " WHERE user_id = :user_id AND role_id = -1";
+$queries['uzivatele_direct_rights_insert'] = "INSERT INTO " . TBL_ROLE_PRAVA . " (user_id, role_id, pravo_id) VALUES (:user_id, -1, :pravo_id)";
 
 // Validation queries
-$queries['validate_usek_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_USEKY . " WHERE id = :id";
-$queries['validate_lokalita_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_LOKALITY . " WHERE id = :id";
-$queries['validate_pozice_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_POZICE . " WHERE id = :id";
-$queries['validate_organizace_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_ORGANIZACE . " WHERE id = :id";
-$queries['validate_role_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_ROLE . " WHERE id = :id";
-$queries['validate_pravo_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_PRAVA . " WHERE id = :id";
+$queries['validate_usek_exists'] = "SELECT COUNT(*) as count FROM " . TBL_USEKY . " WHERE id = :id";
+$queries['validate_lokalita_exists'] = "SELECT COUNT(*) as count FROM " . TBL_LOKALITY . " WHERE id = :id";
+$queries['validate_pozice_exists'] = "SELECT COUNT(*) as count FROM " . TBL_POZICE . " WHERE id = :id";
+$queries['validate_organizace_exists'] = "SELECT COUNT(*) as count FROM " . TBL_ORGANIZACE_VIZITKA . " WHERE id = :id";
+$queries['validate_role_exists'] = "SELECT COUNT(*) as count FROM " . TBL_ROLE . " WHERE id = :id";
+$queries['validate_pravo_exists'] = "SELECT COUNT(*) as count FROM " . TBL_PRAVA . " WHERE id = :id";
 
  $sql_raw = <<<'SQL'
     SELECT 
@@ -635,7 +627,7 @@ $queries['validate_pravo_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_PRA
              '","dt_aktualizace":"', COALESCE(DATE_FORMAT(p.dt_aktualizace, '%Y-%m-%d %H:%i:%s'), ''),
              '"}')
             ORDER BY p.id SEPARATOR ','), ''), ']')
-         FROM {{TABLE_OBJEDNAVKY_POLOZKY}} p WHERE p.objednavka_id = o.id) as polozky,
+         FROM {{TBL_OBJEDNAVKY_POLOZKY}} p WHERE p.objednavka_id = o.id) as polozky,
 
         (SELECT CONCAT('[', IFNULL(GROUP_CONCAT(
          CONCAT('{"id":', a.id,
@@ -649,32 +641,32 @@ $queries['validate_pravo_exists'] = "SELECT COUNT(*) as count FROM " . TABLE_PRA
              '","dt_aktualizace":"', COALESCE(DATE_FORMAT(a.dt_aktualizace, '%Y-%m-%d %H:%i:%s'), ''),
              '"}')
             ORDER BY a.id SEPARATOR ','), ''), ']')
-         FROM {{TABLE_OBJEDNAVKY_PRILOHY}} a WHERE a.objednavka_id = o.id) as prilohy
+         FROM {{TBL_OBJEDNAVKY_PRILOHY}} a WHERE a.objednavka_id = o.id) as prilohy
 
         
         
-    FROM {{TABLE_OBJEDNAVKY}} o
-    LEFT JOIN {{TABLE_UZIVATELE}} u_objednatel ON o.objednatel_id = u_objednatel.id
-    LEFT JOIN {{TABLE_UZIVATELE}} u_garant ON o.garant_uzivatel_id = u_garant.id
-    LEFT JOIN {{TABLE_CISELNIK_STAVY}} s ON o.stav_id = s.id
+    FROM {{TBL_OBJEDNAVKY}} o
+    LEFT JOIN {{TBL_UZIVATELE}} u_objednatel ON o.objednatel_id = u_objednatel.id
+    LEFT JOIN {{TBL_UZIVATELE}} u_garant ON o.garant_uzivatel_id = u_garant.id
+    LEFT JOIN {{TBL_CISELNIK_STAVY}} s ON o.stav_id = s.id
     ORDER BY o.id ASC
 SQL;
 
 $queries['objednavky_select_with_details'] = str_replace(
-    ['{{TABLE_OBJEDNAVKY_POLOZKY}}', '{{TABLE_OBJEDNAVKY_PRILOHY}}', '{{TABLE_OBJEDNAVKY}}', '{{TABLE_UZIVATELE}}', '{{TABLE_CISELNIK_STAVY}}'],
-    [TABLE_OBJEDNAVKY_POLOZKY, TABLE_OBJEDNAVKY_PRILOHY, TABLE_OBJEDNAVKY, TABLE_UZIVATELE, TABLE_CISELNIK_STAVY],
+    ['{{TBL_OBJEDNAVKY_POLOZKY}}', '{{TBL_OBJEDNAVKY_PRILOHY}}', '{{TBL_OBJEDNAVKY}}', '{{TBL_UZIVATELE}}', '{{TBL_CISELNIK_STAVY}}'],
+    [TBL_OBJEDNAVKY_POLOZKY, TBL_OBJEDNAVKY_PRILOHY, TBL_OBJEDNAVKY, TBL_UZIVATELE, TBL_CISELNIK_STAVY],
     $sql_raw
 );
 
 // Detail jedné objednávky se stejnou strukturou jako list
 $queries['objednavky_select_one_with_details'] = str_replace(
-    ['{{TABLE_OBJEDNAVKY_POLOZKY}}', '{{TABLE_OBJEDNAVKY_PRILOHY}}', '{{TABLE_OBJEDNAVKY}}', '{{TABLE_UZIVATELE}}', '{{TABLE_CISELNIK_STAVY}}'],
-    [TABLE_OBJEDNAVKY_POLOZKY, TABLE_OBJEDNAVKY_PRILOHY, TABLE_OBJEDNAVKY, TABLE_UZIVATELE, TABLE_CISELNIK_STAVY],
+    ['{{TBL_OBJEDNAVKY_POLOZKY}}', '{{TBL_OBJEDNAVKY_PRILOHY}}', '{{TBL_OBJEDNAVKY}}', '{{TBL_UZIVATELE}}', '{{TBL_CISELNIK_STAVY}}'],
+    [TBL_OBJEDNAVKY_POLOZKY, TBL_OBJEDNAVKY_PRILOHY, TBL_OBJEDNAVKY, TBL_UZIVATELE, TBL_CISELNIK_STAVY],
     str_replace('ORDER BY o.id ASC', 'WHERE o.id = :id LIMIT 1', $sql_raw)
 );
 
-$queries['objednavky_polozky_by_objednavka'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_POLOZKY." WHERE objednavka_id = :objednavka_id ORDER BY id";
-$queries['objednavky_prilohy_by_objednavka'] = "SELECT * FROM ".TABLE_OBJEDNAVKY_PRILOHY." WHERE objednavka_id = :objednavka_id ORDER BY id";
+$queries['objednavky_polozky_by_objednavka'] = "SELECT * FROM ".TBL_OBJEDNAVKY_POLOZKY." WHERE objednavka_id = :objednavka_id ORDER BY id";
+$queries['objednavky_prilohy_by_objednavka'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE objednavka_id = :objednavka_id ORDER BY id";
 
 // Query s aliasy pro orders25 kompatibilitu 
 $queries['objednavky_prilohy_enriched_by_objednavka'] = "SELECT 
@@ -697,73 +689,73 @@ $queries['objednavky_prilohy_enriched_by_objednavka'] = "SELECT
     u.jmeno AS nahrano_uzivatel_jmeno,
     u.prijmeni AS nahrano_uzivatel_prijmeni,
     CONCAT(u.jmeno, ' ', u.prijmeni) AS nahrano_uzivatel_celne_jmeno
-FROM ".TABLE_OBJEDNAVKY_PRILOHY." p
-LEFT JOIN ".TABLE_UZIVATELE." u ON p.nahrano_uzivatel_id = u.id
+FROM ".TBL_OBJEDNAVKY_PRILOHY." p
+LEFT JOIN ".TBL_UZIVATELE." u ON p.nahrano_uzivatel_id = u.id
 WHERE p.objednavka_id = :objednavka_id 
 ORDER BY p.dt_vytvoreni";
 
 // === DODAVATELE QUERIES ===
-$queries['dodavatele_select_all'] = "SELECT * FROM ".TABLE_DODAVATELE." ORDER BY nazev";
-$queries['dodavatele_select_by_id'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE id = :id";
-$queries['dodavatele_select_by_ico'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE ico = :ico";
-$queries['dodavatele_search_nazev'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE nazev LIKE :nazev ORDER BY nazev";
-$queries['dodavatele_search_combined'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE (:nazev IS NULL OR nazev LIKE :nazev) AND (:ico IS NULL OR ico = :ico) ORDER BY nazev";
-$queries['dodavatele_filtered'] = "SELECT * FROM ".TABLE_DODAVATELE." WHERE 
+$queries['dodavatele_select_all'] = "SELECT * FROM ".TBL_DODAVATELE." ORDER BY nazev";
+$queries['dodavatele_select_by_id'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE id = :id";
+$queries['dodavatele_select_by_ico'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE ico = :ico";
+$queries['dodavatele_search_nazev'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE nazev LIKE :nazev ORDER BY nazev";
+$queries['dodavatele_search_combined'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE (:nazev IS NULL OR nazev LIKE :nazev) AND (:ico IS NULL OR ico = :ico) ORDER BY nazev";
+$queries['dodavatele_filtered'] = "SELECT * FROM ".TBL_DODAVATELE." WHERE 
     (user_id = 0) OR 
     (user_id = :user_id) OR 
     (usek_zkr != '' AND usek_zkr LIKE :usek_zkr_like) 
     ORDER BY nazev";
-$queries['dodavatele_insert'] = "INSERT INTO ".TABLE_DODAVATELE." 
+$queries['dodavatele_insert'] = "INSERT INTO ".TBL_DODAVATELE." 
     (nazev, adresa, ico, dic, zastoupeny, kontakt_jmeno, kontakt_email, kontakt_telefon, user_id, usek_zkr, dt_vytvoreni, dt_aktualizace) 
     VALUES (:nazev, :adresa, :ico, :dic, :zastoupeny, :kontakt_jmeno, :kontakt_email, :kontakt_telefon, :user_id, :usek_zkr, NOW(), NOW())";
-$queries['dodavatele_update'] = "UPDATE ".TABLE_DODAVATELE." SET 
+$queries['dodavatele_update'] = "UPDATE ".TBL_DODAVATELE." SET 
     nazev = :nazev, adresa = :adresa, ico = :ico, dic = :dic, zastoupeny = :zastoupeny, 
     kontakt_jmeno = :kontakt_jmeno, kontakt_email = :kontakt_email, kontakt_telefon = :kontakt_telefon, 
     user_id = :user_id, usek_zkr = :usek_zkr, dt_aktualizace = NOW() 
     WHERE id = :id";
-$queries['dodavatele_update_by_ico'] = "UPDATE ".TABLE_DODAVATELE." SET 
+$queries['dodavatele_update_by_ico'] = "UPDATE ".TBL_DODAVATELE." SET 
     nazev = :nazev, adresa = :adresa, dic = :dic, zastoupeny = :zastoupeny, 
     kontakt_jmeno = :kontakt_jmeno, kontakt_email = :kontakt_email, kontakt_telefon = :kontakt_telefon, 
     dt_aktualizace = NOW() 
     WHERE ico = :ico";
 
 // Delete dodavatel
-$queries['dodavatele_delete'] = "DELETE FROM ".TABLE_DODAVATELE." WHERE id = :id";
+$queries['dodavatele_delete'] = "DELETE FROM ".TBL_DODAVATELE." WHERE id = :id";
 
 // ========== UŽIVATELSKÉ POZNÁMKY A TODO ==========
 
 // Select user notes/TODO by user_id and type
-$queries['uzivatele_poznamky_select_by_user_type'] = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ LIMIT 1";
+$queries['uzivatele_poznamky_select_by_user_type'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ LIMIT 1";
 
 // Select all notes/TODO for user
-$queries['uzivatele_poznamky_select_by_user'] = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id ORDER BY typ";
+$queries['uzivatele_poznamky_select_by_user'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id ORDER BY typ";
 
 // Insert new notes/TODO record (INSERT IGNORE to prevent duplicate key errors)
-$queries['uzivatele_poznamky_insert'] = "INSERT IGNORE INTO ".TABLE_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW())";
+$queries['uzivatele_poznamky_insert'] = "INSERT IGNORE INTO ".TBL_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW())";
 
 // Insert new notes/TODO record
-$queries['uzivatele_poznamky_insert'] = "INSERT INTO ".TABLE_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW())";
+$queries['uzivatele_poznamky_insert'] = "INSERT INTO ".TBL_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW())";
 
 // Update existing notes/TODO content
-$queries['uzivatele_poznamky_update'] = "UPDATE ".TABLE_UZIVATELE_POZNAMKY." SET obsah = :obsah WHERE id = :id";
+$queries['uzivatele_poznamky_update'] = "UPDATE ".TBL_UZIVATELE_POZNAMKY." SET obsah = :obsah WHERE id = :id";
 
 // Upsert (INSERT ON DUPLICATE KEY UPDATE) - preferovaný způsob pro MySQL 5.6
-$queries['uzivatele_poznamky_upsert'] = "INSERT INTO ".TABLE_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW()) ON DUPLICATE KEY UPDATE obsah = :obsah_update";
+$queries['uzivatele_poznamky_upsert'] = "INSERT INTO ".TBL_UZIVATELE_POZNAMKY." (user_id, typ, obsah, dt_vytvoreni) VALUES (:user_id, :typ, :obsah, NOW()) ON DUPLICATE KEY UPDATE obsah = :obsah_update";
 
 // Delete notes/TODO for user and type
-$queries['uzivatele_poznamky_delete'] = "DELETE FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ";
+$queries['uzivatele_poznamky_delete'] = "DELETE FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND typ = :typ";
 
 // Delete all notes/TODO for user
-$queries['uzivatele_poznamky_delete_all_user'] = "DELETE FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id";
+$queries['uzivatele_poznamky_delete_all_user'] = "DELETE FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id";
 
 // Statistics - count users with TODO/NOTES
-$queries['uzivatele_poznamky_stats'] = "SELECT typ, COUNT(DISTINCT user_id) as pocet_uzivatelu FROM ".TABLE_UZIVATELE_POZNAMKY." GROUP BY typ";
+$queries['uzivatele_poznamky_stats'] = "SELECT typ, COUNT(DISTINCT user_id) as pocet_uzivatelu FROM ".TBL_UZIVATELE_POZNAMKY." GROUP BY typ";
 
 // Select by ID (pro přímé načtení konkrétního záznamu)
-$queries['uzivatele_poznamky_select_by_id'] = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE id = :id LIMIT 1";
+$queries['uzivatele_poznamky_select_by_id'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE id = :id LIMIT 1";
 
 // Select by multiple user IDs (pro batch loading)
-$queries['uzivatele_poznamky_select_by_user_ids'] = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id IN (:user_ids) ORDER BY user_id, typ";
+$queries['uzivatele_poznamky_select_by_user_ids'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id IN (:user_ids) ORDER BY user_id, typ";
 
 // Select with user details (JOIN s tabulkou uživatelů)
 $queries['uzivatele_poznamky_select_with_user_details'] = "
@@ -774,14 +766,14 @@ $queries['uzivatele_poznamky_select_with_user_details'] = "
         u.prijmeni,
         u.email,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as uzivatel_cely_jmeno
-    FROM ".TABLE_UZIVATELE_POZNAMKY." p
-    LEFT JOIN ".TABLE_UZIVATELE." u ON p.user_id = u.id
+    FROM ".TBL_UZIVATELE_POZNAMKY." p
+    LEFT JOIN ".TBL_UZIVATELE." u ON p.user_id = u.id
     WHERE p.user_id = :user_id
     ORDER BY p.typ
 ";
 
 // Search notes by content (full-text search v JSON obsahu)
-$queries['uzivatele_poznamky_search_content'] = "SELECT * FROM ".TABLE_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND obsah LIKE :search_term ORDER BY dt_aktualizace DESC";
+$queries['uzivatele_poznamky_search_content'] = "SELECT * FROM ".TBL_UZIVATELE_POZNAMKY." WHERE user_id = :user_id AND obsah LIKE :search_term ORDER BY dt_aktualizace DESC";
 
 // Admin queries - pro administrátory
 $queries['uzivatele_poznamky_admin_list_all'] = "
@@ -792,14 +784,14 @@ $queries['uzivatele_poznamky_admin_list_all'] = "
         u.prijmeni,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as uzivatel_cely_jmeno,
         CHAR_LENGTH(p.obsah) as obsah_velikost
-    FROM ".TABLE_UZIVATELE_POZNAMKY." p
-    LEFT JOIN ".TABLE_UZIVATELE." u ON p.user_id = u.id
+    FROM ".TBL_UZIVATELE_POZNAMKY." p
+    LEFT JOIN ".TBL_UZIVATELE." u ON p.user_id = u.id
     ORDER BY p.dt_aktualizace DESC
     LIMIT :limit OFFSET :offset
 ";
 
 // Count total records for pagination
-$queries['uzivatele_poznamky_admin_count'] = "SELECT COUNT(*) as total FROM ".TABLE_UZIVATELE_POZNAMKY;
+$queries['uzivatele_poznamky_admin_count'] = "SELECT COUNT(*) as total FROM ".TBL_UZIVATELE_POZNAMKY;
 
 // Recent activity - nedávno upravené poznámky
 $queries['uzivatele_poznamky_recent_activity'] = "
@@ -807,8 +799,8 @@ $queries['uzivatele_poznamky_recent_activity'] = "
         p.*,
         u.username,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as uzivatel_cely_jmeno
-    FROM ".TABLE_UZIVATELE_POZNAMKY." p
-    LEFT JOIN ".TABLE_UZIVATELE." u ON p.user_id = u.id
+    FROM ".TBL_UZIVATELE_POZNAMKY." p
+    LEFT JOIN ".TBL_UZIVATELE." u ON p.user_id = u.id
     WHERE p.dt_aktualizace >= DATE_SUB(NOW(), INTERVAL :days DAY)
     ORDER BY p.dt_aktualizace DESC
     LIMIT :limit
@@ -823,22 +815,22 @@ $queries['chat_konverzace_select_by_user'] = "
     SELECT 
         k.*,
         COUNT(DISTINCT u.user_id) as pocet_ucastniku,
-        (SELECT COUNT(*) FROM ".TABLE_CHAT_ZPRAVY." z 
+        (SELECT COUNT(*) FROM ".TBL_CHAT_ZPRAVY." z 
          WHERE z.konverzace_id = k.id AND z.smazano = 0) as pocet_zprav,
-        (SELECT COUNT(*) FROM ".TABLE_CHAT_ZPRAVY." z 
+        (SELECT COUNT(*) FROM ".TBL_CHAT_ZPRAVY." z 
          WHERE z.konverzace_id = k.id AND z.smazano = 0 
          AND z.dt_vytvoreni > COALESCE(muj.dt_posledni_precteni, '1970-01-01')) as neprectenych_zprav
-    FROM ".TABLE_CHAT_KONVERZACE." k
-    LEFT JOIN ".TABLE_CHAT_UCASTNICI." u ON k.id = u.konverzace_id AND u.aktivni = 1
-    LEFT JOIN ".TABLE_CHAT_UCASTNICI." muj ON k.id = muj.konverzace_id AND muj.user_id = :user_id AND muj.aktivni = 1
+    FROM ".TBL_CHAT_KONVERZACE." k
+    LEFT JOIN ".TBL_CHAT_UCASTNICI." u ON k.id = u.konverzace_id AND u.aktivni = 1
+    LEFT JOIN ".TBL_CHAT_UCASTNICI." muj ON k.id = muj.konverzace_id AND muj.user_id = :user_id AND muj.aktivni = 1
     WHERE k.aktivni = 1 
     AND (
         k.typ = 'BROADCAST' OR
         muj.user_id IS NOT NULL OR
         (k.typ = 'USEK' AND k.usek_id IN (
-            SELECT us.id FROM ".TABLE_USEKY." us 
-            JOIN ".TABLE_POZICE." p ON us.id = p.usek_id 
-            JOIN ".TABLE_UZIVATELE." uz ON p.id = uz.pozice_id 
+            SELECT us.id FROM ".TBL_USEKY." us 
+            JOIN ".TBL_POZICE." p ON us.id = p.usek_id 
+            JOIN ".TBL_UZIVATELE." uz ON p.id = uz.pozice_id 
             WHERE uz.id = :user_id
         ))
     )
@@ -853,24 +845,24 @@ $queries['chat_konverzace_select_by_id'] = "
         CONCAT_WS(' ', u_creator.titul_pred, u_creator.jmeno, u_creator.prijmeni, u_creator.titul_za) as creator_jmeno,
         us.usek_nazev,
         COUNT(DISTINCT ucast.user_id) as pocet_ucastniku
-    FROM ".TABLE_CHAT_KONVERZACE." k
-    LEFT JOIN ".TABLE_UZIVATELE." u_creator ON k.created_by_user_id = u_creator.id
-    LEFT JOIN ".TABLE_USEKY." us ON k.usek_id = us.id
-    LEFT JOIN ".TABLE_CHAT_UCASTNICI." ucast ON k.id = ucast.konverzace_id AND ucast.aktivni = 1
+    FROM ".TBL_CHAT_KONVERZACE." k
+    LEFT JOIN ".TBL_UZIVATELE." u_creator ON k.created_by_user_id = u_creator.id
+    LEFT JOIN ".TBL_USEKY." us ON k.usek_id = us.id
+    LEFT JOIN ".TBL_CHAT_UCASTNICI." ucast ON k.id = ucast.konverzace_id AND ucast.aktivni = 1
     WHERE k.id = :konverzace_id AND k.aktivni = 1
     GROUP BY k.id
 ";
 
 // Vytvoření nové konverzace
 $queries['chat_konverzace_insert'] = "
-    INSERT INTO ".TABLE_CHAT_KONVERZACE." 
+    INSERT INTO ".TBL_CHAT_KONVERZACE." 
     (nazev, typ, usek_id, popis, created_by_user_id, dt_vytvoreni) 
     VALUES (:nazev, :typ, :usek_id, :popis, :created_by_user_id, NOW())
 ";
 
 // Aktualizace času poslední zprávy v konverzaci
 $queries['chat_konverzace_update_last_message'] = "
-    UPDATE ".TABLE_CHAT_KONVERZACE." 
+    UPDATE ".TBL_CHAT_KONVERZACE." 
     SET dt_posledni_zprava = NOW() 
     WHERE id = :konverzace_id
 ";
@@ -883,16 +875,16 @@ $queries['chat_ucastnici_select_by_konverzace'] = "
         uz.email,
         os.status as online_status,
         os.posledni_aktivita
-    FROM ".TABLE_CHAT_UCASTNICI." u
-    JOIN ".TABLE_UZIVATELE." uz ON u.user_id = uz.id
-    LEFT JOIN ".TABLE_CHAT_ONLINE_STATUS." os ON u.user_id = os.user_id
+    FROM ".TBL_CHAT_UCASTNICI." u
+    JOIN ".TBL_UZIVATELE." uz ON u.user_id = uz.id
+    LEFT JOIN ".TBL_CHAT_ONLINE_STATUS." os ON u.user_id = os.user_id
     WHERE u.konverzace_id = :konverzace_id AND u.aktivni = 1
     ORDER BY u.role DESC, uz.jmeno, uz.prijmeni
 ";
 
 // Přidání účastníka do konverzace
 $queries['chat_ucastnici_insert'] = "
-    INSERT INTO ".TABLE_CHAT_UCASTNICI." 
+    INSERT INTO ".TBL_CHAT_UCASTNICI." 
     (konverzace_id, user_id, role, dt_pripojeni) 
     VALUES (:konverzace_id, :user_id, :role, NOW())
     ON DUPLICATE KEY UPDATE aktivni = 1, dt_pripojeni = NOW()
@@ -900,7 +892,7 @@ $queries['chat_ucastnici_insert'] = "
 
 // Aktualizace času posledního přečtení
 $queries['chat_ucastnici_update_last_read'] = "
-    UPDATE ".TABLE_CHAT_UCASTNICI." 
+    UPDATE ".TBL_CHAT_UCASTNICI." 
     SET dt_posledni_precteni = NOW(), dt_posledni_aktivita = NOW() 
     WHERE konverzace_id = :konverzace_id AND user_id = :user_id
 ";
@@ -908,8 +900,8 @@ $queries['chat_ucastnici_update_last_read'] = "
 // Kontrola oprávnění uživatele ke konverzaci
 $queries['chat_ucastnici_check_permission'] = "
     SELECT u.*, k.typ, k.usek_id
-    FROM ".TABLE_CHAT_UCASTNICI." u
-    JOIN ".TABLE_CHAT_KONVERZACE." k ON u.konverzace_id = k.id
+    FROM ".TBL_CHAT_UCASTNICI." u
+    JOIN ".TBL_CHAT_KONVERZACE." k ON u.konverzace_id = k.id
     WHERE u.konverzace_id = :konverzace_id AND u.user_id = :user_id AND u.aktivni = 1
     LIMIT 1
 ";
@@ -922,13 +914,13 @@ $queries['chat_zpravy_select_by_konverzace'] = "
         u.username as author_username,
         parent_z.obsah_plain as parent_obsah,
         CONCAT_WS(' ', parent_u.titul_pred, parent_u.jmeno, parent_u.prijmeni, parent_u.titul_za) as parent_author_jmeno,
-        (SELECT COUNT(*) FROM ".TABLE_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as pocet_reakci,
+        (SELECT COUNT(*) FROM ".TBL_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as pocet_reakci,
         (SELECT GROUP_CONCAT(DISTINCT r.emoji ORDER BY r.emoji SEPARATOR ',') 
-         FROM ".TABLE_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as reakce_emoji
-    FROM ".TABLE_CHAT_ZPRAVY." z
-    JOIN ".TABLE_UZIVATELE." u ON z.user_id = u.id
-    LEFT JOIN ".TABLE_CHAT_ZPRAVY." parent_z ON z.parent_zprava_id = parent_z.id
-    LEFT JOIN ".TABLE_UZIVATELE." parent_u ON parent_z.user_id = parent_u.id
+         FROM ".TBL_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as reakce_emoji
+    FROM ".TBL_CHAT_ZPRAVY." z
+    JOIN ".TBL_UZIVATELE." u ON z.user_id = u.id
+    LEFT JOIN ".TBL_CHAT_ZPRAVY." parent_z ON z.parent_zprava_id = parent_z.id
+    LEFT JOIN ".TBL_UZIVATELE." parent_u ON parent_z.user_id = parent_u.id
     WHERE z.konverzace_id = :konverzace_id 
     AND z.smazano = 0
     AND z.dt_vytvoreni >= :od_casu
@@ -942,9 +934,9 @@ $queries['chat_zpravy_select_new_messages'] = "
         z.*,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as author_jmeno,
         u.username as author_username,
-        (SELECT COUNT(*) FROM ".TABLE_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as pocet_reakci
-    FROM ".TABLE_CHAT_ZPRAVY." z
-    JOIN ".TABLE_UZIVATELE." u ON z.user_id = u.id
+        (SELECT COUNT(*) FROM ".TBL_CHAT_REAKCE." r WHERE r.zprava_id = z.id) as pocet_reakci
+    FROM ".TBL_CHAT_ZPRAVY." z
+    JOIN ".TBL_UZIVATELE." u ON z.user_id = u.id
     WHERE z.konverzace_id = :konverzace_id 
     AND z.smazano = 0
     AND z.dt_vytvoreni > :posledni_cas
@@ -953,14 +945,14 @@ $queries['chat_zpravy_select_new_messages'] = "
 
 // Vložení nové zprávy
 $queries['chat_zpravy_insert'] = "
-    INSERT INTO ".TABLE_CHAT_ZPRAVY." 
+    INSERT INTO ".TBL_CHAT_ZPRAVY." 
     (konverzace_id, user_id, parent_zprava_id, obsah, obsah_plain, typ, metadata, dt_vytvoreni) 
     VALUES (:konverzace_id, :user_id, :parent_zprava_id, :obsah, :obsah_plain, :typ, :metadata, NOW())
 ";
 
 // Editace zprávy
 $queries['chat_zpravy_update'] = "
-    UPDATE ".TABLE_CHAT_ZPRAVY." 
+    UPDATE ".TBL_CHAT_ZPRAVY." 
     SET obsah = :obsah, obsah_plain = :obsah_plain, metadata = :metadata, 
         editovano = 1, dt_editace = NOW() 
     WHERE id = :zprava_id AND user_id = :user_id AND smazano = 0
@@ -968,7 +960,7 @@ $queries['chat_zpravy_update'] = "
 
 // Smazání zprávy (soft delete)
 $queries['chat_zpravy_delete'] = "
-    UPDATE ".TABLE_CHAT_ZPRAVY." 
+    UPDATE ".TBL_CHAT_ZPRAVY." 
     SET smazano = 1, dt_smazani = NOW() 
     WHERE id = :zprava_id AND user_id = :user_id
 ";
@@ -984,10 +976,10 @@ $queries['chat_zpravy_search'] = "
             WHEN z.obsah LIKE CONCAT('%', :search_term, '%') THEN 0.8
             ELSE 0.5
         END) as relevance
-    FROM ".TABLE_CHAT_ZPRAVY." z
-    JOIN ".TABLE_UZIVATELE." u ON z.user_id = u.id
-    JOIN ".TABLE_CHAT_KONVERZACE." k ON z.konverzace_id = k.id
-    JOIN ".TABLE_CHAT_UCASTNICI." uc ON k.id = uc.konverzace_id AND uc.user_id = :user_id AND uc.aktivni = 1
+    FROM ".TBL_CHAT_ZPRAVY." z
+    JOIN ".TBL_UZIVATELE." u ON z.user_id = u.id
+    JOIN ".TBL_CHAT_KONVERZACE." k ON z.konverzace_id = k.id
+    JOIN ".TBL_CHAT_UCASTNICI." uc ON k.id = uc.konverzace_id AND uc.user_id = :user_id AND uc.aktivni = 1
     WHERE z.smazano = 0
     AND (z.obsah_plain LIKE CONCAT('%', :search_term, '%') OR z.obsah LIKE CONCAT('%', :search_term, '%'))
     ORDER BY relevance DESC, z.dt_vytvoreni DESC
@@ -1002,10 +994,10 @@ $queries['chat_mentions_select_unread'] = "
         z.dt_vytvoreni as zprava_dt,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as author_jmeno,
         k.nazev as konverzace_nazev
-    FROM ".TABLE_CHAT_MENTIONS." m
-    JOIN ".TABLE_CHAT_ZPRAVY." z ON m.zprava_id = z.id
-    JOIN ".TABLE_UZIVATELE." u ON z.user_id = u.id
-    JOIN ".TABLE_CHAT_KONVERZACE." k ON z.konverzace_id = k.id
+    FROM ".TBL_CHAT_MENTIONS." m
+    JOIN ".TBL_CHAT_ZPRAVY." z ON m.zprava_id = z.id
+    JOIN ".TBL_UZIVATELE." u ON z.user_id = u.id
+    JOIN ".TBL_CHAT_KONVERZACE." k ON z.konverzace_id = k.id
     WHERE m.user_id = :user_id AND m.precteno = 0 AND z.smazano = 0
     ORDER BY z.dt_vytvoreni DESC
     LIMIT :limit
@@ -1013,7 +1005,7 @@ $queries['chat_mentions_select_unread'] = "
 
 // Vložení zmínky
 $queries['chat_mentions_insert'] = "
-    INSERT INTO ".TABLE_CHAT_MENTIONS." 
+    INSERT INTO ".TBL_CHAT_MENTIONS." 
     (zprava_id, user_id, pozice_start, pozice_end, dt_vytvoreni) 
     VALUES (:zprava_id, :user_id, :pozice_start, :pozice_end, NOW())
     ON DUPLICATE KEY UPDATE pozice_start = VALUES(pozice_start), pozice_end = VALUES(pozice_end)
@@ -1021,20 +1013,20 @@ $queries['chat_mentions_insert'] = "
 
 // Označení zmínky jako přečtené
 $queries['chat_mentions_mark_read'] = "
-    UPDATE ".TABLE_CHAT_MENTIONS." 
+    UPDATE ".TBL_CHAT_MENTIONS." 
     SET precteno = 1, dt_precteni = NOW() 
     WHERE user_id = :user_id AND zprava_id = :zprava_id
 ";
 
 // Přidání/odebrání reakce
 $queries['chat_reakce_toggle'] = "
-    INSERT INTO ".TABLE_CHAT_REAKCE." (zprava_id, user_id, emoji, dt_vytvoreni) 
+    INSERT INTO ".TBL_CHAT_REAKCE." (zprava_id, user_id, emoji, dt_vytvoreni) 
     VALUES (:zprava_id, :user_id, :emoji, NOW())
     ON DUPLICATE KEY UPDATE dt_vytvoreni = NOW()
 ";
 
 $queries['chat_reakce_remove'] = "
-    DELETE FROM ".TABLE_CHAT_REAKCE." 
+    DELETE FROM ".TBL_CHAT_REAKCE." 
     WHERE zprava_id = :zprava_id AND user_id = :user_id AND emoji = :emoji
 ";
 
@@ -1043,15 +1035,15 @@ $queries['chat_reakce_select_by_zprava'] = "
     SELECT 
         r.*,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as uzivatel_jmeno
-    FROM ".TABLE_CHAT_REAKCE." r
-    JOIN ".TABLE_UZIVATELE." u ON r.user_id = u.id
+    FROM ".TBL_CHAT_REAKCE." r
+    JOIN ".TBL_UZIVATELE." u ON r.user_id = u.id
     WHERE r.zprava_id = :zprava_id
     ORDER BY r.dt_vytvoreni ASC
 ";
 
 // Aktualizace online statusu
 $queries['chat_online_status_upsert'] = "
-    INSERT INTO ".TABLE_CHAT_ONLINE_STATUS." 
+    INSERT INTO ".TBL_CHAT_ONLINE_STATUS." 
     (user_id, status, posledni_aktivita, ip_adresa, user_agent) 
     VALUES (:user_id, :status, NOW(), :ip_adresa, :user_agent)
     ON DUPLICATE KEY UPDATE 
@@ -1067,15 +1059,15 @@ $queries['chat_online_status_select_users'] = "
         os.*,
         CONCAT_WS(' ', u.titul_pred, u.jmeno, u.prijmeni, u.titul_za) as uzivatel_jmeno,
         u.username
-    FROM ".TABLE_CHAT_ONLINE_STATUS." os
-    JOIN ".TABLE_UZIVATELE." u ON os.user_id = u.id
+    FROM ".TBL_CHAT_ONLINE_STATUS." os
+    JOIN ".TBL_UZIVATELE." u ON os.user_id = u.id
     WHERE os.user_id IN (:user_ids)
     ORDER BY os.posledni_aktivita DESC
 ";
 
 // Označení neaktivních uživatelů jako offline (starší než X minut)
 $queries['chat_online_status_mark_offline'] = "
-    UPDATE ".TABLE_CHAT_ONLINE_STATUS." 
+    UPDATE ".TBL_CHAT_ONLINE_STATUS." 
     SET status = 'OFFLINE' 
     WHERE posledni_aktivita < DATE_SUB(NOW(), INTERVAL :minutes MINUTE) 
     AND status != 'OFFLINE'
@@ -1109,10 +1101,10 @@ $queries['substitution_get_active'] = "
         zs.jmeno as zastupce_jmeno,
         zs.prijmeni as zastupce_prijmeni,
         v.username as vytvoril_username
-    FROM 25_uzivatele_zastupovani z
-    JOIN 25_uzivatele zu ON z.zastupovany_id = zu.id
-    JOIN 25_uzivatele zs ON z.zastupce_id = zs.id
-    JOIN 25_uzivatele v ON z.vytvoril_user_id = v.id
+    FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+    JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
+    JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
+    JOIN " . TBL_UZIVATELE . " v ON z.vytvoril_user_id = v.id
     WHERE z.aktivni = 1
     AND CURDATE() BETWEEN z.dt_od AND z.dt_do
     ORDER BY z.dt_od DESC
@@ -1134,9 +1126,9 @@ $queries['substitution_get_by_user'] = "
         zs.username as zastupce_username,
         zs.jmeno as zastupce_jmeno,
         zs.prijmeni as zastupce_prijmeni
-    FROM 25_uzivatele_zastupovani z
-    JOIN 25_uzivatele zu ON z.zastupovany_id = zu.id
-    JOIN 25_uzivatele zs ON z.zastupce_id = zs.id
+    FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+    JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
+    JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
     WHERE (z.zastupovany_id = :user_id OR z.zastupce_id = :user_id)
     AND z.aktivni = 1
     ORDER BY z.dt_od DESC
@@ -1172,8 +1164,8 @@ $queries['substitution_check_current'] = "
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
         zu.prijmeni as zastupovany_prijmeni
-    FROM 25_uzivatele_zastupovani z
-    JOIN 25_uzivatele zu ON z.zastupovany_id = zu.id
+    FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+    JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
     WHERE z.zastupce_id = :zastupce_id
     AND z.aktivni = 1
     AND CURDATE() BETWEEN z.dt_od AND z.dt_do
@@ -1188,25 +1180,25 @@ $queries['approval_get_user_permissions'] = "
     AND (
         p.id IN (
             -- Přímá práva
-            SELECT up.pravo_id FROM 25_uzivatele_prava up WHERE up.uzivatel_id = :user_id
+            SELECT up.pravo_id FROM " . TBL_UZIVATELE_PRAVA . " up WHERE up.uzivatel_id = :user_id
         ) OR p.id IN (
             -- Práva z rolí
             SELECT rp.pravo_id 
-            FROM 25_uzivatele_role ur
+            FROM " . TBL_UZIVATELE_ROLE . " ur
             JOIN 25_role_prava rp ON ur.role_id = rp.role_id
             WHERE ur.uzivatel_id = :user_id
         ) OR EXISTS (
             -- Zastupování - práva zastupovaného
-            SELECT 1 FROM 25_uzivatele_zastupovani z
+            SELECT 1 FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
             WHERE z.zastupce_id = :user_id
             AND z.aktivni = 1
             AND CURDATE() BETWEEN z.dt_od AND z.dt_do
             AND z.typ_zastupovani IN ('full', 'orders_only')
             AND (
-                p.id IN (SELECT up2.pravo_id FROM 25_uzivatele_prava up2 WHERE up2.uzivatel_id = z.zastupovany_id)
+                p.id IN (SELECT up2.pravo_id FROM " . TBL_UZIVATELE_PRAVA . " up2 WHERE up2.uzivatel_id = z.zastupovany_id)
                 OR p.id IN (
                     SELECT rp2.pravo_id 
-                    FROM 25_uzivatele_role ur2
+                    FROM " . TBL_UZIVATELE_ROLE . " ur2
                     JOIN 25_role_prava rp2 ON ur2.role_id = rp2.role_id
                     WHERE ur2.uzivatel_id = z.zastupovany_id
                 )
@@ -1267,14 +1259,14 @@ $queries['user_detail_full'] = "
         NULL as nadrizeny_id,
         NULL as nadrizeny_cely_jmeno
         
-    FROM " . TABLE_UZIVATELE . " u
-    LEFT JOIN " . TABLE_USEKY . " us ON u.usek_id = us.id
-    LEFT JOIN " . TABLE_POZICE . " p ON u.pozice_id = p.id
-    LEFT JOIN " . TABLE_LOKALITY . " l ON u.lokalita_id = l.id
-    LEFT JOIN " . TABLE_ORGANIZACE . " o ON u.organizace_id = o.id
+    FROM " . TBL_UZIVATELE . " u
+    LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
+    LEFT JOIN " . TBL_POZICE . " p ON u.pozice_id = p.id
+    LEFT JOIN " . TBL_LOKALITY . " l ON u.lokalita_id = l.id
+    LEFT JOIN " . TBL_ORGANIZACE_VIZITKA . " o ON u.organizace_id = o.id
     -- REMOVED: Old hierarchy table (25_uzivatele_hierarchie) - nadrizeny field temporarily NULL
-    -- LEFT JOIN " . TABLE_UZIVATELE_HIERARCHIE . " h ON u.id = h.podrizeny_id
-    -- LEFT JOIN " . TABLE_UZIVATELE . " nadrizeny ON h.nadrizeny_id = nadrizeny.id AND nadrizeny.aktivni = 1
+    -- LEFT JOIN " . TBL_UZIVATELE_HIERARCHIE . " h ON u.id = h.podrizeny_id
+    -- LEFT JOIN " . TBL_UZIVATELE . " nadrizeny ON h.nadrizeny_id = nadrizeny.id AND nadrizeny.aktivni = 1
     WHERE u.id = :user_id
     LIMIT 1
 ";
@@ -1300,8 +1292,8 @@ $queries['user_orders_statistics'] = "
         SUM(CASE WHEN cs.kod_stavu IS NULL AND o.stav_objednavky = 'ARCHIVOVANO' THEN 1 ELSE 0 END) as archivovano,
         SUM(CASE WHEN cs.kod_stavu = 'VECNA_SPRAVNOST' THEN 1 ELSE 0 END) as vecna_spravnost,
         SUM(CASE WHEN cs.kod_stavu = 'ZKONTROLOVANA' THEN 1 ELSE 0 END) as zkontrolovana
-    FROM " . TABLE_OBJEDNAVKY . " o
-    LEFT JOIN " . TABLE_CISELNIK_STAVY . " cs 
+    FROM " . TBL_OBJEDNAVKY . " o
+    LEFT JOIN " . TBL_CISELNIK_STAVY . " cs 
         ON cs.nazev_stavu = o.stav_objednavky 
         AND cs.typ_objektu = 'OBJEDNAVKA'
     WHERE o.uzivatel_id = :user_id AND o.aktivni = 1
@@ -1313,8 +1305,8 @@ $queries['user_roles_with_rights'] = "
         r.id,
         r.nazev_role,
         r.popis
-    FROM " . TABLE_UZIVATELE_ROLE . " ur
-    JOIN " . TABLE_ROLE . " r ON ur.role_id = r.id
+    FROM " . TBL_UZIVATELE_ROLE . " ur
+    JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
     WHERE ur.uzivatel_id = :user_id
     ORDER BY r.nazev_role
 ";
@@ -1325,8 +1317,8 @@ $queries['role_rights'] = "
         p.id,
         p.kod_prava,
         p.popis
-    FROM " . TABLE_ROLE_PRAVA . " rp
-    JOIN " . TABLE_PRAVA . " p ON rp.pravo_id = p.id
+    FROM " . TBL_ROLE_PRAVA . " rp
+    JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
     WHERE rp.role_id = :role_id
     ORDER BY p.kod_prava
 ";
@@ -1337,8 +1329,8 @@ $queries['user_direct_rights'] = "
         p.id,
         p.kod_prava,
         p.popis
-    FROM " . TABLE_ROLE_PRAVA . " rp
-    JOIN " . TABLE_PRAVA . " p ON rp.pravo_id = p.id
+    FROM " . TBL_ROLE_PRAVA . " rp
+    JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
     WHERE rp.user_id = :user_id
     ORDER BY p.kod_prava
 ";
