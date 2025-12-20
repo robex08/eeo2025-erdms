@@ -3972,7 +3972,7 @@ switch ($endpoint) {
                     $failed = 0;
                     
                     // Použít handler funkci pro každé LP
-                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+                    require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
                     
                     while ($row = mysqli_fetch_assoc($result_kody)) {
                         $lp_id_batch = (int)$row['id'];
@@ -4089,7 +4089,7 @@ switch ($endpoint) {
                 $failed = 0;
                 
                 // Použít handler funkci pro každé LP
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
                 
                 while ($row = mysqli_fetch_assoc($result_kody)) {
                     $lp_id_batch = (int)$row['id'];
@@ -4574,7 +4574,7 @@ switch ($endpoint) {
                 }
                 
                 // Zavolat handler funkci
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
                 $result = getCerpaniPodleUzivatele($conn, $lp_id);
                 
                 if ($result['status'] === 'error') {
@@ -4625,7 +4625,7 @@ switch ($endpoint) {
                 }
                 
                 // Zavolat handler funkci
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v3_tri_typy.php';
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
                 $result = getCerpaniPodleUseku($conn, $usek_id, $rok);
                 
                 if ($result['status'] === 'error') {
