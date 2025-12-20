@@ -61,13 +61,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole pro FE
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
         ";
         
         if ($activeOnly) {
@@ -125,13 +125,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
             WHERE pu.uzivatel_id = :userId
         ";
         
@@ -190,13 +190,13 @@ class CashboxAssignmentModel {
                 -- Vypočítané pole
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
                 
-            FROM 25a_pokladny_uzivatele pu
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
             
             -- ✅ NOVÝ JOIN na pokladny
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             
-            LEFT JOIN 25_uzivatele u ON u.id = pu.uzivatel_id
-            LEFT JOIN 25_uzivatele vytvoril_u ON vytvoril_u.id = pu.vytvoril
+            LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = pu.uzivatel_id
+            LEFT JOIN " . TBL_UZIVATELE . " vytvoril_u ON vytvoril_u.id = pu.vytvoril
             WHERE pu.id = :id
         ";
         
@@ -228,8 +228,8 @@ class CashboxAssignmentModel {
                 p.ppd_od_cislo,
                 p.aktivni AS pokladna_aktivni,
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND pu.je_hlavni = 1
               AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
@@ -265,8 +265,8 @@ class CashboxAssignmentModel {
                 p.ppd_od_cislo,
                 p.aktivni AS pokladna_aktivni,
                 (pu.platne_do IS NULL OR pu.platne_do >= CURDATE()) AS aktivni
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND p.cislo_pokladny = :cisloPokladny
               AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())
@@ -429,7 +429,7 @@ class CashboxAssignmentModel {
             
             // UPDATE pokladny (ovlivní VŠECHNY uživatele)
             $sqlUpdatePokladna = "
-                UPDATE 25a_pokladny
+                UPDATE " . TBL_POKLADNY . "
                 SET 
                     ciselna_rada_vpd = ?,
                     vpd_od_cislo = ?,
@@ -454,7 +454,7 @@ class CashboxAssignmentModel {
         // ========================================================
         
         $sqlUpdateAssignment = "
-            UPDATE 25a_pokladny_uzivatele
+            UPDATE " . TBL_POKLADNY_UZIVATELE . "
             SET
                 je_hlavni = ?,
                 platne_od = ?,
@@ -537,8 +537,8 @@ class CashboxAssignmentModel {
     public function hasOverlappingAssignment($userId, $cisloPokladny, $platneOd, $platneDo, $excludeId = null) {
         $sql = "
             SELECT COUNT(*) as count
-            FROM 25a_pokladny_uzivatele pu
-            INNER JOIN 25a_pokladny p ON p.id = pu.pokladna_id
+            FROM " . TBL_POKLADNY_UZIVATELE . " pu
+            INNER JOIN " . TBL_POKLADNY . " p ON p.id = pu.pokladna_id
             WHERE pu.uzivatel_id = :userId
               AND p.cislo_pokladny = :cisloPokladny
               AND (
@@ -598,7 +598,7 @@ class CashboxAssignmentModel {
             $inserted = 0;
             if (!empty($uzivatele)) {
                 $sqlInsert = "
-                    INSERT INTO 25a_pokladny_uzivatele 
+                    INSERT INTO " . TBL_POKLADNY_UZIVATELE . " 
                     (pokladna_id, uzivatel_id, je_hlavni, platne_od, platne_do, poznamka, vytvoril, vytvoreno)
                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
                 ";
