@@ -4552,14 +4552,14 @@ switch ($endpoint) {
                     break;
                 }
                 
-                // Připojení k databázi
-                $conn = new mysqli($config['host'], $config['username'], $config['password'], $config['database']);
-                if ($conn->connect_error) {
+                // Připojení k databázi - PDO
+                try {
+                    $pdo = get_pdo_connection();
+                } catch (Exception $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba připojení k databázi'));
                     break;
                 }
-                $conn->set_charset('utf8');
                 
                 // Parametry
                 $lp_id = isset($input['lp_id']) ? (int)$input['lp_id'] : null;
@@ -4567,20 +4567,19 @@ switch ($endpoint) {
                 if (!$lp_id) {
                     http_response_code(400);
                     echo json_encode(array('status' => 'error', 'message' => 'Parametr lp_id je povinný'));
-                    $conn->close();
                     break;
                 }
                 
-                // Zavolat handler funkci
-                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_tri_typy.php';
-                $result = getCerpaniPodleUzivatele($conn, $lp_id);
+                // Zavolat PDO handler funkci
+                require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                $result = getCerpaniPodleUzivatele_PDO($pdo, $lp_id);
                 
-                if ($result['status'] === 'error') {
+                if (isset($result['success']) && !$result['success']) {
                     http_response_code(404);
+                    echo json_encode(array('status' => 'error', 'message' => $result['error']));
+                } else {
+                    echo json_encode(array('status' => 'ok', 'data' => $result));
                 }
-                
-                echo json_encode($result);
-                $conn->close();
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
