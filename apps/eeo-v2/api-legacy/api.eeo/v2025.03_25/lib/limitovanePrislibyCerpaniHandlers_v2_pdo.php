@@ -113,9 +113,9 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
             SELECT 
                 obj.id,
                 obj.financovani,
-                COALESCE(SUM(pol.cena_s_dph), 0) as suma_polozek
+                SUM(pol.cena_s_dph) as suma_cena
             FROM " . TBL_OBJEDNAVKY . " obj
-            LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
+            INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -140,20 +140,20 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 
                 if (in_array($lp_id, $lp_ids_int)) {
                     $pocet_lp = count($lp_ids);
-                    $podil = $pocet_lp > 0 ? ((float)$row['suma_polozek'] / $pocet_lp) : 0;
+                    $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
                     $predpokladane_cerpani += $podil;
                 }
             }
         }
         
-        // KROK 4: SKUTEČNOST - Parsovat JSON a dělit SUM(castka_fakturovana)
+        // KROK 4: SKUTEČNOST - Parsovat JSON a dělit SUM(fa_castka) z tabulky faktur
         $sql_fakturovano = "
             SELECT 
                 obj.id,
                 obj.financovani,
-                COALESCE(SUM(fakt.castka_fakturovana), 0) as suma_faktur
+                SUM(fakt.fa_castka) as suma_faktur
             FROM " . TBL_OBJEDNAVKY . " obj
-            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
+            INNER JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
@@ -168,7 +168,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
-        $skutecne_cerpano = 0;
+        $fakturovano = 0;
         while ($row = $stmt_fakt->fetch(PDO::FETCH_ASSOC)) {
             $financovani = json_decode($row['financovani'], true);
             
@@ -179,42 +179,43 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 if (in_array($lp_id, $lp_ids_int)) {
                     $pocet_lp = count($lp_ids);
                     $podil = $pocet_lp > 0 ? ((float)$row['suma_faktur'] / $pocet_lp) : 0;
-                    $skutecne_cerpano += $podil;
+                    $fakturovano += $podil;
                 }
             }
         }
         
-        // KROK 5: POKLADNA - čerpání z pokladny
+        // KROK 5: Čerpání z pokladny (jen VÝDAJE z uzavřených/zamknutých knih)
         $sql_pokladna = "
-            SELECT COALESCE(SUM(pp.castka), 0) as suma_pokladna
+            SELECT COALESCE(SUM(pp.castka_vydaj), 0) as cerpano_pokl
             FROM " . TBL_POKLADNI_KNIHY . " pk
             JOIN " . TBL_POKLADNI_POLOZKY . " pp ON pp.pokladni_kniha_id = pk.id
-            WHERE pk.uzivatel_id = :user_id
-            AND pp.lp_kod = :cislo_lp
-            AND YEAR(pp.datum_transakce) = :rok
+            WHERE pp.lp_kod = :cislo_lp
+            AND pk.stav_knihy IN ('uzavrena_uzivatelem', 'zamknuta_spravcem')
+            AND pk.rok = :rok
         ";
         
         $stmt_pokl = $pdo->prepare($sql_pokladna);
         $stmt_pokl->execute([
-            'user_id' => $meta['user_id'],
             'cislo_lp' => $meta['cislo_lp'],
             'rok' => $meta['rok']
         ]);
         
         $row_pokl = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
-        $cerpano_pokladna = (float)($row_pokl['suma_pokladna'] ?? 0);
+        $cerpano_pokladna = (float)($row_pokl['cerpano_pokl'] ?? 0);
+        
+        // SKUTEČNÉ ČERPÁNÍ = fakturované objednávky + pokladna
+        $skutecne_cerpano = $fakturovano + $cerpano_pokladna;
         
         // KROK 6: Vypočítat zůstatky a procenta
         $celkovy_limit = (float)$meta['celkovy_limit'];
         
         $zbyva_rezervace = $celkovy_limit - $rezervovano;
         $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
-        $skutecne_cerpano_celkem = $skutecne_cerpano + $cerpano_pokladna;
-        $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano_celkem;
+        $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
         
         $procento_rezervace = $celkovy_limit > 0 ? round(($rezervovano / $celkovy_limit) * 100, 2) : 0;
         $procento_predpoklad = $celkovy_limit > 0 ? round(($predpokladane_cerpani / $celkovy_limit) * 100, 2) : 0;
-        $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano_celkem / $celkovy_limit) * 100, 2) : 0;
+        $procento_skutecne = $celkovy_limit > 0 ? round(($skutecne_cerpano / $celkovy_limit) * 100, 2) : 0;
         
         // KROK 7: UPSERT do čerpání tabulky
         $sql_upsert = "
