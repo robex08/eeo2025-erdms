@@ -2767,7 +2767,7 @@ const Layout = ({ children }) => {
             ) : null }
             
             {/* Menu položky pro přehledy */}
-            { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('INVOICE_MANAGE'))) && (
+            { ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && (
               <MenuLinkLeft to="/invoices25-list" $active={isActive('/invoices25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>

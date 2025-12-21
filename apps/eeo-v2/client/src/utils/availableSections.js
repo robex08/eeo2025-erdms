@@ -95,8 +95,8 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
   }
   
-  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW (v Layout je to INVOICE_MANAGE)
-  if (isAdmin || (hasPermission && hasPermission('INVOICE_MANAGE'))) {
+  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
+  if (isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) {
     sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
   }
   

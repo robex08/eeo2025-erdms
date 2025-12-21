@@ -1064,6 +1064,17 @@ function handle_invoices25_list($input, $config, $queries) {
         $where_conditions = array('f.aktivni = 1');
         $params = array();
         
+        // 🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
+        // - Pokud je faktura navázána na objednávku (objednavka_id IS NOT NULL) → objednávka MUSÍ být aktivní
+        // - Pokud je faktura navázána na smlouvu (smlouva_id IS NOT NULL) → smlouva MUSÍ být aktivní
+        // - Faktury bez přiřazení (standalone) → zobrazit normálně
+        $where_conditions[] = '(
+            (f.objednavka_id IS NULL OR o.aktivni = 1)
+            AND
+            (f.smlouva_id IS NULL OR sm.aktivni = 1)
+        )';
+        error_log("Invoices25 LIST: Applied validation for active orders and contracts");
+        
         // 🔐 USER PERMISSIONS: Načíst role a permissions uživatele (stejný pattern jako Order V2)
         $user_id = (int)$token_data['id'];
         

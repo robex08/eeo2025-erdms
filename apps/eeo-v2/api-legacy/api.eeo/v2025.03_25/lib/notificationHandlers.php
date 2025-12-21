@@ -1685,6 +1685,7 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             'approver_name' => $approver_display,  // alias
             'approval_date' => !empty($order['dt_schvaleni']) ? date('d.m.Y', strtotime($order['dt_schvaleni'])) : '-',
             'trigger_user_name' => $trigger_user_name,  // Ten kdo akci vykonal (schvalovatel/zamítač)
+            'action_performed_by' => $trigger_user_name,  // ✅ OPRAVENO: Stejný jako trigger_user_name pro frontend (NotificationDropdown.js řádek 663)
             
             // Střediska a financování
             'strediska' => $strediska_text,
@@ -2441,7 +2442,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                     'recipient_role' => $recipient['recipientRole'],
                     'template_id' => $recipient['templateId'],
                     'template_variant' => $variant,
-                    'placeholders' => $placeholderData  // ✅ DŮLEŽITÉ: Uložit placeholders pro pozdější použití
+                    'placeholders' => $placeholderDataWithUser  // ✅ OPRAVENO: Použít placeholders včetně recipient_name a action_performed_by
                 );
                 
                 // 7. Vytvořit in-app notifikaci
