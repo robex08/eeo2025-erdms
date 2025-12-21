@@ -3070,15 +3070,22 @@ export default function InvoiceEvidencePage() {
       };
 
       console.log('🔄 Aktualizace věcné kontroly faktury:', editingInvoiceId, updateData);
-
+      
       const response = await updateInvoiceV2({
         token,
         username,
         invoice_id: editingInvoiceId,
         updateData
       });
+      
+      console.log('🔄 Response dětails:', response);
 
-      if (response.success) {
+      // ✅ Úspěšná aktualizace - zkontrolovat různé formáty response
+      const isSuccess = response?.success === true || 
+                       response?.status === 'success' || 
+                       (response?.message && response.message.includes('úspěšně'));
+      
+      if (isSuccess) {
         // Aktualizovat originalFormData aby Cancel fungoval správně
         setOriginalFormData(prev => ({
           ...prev,
@@ -3098,21 +3105,20 @@ export default function InvoiceEvidencePage() {
           }
         }
 
-        // Pro omezené uživatele - zobrazit dialog a vrátit na seznam
-        if (isReadOnlyMode) {
-          setProgressModal({
-            show: true,
-            status: 'success',
-            title: 'Věcná správnost uložena',
-            message: 'Věcná správnost faktury byla úspěšně zaznamenána.',
-            resetData: null
-          });
-        } else {
-          // Pro uživatele s vyšším oprávněním - pouze toast
-          showToast && showToast('✅ Věcná správnost byla aktualizována', 'success');
-        }
+        // Vždy zobrazit progress dialog pro oba typy uživatelů
+        setProgressModal({
+          show: true,
+          status: 'success',
+          title: 'Věcná správnost uložena',
+          message: isReadOnlyMode 
+            ? 'Věcná správnost faktury byla úspěšně zaznamenána. Budete přesměrováni na seznam faktur.'
+            : 'Věcná správnost faktury byla úspěšně aktualizována.',
+          resetData: { isVecnaSpravnost: true, isReadOnlyMode }
+        });
       } else {
-        throw new Error(response.message || 'Nepodařilo se aktualizovat věcnou kontrolu');
+        // Skutečná chyba
+        const errorMsg = response?.message || response?.error || 'Nepodařilo se aktualizovat věcnou správnost';
+        throw new Error(errorMsg);
       }
     } catch (err) {
       console.error('❌ Chyba při aktualizaci věcné kontroly:', err);
@@ -5780,10 +5786,15 @@ export default function InvoiceEvidencePage() {
                 <ProgressButton 
                   variant="primary" 
                   onClick={async () => {
-                    // Pokud je to úspěch věcné správnosti pro omezené uživatele - vrátit na seznam
-                    if (progressModal.title === 'Věcná správnost uložena' && isReadOnlyMode) {
+                    // Pokud je to úspěch věcné správnosti - vrátit na seznam nebo zůstat
+                    if (progressModal.resetData?.isVecnaSpravnost) {
                       setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
-                      navigate('/invoices25-list');
+                      
+                      if (progressModal.resetData?.isReadOnlyMode) {
+                        // Omezení uživatelé - návrat na seznam
+                        navigate('/invoices25-list');
+                      }
+                      // Běžní uživatelé zůstavá na stránce
                       return;
                     }
                     
