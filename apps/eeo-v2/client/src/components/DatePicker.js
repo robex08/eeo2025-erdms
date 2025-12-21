@@ -13,10 +13,10 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [openUpwards, setOpenUpwards] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
   const [isPositioned, setIsPositioned] = useState(false);
   const wrapperRef = useRef(null);
   const calendarRef = useRef(null);
+  const positionRef = useRef({ top: 0, left: 0, width: 0 });
   
   const isCompact = variant === 'compact';
 
@@ -33,18 +33,26 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     }
   }, [value]);
 
-  // Close calendar when clicking outside
+  // Close calendar when clicking outside or when closeAllDatePickers event is fired
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
+    
+    const handleCloseAllDatePickers = () => {
+      setIsOpen(false);
+    };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('closeAllDatePickers', handleCloseAllDatePickers);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('closeAllDatePickers', handleCloseAllDatePickers);
+      };
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
   // Detekce směru otevření kalendáře a výpočet pozice pro portal
@@ -57,7 +65,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     if (!wrapperRef.current) return;
 
     const checkPosition = () => {
-      if (!wrapperRef.current) return;
+      if (!wrapperRef.current || !calendarRef.current) return;
 
       const buttonRect = wrapperRef.current.getBoundingClientRect();
       const calendarHeight = 380;
@@ -69,12 +77,22 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
 
       const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
 
-      setOpenUpwards(shouldOpenUpward);
-      setPosition({
-        top: shouldOpenUpward ? buttonRect.top - calendarHeight : buttonRect.bottom + 4,
-        left: buttonRect.left,
-        width: Math.max(buttonRect.width, 300)
-      });
+      // Updateovat pozici přímo v DOM bez state update
+      // Použít transform místo top/left pro GPU akceleraci
+      const top = shouldOpenUpward ? buttonRect.top - calendarHeight : buttonRect.bottom + 4;
+      const left = buttonRect.left;
+      const width = Math.max(buttonRect.width, 300);
+      
+      positionRef.current = { top, left, width };
+      
+      // Aplikovat přímo do DOM - použít transform pro lepší performance
+      calendarRef.current.style.transform = `translate(${left}px, ${top}px)`;
+      calendarRef.current.style.width = `${width}px`;
+      
+      // Update openUpwards pouze pokud se změnil (kvůli CSS transition)
+      if (shouldOpenUpward !== openUpwards) {
+        setOpenUpwards(shouldOpenUpward);
+      }
 
       // Po prvním výpočtu označit jako positioned
       if (!isPositioned) {
@@ -82,11 +100,31 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       }
     };
 
-    // První výpočet okamžitě
-    checkPosition();
+    // Počkat na dostupnost calendarRef před prvním výpočtem
+    if (calendarRef.current) {
+      checkPosition();
+    } else {
+      // Pokud ref ještě není dostupný, počkat na další frame
+      requestAnimationFrame(() => {
+        checkPosition();
+      });
+    }
 
-    // Při scrollu aktualizovat pozici okamžitě bez throttlingu
+    // Track floating header state for detection during scroll
+    let previousFloatingState = window.__floatingHeaderVisible || false;
+
+    // Při scrollu aktualizovat pozici okamžitě - BEZ throttlingu pro plynulost
     const handleScroll = () => {
+      // Detekce změny floating header stavu během scrollu
+      const currentFloatingState = window.__floatingHeaderVisible || false;
+      if (currentFloatingState !== previousFloatingState) {
+        console.log('🔄 [DatePicker] Detekována změna floating header při scrollu -> zavírám dropdown');
+        setIsOpen(false);
+        previousFloatingState = currentFloatingState;
+        return;
+      }
+      
+      // Volat přímo bez RAF pro maximální plynulost
       checkPosition();
     };
 
@@ -265,8 +303,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
         <DateCalendarPopup 
           ref={calendarRef} 
           openUpwards={openUpwards} 
-          $isPositioned={isPositioned} 
-          style={{ top: `${position.top}px`, left: `${position.left}px`, width: `${position.width}px` }}
+          $isPositioned={isPositioned}
           onMouseDown={(e) => {
             // Zabrání zavření kalendáře při kliknutí dovnitř
             e.preventDefault();
@@ -465,6 +502,8 @@ const DateTodayButton = styled.button`
 
 const DateCalendarPopup = styled.div`
   position: fixed;
+  top: 0;
+  left: 0;
   z-index: 999999;
   background: white;
   border: 2px solid #3b82f6;
@@ -474,6 +513,7 @@ const DateCalendarPopup = styled.div`
   pointer-events: ${props => props.$isPositioned ? 'auto' : 'none'};
   transition: opacity 0.15s ease;
   padding: 0.5rem;
+  will-change: transform;
 `;
 
 const CalendarHeader = styled.div`

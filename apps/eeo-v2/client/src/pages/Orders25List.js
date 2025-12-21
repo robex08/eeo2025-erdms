@@ -3801,6 +3801,7 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [openUpwards, setOpenUpwards] = useState(false);
+  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const wrapperRef = useRef(null);
 
   const selectedDate = value ? new Date(value) : null;
@@ -3820,16 +3821,38 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
         setIsOpen(false);
       }
     };
+    
+    const handleCloseAllDatePickers = () => {
+      setIsOpen(false);
+    };
+    
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      window.addEventListener('closeAllDatePickers', handleCloseAllDatePickers);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        window.removeEventListener('closeAllDatePickers', handleCloseAllDatePickers);
+      };
     }
   }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && wrapperRef.current) {
+      let rafId = null;
+      let previousFloatingState = window.__floatingHeaderVisible || false;
+      
       const checkPosition = () => {
         if (!wrapperRef.current) return;
+        
+        // Detekce změny floating header stavu během scrollu
+        const currentFloatingState = window.__floatingHeaderVisible || false;
+        if (currentFloatingState !== previousFloatingState) {
+          console.log('🔄 [DatePicker] Detekována změna floating header při scrollu -> zavírám dropdown');
+          setIsOpen(false);
+          previousFloatingState = currentFloatingState;
+          return;
+        }
+        
         const buttonRect = wrapperRef.current.getBoundingClientRect();
         const calendarHeight = 380;
         const footerHeight = 54;
@@ -3838,8 +3861,33 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
         const spaceAbove = buttonRect.top - buffer;
         const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
         setOpenUpwards(shouldOpenUpward);
+        
+        // Vypočítej pozici pro fixed positioning
+        const left = buttonRect.left;
+        const top = shouldOpenUpward ? buttonRect.top - calendarHeight - 4 : buttonRect.bottom + 4;
+        setPopupPosition({ top, left });
       };
+      
+      const handleScroll = () => {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+        }
+        rafId = requestAnimationFrame(checkPosition);
+      };
+      
       checkPosition();
+      
+      // Aktualizuj pozici při scrollu - použij capture fázi pro všechny scrolly
+      window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+      window.addEventListener('resize', checkPosition);
+      
+      return () => {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+        }
+        window.removeEventListener('scroll', handleScroll, { capture: true });
+        window.removeEventListener('resize', checkPosition);
+      };
     }
   }, [isOpen]);
 
@@ -3935,8 +3983,8 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
         )}
         <DateTodayButton type="button" onClick={handleToday} title="Nastavit dnešní datum">📅</DateTodayButton>
       </InputWithIcon>
-      {isOpen && (
-        <DateCalendarPopup openUpwards={openUpwards}>
+      {isOpen && ReactDOM.createPortal(
+        <DateCalendarPopup openUpwards={openUpwards} style={{ top: `${popupPosition.top}px`, left: `${popupPosition.left}px` }}>
           <CalendarHeader>
             <CalendarNav onClick={prevMonth}>◀</CalendarNav>
             <CalendarTitle>
@@ -3969,7 +4017,8 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
             <CalendarButton className="today" onClick={handleToday}>Dnes</CalendarButton>
             <CalendarButton className="clear" onClick={handleClear}>Smazat</CalendarButton>
           </CalendarFooter>
-        </DateCalendarPopup>
+        </DateCalendarPopup>,
+        document.body
       )}
     </DatePickerWrapper>
   );
@@ -4020,16 +4069,15 @@ const DateTodayButton = styled.button`
 `;
 
 const DateCalendarPopup = styled.div`
-  position: absolute;
-  ${props => props.openUpwards ? `bottom: calc(100% + 4px); top: auto;` : `top: calc(100% + 4px); bottom: auto;`}
-  left: 0;
-  right: 0;
-  z-index: 10001;
+  position: fixed;
+  z-index: 999999;
   background: white;
   border: 2px solid #3b82f6;
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   padding: 0.5rem;
+  width: max-content;
+  min-width: 280px;
 `;
 
 const CalendarHeader = styled.div`
@@ -8127,6 +8175,8 @@ const Orders25List = () => {
     const menuBarHeight = 48;
     const totalHeaderHeight = appHeaderHeight + menuBarHeight;
     
+    let previousShowState = false;
+    
     const observer = new IntersectionObserver(
       ([entry]) => {
         const theadBottom = entry.boundingClientRect.bottom;
@@ -8142,6 +8192,19 @@ const Orders25List = () => {
           shouldShow,
           'floating': shouldShow ? 'ZOBRAZIT' : 'SKRÝT'
         });
+        
+        // Track floating header state globally for DatePicker scroll handlers
+        window.__floatingHeaderVisible = shouldShow;
+        
+        // Track floating header state globally for DatePicker scroll handlers
+        window.__floatingHeaderVisible = shouldShow;
+        
+        // Close dropdowns only when floating header visibility actually changes
+        if (shouldShow !== previousShowState) {
+          console.log('🔄 [FloatingHeader] Změna stavu -> zavírám dropdowny');
+          window.dispatchEvent(new Event('closeAllDatePickers'));
+          previousShowState = shouldShow;
+        }
         
         setShowFloatingHeader(shouldShow);
       },
@@ -15408,6 +15471,20 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={faPalette} />
                       </FilterActionButton>
                     </div>
+                  ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
+                    <div style={{ position: 'relative' }}>
+                      <DatePicker
+                        fieldName={`filter_${header.column.columnDef.accessorKey}`}
+                        value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                        onChange={(value) => {
+                          const newFilters = { ...columnFilters };
+                          newFilters[header.column.columnDef.accessorKey] = value;
+                          setColumnFilters(newFilters);
+                        }}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
                   ) : (
                     <ColumnFilterWrapper>
                       <FontAwesomeIcon icon={faSearch} />
@@ -16940,6 +17017,20 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           >
                             <FontAwesomeIcon icon={faPalette} />
                           </FilterActionButton>
+                        </div>
+                      ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
+                        <div style={{ position: 'relative' }}>
+                          <DatePicker
+                            fieldName={`filter_floating_${header.column.columnDef.accessorKey}`}
+                            value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(value) => {
+                              const newFilters = { ...columnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = value;
+                              setColumnFilters(newFilters);
+                            }}
+                            placeholder="Datum"
+                            variant="compact"
+                          />
                         </div>
                       ) : (
                         <ColumnFilterWrapper>

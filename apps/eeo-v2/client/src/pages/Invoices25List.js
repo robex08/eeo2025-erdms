@@ -1368,12 +1368,25 @@ const Invoices25List = () => {
     const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
     
     // Intersection Observer - sleduje viditelnost thead elementu
+    let previousShowState = false;
+    
     const observer = new IntersectionObserver(
       ([entry]) => {
         // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
         // znamená to, že hlavička je schovaná a zobrazíme floating header
         const theadBottom = entry.boundingClientRect.bottom;
-        setShowFloatingHeader(theadBottom < totalHeaderHeight);
+        const shouldShow = theadBottom < totalHeaderHeight;
+        
+        // Track floating header state globally for DatePicker scroll handlers
+        window.__floatingHeaderVisible = shouldShow;
+        
+        // Close dropdowns only when floating header visibility actually changes
+        if (shouldShow !== previousShowState) {
+          window.dispatchEvent(new Event('closeAllDatePickers'));
+          previousShowState = shouldShow;
+        }
+        
+        setShowFloatingHeader(shouldShow);
       },
       {
         // threshold 0 = spustí se při jakékoli změně viditelnosti
@@ -3090,7 +3103,7 @@ const Invoices25List = () => {
                         <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
                       )}
                     </TableCell>
-                    <TableCell className="center">
+                    <TableCell className="center" style={{ whiteSpace: 'nowrap' }}>
                       {invoice.datum_doruceni ? (
                         <span style={{ color: '#059669', fontWeight: 600 }}>
                           <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
