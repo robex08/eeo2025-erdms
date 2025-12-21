@@ -3161,7 +3161,33 @@ switch ($endpoint) {
         
         // === ORDER V2 INVOICE MANAGEMENT ENDPOINTS ===
         
-        // POST /api.eeo/order-v2/{order_id}/invoices/create-with-attachment - vytvoří fakturu s přílohou
+        // POST /api.eeo/order-v2/invoices/create-with-attachment - vytvoří STANDALONE fakturu s přílohou (bez objednávky)
+        if (preg_match('/^order-v2\/invoices\/create-with-attachment$/', $endpoint, $matches)) {
+            $input['order_id'] = null; // Standalone faktura
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_create_invoice_with_attachment($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/invoices/create - vytvoří STANDALONE fakturu bez přílohy (bez objednávky)
+        if (preg_match('/^order-v2\/invoices\/create$/', $endpoint, $matches)) {
+            $input['order_id'] = null; // Standalone faktura
+            
+            if ($request_method === 'POST') {
+                handle_order_v2_create_invoice($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/order-v2/{order_id}/invoices/create-with-attachment - vytvoří fakturu s přílohou PRO OBJEDNÁVKU
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/invoices\/create-with-attachment$/', $endpoint, $matches)) {
             // Support both numeric and string IDs for order
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
@@ -3175,7 +3201,7 @@ switch ($endpoint) {
             break;
         }
         
-        // POST /api.eeo/order-v2/{order_id}/invoices/create - vytvoří fakturu bez přílohy
+        // POST /api.eeo/order-v2/{order_id}/invoices/create - vytvoří fakturu bez přílohy PRO OBJEDNÁVKU
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/invoices\/create$/', $endpoint, $matches)) {
             // Support both numeric and string IDs for order
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];

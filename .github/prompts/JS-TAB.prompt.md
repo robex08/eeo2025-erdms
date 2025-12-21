@@ -35,30 +35,43 @@ Pro tabulky s velkým množstvím dat implementuj floating header panel, který 
 const [showFloatingHeader, setShowFloatingHeader] = useState(false);
 const [columnWidths, setColumnWidths] = useState([]);
 const tableRef = useRef(null);
-const headerSentinelRef = useRef(null);
 ```
 
-2. **Sentinel element** (před tabulkou):
-```jsx
-<div ref={headerSentinelRef} style={{ height: '1px', visibility: 'hidden' }} />
-<TableWrapper ref={tableRef}>
-```
-
-3. **Intersection Observer** (detekce scrollu):
+2. **Intersection Observer** (detekce scrollu - sleduje thead):
 ```js
 useEffect(() => {
-  if (!headerSentinelRef.current) return;
-  const totalHeaderHeight = 96 + 48; // header + menubar
+  if (!tableRef.current) return;
+  
+  const thead = tableRef.current.querySelector('thead');
+  if (!thead) return;
+  
+  const appHeaderHeight = 96;
+  const menuBarHeight = 48;
+  const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
+  
+  // Intersection Observer - sleduje viditelnost thead elementu
   const observer = new IntersectionObserver(
-    ([entry]) => setShowFloatingHeader(!entry.isIntersecting),
-    { rootMargin: `-${totalHeaderHeight}px 0px 0px 0px`, threshold: 0 }
+    ([entry]) => {
+      // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
+      // znamená to, že hlavička je schovaná a zobrazíme floating header
+      const theadBottom = entry.boundingClientRect.bottom;
+      setShowFloatingHeader(theadBottom < totalHeaderHeight);
+    },
+    {
+      // threshold 0 = spustí se při jakékoli změně viditelnosti
+      threshold: 0
+    }
   );
-  observer.observe(headerSentinelRef.current);
-  return () => observer.disconnect();
+  
+  observer.observe(thead);
+  
+  return () => {
+    observer.disconnect();
+  };
 }, []);
 ```
 
-4. **Měření šířek sloupců:**
+3. **Měření šířek sloupců:**
 ```js
 useEffect(() => {
   const measureColumnWidths = () => {
@@ -77,7 +90,7 @@ useEffect(() => {
 }, [data, loading]);
 ```
 
-5. **Styled component:**
+4. **Styled component:**
 ```js
 const FloatingHeaderPanel = styled.div`
   position: fixed;
@@ -86,7 +99,7 @@ const FloatingHeaderPanel = styled.div`
   right: 0;
   background: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 85;
+  z-index: 9999;
   transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
   border-top: 2px solid #cbd5e1;
   border-bottom: 3px solid #3b82f6;
@@ -106,7 +119,7 @@ const FloatingTableWrapper = styled.div`
 `;
 ```
 
-6. **React Portal rendering** (před konečným `</>`):
+5. **React Portal rendering** (před konečným `</>`):
 ```jsx
 {ReactDOM.createPortal(
   <FloatingHeaderPanel $visible={showFloatingHeader}>
@@ -129,16 +142,19 @@ const FloatingTableWrapper = styled.div`
 )}
 ```
 
-7. **Import ReactDOM:**
+6. **Import ReactDOM:**
 ```js
 import ReactDOM from 'react-dom';
 ```
 
 **Klíčové body:**
-- Používej React Portal pro rendering mimo DOM hierarchii
+- Používej `ReactDOM.createPortal` (ne `createPortal` z react-dom)
+- Intersection Observer sleduje **thead element** přímo, ne sentinel
+- Observer kontroluje `entry.boundingClientRect.bottom < 144px` pro přesnou detekci pozice
+- `threshold: 0` zajistí, že observer se spustí při jakékoli změně
 - `colgroup` zajistí správné šířky sloupců
 - Intersection Observer je výkonnější než scroll listener
-- Z-index: 85 (pod menubar 90, nad obsahem)
+- Z-index: 9999 pro maximální viditelnost
 - Zkopíruj kompletně oba řádky hlavičky (názvy + filtry)
 - Všechny event handlery (onClick, onChange) fungují normálně
 

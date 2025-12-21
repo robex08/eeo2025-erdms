@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useContext, useCallback, useRef, lazy, Suspense } from 'react';
-import { createPortal } from 'react-dom';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
@@ -74,10 +74,10 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 
-// 🚀 PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
+//  PERFORMANCE: Lazy load DocxGeneratorModal (pouze když je potřeba)
 const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
 
-// 🚀 PERFORMANCE: Lazy load FinancialControlModal
+//  PERFORMANCE: Lazy load FinancialControlModal
 const FinancialControlModal = lazy(() => import('../components/FinancialControlModal'));
 
 // =============================================================================
@@ -333,7 +333,7 @@ const getStatusEmoji = (status) => {
     case 'odeslana':
       return '📤';
     case 'potvrzena':
-      return '✔️';
+      return '✔';
     case 'uverejnena':
     case 'registr_zverejnena':
     case 'registrzverejnena':
@@ -342,14 +342,14 @@ const getStatusEmoji = (status) => {
       return '🎯';
     case 'ceka_potvrzeni':
     case 'cekapotvrzeni':
-      return '⏸️';
+      return '⏸';
     case 'ceka_se':
     case 'cekase':
-      return '⏸️';
+      return '⏸';
     case 'zrusena':
       return '🚫';
     case 'smazana':
-      return '🗑️';
+      return '🗑';
     case 'ceka_kontrola':
     case 'cekakontrola':
       return '🔍';
@@ -719,7 +719,7 @@ const YearFilterTitle = styled.h2`
   gap: 0.75rem;
 `;
 
-// 🚀 CACHE: Status indicator komponenty
+//  CACHE: Status indicator komponenty
 const CacheStatusIconWrapper = styled(TooltipWrapper)`
   z-index: 999999;
 `;
@@ -1749,6 +1749,33 @@ const TableContainer = styled.div`
   
   /* IE a Edge - skrýt */
   -ms-overflow-style: none;
+`;
+
+// Floating Header Panel - zobrazí se při scrollování
+const FloatingHeaderPanel = styled.div`
+  position: fixed;
+  top: calc(var(--app-header-height, 96px) + 48px);
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  border-top: 2px solid #cbd5e1;
+  border-bottom: 3px solid #3b82f6;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transform: translateY(${props => props.$visible ? '0' : '-10px'});
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+`;
+
+const FloatingTableWrapper = styled.div`
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
 `;
 
 // Scroll šipka - levá - FIXED position (pohybuje se s vertikálním scrollem)
@@ -4158,10 +4185,10 @@ const Orders25List = () => {
   const { setDebugInfo } = useContext(DebugContext) || {};
   const { showToast } = useContext(ToastContext) || {};
   
-  // 🏢 HIERARCHIE: Načíst konfiguraci hierarchie
+  // HIERARCHIE: Načíst konfiguraci hierarchie
   const [hierarchyConfig, setHierarchyConfig] = useState(null);
 
-  // � CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
+  // CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Konverze na number pro všechna porovnání
   const currentUserId = useMemo(() => parseInt(user_id, 10), [user_id]);
 
@@ -4187,7 +4214,7 @@ const Orders25List = () => {
   };
   const bgTasksContext = useBackgroundTasks();
 
-  // 🚀 CACHE FIX: Stabilizuj permissions pro dependencies (useMemo místo přímého volání hasPermission)
+  //  CACHE FIX: Stabilizuj permissions pro dependencies (useMemo místo přímého volání hasPermission)
   // Toto zabrání zbytečnému rerendering při každém F5
   const permissions = useMemo(() => {
     if (!hasPermission) return { canViewAll: false, hasOnlyOwn: false };
@@ -4208,7 +4235,7 @@ const Orders25List = () => {
     return { canViewAll, hasOnlyOwn };
   }, [hasPermission]);
 
-  // 🔧 OPTIMALIZACE: Ref pro aktuální hodnotu permissions
+  //  OPTIMALIZACE: Ref pro aktuální hodnotu permissions
   // Použití v loadData useCallback pro odstranění circular dependency
   const permissionsRef = useRef(permissions);
 
@@ -4270,6 +4297,12 @@ const Orders25List = () => {
   const tableContainerRef = useRef(null);
   const tableWrapperRef = useRef(null); // Pro wrapper s shadow efekty
 
+  // 🎈 State a refs pro floating header
+  const [showFloatingHeader, setShowFloatingHeader] = useState(false);
+  const [columnWidths, setColumnWidths] = useState([]);
+  const tableRef = useRef(null); // Pro Intersection Observer (ukazuje na TableContainer)
+  const headerSentinelRef = useRef(null);
+
   // Callback ref pro TableScrollWrapper - detekuje hover nad CELOU tabulkou
   const setTableWrapperRef = useCallback((node) => {
     tableWrapperRef.current = node;
@@ -4297,6 +4330,7 @@ const Orders25List = () => {
   // Callback ref pro TableContainer s automatickou detekcí scrollování
   const setTableContainerRef = useCallback((node) => {
     tableContainerRef.current = node;
+    tableRef.current = node; // Pro Intersection Observer
 
     if (node) {
       // Funkce pro update šipek a shadowů
@@ -4343,11 +4377,69 @@ const Orders25List = () => {
     }
   }, []);
 
+  // 📱 Intersection Observer pro floating header - detekce scrollu
+  useEffect(() => {
+    if (!tableRef.current) return;
+
+    const thead = tableRef.current.querySelector('thead');
+    if (!thead) return;
+
+    const appHeaderHeight = 96;
+    const menuBarHeight = 48;
+    const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
+
+    // Intersection Observer - sleduje viditelnost thead elementu
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
+        // znamená to, že hlavička je schovaná a zobrazíme floating header
+        const theadBottom = entry.boundingClientRect.bottom;
+        setShowFloatingHeader(theadBottom < totalHeaderHeight);
+      },
+      {
+        // threshold 0 = spustí se při jakékoli změně viditelnosti
+        threshold: 0
+      }
+    );
+
+    observer.observe(thead);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  // 🎈 Měření šířek sloupců pro floating header
+  useEffect(() => {
+    const measureColumnWidths = () => {
+      if (!tableRef.current) return;
+
+      // Najdeme všechny th elementy v prvním řádku hlavičky
+      const headerCells = tableRef.current.querySelectorAll('thead tr:first-child th');
+      const widths = Array.from(headerCells).map(cell => cell.offsetWidth);
+      setColumnWidths(widths);
+    };
+
+    // Změř hned po načtení
+    measureColumnWidths();
+
+    // Změř znovu po změně velikosti okna
+    window.addEventListener('resize', measureColumnWidths);
+
+    // Změř znovu po načtení dat (malé zpoždění pro jistotu)
+    const timer = setTimeout(measureColumnWidths, 100);
+
+    return () => {
+      window.removeEventListener('resize', measureColumnWidths);
+      clearTimeout(timer);
+    };
+  }, [orders, loading]);
+
   // 🎬 STATE pro inicializaci - splash screen zmizí až po dokončení VŠEHO
   const [initializationComplete, setInitializationComplete] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true); // Pro fade efekt
 
-  // 🚀 CACHE: State pro tracking cache info
+  //  CACHE: State pro tracking cache info
   const [lastLoadSource, setLastLoadSource] = useState(null); // 'cache' | 'database' | null
   const [lastLoadTime, setLastLoadTime] = useState(null);
   const [lastLoadDuration, setLastLoadDuration] = useState(null); // Jak dlouho trvalo načtení (ms)
@@ -4381,7 +4473,7 @@ const Orders25List = () => {
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null); // Info o zamčení: { lockedByUserName, canForceUnlock, orderId }
 
-  // ⚠️ State pro Force Unlock Warning Dialog
+  // ⚠ State pro Force Unlock Warning Dialog
   const [showForceUnlockWarning, setShowForceUnlockWarning] = useState(false);
   const [forceUnlockWarningData, setForceUnlockWarningData] = useState(null); // { orderNumber, lockedBy, lockedByEmail, lockedByPhone, lockedAt }
 
@@ -4770,7 +4862,7 @@ const Orders25List = () => {
 
   const statusOptions = useMemo(() => {
     return [...orderStatesList].map(status => {
-      // 🔧 POUŽIJ ČESKÝ NÁZEV jako ID pro filtrování (ne kod_stavu)
+      //  POUŽIJ ČESKÝ NÁZEV jako ID pro filtrování (ne kod_stavu)
       // Protože order.stav_objednavky obsahuje české názvy
       const statusName = status.nazev_stavu || status.nazev || status.kod_stavu || status.id;
       return {
@@ -4841,10 +4933,10 @@ const Orders25List = () => {
   // 📍 EXPANDED ROWS: State pro rozbalené řádky (ukládáme row index, ne ID)
   const [expanded, setExpanded] = useState({});
 
-  // �️ DEBOUNCE: Ref pro timeout column filtrů (3 sekundy delay)
+  // DEBOUNCE: Ref pro timeout column filtrů (3 sekundy delay)
   const columnFiltersTimeoutRef = useRef(null);
 
-  // 🚀 DEBOUNCED: Funkce pro uložení column filtrů s 3s debounce
+  // DEBOUNCED: Funkce pro uložení column filtrů s 3s debounce
   const saveColumnFiltersDebounced = useCallback((filters) => {
     if (!user_id) return;
 
@@ -4859,7 +4951,7 @@ const Orders25List = () => {
     }, 3000); // 3 sekundy debounce
   }, [user_id, setUserStorage]);
 
-  // �🔧 OPTIMALIZACE: Batch update všech filtrů do localStorage najednou
+  // OPTIMALIZACE: Batch update všech filtrů do localStorage najednou
   // Nahrazuje 14 samostatných useEffects → 1 useEffect
   // Výhody: rychlejší při změně user_id, méně re-renderů, lepší čitelnost
   useEffect(() => {
@@ -4922,12 +5014,12 @@ const Orders25List = () => {
     // POZNÁMKA: columnFilters se zpracovávají separátně s debounce
   ]);
 
-  // �️ DEBOUNCED useEffect: Column filters s 3s debounce - brání zahlcování localStorage při rychlém psaní
+  // DEBOUNCED useEffect: Column filters s 3s debounce - brání zahlcování localStorage při rychlém psaní
   useEffect(() => {
     saveColumnFiltersDebounced(columnFilters);
   }, [columnFilters, saveColumnFiltersDebounced]);
 
-  // 🧹 CLEANUP: Vyčisti timeout při unmount
+  // CLEANUP: Vyčisti timeout při unmount
   useEffect(() => {
     return () => {
       if (columnFiltersTimeoutRef.current) {
@@ -4936,7 +5028,7 @@ const Orders25List = () => {
     };
   }, []);
 
-  // �📍 SCROLL STATE: Ref pro tracking zda už byla pozice obnovena
+  // SCROLL STATE: Ref pro tracking zda už byla pozice obnovena
   const scrollStateRestored = React.useRef(false);
   const isFirstRender = React.useRef(true); // ← Track first render
 
@@ -4988,7 +5080,7 @@ const Orders25List = () => {
 
     // Pokud jsou data prázdná, označ všechny kroky jako hotové
     if (orders.length === 0) {
-      initStepsCompleted.current.dataLoaded = true; // 🔧 FIX: Musí být nastaven i dataLoaded!
+      initStepsCompleted.current.dataLoaded = true; //  FIX: Musí být nastaven i dataLoaded!
       initStepsCompleted.current.paginationRestored = true;
       initStepsCompleted.current.expandedRestored = true;
       initStepsCompleted.current.scrollRestored = true;
@@ -5306,7 +5398,7 @@ const Orders25List = () => {
       return nameA.localeCompare(nameB);
     };
 
-    // ℹ️ POZNÁMKA: objednatelList a garantList se již nepoužívají
+    // ℹ POZNÁMKA: objednatelList a garantList se již nepoužívají
     // Filtry GARANT a OBJEDNATEL používají přímo sortedActiveUsers (reaguje na showArchived)
     const objednatelArray = Array.from(uniqueObjednatele).sort(sortByName);
     const garantArray = Array.from(uniqueGaranti).sort(sortByName);
@@ -5331,7 +5423,7 @@ const Orders25List = () => {
   const loadData = useCallback(async (forceRefresh = false) => {
     if (!token || !user?.username) return;
 
-    // 🚀 CACHE: Start měření doby načítání
+    //  CACHE: Start měření doby načítání
     const loadStartTime = performance.now();
 
     try {
@@ -5352,7 +5444,7 @@ const Orders25List = () => {
       const canViewAllOrders = currentPermissions.canViewAll;
       const hasOnlyOwnPermissions = currentPermissions.hasOnlyOwn;
 
-      // �🚀 MIGRACE: Fetch funkce pro V2 API
+      // MIGRACE: Fetch funkce pro V2 API
       const fetchFunction = async () => {
         const filters = {
           ...dateRange,
@@ -5365,7 +5457,7 @@ const Orders25List = () => {
           requestTimestamp: new Date().toISOString()
         }));
 
-        // 🚀 V2 API: VŽDY používej enriched endpoint pro kompletní data
+        //  V2 API: VŽDY používej enriched endpoint pro kompletní data
         // returnFullResponse=true pro získání meta dat z backendu
         const apiResult = await listOrdersV2(filters, token, username, true, true);
 
@@ -5386,7 +5478,7 @@ const Orders25List = () => {
         return apiResult?.data || [];
       };
 
-      // 🚀 CACHE: Použij getOrders pro inteligentní cache (memory + localStorage + TTL)
+      //  CACHE: Použij getOrders pro inteligentní cache (memory + localStorage + TTL)
       // forceRefresh se používá JEN při manuálním kliknutí na tlačítko "Obnovit"
 
       const cacheResult = forceRefresh
@@ -5409,7 +5501,7 @@ const Orders25List = () => {
             }
           );
 
-      // 🚀 CACHE: Rozbal data a info o zdroji
+      //  CACHE: Rozbal data a info o zdroji
       ordersData = cacheResult.data;
 
       // 🚫 FILTR: Odstraň systémové šablony (ID <= 1)
@@ -5421,11 +5513,11 @@ const Orders25List = () => {
         });
       }
 
-      // 🚀 Změř dobu načítání
+      //  Změř dobu načítání
       const loadEndTime = performance.now();
       const loadDuration = Math.round(loadEndTime - loadStartTime);
 
-      // 🚀 Nastav zdroj podle skutečného zdroje z cache
+      //  Nastav zdroj podle skutečného zdroje z cache
       setLastLoadSource(cacheResult.source); // 'memory', 'database', nebo 'database_forced'
       setLastLoadTime(new Date());
       setLastLoadDuration(loadDuration);
@@ -5437,7 +5529,7 @@ const Orders25List = () => {
         const usersData = await fetchAllUsers({ token, username });
         const usersMap = {};
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         usersMap['0'] = {
           id: '0',
           jmeno: 'SYSTEM',
@@ -5478,7 +5570,7 @@ const Orders25List = () => {
         // NYNÍ můžeme zpracovat koncepty s dostupnými users daty
         const localDrafts = [];
         try {
-          // 🔧 FIX: Použij draftManager místo přímého localStorage
+          //  FIX: Použij draftManager místo přímého localStorage
           draftManager.setCurrentUser(user_id);
           const draftData = await draftManager.loadDraft();
 
@@ -5535,7 +5627,7 @@ const Orders25List = () => {
             }
           }
         } catch (err) {
-          // 🔧 FIX: Lepší error handling pro draft loading
+          //  FIX: Lepší error handling pro draft loading
         }
 
         // Přidej koncepty na začátek seznamu
@@ -5568,7 +5660,7 @@ const Orders25List = () => {
           };
         });
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         allUsersForFilters.unshift({
           id: '0',
           jmeno: 'SYSTEM',
@@ -5610,7 +5702,7 @@ const Orders25List = () => {
           return { ...approver, displayName };
         });
 
-        // 🔧 Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
+        //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
         approversWithDisplayName.unshift({
           id: '0',
           user_id: '0',
@@ -5737,7 +5829,7 @@ const Orders25List = () => {
         }
       }
 
-      // 🔧 NORMALIZACE: Pro archivované objednávky bez příkazce/schvalovatele nastav SYSTEM (ID 0)
+      //  NORMALIZACE: Pro archivované objednávky bez příkazce/schvalovatele nastav SYSTEM (ID 0)
       finalOrders = finalOrders.map(order => {
         // Aplikuj pouze na archivované objednávky (importované staré objednávky)
         if (order.stav_objednavky === 'ARCHIVOVANO') {
@@ -5839,7 +5931,7 @@ const Orders25List = () => {
           }
         });
 
-        // 🔧 OPRAVA: Ukládat přímo do localStorage bez user_id suffixu
+        //  OPRAVA: Ukládat přímo do localStorage bez user_id suffixu
         // CalendarPanel čte z 'calendar_order_counts', ne z getUserKey()
         localStorage.setItem('calendar_order_counts', JSON.stringify(counts));
         localStorage.setItem('calendar_order_counts_updated', Date.now());
@@ -5873,7 +5965,7 @@ const Orders25List = () => {
       setTimeout(() => setProgress?.(0), 500);
     }
   }, [token, user?.username, user_id, selectedYear, selectedMonth, showArchived]);
-  // � OPTIMALIZACE: Odstraněno 'permissions' z dependencies - použit permissionsRef.current místo toho
+  // OPTIMALIZACE: Odstraněno 'permissions' z dependencies - použit permissionsRef.current místo toho
   // Toto odstraní circular dependency a zabrání zbytečným reload při změně permissions objektu
   // permissions změny jsou zachyceny přes ref který je vždy aktuální
 
@@ -5883,7 +5975,7 @@ const Orders25List = () => {
     loadData(shouldForceReload);
   }, [loadData, location.state?.forceReload]);
 
-  // 📡 Listen for ORDER_SAVED broadcasts from other tabs/windows
+  // Listen for ORDER_SAVED broadcasts from other tabs/windows
   // 🔥 PERFORMANCE: Debounce loadData to prevent message handler violations
   // 🔒 LOOP PREVENTION: Ignoruj vlastní broadcasty
   useEffect(() => {
@@ -5900,7 +5992,7 @@ const Orders25List = () => {
       lastMessageTimestamp = now;
 
       if (message.type === BROADCAST_TYPES.ORDER_SAVED || message.type === BROADCAST_TYPES.DRAFT_DELETED) {
-        // 🚀 PERFORMANCE: Debounce loadData - prevent excessive reloads from multiple messages
+        //  PERFORMANCE: Debounce loadData - prevent excessive reloads from multiple messages
         // Chrome violation fixed: Increased debounce to 1000ms to prevent handler violations
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
@@ -5916,16 +6008,14 @@ const Orders25List = () => {
     };
   }, [loadData]);
 
-  // �🔧 Registrace callback pro getCurrentFilters - používá background task před API voláním
+  // Registrace callback pro getCurrentFilters - používá background task před API voláním
   useEffect(() => {
     if (!bgTasksContext?.registerGetCurrentFiltersCallback) {
       return;
     }
 
-    /**
-     * Vrací aktuální filtry (ROK, OBDOBÍ, ARCHIV) pro background refresh
-     * Stejná logika jako loadData() - zajištění konzistence mezi F5 a background refresh
-     */
+    // Vrací aktuální filtry (ROK, OBDOBÍ, ARCHIV) pro background refresh
+    // Stejná logika jako loadData() - zajištění konzistence mezi F5 a background refresh
     const getFiltersCallback = () => {
       // Pomocná funkce pro výpočet datum_od a datum_do (kopie z loadData)
       const getDateRange = () => {
@@ -5980,7 +6070,7 @@ const Orders25List = () => {
     if (!bgTasksContext) return;
 
     const refreshCallback = (ordersData) => {
-      // 🔧 OPTIMALIZACE: Validace dat před nastavením
+      //  OPTIMALIZACE: Validace dat před nastavením
       // Ochrana proti přepsání existujících dat nevalidními daty
 
       // Kontrola 1: Data musí být pole
@@ -5998,17 +6088,17 @@ const Orders25List = () => {
         return;
       }
 
-      // � FILTR: Odstraň systémové šablony (ID <= 1)
+      // FILTR: Odstraň systémové šablony (ID <= 1)
       // Systémové objednávky s ID=0 a ID=1 se nesmí zobrazovat v seznamu objednávek
       const filteredOrders = ordersData.filter(o => {
         const orderId = parseInt(o.id);
         return !isNaN(orderId) && orderId > 1;
       });
 
-      // ✅ Backend již filtroval podle ROK, OBDOBÍ, ARCHIV - data jsou ready to use!
-      // ⚠️ Frontend filtraci NUŽ JUŽ NEPOTŘEBUJEME - backend posílá již filtrovaná data
+      // Backend již filtroval podle ROK, OBDOBÍ, ARCHIV - data jsou ready to use!
+      // Frontend filtraci NUŽ JUŽ NEPOTŘEBUJEME - backend posílá již filtrovaná data
 
-      // 🔄 Nastavit žlutou ikonu a čas posledního background refreshe
+      // Nastavit žlutou ikonu a čas posledního background refreshe
       setIsBackgroundRefreshActive(true);
       setLastRefreshTime(new Date());
 
@@ -6201,17 +6291,17 @@ const Orders25List = () => {
       systemStatus = 'DRAFT';
     }
 
-    // ��� SPECIÁLNÍ LOGIKA PRO UVEŘEJNĚNÍ V REGISTRU SMLUV
-    // Kontroluj data o publikaci - má přednost před obecným stavem
+    // SPECIALNI LOGIKA PRO UVEREJNENI V REGISTRU SMLUV
+    // Kontroluj data o publikaci - ma prednost pred obecnym stavem
     if (order.registr_smluv || order.stav_workflow_kod) {
       const registr = order.registr_smluv;
       
-      // Pokud má dt_zverejneni A registr_iddt, je již zveřejněno
+      // Pokud ma dt_zverejneni A registr_iddt, je jiz zverejneno
       if (registr?.dt_zverejneni && registr?.registr_iddt) {
         return 'UVEREJNENA';
       }
       
-      // Získej workflow status pro kontrolu UVEREJNIT
+      // Ziskej workflow status pro kontrolu UVEREJNIT
       let workflowStatus = null;
       if (order.stav_workflow_kod) {
         try {
@@ -6249,11 +6339,11 @@ const Orders25List = () => {
     return systemStatus;
   }, []); // No dependencies - pure function
 
-  // � Helper funkce pro získání aktuálního workflow stavu objednávky
+  // Helper funkce pro ziskani aktualniho workflow stavu objednavky
   const getOrderWorkflowStatus = useCallback((order) => {
     if (!order) return null;
 
-    // Zkus získat poslední stav z stav_workflow_kod
+    // Zkus ziskat posledni stav z stav_workflow_kod
     if (order.stav_workflow_kod) {
       try {
         let workflowStates = [];
@@ -6289,16 +6379,16 @@ const Orders25List = () => {
     return null;
   }, []);
 
-  // �💰 Helper funkce pro získání celkové ceny s DPH Z POLOŽEK OBJEDNÁVKY
-  // Počítá POUZE ze součtu položek (cena_s_dph), NIKDY z max_cena_s_dph
+  // Helper funkce pro ziskani celkove ceny s DPH Z POLOZEK OBJEDNAVKY
+  // Pocita POUZE ze souctu polozek (cena_s_dph), NIKDY z max_cena_s_dph
   const getOrderTotalPriceWithDPH = useCallback((order) => {
-    // 1. PRIORITA: Faktury (pokud existují) - skutečně utracené peníze
+    // 1. PRIORITA: Faktury (pokud existuji) - skutecne utracene penize
     if (order.faktury_celkova_castka_s_dph != null && order.faktury_celkova_castka_s_dph !== '') {
       const value = parseFloat(order.faktury_celkova_castka_s_dph);
       if (!isNaN(value) && value > 0) return value;
     }
     
-    // 2. PRIORITA: Položky - objednané ale ještě nefakturované
+    // 2. PRIORITA: Polozky - objednane ale jeste nefakturovane
     if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
       const value = parseFloat(order.polozky_celkova_cena_s_dph);
       if (!isNaN(value) && value > 0) return value;
@@ -6385,7 +6475,7 @@ const Orders25List = () => {
       return prilohyCount > 0 ? count + 1 : count;
     }, 0);
 
-    // ⚠️ Počítání mimořádných událostí
+    // ⚠ Počítání mimořádných událostí
     const mimoradneUdalosti = dataToCount.reduce((count, order) => {
       return order.mimoradna_udalost ? count + 1 : count;
     }, 0);
@@ -7561,7 +7651,7 @@ const Orders25List = () => {
         return filterValue === '---' || filterValue === '';
       },
       cell: ({ row }) => {
-        // 💰 Zobraz pouze cenu z položek objednávky (ne max_cena_s_dph!)
+        //  Zobraz pouze cenu z položek objednávky (ne max_cena_s_dph!)
         let price = 0;
         
         // 1. PRIORITA: Položky - vypočítaná cena z položek
@@ -7664,7 +7754,7 @@ const Orders25List = () => {
         const orderId = row.original.id; // Actual order ID from database
         return (
           <ActionMenu onClick={handleActionClick}>
-            {/* 1️⃣ EDIT */}
+            {/* 1⃣ EDIT */}
             <ActionMenuButton
               className="edit"
               data-action="edit"
@@ -7681,7 +7771,7 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faEdit} />
             </ActionMenuButton>
-            {/* 2️⃣ EVIDOVAT FAKTURU */}
+            {/* 2⃣ EVIDOVAT FAKTURU */}
             <ActionMenuButton
               className="create-invoice"
               data-action="create-invoice"
@@ -7696,7 +7786,7 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faFileInvoice} />
             </ActionMenuButton>
-            {/* 3️⃣ GENEROVAT DOCX */}
+            {/* 3⃣ GENEROVAT DOCX */}
             <ActionMenuButton
               className="export-document"
               data-action="export"
@@ -7711,7 +7801,7 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faFileWord} />
             </ActionMenuButton>
-            {/* 4️⃣ FINANČNÍ KONTROLA */}
+            {/* 4⃣ FINANČNÍ KONTROLA */}
             <ActionMenuButton
               className="financial-control"
               data-action="financial-control"
@@ -7725,7 +7815,7 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faListCheck} />
             </ActionMenuButton>
-            {/* 5️⃣ SMAZAT */}
+            {/* 5⃣ SMAZAT */}
             <ActionMenuButton
               className="delete"
               data-action="delete"
@@ -7971,7 +8061,7 @@ const Orders25List = () => {
   }, [filteredData]); // Spustí se když je filteredData připravené
 
   // 🎬 INITIALIZATION: Kontroluj dokončení všech kroků a skryj splash screen
-  // 🔧 REVERT: Vrácen původní polling přístup (funguje spolehlivě)
+  //  REVERT: Vrácen původní polling přístup (funguje spolehlivě)
   // Event-driven přístup by vyžadoval přepis všech míst kde se nastavuje initStepsCompleted.current
   useEffect(() => {
     const steps = initStepsCompleted.current;
@@ -8055,11 +8145,11 @@ const Orders25List = () => {
     onRowSelectionChange: setRowSelection,
   });
 
-  // 🔧 OPTIMALIZACE: Odstraněn redundantní useEffect pro table.setPageSize/Index
+  //  OPTIMALIZACE: Odstraněn redundantní useEffect pro table.setPageSize/Index
   // React Table automaticky reaguje na změny v state.pagination prop
   // Manuální nastavování způsobovalo potenciální race conditions
 
-  // 🔧 OPTIMALIZACE: sorting useEffect byl přesunut do batch localStorage updatu výše
+  //  OPTIMALIZACE: sorting useEffect byl přesunut do batch localStorage updatu výše
 
   // Reset to first page if current page is out of bounds - sleduj jen data length
   const pageCount = Math.max(1, Math.ceil(filteredData.length / pageSize));
@@ -8161,7 +8251,7 @@ const Orders25List = () => {
     if (!order) return false;
 
     // ✅ POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
-    // ⚠️ SCHVALENA NENÍ POVOLENA - musí následovat ROZPRACOVANA nebo vyšší fáze!
+    // ⚠ SCHVALENA NENÍ POVOLENA - musí následovat ROZPRACOVANA nebo vyšší fáze!
     // Podle WorkflowManager mappingu:
     // - FÁZE 3: ROZPRACOVANA (START - začalo se pracovat)
     // - FÁZE 4: POTVRZENA, ODESLANA
@@ -8190,7 +8280,7 @@ const Orders25List = () => {
     try {
       // Priorita 1: stav_workflow_kod (pole stavů - KONTROLUJ OBSAH, ne jen poslední!)
       if (order.stav_workflow_kod) {
-        // 🔧 FIX: Může být UŽ ARRAY nebo STRING
+        //  FIX: Může být UŽ ARRAY nebo STRING
         if (Array.isArray(order.stav_workflow_kod)) {
           workflowStates = order.stav_workflow_kod;
         } else if (typeof order.stav_workflow_kod === 'string') {
@@ -8318,7 +8408,7 @@ const Orders25List = () => {
 
     // Pokud nejsou načtené šablony z API, vrať prázdné pole
     if (!docxTemplates || docxTemplates.length === 0) {
-      console.warn('⚠️ [DOCX] Šablony nejsou načtené pro order:', order.cislo_objednavky);
+      console.warn('⚠ [DOCX] Šablony nejsou načtené pro order:', order.cislo_objednavky);
       return [];
     }
 
@@ -8891,7 +8981,7 @@ const Orders25List = () => {
     draftManager.setCurrentUser(user_id);
     draftManager.deleteDraft();
 
-    // 🔧 KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
+    //  KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
     localStorage.removeItem('activeOrderEditId');
 
     // Zavři modal a vyčisti state
@@ -8899,7 +8989,7 @@ const Orders25List = () => {
     setOrderToEdit(null);
     setCurrentDraftData(null);
 
-    // 🔧 FIX: Pokud je otevřený formulář, force reload přes window.location
+    //  FIX: Pokud je otevřený formulář, force reload přes window.location
     const isOnOrderForm = window.location.pathname === '/order-form-25';
     
     if (isOnOrderForm) {
@@ -9244,7 +9334,7 @@ const Orders25List = () => {
   };
 
   const handleRefresh = async () => {
-    // 🚀 FORCE REFRESH: Vymaž cache a načti z DB
+    //  FORCE REFRESH: Vymaž cache a načti z DB
     if (!token || !user?.username) return;
 
     // Reset background refresh stavu (uživatel kliknul manuálně)
@@ -9516,10 +9606,10 @@ const Orders25List = () => {
     };
     const listSeparator = listDelimiterMap[userSettings?.exportCsvListDelimiter || 'pipe'] || '|';
     
-    // 🔧 Helper: Bezpečné získání hodnoty s fallbackem
+    //  Helper: Bezpečné získání hodnoty s fallbackem
     const safeGet = (value, fallback = '') => value !== null && value !== undefined ? value : fallback;
     
-    // 🔧 Helper: Formátování jména uživatele z enriched dat
+    //  Helper: Formátování jména uživatele z enriched dat
     const formatUserName = (user) => {
       if (!user) return '';
       const titul_pred = user.titul_pred ? user.titul_pred + ' ' : '';
@@ -10065,15 +10155,15 @@ const Orders25List = () => {
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
     } else {
-      // 🔧 MAPUJ DASHBOARD KÓDY NA ČESKÉ NÁZVY (ne systémové kódy!)
+      //  MAPUJ DASHBOARD KÓDY NA ČESKÉ NÁZVY (ne systémové kódy!)
       const statusToCzechName = {
         'ke_schvaleni': 'Ke schválení',
         'schvalena': 'Schválená',
         'rozpracovana': 'Rozpracovaná',
         'odeslana': 'Odeslaná dodavateli',
         'potvrzena': 'Potvrzená dodavatelem',
-        'k_uverejneni_do_registru': 'Ke zveřejnění', // 🔧 FIX: Změněno z "Má být zveřejněna"
-        'uverejnena': 'Zveřejněno', // 🔧 FIX: Opraveno na "Zveřejněno" (tak jak je v DB)
+        'k_uverejneni_do_registru': 'Ke zveřejnění', //  FIX: Změněno z "Má být zveřejněna"
+        'uverejnena': 'Zveřejněno', //  FIX: Opraveno na "Zveřejněno" (tak jak je v DB)
         'vecna_spravnost': 'Věcná správnost',
         'dokoncena': 'Dokončená',
         'nova': 'Nová',
@@ -10336,7 +10426,7 @@ const Orders25List = () => {
         <ExpandedGrid>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 1️⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
+          {/* 1⃣ ZÁKLADNÍ ÚDAJE OBJEDNÁVKY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10573,7 +10663,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 2️⃣ FINANČNÍ ÚDAJE - KOMPLETNÍ S V2 API */}
+          {/* 2⃣ FINANČNÍ ÚDAJE - KOMPLETNÍ S V2 API */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -10812,7 +10902,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 3️⃣ ODPOVĚDNÉ OSOBY */}
+          {/* 3⃣ ODPOVĚDNÉ OSOBY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -11073,7 +11163,7 @@ const Orders25List = () => {
           </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 4️⃣ WORKFLOW KROKY */}
+          {/* 4⃣ WORKFLOW KROKY */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -11462,7 +11552,7 @@ const Orders25List = () => {
             {/* ═══════════════════════════════════════════════════════════════════ */}
             <MiddleColumn>
               {/* ═══════════════════════════════════════════════════════════════════ */}
-              {/* 6️⃣ POLOŽKY OBJEDNÁVKY - KOMPLETNÍ S DPH */}
+              {/* 6⃣ POLOŽKY OBJEDNÁVKY - KOMPLETNÍ S DPH */}
               {/* ═══════════════════════════════════════════════════════════════════ */}
               <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
                 <InfoCardTitle>
@@ -11678,7 +11768,7 @@ const Orders25List = () => {
             </InfoCard>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 7️⃣ FAKTURY - KOMPLETNÍ S DPH A PŘÍLOHAMI */}
+          {/* 7⃣ FAKTURY - KOMPLETNÍ S DPH A PŘÍLOHAMI */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
             <InfoCardTitle>
@@ -11839,7 +11929,7 @@ const Orders25List = () => {
             {/* ═══════════════════════════════════════════════════════════════════ */}
             <AttachmentsColumn>
           {/* ═══════════════════════════════════════════════════════════════════ */}
-          {/* 8️⃣ VŠECHNY PŘÍLOHY - KATEGORIZOVANÉ */}
+          {/* 8⃣ VŠECHNY PŘÍLOHY - KATEGORIZOVANÉ */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
             <InfoCard $order={order} $showRowHighlighting={showRowHighlighting}>
               <InfoCardTitle>
@@ -12310,7 +12400,7 @@ const Orders25List = () => {
                     📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
                     {lastLoadDuration !== null && (
                       <span style={{ marginLeft: '0.5rem' }}>
-                        ⏱️ {lastLoadDuration}ms
+                        ⏱ {lastLoadDuration}ms
                       </span>
                     )}
                   </div>
@@ -12425,7 +12515,7 @@ Dostupná pole: ${rawData.allFields.join(', ')}`}</DebugValue>
             )}
 
             <DebugSection>
-              <DebugLabel>🗂️ Všechna data (JSON):</DebugLabel>
+              <DebugLabel>🗂 Všechna data (JSON):</DebugLabel>
               <DebugValue>{JSON.stringify(rawData.rawData, null, 2)}</DebugValue>
             </DebugSection>
           </DebugContent>
@@ -12455,7 +12545,7 @@ Dostupná pole: ${rawData.allFields.join(', ')}`}</DebugValue>
               <>
                 {/* Filter State */}
                 <DebugSection>
-                  <DebugLabel>🎛️ Stav filtrů:</DebugLabel>
+                  <DebugLabel>🎛 Stav filtrů:</DebugLabel>
                   <DebugValue>{JSON.stringify({
                     showArchived: apiTestData.filterState?.showArchived,
                     selectedYear: apiTestData.filterState?.selectedYear,
@@ -12515,7 +12605,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 
             {/* Full API Response */}
             <DebugSection>
-              <DebugLabel>🗂️ Kompletní API Response (JSON):</DebugLabel>
+              <DebugLabel>🗂 Kompletní API Response (JSON):</DebugLabel>
               <DebugValue style={{ maxHeight: '400px', overflow: 'auto' }}>
                 {JSON.stringify(apiTestData.apiResponse, null, 2)}
               </DebugValue>
@@ -12527,7 +12617,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
       )}
 
       {/* 🎨 Modal Styles Design Panel - Návrhy stylů modálních dialogů */}
-      {showModalStylesPanel && createPortal(
+      {showModalStylesPanel && ReactDOM.createPortal(
         <div style={{
           position: 'fixed',
           top: 0,
@@ -15480,7 +15570,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
     </TableScrollWrapper>
 
     {/* Floating Scroll Šipky - React Portal (FIXED position, mimo DOM tabulky) */}
-    {createPortal(
+    {ReactDOM.createPortal(
       <>
         <ScrollArrowLeft
           $visible={showLeftArrow}
@@ -15560,10 +15650,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
 🆔 Draft ID: ${formData.id || 'žádné ID (nový koncept)'}
 📋 Předmět: ${formData.predmet || 'N/A'}
 🆕 Is New Concept: ${isNewConcept ? 'ANO - úplně nová objednávka' : 'NE'}
-✏️ Has DB Changes: ${hasDbChanges ? 'ANO - editace existující DB obj.' : 'NE'}
+✏ Has DB Changes: ${hasDbChanges ? 'ANO - editace existující DB obj.' : 'NE'}
 🎯 Saved Order ID: ${currentDraftData.savedOrderId || 'žádné'}
 
-➡️ Přepínáme na:
+➡ Přepínáme na:
 ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.predmet || 'ID ' + orderToEdit.id}` : '   NOVOU objednávku (prázdný formulář)'}`}
               </pre>
             </details>
@@ -15637,7 +15727,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         </p>
 
         <p style={{ background: '#fef3c7', padding: '0.75rem', borderRadius: '6px', border: '1px solid #f59e0b', margin: '0.75rem 0' }}>
-          <strong>⚠️ UPOZORNĚNÍ:</strong> Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
+          <strong>⚠ UPOZORNĚNÍ:</strong> Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
         </p>
 
         <p>
@@ -15675,14 +15765,14 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
 
         {/* VAROVÁNÍ 1: Archivovaná objednávka */}
         <div style={{ background: '#fef3c7', padding: '0.75rem', borderRadius: '6px', border: '1px solid #f59e0b', margin: '0.75rem 0' }}>
-          <strong>⚠️ VAROVÁNÍ - ARCHIVOVÁNO:</strong><br />
+          <strong>⚠ VAROVÁNÍ - ARCHIVOVÁNO:</strong><br />
           Tato objednávka byla importována z původního systému EEO a má stav <strong>ARCHIVOVÁNO</strong>.
           Editace může být přepsána při opakovaném importu dat.
         </div>
 
         {/* VAROVÁNÍ 2: Ztráta rozpracované objednávky */}
         <div style={{ background: '#fee2e2', padding: '0.75rem', borderRadius: '6px', border: '1px solid #ef4444', margin: '0.75rem 0' }}>
-          <strong>🗑️ ZTRÁTA KONCEPTU:</strong><br />
+          <strong>🗑 ZTRÁTA KONCEPTU:</strong><br />
           Máte rozpracovanou objednávku, která bude při pokračování <strong>ZTRACENA</strong> a nelze ji obnovit!
         </div>
 
@@ -15768,7 +15858,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           {lockedOrderInfo.canForceUnlock ? (
             <>
               <WarningText>
-                ⚠️ Objednávka je aktuálně editována uživatelem:
+                ⚠ Objednávka je aktuálně editována uživatelem:
               </WarningText>
               <UserInfo>
                 <strong>{lockedOrderInfo.lockedByUserName}</strong>
@@ -15810,7 +15900,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 Jako <strong>{lockedOrderInfo.userRoleName}</strong> můžete objednávku násilně odemknout a převzít.
               </InfoText>
               <WarningText>
-                ⚠️ Původní uživatel bude informován o převzetí objednávky a ztratí neuložené změny.
+                ⚠ Původní uživatel bude informován o převzetí objednávky a ztratí neuložené změny.
               </WarningText>
             </>
           ) : (
@@ -15862,12 +15952,12 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         </ConfirmDialog>
       )}
 
-      {/* ⚠️ FORCE UNLOCK WARNING DIALOG */}
-      {showForceUnlockWarning && forceUnlockWarningData && createPortal(
+      {/* ⚠ FORCE UNLOCK WARNING DIALOG */}
+      {showForceUnlockWarning && forceUnlockWarningData && ReactDOM.createPortal(
         <ForceUnlockWarningOverlay onClick={(e) => e.target === e.currentTarget && handleForceUnlockWarningClose()}>
           <ForceUnlockWarningDialog onClick={(e) => e.stopPropagation()}>
             <ForceUnlockWarningHeader>
-              <ForceUnlockWarningIcon>⚠️</ForceUnlockWarningIcon>
+              <ForceUnlockWarningIcon>⚠</ForceUnlockWarningIcon>
               <ForceUnlockWarningTitle>NÁSILNÉ PŘEVZETÍ OBJEDNÁVKY</ForceUnlockWarningTitle>
             </ForceUnlockWarningHeader>
 
@@ -16001,7 +16091,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
       )}
 
       {/* Hromadné generování DOCX - Dialog */}
-      {showBulkDocxDialog && createPortal(
+      {showBulkDocxDialog && ReactDOM.createPortal(
         <BulkDocxOverlay>
           <BulkDocxDialog onClick={(e) => e.stopPropagation()}>
             <BulkDocxHeader>
@@ -16304,7 +16394,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               }
 
               if (failed > 0) {
-                showToast(`⚠️ Selhalo: ${failed} objednávek`, 'error');
+                showToast(`⚠ Selhalo: ${failed} objednávek`, 'error');
               }
 
               setShowBulkApprovalDialog(false);
@@ -16387,7 +16477,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               }
 
               if (failed > 0) {
-                showToast(`⚠️ Selhalo: ${failed} objednávek`, 'error');
+                showToast(`⚠ Selhalo: ${failed} objednávek`, 'error');
               }
 
               setShowBulkDeleteDialog(false);
@@ -16403,7 +16493,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           variant="danger"
           confirmText={
             (hasPermission('ADMIN') || hasPermission('ORDER_DELETE_ALL'))
-              ? (bulkDeleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat (soft)")
+              ? (bulkDeleteType === 'hard' ? "⚠ Smazat úplně" : "Smazat (soft)")
               : "Smazat (soft)"
           }
           cancelText="Zrušit"
@@ -16430,7 +16520,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     padding: '1rem'
                   }}>
                     <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
-                      🔧 Vyberte typ smazání:
+                       Vyberte typ smazání:
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <label style={{
@@ -16483,7 +16573,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                         />
                         <div>
                           <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
-                            ⚠️ Úplné smazání (HARD DELETE)
+                            ⚠ Úplné smazání (HARD DELETE)
                           </div>
                           <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>
                             <strong>NEVRATNÉ!</strong> Smaže vše včetně položek, příloh a historie.
@@ -16501,7 +16591,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   padding: '1rem'
                 }}>
                   <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
-                    ℹ️ Měkké smazání (SOFT DELETE)
+                    ℹ Měkké smazání (SOFT DELETE)
                   </h4>
                   <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
                     Objednávky budou pouze <strong>označeny jako neaktivní</strong>.
@@ -16688,6 +16778,224 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
             </ExportPreviewFooter>
           </ExportPreviewDialog>
         </ExportPreviewOverlay>
+      )}
+
+      {/* Floating Header Panel - React Portal */}
+      {ReactDOM.createPortal(
+        <FloatingHeaderPanel $visible={showFloatingHeader}>
+          <FloatingTableWrapper>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              {columnWidths.length > 0 && (
+                <colgroup>
+                  {columnWidths.map((width, index) => (
+                    <col key={index} style={{ width: `${width}px` }} />
+                  ))}
+                </colgroup>
+              )}
+              <TableHead>
+                {/* Header row with column names */}
+                {table.getHeaderGroups().map(headerGroup => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map(header => (
+                      <TableHeader
+                        key={header.id}
+                        onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
+                        style={{
+                          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                          width: header.getSize()
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getCanSort() && header.column.getIsSorted() && (
+                            <FontAwesomeIcon
+                              icon={
+                                header.column.getIsSorted() === 'asc' ? faChevronUp :
+                                faChevronDown
+                              }
+                            />
+                          )}
+                        </div>
+                      </TableHeader>
+                    ))}
+                  </tr>
+                ))}
+
+                {/* Filter row with search inputs */}
+                <tr>
+                  {table.getHeaderGroups()[0]?.headers.map(header => (
+                    <TableHeader key={`filter-${header.id}`} style={{
+                      padding: '0.5rem',
+                      backgroundColor: '#f8f9fa',
+                      borderTop: '1px solid #e5e7eb'
+                    }}>
+                      {header.id === 'select' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          height: '32px'
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={table.getIsAllRowsSelected()}
+                            ref={(el) => {
+                              if (el) el.indeterminate = table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected();
+                            }}
+                            onChange={table.getToggleAllRowsSelectedHandler()}
+                            style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                            title={table.getIsAllRowsSelected() ? 'Zrušit výběr všech' : 'Vybrat vše'}
+                          />
+                        </div>
+                      ) : header.id === 'expander' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          height: '32px'
+                        }}>
+                          <FilterActionButton
+                            onClick={toggleAllRows}
+                            title={table.getIsSomeRowsExpanded() ? "Sbalit všechny řádky" : "Rozbalit všechny řádky"}
+                          >
+                            <FontAwesomeIcon icon={table.getIsSomeRowsExpanded() ? faMinus : faPlus} />
+                          </FilterActionButton>
+                        </div>
+                      ) : header.id === 'actions' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '3px',
+                          height: '32px'
+                        }}>
+                          {/* Hromadné akce - zobrazí se jen když jsou vybrané objednávky */}
+                          {(() => {
+                            const selectedCount = table.getSelectedRowModel().rows.length;
+                            if (selectedCount > 0) {
+                              const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);
+
+                              // Kolik objednávek je "Ke schválení"
+                              const approvalCount = selectedOrders.filter(o => o.stav_objednavky === 'Ke schválení').length;
+
+                              // Kolik objednávek lze generovat DOCX (stejná detekce jako v kontextovém menu)
+                              const docxCount = selectedOrders.filter(o => canExportDocument(o)).length;
+
+                              return (
+                                <>
+                                  {/* Schvalování - jen pro admin + právo APPROVE */}
+                                  {approvalCount > 0 && (hasPermission('ADMIN') || hasPermission('ORDER_APPROVE')) && (
+                                    <FilterActionButton
+                                      onClick={() => {
+                                        const eligibleOrders = selectedOrders.filter(o => o.stav_objednavky === 'Ke schválení');
+                                        setBulkApprovalOrders(eligibleOrders);
+                                        setShowBulkApprovalDialog(true);
+                                      }}
+                                      title={`Schválit ${approvalCount} vybraných objednávek (stav Ke schválení)`}
+                                      style={{ color: '#059669' }}
+                                    >
+                                      <FontAwesomeIcon icon={faCheckCircle} />
+                                      <ActionBadge>{approvalCount}</ActionBadge>
+                                    </FilterActionButton>
+                                  )}
+
+                                  {docxCount > 0 && (
+                                    <FilterActionButton
+                                      onClick={() => {
+                                        const eligibleOrders = selectedOrders.filter(o => canExportDocument(o));
+                                        setBulkDocxOrders(eligibleOrders);
+                                        // Inicializuj výběr podepisovatelů - výchozí je schvalovatel
+                                        const initialSigners = {};
+                                        const initialTemplates = {};
+                                        eligibleOrders.forEach(order => {
+                                          initialSigners[order.id] = order.schvalovatel_id || order.schvalovatel || null;
+                                          // Výchozí šablona podle stavu a ceny
+                                          const templates = getTemplateOptions(order);
+                                          if (templates.length > 0) {
+                                            initialTemplates[order.id] = templates[0].value; // První dostupná šablona
+                                          }
+                                        });
+                                        setBulkDocxSigners(initialSigners);
+                                        setBulkDocxTemplates(initialTemplates);
+                                        setShowBulkDocxDialog(true);
+                                      }}
+                                      title={`Generovat DOCX pro ${docxCount} vybraných objednávek (fáze Rozpracovaná+)`}
+                                      style={{ color: '#0891b2' }}
+                                    >
+                                      <FontAwesomeIcon icon={faFileWord} />
+                                      <ActionBadge>{docxCount}</ActionBadge>
+                                    </FilterActionButton>
+                                  )}
+
+                                  <FilterActionButton
+                                    onClick={() => {
+                                      setBulkDeleteOrders(selectedOrders);
+                                      setShowBulkDeleteDialog(true);
+                                    }}
+                                    title={`Smazat ${selectedCount} vybraných objednávek`}
+                                    style={{ color: '#dc2626' }}
+                                  >
+                                    <FontAwesomeIcon icon={faTrash} />
+                                    <ActionBadge>{selectedCount}</ActionBadge>
+                                  </FilterActionButton>
+                                </>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          {/* Defaultní akce - vždy zobrazené */}
+                          <FilterActionButton
+                            onClick={clearColumnFilters}
+                            title="Vymazat filtry sloupců"
+                          >
+                            <FontAwesomeIcon icon={faEraser} />
+                          </FilterActionButton>
+                          <FilterActionButton
+                            onClick={toggleRowHighlighting}
+                            title={showRowHighlighting ?
+                              "Vypnout zvýrazňování řádků podle stavu objednávky\n(koncepty zůstanou vždy zvýrazněné)" :
+                              "Zapnout zvýrazňování řádků podle stavu objednávky\n(každý stav má svou barvu)"}
+                            className={showRowHighlighting ? 'active' : ''}
+                          >
+                            <FontAwesomeIcon icon={faPalette} />
+                          </FilterActionButton>
+                        </div>
+                      ) : (
+                        <ColumnFilterWrapper>
+                          <FontAwesomeIcon icon={faSearch} />
+                          <ColumnFilterInput
+                            type="text"
+                            placeholder={`Hledat ${header.column.columnDef.header}...`}
+                            value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(e) => {
+                              const newFilters = { ...columnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = e.target.value;
+                              setColumnFilters(newFilters);
+                            }}
+                          />
+                          {columnFilters[header.column.columnDef.accessorKey] && (
+                            <ColumnClearButton
+                              onClick={() => {
+                                const newFilters = { ...columnFilters };
+                                delete newFilters[header.column.columnDef.accessorKey];
+                                setColumnFilters(newFilters);
+                              }}
+                              title="Vymazat"
+                            >
+                              <FontAwesomeIcon icon={faTimes} />
+                            </ColumnClearButton>
+                          )}
+                        </ColumnFilterWrapper>
+                      )}
+                    </TableHeader>
+                  ))}
+                </tr>
+              </TableHead>
+            </table>
+          </FloatingTableWrapper>
+        </FloatingHeaderPanel>,
+        document.body
       )}
 
       {/* Moderní Sponka helper - kontextová nápověda pro seznam objednávek */}

@@ -1,8 +1,26 @@
 <?php
 
 /**
- * Order V2 Invoice Management Handlers
+ * Order V2 Invoice Management Handlers - PRIMÁRNÍ API PRO FAKTURY
  * PHP 5.6 Compatible - uses array() syntax, string status codes
+ * 
+ * ✅ AKTUÁLNÍ A DOPORUČENÝ - Od 21.12.2025 jediný aktivní invoice API
+ * 
+ * 🎯 PODPOROVANÉ ENDPOINTY:
+ * - order-v2/invoices/create                             → Standalone faktury (bez objednávky)
+ * - order-v2/invoices/create-with-attachment             → Standalone faktury s přílohou
+ * - order-v2/{order_id}/invoices/create                  → Faktury pro objednávku
+ * - order-v2/{order_id}/invoices/create-with-attachment  → Faktury pro objednávku s přílohou
+ * - order-v2/invoices/{invoice_id}/update                → Update faktury (časová značka + uživatel)
+ * - order-v2/invoices/{invoice_id}/delete                → Delete faktury (soft/hard)
+ * 
+ * ✅ FUNKČNOSTI:
+ * - Úplný audit trail (vytvoril_uzivatel_id, dt_vytvoreni, aktualizoval_uzivatel_id, dt_aktualizace)
+ * - Správné timezone handling přes TimezoneHelper
+ * - Konzistentní response formát (status: 'ok'/'error')
+ * - Podpora standalone faktur (bez vazby na objednávku)
+ * - Věcná správnost a předání zaměstnanci
+ * - Soft/hard delete s kontrolou oprávnění
  */
 
 // Include TimezoneHelper for consistent timezone handling
@@ -341,6 +359,11 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             echo json_encode(array('status' => 'error', 'message' => 'Nebyla poskytnutá žádná data k aktualizaci'));
             return;
         }
+        
+        // Vždy aktualizuj dt_aktualizace a aktualizoval_uzivatel_id
+        $updateFields[] = 'dt_aktualizace = NOW()';
+        $updateFields[] = 'aktualizoval_uzivatel_id = ?';
+        $updateValues[] = $token_data['id'];
         
         $updateValues[] = $invoice_id;
         

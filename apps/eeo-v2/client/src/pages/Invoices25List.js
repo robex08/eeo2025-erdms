@@ -618,12 +618,62 @@ const SummaryValue = styled.div`
 `;
 
 // Table styles
-const TableWrapper = styled.div`
+const TableScrollWrapper = styled.div`
+  position: relative;
   background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  margin-top: 1rem;
+
+  /* Shadow indikátory na okrajích když je možné scrollovat */
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.3s ease;
+  }
+
+  /* Levý shadow - když není na začátku */
+  &::before {
+    left: 0;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+    opacity: ${props => props.$showLeftShadow ? 1 : 0};
+    border-radius: 8px 0 0 8px;
+  }
+
+  /* Pravý shadow - když není na konci */
+  &::after {
+    right: 0;
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.1), transparent);
+    opacity: ${props => props.$showRightShadow ? 1 : 0};
+    border-radius: 0 8px 8px 0;
+  }
+`;
+
+const TableContainer = styled.div`
+  /* Horizontální scrollování když se tabulka nevejde */
+  overflow-x: auto;
+  overflow-y: visible;
+  position: relative;
+
+  /* Smooth scrolling pro lepší UX */
+  scroll-behavior: smooth;
+
+  /* Skrýt scrollbar - zabránit blikání */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Firefox scrollbar - skrýt */
+  scrollbar-width: none;
+  
+  /* IE a Edge - skrýt */
+  -ms-overflow-style: none;
 `;
 
 const Table = styled.table`
@@ -656,66 +706,10 @@ const TableHeader = styled.th`
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
   user-select: none;
-  width: auto;
-  min-width: 100px;
   position: relative;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
-  }
-  
-  /* Užší sloupce pro data */
-  &.date-column {
-    min-width: 80px;
-    max-width: 90px;
-  }
-  
-  /* Širší sloupce pro Faktura VS a Číslo obj/Sml */
-  &.wide-column {
-    min-width: 140px;
-    max-width: 160px;
-  }
-  
-  /* Středně široký sloupec pro Stav */
-  &.status-column {
-    min-width: 125px;
-    max-width: 145px;
-  }
-  
-  /* Úzký sloupec pro zkrácená jména */
-  &.narrow-column {
-    min-width: 90px;
-    max-width: 110px;
-  }
-  
-  /* Úzký sloupec pro částku */
-  &.amount-column {
-    min-width: 80px;
-    max-width: 100px;
-  }
-  
-  /* Sorting indicator */
-  &.sortable {
-    padding-right: 1.5rem;
-    
-    .sort-icon {
-      position: absolute;
-      right: 0.5rem;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 0.75rem;
-      opacity: 0.6;
-      transition: opacity 0.2s;
-    }
-    
-    &:hover .sort-icon {
-      opacity: 1;
-    }
-    
-    &.active .sort-icon {
-      opacity: 1;
-      color: #fbbf24;
-    }
   }
 `;
 
@@ -723,8 +717,6 @@ const TableCell = styled.td`
   padding: 0.375rem;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  color: #1e293b;
-  text-align: left;
   
   &.center {
     text-align: center;
@@ -743,7 +735,7 @@ const FloatingHeaderPanel = styled.div`
   right: 0;
   background: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 85; /* Pod menu bar (90), ale nad obsahem */
+  z-index: 9999; /* Vysoký z-index pro jistotu viditelnosti */
   transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
   border-top: 2px solid #cbd5e1; /* Světle šedý top border pro oddělení od menu baru */
   border-bottom: 3px solid #3b82f6;
@@ -1363,32 +1355,37 @@ const Invoices25List = () => {
   const [showFloatingHeader, setShowFloatingHeader] = useState(false);
   const [columnWidths, setColumnWidths] = useState([]);
   const tableRef = useRef(null);
-  const headerSentinelRef = useRef(null);
   
-  // Sledování scrollování pomocí Intersection Observer
+  // Sledování scrollování - zobrazí floating header když hlavička tabulky zmizí nad viewport
   useEffect(() => {
-    if (!headerSentinelRef.current) return;
+    if (!tableRef.current) return;
+    
+    const thead = tableRef.current.querySelector('thead');
+    if (!thead) return;
     
     const appHeaderHeight = 96;
     const menuBarHeight = 48;
     const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
     
+    // Intersection Observer - sleduje viditelnost thead elementu
     const observer = new IntersectionObserver(
       ([entry]) => {
-        // Když sentinel není viditelný (scrollnuli jsme dolů), zobrazíme floating panel
-        setShowFloatingHeader(!entry.isIntersecting);
+        // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
+        // znamená to, že hlavička je schovaná a zobrazíme floating header
+        const theadBottom = entry.boundingClientRect.bottom;
+        setShowFloatingHeader(theadBottom < totalHeaderHeight);
       },
       {
-        // Nastavíme root margin tak, aby se sentinel považoval za neviditelný,
-        // když je těsně pod app headerem + menu barem
-        rootMargin: `-${totalHeaderHeight}px 0px 0px 0px`,
+        // threshold 0 = spustí se při jakékoli změně viditelnosti
         threshold: 0
       }
     );
     
-    observer.observe(headerSentinelRef.current);
+    observer.observe(thead);
     
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
   
   // Měření šířek sloupců z originální tabulky
@@ -2492,12 +2489,10 @@ const Invoices25List = () => {
           )}
         </SearchPanel>
 
-        {/* Sentinel element pro detekci scrollování - neviditelný */}
-        <div ref={headerSentinelRef} style={{ height: '1px', visibility: 'hidden' }} />
-
         {/* Table - vždy zobrazená s hlavičkou */}
-        <TableWrapper ref={tableRef}>
-          <Table>
+        <TableScrollWrapper>
+          <TableContainer ref={tableRef}>
+            <Table>
               <TableHead>
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
@@ -2515,6 +2510,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_faktury')}
+                    style={{ textAlign: 'center' }}
                   >
                     Faktura VS
                     {sortField === 'cislo_faktury' && (
@@ -2537,6 +2533,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
+                    style={{ whiteSpace: 'nowrap' }}
                   >
                     Objednávka/Smlouva
                     {sortField === 'cislo_objednavky' && (
@@ -2581,6 +2578,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
                     onClick={() => handleSort('castka')}
+                    style={{ textAlign: 'right' }}
                   >
                     Částka
                     {sortField === 'castka' && (
@@ -2592,6 +2590,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
                     onClick={() => handleSort('status')}
+                    style={{ textAlign: 'center' }}
                   >
                     Stav
                     {sortField === 'status' && (
@@ -3047,7 +3046,7 @@ const Invoices25List = () => {
                          invoice.fa_typ || '—'}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell style={{ whiteSpace: 'nowrap' }}>
                       {invoice.cislo_smlouvy ? (
                         <div 
                           style={{ 
@@ -3304,7 +3303,8 @@ const Invoices25List = () => {
                 </PaginationControls>
               </PaginationContainer>
             )}
-          </TableWrapper>
+          </TableContainer>
+        </TableScrollWrapper>
       </Container>
       
       {/* Delete Confirmation Dialog */}

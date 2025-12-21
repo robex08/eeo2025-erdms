@@ -14,6 +14,9 @@ last_updated: 2025-12-20
 
 ## 🎯 KRITICKÁ PRAVIDLA (vždy dodržovat)
 
+!!! vzdy ukladat u vsech PHP endpointu casove a datumove polozky s vyzuitim TimezoneHelper pro spravnou timezone (
+setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zónu (+01:00 nebo +02:00)) !!!
+
 ### Testování a Debugging
 - ❌ **NIKDY nepoužívej curl/wget/http požadavky na produkční URL** `https://erdms.zachranka.cz/api.eeo/`
 - ❌ Nemáš k dispozici přístup k testování produkčních endpointů přes HTTP
