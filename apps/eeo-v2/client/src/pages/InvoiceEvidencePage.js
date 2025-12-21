@@ -559,14 +559,19 @@ const CollapsibleHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-bottom: 1px solid #f59e0b;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-bottom: 3px solid #1e40af;
   cursor: pointer;
   transition: all 0.3s ease;
   border-radius: 12px 12px 0 0;
+  color: white;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 
   &:hover {
-    background: linear-gradient(135deg, #fde68a 0%, #facc15 100%);
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   }
 `;
 
@@ -576,7 +581,7 @@ const HeaderLeft = styled.div`
   gap: 0.75rem;
   font-weight: 600;
   font-size: 1.1rem;
-  color: #92400e;
+  color: white;
 `;
 
 const HeaderRight = styled.div`
@@ -595,15 +600,16 @@ const CollapseButton = styled.button`
   border: none;
   cursor: pointer;
   padding: 0.25rem;
-  color: #92400e;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 1.2rem;
   transition: transform 0.3s ease;
   transform: ${props => props.$collapsed ? 'rotate(180deg)' : 'rotate(0deg)'};
 
   &:hover {
-    color: #78350f;
+    color: rgba(255, 255, 255, 0.8);
   }
 `;
 
@@ -1574,7 +1580,13 @@ export default function InvoiceEvidencePage() {
     fa_strediska_kod: [],
     fa_predana_zam_id: null,
     fa_datum_predani_zam: '',
-    fa_datum_vraceni_zam: ''
+    fa_datum_vraceni_zam: '',
+    // Věcná kontrola
+    vecna_spravnost_umisteni_majetku: '',
+    vecna_spravnost_poznamka: '',
+    vecna_spravnost_potvrzeno: 0,
+    potvrdil_vecnou_spravnost_id: null,
+    dt_potvrzeni_vecne_spravnosti: ''
   });
 
   // Přílohy faktury - inicializace prázdná (localStorage se načte v useEffect)
@@ -1652,7 +1664,6 @@ export default function InvoiceEvidencePage() {
     const shouldSkipLS = freshNavigationFlag || isEditingExisting || isLoadingOrder || isLoadingSmlouva;
     
     if (shouldSkipLS) {
-      console.log('⏭️ Skip localStorage load:', { freshNavigationFlag, isEditingExisting, isLoadingOrder, isLoadingSmlouva });
       setLsLoaded(true);
       return;
     }
@@ -1771,7 +1782,7 @@ export default function InvoiceEvidencePage() {
   // Varování má smysl POUZE pokud:
   // 1. FA MĚLA přiřazenou OBJ nebo SML (ne NULL)
   // 2. FA NEBYLA předána zaměstnanci
-  // 3. Věcná kontrola JIŽ BYLA PROVEDENA (vecna_spravnost_potvrzeno = 1)
+  // 3. Věcná správnost JIŽ BYLA PROVEDENA (vecna_spravnost_potvrzeno = 1)
   useEffect(() => {
     if (!editingInvoiceId || !originalFormData) return;
     
@@ -1905,8 +1916,12 @@ export default function InvoiceEvidencePage() {
             fa_predana_zam_id: invoiceData.fa_predana_zam_id || null,
             fa_datum_predani_zam: formatDateForPicker(invoiceData.fa_datum_predani_zam),
             fa_datum_vraceni_zam: formatDateForPicker(invoiceData.fa_datum_vraceni_zam),
-            // Věcná správnost (pro detekci změn kritických polí)
-            vecna_spravnost_potvrzeno: invoiceData.vecna_spravnost_potvrzeno || 0
+            // Věcná kontrola
+            vecna_spravnost_umisteni_majetku: invoiceData.vecna_spravnost_umisteni_majetku || '',
+            vecna_spravnost_poznamka: invoiceData.vecna_spravnost_poznamka || '',
+            vecna_spravnost_potvrzeno: invoiceData.vecna_spravnost_potvrzeno || 0,
+            potvrdil_vecnou_spravnost_id: invoiceData.potvrdil_vecnou_spravnost_id || null,
+            dt_potvrzeni_vecne_spravnosti: invoiceData.dt_potvrzeni_vecne_spravnosti || ''
           };
           
           setFormData(loadedFormData);
@@ -3002,6 +3017,81 @@ export default function InvoiceEvidencePage() {
     document.addEventListener('mouseup', onUp);
   }, [spisovkaInboxState]);
 
+  // Handler: UPDATE věcné kontroly (partial update)
+  const handleUpdateMaterialCorrectness = async () => {
+    if (!editingInvoiceId) {
+      showToast && showToast('Chyba: Není vybrána faktura k aktualizaci', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Validace - checkbox musí být zaškrtnutý
+      if (formData.vecna_spravnost_potvrzeno !== 1) {
+        showToast && showToast('Zaškrtněte políčko "Potvrzuji věcnou správnost faktury"', 'error');
+        setLoading(false);
+        return;
+      }
+
+      // Validace - poznámka je POVINNÁ pokud faktura překračuje MAX cenu
+      if (orderData && orderData.max_cena_s_dph && formData.fa_castka) {
+        const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+        const fakturaCastka = parseFloat(formData.fa_castka) || 0;
+        if (fakturaCastka > maxCena && (!formData.vecna_spravnost_poznamka || formData.vecna_spravnost_poznamka.trim() === '')) {
+          showToast && showToast('Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky', 'error');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Partial update - pouze pole věcné kontroly
+      const updateData = {
+        vecna_spravnost_umisteni_majetku: formData.vecna_spravnost_umisteni_majetku || '',
+        vecna_spravnost_poznamka: formData.vecna_spravnost_poznamka || '',
+        vecna_spravnost_potvrzeno: formData.vecna_spravnost_potvrzeno,
+        potvrdil_vecnou_spravnost_id: formData.potvrdil_vecnou_spravnost_id,
+        dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti
+      };
+
+      console.log('🔄 Aktualizace věcné kontroly faktury:', editingInvoiceId, updateData);
+
+      const response = await updateInvoiceV2(editingInvoiceId, updateData, token);
+
+      if (response.success) {
+        showToast && showToast('✅ Věcná správnost byla aktualizována', 'success');
+        
+        // Aktualizovat originalFormData aby Cancel fungoval správně
+        setOriginalFormData(prev => ({
+          ...prev,
+          ...updateData
+        }));
+
+        // Odeslat notifikaci o věcné kontrole (pokud má objednávku)
+        if (formData.order_id) {
+          try {
+            await notificationService.trigger(
+              'ORDER_MATERIAL_CORRECTNESS',
+              formData.order_id,
+              user_id
+            );
+          } catch (notifError) {
+            console.error('❌ Chyba při odesílání notifikace:', notifError);
+          }
+        }
+      } else {
+        throw new Error(response.message || 'Nepodařilo se aktualizovat věcnou kontrolu');
+      }
+    } catch (err) {
+      console.error('❌ Chyba při aktualizaci věcné kontroly:', err);
+      setError(err.message || 'Nepodařilo se aktualizovat věcnou kontrolu');
+      showToast && showToast(err.message || 'Nepodařilo se aktualizovat věcnou kontrolu', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handler: submit formuláře
   const handleSubmit = async () => {
     setError(null);
@@ -3798,7 +3888,7 @@ export default function InvoiceEvidencePage() {
                 {editingInvoiceId && (
                   <span style={{ 
                     marginLeft: '1rem',
-                    color: '#78350f',
+                    color: 'rgba(255, 255, 255, 0.9)',
                     fontSize: '0.9rem',
                     fontWeight: 400
                   }}>
@@ -3808,13 +3898,13 @@ export default function InvoiceEvidencePage() {
                 {isReadOnlyMode && (
                   <span style={{ 
                     marginLeft: '1rem',
-                    background: '#fef3c7',
+                    background: 'rgba(255, 255, 255, 0.95)',
                     padding: '0.25rem 0.75rem',
                     borderRadius: '4px',
-                    color: '#92400e',
+                    color: '#1e40af',
                     fontSize: '0.8rem',
                     fontWeight: 600,
-                    border: '1px solid #fbbf24'
+                    border: '2px solid rgba(255, 255, 255, 0.3)'
                   }}>
                     POUZE PRO ČTENÍ
                   </span>
@@ -3851,7 +3941,17 @@ export default function InvoiceEvidencePage() {
                         file: null,
                         fa_predana_zam_id: null,
                         fa_datum_predani_zam: '',
-                        fa_datum_vraceni_zam: ''
+                        fa_datum_vraceni_zam: '',
+                        vecna_spravnost_umisteni_majetku: '',
+                        vecna_spravnost_poznamka: '',
+                        vecna_spravnost_potvrzeno: 0,
+                        potvrdil_vecnou_spravnost_id: null,
+                        dt_potvrzeni_vecne_spravnosti: '',
+                        vecna_spravnost_umisteni_majetku: '',
+                        vecna_spravnost_poznamka: '',
+                        vecna_spravnost_potvrzeno: 0,
+                        potvrdil_vecnou_spravnost_id: null,
+                        dt_potvrzeni_vecne_spravnosti: ''
                       });
                       
                       if (shouldResetEntity) {
@@ -4795,22 +4895,22 @@ export default function InvoiceEvidencePage() {
             </SectionContent>
           </CollapsibleSection>
 
-          {/* 🆕 SEKCE 2: VĚCNÁ KONTROLA K FAKTUŘE - collapsible */}
+          {/* 🆕 SEKCE 2: VĚCNÁ SPRÁVNOST K FAKTUŘE - collapsible */}
           <CollapsibleSection data-section="material-correctness">
             <CollapsibleHeader onClick={() => toggleSection('materialCorrectness')}>
               <HeaderLeft>
                 <FontAwesomeIcon icon={faClipboardCheck} />
-                Věcná kontrola k faktuře
+                Věcná správnost k faktuře
                 {!hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS') && (
                   <span style={{ 
                     marginLeft: '1rem',
-                    background: '#dcfce7',
+                    background: '#fef3c7',
                     padding: '0.25rem 0.75rem',
                     borderRadius: '4px',
-                    color: '#166534',
+                    color: '#92400e',
                     fontSize: '0.8rem',
                     fontWeight: 600,
-                    border: '1px solid #86efac'
+                    border: '2px solid #fbbf24'
                   }}>
                     VÁŠ ÚKOL
                   </span>
@@ -4823,22 +4923,266 @@ export default function InvoiceEvidencePage() {
               </HeaderRight>
             </CollapsibleHeader>
             <SectionContent $collapsed={!sectionStates.materialCorrectness}>
-              <div style={{
-                padding: '2rem',
-                textAlign: 'center',
-                color: '#6b7280',
-                background: '#f9fafb',
-                borderRadius: '8px',
-                border: '2px dashed #d1d5db'
-              }}>
-                <FontAwesomeIcon icon={faClipboardCheck} style={{ fontSize: '3rem', marginBottom: '1rem', color: '#9ca3af' }} />
-                <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  Zde bude formulář věcné kontroly
-                </p>
-                <p style={{ fontSize: '0.9rem' }}>
-                  Připravuje se implementace kontrolního workflow
-                </p>
-              </div>
+              <FakturaCard>
+                {/* Porovnání MAX CENA vs FAKTURA */}
+                {orderData && orderData.max_cena_s_dph && formData.fa_castka && (
+                  (() => {
+                    const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+                    const fakturaCastka = parseFloat(formData.fa_castka) || 0;
+                    const rozdil = fakturaCastka - maxCena;
+                    const prekroceno = rozdil > 0;
+
+                    return (
+                      <div style={{
+                        background: prekroceno ? '#fef2f2' : '#f0fdf4',
+                        border: `1px solid ${prekroceno ? '#ef4444' : '#22c55e'}`,
+                        borderRadius: '6px',
+                        padding: '0.75rem',
+                        marginBottom: '1rem',
+                        fontSize: '0.85rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#6b7280' }}>Max. cena objednávky s DPH:</span>
+                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                            {maxCena.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#6b7280' }}>Částka faktury s DPH:</span>
+                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                            {fakturaCastka.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          paddingTop: '0.5rem', 
+                          borderTop: '1px solid #e5e7eb',
+                          fontWeight: '700'
+                        }}>
+                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                            {prekroceno ? '⚠️ Překročení:' : '✅ Rozdíl:'}
+                          </span>
+                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                            {prekroceno ? '+' : ''}{rozdil.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
+
+                <FieldRow $columns="1fr">
+                  <FieldGroup>
+                    <FieldLabel>Umístění majetku</FieldLabel>
+                    <input
+                      type="text"
+                      value={formData.vecna_spravnost_umisteni_majetku || ''}
+                      disabled={loading}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_umisteni_majetku: e.target.value }))}
+                      placeholder="Např. Kladno, budova K2, místnost 203"
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        fontSize: '0.95rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '8px',
+                        outline: 'none',
+                        transition: 'all 0.2s',
+                        background: loading ? '#f9fafb' : 'white',
+                        cursor: loading ? 'not-allowed' : 'text'
+                      }}
+                      onFocus={(e) => {
+                        if (!loading) {
+                          e.target.style.borderColor = '#3b82f6';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#e5e7eb';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                  </FieldGroup>
+                </FieldRow>
+
+                <FieldRow $columns="1fr">
+                  <FieldGroup>
+                    <FieldLabel 
+                      required={orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)}
+                      style={(orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)) ? {color: '#dc2626', fontWeight: '700'} : {}}
+                    >
+                      Poznámka k věcné správnosti
+                      {(orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)) && ' (POVINNÁ - faktura překračuje MAX cenu)'}
+                    </FieldLabel>
+                    <textarea
+                      value={formData.vecna_spravnost_poznamka || ''}
+                      disabled={loading}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_poznamka: e.target.value }))}
+                      placeholder="Volitelná poznámka k věcné správnosti..."
+                      rows={2}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        fontSize: '0.95rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '8px',
+                        outline: 'none',
+                        transition: 'all 0.2s',
+                        background: loading ? '#f9fafb' : 'white',
+                        cursor: loading ? 'not-allowed' : 'text',
+                        resize: 'vertical',
+                        fontFamily: 'inherit'
+                      }}
+                      onFocus={(e) => {
+                        if (!loading) {
+                          e.target.style.borderColor = '#3b82f6';
+                          e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#e5e7eb';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                  </FieldGroup>
+                </FieldRow>
+
+                {/* Checkbox potvrzení věcné správnosti */}
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  background: '#ffffff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px'
+                }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: loading ? '400' : '600',
+                    color: loading ? '#9ca3af' : '#374151'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.vecna_spravnost_potvrzeno === 1}
+                      disabled={loading}
+                      onChange={(e) => {
+                        const newValue = e.target.checked ? 1 : 0;
+                        
+                        let updatedFields = { vecna_spravnost_potvrzeno: newValue };
+                        if (newValue === 1 && user_id && !formData.potvrdil_vecnou_spravnost_id) {
+                          const now = new Date();
+                          const year = now.getFullYear();
+                          const month = String(now.getMonth() + 1).padStart(2, '0');
+                          const day = String(now.getDate()).padStart(2, '0');
+                          const hours = String(now.getHours()).padStart(2, '0');
+                          const minutes = String(now.getMinutes()).padStart(2, '0');
+                          const seconds = String(now.getSeconds()).padStart(2, '0');
+                          const localTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                          
+                          updatedFields.potvrdil_vecnou_spravnost_id = user_id;
+                          updatedFields.dt_potvrzeni_vecne_spravnosti = localTimestamp;
+                        }
+                        
+                        setFormData(prev => ({ ...prev, ...updatedFields }));
+                      }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        accentColor: loading ? '#9ca3af' : '#16a34a'
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      Potvrzuji věcnou správnost faktury
+                    </span>
+                    {(formData.vecna_spravnost_potvrzeno === 1) && (
+                      <span style={{
+                        fontSize: '0.75rem',
+                        color: '#16a34a',
+                        background: '#dcfce7',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        fontWeight: '600'
+                      }}>
+                        ✓ ZKONTROLOVÁNO
+                      </span>
+                    )}
+                  </label>
+                </div>
+
+                {/* Tlačítka pro update věcné správnosti */}
+                {editingInvoiceId && (
+                  <div style={{
+                    marginTop: '1.5rem',
+                    paddingTop: '1.5rem',
+                    borderTop: '2px solid #e5e7eb',
+                    display: 'flex',
+                    gap: '1rem',
+                    justifyContent: 'flex-end'
+                  }}>
+                    <button
+                      onClick={() => {
+                        // Zrušit změny věcné správnosti - vrátit na původní hodnoty
+                        if (originalFormData) {
+                          setFormData(prev => ({
+                            ...prev,
+                            vecna_spravnost_umisteni_majetku: originalFormData.vecna_spravnost_umisteni_majetku || '',
+                            vecna_spravnost_poznamka: originalFormData.vecna_spravnost_poznamka || '',
+                            vecna_spravnost_potvrzeno: originalFormData.vecna_spravnost_potvrzeno || 0,
+                            potvrdil_vecnou_spravnost_id: originalFormData.potvrdil_vecnou_spravnost_id || null,
+                            dt_potvrzeni_vecne_spravnosti: originalFormData.dt_potvrzeni_vecne_spravnosti || ''
+                          }));
+                        }
+                        showToast && showToast('Změny věcné správnosti zrušeny', 'info');
+                      }}
+                      disabled={loading}
+                      style={{
+                        padding: '0.75rem 1.5rem',
+                        background: '#6b7280',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '0.95rem',
+                        fontWeight: '600',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !loading && (e.target.style.background = '#4b5563')}
+                      onMouseLeave={(e) => !loading && (e.target.style.background = '#6b7280')}
+                    >
+                      Zrušit
+                    </button>
+                    <button
+                      onClick={handleUpdateMaterialCorrectness}
+                      disabled={loading}
+                      style={{
+                        padding: '0.75rem 1.5rem',
+                        background: loading ? '#9ca3af' : '#16a34a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '0.95rem',
+                        fontWeight: '600',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => !loading && (e.target.style.background = '#15803d')}
+                      onMouseLeave={(e) => !loading && (e.target.style.background = '#16a34a')}
+                    >
+                      <FontAwesomeIcon icon={loading ? faSpinner : faSave} spin={loading} />
+                      Aktualizovat věcnou správnost
+                    </button>
+                  </div>
+                )}
+              </FakturaCard>
             </SectionContent>
           </CollapsibleSection>
           </FormColumnContent>
@@ -5374,7 +5718,12 @@ export default function InvoiceEvidencePage() {
                       file: null,
                       fa_predana_zam_id: null,
                       fa_datum_predani_zam: '',
-                      fa_datum_vraceni_zam: ''
+                      fa_datum_vraceni_zam: '',
+                      vecna_spravnost_umisteni_majetku: '',
+                      vecna_spravnost_poznamka: '',
+                      vecna_spravnost_potvrzeno: 0,
+                      potvrdil_vecnou_spravnost_id: null,
+                      dt_potvrzeni_vecne_spravnosti: ''
                     });
                     
                     // Reset preview entity a autocomplete pokud je potřeba
