@@ -1109,20 +1109,68 @@ function handle_invoices25_list($input, $config, $queries) {
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
         error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR): " . ($is_admin ? 'YES' : 'NO'));
 
-        // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury svých objednávek
+        // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem
         if (!$is_admin) {
-            // Najít objednávky uživatele
-            $user_orders_sql = "SELECT id FROM `" . TBL_OBJEDNAVKY . "` WHERE uzivatel_id = ?";
+            // 🔐 ROZŠÍŘENÁ LOGIKA PRO BĚŽNÉ UŽIVATELE:
+            // 1. Faktury k objednávkám kde je uživatel účastníkem (objednavatel, schvalovatel, příkazce, garant, atd.)
+            // 2. Faktury předané uživateli k věcné kontrole
+            // 3. Faktury které sám vytvořil
+            // 4. U smluv: faktury k smlouvám přiřazeným k úseku uživatele
+            
+            $user_access_conditions = array();
+            $user_access_params = array();
+            
+            // 1️⃣ OBJEDNÁVKY - kde je uživatel účastníkem v jakékoli roli
+            // Sloupce garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id jsou přímo v tabulce 25a_objednavky
+            $user_orders_sql = "
+                SELECT DISTINCT o.id 
+                FROM `" . TBL_OBJEDNAVKY . "` o
+                WHERE (
+                    o.uzivatel_id = ?                     -- vytvořil objednávku
+                    OR o.garant_uzivatel_id = ?           -- je garant objednávky  
+                    OR o.objednatel_id = ?                -- je objednavatel
+                    OR o.schvalovatel_id = ?              -- je schvalovatel
+                    OR o.prikazce_id = ?                  -- je příkazce objednávky
+                    OR o.potvrdil_vecnou_spravnost_id = ? -- potvrdil věcnou správnost objednávky
+                    OR o.fakturant_id = ?                 -- je fakturant
+                )
+            ";
             $user_orders_stmt = $db->prepare($user_orders_sql);
-            $user_orders_stmt->execute(array($user_id));
+            $user_orders_stmt->execute(array($user_id, $user_id, $user_id, $user_id, $user_id, $user_id, $user_id));
             $user_order_ids = array();
             while ($row = $user_orders_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $user_order_ids[] = (int)$row['id'];
             }
             
-            if (empty($user_order_ids)) {
-                // Uživatel nemá žádné objednávky - vrátit prázdný seznam
-                error_log("Invoices25 LIST: User $user_id has NO orders - returning empty list");
+            // 2️⃣ FAKTURY K OBJEDNÁVKÁM - kde je účastníkem
+            if (!empty($user_order_ids)) {
+                $user_access_conditions[] = 'f.objednavka_id IN (' . implode(',', $user_order_ids) . ')';
+                error_log("Invoices25 LIST: User $user_id has access to " . count($user_order_ids) . " orders");
+            }
+            
+            // 3️⃣ FAKTURY PŘEDANÉ K VĚCNÉ KONTROLE (sloupec fa_predana_zam_id přímo v tabulce faktur)
+            $user_access_conditions[] = 'f.fa_predana_zam_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 4️⃣ FAKTURY POTVRZENÉ UŽIVATELEM (sloupec potvrdil_vecnou_spravnost_id přímo v tabulce faktur)
+            $user_access_conditions[] = 'f.potvrdil_vecnou_spravnost_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 5️⃣ FAKTURY KTERÉ SAM VYTVOŘIL
+            $user_access_conditions[] = 'f.vytvoril_uzivatel_id = ?';
+            $user_access_params[] = $user_id;
+            
+            // 6️⃣ SMLOUVY - faktury k smlouvám přiřazeným k úseku uživatele
+            if ($user_usek_id) {
+                $user_access_conditions[] = '(f.smlouva_id IS NOT NULL AND sm.usek_id = ?)';
+                $user_access_params[] = $user_usek_id;
+                error_log("Invoices25 LIST: User $user_id - added access to contracts for usek_id: $user_usek_id");
+            }
+            
+            // Sestavit finální podmínku
+            if (empty($user_access_conditions)) {
+                // Uživatel nemá přístup k žádným fakturám
+                error_log("Invoices25 LIST: User $user_id has NO access to any invoices - returning empty list");
                 http_response_code(200);
                 echo json_encode(array(
                     'status' => 'ok', 
@@ -1137,10 +1185,11 @@ function handle_invoices25_list($input, $config, $queries) {
                 return;
             }
             
-            // Filtr: pouze faktury objednávek uživatele NEBO faktury které vytvořil
-            error_log("Invoices25 LIST: User $user_id - applying user isolation (orders: " . count($user_order_ids) . ")");
-            $where_conditions[] = '(f.objednavka_id IN (' . implode(',', $user_order_ids) . ') OR f.vytvoril_uzivatel_id = ?)';
-            $params[] = $user_id;
+            // Přidat podmínku do WHERE
+            $where_conditions[] = '(' . implode(' OR ', $user_access_conditions) . ')';
+            $params = array_merge($params, $user_access_params);
+            
+            error_log("Invoices25 LIST: User $user_id - applying EXTENDED user isolation with " . count($user_access_conditions) . " access conditions");
         } else {
             error_log("Invoices25 LIST: User $user_id IS ADMIN - showing ALL invoices WITHOUT user filter");
         }

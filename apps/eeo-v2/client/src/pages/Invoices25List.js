@@ -3313,16 +3313,16 @@ const Invoices25List = () => {
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: '24px',
-                          height: '24px',
+                          width: '16px',
+                          height: '16px',
                           borderRadius: '50%',
                           backgroundColor: '#16a34a',
-                          fontSize: '0.8rem'
+                          fontSize: '0.6rem'
                         }} title="Věcná správnost provedena">
                           <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
                         </div>
                       ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná správnost neprovedena" />
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost neprovedena" />
                       )}
                     </TableCell>
                     <TableCell className="center">

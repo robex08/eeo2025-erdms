@@ -609,6 +609,59 @@ const CashBookLink = styled(Link)`
   }
 `;
 
+// Styled link pro Zaevidovat fakturu - stejná modrá jako na Invoices25List (#3b82f6)
+const InvoiceCreateLink = styled(Link)`
+  background: #3b82f6; /* světle modrá */
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.25em 1.05em 0.25em 0.9em;
+  font-size: 0.95em;
+  font-weight: 600;
+  box-shadow: 0 3px 10px -2px rgba(59,130,246,0.45), 0 0 0 1px rgba(59,130,246,0.5) inset;
+  text-decoration: none !important;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  line-height: 1.1;
+  transition: all .25s ease;
+  cursor: pointer;
+
+  svg,
+  .svg-inline--fa {
+    color: inherit !important;
+    fill: inherit !important;
+    transition: inherit !important;
+  }
+
+  &:link, &:visited {
+    color: #fff;
+    text-decoration: none !important;
+  }
+
+  /* Inactive state */
+  &[data-inactive='true'] {
+    background: rgba(107,114,128,0.4);
+    color: #0f172a;
+    box-shadow: inset 0 1px 0 rgba(15,23,42,0.06);
+    border: 1px solid rgba(15,23,42,0.12);
+    cursor: default;
+
+    &:link, &:visited { color: #0f172a; }
+  }
+
+  &:hover:not([data-inactive='true']) {
+    color: #FFD700 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px -2px rgba(59,130,246,0.6), 0 0 0 1px rgba(96,165,250,0.7) inset;
+  }
+
+  &:active:not([data-inactive='true']) {
+    transform: translateY(0px);
+    transition: all .1s ease;
+  }
+`;
+
 // removed unused logoutButtonStyle
 
 // Shared styles for menu icon buttons
@@ -2858,6 +2911,33 @@ const Layout = ({ children }) => {
                 </CashBookLink>
               </SmartTooltip>
             ) }
+
+            {/* Zaevidovat fakturu */}
+            {/* Zobrazit pokud: má oprávnění INVOICE_MANAGE */}
+            {hasPermission && hasPermission('INVOICE_MANAGE') && (
+              <SmartTooltip 
+                text={location.pathname === '/invoice-evidence' ? 'Evidence faktury již otevřena' : 'Zaevidovat novou fakturu'} 
+                icon={location.pathname === '/invoice-evidence' ? 'info' : 'success'} 
+                preferredPosition="bottom"
+              >
+                <InvoiceCreateLink 
+                  to={location.pathname === '/invoice-evidence' ? '#' : '/invoice-evidence'}
+                  onClick={(e) => {
+                    if (location.pathname === '/invoice-evidence') { 
+                      e.preventDefault(); 
+                      return; 
+                    }
+                  }}
+                  data-inactive={location.pathname === '/invoice-evidence' ? 'true' : 'false'}
+                  style={{
+                    pointerEvents: location.pathname === '/invoice-evidence' ? 'none' : undefined
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize:'1em' }} />
+                  Zaevidovat fakturu
+                </InvoiceCreateLink>
+              </SmartTooltip>
+            )}
 
             {/* JEDNODUCHÁ struktura: Link > ikona + text */}
             {hasPermission && (hasPermission('ORDER_CREATE') || hasPermission('ORDER_SAVE')) && (
