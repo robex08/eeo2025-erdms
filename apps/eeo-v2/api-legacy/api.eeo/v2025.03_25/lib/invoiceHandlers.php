@@ -1188,6 +1188,27 @@ function handle_invoices25_list($input, $config, $queries) {
         // SLOUPCOVÉ FILTRY (columnFilters z FE)
         // ========================================================================
         
+        // Filtr: filter_datum_doruceni (přesná shoda na den - datum doručení)
+        if (isset($filters['filter_datum_doruceni']) && !empty($filters['filter_datum_doruceni'])) {
+            $where_conditions[] = 'DATE(f.fa_datum_doruceni) = ?';
+            $params[] = $filters['filter_datum_doruceni'];
+            error_log("Invoices25 LIST: Applying filter_datum_doruceni = " . $filters['filter_datum_doruceni']);
+        }
+        
+        // Filtr: filter_dt_aktualizace (přesná shoda na den - datum aktualizace)
+        if (isset($filters['filter_dt_aktualizace']) && !empty($filters['filter_dt_aktualizace'])) {
+            $where_conditions[] = 'DATE(f.dt_aktualizace) = ?';
+            $params[] = $filters['filter_dt_aktualizace'];
+            error_log("Invoices25 LIST: Applying filter_dt_aktualizace = " . $filters['filter_dt_aktualizace']);
+        }
+        
+        // Filtr: filter_fa_typ (typ faktury - přesná shoda)
+        if (isset($filters['filter_fa_typ']) && !empty($filters['filter_fa_typ'])) {
+            $where_conditions[] = 'f.fa_typ = ?';
+            $params[] = strtoupper(trim($filters['filter_fa_typ']));
+            error_log("Invoices25 LIST: Applying filter_fa_typ = " . strtoupper(trim($filters['filter_fa_typ'])));
+        }
+        
         // Filtr: cislo_objednavky (částečná shoda - LIKE)
         // ⚠️ UNIVERSAL: Hledá v čísle objednávky NEBO v čísle smlouvy!
         if (isset($filters['cislo_objednavky']) && trim($filters['cislo_objednavky']) !== '') {
@@ -1512,7 +1533,8 @@ function handle_invoices25_list($input, $config, $queries) {
             $sql .= " HAVING $having_ma_prilohy";
         }
         
-        $sql .= " ORDER BY f.fa_datum_vystaveni DESC, f.id DESC";
+        // Řazení podle data aktualizace (nejnovější změny nahoře)
+        $sql .= " ORDER BY f.dt_aktualizace DESC, f.id DESC";
         
         // Přidat LIMIT pouze pokud FE požaduje stránkování
         if ($use_pagination) {

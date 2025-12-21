@@ -1415,17 +1415,8 @@ export default function InvoiceEvidencePage() {
   // State pro sledování collapse stavu
   const [hasAnySectionCollapsed, setHasAnySectionCollapsed] = useState(false);
   
-  // State pro sledování editace faktury
-  // 💾 S localStorage persistence pro F5 refresh
-  const [editingInvoiceId, setEditingInvoiceId] = useState(() => {
-    try {
-      const saved = localStorage.getItem('editingInvoiceId');
-      return saved ? JSON.parse(saved) : null;
-    } catch (err) {
-      console.warn('Chyba při načítání editingInvoiceId z localStorage:', err);
-      return null;
-    }
-  });
+  // State pro sledování editace faktury (localStorage se načte v useEffect)
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
@@ -1443,16 +1434,7 @@ export default function InvoiceEvidencePage() {
   // State pro unlock entity (změna objednávky/smlouvy u existující FA)
   const [isEntityUnlocked, setIsEntityUnlocked] = useState(false);
   // State pro zapamatování, zda měla faktura původně přiřazenou objednávku/smlouvu
-  // 💾 S localStorage persistence pro F5 refresh
-  const [hadOriginalEntity, setHadOriginalEntity] = useState(() => {
-    try {
-      const saved = localStorage.getItem('hadOriginalEntity');
-      return saved ? JSON.parse(saved) : false;
-    } catch (err) {
-      console.warn('Chyba při načítání hadOriginalEntity z localStorage:', err);
-      return false;
-    }
-  });
+  const [hadOriginalEntity, setHadOriginalEntity] = useState(false);
 
   // 🎯 Progress Modal State - zobrazení průběhu ukládání
   const [progressModal, setProgressModal] = useState({
@@ -1498,62 +1480,28 @@ export default function InvoiceEvidencePage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Form data - s localStorage persistence
-  const [formData, setFormData] = useState(() => {
-    // Pokud přišel z tlačítka "Zaevidovat fakturu" nebo edituje fakturu, NEPŘEČÍST localStorage
-    const shouldSkipLS = location.state?.clearForm || location.state?.editInvoiceId || location.state?.orderIdForLoad || location.state?.smlouvaIdForLoad;
-    
-    if (!shouldSkipLS) {
-      try {
-        const saved = localStorage.getItem('invoiceFormData');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // Pokud máme orderId z URL, přepsat ho
-          if (orderId) {
-            parsed.order_id = orderId;
-          }
-          return parsed;
-        }
-      } catch (err) {
-        console.warn('Chyba při načítání formData z localStorage:', err);
-      }
-    }
-    
-    return {
-      order_id: orderId || '',
-      smlouva_id: null, // ID smlouvy (alternativa k order_id)
-      fa_cislo_vema: '',
-      fa_typ: 'BEZNA', // Výchozí typ: Běžná faktura
-      fa_datum_doruceni: formatDateForPicker(new Date()),
-      fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
-      fa_datum_splatnosti: '',
-      fa_castka: '',
-      fa_poznamka: '',
-      fa_strediska_kod: [], // Střediska - array kódů
-      // Nové položky (nepovinné, pod čárou)
-      fa_predana_zam_id: null,
-      fa_datum_predani_zam: '',
-      fa_datum_vraceni_zam: ''
-    };
+  // Form data - inicializace s výchozími hodnotami (localStorage se načte v useEffect)
+  const [formData, setFormData] = useState({
+    order_id: orderId || '',
+    smlouva_id: null,
+    fa_cislo_vema: '',
+    fa_typ: 'BEZNA',
+    fa_datum_doruceni: formatDateForPicker(new Date()),
+    fa_datum_vystaveni: '',
+    fa_datum_splatnosti: '',
+    fa_castka: '',
+    fa_poznamka: '',
+    fa_strediska_kod: [],
+    fa_predana_zam_id: null,
+    fa_datum_predani_zam: '',
+    fa_datum_vraceni_zam: ''
   });
 
-  // Přílohy faktury - array objektů (podle vzoru OrderForm25) - s localStorage persistence
-  const [attachments, setAttachments] = useState(() => {
-    // Pokud přišel z tlačítka "Zaevidovat fakturu" nebo edituje fakturu, NEPŘEČÍST localStorage
-    const shouldSkipLS = location.state?.clearForm || location.state?.editInvoiceId || location.state?.orderIdForLoad || location.state?.smlouvaIdForLoad;
-    
-    if (!shouldSkipLS) {
-      try {
-        const saved = localStorage.getItem('invoiceAttachments');
-        if (saved) {
-          return JSON.parse(saved);
-        }
-      } catch (err) {
-        console.warn('Chyba při načítání attachments z localStorage:', err);
-      }
-    }
-    return [];
-  });
+  // Přílohy faktury - inicializace prázdná (localStorage se načte v useEffect)
+  const [attachments, setAttachments] = useState([]);
+  
+  // 🔄 Flag pro sledování zda už bylo načteno z localStorage (zabránit opakovanému načítání)
+  const [lsLoaded, setLsLoaded] = useState(false);
 
   // 📋 SPISOVKA METADATA - pomocná proměnná pro tracking (uloží se při drag & drop ze Spisovky)
   // Používáme useRef místo useState, aby se metadata neztrácela v closure callbacků
@@ -1580,45 +1528,78 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // 💾 AUTO-SAVE formData do localStorage při každé změně
+  // 💾 AUTO-SAVE všech dat do localStorage při změně (per-user pomocí user_id)
+  // Sloučení všech AUTO-SAVE operací do jednoho useEffect pro efektivitu
   useEffect(() => {
+    if (!lsLoaded || !user_id) return;
+    
     try {
-      localStorage.setItem('invoiceFormData', JSON.stringify(formData));
-    } catch (err) {
-      console.warn('Chyba při ukládání formData do localStorage:', err);
-    }
-  }, [formData]);
-
-  // 💾 AUTO-SAVE attachments do localStorage při každé změně
-  useEffect(() => {
-    try {
-      localStorage.setItem('invoiceAttachments', JSON.stringify(attachments));
-    } catch (err) {
-      console.warn('Chyba při ukládání attachments do localStorage:', err);
-    }
-  }, [attachments]);
-
-  // 💾 AUTO-SAVE editingInvoiceId do localStorage při každé změně
-  useEffect(() => {
-    try {
+      localStorage.setItem(`invoiceForm_${user_id}`, JSON.stringify(formData));
+      localStorage.setItem(`invoiceAttach_${user_id}`, JSON.stringify(attachments));
+      
       if (editingInvoiceId) {
-        localStorage.setItem('editingInvoiceId', JSON.stringify(editingInvoiceId));
+        localStorage.setItem(`invoiceEdit_${user_id}`, JSON.stringify(editingInvoiceId));
       } else {
-        localStorage.removeItem('editingInvoiceId');
+        localStorage.removeItem(`invoiceEdit_${user_id}`);
+      }
+      
+      localStorage.setItem(`invoiceOrigEntity_${user_id}`, JSON.stringify(hadOriginalEntity));
+    } catch (err) {
+      console.warn('❌ Chyba při ukládání do localStorage:', err);
+    }
+  }, [formData, attachments, editingInvoiceId, hadOriginalEntity, user_id, lsLoaded]);
+
+  // 🔄 NOVÝ: Načtení dat z localStorage při mount (pouze jednou, po získání user_id)
+  useEffect(() => {
+    if (!user_id || lsLoaded) return;
+    
+    // ⚠️ FIX: location.state.clearForm přetrvává i po F5!
+    // Pokud přišel z tlačítka "Zaevidovat fakturu", bude mít timestamp
+    // Po F5 timestamp nebude (stará navigace), takže localStorage NAČÍST
+    const isFromNewInvoiceButton = location.state?.clearForm && location.state?.timestamp;
+    const isEditingExisting = location.state?.editInvoiceId;
+    
+    const shouldSkipLS = isFromNewInvoiceButton || isEditingExisting;
+    
+    if (shouldSkipLS) {
+      setLsLoaded(true);
+      return;
+    }
+    
+    try {
+      // Načíst editingInvoiceId
+      const savedEditId = localStorage.getItem(`invoiceEdit_${user_id}`);
+      if (savedEditId) {
+        setEditingInvoiceId(JSON.parse(savedEditId));
+      }
+      
+      // Načíst hadOriginalEntity
+      const savedOrigEntity = localStorage.getItem(`invoiceOrigEntity_${user_id}`);
+      if (savedOrigEntity) {
+        setHadOriginalEntity(JSON.parse(savedOrigEntity));
+      }
+      
+      // Načíst formData
+      const savedForm = localStorage.getItem(`invoiceForm_${user_id}`);
+      if (savedForm) {
+        const parsed = JSON.parse(savedForm);
+        if (orderId) {
+          parsed.order_id = orderId;
+        }
+        setFormData(parsed);
+      }
+      
+      // Načíst attachments
+      const savedAttach = localStorage.getItem(`invoiceAttach_${user_id}`);
+      if (savedAttach) {
+        setAttachments(JSON.parse(savedAttach));
       }
     } catch (err) {
-      console.warn('Chyba při ukládání editingInvoiceId do localStorage:', err);
+      console.warn('⚠️ Chyba při načítání dat z localStorage:', err);
     }
-  }, [editingInvoiceId]);
-
-  // 💾 AUTO-SAVE hadOriginalEntity do localStorage při každé změně
-  useEffect(() => {
-    try {
-      localStorage.setItem('hadOriginalEntity', JSON.stringify(hadOriginalEntity));
-    } catch (err) {
-      console.warn('Chyba při ukládání hadOriginalEntity do localStorage:', err);
-    }
-  }, [hadOriginalEntity]);
+    
+    setLsLoaded(true);
+  }, [user_id, lsLoaded, location.state, orderId]);
 
   // Načtení středisek, typů faktur a zaměstnanců při mount (pouze pokud existuje token)
   useEffect(() => {
@@ -1756,6 +1737,19 @@ export default function InvoiceEvidencePage() {
       if (editingInvoiceId === editIdToLoad && formData.fa_cislo_vema) {
         return;
       }
+      
+      // ⚠️ NOVÝ FIX: Pokud máme pending/uploading přílohy, NEPŘEPISOVAT state
+      // (faktura se právě vytváří a nahrávají se k ní přílohy)
+      const hasPendingAttachments = attachments.some(att => 
+        att.status === 'pending_upload' || att.status === 'uploading'
+      );
+      if (hasPendingAttachments) {
+        console.log('⏳ Skipping invoice load - přílohy se právě nahrávají');
+        // Jen aktualizovat editingInvoiceId pro příští upload
+        setEditingInvoiceId(editIdToLoad);
+        return;
+      }
+      
       setLoading(true);
       setEditingInvoiceId(editIdToLoad);
       
@@ -3294,10 +3288,10 @@ export default function InvoiceEvidencePage() {
     if (!hasUnsavedChanges) {
       // Vyčistit LS i při odchodu bez změn (aby se neobjevily příště)
       try {
-        localStorage.removeItem('invoiceFormData');
-        localStorage.removeItem('invoiceAttachments');
-        localStorage.removeItem('editingInvoiceId');
-        localStorage.removeItem('hadOriginalEntity');
+        localStorage.removeItem(`invoiceForm_${user_id}`);
+        localStorage.removeItem(`invoiceAttach_${user_id}`);
+        localStorage.removeItem(`invoiceEdit_${user_id}`);
+        localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
         localStorage.removeItem('spisovka_active_dokument');
       } catch (err) {
         console.warn('Chyba při mazání localStorage:', err);
@@ -3376,10 +3370,10 @@ export default function InvoiceEvidencePage() {
         
         // 💾 Vymazat localStorage při zrušení
         try {
-          localStorage.removeItem('invoiceFormData');
-          localStorage.removeItem('invoiceAttachments');
-          localStorage.removeItem('editingInvoiceId'); // ✅ Vymazat i editingInvoiceId
-          localStorage.removeItem('hadOriginalEntity'); // ✅ Vymazat i hadOriginalEntity
+          localStorage.removeItem(`invoiceForm_${user_id}`);
+          localStorage.removeItem(`invoiceAttach_${user_id}`);
+          localStorage.removeItem(`invoiceEdit_${user_id}`);
+          localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
           localStorage.removeItem('spisovka_active_dokument');
         } catch (err) {
           console.warn('Chyba při mazání localStorage:', err);
@@ -3482,12 +3476,15 @@ export default function InvoiceEvidencePage() {
       }
     }, [isOpen]);
 
-    // Auto-focus search
+    // Auto-focus search při otevření
     useEffect(() => {
       if (isOpen && searchInputRef.current) {
-        setTimeout(() => {
+        // requestAnimationFrame místo setTimeout - synchronizuje s browser paint
+        const rafId = requestAnimationFrame(() => {
           searchInputRef.current?.focus();
-        }, 100);
+        });
+        
+        return () => cancelAnimationFrame(rafId);
       }
     }, [isOpen]);
 
@@ -5120,10 +5117,10 @@ export default function InvoiceEvidencePage() {
                     
                     // 💾 Vyčistit localStorage HNED
                     try {
-                      localStorage.removeItem('invoiceFormData');
-                      localStorage.removeItem('invoiceAttachments');
-                      localStorage.removeItem('editingInvoiceId');
-                      localStorage.removeItem('hadOriginalEntity');
+                      localStorage.removeItem(`invoiceForm_${user_id}`);
+                      localStorage.removeItem(`invoiceAttach_${user_id}`);
+                      localStorage.removeItem(`invoiceEdit_${user_id}`);
+                      localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
                       localStorage.removeItem('spisovka_active_dokument');
                     } catch (err) {
                       console.warn('Chyba při mazání localStorage:', err);
