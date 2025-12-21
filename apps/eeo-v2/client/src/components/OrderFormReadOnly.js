@@ -10,7 +10,7 @@ import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser, faBuilding, faFileAlt, faMoneyBillWave, faCalendar,
-  faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronUp,
+  faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronDown,
   faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit,
   faPaperclip, faFile, faDownload
 } from '@fortawesome/free-solid-svg-icons';
@@ -485,7 +485,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Informace o objednateli
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.objednatel}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.objednatel} $theme="grey">
@@ -585,7 +585,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Schválení nákupu PO
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.schvaleni}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.schvaleni} $theme="grey">
@@ -857,7 +857,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Dodavatel
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.dodavatel}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.dodavatel} $theme="orange">
@@ -925,7 +925,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Detaily objednávky ({orderData.polozky_count || orderData.polozky.length} {orderData.polozky.length === 1 ? 'položka' : 'položek'})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.detaily}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.detaily} $theme="orange">
@@ -1065,7 +1065,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             Dodání
           </SectionTitle>
           <CollapseIcon $collapsed={collapsed.dodani}>
-            <FontAwesomeIcon icon={faChevronUp} />
+            <FontAwesomeIcon icon={faChevronDown} />
           </CollapseIcon>
         </SectionHeader>
         <SectionContent $collapsed={collapsed.dodani} $theme="orange">
@@ -1129,7 +1129,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Rozhodnutí o zveřejnění v registru smluv
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.registr}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.registr} $theme="blue">
@@ -1215,7 +1215,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Fakturace k objednávce ({orderData.faktury.length})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.fakturace}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.fakturace} $theme="blue">
@@ -1657,7 +1657,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Poznámky
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.poznamky}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.poznamky} $theme="orange">
@@ -1677,7 +1677,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Dokončení objednávky
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.dokonceni}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.dokonceni} $theme="green">
@@ -1930,7 +1930,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               Přílohy ({orderData.prilohy_count})
             </SectionTitle>
             <CollapseIcon $collapsed={collapsed.prilohy}>
-              <FontAwesomeIcon icon={faChevronUp} />
+              <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
           <SectionContent $collapsed={collapsed.prilohy} $theme="red">
