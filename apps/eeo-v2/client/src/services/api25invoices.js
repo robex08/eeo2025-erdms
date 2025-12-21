@@ -29,7 +29,7 @@ api25invoices.interceptors.response.use(
   (error) => {
     // 🚨 TEMPORARY FIX: Disable auto-logout for delete invoice endpoint
     // Důvod: BE může vrátit 403 pro permission check (není to auth issue)
-    const isDeleteInvoice = error.config?.url?.includes('invoices25/delete') || 
+    const isDeleteInvoice = error.config?.url?.includes('/invoices/') && error.config?.url?.includes('/delete'); 
                            (error.config?.method === 'delete' && error.config?.url?.includes('order-v2/invoices'));
 
     if (isDeleteInvoice) {
@@ -1061,7 +1061,7 @@ export async function deleteInvoice25({ token, username, faktura_id }) {
     };
 
 
-    const response = await api25invoices.post('invoices25/delete', payload, {
+    const response = await api25invoices.post(`order-v2/invoices/${faktura_id}/delete`, payload, {
       timeout: 10000
     });
 
@@ -1259,10 +1259,10 @@ export async function createInvoiceWithAttachmentV2({
       formData.append('klasifikace', String(klasifikace));
     }
 
-    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    // ✅ VŽDY použij V2 API - buď s order_id nebo standalone
     const endpoint = order_id 
       ? `order-v2/${order_id}/invoices/create-with-attachment`
-      : 'invoices25/create-with-attachment';
+      : 'order-v2/invoices/create-with-attachment'; // V2 standalone API
 
     const response = await api25invoices.post(
       endpoint,
@@ -1435,10 +1435,10 @@ export async function createInvoiceV2({
       payload.smlouva_id = Number(smlouva_id);
     }
 
-    // ✅ Pokud máme order_id, použij nové RESTful API, jinak staré flat API
+    // ✅ VŽDY použij V2 API - buď s order_id nebo standalone
     const endpoint = order_id 
       ? `order-v2/${order_id}/invoices/create`
-      : 'invoices25/create';
+      : 'order-v2/invoices/create'; // V2 standalone API
     
     // Přidat objednavka_id do payload (může být null)
     if (order_id) {
@@ -1525,7 +1525,7 @@ export async function updateInvoiceV2({
 
 
     const response = await api25invoices.post(
-      `invoices25/update`,
+      `order-v2/invoices/${invoice_id}/update`,
       payload,
       { timeout: 10000 }
     );

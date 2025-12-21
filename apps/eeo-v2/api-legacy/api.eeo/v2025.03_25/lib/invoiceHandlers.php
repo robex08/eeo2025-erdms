@@ -1,29 +1,27 @@
 <?php
 
 /**
- * Invoice Handlers - Faktury API
+ * Invoice Handlers - Faktury API  
  * PHP 5.6 kompatibilní
- * Všechny endpointy jsou POST s token + username autorizací
  * 
- * ⚠️ DEPRECATED - Pro nový vývoj používej orderV2InvoiceHandlers.php
+ * 🚨 PLNĚ DEPRECATED - POUŽÍVAT POUZE orderV2InvoiceHandlers.php! 🚨
  * 
- * DŮVOD DEPRECATION:
- * - Nejednotný response formát (používá 'err', 'success', 'faktury' místo 'status')
- * - Chybí standardizace (každý endpoint vrací jiný formát)
- * - Omezenější funkcionalita (chybí update/delete příloh)
+ * ⚠️  DŮLEŽITÉ: Frontend byl převeden na čisté V2 API endpointy
+ * ⚠️  Legacy API endpointy nejsou již používány od 21.12.2025
  * 
- * MIGRACE NA V2:
- * - invoices25/by-order        → pouze přes order detail (order-v2/{id})
- * - invoices25/create           → order-v2/{order_id}/invoices/create
- * - invoices25/create-with-att  → order-v2/{order_id}/invoices/create-with-attachment
+ * MIGRACE DOKONČENA:
+ * - invoices25/create           → order-v2/invoices/create (standalone) nebo order-v2/{order_id}/invoices/create
+ * - invoices25/create-with-att  → order-v2/invoices/create-with-attachment (standalone) nebo order-v2/{order_id}/invoices/create-with-attachment  
  * - invoices25/update           → order-v2/invoices/{invoice_id}/update
  * - invoices25/delete           → order-v2/invoices/{invoice_id}/delete
  * - invoices25/attachments/*    → order-v2/invoices/{id}/attachments/*
  * 
- * PONECHÁNO PRO:
- * - Starší objednávky které používají starý upload path
- * - Legacy FE kód který ještě nebyl migrován
- * - Backward compatibility během přechodného období
+ * 🗑️  PLÁN ODEBRÁNÍ:
+ * - Q1 2026: Kompletní odstranění legacy endpointů z api.php
+ * - Q2 2026: Smazání tohoto souboru
+ * 
+ * ✅ PRO NOVÝ VÝVOJ POUŽÍVEJ:
+ * - /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/orderV2InvoiceHandlers.php
  */
 
 require_once 'orderQueries.php';
@@ -149,6 +147,9 @@ function handle_invoices25_create($input, $config, $queries) {
             echo json_encode(['err' => 'Chyba připojení k databázi']);
             return;
         }
+        
+        // Nastavit MySQL timezone pro konzistentní datetime handling
+        TimezoneHelper::setMysqlTimezone($db);
 
         // Sestavení INSERT dotazu
         $faktury_table = get_invoices_table_name();
@@ -325,6 +326,9 @@ function handle_invoices25_update($input, $config, $queries) {
             echo json_encode(['err' => 'Chyba připojení k databázi']);
             return;
         }
+        
+        // Nastavit MySQL timezone pro konzistentní datetime handling
+        TimezoneHelper::setMysqlTimezone($db);
 
         // Ověř, že faktura existuje
         $faktury_table = get_invoices_table_name();
@@ -455,8 +459,10 @@ function handle_invoices25_update($input, $config, $queries) {
             $values[] = json_encode($input['rozsirujici_data']);
         }
 
-        // Vždy aktualizuj dt_aktualizace
+        // Vždy aktualizuj dt_aktualizace a aktualizoval_uzivatel_id
         $fields[] = 'dt_aktualizace = NOW()';
+        $fields[] = 'aktualizoval_uzivatel_id = ?';
+        $values[] = $token_data['id'];
         
         if (empty($fields)) {
             http_response_code(400);
