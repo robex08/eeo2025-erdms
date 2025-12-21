@@ -544,6 +544,69 @@ const SectionTitle = styled.h2`
   gap: 10px;
 `;
 
+// Collapsible Section Components - inspirované OrderForm25.js
+const CollapsibleSection = styled.div`
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1.5rem;
+  overflow: visible;
+  border: 2px solid #e2e8f0;
+`;
+
+const CollapsibleHeader = styled.div`
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-bottom: 1px solid #f59e0b;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 12px 12px 0 0;
+
+  &:hover {
+    background: linear-gradient(135deg, #fde68a 0%, #facc15 100%);
+  }
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #92400e;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const SectionContent = styled.div`
+  padding: 1.5rem 1.25rem;
+  display: ${props => props.$collapsed ? 'none' : 'block'};
+`;
+
+const CollapseButton = styled.button`
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+  transform: ${props => props.$collapsed ? 'rotate(180deg)' : 'rotate(0deg)'};
+
+  &:hover {
+    color: #78350f;
+  }
+`;
+
 // Recyklované z OrderForm25 - FakturaCard layout
 const FakturaCard = styled.div`
   border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e5e7eb'};
@@ -1393,6 +1456,23 @@ export default function InvoiceEvidencePage() {
     return { allowed: true, reason: null };
   }, []);
 
+  // 🎨 Readonly režim pro omezené účty
+  const isReadOnlyMode = !hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS');
+
+  // 📂 Collapsible sections state
+  const [sectionStates, setSectionStates] = useState({
+    invoiceData: true, // vždy rozvinutá při načtení
+    materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro omezené účty
+  });
+
+  // Toggle funkce pro sekce
+  const toggleSection = useCallback((sectionName) => {
+    setSectionStates(prev => ({
+      ...prev,
+      [sectionName]: !prev[sectionName]
+    }));
+  }, []);
+
   // State
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1994,6 +2074,23 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     const orderIdForLoad = location.state?.orderIdForLoad;
     const smlouvaIdForLoad = location.state?.smlouvaIdForLoad;
+    const openMaterialCorrectness = location.state?.openMaterialCorrectness;
+
+    // 🎯 Pokud je příznak openMaterialCorrectness, otevři sekci věcné kontroly a scrollni na ni
+    if (openMaterialCorrectness) {
+      setSectionStates(prev => ({
+        ...prev,
+        materialCorrectness: true // Rozvinout sekci věcné kontroly
+      }));
+      
+      // Scroll na sekci věcné kontroly po malém delay (aby se stihla vyrenderovat)
+      setTimeout(() => {
+        const materialSection = document.querySelector('[data-section="material-correctness"]');
+        if (materialSection) {
+          materialSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
+    }
 
     if (orderIdForLoad && token && username) {
       // 🔒 Před načtením zkontrolovat LOCK
@@ -3686,82 +3783,112 @@ export default function InvoiceEvidencePage() {
       <ContentLayout $fullscreen={isFullscreen}>
         {/* LEVÁ STRANA - FORMULÁŘ (60%) */}
         <FormColumn>
-          <FormColumnHeader style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <SectionTitle style={{ margin: 0 }}>
-              <FontAwesomeIcon icon={faCreditCard} />
-              Údaje faktury
-              {editingInvoiceId && (
-                <span style={{ 
-                  marginLeft: '1rem',
-                  color: '#6b7280',
-                  fontSize: '0.9rem',
-                  fontWeight: 400
-                }}>
-                  - Režim úprav #{editingInvoiceId}
-                </span>
-              )}
-            </SectionTitle>
-            {editingInvoiceId && (
-              <button
-                onClick={() => {
-                  // ✅ Kompletní reset při zrušení úpravy
-                  setEditingInvoiceId(null);
-                  setAttachments([]); // ✅ Vyčistit přílohy
-                  setOriginalFormData(null);
-                  setHasChangedCriticalField(false);
-                  setIsEntityUnlocked(false);
-                  setHadOriginalEntity(false);
-                  setFieldErrors({});
-                  
-                  // ✅ Při duplikaci resetovat i autocomplete pokud byl použit
-                  const shouldResetEntity = searchTerm.trim().length > 0;
-                  
-                  setFormData({
-                    order_id: shouldResetEntity ? '' : formData.order_id,
-                    smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
-                    fa_cislo_vema: '',
-                    fa_typ: 'BEZNA',
-                    fa_datum_doruceni: formatDateForPicker(new Date()),
-                    fa_datum_vystaveni: '', // Nechat prázdné - vyplní OCR nebo uživatel
-                    fa_datum_splatnosti: '',
-                    fa_castka: '',
-                    fa_poznamka: '',
-                    fa_strediska_kod: [],
-                    file: null,
-                    fa_predana_zam_id: null,
-                    fa_datum_predani_zam: '',
-                    fa_datum_vraceni_zam: ''
-                  });
-                  
-                  // ✅ Reset autocomplete pokud byl použit
-                  if (shouldResetEntity) {
-                    setOrderData(null);
-                    setSmlouvaData(null);
-                    setSearchTerm('');
-                    setShowSuggestions(false);
-                  }
-                  
-                  navigate(location.pathname, { replace: true, state: {} });
-                  showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
-                }}
-                style={{
-                  background: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  fontWeight: '600'
-                }}
-                title="Zrušit úpravy a vrátit se k novému záznamu"
-              >
-                <FontAwesomeIcon icon={faTimes} /> Zrušit úpravu
-              </button>
-            )}
+          <FormColumnHeader style={{ minHeight: '0px', padding: '0' }}>
+            {/* Header je prázdný - tlačítko přesunuto do záhlaví sekce */}
           </FormColumnHeader>
 
+          {/* Scrollable content area */}
           <FormColumnContent>
+            {/* 🆕 SEKCE 1: ÚDAJE FAKTURY - collapsible */}
+            <CollapsibleSection>
+            <CollapsibleHeader onClick={() => toggleSection('invoiceData')}>
+              <HeaderLeft>
+                <FontAwesomeIcon icon={faCreditCard} />
+                Údaje faktury
+                {editingInvoiceId && (
+                  <span style={{ 
+                    marginLeft: '1rem',
+                    color: '#78350f',
+                    fontSize: '0.9rem',
+                    fontWeight: 400
+                  }}>
+                    - Režim úprav #{editingInvoiceId}
+                  </span>
+                )}
+                {isReadOnlyMode && (
+                  <span style={{ 
+                    marginLeft: '1rem',
+                    background: '#fef3c7',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '4px',
+                    color: '#92400e',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: '1px solid #fbbf24'
+                  }}>
+                    POUZE PRO ČTENÍ
+                  </span>
+                )}
+              </HeaderLeft>
+              <HeaderRight>
+                {/* Tlačítko zrušit úpravu - pouze v editačním režimu (ne readonly) */}
+                {editingInvoiceId && !isReadOnlyMode && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Zabránit zavření sekce
+                      // ✅ Kompletní reset při zrušení úpravy
+                      setEditingInvoiceId(null);
+                      setAttachments([]);
+                      setOriginalFormData(null);
+                      setHasChangedCriticalField(false);
+                      setIsEntityUnlocked(false);
+                      setHadOriginalEntity(false);
+                      setFieldErrors({});
+                      
+                      const shouldResetEntity = searchTerm.trim().length > 0;
+                      
+                      setFormData({
+                        order_id: shouldResetEntity ? '' : formData.order_id,
+                        smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
+                        fa_cislo_vema: '',
+                        fa_typ: 'BEZNA',
+                        fa_datum_doruceni: formatDateForPicker(new Date()),
+                        fa_datum_vystaveni: '',
+                        fa_datum_splatnosti: '',
+                        fa_castka: '',
+                        fa_poznamka: '',
+                        fa_strediska_kod: [],
+                        file: null,
+                        fa_predana_zam_id: null,
+                        fa_datum_predani_zam: '',
+                        fa_datum_vraceni_zam: ''
+                      });
+                      
+                      if (shouldResetEntity) {
+                        setOrderData(null);
+                        setSmlouvaData(null);
+                        setSearchTerm('');
+                        setShowSuggestions(false);
+                      }
+                      
+                      navigate(location.pathname, { replace: true, state: {} });
+                      showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
+                    }}
+                    style={{
+                      background: '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.4rem 0.8rem',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '600',
+                      marginRight: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                    title="Zrušit úpravy a vrátit se k novému záznamu"
+                  >
+                    <FontAwesomeIcon icon={faTimes} /> Zrušit úpravu
+                  </button>
+                )}
+                <CollapseButton $collapsed={!sectionStates.invoiceData}>
+                  <FontAwesomeIcon icon={faChevronDown} />
+                </CollapseButton>
+              </HeaderRight>
+            </CollapsibleHeader>
+            <SectionContent $collapsed={!sectionStates.invoiceData}>
             {error && (
               <ErrorAlert>
                 <FontAwesomeIcon icon={faExclamationTriangle} />
@@ -3832,7 +3959,7 @@ export default function InvoiceEvidencePage() {
                     value={searchTerm}
                     onChange={handleSearchChange}
                     onFocus={() => setShowSuggestions(true)}
-                    disabled={!!orderId || (editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
+                    disabled={isReadOnlyMode || !!orderId || (editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked)}
                     placeholder={
                       "Začněte psát ev. číslo objednávky nebo smlouvy (min. 3 znaky)..."
                     }
@@ -4077,6 +4204,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_doruceni}
                 />
@@ -4096,6 +4224,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_vystaveni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_vystaveni}
                 />
@@ -4115,6 +4244,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_splatnosti}
                 />
@@ -4139,6 +4269,7 @@ export default function InvoiceEvidencePage() {
                   onChange={(e) => {
                     setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
                   }}
+                  disabled={isReadOnlyMode || loading}
                   options={[
                     { id: 'BEZNA', nazev: 'Běžná faktura' },
                     { id: 'ZALOHOVA', nazev: 'Zálohová faktura' },
@@ -4195,6 +4326,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_cislo_vema"
                   value={formData.fa_cislo_vema}
                   onChange={handleInputChange}
+                  disabled={isReadOnlyMode || loading}
                   onBlur={(e) => {
                     // Po ztrátě fokusu zvýraznit text tučně (pokud má hodnotu)
                     if (e.target.value) {
@@ -4265,7 +4397,7 @@ export default function InvoiceEvidencePage() {
                       }
                     }
                   }}
-                  disabled={false}
+                  disabled={isReadOnlyMode || loading}
                   hasError={!!fieldErrors.fa_castka}
                   placeholder="25 000,50"
                 />
@@ -4317,7 +4449,7 @@ export default function InvoiceEvidencePage() {
                   }}
                   options={strediskaOptions}
                   placeholder={strediskaLoading ? "Načítám střediska..." : "Vyberte střediska..."}
-                  disabled={strediskaLoading}
+                  disabled={isReadOnlyMode || loading || strediskaLoading}
                 />
               </FieldGroup>
             </FieldRow>
@@ -4353,6 +4485,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_poznamka"
                   value={formData.fa_poznamka}
                   onChange={handleInputChange}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="Volitelná poznámka..."
                 />
               </FieldGroup>
@@ -4363,7 +4496,7 @@ export default function InvoiceEvidencePage() {
               fakturaId={editingInvoiceId || 'temp-new-invoice'}
               objednavkaId={formData.order_id || null}
               fakturaTypyPrilohOptions={typyFakturOptions}
-              readOnly={false}
+              readOnly={isReadOnlyMode}
               onISDOCParsed={handleISDOCParsed}
               formData={formData}
               faktura={{
@@ -4413,6 +4546,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_predani_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="dd.mm.rrrr"
                 />
               </FieldGroup>
@@ -4425,6 +4559,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_vraceni_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
+                  disabled={isReadOnlyMode || loading}
                   placeholder="dd.mm.rrrr"
                 />
                 {formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam && 
@@ -4477,7 +4612,7 @@ export default function InvoiceEvidencePage() {
                   }))}
                   options={zamestnanci}
                   placeholder={zamestnanciLoading ? "Načítám zaměstnance..." : "-- Nevybráno --"}
-                  disabled={zamestnanciLoading}
+                  disabled={isReadOnlyMode || loading || zamestnanciLoading}
                   field="fa_predana_zam_id"
                   selectStates={selectStates}
                   setSelectStates={setSelectStates}
@@ -4509,7 +4644,8 @@ export default function InvoiceEvidencePage() {
           </FakturaCard>
 
           {/* VAROVÁNÍ: EDITACE faktury vázané na objednávku - nutnost věcné kontroly (pouze pokud je operace možná) */}
-          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && (
+          {/* NEZOBRAZOVAT pro readonly režim (věcná kontrola) - varování je irelevantní */}
+          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && !isReadOnlyMode && (
             <div style={{
               background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
               border: '3px solid #f59e0b',
@@ -4616,6 +4752,7 @@ export default function InvoiceEvidencePage() {
           )}
 
           {/* TLAČÍTKA */}
+          {!isReadOnlyMode && (
           <ButtonGroup>
             <Button $variant="secondary" onClick={handleBack} disabled={loading}>
               <FontAwesomeIcon icon={faTimes} />
@@ -4654,6 +4791,56 @@ export default function InvoiceEvidencePage() {
               })()}
             </Button>
           </ButtonGroup>
+          )}
+            </SectionContent>
+          </CollapsibleSection>
+
+          {/* 🆕 SEKCE 2: VĚCNÁ KONTROLA K FAKTUŘE - collapsible */}
+          <CollapsibleSection data-section="material-correctness">
+            <CollapsibleHeader onClick={() => toggleSection('materialCorrectness')}>
+              <HeaderLeft>
+                <FontAwesomeIcon icon={faClipboardCheck} />
+                Věcná kontrola k faktuře
+                {!hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS') && (
+                  <span style={{ 
+                    marginLeft: '1rem',
+                    background: '#dcfce7',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '4px',
+                    color: '#166534',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: '1px solid #86efac'
+                  }}>
+                    VÁŠ ÚKOL
+                  </span>
+                )}
+              </HeaderLeft>
+              <HeaderRight>
+                <CollapseButton $collapsed={!sectionStates.materialCorrectness}>
+                  <FontAwesomeIcon icon={faChevronDown} />
+                </CollapseButton>
+              </HeaderRight>
+            </CollapsibleHeader>
+            <SectionContent $collapsed={!sectionStates.materialCorrectness}>
+              <div style={{
+                padding: '2rem',
+                textAlign: 'center',
+                color: '#6b7280',
+                background: '#f9fafb',
+                borderRadius: '8px',
+                border: '2px dashed #d1d5db'
+              }}>
+                <FontAwesomeIcon icon={faClipboardCheck} style={{ fontSize: '3rem', marginBottom: '1rem', color: '#9ca3af' }} />
+                <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                  Zde bude formulář věcné kontroly
+                </p>
+                <p style={{ fontSize: '0.9rem' }}>
+                  Připravuje se implementace kontrolního workflow
+                </p>
+              </div>
+            </SectionContent>
+          </CollapsibleSection>
           </FormColumnContent>
         </FormColumn>
 
@@ -4891,9 +5078,10 @@ export default function InvoiceEvidencePage() {
               ref={orderFormRef} 
               orderData={orderData}
               onCollapseChange={setHasAnySectionCollapsed}
-              onEditInvoice={handleEditInvoice}
-              canEditInvoice={canAddInvoiceToOrder(orderData).allowed}
+              onEditInvoice={isReadOnlyMode ? null : handleEditInvoice}
+              canEditInvoice={!isReadOnlyMode && canAddInvoiceToOrder(orderData).allowed}
               editingInvoiceId={editingInvoiceId} // ✅ Předat ID editované faktury pro zvýraznění
+              isReadOnlyMode={isReadOnlyMode} // ✅ Předat readonly režim pro změnu textu
               token={token}
               username={username}
             />

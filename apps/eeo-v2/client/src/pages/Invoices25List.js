@@ -2229,8 +2229,17 @@ const Invoices25List = () => {
       }
     }
     
-    // TODO: Implementovat dialog věcné kontroly podle požadavků uživatele
-    showToast?.('Dialog věcné kontroly bude implementován podle Vašich požadavků', { type: 'info' });
+    // ✅ Není zamčená nebo nemá objednávku - otevři formular věcné kontroly
+    console.log('✅ LOCK Invoices25List: Obj ' + (invoice.objednavka_id ? '#' + invoice.objednavka_id : 'bez obj') + ' OK - otevírám věcnou kontrolu FA');
+    
+    // Navigovat na InvoiceEvidencePage s editInvoiceId a příznakem materialCorrectness
+    navigate('/invoice-evidence', { 
+      state: { 
+        editInvoiceId: invoice.id,
+        orderIdForLoad: invoice.objednavka_id || null,
+        openMaterialCorrectness: true // Příznak pro automatické otevření sekce věcné kontroly
+      } 
+    });
   };
   
   const confirmDeleteInvoice = async (hardDelete = false) => {
