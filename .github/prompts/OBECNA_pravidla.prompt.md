@@ -11,7 +11,7 @@ name: OBECNA_pravidla
 
   - pokud uz asynchronne, tak vzdy s cleanupem ve useEffectu
   - pokud je potreba zavolat nekolik asynchronnich operaci za sebou, vzdy pouzit async/await syntaxi, nikdy ne callbacky nebo .then()
-
+   - kontrolovat po sobe chyby, hlavne !! eslint !!
   
 
   ## DOPORUCENE PRAVIDLA
@@ -22,4 +22,3 @@ name: OBECNA_pravidla
      .  // SPATNE       
     setCount(count + 1);
     ``` 
-    
