@@ -371,7 +371,7 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, editingInvoiceId, token, username }, ref) => {
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, editingInvoiceId, isReadOnlyMode = false, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1284,7 +1284,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       letterSpacing: '0.05em'
                     }}>
                       <FontAwesomeIcon icon={faEdit} />
-                      PRÁVĚ EDITUJETE
+                      {isReadOnlyMode ? 'PRÁVĚ KONTROLUJETE' : 'PRÁVĚ EDITUJETE'}
                     </div>
                   ) : onEditInvoice && canEditInvoice && (
                     <EditInvoiceButton 
