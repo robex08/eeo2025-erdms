@@ -1468,7 +1468,7 @@ export default function InvoiceEvidencePage() {
   // 📂 Collapsible sections state
   const [sectionStates, setSectionStates] = useState({
     invoiceData: true, // vždy rozvinutá při načtení
-    materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro omezené účty
+    materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro uživatele bez INVOICE_MANAGE (tě s INVOICE_MATERIAL_CORRECTNESS)
   });
 
   // Toggle funkce pro sekce
@@ -5235,20 +5235,45 @@ export default function InvoiceEvidencePage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                     {/* STAV */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '0.4rem 0.75rem',
-                      background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-                      border: '2px solid #10b981',
-                      borderRadius: '6px',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: '#065f46',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <div 
+                      onClick={() => {
+                        // Nejdřív rozbalit sekci
+                        if (orderFormRef.current?.expandSectionByName) {
+                          orderFormRef.current.expandSectionByName('schvaleni');
+                        }
+                        // Pak scrollovat
+                        setTimeout(() => {
+                          const section = document.querySelector('[data-section="schvaleni"]');
+                          if (section) {
+                            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 100);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.4rem 0.75rem',
+                        background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                        border: '2px solid #10b981',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#065f46',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                      }}
+                    >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
                           STAV
@@ -5259,20 +5284,45 @@ export default function InvoiceEvidencePage() {
                       </div>
                     </div>
                     {/* MAX CENA S DPH */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '0.4rem 0.75rem',
-                      background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
-                      border: '2px solid #64748b',
-                      borderRadius: '6px',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: '#1e293b',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <div 
+                      onClick={() => {
+                        // Nejdřív rozbalit sekci
+                        if (orderFormRef.current?.expandSectionByName) {
+                          orderFormRef.current.expandSectionByName('schvaleni');
+                        }
+                        // Pak scrollovat
+                        setTimeout(() => {
+                          const section = document.querySelector('[data-section="schvaleni"]');
+                          if (section) {
+                            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 100);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0.4rem 0.75rem',
+                        background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
+                        border: '2px solid #64748b',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: '#1e293b',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(100, 116, 139, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                      }}
+                    >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.8, fontWeight: 500 }}>
                           MAX CENA S DPH
@@ -5288,11 +5338,11 @@ export default function InvoiceEvidencePage() {
                       onClick={() => {
                         // Nejdřív rozbalit sekci
                         if (orderFormRef.current?.expandSectionByName) {
-                          orderFormRef.current.expandSectionByName('polozky');
+                          orderFormRef.current.expandSectionByName('detaily');
                         }
                         // Pak scrollovat
                         setTimeout(() => {
-                          const section = document.querySelector('[data-section="polozky"]');
+                          const section = document.querySelector('[data-section="detaily"]');
                           if (section) {
                             section.scrollIntoView({ behavior: 'smooth', block: 'start' });
                           }
