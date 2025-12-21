@@ -13503,9 +13503,13 @@ function OrderForm25() {
       // Error už byl zpracován v API vrstvě, stačí zobrazit error.message
       const errorMessage = error.message || 'Nepodařilo se stáhnout přílohu';
       
-      showToast(errorMessage, 'error');
+      // ⚠️ Detekce missing file - zobrazit jako warning (validační toast) místo error
+      const isMissingFile = errorMessage.includes('Soubor nebyl nalezen na serveru') || 
+                           errorMessage.includes('chybí fyzický soubor');
       
-      addDebugLog('error', 'ATTACHMENTS', 'download-error',
+      showToast(errorMessage, { type: isMissingFile ? 'warning' : 'error' });
+      
+      addDebugLog(isMissingFile ? 'warning' : 'error', 'ATTACHMENTS', 'download-error',
         `Chyba při stahování ${attachment.name}: ${errorMessage}`);
     }
   };

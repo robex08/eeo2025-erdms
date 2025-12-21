@@ -1464,12 +1464,15 @@ export async function downloadOrderAttachment(orderId, attachmentId, username, t
   } catch (err) {
     // Blob error response - parsuj JSON a extrahuj message
     if (err.response?.data instanceof Blob) {
-      const text = await err.response.data.text();
       try {
+        const text = await err.response.data.text();
         const data = JSON.parse(text);
-        throw new Error(data.message || data.error || data.err || text);
-      } catch (e) {
-        throw new Error(text || 'Nepodařilo se stáhnout přílohu');
+        // ✅ Extrahuj pouze message pole - JSON.parse už automaticky dekóduje Unicode
+        const errorMessage = data.message || data.error || data.err || 'Nepodařilo se stáhnout přílohu';
+        throw new Error(errorMessage);
+      } catch (parseError) {
+        // Fallback pokud selže parsing
+        throw new Error('Nepodařilo se stáhnout přílohu');
       }
     }
     throw new Error(normalizeError(err));
