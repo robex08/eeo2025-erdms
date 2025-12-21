@@ -3796,7 +3796,10 @@ export default function InvoiceEvidencePage() {
       <PageHeader>
         <PageTitle>
           <FontAwesomeIcon icon={editingInvoiceId ? faEdit : faFileInvoice} />
-          {editingInvoiceId ? 'Upravit fakturu' : 'Zaevidovat fakturu'}
+          {editingInvoiceId 
+            ? (isReadOnlyMode ? 'Doplnění věcné správnosti k faktuře' : 'Upravit fakturu') 
+            : 'Zaevidovat fakturu'
+          }
         </PageTitle>
         <HeaderActions>
           {hasPermission('ADMIN') && (
@@ -5283,10 +5286,17 @@ export default function InvoiceEvidencePage() {
                     {/* Součet položek objednávky */}
                     <div 
                       onClick={() => {
-                        const section = document.querySelector('[data-section="polozky"]');
-                        if (section) {
-                          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        // Nejdřív rozbalit sekci
+                        if (orderFormRef.current?.expandSectionByName) {
+                          orderFormRef.current.expandSectionByName('polozky');
                         }
+                        // Pak scrollovat
+                        setTimeout(() => {
+                          const section = document.querySelector('[data-section="polozky"]');
+                          if (section) {
+                            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 100);
                       }}
                       style={{
                         display: 'flex',
@@ -5326,10 +5336,17 @@ export default function InvoiceEvidencePage() {
                     {/* Součet faktur */}
                     <div 
                       onClick={() => {
-                        const section = document.querySelector('[data-section="faktury"]');
-                        if (section) {
-                          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        // Nejdřív rozbalit sekci
+                        if (orderFormRef.current?.expandSectionByName) {
+                          orderFormRef.current.expandSectionByName('faktury');
                         }
+                        // Pak scrollovat
+                        setTimeout(() => {
+                          const section = document.querySelector('[data-section="faktury"]');
+                          if (section) {
+                            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }, 100);
                       }}
                       style={{
                         display: 'flex',
