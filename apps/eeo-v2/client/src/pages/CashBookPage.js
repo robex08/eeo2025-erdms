@@ -901,6 +901,92 @@ const AddRowButton = styled.button`
 `;
 
 // =============================================================================
+// CURRENCY INPUT COMPONENT - Zachovává pozici kurzoru při psaní
+// =============================================================================
+
+function CurrencyInput({ value, onChange, onKeyDown, onBlur, placeholder = '0,00', disabled = false }) {
+  const inputRef = useRef(null);
+  const [localValue, setLocalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Funkce pro formátování měny (BEZ Kč, protože to je fixně vpravo)
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '';
+    // Pro pokladnu přesně 2 desetinná místa
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  };
+
+  // Inicializace lokální hodnoty z props (pouze když není focused)
+  useEffect(() => {
+    if (!isFocused) {
+      const formattedValue = formatCurrency(value || '');
+      if (localValue !== formattedValue) {
+        setLocalValue(formattedValue);
+      }
+    }
+  }, [value, isFocused]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+
+    // Aktualizovat lokální hodnotu okamžitě (bez formátování)
+    setLocalValue(newValue);
+
+    // Parsovat a vrátit jako number pro konzistentní ukládání
+    const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = cleanValue === '' ? null : (isNaN(numValue) ? null : numValue);
+
+    // Volat onChange s parsovanou hodnotou
+    if (onChange) {
+      onChange({ target: { value: finalValue } });
+    }
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlurLocal = () => {
+    setIsFocused(false);
+
+    // Formátovat hodnotu při ztrátě fokusu
+    const formatted = formatCurrency(localValue);
+    setLocalValue(formatted);
+
+    // Zavolat parent onBlur
+    if (onBlur) {
+      onBlur();
+    }
+  };
+
+  const handleKeyDownLocal = (e) => {
+    if (onKeyDown) {
+      onKeyDown(e);
+    }
+  };
+
+  return (
+    <CurrencyInputWrapper>
+      <EditableInput
+        ref={inputRef}
+        type="text"
+        placeholder={placeholder}
+        value={localValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlurLocal}
+        onKeyDown={handleKeyDownLocal}
+        disabled={disabled}
+        className="amount-input"
+      />
+    </CurrencyInputWrapper>
+  );
+}
+
+// =============================================================================
 // COMPONENT
 // =============================================================================
 
@@ -1879,8 +1965,8 @@ const CashBookPage = () => {
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
       currency: 'CZK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -2294,6 +2380,24 @@ const CashBookPage = () => {
     const editedEntry = cashBookEntries.find(e => e.id === id);
     if (!editedEntry) return;
 
+    // ✅ VALIDACE LP KÓDU: U výdajů je LP kód povinný
+    const hasExpense = editedEntry.expense && editedEntry.expense > 0;
+    const hasDetailItems = editedEntry.detailItems && editedEntry.detailItems.length > 0;
+    
+    if (hasExpense && !hasDetailItems && !editedEntry.lpCode) {
+      showToast('⚠ LP kód je povinný u výdajů! Prosím vyberte LP kód ze seznamu.', 'error');
+      return; // Zabránit uložení
+    }
+
+    // ✅ VALIDACE LP KÓDU: U detail položek musí mít všechny platný LP kód
+    if (hasDetailItems) {
+      const invalidItems = editedEntry.detailItems.filter(item => !item.lp_kod || !lpCodes.some(lp => lp.code === item.lp_kod));
+      if (invalidItems.length > 0) {
+        showToast('⚠ Všechny detail položky musí mít platný LP kód ze seznamu!', 'error');
+        return; // Zabránit uložení
+      }
+    }
+
     // 🔧 VALIDACE: Pokud je entry prázdná (nemá popis), zrušit ji místo ukládání
     const isEmpty = !editedEntry.description?.trim() && 
                     !editedEntry.income && 
@@ -2327,7 +2431,7 @@ const CashBookPage = () => {
     // ✅ VALIDACE: Zkontrolovat, jestli prefix čísla dokladu odpovídá typu (příjem/výdaj)
     let documentNumber = editedEntry.documentNumber;
     const hasIncome = editedEntry.income && editedEntry.income > 0;
-    const hasExpense = editedEntry.expense && editedEntry.expense > 0;
+    // hasExpense už je deklarován výše
     let typeChanged = false;
 
     // 🆕 Pokud nemá číslo dokladu a má příjem/výdaj, vygenerovat nové číslo
@@ -3734,21 +3838,13 @@ const CashBookPage = () => {
 
                 <td className="amount-cell income">
                   {entry.isEditing ? (
-                    <CurrencyInputWrapper>
-                      <EditableInput
-                        type="text"
-                        value={entry.income ? entry.income.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
-                        onChange={(e) => {
-                          const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
-                          const numValue = parseFloat(cleanValue);
-                          updateEntry(entry.id, 'income', isNaN(numValue) ? null : numValue);
-                        }}
-                        onKeyDown={(e) => handleKeyDown(e, entry.id)}
-                        onBlur={autoSave}
-                        placeholder="0"
-                        className="amount-input"
-                      />
-                    </CurrencyInputWrapper>
+                    <CurrencyInput
+                      value={entry.income}
+                      onChange={(e) => updateEntry(entry.id, 'income', e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, entry.id)}
+                      onBlur={autoSave}
+                      placeholder="0,00"
+                    />
                   ) : (
                     entry.income ? formatCurrency(entry.income) : ''
                   )}
@@ -3756,21 +3852,13 @@ const CashBookPage = () => {
 
                 <td className="amount-cell expense">
                   {entry.isEditing ? (
-                    <CurrencyInputWrapper>
-                      <EditableInput
-                        type="text"
-                        value={entry.expense ? entry.expense.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
-                        onChange={(e) => {
-                          const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
-                          const numValue = parseFloat(cleanValue);
-                          updateEntry(entry.id, 'expense', isNaN(numValue) ? null : numValue);
-                        }}
-                        onKeyDown={(e) => handleKeyDown(e, entry.id)}
-                        onBlur={autoSave}
-                        placeholder="0"
-                        className="amount-input"
-                      />
-                    </CurrencyInputWrapper>
+                    <CurrencyInput
+                      value={entry.expense}
+                      onChange={(e) => updateEntry(entry.id, 'expense', e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, entry.id)}
+                      onBlur={autoSave}
+                      placeholder="0,00"
+                    />
                   ) : (
                     entry.expense ? formatCurrency(entry.expense) : ''
                   )}
@@ -3796,6 +3884,7 @@ const CashBookPage = () => {
                             disabled={lpLoading}
                             loading={lpLoading}
                             hasError={entry.expense > 0 && !entry.lpCode}
+                            strictSelect={true}
                           />
                           {entry.expense > 0 && !entry.lpCode && (
                             <div style={{ 
@@ -3842,7 +3931,7 @@ const CashBookPage = () => {
                           title={expandedDetailEntryId === entry.id 
                             ? 'Zavřít panel' 
                             : (entry.detailItems && entry.detailItems.length > 0 
-                              ? entry.detailItems.map(item => `${item.lp_kod}: ${item.castka} Kč${item.popis ? ' - ' + item.popis : ''}`).join('\n')
+                              ? entry.detailItems.map(item => `${item.lp_kod}: ${Number(item.castka).toFixed(2)} Kč${item.popis ? ' - ' + item.popis : ''}`).join('\n')
                               : 'Přidat více LP kódů')
                           }
                         >
@@ -3863,7 +3952,7 @@ const CashBookPage = () => {
                       {entry.detailItems && entry.detailItems.length > 0 ? (
                         <div style={{ fontSize: '11px', color: '#666' }}>
                           {entry.detailItems.map((item, idx) => (
-                            <div key={idx}>{item.lp_kod} ({item.castka} Kč)</div>
+                            <div key={idx}>{item.lp_kod} ({Number(item.castka).toFixed(2)} Kč)</div>
                           ))}
                         </div>
                       ) : (
@@ -3939,7 +4028,7 @@ const CashBookPage = () => {
                           📋 Rozpad LP kódů pro doklad {entry.documentNumber || '(nový)'}
                         </h4>
                         <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                          Celkem: {entry.expense || 0} Kč
+                          Celkem: {Number(entry.expense || 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                         </div>
                       </div>
 
@@ -3978,40 +4067,15 @@ const CashBookPage = () => {
                                   />
                                 </td>
                                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
-                                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                    <input
-                                      type="text"
-                                      value={item.castka ? item.castka.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''}
-                                      onChange={(e) => {
-                                        const updated = [...detailEditBuffer];
-                                        const cleanValue = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
-                                        const numValue = parseFloat(cleanValue);
-                                        updated[idx].castka = isNaN(numValue) ? 0 : numValue;
-                                        setDetailEditBuffer(updated);
-                                      }}
-                                      style={{ 
-                                        width: '100%', 
-                                        padding: '0.5rem 35px 0.5rem 0.5rem', 
-                                        fontSize: '0.9rem', 
-                                        border: '1px solid #ccc', 
-                                        borderRadius: '4px',
-                                        textAlign: 'right',
-                                        boxSizing: 'border-box'
-                                      }}
-                                      placeholder="0"
-                                    />
-                                    <span style={{
-                                      position: 'absolute',
-                                      right: '8px',
-                                      color: '#374151',
-                                      fontWeight: '600',
-                                      fontSize: '13px',
-                                      pointerEvents: 'none',
-                                      userSelect: 'none'
-                                    }}>
-                                      Kč
-                                    </span>
-                                  </div>
+                                  <CurrencyInput
+                                    value={item.castka}
+                                    onChange={(e) => {
+                                      const updated = [...detailEditBuffer];
+                                      updated[idx].castka = e.target.value === null ? 0 : e.target.value;
+                                      setDetailEditBuffer(updated);
+                                    }}
+                                    placeholder="0,00"
+                                  />
                                 </td>
                                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
                                   <EditableCombobox
@@ -4028,6 +4092,7 @@ const CashBookPage = () => {
                                     disabled={lpLoading}
                                     loading={lpLoading}
                                     hasError={!isValidLp}
+                                    strictSelect={true}
                                   />
                                   {!isValidLp && (
                                     <div style={{ color: '#f44336', fontSize: '10px', marginTop: '2px' }}>
@@ -4093,7 +4158,7 @@ const CashBookPage = () => {
                         borderTop: '2px solid #e0e0e0'
                       }}>
                         <div style={{ fontSize: '14px' }}>
-                          Součet položek: <strong>{detailEditBuffer.reduce((sum, item) => sum + (item.castka || 0), 0).toFixed(2)} Kč</strong>
+                          Součet položek: <strong>{detailEditBuffer.reduce((sum, item) => sum + (Number(item.castka) || 0), 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč</strong>
                           {Math.abs(detailEditBuffer.reduce((sum, item) => sum + (item.castka || 0), 0) - (entry.expense || 0)) > 0.01 && (
                             <span style={{ color: '#f44336', marginLeft: '8px' }}>
                               ⚠ Nesouhlasí s částkou výdaje!
