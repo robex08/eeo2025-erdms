@@ -1048,7 +1048,22 @@ const GlobalProgressWrapper = styled.div`
 const GlobalProgressBar = styled.div`
   height:100%; background:linear-gradient(90deg,#2e7d32,#4caf50 40%,#66bb6a); box-shadow:0 0 4px rgba(0,0,0,0.25),0 0 6px rgba(76,175,80,0.55); width:0%; transition:width .25s ease;`;
 const GlobalAddBtn = styled(Link)`
-  width:46px; height:46px; border-radius:50%; background:#202d65; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.07) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; .svg-inline--fa{color:#fff !important; filter:none !important;} &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} &[data-status='draft']{ background:#c2410c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(154,52,18,0.65) inset; } &[data-status='edit']{ background:#ea580c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(234,88,12,0.65) inset; }`;
+  width:46px; height:46px; border-radius:50%; background:#166534; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(22, 101, 52, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; .svg-inline--fa{color:#fff !important; filter:none !important;} &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} &[data-status='draft']{ background:#dc2626; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(185, 28, 28, 0.65) inset; } &[data-status='edit']{ background:#ea580c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(234,88,12,0.65) inset; }`;
+
+const GlobalInvoiceBtn = styled(Link)`
+  width:46px; height:46px; border-radius:50%; background:#3b82f6; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(59, 130, 246, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  .svg-inline--fa{color:#fff !important; filter:none !important;} 
+  &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
+  &:active:not([data-inactive='true']){transform:scale(.9);} 
+  &[data-inactive='true']{ background:#94a3b8; cursor:default; opacity:.25; pointer-events:none; }`;
+
+const GlobalCashBookBtn = styled(Link)`
+  width:46px; height:46px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(30, 64, 175, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  .svg-inline--fa{color:#fff !important; filter:none !important;} 
+  &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
+  &:active:not([data-inactive='true']){transform:scale(.9);} 
+  &[data-inactive='true']{ background:#94a3b8; cursor:default; opacity:.25; pointer-events:none; }`;
+
 const DebugDockWrapper = styled.div`position:fixed; left:.75rem; bottom:.75rem; z-index:4000; font-family:monospace; display:flex; flex-direction:column; gap:.55rem;`;
 const DebugToggleBtn = styled.button`
   background:#000; color:#fbbf24; border:1px solid #fbbf24; border-radius:50%; width:46px; height:46px; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.08) inset; opacity:.40; transition:opacity .25s ease, transform .25s ease, background .25s ease; backdrop-filter:blur(2px); &:hover,&:focus-visible{opacity:.95; outline:none;} &:active{transform:scale(.9);} `;
@@ -3227,7 +3242,67 @@ const Layout = ({ children }) => {
           </SmartTooltip>
           )}
 
-          {/* FLOATING IKONA OBJEDNÁVKY - PRVNÍ ZPRAVA (úplně vpravo) */}
+          {/* Floating button pro správu pokladny - VLEVO od faktury */}
+          {(
+            (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) ||
+            (hasPermission && (
+              hasPermission('CASH_BOOK_MANAGE') ||
+              hasPermission('CASH_BOOK_READ_ALL') ||
+              hasPermission('CASH_BOOK_READ_OWN') ||
+              hasPermission('CASH_BOOK_EDIT_ALL') ||
+              hasPermission('CASH_BOOK_EDIT_OWN') ||
+              hasPermission('CASH_BOOK_DELETE_ALL') ||
+              hasPermission('CASH_BOOK_DELETE_OWN') ||
+              hasPermission('CASH_BOOK_EXPORT_ALL') ||
+              hasPermission('CASH_BOOK_EXPORT_OWN') ||
+              hasPermission('CASH_BOOK_CREATE')
+            ))
+          ) && (
+            <SmartTooltip
+              text="Správa pokladní knihy"
+              icon="success"
+              preferredPosition="left"
+            >
+              <GlobalCashBookBtn
+                to="/cash-book"
+                aria-label="Pokladní kniha"
+                title=""
+                style={{ position: 'static' }}
+              >
+                <FontAwesomeIcon icon={faCalculator} />
+              </GlobalCashBookBtn>
+            </SmartTooltip>
+          )}
+
+          {/* Floating button pro zaevidování faktury - VLEVO od objednávky */}
+          {hasPermission && hasPermission('INVOICE_MANAGE') && (
+            <SmartTooltip
+              text={location.pathname === '/invoice-evidence' ? 'Evidence faktury již otevřena' : 'Zaevidovat novou fakturu'}
+              icon={location.pathname === '/invoice-evidence' ? 'info' : 'success'}
+              preferredPosition="left"
+            >
+              <GlobalInvoiceBtn
+                to={location.pathname === '/invoice-evidence' ? '#' : '/invoice-evidence'}
+                aria-label="Zaevidovat fakturu"
+                title=""
+                onClick={(e) => {
+                  if (location.pathname === '/invoice-evidence') { 
+                    e.preventDefault(); 
+                    return; 
+                  }
+                }}
+                data-inactive={location.pathname === '/invoice-evidence' ? 'true' : 'false'}
+                style={{ 
+                  position: 'static',
+                  pointerEvents: location.pathname === '/invoice-evidence' ? 'none' : undefined
+                }}
+              >
+                <FontAwesomeIcon icon={faFileInvoice} />
+              </GlobalInvoiceBtn>
+            </SmartTooltip>
+          )}
+
+          {/* FLOATING IKONA OBJEDNÁVKY - VPRAVO od faktury */}
           <SmartTooltip
             text={(() => {
               // Jednodušší logika: Nova pouze když je zrušená nebo nemá draft
