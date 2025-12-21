@@ -106,10 +106,10 @@ const NoResults = styled.div`
  * EditableCombobox - Komponenta kombinující input s autocomplete
  *
  * Umožňuje:
- * - Volný text (uživatel může napsat cokoliv)
+ * - Volný text (uživatel může napsat cokoliv) - pokud strictSelect=false
+ * - Pouze výběr ze seznamu - pokud strictSelect=true
  * - Našeptávání při shodě s položkami
  * - Výběr z našeptávaných položek
- * - Neomezuje uživatele
  *
  * @param {string} value - Aktuální hodnota
  * @param {function} onChange - Callback při změně hodnoty
@@ -120,6 +120,7 @@ const NoResults = styled.div`
  * @param {boolean} disabled - Zakázání inputu
  * @param {boolean} hasError - Indikace chyby
  * @param {boolean} loading - Indikace načítání
+ * @param {boolean} strictSelect - Pokud true, umožňuje pouze výběr ze seznamu (ne volné psaní)
  */
 const EditableCombobox = ({
   value = '',
@@ -130,7 +131,8 @@ const EditableCombobox = ({
   placeholder = 'Začněte psát...',
   disabled = false,
   hasError = false,
-  loading = false
+  loading = false,
+  strictSelect = false
 }) => {
   const [inputValue, setInputValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -223,6 +225,17 @@ const EditableCombobox = ({
     setTimeout(() => {
       setIsOpen(false);
       setHighlightedIndex(-1);
+
+      // ✅ STRICT SELECT: Pokud je zapnutý strict režim a hodnota není v seznamu, vymazat
+      if (strictSelect && inputValue) {
+        const isValid = options.some(opt => opt.code === inputValue);
+        if (!isValid) {
+          setInputValue('');
+          if (onChange) {
+            onChange({ target: { value: '' } });
+          }
+        }
+      }
 
       if (onBlur) {
         onBlur(e);
