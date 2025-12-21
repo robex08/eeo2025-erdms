@@ -138,12 +138,12 @@ const Container = styled.div`
   isolation: isolate;
 `;
 
-const PageHeader = styled.div`
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 2rem;
-`;
+  const PageHeader = styled.div`
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 2rem;
+  `;
 
 const PageTitle = styled.h1`
   margin: 0;
@@ -1286,12 +1286,13 @@ const ClearButton = styled.button`
 const FilterInput = styled.input`
   width: 100%;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '0.75rem 2.5rem 0.75rem 2.5rem' : '0.75rem'};
+  padding: ${props => props.hasIcon ? '0.5rem 2.5rem 0.5rem 2.5rem' : '0.5rem'};
   border: 2px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.875rem;
   transition: all 0.2s ease;
   background: white;
+  height: 42px;
 
   /* Pro number inputy - zarovnání doprava a odstranění šipek */
   ${props => props.type === 'number' && `
@@ -1776,6 +1777,13 @@ const FloatingTableWrapper = styled.div`
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 0.95rem;
   letter-spacing: -0.01em;
+  
+  /* Synchronizace scroll pozice s hlavní tabulkou */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 `;
 
 // Scroll šipka - levá - FIXED position (pohybuje se s vertikálním scrollem)
@@ -3980,9 +3988,9 @@ const InputWithIcon = styled.div`
 const DateInputButton = styled.button`
   width: 100%;
   display: block;
-  padding: 0.75rem;
+  padding: 0.5rem;
   padding-left: 2.75rem;
-  padding-right: ${props => props.hasValue ? '4.5rem' : '3rem'};
+  padding-right: 0.75rem;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
   background: white;
@@ -3995,6 +4003,7 @@ const DateInputButton = styled.button`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  height: 42px;
   min-height: 42px;
   &:hover {
     border-color: #3b82f6;
@@ -4003,53 +4012,11 @@ const DateInputButton = styled.button`
 `;
 
 const DateClearButton = styled.button`
-  position: absolute;
-  right: 36px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: bold;
-  transition: all 0.2s ease;
-  z-index: 1;
-  &:hover {
-    background: #dc2626;
-    transform: translateY(-50%) scale(1.1);
-  }
+  display: none;
 `;
 
 const DateTodayButton = styled.button`
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: white;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: bold;
-  transition: all 0.2s ease;
-  z-index: 1;
-  &:hover {
-    background: #f3f4f6;
-    transform: translateY(-50%) scale(1.1);
-  }
+  display: none;
 `;
 
 const DateCalendarPopup = styled.div`
@@ -4294,14 +4261,20 @@ const Orders25List = () => {
   const [showRightShadow, setShowRightShadow] = useState(false);
   const [isTableHovered, setIsTableHovered] = useState(false); // Hover nad CELOU tabulkou (wrapper)
   const [isArrowHovered, setIsArrowHovered] = useState(false); // Hover nad šipkou (aby nezmizelá když na ni najedeš)
-  const tableContainerRef = useRef(null);
   const tableWrapperRef = useRef(null); // Pro wrapper s shadow efekty
 
   // 🎈 State a refs pro floating header
   const [showFloatingHeader, setShowFloatingHeader] = useState(false);
   const [columnWidths, setColumnWidths] = useState([]);
   const tableRef = useRef(null); // Pro Intersection Observer (ukazuje na TableContainer)
-  const headerSentinelRef = useRef(null);
+
+  // Debug logování pro floating header
+  useEffect(() => {
+    console.log('🎈 showFloatingHeader změnil na:', showFloatingHeader);
+  }, [showFloatingHeader]);
+
+  // Tento effect musí být až PO definici table instance, proto ho přesuneme níže
+  // Placeholder pro floating header observer - bude definován až po table instance
 
   // Callback ref pro TableScrollWrapper - detekuje hover nad CELOU tabulkou
   const setTableWrapperRef = useCallback((node) => {
@@ -4327,115 +4300,72 @@ const Orders25List = () => {
     }
   }, []);
 
-  // Callback ref pro TableContainer s automatickou detekcí scrollování
-  const setTableContainerRef = useCallback((node) => {
-    tableContainerRef.current = node;
-    tableRef.current = node; // Pro Intersection Observer
-
-    if (node) {
-      // Funkce pro update šipek a shadowů
-      // 🔥 PERFORMANCE: Reading layout properties causes forced reflow
-      const updateScrollIndicators = () => {
-        const scrollLeft = node.scrollLeft;
-        const maxScroll = node.scrollWidth - node.clientWidth;
-
-        // Šipky - zobrazit když není na kraji (tolerance 5px)
-        const leftVisible = scrollLeft > 5;
-        const rightVisible = scrollLeft < maxScroll - 5;
-
-        setShowLeftArrow(leftVisible);
-        setShowRightArrow(rightVisible);
-
-        // Shadow efekty - plynulejší (tolerance 1px)
-        setShowLeftShadow(scrollLeft > 1);
-        setShowRightShadow(scrollLeft < maxScroll - 1);
-      };
-
-      // Iniciální update po krátkém timeoutu (aby se tabulka stihla vyrenderovat)
-      setTimeout(updateScrollIndicators, 100);
-
-      // 🔥 PERFORMANCE: Throttle scroll handler using requestAnimationFrame
-      // Prevents excessive reflow calculations (Chrome violation: Forced reflow 44-47ms)
-      let rafId = null;
-      const handleScroll = () => {
-        if (rafId) return; // Already scheduled
-        rafId = requestAnimationFrame(() => {
-          updateScrollIndicators();
-          rafId = null;
-        });
-      };
-
-      node.addEventListener('scroll', handleScroll, { passive: true });
-      window.addEventListener('resize', updateScrollIndicators);
-
-      // Cleanup
-      return () => {
-        if (rafId) cancelAnimationFrame(rafId); // Cancel pending animation frame
-        node.removeEventListener('scroll', handleScroll);
-        window.removeEventListener('resize', updateScrollIndicators);
-      };
-    }
-  }, []);
-
-  // 📱 Intersection Observer pro floating header - detekce scrollu
-  useEffect(() => {
-    if (!tableRef.current) return;
-
-    const thead = tableRef.current.querySelector('thead');
-    if (!thead) return;
-
-    const appHeaderHeight = 96;
-    const menuBarHeight = 48;
-    const totalHeaderHeight = appHeaderHeight + menuBarHeight; // 144px
-
-    // Intersection Observer - sleduje viditelnost thead elementu
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        // Kontrola skutečné pozice: pokud spodní okraj thead je nad fixním headerem (< 144px),
-        // znamená to, že hlavička je schovaná a zobrazíme floating header
-        const theadBottom = entry.boundingClientRect.bottom;
-        setShowFloatingHeader(theadBottom < totalHeaderHeight);
-      },
-      {
-        // threshold 0 = spustí se při jakékoli změně viditelnosti
-        threshold: 0
-      }
-    );
-
-    observer.observe(thead);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
   // 🎈 Měření šířek sloupců pro floating header
   useEffect(() => {
     const measureColumnWidths = () => {
-      if (!tableRef.current) return;
+      console.log('📏 Měření šířek sloupců', { tableRefCurrent: !!tableRef.current });
+      if (!tableRef.current) {
+        console.log('📏❌ tableRef.current není dostupný pro měření šířek');
+        return;
+      }
 
       // Najdeme všechny th elementy v prvním řádku hlavičky
       const headerCells = tableRef.current.querySelectorAll('thead tr:first-child th');
       const widths = Array.from(headerCells).map(cell => cell.offsetWidth);
+      console.log('📏✅ Naměřené šířky sloupců:', widths);
       setColumnWidths(widths);
     };
 
-    // Změř hned po načtení
-    measureColumnWidths();
+    // Pokud nejsou data nebo je loading, čekáme
+    if (loading || !orders || orders.length === 0) {
+      console.log('📏⏳ Čekám na načtení dat pro měření šířek', { loading, ordersCount: orders?.length });
+      return;
+    }
+
+    // Malé zpoždění pro jistotu, že DOM je vykreslený
+    const timer = setTimeout(() => {
+      measureColumnWidths();
+    }, 250);
 
     // Změř znovu po změně velikosti okna
     window.addEventListener('resize', measureColumnWidths);
-
-    // Změř znovu po načtení dat (malé zpoždění pro jistotu)
-    const timer = setTimeout(measureColumnWidths, 100);
 
     return () => {
       window.removeEventListener('resize', measureColumnWidths);
       clearTimeout(timer);
     };
-  }, [orders, loading]);
+  }, [loading, orders]); // Závislosti: spustí se znovu když se změní loading nebo data
 
-  // 🎬 STATE pro inicializaci - splash screen zmizí až po dokončení VŠEHO
+  // 🎈 Synchronizace horizontálního scrollu mezi hlavní tabulkou a floating headerem
+  useEffect(() => {
+    if (!showFloatingHeader) return;
+    
+    const mainWrapper = tableWrapperRef.current;
+    const floatingWrapper = document.querySelector('[data-floating-header-wrapper]');
+    
+    if (!mainWrapper || !floatingWrapper) return;
+    
+    const syncScroll = (e) => {
+      if (e.target === mainWrapper) {
+        floatingWrapper.scrollLeft = mainWrapper.scrollLeft;
+      } else if (e.target === floatingWrapper) {
+        mainWrapper.scrollLeft = floatingWrapper.scrollLeft;
+      }
+    };
+    
+    mainWrapper.addEventListener('scroll', syncScroll);
+    floatingWrapper.addEventListener('scroll', syncScroll);
+    
+    // Inicializuj scroll pozici
+    floatingWrapper.scrollLeft = mainWrapper.scrollLeft;
+    
+    return () => {
+      mainWrapper.removeEventListener('scroll', syncScroll);
+      floatingWrapper.removeEventListener('scroll', syncScroll);
+    };
+  }, [showFloatingHeader]);
+
+  //  STATE pro inicializaci - splash screen zmizí až po dokončení VŠEHO
   const [initializationComplete, setInitializationComplete] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true); // Pro fade efekt
 
@@ -8162,6 +8092,71 @@ const Orders25List = () => {
     }
   }, [pageCount, currentPageIndex, pageSize]); // ✅ Bez 'table' a 'filteredData'
 
+  // 🎯 Floating header intersection observer - aktivuje se když jsou data načtená a tabulka vykreslená
+  useEffect(() => {
+    console.log('🎯 [FloatingHeader] Observer check:', { 
+      loading, 
+      hasData: filteredData.length > 0,
+      tableExists: !!tableRef.current 
+    });
+    
+    // Dokud se načítají data nebo nejsou žádná data, observer neběží
+    if (loading || filteredData.length === 0) {
+      console.log('🎯 [FloatingHeader] Observer NEAKTIVNÍ - čekám na data');
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    // Ověř že tabulka je vykreslená v DOM
+    if (!tableRef.current) {
+      console.log('🎯 [FloatingHeader] Observer NEAKTIVNÍ - tabulka ještě není v DOM');
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    const thead = tableRef.current.querySelector('thead');
+    if (!thead) {
+      console.log('⚠️ [FloatingHeader] thead element nenalezen v tabulce');
+      setShowFloatingHeader(false);
+      return;
+    }
+    
+    console.log('✅ [FloatingHeader] Tabulka vykreslená, AKTIVUJI observer');
+    
+    const appHeaderHeight = 96;
+    const menuBarHeight = 48;
+    const totalHeaderHeight = appHeaderHeight + menuBarHeight;
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const theadBottom = entry.boundingClientRect.bottom;
+        const theadTop = entry.boundingClientRect.top;
+        const isVisible = entry.isIntersecting;
+        const shouldShow = theadBottom < totalHeaderHeight;
+        
+        console.log('👁️ [FloatingHeader] Hlavička ve view:', {
+          theadTop: Math.round(theadTop),
+          theadBottom: Math.round(theadBottom),
+          totalHeaderHeight,
+          isVisible,
+          shouldShow,
+          'floating': shouldShow ? 'ZOBRAZIT' : 'SKRÝT'
+        });
+        
+        setShowFloatingHeader(shouldShow);
+      },
+      { threshold: 0 }
+    );
+    
+    observer.observe(thead);
+    console.log('✅ [FloatingHeader] Observer připojen k thead elementu');
+    
+    return () => {
+      console.log('🧹 [FloatingHeader] Cleanup - odpojuji observer');
+      observer.disconnect();
+    };
+  }, [loading, filteredData.length, tableRef.current]); // Přidán tableRef.current do dependencies
+
   // Pagination navigation helpers - přímé funkce bez memoizace (table se mění každý render)
   const goToFirstPage = () => {
     saveCurrentScrollState();
@@ -8917,7 +8912,7 @@ const Orders25List = () => {
 
   // 📏 Handler pro scroll šipky - scrolluj o šířku viewportu
   const handleScrollLeft = () => {
-    const tableContainer = tableContainerRef.current;
+    const tableContainer = tableRef.current;
     if (!tableContainer) return;
 
     // Scrolluj o 80% šířky containeru doleva
@@ -8929,7 +8924,7 @@ const Orders25List = () => {
   };
 
   const handleScrollRight = () => {
-    const tableContainer = tableContainerRef.current;
+    const tableContainer = tableRef.current;
     if (!tableContainer) return;
 
     // Scrolluj o 80% šířky containeru doprava
@@ -12181,13 +12176,13 @@ const Orders25List = () => {
       </Container>
     );
   }
-
+  
   // CustomSelect wrapper - používá globální komponentu
   const CustomSelectLocal = (props) => (
     <CustomSelect
       {...props}
       selectStates={selectStates}
-      setSelectStates={setSelectStates}
+      setSelectStates={setSearchStates}
       searchStates={searchStates}
       setSearchStates={setSearchStates}
       touchedSelectFields={touchedSelectFields}
@@ -15242,9 +15237,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
         $showLeftShadow={showLeftShadow}
         $showRightShadow={showRightShadow}
       >
-        <TableContainer ref={setTableContainerRef}>
-          <Table>
-          <TableHead>
+          <TableContainer ref={tableRef}>
+            <Table>
+              <TableHead>
             {/* Header row with column names */}
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
@@ -16781,10 +16776,11 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
       )}
 
       {/* Floating Header Panel - React Portal */}
-      {ReactDOM.createPortal(
+      {showFloatingHeader && ReactDOM.createPortal(
         <FloatingHeaderPanel $visible={showFloatingHeader}>
-          <FloatingTableWrapper>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <FloatingTableWrapper data-floating-header-wrapper>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              {/* Definice šířek sloupců podle naměřených hodnot */}
               {columnWidths.length > 0 && (
                 <colgroup>
                   {columnWidths.map((width, index) => (
@@ -16793,7 +16789,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 </colgroup>
               )}
               <TableHead>
-                {/* Header row with column names */}
+                {/* Hlavní řádek se jmény sloupců - renderuj stejný header jako v hlavní tabulce */}
                 {table.getHeaderGroups().map(headerGroup => (
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map(header => (
@@ -16809,10 +16805,8 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {header.column.getCanSort() && header.column.getIsSorted() && (
                             <FontAwesomeIcon
-                              icon={
-                                header.column.getIsSorted() === 'asc' ? faChevronUp :
-                                faChevronDown
-                              }
+                              icon={header.column.getIsSorted() === 'desc' ? faChevronDown : faChevronUp}
+                              style={{ fontSize: '0.75rem', opacity: 0.7 }}
                             />
                           )}
                         </div>
@@ -16820,11 +16814,10 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     ))}
                   </tr>
                 ))}
-
-                {/* Filter row with search inputs */}
+                {/* Druhý řádek s filtry ve sloupcích - PŘESNÁ KOPIE Z ORIGINÁLNÍ HLAVIČKY */}
                 <tr>
                   {table.getHeaderGroups()[0]?.headers.map(header => (
-                    <TableHeader key={`filter-${header.id}`} style={{
+                    <TableHeader key={`filter-floating-${header.id}`} style={{
                       padding: '0.5rem',
                       backgroundColor: '#f8f9fa',
                       borderTop: '1px solid #e5e7eb'
@@ -16869,21 +16862,16 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           gap: '3px',
                           height: '32px'
                         }}>
-                          {/* Hromadné akce - zobrazí se jen když jsou vybrané objednávky */}
+                          {/* Hromadné akce */}
                           {(() => {
                             const selectedCount = table.getSelectedRowModel().rows.length;
                             if (selectedCount > 0) {
                               const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);
-
-                              // Kolik objednávek je "Ke schválení"
                               const approvalCount = selectedOrders.filter(o => o.stav_objednavky === 'Ke schválení').length;
-
-                              // Kolik objednávek lze generovat DOCX (stejná detekce jako v kontextovém menu)
                               const docxCount = selectedOrders.filter(o => canExportDocument(o)).length;
 
                               return (
                                 <>
-                                  {/* Schvalování - jen pro admin + právo APPROVE */}
                                   {approvalCount > 0 && (hasPermission('ADMIN') || hasPermission('ORDER_APPROVE')) && (
                                     <FilterActionButton
                                       onClick={() => {
@@ -16891,42 +16879,38 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                                         setBulkApprovalOrders(eligibleOrders);
                                         setShowBulkApprovalDialog(true);
                                       }}
-                                      title={`Schválit ${approvalCount} vybraných objednávek (stav Ke schválení)`}
+                                      title={`Schválit ${approvalCount} vybraných objednávek`}
                                       style={{ color: '#059669' }}
                                     >
                                       <FontAwesomeIcon icon={faCheckCircle} />
                                       <ActionBadge>{approvalCount}</ActionBadge>
                                     </FilterActionButton>
                                   )}
-
                                   {docxCount > 0 && (
                                     <FilterActionButton
                                       onClick={() => {
                                         const eligibleOrders = selectedOrders.filter(o => canExportDocument(o));
                                         setBulkDocxOrders(eligibleOrders);
-                                        // Inicializuj výběr podepisovatelů - výchozí je schvalovatel
                                         const initialSigners = {};
                                         const initialTemplates = {};
                                         eligibleOrders.forEach(order => {
                                           initialSigners[order.id] = order.schvalovatel_id || order.schvalovatel || null;
-                                          // Výchozí šablona podle stavu a ceny
                                           const templates = getTemplateOptions(order);
                                           if (templates.length > 0) {
-                                            initialTemplates[order.id] = templates[0].value; // První dostupná šablona
+                                            initialTemplates[order.id] = templates[0].value;
                                           }
                                         });
                                         setBulkDocxSigners(initialSigners);
                                         setBulkDocxTemplates(initialTemplates);
                                         setShowBulkDocxDialog(true);
                                       }}
-                                      title={`Generovat DOCX pro ${docxCount} vybraných objednávek (fáze Rozpracovaná+)`}
+                                      title={`Generovat DOCX pro ${docxCount} vybraných objednávek`}
                                       style={{ color: '#0891b2' }}
                                     >
                                       <FontAwesomeIcon icon={faFileWord} />
                                       <ActionBadge>{docxCount}</ActionBadge>
                                     </FilterActionButton>
                                   )}
-
                                   <FilterActionButton
                                     onClick={() => {
                                       setBulkDeleteOrders(selectedOrders);
@@ -16943,8 +16927,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                             }
                             return null;
                           })()}
-
-                          {/* Defaultní akce - vždy zobrazené */}
                           <FilterActionButton
                             onClick={clearColumnFilters}
                             title="Vymazat filtry sloupců"
@@ -16953,9 +16935,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           </FilterActionButton>
                           <FilterActionButton
                             onClick={toggleRowHighlighting}
-                            title={showRowHighlighting ?
-                              "Vypnout zvýrazňování řádků podle stavu objednávky\n(koncepty zůstanou vždy zvýrazněné)" :
-                              "Zapnout zvýrazňování řádků podle stavu objednávky\n(každý stav má svou barvu)"}
+                            title={showRowHighlighting ? "Vypnout zvýrazňování řádků" : "Zapnout zvýrazňování řádků"}
                             className={showRowHighlighting ? 'active' : ''}
                           >
                             <FontAwesomeIcon icon={faPalette} />
