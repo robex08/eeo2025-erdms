@@ -1358,6 +1358,8 @@ const Invoices25List = () => {
     // Vymazat localStorage aby se otevřel čistý formulář
     localStorage.removeItem('invoiceFormData');
     localStorage.removeItem('invoiceAttachments');
+    // Nastavit sessionStorage flag pro detekci fresh navigation
+    sessionStorage.setItem('invoice_fresh_navigation', 'true');
     navigate('/invoice-evidence', {
       state: {
         clearForm: true, // Flag pro InvoiceEvidencePage

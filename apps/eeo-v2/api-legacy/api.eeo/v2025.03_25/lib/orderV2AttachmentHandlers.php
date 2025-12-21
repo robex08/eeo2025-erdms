@@ -421,26 +421,15 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
         
         $attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Získání base path z konfigurace
+        // Získání base path z konfigurace - stejná logika jako v download handleru
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-        $basePath = '';
-        if (isset($uploadConfig['root_path']) && !empty($uploadConfig['root_path'])) {
-            $basePath = $uploadConfig['root_path'];
-        } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
-            $basePath = $uploadConfig['relative_path'];
-        } else {
-            $basePath = '/var/www/eeo2025/doc/prilohy/';
-        }
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : '/var/www/erdms-data/eeo-v2/prilohy/';
         
         // Standardizace výstupu
         $result = array();
         foreach ($attachments as $attachment) {
-            // ✅ OPRAVA: Sestavení plné cesty ze systemova_cesta
-            $fullPath = $attachment['systemova_cesta'];
-            if (strpos($fullPath, '/') !== 0) {
-                // Není to absolutní cesta -> je to pouze název souboru
-                $fullPath = safe_path_join($basePath, $fullPath);
-            }
+            // ✅ Sestavení plné cesty - systemova_cesta je pouze název souboru
+            $fullPath = $basePath . $attachment['systemova_cesta'];
             
             $result[] = array(
                 'id' => (int)$attachment['id'],
