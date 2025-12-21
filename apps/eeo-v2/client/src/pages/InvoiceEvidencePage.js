@@ -1553,18 +1553,31 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     if (!user_id || lsLoaded) return;
     
-    // ⚠️ FIX: location.state.clearForm přetrvává i po F5!
-    // Pokud přišel z tlačítka "Zaevidovat fakturu", bude mít timestamp
-    // Po F5 timestamp nebude (stará navigace), takže localStorage NAČÍST
-    const isFromNewInvoiceButton = location.state?.clearForm && location.state?.timestamp;
+    // Detekce fresh navigation pomocí sessionStorage
+    // Při kliknutí na "Zaevidovat fakturu" nastavíme flag, který zůstane až do zavření tabu
+    const freshNavigationFlag = sessionStorage.getItem('invoice_fresh_navigation');
     const isEditingExisting = location.state?.editInvoiceId;
+    const isLoadingOrder = location.state?.orderIdForLoad;
+    const isLoadingSmlouva = location.state?.smlouvaIdForLoad;
     
-    const shouldSkipLS = isFromNewInvoiceButton || isEditingExisting;
+    // Vymažeme flag po použití (jednorázový)
+    if (freshNavigationFlag) {
+      sessionStorage.removeItem('invoice_fresh_navigation');
+    }
+    
+    // Skip localStorage pouze když:
+    // 1. Je freshNavigationFlag (právě kliknuto na "Zaevidovat") NEBO
+    // 2. Editujeme existující fakturu NEBO  
+    // 3. Načítáme fakturu z objednávky/smlouvy
+    const shouldSkipLS = freshNavigationFlag || isEditingExisting || isLoadingOrder || isLoadingSmlouva;
     
     if (shouldSkipLS) {
+      console.log('⏭️ Skip localStorage load:', { freshNavigationFlag, isEditingExisting, isLoadingOrder, isLoadingSmlouva });
       setLsLoaded(true);
       return;
     }
+    
+    console.log('📥 Loading from localStorage (F5 or direct URL)...');
     
     try {
       // Načíst editingInvoiceId
@@ -1594,6 +1607,8 @@ export default function InvoiceEvidencePage() {
       if (savedAttach) {
         setAttachments(JSON.parse(savedAttach));
       }
+      
+      console.log('✅ localStorage loaded successfully');
     } catch (err) {
       console.warn('⚠️ Chyba při načítání dat z localStorage:', err);
     }

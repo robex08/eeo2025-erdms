@@ -6531,6 +6531,23 @@ function OrderForm25() {
     max_cena_s_dph: formData.max_cena_s_dph
   }), [formData.id, formData.faktury, formData.max_cena_s_dph]);
 
+  // 📎 Helper: Počítání příloh a jejich stavů
+  const getAttachmentsInfo = useMemo(() => {
+    if (!attachments || attachments.length === 0) {
+      return { count: 0, hasErrors: false };
+    }
+
+    const count = attachments.length;
+    // ✅ Chyba = soubor neexistuje (file_exists: false) nebo status: 'error'
+    const hasErrors = attachments.some(att => 
+      att.file_exists === false || 
+      att.status === 'error' || 
+      att.status === 'failed'
+    );
+
+    return { count, hasErrors };
+  }, [attachments]);
+
   // 🎯 Rozšířené section states pro navigator - zahrnuje inline podmínky viditelnosti
   const extendedSectionStates = useMemo(() => {
     const states = { ...allSectionStates };
@@ -6540,7 +6557,9 @@ function OrderForm25() {
     if (formData.id) {
       states.prilohy = {
         visible: true,  // Vždy viditelné když má objednávka ID
-        enabled: !isPrilohyLocked  // Odemčené pouze když není workflow dokončeno
+        enabled: !isPrilohyLocked,  // Odemčené pouze když není workflow dokončeno
+        attachmentsCount: getAttachmentsInfo.count,  // ✅ Počet příloh
+        hasAttachmentErrors: getAttachmentsInfo.hasErrors  // ✅ Stav chyb
       };
     }
     
@@ -6585,7 +6604,7 @@ function OrderForm25() {
   }, [allSectionStates, currentPhase, canManageInvoices, canPublishRegistry, 
       formData.financovani?.platba, formData.dodavatel_zpusob_potvrzeni?.platba, 
       formData.faktury, formData.dt_zverejneni, formData.registr_iddt, 
-      formData.id, isPrilohyLocked, canUnlockAnything]);
+      formData.id, isPrilohyLocked, canUnlockAnything, getAttachmentsInfo]);
 
   // 🔧 HELPER: Zjistí jestli je pole disabled (kombinace workflow lock + UI stav)
   const isFieldDisabled = useCallback((sectionState) => {
@@ -12843,13 +12862,13 @@ function OrderForm25() {
       }
 
       try {
-        const result = await updateAttachmentV2({
-          token,
-          username,
-          objednavka_id: formData.id, // ✅ OPRAVENO: přidán objednavka_id
-          attachment_id: file.serverId,
-          typ_prilohy: klasifikace
-        });
+        const result = await updateAttachmentV2(
+          formData.id,           // orderId
+          file.serverId,         // attachmentId
+          { type: klasifikace }, // updates
+          token,                 // token
+          username               // username
+        );
 
         if (result.status === 'ok' || result.status === 'success') { // ✅ OPRAVENO: backend může vracet 'success'
 

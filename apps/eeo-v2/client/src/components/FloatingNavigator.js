@@ -470,6 +470,26 @@ const ValidationBadge = styled.span`
   line-height: 1;
 `;
 
+const AttachmentBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: ${props => props.$hasErrors ? '#dc2626' : '#10b981'}; // Červená nebo zelená
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  border: 1px solid ${props => props.$hasErrors ? '#dc2626' : '#10b981'};
+`;
+
 const DropzoneContainer = styled.div`
   margin: 12px 8px 12px 8px;
   padding: ${props => props.$isMinimized ? '12px 8px' : '20px'};
@@ -1448,12 +1468,14 @@ const FloatingNavigator = ({
         const sectionState = allSectionStates?.prilohy;
         const isDisabled = sectionState ? !sectionState.enabled : isWorkflowCompleted;
         const isActive = isSectionActive ? isSectionActive(section.id) : false;
-        const validationInfo = getSectionValidationInfo(section);
         
-        // 🎯 Zobrazení badge podle stavu
-        const hasErrors = validationInfo.errorCount > 0;
-        const hasMissingFields = !hasErrors && validationInfo.missingCount > 0;
-        const showBadge = hasErrors || hasMissingFields;
+        // 📎 Získání info o přílohách ze sectionState
+        const attachmentsCount = sectionState?.attachmentsCount || 0;
+        const hasAttachmentErrors = sectionState?.hasAttachmentErrors || false;
+        
+        // 🎯 Zobrazení badge pro přílohy
+        const showAttachmentsBadge = attachmentsCount > 0;
+        const badgeText = attachmentsCount.toString();
 
         return (
           <NavigatorContent $isMinimized={isMinimized}>
@@ -1475,13 +1497,10 @@ const FloatingNavigator = ({
                   <SectionInfo $textColor={isDisabled ? '#64748b' : section.color}>
                     <SectionName $isDisabled={isDisabled}>
                       {section.name}
-                      {showBadge && (
-                        <ValidationBadge 
-                          $hasErrors={hasErrors}
-                          $hasMissingFields={hasMissingFields}
-                        >
-                          {hasErrors ? validationInfo.errorCount : ''}
-                        </ValidationBadge>
+                      {showAttachmentsBadge && (
+                        <AttachmentBadge $hasErrors={hasAttachmentErrors}>
+                          {badgeText}
+                        </AttachmentBadge>
                       )}
                     </SectionName>
                   </SectionInfo>
