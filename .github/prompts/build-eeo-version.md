@@ -5,6 +5,7 @@ scopes:
   - /apps/eeo-v2/client/
   - /apps/eeo-v2/api-legacy/
 ---
+**DŮLEŽITÉ: Komunikuj vždy v češtině.**
 
 # EEO v2 - Build Guide (DEV vs PROD)
 
