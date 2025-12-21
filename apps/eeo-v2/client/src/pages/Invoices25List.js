@@ -1498,9 +1498,6 @@ const Invoices25List = () => {
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
-        // 🔍 DEBUG: Celý lock_info objekt
-        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
-        
         // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
         // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
@@ -2109,9 +2106,6 @@ const Invoices25List = () => {
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
-        // 🔍 DEBUG: Celý lock_info objekt
-        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
-        
         // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
         // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
@@ -2183,9 +2177,6 @@ const Invoices25List = () => {
         console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (věcná kontrola FA)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
-        
-        // 🔍 DEBUG: Celý lock_info objekt
-        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
         
         // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
