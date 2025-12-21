@@ -736,16 +736,17 @@ const InvoiceAttachmentsCompact = ({
       // 🆕 Pro temp faktury pouze uložit lokálně, pro reálné faktury uploadnout
       const isTempFaktura = String(fakturaId).startsWith('temp-');
       
-      // 🎬 SIMULACE UPLOADU S PROGRESS BAREM
-      // Spustíme upload asynchronně
-      const uploadPromises = newFiles.map(file => 
-        uploadFileToServer(file.id, file.klasifikace, file)
-      );
+      // 🎬 ASYNCHRONNÍ UPLOAD - NEBLOKUJE UI
+      // Spustíme upload na pozadí, soubory jsou již viditelné v UI
+      newFiles.forEach(file => {
+        uploadFileToServer(file.id, file.klasifikace, file).catch(err => {
+          console.error(`❌ Chyba při uploadu souboru ${file.name}:`, err);
+          // Error handler je již v uploadFileToServer - označí soubor jako 'error'
+        });
+      });
       
-      // ⏳ Počkat na všechny uploady
-      await Promise.all(uploadPromises);
-      
-      // ✅ UPLOAD HOTOVÝ - přílohy zůstávají v UI (optimistic update)
+      // ✅ OKAMŽITÝ NÁVRAT - přílohy jsou viditelné hned
+      // Upload probíhá na pozadí s progress barem
       // ⚠️ ŽÁDNÝ REFRESH z DB - mohlo by to resetovat formulář při ukládání faktury
     }
   };

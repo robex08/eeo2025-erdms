@@ -246,7 +246,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           </DateTodayButton>
         )}
 
-        {value && !disabled && (
+        {!isCompact && value && !disabled && (
           <DateClearButton
             type="button"
             onClick={(e) => {
@@ -386,9 +386,9 @@ const DateInputButton = styled.button`
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
   border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
-  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1f2937' : '#94a3af'};
-  font-size: 0.95rem;
-  font-weight: ${props => props.hasValue && !props.disabled ? '600' : '400'};
+  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1e293b' : '#94a3af'};
+  font-size: ${props => props.$variant === 'compact' ? '0.75rem' : '0.95rem'};
+  font-weight: 400;
   line-height: 1;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;

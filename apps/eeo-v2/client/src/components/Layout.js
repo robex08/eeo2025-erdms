@@ -2507,8 +2507,21 @@ const Layout = ({ children }) => {
                     borderRadius: '3px',
                     marginRight: '6px',
                     border: '1px solid rgba(220, 38, 38, 0.4)',
-                    textShadow: '0 1px 3px rgba(0,0,0,0.5)'
-                  }}>DEVELOP</span>
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '1px'
+                  }}>
+                    <span>DEVELOP</span>
+                    {databaseName && (
+                      <span style={{ 
+                        fontSize: '0.6em', 
+                        fontWeight: '600',
+                        opacity: 0.9
+                      }}>{databaseName}</span>
+                    )}
+                  </span>
                 )}
                 {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
                 {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
@@ -3349,22 +3362,7 @@ const Layout = ({ children }) => {
             }}>
               {(() => {
                 const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-                // Check if URL contains /dev/ anywhere (handles both full URLs and relative paths)
-                const isDev = apiUrl.includes('/dev/');
-                const apiEndpoint = isDev ? '/dev/api.eeo' : '/api.eeo';
-                
-                // Show database name only in DEV environment
-                if (isDev && databaseName) {
-                  return (
-                    <span style={{ display: 'block' }}>
-                      <span>{apiEndpoint}</span>
-                      <br />
-                      <span style={{ fontSize: '0.9em', opacity: 0.8 }}>{databaseName}</span>
-                    </span>
-                  );
-                }
-                
-                return apiEndpoint;
+                return apiUrl.includes('/dev/') ? '/dev/api.eeo' : '/api.eeo';
               })()}
             </span>
           </span>

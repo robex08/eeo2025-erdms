@@ -1360,7 +1360,8 @@ const Invoices25List = () => {
     localStorage.removeItem('invoiceAttachments');
     navigate('/invoice-evidence', {
       state: {
-        clearForm: true // Flag pro InvoiceEvidencePage
+        clearForm: true, // Flag pro InvoiceEvidencePage
+        timestamp: Date.now() // Timestamp pro detekci F5 (po F5 zmizí)
       }
     });
   };
@@ -1542,6 +1543,21 @@ const Invoices25List = () => {
       }
       
       // 📋 Sloupcové filtry - OPRAVENÉ!
+      
+      // Datum doručení (přesná shoda)
+      if (columnFilters.datum_doruceni) {
+        apiParams.filter_datum_doruceni = columnFilters.datum_doruceni;
+      }
+      
+      // Datum aktualizace (přesná shoda)
+      if (columnFilters.dt_aktualizace) {
+        apiParams.filter_dt_aktualizace = columnFilters.dt_aktualizace;
+      }
+      
+      // Typ faktury (přesná shoda)
+      if (columnFilters.fa_typ) {
+        apiParams.filter_fa_typ = columnFilters.fa_typ;
+      }
       
       // Číslo faktury (LIKE - částečná shoda)
       if (columnFilters.cislo_faktury && columnFilters.cislo_faktury.trim()) {
@@ -2393,6 +2409,50 @@ const Invoices25List = () => {
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
                   <TableHeader 
+                    className={`date-column sortable ${sortField === 'dt_aktualizace' ? 'active' : ''}`}
+                    onClick={() => handleSort('dt_aktualizace')}
+                  >
+                    Aktualizováno
+                    {sortField === 'dt_aktualizace' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_faktury')}
+                  >
+                    Faktura VS
+                    {sortField === 'cislo_faktury' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
+                    onClick={() => handleSort('fa_typ')}
+                  >
+                    Typ
+                    {sortField === 'fa_typ' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
+                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
+                    onClick={() => handleSort('cislo_objednavky')}
+                  >
+                    Objednávka/Smlouva
+                    {sortField === 'cislo_objednavky' && (
+                      <span className="sort-icon">
+                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
+                      </span>
+                    )}
+                  </TableHeader>
+                  <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_doruceni')}
                   >
@@ -2415,33 +2475,11 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader 
-                    className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
-                    onClick={() => handleSort('fa_typ')}
+                    className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
+                    onClick={() => handleSort('datum_splatnosti')}
                   >
-                    Typ
-                    {sortField === 'fa_typ' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
-                    onClick={() => handleSort('cislo_faktury')}
-                  >
-                    Faktura VS
-                    {sortField === 'cislo_faktury' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
-                    onClick={() => handleSort('cislo_objednavky')}
-                  >
-                    Objednávka/Smlouva
-                    {sortField === 'cislo_objednavky' && (
+                    Splatnost
+                    {sortField === 'datum_splatnosti' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
                       </span>
@@ -2453,17 +2491,6 @@ const Invoices25List = () => {
                   >
                     Částka
                     {sortField === 'castka' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
-                  </TableHeader>
-                  <TableHeader 
-                    className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
-                    onClick={() => handleSort('datum_splatnosti')}
-                  >
-                    Splatnost
-                    {sortField === 'datum_splatnosti' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
                       </span>
@@ -2543,29 +2570,34 @@ const Invoices25List = () => {
                 </tr>
                 {/* Druhý řádek s filtry ve sloupcích */}
                 <tr>
-                  {/* Doručení - datum filtr - PRVNÍ SLOUPEC */}
+                  {/* Aktualizováno - datum filtr - PRVNÍ SLOUPEC */}
                   <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <div style={{ position: 'relative' }}>
                       <DatePicker
-                        fieldName="filter_datum_doruceni"
-                        value={columnFilters.datum_doruceni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        fieldName="filter_dt_aktualizace"
+                        value={columnFilters.dt_aktualizace || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, dt_aktualizace: value})}
                         placeholder="Datum"
                         variant="compact"
                       />
                     </div>
                   </TableHeader>
-                  {/* Vystavení - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_vystaveni"
-                        value={columnFilters.datum_vystaveni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
-                        placeholder="Datum"
-                        variant="compact"
+                  {/* Faktura VS - text filtr */}
+                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <ColumnFilterWrapper>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <ColumnFilterInput
+                        type="text"
+                        placeholder="Hledat číslo..."
+                        value={columnFilters.cislo_faktury || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
                       />
-                    </div>
+                      {columnFilters.cislo_faktury && (
+                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}>
+                          <FontAwesomeIcon icon={faTimes} />
+                        </ColumnClearButton>
+                      )}
+                    </ColumnFilterWrapper>
                   </TableHeader>
                   {/* Typ faktury - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -2595,22 +2627,6 @@ const Invoices25List = () => {
                       <FontAwesomeIcon icon={faSearch} />
                       <ColumnFilterInput
                         type="text"
-                        placeholder="Hledat číslo..."
-                        value={columnFilters.cislo_faktury || ''}
-                        onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
-                      />
-                      {columnFilters.cislo_faktury && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
-                        type="text"
                         placeholder="Obj/Sml..."
                         value={columnFilters.cislo_objednavky || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
@@ -2622,6 +2638,42 @@ const Invoices25List = () => {
                         </ColumnClearButton>
                       )}
                     </ColumnFilterWrapper>
+                  </TableHeader>
+                  {/* Doručení - datum filtr */}
+                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div style={{ position: 'relative' }}>
+                      <DatePicker
+                        fieldName="filter_datum_doruceni"
+                        value={columnFilters.datum_doruceni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+                  {/* Vystavení - datum filtr (přesunuto sem) */}
+                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div style={{ position: 'relative' }}>
+                      <DatePicker
+                        fieldName="filter_datum_vystaveni"
+                        value={columnFilters.datum_vystaveni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+                  {/* Splatnost - datum filtr (přesunuto před částku) */}
+                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div style={{ position: 'relative' }}>
+                      <DatePicker
+                        fieldName="filter_datum_splatnosti"
+                        value={columnFilters.datum_splatnosti || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
+                        placeholder="Datum"
+                        variant="compact"
+                      />
+                    </div>
                   </TableHeader>
                   {/* Částka - rozsahový filtr */}
                   <TableHeader className="amount-column" style={{ padding: '0.5rem 0.25rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -2691,18 +2743,6 @@ const Invoices25List = () => {
                           <FontAwesomeIcon icon={faTimes} />
                         </button>
                       )}
-                    </div>
-                  </TableHeader>
-                  {/* Splatnost - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_splatnosti"
-                        value={columnFilters.datum_splatnosti || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
                     </div>
                   </TableHeader>
                   {/* Stav - select filtr */}
@@ -2832,7 +2872,7 @@ const Invoices25List = () => {
                 {/* Error State v tabulce */}
                 {error && (
                   <tr>
-                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="14" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={error.includes('ve vývoji') || error.includes('404') ? faExclamationTriangle : faTimesCircle} />
                       </EmptyStateIcon>
@@ -2860,7 +2900,7 @@ const Invoices25List = () => {
                 {/* Empty State v tabulce */}
                 {!error && invoices.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="12" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="14" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </EmptyStateIcon>
@@ -2878,16 +2918,18 @@ const Invoices25List = () => {
                     }}
                   >
                     <TableCell className="center">
-                      {invoice.datum_doruceni ? (
-                        <span style={{ color: '#059669', fontWeight: 600 }}>
-                          <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
-                          {formatDateOnly(invoice.datum_doruceni)}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      )}
+                      {invoice.dt_aktualizace ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
+                          <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+                            {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ) : '—'}
                     </TableCell>
-                    <TableCell className="center">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</TableCell>
+                    <TableCell className="center">
+                      <strong>{invoice.cislo_faktury}</strong>
+                    </TableCell>
                     <TableCell className="center">
                       <span style={{ 
                         display: 'inline-block',
@@ -2911,9 +2953,6 @@ const Invoices25List = () => {
                          invoice.fa_typ === 'DOBROPIS' ? 'DOBROPIS' : 
                          invoice.fa_typ || '—'}
                       </span>
-                    </TableCell>
-                    <TableCell>
-                      <strong>{invoice.cislo_faktury}</strong>
                     </TableCell>
                     <TableCell>
                       {invoice.cislo_smlouvy ? (
@@ -2959,10 +2998,21 @@ const Invoices25List = () => {
                         <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
                       )}
                     </TableCell>
+                    <TableCell className="center">
+                      {invoice.datum_doruceni ? (
+                        <span style={{ color: '#059669', fontWeight: 600 }}>
+                          <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
+                          {formatDateOnly(invoice.datum_doruceni)}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="center">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</TableCell>
+                    <TableCell className="center">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</TableCell>
                     <TableCell className="right">
                       <strong>{formatCurrency(invoice.castka)}</strong>
                     </TableCell>
-                    <TableCell className="center">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</TableCell>
                     <TableCell className="center">
                       <StatusBadge $status={invoice.status}>
                         <FontAwesomeIcon icon={getStatusIcon(invoice.status)} />

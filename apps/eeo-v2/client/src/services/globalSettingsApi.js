@@ -157,7 +157,20 @@ export const checkMaintenanceMode = async () => {
       }
     });
     
+    // Pokud endpoint neexistuje nebo je nedostupný, vrať false
     if (!response.ok) {
+      if (response.status === 404) {
+        console.warn('Maintenance check endpoint not found (404)');
+      } else {
+        console.warn('Maintenance check failed with status:', response.status);
+      }
+      return false;
+    }
+    
+    // Zkontroluj, zda je odpověď JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('Maintenance check: Response is not JSON, got:', contentType);
       return false;
     }
     
@@ -165,7 +178,8 @@ export const checkMaintenanceMode = async () => {
     return data.maintenance_mode === true || data.maintenance_mode === 1;
     
   } catch (error) {
-    console.error('Chyba při kontrole maintenance mode:', error);
+    // Tichá chyba - maintenance check by neměl blokovat aplikaci
+    console.debug('Chyba při kontrole maintenance mode:', error.message);
     return false;
   }
 };
