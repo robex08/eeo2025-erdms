@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
-import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, FileX, X, Info, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
+import { Paperclip, Upload, Download, Trash2, AlertCircle, Loader, FileText, FileX, X, Info, AlertTriangle, CheckCircle2, ExternalLink, Sparkles } from 'lucide-react';
 import {
   uploadInvoiceAttachment25,
   listInvoiceAttachments25,
@@ -264,6 +264,105 @@ const EmptyState = styled.div`
   border-radius: 6px;
 `;
 
+// File Viewer Modal Styles (převzato ze Spisovky)
+const FileModal = styled.div`
+  position: fixed;
+  left: ${props => props.x}px;
+  top: ${props => props.y}px;
+  width: ${props => props.w}px;
+  height: ${props => props.h}px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  z-index: 999998;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const FileModalContent = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+`;
+
+const FileModalHeader = styled.div`
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+`;
+
+const FileModalTitle = styled.div`
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const FileCloseButton = styled.button`
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+`;
+
+const FileObject = styled.object`
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+`;
+
+const PdfFallback = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: #f8fafc;
+  color: #334155;
+`;
+
+const DownloadButton = styled.a`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #10b981;
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+
+  &:hover {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+  }
+`;
+
+
 const LoadingState = styled.div`
   display: flex;
   align-items: center;
@@ -344,6 +443,24 @@ const InvoiceAttachmentsCompact = ({
   const [pendingISDOCFile, setPendingISDOCFile] = useState(null);
   const [isdocSummary, setIsdocSummary] = useState(null);
 
+  // 🆕 File Viewer state (jako ve Spisovce)
+  const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '' });
+  const [fileViewerPosition, setFileViewerPosition] = useState(() => {
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    // Šířka: 50% obrazovky, max 900px, min 400px
+    const width = Math.max(400, Math.min(Math.floor(screenWidth * 0.5), 900));
+    // Výška: 85% obrazovky
+    const height = Math.floor(screenHeight * 0.85);
+    // X pozice: zarovnat vpravo s 20px marginem
+    const x = Math.max(20, screenWidth - width - 20);
+    // Y pozice: vycentrovat vertikálně
+    const y = Math.max(20, Math.floor((screenHeight - height) / 2));
+    return { x, y, w: width, h: height };
+  });
+  const [isDraggingViewer, setIsDraggingViewer] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }); // Offset myši při kliknutí
+
   // 🆕 Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -366,6 +483,50 @@ const InvoiceAttachmentsCompact = ({
 
     onAttachmentsChange(newAttachments);
   }, [attachments, onAttachmentsChange]);
+
+  // 🎯 Drag handlers pro file viewer
+  const handleFileViewerDrag = useCallback((e) => {
+    if (!isDraggingViewer) return;
+    e.preventDefault();
+    
+    setFileViewerPosition(prev => {
+      // Použít uložený offset z mouseDown
+      const newX = e.clientX - dragOffset.x;
+      const newY = e.clientY - dragOffset.y;
+      
+      // Omezení aby okno nevyjelo mimo obrazovku
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+      
+      const boundedX = Math.max(0, Math.min(newX, screenWidth - prev.w));
+      const boundedY = Math.max(0, Math.min(newY, screenHeight - prev.h));
+      
+      return {
+        ...prev,
+        x: boundedX,
+        y: boundedY
+      };
+    });
+  }, [isDraggingViewer, dragOffset]);
+
+  const handleFileViewerDragEnd = useCallback(() => {
+    setIsDraggingViewer(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingViewer) {
+      const handleMouseMove = (e) => handleFileViewerDrag(e);
+      const handleMouseUp = () => handleFileViewerDragEnd();
+      
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDraggingViewer, handleFileViewerDrag, handleFileViewerDragEnd]);
 
   // Načtení příloh při mount nebo změně faktura_id
   useEffect(() => {
@@ -1275,37 +1436,57 @@ const InvoiceAttachmentsCompact = ({
     });
   };
 
-  // Download
+  // Download / Preview v plovoucím okně
   const handleDownload = async (fileId) => {
     const file = attachments.find(f => f.id === fileId);
     if (!file || !file.serverId) return;
 
     try {
-      const blob = await downloadInvoiceAttachment25({
+      const blobData = await downloadInvoiceAttachment25({
         token: token,
         username: username,
-        faktura_id: fakturaId, // ✅ Order V2 API
+        faktura_id: fakturaId,
         priloha_id: file.serverId,
-        objednavka_id: objednavkaId // ✅ Order V2 API - required
+        objednavka_id: objednavkaId
       });
 
       const filename = file.name || 'priloha.pdf';
+      const ext = filename.toLowerCase().split('.').pop();
 
-      // Importovat utility funkce
-      const { isPreviewableInBrowser, openInBrowser25 } = await import('../../services/api25orders');
-
-      // Zkontrolovat, zda lze soubor zobrazit v prohlížeči
-      if (isPreviewableInBrowser(filename)) {
-        const opened = openInBrowser25(blob, filename);
-        
-        if (opened) {
-          // ✅ Soubor otevřen v novém okně - neptat se na stažení
-          showToast&&showToast('Příloha otevřena v novém okně', { type: 'success' });
-          return;
-        }
+      // Určit MIME type podle přípony
+      let mimeType = 'application/octet-stream';
+      if (ext === 'pdf') {
+        mimeType = 'application/pdf';
+      } else if (['jpg', 'jpeg'].includes(ext)) {
+        mimeType = 'image/jpeg';
+      } else if (ext === 'png') {
+        mimeType = 'image/png';
+      } else if (ext === 'gif') {
+        mimeType = 'image/gif';
+      } else if (ext === 'bmp') {
+        mimeType = 'image/bmp';
+      } else if (ext === 'webp') {
+        mimeType = 'image/webp';
+      } else if (ext === 'svg') {
+        mimeType = 'image/svg+xml';
       }
 
-      // Pokud nelze zobrazit v prohlížeči, přímo stáhnout
+      // Vytvořit nový Blob se správným MIME typem
+      const blob = new Blob([blobData], { type: mimeType });
+
+      // Pro PDF zobrazit v plovoucím okně
+      if (ext === 'pdf' || ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext)) {
+        const url = window.URL.createObjectURL(blob);
+        setFileViewer({
+          visible: true,
+          url: url,
+          filename: filename,
+          type: ext === 'pdf' ? 'pdf' : 'image'
+        });
+        return;
+      }
+
+      // Pro ostatní soubory přímo stáhnout
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -2209,7 +2390,7 @@ const InvoiceAttachmentsCompact = ({
                       ({Math.round((file.size || 0) / 1024)} kB)
                     </span>
 
-                    {/* Stažení pro nahrané soubory */}
+                    {/* Náhled v novém okně */}
                     {file.status === 'uploaded' && file.serverId && (
                       <button
                         type="button"
@@ -2225,33 +2406,9 @@ const InvoiceAttachmentsCompact = ({
                           fontSize: '12px',
                           flexShrink: 0
                         }}
-                        title="Stáhnout soubor"
+                        title="Otevřít v novém okně"
                       >
-                        <Download size={14} />
-                      </button>
-                    )}
-
-                    {/* OCR Extrakce - pouze pro PDF */}
-                    {(file.name?.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') && (
-                      <button
-                        type="button"
-                        onClick={() => handleOCRExtraction(file.id)}
-                        disabled={file.status === 'uploading'}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: file.status === 'uploading' ? '#9ca3af' : '#8b5cf6',
-                          cursor: file.status === 'uploading' ? 'not-allowed' : 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          opacity: file.status === 'uploading' ? 0.6 : 1,
-                          fontSize: '12px',
-                          flexShrink: 0
-                        }}
-                        title="Vytěžit údaje pomocí OCR"
-                      >
-                        <Sparkles size={14} />
+                        <ExternalLink size={14} />
                       </button>
                     )}
 
@@ -2391,6 +2548,64 @@ const InvoiceAttachmentsCompact = ({
     >
       {confirmDialog.message}
     </ConfirmDialog>
+
+    {/* 👁️ File Viewer Modal (plovoucí okno jako ve Spisovce) */}
+    {fileViewer.visible && ReactDOM.createPortal(
+      <FileModal 
+        x={fileViewerPosition.x}
+        y={fileViewerPosition.y}
+        w={fileViewerPosition.w}
+        h={fileViewerPosition.h}
+      >
+        <FileModalContent>
+          <FileModalHeader
+            onMouseDown={(e) => {
+              // Uložit offset myši vůči levému hornímu rohu okna
+              const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+              setDragOffset({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+              });
+              setIsDraggingViewer(true);
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            style={{ cursor: isDraggingViewer ? 'grabbing' : 'grab' }}
+          >
+            <FileModalTitle>
+              <FileText size={20} />
+              {fileViewer.filename}
+            </FileModalTitle>
+            <FileCloseButton onClick={() => {
+              if (fileViewer.url) {
+                window.URL.revokeObjectURL(fileViewer.url);
+              }
+              setFileViewer({ visible: false, url: '', filename: '', type: '' });
+            }}>
+              <X size={18} />
+            </FileCloseButton>
+          </FileModalHeader>
+          <FileObject 
+            data={fileViewer.url}
+            type={fileViewer.type === 'pdf' ? 'application/pdf' : undefined}
+            title={fileViewer.filename}
+          >
+            <PdfFallback>
+              <AlertCircle size={48} color="#64748b" />
+              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>Soubor nelze zobrazit v prohlížeči</div>
+              <div style={{ fontSize: '0.9rem', color: '#64748b', textAlign: 'center', maxWidth: '400px' }}>
+                Váš prohlížeč nepodporuje zobrazení tohoto typu souborů. Můžete soubor stáhnout a otevřít externě.
+              </div>
+              <DownloadButton href={fileViewer.url} download={fileViewer.filename}>
+                <Download size={18} />
+                Stáhnout soubor
+              </DownloadButton>
+            </PdfFallback>
+          </FileObject>
+        </FileModalContent>
+      </FileModal>,
+      document.body
+    )}
     </>
   );
 };

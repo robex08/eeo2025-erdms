@@ -1455,6 +1455,17 @@ const Invoices25List = () => {
     setShowDashboard(prev => !prev);
   }, []);
   
+  // 🧹 Vyčistit všechny filtry (sloupcové + dashboard + fulltext)
+  const handleClearAllFilters = useCallback(() => {
+    setColumnFilters({});
+    setFilters({ filter_status: '' });
+    setActiveFilterStatus(null);
+    setGlobalSearchTerm('');
+    setCurrentPage(1);
+  }, []);
+  
+
+  
   // Pagination state (server-side)
   const [currentPage, setCurrentPage] = useState(savedState?.currentPage || 1);
   const [itemsPerPage, setItemsPerPage] = useState(savedState?.itemsPerPage || 50);
@@ -1914,15 +1925,6 @@ const Invoices25List = () => {
     loadData();
   };
   
-  // Handler pro vymazání všech filtrů
-  const handleClearAllFilters = useCallback(() => {
-    setGlobalSearchTerm('');
-    setColumnFilters({});
-    setActiveFilterStatus(null);
-    setFilters({ filter_status: '' });
-    setCurrentPage(1);
-  }, []);
-  
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2366,12 +2368,10 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faSearch} />
               Vyhledávání
             </SearchPanelTitle>
-            {(globalSearchTerm || Object.keys(columnFilters).some(key => columnFilters[key])) && (
-              <ClearAllButton onClick={handleClearAllFilters}>
-                <FontAwesomeIcon icon={faEraser} />
-                Vymazat všechny filtry
-              </ClearAllButton>
-            )}
+            <ClearAllButton onClick={handleClearAllFilters}>
+              <FontAwesomeIcon icon={faEraser} />
+              Vymazat vše
+            </ClearAllButton>
           </SearchPanelHeader>
           
           <SearchInputWrapper>
@@ -3090,19 +3090,15 @@ const Invoices25List = () => {
                       )}
                     </TableCell>
                     <TableCell className="center">
-                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }}>
-                        <TooltipWrapper text="Počet příloh" preferredPosition="left">
-                          <span style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <FontAwesomeIcon icon={faPaperclip} />
-                            <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
-                          </span>
-                        </TooltipWrapper>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }} title="Počet příloh">
+                          <FontAwesomeIcon icon={faPaperclip} />
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
+                        </div>
                         {invoice.from_spisovka && (
-                          <TooltipWrapper text="Příloha vložena ze Spisovky" preferredPosition="left">
-                            <span style={{ color: '#059669', fontSize: '1rem', marginLeft: '0.15rem', cursor: 'default' }}>📄</span>
-                          </TooltipWrapper>
+                          <FontAwesomeIcon icon={faFileAlt} style={{ color: '#059669', fontSize: '0.95rem', marginLeft: '0.15rem' }} title="Příloha vložena ze Spisovky" />
                         )}
-                      </span>
+                      </div>
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>
