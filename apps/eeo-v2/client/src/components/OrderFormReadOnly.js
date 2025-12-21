@@ -578,7 +578,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
       </Section>
 
       {/* SEKCE 2: SCHVÁLENÍ NÁKUPU PO */}
-      <Section>
+      <Section data-section="schvaleni">
         <SectionHeader $theme="grey" $isActive={!collapsed.schvaleni} onClick={() => toggleSection('schvaleni')}>
           <SectionTitle $theme="grey">
             <FontAwesomeIcon icon={faClipboardCheck} />
@@ -918,7 +918,7 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
 
       {/* SEKCE 5: DETAILY OBJEDNÁVKY */}
       {orderData.polozky && orderData.polozky.length > 0 && (
-        <Section>
+        <Section data-section="detaily">
           <SectionHeader $theme="orange" $isActive={!collapsed.detaily} onClick={() => toggleSection('detaily')}>
             <SectionTitle $theme="orange">
               <FontAwesomeIcon icon={faBox} />
