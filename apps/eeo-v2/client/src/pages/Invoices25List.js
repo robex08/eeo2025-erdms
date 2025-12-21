@@ -1494,7 +1494,6 @@ const Invoices25List = () => {
       
       // 🔒 KONTROLA LOCK před přidáním faktury k objednávce
       try {
-        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (klik na číslo obj)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
@@ -1502,7 +1501,6 @@ const Invoices25List = () => {
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
         // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
         if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
-          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - zobrazuji dialog');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
@@ -1545,7 +1543,6 @@ const Invoices25List = () => {
       }
       
       // ✅ Není zamčená - přidat fakturu k objednávce
-      console.log('✅ LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' OK - přidávám FA');
       setIsCheckingLock(false); // Odemknout
       navigate('/invoice-evidence', {
         state: {
@@ -2102,7 +2099,6 @@ const Invoices25List = () => {
     // 🔒 KONTROLA LOCK před editací faktury s objednávkou
     if (invoice.objednavka_id) {
       try {
-        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (editace FA)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
@@ -2110,7 +2106,6 @@ const Invoices25List = () => {
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
         // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
         if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
-          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji editaci FA');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
@@ -2180,7 +2175,6 @@ const Invoices25List = () => {
         // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
         // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
         if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
-          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji věcnou kontrolu FA');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
