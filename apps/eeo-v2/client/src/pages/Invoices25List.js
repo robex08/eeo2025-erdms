@@ -3315,9 +3315,20 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       {invoice.vecna_spravnost_potvrzeno ? (
-                        <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a', fontSize: '1.1rem' }} title="Věcná kontrola provedena" />
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: '#64748b',
+                          fontSize: '0.8rem'
+                        }} title="Věcná správnost provedena">
+                          <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
+                        </div>
                       ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná kontrola neprovedena" />
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '1.1rem' }} title="Věcná správnost neprovedena" />
                       )}
                     </TableCell>
                     <TableCell className="center">

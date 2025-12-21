@@ -1986,24 +1986,6 @@ export default function InvoiceEvidencePage() {
         // Aktualizuj searchTerm aby zobrazoval pouze ev. číslo
         const evCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
         setSearchTerm(evCislo);
-        
-        // 🎯 Auto-scroll na konkrétní fakturu pokud se edituje
-        if (editingInvoiceId && orderData?.faktury) {
-          setTimeout(() => {
-            // Nejdřív rozbalit sekci faktur
-            if (orderFormRef.current?.expandSectionByName) {
-              orderFormRef.current.expandSectionByName('faktury');
-            }
-            
-            // Pak najít a scrollnout na konkrétní fakturu
-            setTimeout(() => {
-              const facturaElement = document.querySelector(`[data-invoice-id="${editingInvoiceId}"]`);
-              if (facturaElement) {
-                facturaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }, 200);
-          }, 300);
-        }
       } else {
         setError('Nepodařilo se načíst data objednávky');
         // Odemkni pokud se načtení nezdařilo
@@ -2022,7 +2004,7 @@ export default function InvoiceEvidencePage() {
         setOrderLoading(false);
         // Naviguj zpět na seznam faktur
         setTimeout(() => {
-          navigate('/invoices-list', { replace: true });
+          navigate('/invoices25-list', { replace: true });
         }, 1500);
         return; // ⚠️ Nevolat unlock - není naše!
       }
@@ -2183,6 +2165,20 @@ export default function InvoiceEvidencePage() {
       }));
     }
   }, [location.state?.orderIdForLoad, location.state?.smlouvaIdForLoad, token, username, loadOrderData, loadSmlouvaData]);
+
+  // 🎯 Auto-scroll na fakturu při načtení dat
+  useEffect(() => {
+    if (editingInvoiceId && orderData && !orderLoading && orderFormRef.current) {
+      // Rozbalit sekci faktur
+      orderFormRef.current.expandSectionByName?.('faktury');
+      
+      // Scroll na konkrétní fakturu
+      const facturaElement = document.querySelector(`[data-invoice-id="${editingInvoiceId}"]`);
+      if (facturaElement) {
+        facturaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [editingInvoiceId, orderData, orderLoading]);
 
   // Search objednávek a smluv pro autocomplete
   const searchEntities = useCallback(async (search) => {
@@ -5163,7 +5159,7 @@ export default function InvoiceEvidencePage() {
                       onClick={() => {
                         // Pro omezené uživatele - vrátit na seznam faktur
                         if (isReadOnlyMode) {
-                          navigate('/invoices-list');
+                          navigate('/invoices25-list');
                           return;
                         }
                         
@@ -5782,7 +5778,7 @@ export default function InvoiceEvidencePage() {
                     // Pokud je to úspěch věcné správnosti pro omezené uživatele - vrátit na seznam
                     if (progressModal.title === 'Věcná správnost uložena' && isReadOnlyMode) {
                       setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
-                      navigate('/invoices-list');
+                      navigate('/invoices25-list');
                       return;
                     }
                     
