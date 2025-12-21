@@ -2790,7 +2790,7 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader>
-                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
                 {/* Druhý řádek s filtry ve sloupcích */}
@@ -3316,7 +3316,7 @@ const Invoices25List = () => {
                           width: '24px',
                           height: '24px',
                           borderRadius: '50%',
-                          backgroundColor: '#64748b',
+                          backgroundColor: '#16a34a',
                           fontSize: '0.8rem'
                         }} title="Věcná správnost provedena">
                           <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
@@ -3371,10 +3371,11 @@ const Invoices25List = () => {
                               title={invoice.vecna_spravnost_potvrzeno ? "Změnit rozhodnutí o věcné správnosti" : "Potvrdit věcnou správnost"}
                               style={{
                                 color: '#64748b',
-                                background: 'transparent'
+                                background: 'transparent',
+                                fontSize: '0.75rem'
                               }}
                             >
-                              <FontAwesomeIcon icon={faCheck} />
+                              <FontAwesomeIcon icon={faCheckCircle} />
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
@@ -5000,7 +5001,7 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader>
-                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
                 {/* Druhý řádek s filtry ve sloupcích */}
