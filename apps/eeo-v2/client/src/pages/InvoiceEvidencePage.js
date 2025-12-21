@@ -3060,8 +3060,6 @@ export default function InvoiceEvidencePage() {
       const response = await updateInvoiceV2(editingInvoiceId, updateData, token);
 
       if (response.success) {
-        showToast && showToast('✅ Věcná správnost byla aktualizována', 'success');
-        
         // Aktualizovat originalFormData aby Cancel fungoval správně
         setOriginalFormData(prev => ({
           ...prev,
@@ -3079,6 +3077,20 @@ export default function InvoiceEvidencePage() {
           } catch (notifError) {
             console.error('❌ Chyba při odesílání notifikace:', notifError);
           }
+        }
+
+        // Pro omezené uživatele - zobrazit dialog a vrátit na seznam
+        if (isReadOnlyMode) {
+          setProgressModal({
+            show: true,
+            status: 'success',
+            title: 'Věcná správnost uložena',
+            message: 'Věcná správnost faktury byla úspěšně zaznamenána.',
+            resetData: null
+          });
+        } else {
+          // Pro uživatele s vyšším oprávněním - pouze toast
+          showToast && showToast('✅ Věcná správnost byla aktualizována', 'success');
         }
       } else {
         throw new Error(response.message || 'Nepodařilo se aktualizovat věcnou kontrolu');
@@ -3898,9 +3910,12 @@ export default function InvoiceEvidencePage() {
                     - Režim úprav #{editingInvoiceId}
                   </span>
                 )}
+              </HeaderLeft>
+              <HeaderRight>
+                {/* Badge pro readonly režim */}
                 {isReadOnlyMode && (
                   <span style={{ 
-                    marginLeft: '1rem',
+                    marginRight: '1rem',
                     background: 'rgba(255, 255, 255, 0.95)',
                     padding: '0.25rem 0.75rem',
                     borderRadius: '4px',
@@ -3912,8 +3927,6 @@ export default function InvoiceEvidencePage() {
                     POUZE PRO ČTENÍ
                   </span>
                 )}
-              </HeaderLeft>
-              <HeaderRight>
                 {/* Tlačítko zrušit úpravu - pouze v editačním režimu (ne readonly) */}
                 {editingInvoiceId && !isReadOnlyMode && (
                   <button
@@ -4904,9 +4917,12 @@ export default function InvoiceEvidencePage() {
               <HeaderLeft>
                 <FontAwesomeIcon icon={faClipboardCheck} />
                 Věcná správnost k faktuře
+              </HeaderLeft>
+              <HeaderRight>
+                {/* Badge pro omezené uživatele */}
                 {!hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS') && (
                   <span style={{ 
-                    marginLeft: '1rem',
+                    marginRight: '1rem',
                     background: '#fef3c7',
                     padding: '0.25rem 0.75rem',
                     borderRadius: '4px',
@@ -4918,8 +4934,6 @@ export default function InvoiceEvidencePage() {
                     VÁŠ ÚKOL
                   </span>
                 )}
-              </HeaderLeft>
-              <HeaderRight>
                 <CollapseButton $collapsed={!sectionStates.materialCorrectness}>
                   <FontAwesomeIcon icon={faChevronDown} />
                 </CollapseButton>
@@ -5129,7 +5143,13 @@ export default function InvoiceEvidencePage() {
                   }}>
                     <button
                       onClick={() => {
-                        // Zrušit změny věcné správnosti - vrátit na původní hodnoty
+                        // Pro omezené uživatele - vrátit na seznam faktur
+                        if (isReadOnlyMode) {
+                          navigate('/invoices');
+                          return;
+                        }
+                        
+                        // Pro uživatele s vyšším oprávněním - zrušit změny věcné správnosti
                         if (originalFormData) {
                           setFormData(prev => ({
                             ...prev,
@@ -5158,7 +5178,7 @@ export default function InvoiceEvidencePage() {
                       onMouseEnter={(e) => !loading && (e.target.style.background = '#4b5563')}
                       onMouseLeave={(e) => !loading && (e.target.style.background = '#6b7280')}
                     >
-                      Zrušit
+                      {isReadOnlyMode ? 'Opustit formulář' : 'Zrušit'}
                     </button>
                     <button
                       onClick={handleUpdateMaterialCorrectness}
@@ -5741,6 +5761,13 @@ export default function InvoiceEvidencePage() {
                 <ProgressButton 
                   variant="primary" 
                   onClick={async () => {
+                    // Pokud je to úspěch věcné správnosti pro omezené uživatele - vrátit na seznam
+                    if (progressModal.title === 'Věcná správnost uložena' && isReadOnlyMode) {
+                      setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
+                      navigate('/invoices');
+                      return;
+                    }
+                    
                     // 🎯 KROK 1: RESET příloh a editingInvoiceId NEJDŘÍV (aby useEffect nereloadoval)
                     setAttachments([]);
                     setEditingInvoiceId(null);
