@@ -3071,7 +3071,12 @@ export default function InvoiceEvidencePage() {
 
       console.log('🔄 Aktualizace věcné kontroly faktury:', editingInvoiceId, updateData);
 
-      const response = await updateInvoiceV2(editingInvoiceId, updateData, token);
+      const response = await updateInvoiceV2({
+        token,
+        username,
+        invoice_id: editingInvoiceId,
+        updateData
+      });
 
       if (response.success) {
         // Aktualizovat originalFormData aby Cancel fungoval správně
