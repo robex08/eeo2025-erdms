@@ -1986,6 +1986,24 @@ export default function InvoiceEvidencePage() {
         // Aktualizuj searchTerm aby zobrazoval pouze ev. číslo
         const evCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
         setSearchTerm(evCislo);
+        
+        // 🎯 Auto-scroll na konkrétní fakturu pokud se edituje
+        if (editingInvoiceId && orderData?.faktury) {
+          setTimeout(() => {
+            // Nejdřív rozbalit sekci faktur
+            if (orderFormRef.current?.expandSectionByName) {
+              orderFormRef.current.expandSectionByName('faktury');
+            }
+            
+            // Pak najít a scrollnout na konkrétní fakturu
+            setTimeout(() => {
+              const facturaElement = document.querySelector(`[data-invoice-id="${editingInvoiceId}"]`);
+              if (facturaElement) {
+                facturaElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }, 200);
+          }, 300);
+        }
       } else {
         setError('Nepodařilo se načíst data objednávky');
         // Odemkni pokud se načtení nezdařilo
@@ -5145,7 +5163,7 @@ export default function InvoiceEvidencePage() {
                       onClick={() => {
                         // Pro omezené uživatele - vrátit na seznam faktur
                         if (isReadOnlyMode) {
-                          navigate('/invoices');
+                          navigate('/invoices-list');
                           return;
                         }
                         
@@ -5764,7 +5782,7 @@ export default function InvoiceEvidencePage() {
                     // Pokud je to úspěch věcné správnosti pro omezené uživatele - vrátit na seznam
                     if (progressModal.title === 'Věcná správnost uložena' && isReadOnlyMode) {
                       setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
-                      navigate('/invoices');
+                      navigate('/invoices-list');
                       return;
                     }
                     

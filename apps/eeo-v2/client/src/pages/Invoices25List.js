@@ -2169,12 +2169,10 @@ const Invoices25List = () => {
   
   // Handler pro otevření dialogu věcné kontroly
   const handleOpenVecnaKontrola = async (invoice) => {
-    console.log('🔍 Otevírám dialog věcné kontroly pro fakturu:', invoice);
     
     // 🔒 KONTROLA LOCK před otevřením věcné kontroly faktury s objednávkou
     if (invoice.objednavka_id) {
       try {
-        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (věcná kontrola FA)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
@@ -2221,7 +2219,6 @@ const Invoices25List = () => {
     }
     
     // ✅ Není zamčená nebo nemá objednávku - otevři formular věcné kontroly
-    console.log('✅ LOCK Invoices25List: Obj ' + (invoice.objednavka_id ? '#' + invoice.objednavka_id : 'bez obj') + ' OK - otevírám věcnou kontrolu FA');
     
     // Navigovat na InvoiceEvidencePage s editInvoiceId a příznakem materialCorrectness
     navigate('/invoice-evidence', { 
