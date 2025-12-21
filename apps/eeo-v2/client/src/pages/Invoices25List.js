@@ -10,7 +10,7 @@ import {
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faBoltLightning, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
+  faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
   faLock, faEnvelope, faPhone, faClock
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
@@ -1351,6 +1351,13 @@ const Invoices25List = () => {
     return hasPermission && hasPermission('ADMIN');
   }, [hasPermission]);
   
+  // Právo pro věcnou kontrolu - vyžaduje OBĚ práva současně (pokud org. hierarchie neříká jinak)
+  const canConfirmVecnaKontrola = React.useMemo(() => {
+    return hasPermission && 
+           hasPermission('INVOICE_VIEW') && 
+           hasPermission('INVOICE_MATERIAL_CORRECTNESS');
+  }, [hasPermission]);
+  
   // 🎯 Floating header panel state
   const [showFloatingHeader, setShowFloatingHeader] = useState(false);
   const [columnWidths, setColumnWidths] = useState([]);
@@ -1444,6 +1451,7 @@ const Invoices25List = () => {
   // 🔒 State pro LOCK dialog system
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
+  const [isCheckingLock, setIsCheckingLock] = useState(false); // Prevent multiple clicks
   
   // State pro slide panel (náhled faktury)
   const [slidePanelOpen, setSlidePanelOpen] = useState(false);
@@ -1471,18 +1479,33 @@ const Invoices25List = () => {
   const handleLockedOrderCancel = () => {
     setShowLockedOrderDialog(false);
     setLockedOrderInfo(null);
+    setIsCheckingLock(false); // Odemknout pro další pokus
   };
   
   const handleAddInvoiceToEntity = async (invoice) => {
+    // ⚠️ Zabránit vícenásobnému kliknutí
+    if (isCheckingLock) {
+      console.log('⚠️ Už probíhá kontrola LOCK, ignoruji další klik');
+      return;
+    }
+    
     if (invoice.objednavka_id) {
+      setIsCheckingLock(true); // Zamknout funkci
+      
       // 🔒 KONTROLA LOCK před přidáním faktury k objednávce
       try {
-        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (přidání FA)');
+        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (klik na číslo obj)');
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
-        if (orderCheck?.lock_info?.locked === true) {
-          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji přidání FA');
+        // 🔍 DEBUG: Celý lock_info objekt
+        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
+          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - zobrazuji dialog');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
           
@@ -1497,14 +1520,36 @@ const Invoices25List = () => {
             orderId: invoice.objednavka_id
           });
           setShowLockedOrderDialog(true);
-          return;
+          setIsCheckingLock(false); // Odemknout
+          return; // ⚠️ NEPOKRAČUJ - nepřecházej na jinou stránku!
         }
       } catch (err) {
-        console.warn('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog, NEPŘECHÁZEJ na stránku
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        console.error('⚠️ Error details:', err);
+        
+        // Pro VŠECHNY chyby zobraz dialog s informací
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        console.log('🔒 Zobrazuji LOCK dialog s chybou');
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        setIsCheckingLock(false); // Odemknout
+        return; // ⚠️ VŽDY ukonči - NIKDY nenaviguj při chybě
       }
       
       // ✅ Není zamčená - přidat fakturu k objednávce
       console.log('✅ LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' OK - přidávám FA');
+      setIsCheckingLock(false); // Odemknout
       navigate('/invoice-evidence', {
         state: {
           orderIdForLoad: invoice.objednavka_id
@@ -2064,7 +2109,13 @@ const Invoices25List = () => {
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
         
-        if (orderCheck?.lock_info?.locked === true) {
+        // 🔍 DEBUG: Celý lock_info objekt
+        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
           console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji editaci FA');
           const lockInfo = orderCheck.lock_info;
           const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
@@ -2083,7 +2134,23 @@ const Invoices25List = () => {
           return;
         }
       } catch (err) {
-        console.warn('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog, NEPŘECHÁZEJ na stránku
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        return; // ⚠️ VŽDY ukonči - NIKDY nenaviguj při chybě
       }
     }
     
@@ -2104,6 +2171,66 @@ const Invoices25List = () => {
       isOpen: true,
       invoice
     });
+  };
+  
+  // Handler pro otevření dialogu věcné kontroly
+  const handleOpenVecnaKontrola = async (invoice) => {
+    console.log('🔍 Otevírám dialog věcné kontroly pro fakturu:', invoice);
+    
+    // 🔒 KONTROLA LOCK před otevřením věcné kontroly faktury s objednávkou
+    if (invoice.objednavka_id) {
+      try {
+        console.log('🔍 LOCK Invoices25List: Kontroluji obj #' + invoice.objednavka_id + ' (věcná kontrola FA)');
+        const { getOrderV2 } = await import('../services/apiOrderV2');
+        const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
+        
+        // 🔍 DEBUG: Celý lock_info objekt
+        console.log('🔍 LOCK_INFO:', JSON.stringify(orderCheck?.lock_info, null, 2));
+        
+        // ⚠️ DŮLEŽITÉ: Blokuj pouze pokud je locked === true (zamčená JINÝM uživatelem)
+        // Pokud is_owned_by_me === true, NEPŘERUŠUJ (můžu pokračovat)
+        // Pokud is_expired === true, NEPŘERUŠUJ (zámek vypršel po 15 minutách)
+        if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
+          console.log('🔒 LOCK Invoices25List: Obj #' + invoice.objednavka_id + ' je ZAMČENÁ - blokuji věcnou kontrolu FA');
+          const lockInfo = orderCheck.lock_info;
+          const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+          
+          // Ulož info o zamčení
+          setLockedOrderInfo({
+            lockedByUserName,
+            lockedByUserEmail: lockInfo.locked_by_user_email || null,
+            lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+            lockedAt: lockInfo.locked_at || null,
+            lockAgeMinutes: lockInfo.lock_age_minutes || null,
+            canForceUnlock: false, // V invoice listu neumozňujeme force unlock
+            orderId: invoice.objednavka_id
+          });
+          setShowLockedOrderDialog(true);
+          return; // Přeruš otevírání dialogu věcné kontroly
+        }
+      } catch (err) {
+        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog
+        console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
+        
+        const lockInfo = {
+          lockedByUserName: 'Nedostupné',
+          lockedByUserEmail: null,
+          lockedByUserTelefon: null,
+          lockedAt: null,
+          lockAgeMinutes: null,
+          canForceUnlock: false,
+          orderId: invoice.objednavka_id,
+          errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
+        };
+        
+        setLockedOrderInfo(lockInfo);
+        setShowLockedOrderDialog(true);
+        return; // ⚠️ VŽDY ukonči
+      }
+    }
+    
+    // TODO: Implementovat dialog věcné kontroly podle požadavků uživatele
+    showToast?.('Dialog věcné kontroly bude implementován podle Vašich požadavků', { type: 'info' });
   };
   
   const confirmDeleteInvoice = async (hardDelete = false) => {
@@ -2252,10 +2379,12 @@ const Invoices25List = () => {
 
         {/* Action Bar - hlavní */}
         <ActionBar>
-          <ActionButton $primary onClick={handleNavigateToEvidence}>
-            <FontAwesomeIcon icon={faPlus} />
-            Zaevidovat fakturu
-          </ActionButton>
+          {canManageInvoices && (
+            <ActionButton $primary onClick={handleNavigateToEvidence}>
+              <FontAwesomeIcon icon={faPlus} />
+              Zaevidovat fakturu
+            </ActionButton>
+          )}
           
           {!showDashboard && (
             <TooltipWrapper text="Zobrazit přehledový dashboard s grafy" preferredPosition="bottom">
@@ -2670,7 +2799,7 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader>
-                    <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#fbbf24' }} />
+                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
                 {/* Druhý řádek s filtry ve sloupcích */}
@@ -3207,19 +3336,47 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>
-                        <TooltipWrapper text={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
-                          <ActionMenuButton
-                            className={invoice.zaplacena ? "paid" : "unpaid"}
-                            onClick={() => handleTogglePaymentStatus(invoice)}
-                            title={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
-                            style={{
-                              color: invoice.zaplacena ? '#16a34a' : '#dc2626',
-                              background: 'transparent'
-                            }}
+                        {/* Ikona "Zaplaceno" - jen pro INVOICE_MANAGE nebo ADMIN */}
+                        {(canManageInvoices || isAdmin) && (
+                          <TooltipWrapper text={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
+                            <ActionMenuButton
+                              className={invoice.zaplacena ? "paid" : "unpaid"}
+                              onClick={() => handleTogglePaymentStatus(invoice)}
+                              title={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
+                              style={{
+                                color: invoice.zaplacena ? '#16a34a' : '#dc2626',
+                                background: 'transparent'
+                              }}
+                            >
+                              <FontAwesomeIcon icon={invoice.zaplacena ? faCheckCircle : faMoneyBillWave} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
+                        
+                        {/* Ikona věcné kontroly - jen pro uživatele s INVOICE_VIEW + INVOICE_MATERIAL_CORRECTNESS */}
+                        {canConfirmVecnaKontrola && !canManageInvoices && !isAdmin && (
+                          <TooltipWrapper 
+                            text={
+                              invoice.vecna_spravnost_potvrzeno 
+                                ? `Věcná správnost potvrzena - kliknutím můžete změnit rozhodnutí` 
+                                : "Potvrdit věcnou správnost faktury"
+                            } 
+                            preferredPosition="left"
                           >
-                            <FontAwesomeIcon icon={invoice.zaplacena ? faCheckCircle : faMoneyBillWave} />
-                          </ActionMenuButton>
-                        </TooltipWrapper>
+                            <ActionMenuButton 
+                              className="edit"
+                              onClick={() => handleOpenVecnaKontrola(invoice)}
+                              title={invoice.vecna_spravnost_potvrzeno ? "Změnit rozhodnutí o věcné správnosti" : "Potvrdit věcnou správnost"}
+                              style={{
+                                color: '#64748b',
+                                background: 'transparent'
+                              }}
+                            >
+                              <FontAwesomeIcon icon={faCheck} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
+                        
                         <TooltipWrapper text="Zobrazit detail" preferredPosition="left">
                           <ActionMenuButton 
                             className="view"
@@ -3532,15 +3689,28 @@ const Invoices25List = () => {
           showCancel={false}
         >
           <InfoText>
-            Objednávka je aktuálně editována uživatelem:
+            {lockedOrderInfo.errorMessage ? (
+              // Zobraz chybovou zprávu pokud je k dispozici
+              <>
+                <strong>Objednávka není dostupná:</strong>
+                <br />
+                {lockedOrderInfo.errorMessage}
+              </>
+            ) : (
+              // Standardní zpráva o zamčení
+              <>Objednávka je aktuálně editována uživatelem:</>
+            )}
           </InfoText>
-          <UserInfo>
-            <strong>{lockedOrderInfo.lockedByUserName}</strong>
-          </UserInfo>
+          
+          {!lockedOrderInfo.errorMessage && (
+            <>
+              <UserInfo>
+                <strong>{lockedOrderInfo.lockedByUserName}</strong>
+              </UserInfo>
 
-          {/* Kontaktní údaje */}
-          {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
-            <ContactInfo>
+              {/* Kontaktní údaje */}
+              {(lockedOrderInfo.lockedByUserEmail || lockedOrderInfo.lockedByUserTelefon) && (
+                <ContactInfo>
               {lockedOrderInfo.lockedByUserEmail && (
                 <ContactItem>
                   <FontAwesomeIcon icon={faEnvelope} />
@@ -3569,11 +3739,15 @@ const Invoices25List = () => {
               Zamčeno před {lockedOrderInfo.lockAgeMinutes} {lockedOrderInfo.lockAgeMinutes === 1 ? 'minutou' : lockedOrderInfo.lockAgeMinutes < 5 ? 'minutami' : 'minutami'}
             </LockTimeInfo>
           )}
+            </>
+          )}
 
-          <InfoText>
-            Fakturu/objednávku nelze upravovat, dokud ji má otevřenou jiný uživatel.
-            Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
-          </InfoText>
+          {!lockedOrderInfo.errorMessage && (
+            <InfoText>
+              Fakturu/objednávku nelze upravovat, dokud ji má otevřenou jiný uživatel.
+              Prosím, kontaktujte uživatele výše a požádejte ho o uložení a zavření objednávky.
+            </InfoText>
+          )}
         </ConfirmDialog>
       )}
       
@@ -4824,7 +4998,7 @@ const Invoices25List = () => {
                     )}
                   </TableHeader>
                   <TableHeader>
-                    <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#fbbf24' }} />
+                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
                 {/* Druhý řádek s filtry ve sloupcích */}

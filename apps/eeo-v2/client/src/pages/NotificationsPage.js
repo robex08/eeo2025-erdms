@@ -1330,7 +1330,8 @@ export const NotificationsPage = () => {
               }
 
               // Kontrola zamčení - pokud je locked: true, je zamčená JINÝM uživatelem
-              if (dbOrder.lock_info?.locked === true) {
+              // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired (>15 min)
+              if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
                 const lockInfo = dbOrder.lock_info;
                 const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 

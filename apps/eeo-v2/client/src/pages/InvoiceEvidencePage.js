@@ -1897,10 +1897,29 @@ export default function InvoiceEvidencePage() {
         await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
       }
     } catch (err) {
+      console.error('❌ Chyba při načítání objednávky:', err);
+      
+      // 🔒 Pokud je objednávka zamčená (423), naviguj ZPĚT a zobraz toast
+      const is423Error = err?.response?.status === 423 || err?.message?.includes('423') || err?.message?.includes('zamčen');
+      
+      if (is423Error) {
+        console.log('🔒 Objednávka je zamčená, naviguji zpět na seznam faktur');
+        setError('Objednávka je zamčená jiným uživatelem');
+        showToast && showToast('Objednávka je zamčená jiným uživatelem', 'error');
+        setOrderLoading(false);
+        // Naviguj zpět na seznam faktur
+        setTimeout(() => {
+          navigate('/invoices-list', { replace: true });
+        }, 1500);
+        return; // ⚠️ Nevolat unlock - není naše!
+      }
+      
       setError(err.message || 'Chyba při načítání objednávky');
       showToast && showToast(err.message || 'Chyba při načítání objednávky', 'error');
-      // Odemkni při jakékoliv chybě
-      await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
+      // ⚠️ Odemkni POUZE pokud to NENÍ 423 (lock error)
+      if (!is423Error) {
+        await unlockOrderV2({ orderId: orderIdToLoad, token, username }).catch(e => console.warn('⚠️ Unlock failed:', e));
+      }
     } finally {
       setOrderLoading(false);
     }
@@ -1982,7 +2001,8 @@ export default function InvoiceEvidencePage() {
         try {
           const orderCheck = await getOrderV2(orderIdForLoad, token, username, false);
           
-          if (orderCheck?.lock_info?.locked === true) {
+          // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+          if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
             const lockInfo = orderCheck.lock_info;
             const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
             
@@ -2277,7 +2297,8 @@ export default function InvoiceEvidencePage() {
     try {
       const orderCheck = await getOrderV2(order.id, token, username, false); // false = bez enriched dat
       
-      if (orderCheck?.lock_info?.locked === true) {
+      // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+      if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
         const lockInfo = orderCheck.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 
@@ -2313,7 +2334,8 @@ export default function InvoiceEvidencePage() {
     try {
       const orderCheck = await getOrderV2(order.id, token, username, false);
       
-      if (orderCheck?.lock_info?.locked === true) {
+      // ⚠️ Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+      if (orderCheck?.lock_info?.locked === true && !orderCheck?.lock_info?.is_owned_by_me && !orderCheck?.lock_info?.is_expired) {
         const lockInfo = orderCheck.lock_info;
         const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
 
