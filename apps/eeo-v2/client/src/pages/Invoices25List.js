@@ -20,6 +20,7 @@ import { TooltipWrapper } from '../styles/GlobalTooltip';
 import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
+import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 
 // =============================================================================
@@ -2229,6 +2230,51 @@ const Invoices25List = () => {
       } 
     });
   };
+
+  // Handle quick vecna kontrola toggle from status select
+  const handleConfirmVecnaKontrola = async (invoice, verified) => {
+    if (!invoice) return;
+    
+    try {
+      showProgress?.('Aktualizuji věcnou správnost...');
+      
+      await updateInvoiceV2({
+        token,
+        username,
+        invoice_id: invoice.id,
+        updateData: {
+          vecna_spravnost_potvrzeno: verified ? 1 : 0,
+          potvrdil_vecnou_spravnost_id: verified ? null : null, // Backend automaticky doplní current user
+          dt_potvrzeni_vecne_spravnosti: verified ? new Date().toISOString() : null
+        }
+      });
+      
+      // Lokální update faktury
+      setInvoices(prevInvoices => 
+        prevInvoices.map(inv => 
+          inv.id === invoice.id 
+            ? { ...inv, vecna_spravnost_potvrzeno: verified ? 1 : 0 }
+            : inv
+        )
+      );
+      
+      showToast?.(
+        verified 
+          ? `Věcná správnost faktury ${invoice.cislo_faktury} byla potvrzena ✅` 
+          : `Potvrzení věcné správnosti faktury ${invoice.cislo_faktury} bylo zrušeno`,
+        { type: 'success' }
+      );
+      
+      // Obnovit seznam
+      loadData();
+      
+    } catch (err) {
+      console.error('Error updating vecna kontrola:', err);
+      showToast?.(translateErrorMessage(err?.message) || 'Chyba při aktualizaci věcné správnosti', { type: 'error' });
+    } finally {
+      hideProgress?.();
+    }
+  };
   
   const confirmDeleteInvoice = async (hardDelete = false) => {
     const { invoice } = deleteDialog;
@@ -2275,6 +2321,47 @@ const Invoices25List = () => {
   };
 
   // Handle payment status toggle (open dialog only for unpaid change)
+  // Handle invoice status change (workflow state)
+  const handleStatusChange = async (invoice, newStatus) => {
+    if (!invoice || !newStatus) return;
+    
+    try {
+      showProgress?.(`Měním stav faktury na ${newStatus}...`);
+      
+      await updateInvoiceV2({
+        token,
+        username,
+        invoice_id: invoice.id,
+        updateData: {
+          stav: newStatus
+        }
+      });
+      
+      // Lokální update faktury
+      setInvoices(prevInvoices => 
+        prevInvoices.map(inv => 
+          inv.id === invoice.id 
+            ? { ...inv, stav: newStatus }
+            : inv
+        )
+      );
+      
+      showToast?.(
+        `Stav faktury ${invoice.cislo_faktury} byl změněn`, 
+        { type: 'success' }
+      );
+      
+      // Obnovit seznam pro jistotu
+      loadData();
+      
+    } catch (err) {
+      console.error('Error updating invoice status:', err);
+      showToast?.(translateErrorMessage(err?.message) || 'Chyba při aktualizaci stavu faktury', { type: 'error' });
+    } finally {
+      hideProgress?.();
+    }
+  };
+
   const handleTogglePaymentStatus = (invoice) => {
     // Use transformed 'zaplacena' field which is boolean
     const currentlyPaid = invoice.zaplacena;
@@ -3245,10 +3332,14 @@ const Invoices25List = () => {
                       <strong>{formatCurrency(invoice.castka)}</strong>
                     </TableCell>
                     <TableCell className="center">
-                      <StatusBadge $status={invoice.status}>
-                        <FontAwesomeIcon icon={getStatusIcon(invoice.status)} />
-                        {getStatusLabel(invoice.status)}
-                      </StatusBadge>
+                      <InvoiceStatusSelect 
+                        currentStatus={invoice.stav || 'ZAEVIDOVANA'}
+                        dueDate={invoice.datum_splatnosti}
+                        isVerified={invoice.vecna_spravnost_potvrzeno === 1}
+                        onStatusChange={(newStatus) => handleStatusChange(invoice, newStatus)}
+                        onVerifyToggle={(verified) => handleConfirmVecnaKontrola(invoice, verified)}
+                        disabled={!canManageInvoices && !isAdmin}
+                      />
                     </TableCell>
                     <TableCell>
                       {invoice.vytvoril_uzivatel_zkracene ? (
