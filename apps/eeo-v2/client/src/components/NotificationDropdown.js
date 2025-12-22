@@ -219,7 +219,7 @@ const NotificationContent = styled.div`
 
 const NotificationTitle = styled.div`
   font-weight: ${props => props.$isUnread ? 700 : 400};
-  color: ${props => props.$isUnread ? '#111827' : '#374151'};
+  color: ${props => props.$isUnread ? '#111827' : '#6b7280'};
   font-size: 14px;
   line-height: 1.4;
   margin-bottom: 4px;
