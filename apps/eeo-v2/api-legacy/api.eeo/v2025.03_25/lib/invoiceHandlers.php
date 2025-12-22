@@ -1333,20 +1333,33 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = $filters['filter_datum_splatnosti'];
         }
         
-        // Filtr: filter_stav (sloupcový filtr stavu - paid/unpaid/overdue)
+        // Filtr: filter_stav (sloupcový filtr stavu workflow)
         // POZNÁMKA: Toto je sloupcový filtr, ne dashboard filter_status!
+        // Podporuje nové workflow stavy: ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, STORNO
         if (isset($filters['filter_stav']) && !empty($filters['filter_stav'])) {
-            $filter_stav = trim($filters['filter_stav']);
-            switch ($filter_stav) {
-                case 'paid':
-                    $where_conditions[] = 'f.fa_zaplacena = 1';
-                    break;
-                case 'unpaid':
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
-                    break;
-                case 'overdue':
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
-                    break;
+            $filter_stav = strtoupper(trim($filters['filter_stav']));
+            
+            // Workflow stavy - přesná shoda ENUM hodnoty
+            $valid_workflow_states = array('ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'STORNO');
+            if (in_array($filter_stav, $valid_workflow_states)) {
+                $where_conditions[] = 'f.stav = ?';
+                $params[] = $filter_stav;
+                error_log("Invoices25 LIST: Applying filter_stav workflow = " . $filter_stav);
+            }
+            // Zpětná kompatibilita se starými hodnotami (paid/unpaid/overdue)
+            else {
+                $filter_stav_lower = strtolower($filter_stav);
+                switch ($filter_stav_lower) {
+                    case 'paid':
+                        $where_conditions[] = 'f.fa_zaplacena = 1';
+                        break;
+                    case 'unpaid':
+                        $where_conditions[] = 'f.fa_zaplacena = 0 AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
+                        break;
+                    case 'overdue':
+                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
+                        break;
+                }
             }
         }
         
@@ -1506,7 +1519,8 @@ function handle_invoices25_list($input, $config, $queries) {
                 'LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?',  // Předáno zaměstnanci ✅ PŘIDÁNO
                 'LOWER(f.fa_poznamka) LIKE ?',                // Poznámka
                 'LOWER(f.fa_strediska_kod) LIKE ?',           // Střediska (JSON jako text)
-                'LOWER(f.fa_typ) LIKE ?'                      // Typ faktury ✅ PŘIDÁNO
+                'LOWER(f.fa_typ) LIKE ?',                     // Typ faktury ✅ PŘIDÁNO
+                'LOWER(f.stav) LIKE ?'                        // Workflow stav ✅ PŘIDÁNO
             );
             
             // Přidání parametrů pro každou search podmínku
@@ -1517,7 +1531,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Spojení všech search podmínek jako OR a přidání jako AND do hlavních podmínek
             $where_conditions[] = '(' . implode(' OR ', $search_conditions) . ')';
             
-            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (12 fields)");
+            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (13 fields)");
         }
 
         // Sestavení WHERE klauzule

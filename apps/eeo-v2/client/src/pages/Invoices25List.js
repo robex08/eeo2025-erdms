@@ -3017,7 +3017,7 @@ const Invoices25List = () => {
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr */}
+                  {/* Stav - select filtr pro workflow stavy */}}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
                       value={columnFilters.stav || ''}
@@ -3031,10 +3031,14 @@ const Invoices25List = () => {
                         backgroundColor: 'white'
                       }}
                     >
-                      <option value="">Vše</option>
-                      <option value="paid">Zaplaceno</option>
-                      <option value="unpaid">Nezaplaceno</option>
-                      <option value="overdue">Po splatnosti</option>
+                      <option value="">Všechny stavy</option>
+                      <option value="ZAEVIDOVANA">Zaevidovaná</option>
+                      <option value="VECNA_SPRAVNOST">Věcná správnost</option>
+                      <option value="PREDANA_PO">Předaná PO</option>
+                      <option value="V_RESENI">V řešení</option>
+                      <option value="K_ZAPLACENI">K zaplacení</option>
+                      <option value="ZAPLACENO">Zaplaceno</option>
+                      <option value="STORNO">Storno</option>
                     </select>
                   </TableHeader>
                   {/* Zaevidoval - filtr uživatele */}
@@ -5230,7 +5234,7 @@ const Invoices25List = () => {
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr */}
+                  {/* Stav - select filtr pro workflow stavy */}}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
                       value={columnFilters.stav || ''}
@@ -5244,10 +5248,14 @@ const Invoices25List = () => {
                         backgroundColor: 'white'
                       }}
                     >
-                      <option value="">Vše</option>
-                      <option value="paid">Zaplaceno</option>
-                      <option value="unpaid">Nezaplaceno</option>
-                      <option value="overdue">Po splatnosti</option>
+                      <option value="">Všechny stavy</option>
+                      <option value="ZAEVIDOVANA">Zaevidovaná</option>
+                      <option value="VECNA_SPRAVNOST">Věcná správnost</option>
+                      <option value="PREDANA_PO">Předaná PO</option>
+                      <option value="V_RESENI">V řešení</option>
+                      <option value="K_ZAPLACENI">K zaplacení</option>
+                      <option value="ZAPLACENO">Zaplaceno</option>
+                      <option value="STORNO">Storno</option>
                     </select>
                   </TableHeader>
                   {/* Zaevidoval - filtr uživatele */}
