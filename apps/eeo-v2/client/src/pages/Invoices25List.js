@@ -2337,7 +2337,7 @@ const Invoices25List = () => {
         }
       });
       
-      // Lokální update faktury
+      // Lokální update faktury - optimistický update
       setInvoices(prevInvoices => 
         prevInvoices.map(inv => 
           inv.id === invoice.id 
@@ -2351,12 +2351,11 @@ const Invoices25List = () => {
         { type: 'success' }
       );
       
-      // Obnovit seznam pro jistotu
-      loadData();
-      
     } catch (err) {
       console.error('Error updating invoice status:', err);
       showToast?.(translateErrorMessage(err?.message) || 'Chyba při aktualizaci stavu faktury', { type: 'error' });
+      // Při chybě obnov data ze serveru
+      loadData();
     } finally {
       hideProgress?.();
     }
