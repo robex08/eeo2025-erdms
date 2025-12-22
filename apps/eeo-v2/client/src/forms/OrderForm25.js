@@ -12812,7 +12812,7 @@ function OrderForm25() {
         size: file.size,
         type: file.type,
         klasifikace: '', // Bude se vybírat uživatelem - po výběru se nahraje na server
-        uploadDate: metadata.createdAt,
+        uploadDate: metadata.uploaded_at || new Date().toISOString(),
         status: 'pending_classification', // Čeká na klasifikaci
         file: file, // Pro budoucí upload po klasifikaci
         uploadError: null,
@@ -12894,7 +12894,7 @@ function OrderForm25() {
         type: file.type,
         klasifikace: 'JINE', // ✅ Automatická klasifikace jako "JINE"
         file_prefix: 'dd-', // ✅ Prefix pro dodatečné dokumenty
-        uploadDate: metadata.createdAt,
+        uploadDate: metadata.uploaded_at || new Date().toISOString(),
         status: 'pending_upload', // ✅ Ready k uploadu (má již klasifikaci)
         file: file,
         uploadError: null,
@@ -13080,8 +13080,30 @@ function OrderForm25() {
       // ✅ LOKÁLNÍ SOUBOR - Standardní chování pro nahrání na server
 
       // Pokud je klasifikace nastavena a objednávka je uložená, nahraj soubor na server
-      if (klasifikace && klasifikace.trim() !== '' && formData.id && token && username) {
-        // ✅ Použij původní file_prefix souboru místo hardcoded 'obj-'
+      if (klasifikace && klasifikace.trim() !== '') {
+        if (!formData.id) {
+          // Objednávka není uložená - zobraz varování
+          addDebugLog('warning', 'ATTACHMENTS', 'upload-blocked', 
+            `Nelze nahrát ${file.name} - objednávka není uložená`);
+          
+          showToast && showToast(
+            `⚠️ Nelze nahrát přílohu\n\n` +
+            `📄 Soubor: ${file.name}\n` +
+            `🏷️ Klasifikace nastavena: ${klasifikace}\n\n` +
+            `💡 Nejprve ulož objednávku, pak se přílohy automaticky nahrají`, 
+            { type: 'warning', timeout: 6000 }
+          );
+          return;
+        }
+        
+        if (!token || !username) {
+          addDebugLog('error', 'ATTACHMENTS', 'upload-blocked', 
+            `Nelze nahrát ${file.name} - chybí token nebo username`);
+          showToast && showToast('❌ Chyba autentizace - nelze nahrát přílohu', { type: 'error' });
+          return;
+        }
+        
+        // ✅ Vše OK - zahaj upload
         const filePrefix = file.file_prefix || 'obj-';
         await uploadFileToServer25(fileId, klasifikace, filePrefix);
       }
@@ -13091,7 +13113,28 @@ function OrderForm25() {
   // Upload souboru na server Orders25 po klasifikaci
   const uploadFileToServer25 = async (fileId, klasifikace, filePrefix = 'obj-') => {
     const file = formData.prilohy_dokumenty?.find(f => f.id === fileId);
-    if (!file || !file.file || file.status === 'uploaded') {
+    
+    if (!file) {
+      addDebugLog('error', 'ATTACHMENTS', 'upload-no-file', 
+        `Soubor s ID ${fileId} nebyl nalezen v prilohy_dokumenty`);
+      return;
+    }
+    
+    if (!file.file) {
+      addDebugLog('error', 'ATTACHMENTS', 'upload-no-file-object', 
+        `Soubor ${file.name} nemá File objekt - možná již byl nahrán nebo ztracen`);
+      showToast && showToast(
+        `⚠️ Nelze nahrát "${file.name}"\n\n` +
+        `Soubor nemá přiřazený File objekt.\n` +
+        `Zkuste soubor znovu vybrat.`, 
+        { type: 'warning', timeout: 5000 }
+      );
+      return;
+    }
+    
+    if (file.status === 'uploaded') {
+      addDebugLog('info', 'ATTACHMENTS', 'already-uploaded', 
+        `Soubor ${file.name} je již nahrán na serveru`);
       return;
     }
 
@@ -13889,7 +13932,7 @@ function OrderForm25() {
 
       // Status a metadata
       status: 'uploaded',
-      uploadDate: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || new Date().toISOString(),
+      uploadDate: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || attachment.dt_aktualizace || null,
       serverGuid: attachment.guid,
       fromServer: true
     };
@@ -24572,7 +24615,12 @@ function OrderForm25() {
                                 alignItems: 'center',
                                 gap: '0.5rem'
                               }}>
-                                <span>{formatDateOnly(new Date(file.uploadDate))} {new Date(file.uploadDate).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>
+                                  {file.uploadDate && !isNaN(new Date(file.uploadDate).getTime()) 
+                                    ? `${formatDateOnly(new Date(file.uploadDate))} ${new Date(file.uploadDate).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Datum neuvedeno'
+                                  }
+                                </span>
                                 <span>•</span>
                                 <span style={{
                                   textTransform: 'uppercase',
