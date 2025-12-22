@@ -1817,6 +1817,9 @@ const Invoices25List = () => {
         dorucena: invoice.fa_dorucena === 1 || invoice.fa_dorucena === true,
         zaplacena: invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true, // ✅ NOVÉ pole
         
+        // Workflow stav (ENUM hodnota z DB)
+        stav: invoice.stav || 'ZAEVIDOVANA', // ✅ Workflow stav faktury
+        
         // ✅ BE už vrací naparsovaná pole - použít přímo!
         strediska_kod: Array.isArray(invoice.fa_strediska_kod) ? invoice.fa_strediska_kod : [],
         poznamka: invoice.fa_poznamka || '',
