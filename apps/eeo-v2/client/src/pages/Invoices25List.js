@@ -2308,6 +2308,8 @@ const Invoices25List = () => {
   const performStatusChange = async (invoice, newStatus) => {
     if (!invoice || !newStatus) return;
     
+    const currentStatus = invoice.stav || 'ZAEVIDOVANA';
+    
     try {
       showProgress?.(`Měním stav faktury na ${newStatus}...`);
       
@@ -2322,11 +2324,26 @@ const Invoices25List = () => {
       
       // Lokální update faktury - optimistický update
       setInvoices(prevInvoices => 
-        prevInvoices.map(inv => 
-          inv.id === invoice.id 
-            ? { ...inv, stav: newStatus }
-            : inv
-        )
+        prevInvoices.map(inv => {
+          if (inv.id === invoice.id) {
+            const updates = { stav: newStatus };
+            
+            // Pokud měníme Z ZAPLACENO na jiný stav -> zrušit fa_zaplacena flag
+            if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+              updates.zaplacena = false;
+              updates.fa_zaplacena = false;
+            }
+            
+            // Pokud měníme NA ZAPLACENO -> nastavit fa_zaplacena flag
+            if (newStatus === 'ZAPLACENO') {
+              updates.zaplacena = true;
+              updates.fa_zaplacena = true;
+            }
+            
+            return { ...inv, ...updates };
+          }
+          return inv;
+        })
       );
       
       showToast?.(
@@ -2369,14 +2386,27 @@ const Invoices25List = () => {
     try {
       showProgress?.('Aktualizuji stav platby...');
       
+      const updateData = {
+        fa_zaplacena: newStatus ? 1 : 0,
+        fa_datum_uhrazeni: newStatus ? new Date().toISOString().split('T')[0] : null
+      };
+      
+      // 🔄 Synchronizace workflow stavu s platbou
+      if (newStatus) {
+        // Nastavuji na ZAPLACENO → workflow stav = ZAPLACENO
+        updateData.stav = 'ZAPLACENO';
+      } else {
+        // Zrušuji ZAPLACENO → pokud je workflow stav ZAPLACENO, vrátit na K_ZAPLACENI
+        if (invoice.stav === 'ZAPLACENO') {
+          updateData.stav = 'K_ZAPLACENI';
+        }
+      }
+      
       await updateInvoiceV2({
         token,
         username,
         invoice_id: invoice.id,
-        updateData: {
-          fa_zaplacena: newStatus ? 1 : 0,
-          fa_datum_uhrazeni: newStatus ? new Date().toISOString().split('T')[0] : null
-        }
+        updateData
       });
       
       showToast?.(
