@@ -1969,10 +1969,22 @@ export function createAttachmentMetadata(file) {
  */
 export function isAllowedFileType(filename) {
   const allowedExtensions = [
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt',
-    'jpg', 'jpeg', 'png', 'gif', 'bmp',
-    'zip', 'rar', '7z',
-    'csv', 'xml', 'json'
+    // Dokumenty
+    'pdf', 'doc', 'docx', 'rtf', 'odt',
+    // Tabulky
+    'xls', 'xlsx', 'ods', 'csv',
+    // Prezentace
+    'ppt', 'pptx', 'odp',
+    // Text
+    'txt', 'md',
+    // Obrázky
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+    // Archivy
+    'zip', 'rar', '7z', 'tar', 'gz',
+    // Emailové zprávy
+    'eml', 'msg',
+    // Data
+    'xml', 'json'
   ];
   
   const extension = filename.split('.').pop()?.toLowerCase();

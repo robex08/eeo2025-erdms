@@ -116,7 +116,9 @@ function validate_order_v2_file_upload($config, $file_data) {
             // Obrázky
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
             // Archivy
-            'zip', 'rar', '7z', 'tar', 'gz'
+            'zip', 'rar', '7z', 'tar', 'gz',
+            // Emailové zprávy
+            'eml', 'msg'
         );
     
     // Maximální velikost souboru
@@ -207,12 +209,12 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
         
         // Kontrola existence objednávky
         $stmt = $db->prepare("SELECT id FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1");
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-
-    }
+        $numeric_order_id = intval($order_id);
+        if (strpos($order_id, "draft_") === 0) {
+            http_response_code(422);
+            echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
+            return;
+        }
         $stmt->bindValue(":id", $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
@@ -295,11 +297,25 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
         
         $attachment_id = $db->lastInsertId();
         
-        // Načtení dt_vytvoreni a dt_aktualizace z DB
-        $selectStmt = $db->prepare("SELECT dt_vytvoreni, dt_aktualizace FROM " . get_order_attachments_table_name() . " WHERE id = :id");
+        // Načtení dt_vytvoreni, dt_aktualizace a informací o uživateli z DB
+        $selectStmt = $db->prepare("
+            SELECT a.dt_vytvoreni, a.dt_aktualizace, 
+                   u.jmeno AS nahrano_uzivatel_jmeno,
+                   u.prijmeni AS nahrano_uzivatel_prijmeni
+            FROM " . get_order_attachments_table_name() . " a
+            LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+            WHERE a.id = :id
+        ");
         $selectStmt->bindValue(':id', $attachment_id, PDO::PARAM_INT);
         $selectStmt->execute();
-        $timestamps = $selectStmt->fetch(PDO::FETCH_ASSOC);
+        $data = $selectStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Sestavení informací o uživateli
+        $nahrano_uzivatel = array(
+            'id' => (int)$token_data['id'],
+            'jmeno' => $data ? $data['nahrano_uzivatel_jmeno'] : null,
+            'prijmeni' => $data ? $data['nahrano_uzivatel_prijmeni'] : null
+        );
         
         // Úspěšná odpověď
         echo json_encode(array(
@@ -314,8 +330,10 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
                 'file_size' => $velikost,
                 'type' => $typ_prilohy,
                 'upload_path' => $finalFileName, // Relativní cesta pro FE
-                'created_at' => $timestamps ? $timestamps['dt_vytvoreni'] : null,
-                'updated_at' => $timestamps ? $timestamps['dt_aktualizace'] : null
+                'created_at' => $data ? $data['dt_vytvoreni'] : null,
+                'updated_at' => $data ? $data['dt_aktualizace'] : null,
+                'uploaded_by_user_id' => (int)$token_data['id'],
+                'nahrano_uzivatel' => $nahrano_uzivatel
             ),
             'message' => 'Příloha byla úspěšně nahrána',
             'meta' => array(
@@ -387,12 +405,6 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
         
         // Kontrola existence objednávky
         $stmt = $db->prepare("SELECT id FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1");
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-        return;
-    }
         $stmt->bindValue(":id", $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
@@ -402,20 +414,17 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
             return;
         }
         
-        // Načtení příloh
-        $sql = "SELECT id, guid, typ_prilohy, originalni_nazev_souboru, 
-                       velikost_souboru_b, systemova_cesta, dt_vytvoreni, nahrano_uzivatel_id
-                FROM " . get_order_attachments_table_name() . " 
-                WHERE objednavka_id = :objednavka_id 
-                ORDER BY dt_vytvoreni DESC";
+        // Načtení příloh s informacemi o uživateli
+        $sql = "SELECT a.id, a.guid, a.typ_prilohy, a.originalni_nazev_souboru, 
+                       a.velikost_souboru_b, a.systemova_cesta, a.dt_vytvoreni, a.nahrano_uzivatel_id,
+                       u.jmeno AS nahrano_uzivatel_jmeno,
+                       u.prijmeni AS nahrano_uzivatel_prijmeni
+                FROM " . get_order_attachments_table_name() . " a
+                LEFT JOIN `25_uzivatele` u ON a.nahrano_uzivatel_id = u.id
+                WHERE a.objednavka_id = :objednavka_id 
+                ORDER BY a.dt_vytvoreni DESC";
         
         $stmt = $db->prepare($sql);
-    $numeric_order_id = intval($order_id);
-    if (strpos($order_id, "draft_") === 0) {
-        http_response_code(422);
-        echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
-        return;
-    }
         $stmt->bindValue(':objednavka_id', $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
         
@@ -431,6 +440,16 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
             // ✅ Sestavení plné cesty - systemova_cesta je pouze název souboru
             $fullPath = $basePath . $attachment['systemova_cesta'];
             
+            // ✅ Sestavení informací o uživateli, který nahrál přílohu
+            $nahrano_uzivatel = null;
+            if (!empty($attachment['nahrano_uzivatel_id'])) {
+                $nahrano_uzivatel = array(
+                    'id' => (int)$attachment['nahrano_uzivatel_id'],
+                    'jmeno' => $attachment['nahrano_uzivatel_jmeno'],
+                    'prijmeni' => $attachment['nahrano_uzivatel_prijmeni']
+                );
+            }
+            
             $result[] = array(
                 'id' => (int)$attachment['id'],
                 'guid' => $attachment['guid'],
@@ -441,6 +460,7 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
                 'file_size' => (int)$attachment['velikost_souboru_b'],
                 'upload_date' => $attachment['dt_vytvoreni'],
                 'uploaded_by_user_id' => (int)$attachment['nahrano_uzivatel_id'],
+                'nahrano_uzivatel' => $nahrano_uzivatel,
                 'file_exists' => file_exists($fullPath)
             );
         }
