@@ -697,6 +697,18 @@ const TableRow = styled.tr`
   &:hover {
     background: #f8fafc;
   }
+
+  /* STORNO state styling - jen text obsahu */
+  &[data-storno="true"] .storno-content {
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+
+  /* Buňka se stavem (dropdown) - bez stylování */
+  &[data-storno="true"] td:nth-child(9) {
+    text-decoration: none;
+    opacity: 1;
+  }
 `;
 
 const TableHeader = styled.th`
@@ -3247,107 +3259,118 @@ const Invoices25List = () => {
                 {!error && sortedInvoices.map(invoice => (
                   <TableRow 
                     key={invoice.id}
+                    data-storno={invoice.stav === 'STORNO' ? 'true' : 'false'}
                     style={{
-                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent',
-                      textDecoration: invoice.stav === 'STORNO' ? 'line-through' : 'none',
-                      opacity: invoice.stav === 'STORNO' ? 0.6 : 1
+                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
                     }}
                   >
                     <TableCell className="center">
-                      {invoice.dt_aktualizace ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                          <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
-                          <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
-                            {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ) : '—'}
+                      <span className="storno-content">
+                        {invoice.dt_aktualizace ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+                              {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ) : '—'}
+                      </span>
                     </TableCell>
                     <TableCell className="center">
-                      <strong>{invoice.cislo_faktury}</strong>
+                      <span className="storno-content"><strong>{invoice.cislo_faktury}</strong></span>
                     </TableCell>
                     <TableCell className="center">
-                      <span style={{ 
-                        display: 'inline-block',
-                        padding: '0.25rem 0.5rem',
-                        borderRadius: '4px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        backgroundColor: invoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
-                                       invoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
-                                       invoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
-                                       invoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9',
-                        color: invoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
-                               invoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
-                               invoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
-                               invoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
-                      }}>
-                        {invoice.fa_typ === 'BEZNA' ? 'BĚŽNÁ' : 
-                         invoice.fa_typ === 'ZALOHOVA' ? 'ZÁLOHOVÁ' : 
-                         invoice.fa_typ === 'OPRAVNA' ? 'OPRAVNÁ' : 
-                         invoice.fa_typ === 'PROFORMA' ? 'PROFORMA' : 
-                         invoice.fa_typ === 'DOBROPIS' ? 'DOBROPIS' : 
-                         invoice.fa_typ || '—'}
+                      <span className="storno-content">
+                        <span style={{ 
+                          display: 'inline-block',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          backgroundColor: invoice.fa_typ === 'ZALOHOVA' ? '#dbeafe' : 
+                                         invoice.fa_typ === 'OPRAVNA' ? '#fef3c7' : 
+                                         invoice.fa_typ === 'PROFORMA' ? '#e0e7ff' : 
+                                         invoice.fa_typ === 'DOBROPIS' ? '#dcfce7' : '#f1f5f9',
+                          color: invoice.fa_typ === 'ZALOHOVA' ? '#1e40af' : 
+                                 invoice.fa_typ === 'OPRAVNA' ? '#92400e' : 
+                                 invoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
+                                 invoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
+                        }}>
+                          {invoice.fa_typ === 'BEZNA' ? 'BĚŽNÁ' : 
+                           invoice.fa_typ === 'ZALOHOVA' ? 'ZÁLOHOVÁ' : 
+                           invoice.fa_typ === 'OPRAVNA' ? 'OPRAVNÁ' : 
+                           invoice.fa_typ === 'PROFORMA' ? 'PROFORMA' : 
+                           invoice.fa_typ === 'DOBROPIS' ? 'DOBROPIS' : 
+                           invoice.fa_typ || '—'}
+                        </span>
                       </span>
                     </TableCell>
                     <TableCell style={{ whiteSpace: 'nowrap' }}>
-                      {invoice.cislo_smlouvy ? (
-                        <div 
-                          style={{ 
-                            display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: '0.25rem',
-                            cursor: 'pointer',
-                            color: '#3b82f6'
-                          }}
-                          onClick={() => handleAddInvoiceToEntity(invoice)}
-                          title="Klikněte pro přidání další faktury k této smlouvě"
-                        >
-                          <div style={{ 
-                            display: 'flex', 
-                            alignItems: 'center',
-                            transition: 'opacity 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                      <span className="storno-content">
+                        {invoice.cislo_smlouvy ? (
+                          <div 
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '0.25rem',
+                              cursor: 'pointer',
+                              color: '#3b82f6'
+                            }}
+                            onClick={() => handleAddInvoiceToEntity(invoice)}
+                            title="Klikněte pro přidání další faktury k této smlouvě"
                           >
-                            <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                            {invoice.cislo_smlouvy}
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center',
+                              transition: 'opacity 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                              <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
+                              {invoice.cislo_smlouvy}
+                            </div>
                           </div>
-                        </div>
-                      ) : invoice.cislo_objednavky ? (
-                        <div
-                          style={{
-                            cursor: 'pointer',
-                            color: '#3b82f6',
-                            transition: 'opacity 0.2s'
-                          }}
-                          onClick={() => handleAddInvoiceToEntity(invoice)}
-                          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                          title="Klikněte pro přidání další faktury k této objednávce"
-                        >
-                          <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                          {invoice.cislo_objednavky}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
-                      )}
+                        ) : invoice.cislo_objednavky ? (
+                          <div
+                            style={{
+                              cursor: 'pointer',
+                              color: '#3b82f6',
+                              transition: 'opacity 0.2s'
+                            }}
+                            onClick={() => handleAddInvoiceToEntity(invoice)}
+                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                            title="Klikněte pro přidání další faktury k této objednávce"
+                          >
+                            <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
+                            {invoice.cislo_objednavky}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="center" style={{ whiteSpace: 'nowrap' }}>
-                      {invoice.datum_doruceni ? (
-                        <span style={{ color: '#059669', fontWeight: 600 }}>
-                          <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
-                          {formatDateOnly(invoice.datum_doruceni)}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      )}
+                      <span className="storno-content">
+                        {invoice.datum_doruceni ? (
+                          <span style={{ color: '#059669', fontWeight: 600 }}>
+                            <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
+                            {formatDateOnly(invoice.datum_doruceni)}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </span>
                     </TableCell>
-                    <TableCell className="center">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</TableCell>
-                    <TableCell className="center">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</TableCell>
+                    <TableCell className="center">
+                      <span className="storno-content">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</span>
+                    </TableCell>
+                    <TableCell className="center">
+                      <span className="storno-content">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
+                    </TableCell>
                     <TableCell className="right">
-                      <strong>{formatCurrency(invoice.castka)}</strong>
+                      <span className="storno-content"><strong>{formatCurrency(invoice.castka)}</strong></span>
                     </TableCell>
                     <TableCell className="center">
                       <InvoiceStatusSelect 
@@ -3358,85 +3381,93 @@ const Invoices25List = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      {invoice.vytvoril_uzivatel_zkracene ? (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
-                          {invoice.vytvoril_uzivatel_zkracene}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#94a3b8' }}>—</span>
-                      )}
+                      <span className="storno-content">
+                        {invoice.vytvoril_uzivatel_zkracene ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
+                            {invoice.vytvoril_uzivatel_zkracene}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      {invoice.fa_predana_zam_jmeno_cele ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
-                            <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
-                          </div>
-                          {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
-                            <div style={{ 
-                              color: '#64748b', 
-                              fontSize: '0.75rem', 
-                              display: 'flex',
-                              gap: '0.5rem',
-                              flexWrap: 'wrap',
-                              alignItems: 'center'
-                            }}>
-                              {invoice.fa_datum_predani_zam && (
-                                <div title="Datum předání" style={{ whiteSpace: 'nowrap' }}>
-                                  ↓ {formatDateOnly(invoice.fa_datum_predani_zam)}
-                                </div>
-                              )}
-                              {invoice.fa_datum_vraceni_zam && (
-                                <div title="Datum vrácení" style={{ whiteSpace: 'nowrap' }}>
-                                  ↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}
-                                </div>
-                              )}
+                      <span className="storno-content">
+                        {invoice.fa_predana_zam_jmeno_cele ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.fa_predana_zam_jmeno_cele}</strong>
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
+                            {(invoice.fa_datum_predani_zam || invoice.fa_datum_vraceni_zam) && (
+                              <div style={{ 
+                                color: '#64748b', 
+                                fontSize: '0.75rem', 
+                                display: 'flex',
+                                gap: '0.5rem',
+                                flexWrap: 'wrap',
+                                alignItems: 'center'
+                              }}>
+                                {invoice.fa_datum_predani_zam && (
+                                  <div title="Datum předání" style={{ whiteSpace: 'nowrap' }}>
+                                    ↓ {formatDateOnly(invoice.fa_datum_predani_zam)}
+                                  </div>
+                                )}
+                                {invoice.fa_datum_vraceni_zam && (
+                                  <div title="Datum vrácení" style={{ whiteSpace: 'nowrap' }}>
+                                    ↑ {formatDateOnly(invoice.fa_datum_vraceni_zam)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>—</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      {invoice.potvrdil_vecnou_spravnost_zkracene ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
-                            <strong>{invoice.potvrdil_vecnou_spravnost_zkracene}</strong>
-                          </div>
-                          {invoice.dt_potvrzeni_vecne_spravnosti && (
-                            <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
-                              <span title="Datum potvrzení věcné správnosti" style={{ whiteSpace: 'nowrap' }}>
-                                {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
-                              </span>
+                      <span className="storno-content">
+                        {invoice.potvrdil_vecnou_spravnost_zkracene ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
+                              <strong>{invoice.potvrdil_vecnou_spravnost_zkracene}</strong>
                             </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>—</span>
-                      )}
+                            {invoice.dt_potvrzeni_vecne_spravnosti && (
+                              <div style={{ color: '#64748b', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <FontAwesomeIcon icon={faCalendarAlt} style={{ fontSize: '0.7rem' }} />
+                                <span title="Datum potvrzení věcné správnosti" style={{ whiteSpace: 'nowrap' }}>
+                                  {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>—</span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="center">
-                      {invoice.vecna_spravnost_potvrzeno ? (
-                        <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '16px',
-                          height: '16px',
-                          borderRadius: '50%',
-                          backgroundColor: '#16a34a',
-                          fontSize: '0.6rem'
+                      <span className="storno-content">
+                        {invoice.vecna_spravnost_potvrzeno ? (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#16a34a',
+                            fontSize: '0.6rem'
                         }} title="Věcná správnost provedena">
                           <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
                         </div>
                       ) : (
                         <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost neprovedena" />
                       )}
+                      </span>
                     </TableCell>
                     <TableCell className="center">
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
