@@ -659,33 +659,19 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
         </CreditsOverlay>
       )}
       
-      {loading ? (
-        <LoadingContainer onClick={(e) => e.stopPropagation()}>
-          <FontAwesomeIcon icon={faSpinner} className="spinner" />
-          <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            Načítám data Bitcoinu...
-          </div>
-          <div style={{ fontSize: '1.2rem', opacity: 0.8 }}>
-            Stahování z Yahoo Finance API
-          </div>
-          <div style={{ fontSize: '1rem', marginTop: '1rem', opacity: 0.6 }}>
-            Prosím počkejte, může to trvat několik sekund...
-          </div>
-        </LoadingContainer>
-      ) : error ? (
-        <LoadingContainer onClick={(e) => e.stopPropagation()}>
-          <div style={{ fontSize: '1.5rem', color: '#ef4444' }}>
-            Chyba API: {error}
-          </div>
-          <div style={{ fontSize: '1rem', marginTop: '1rem' }}>
-            Používám záložní demo data
-          </div>
-        </LoadingContainer>
-      ) : (
-        <ChartContainer onClick={(e) => e.stopPropagation()} key={bitcoinData?.length || 'empty'}>
+      {/* Graf se vždy zobrazuje - data se načítají na pozadí */}
+      <ChartContainer onClick={(e) => e.stopPropagation()} key={bitcoinData?.length || 'empty'}>
+        {bitcoinData ? (
           <Line data={chartData} options={chartOptions} />
-        </ChartContainer>
-      )}
+        ) : (
+          <LoadingContainer onClick={(e) => e.stopPropagation()}>
+            <FontAwesomeIcon icon={faSpinner} className="spinner" />
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
+              Načítám graf...
+            </div>
+          </LoadingContainer>
+        )}
+      </ChartContainer>
     </ChartOverlay>,
     document.body
   );
