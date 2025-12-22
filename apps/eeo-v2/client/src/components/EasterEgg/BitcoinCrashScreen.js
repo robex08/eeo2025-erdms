@@ -68,6 +68,7 @@ const ChartOverlay = styled.div`
   top: 0;
   left: 0;
   right: 0;
+  pointer-events: auto;
   bottom: 0;
   background: rgba(20, 0, 0, 0.90);
   backdrop-filter: blur(12px) brightness(0.7);
@@ -87,6 +88,7 @@ const CloseButton = styled.button`
   background: transparent;
   border: none;
   color: #f59e0b;
+  pointer-events: auto;
   font-size: 48px;
   font-weight: bold;
   cursor: pointer;
@@ -192,7 +194,7 @@ const CreditsOverlay = styled.div`
 `;
 
 const CreditsScroll = styled.div`
-  animation: scrollUp 35s linear 2.5s infinite;
+  animation: scrollUp 35s linear 0s infinite;
   color: #f59e0b;
   font-size: 1.25rem;
   text-align: center;
@@ -253,7 +255,11 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
   const [bitcoinData, setBitcoinData] = useState(null);
   const [currentPrice, setCurrentPrice] = useState(null);
   const [error, setError] = useState(null);
+  const [animationPhase, setAnimationPhase] = useState(0); // State pro re-render
   const chartRef = useRef(null);
+  const fireworksRef = useRef([]);
+  const animationPhaseRef = useRef(0); // 0=načtení, 1=kreslení grafu, 2=kulička+text, 3=psaní PF, 4=ohňostroj
+  const phaseStartTimeRef = useRef(Date.now());
   const animationFrameRef = useRef(null);
 
   // Fetch Bitcoin historical data
@@ -290,20 +296,22 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
       // Aktuální cena z API response
       setCurrentPrice(data.currentPrice || chartData[chartData.length - 1].y);
       
+      // Počkej 2.5s před startem animace
+      setTimeout(() => {
+        animationPhaseRef.current = 1;
+        setAnimationPhase(1);
+        phaseStartTimeRef.current = Date.now();
+      }, 2500);
+      
     } catch (err) {
       console.error('Bitcoin API error:', err);
       setError(`Failed to load data: ${err.message}`);
-      
-      // Fallback na mock data
-      const mockData = generateMockBitcoinData();
-      setBitcoinData(mockData);
-      setCurrentPrice(mockData[mockData.length - 1].y);
     } finally {
       setLoading(false);
     }
   };
 
-  // Chart.js plugin pro scanning ball
+  // Chart.js plugin pro scanning ball + animace
   const scanningBallPlugin = {
     id: 'scanningBall',
     afterDatasetsDraw: (chart) => {
@@ -312,56 +320,298 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
       const ctx = chart.ctx;
       const { x: xScale, y: yScale } = chart.scales;
       
-      // Vypočítej aktuální pozici (30s cyklus)
-      const elapsed = (Date.now() % 30000) / 30000; // 0-1
-      const exactIndex = elapsed * (bitcoinData.length - 1);
-      const index1 = Math.floor(exactIndex);
-      const index2 = Math.min(index1 + 1, bitcoinData.length - 1);
-      const fraction = exactIndex - index1; // 0-1 mezi dvěma body
+      const now = Date.now();
+      const elapsed = (now - phaseStartTimeRef.current) / 1000;
       
-      const point1 = bitcoinData[index1];
-      const point2 = bitcoinData[index2];
+      // FÁZE 1: Kreslení grafu (3 sekundy) - nic nekresli
+      if (animationPhaseRef.current === 1) {
+        const graphProgress = Math.min(elapsed / 3, 1);
+        
+        if (graphProgress >= 1) {
+          animationPhaseRef.current = 2;
+          setAnimationPhase(2);
+          phaseStartTimeRef.current = now;
+        }
+        return; // Nekresli nic navíc během kreslení grafu
+      }
       
-      if (!point1 || !point2) return;
+      // FÁZE 2: Kulička animuje (30s cyklus)
+      if (animationPhaseRef.current >= 2) {
+        const ballElapsed = (now % 30000) / 30000;
+        const exactIndex = ballElapsed * (bitcoinData.length - 1);
+        const index1 = Math.floor(exactIndex);
+        const index2 = Math.min(index1 + 1, bitcoinData.length - 1);
+        const fraction = exactIndex - index1;
+        
+        const point1 = bitcoinData[index1];
+        const point2 = bitcoinData[index2];
+        
+        if (point1 && point2) {
+          const interpolatedX = point1.x.getTime() + (point2.x.getTime() - point1.x.getTime()) * fraction;
+          const interpolatedY = point1.y + (point2.y - point1.y) * fraction;
+          
+          const xPixel = xScale.getPixelForValue(new Date(interpolatedX));
+          const yPixel = yScale.getPixelForValue(interpolatedY);
+          
+          ctx.save();
+          const gradient = ctx.createRadialGradient(xPixel - 2, yPixel - 2, 0, xPixel, yPixel, 7);
+          gradient.addColorStop(0, '#fbbf24');
+          gradient.addColorStop(1, '#f59e0b');
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(xPixel, yPixel, 7, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
       
-      // Lineární interpolace mezi dvěma body
-      const interpolatedX = point1.x.getTime() + (point2.x.getTime() - point1.x.getTime()) * fraction;
-      const interpolatedY = point1.y + (point2.y - point1.y) * fraction;
+      // Najdi vrchol pro text
+      let peakIndex = 0;
+      let peakPrice = 0;
+      bitcoinData.forEach((point, idx) => {
+        const year = point.x.getFullYear();
+        if (year === 2024 && point.y > peakPrice) {
+          peakPrice = point.y;
+          peakIndex = idx;
+        }
+      });
       
-      // Získej pixelové souřadnice z Chart.js scales
-      const xPixel = xScale.getPixelForValue(new Date(interpolatedX));
-      const yPixel = yScale.getPixelForValue(interpolatedY);
+      // FÁZE 3: Po 30 sekundách začne psaní textu "PF 2026"
+      if (animationPhaseRef.current === 2 && elapsed >= 30) {
+        animationPhaseRef.current = 3;
+        setAnimationPhase(3);
+        phaseStartTimeRef.current = now;
+      }
       
-      // Vykresli kuličku
-      ctx.save();
+      // FÁZE 3 a 4+: Kresli text "PF 2026"
+      if (animationPhaseRef.current >= 3 && peakIndex > 0) {
+        const textElapsed = (now - phaseStartTimeRef.current) / 1000;
+        let drawProgress;
+        
+        // Fáze 3: Postupné psaní (4 sekundy)
+        if (animationPhaseRef.current === 3) {
+          drawProgress = Math.min(textElapsed / 4, 1);
+          
+          if (drawProgress >= 1) {
+            animationPhaseRef.current = 4;
+            setAnimationPhase(4);
+            phaseStartTimeRef.current = now;
+          }
+        } else {
+          // Fáze 4+: Text kompletně viditelný
+          drawProgress = 1;
+        }
+        
+        if (drawProgress > 0) {
+          ctx.save();
+          
+          const peakPoint = bitcoinData[peakIndex];
+          const textX = xScale.getPixelForValue(peakPoint.x) - 150;
+          const textY = yScale.getPixelForValue(peakPoint.y) - 100;
+          
+          const prevPoint = bitcoinData[Math.max(0, peakIndex - 10)];
+          const nextPoint = bitcoinData[Math.min(bitcoinData.length - 1, peakIndex + 10)];
+          const prevX = xScale.getPixelForValue(prevPoint.x);
+          const prevY = yScale.getPixelForValue(prevPoint.y);
+          const nextX = xScale.getPixelForValue(nextPoint.x);
+          const nextY = yScale.getPixelForValue(nextPoint.y);
+          const originalAngle = Math.atan2(nextY - prevY, nextX - prevX);
+          const angle = originalAngle + 0.61;
+          
+          ctx.translate(textX, textY);
+          ctx.rotate(angle);
+          
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 8;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = '#f59e0b';
+          
+          const strokes = [
+            { points: [[0, 90], [0, 0]] },
+            { points: [[0, 0], [30, -6], [60, 10], [66, 30], [60, 50], [30, 56], [0, 50]] },
+            { points: [[80, 90], [80, 0]] },
+            { points: [[80, 0], [140, 0]] },
+            { points: [[80, 44], [130, 44]] },
+            { points: [[200, 20], [214, 6], [234, 6], [250, 16]] },
+            { points: [[250, 16], [240, 36], [220, 60], [200, 90]] },
+            { points: [[200, 90], [260, 90]] },
+            { points: [[280, 20], [300, 10], [320, 10], [340, 20], [344, 50], [340, 80], [320, 90], [300, 90], [280, 80], [276, 50], [280, 20]] },
+            { points: [[354, 20], [368, 6], [388, 6], [404, 16]] },
+            { points: [[404, 16], [394, 36], [374, 60], [354, 90]] },
+            { points: [[354, 90], [414, 90]] },
+            { points: [[470, 10], [456, 6], [442, 10], [434, 20], [428, 35], [428, 50], [432, 62]] },
+            { points: [[432, 62], [440, 56], [454, 54], [470, 60], [478, 72], [478, 86], [470, 98], [454, 104], [438, 104], [424, 98], [418, 86], [418, 72], [424, 60], [432, 56]] }
+          ];
+          
+          let totalLength = 0;
+          strokes.forEach(stroke => {
+            for (let i = 0; i < stroke.points.length - 1; i++) {
+              const [x1, y1] = stroke.points[i];
+              const [x2, y2] = stroke.points[i + 1];
+              totalLength += Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+            }
+          });
+          
+          const targetLength = totalLength * drawProgress;
+          let drawnLength = 0;
+          
+          ctx.beginPath();
+          let isFirstMove = true;
+          
+          for (const stroke of strokes) {
+            for (let i = 0; i < stroke.points.length - 1; i++) {
+              const [x1, y1] = stroke.points[i];
+              const [x2, y2] = stroke.points[i + 1];
+              const segmentLength = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+              
+              if (drawnLength + segmentLength <= targetLength) {
+                if (isFirstMove || i === 0) {
+                  ctx.moveTo(x1, y1);
+                  isFirstMove = false;
+                }
+                ctx.lineTo(x2, y2);
+                drawnLength += segmentLength;
+              } else if (drawnLength < targetLength) {
+                const remaining = targetLength - drawnLength;
+                const ratio = remaining / segmentLength;
+                const px = x1 + (x2 - x1) * ratio;
+                const py = y1 + (y2 - y1) * ratio;
+                if (isFirstMove || i === 0) {
+                  ctx.moveTo(x1, y1);
+                  isFirstMove = false;
+                }
+                ctx.lineTo(px, py);
+                drawnLength = targetLength;
+                break;
+              }
+              
+              if (drawnLength >= targetLength) break;
+            }
+            if (drawnLength >= targetLength) break;
+          }
+          
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
       
-      // Gradient kulička
-      const gradient = ctx.createRadialGradient(xPixel - 2, yPixel - 2, 0, xPixel, yPixel, 7);
-      gradient.addColorStop(0, '#fbbf24');
-      gradient.addColorStop(1, '#f59e0b');
-      
-      // Glow efekt
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = '#f59e0b';
-      
-      // Vykresli kruh
-      ctx.beginPath();
-      ctx.arc(xPixel, yPixel, 7, 0, Math.PI * 2);
-      ctx.fillStyle = gradient;
-      ctx.fill();
-      
-      ctx.restore();
+      // FÁZE 4: Ohňostroj - inicializace a animace
+      if (animationPhaseRef.current >= 4) {
+        // Inicializace raket pouze jednou
+        if (fireworksRef.current.length === 0) {
+          for (let i = 0; i < 21; i++) {
+            fireworksRef.current.push({
+              x: Math.random() * chart.width,
+              y: chart.height,
+              targetY: 60 + Math.random() * 280,
+              speed: 5 + Math.random() * 4,
+              color: ['#fbbf24', '#f59e0b', '#ff6b6b', '#4ecdc4', '#95e1d3', '#f38181', '#ffd93d', '#6bcfff', '#ff85a2', '#a8e6cf'][Math.floor(Math.random() * 10)],
+              exploded: false,
+              explosionTime: 0,
+              particles: []
+            });
+          }
+        }
+        
+        // Animace raket a výbuchů
+        fireworksRef.current.forEach((rocket, idx) => {
+          if (!rocket.exploded) {
+            rocket.y -= rocket.speed;
+            
+            ctx.save();
+            ctx.fillStyle = rocket.color;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = rocket.color;
+            ctx.beginPath();
+            ctx.arc(rocket.x, rocket.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = rocket.color;
+            ctx.lineWidth = 4;
+            ctx.globalAlpha = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(rocket.x, rocket.y);
+            ctx.lineTo(rocket.x, rocket.y + 25);
+            ctx.stroke();
+            ctx.restore();
+            
+            if (rocket.y <= rocket.targetY) {
+              rocket.exploded = true;
+              rocket.explosionTime = Date.now();
+              
+              for (let i = 0; i < 100; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1 + Math.random() * 8;
+                const spreadFactor = 0.3 + Math.random() * 1.2;
+                
+                rocket.particles.push({
+                  x: rocket.x,
+                  y: rocket.y,
+                  vx: Math.cos(angle) * speed * spreadFactor,
+                  vy: Math.sin(angle) * speed * spreadFactor,
+                  life: 0.8 + Math.random() * 0.4,
+                  decay: 0.008 + Math.random() * 0.012,
+                  size: 1.5 + Math.random() * 3
+                });
+              }
+            }
+          } else {
+            const elapsedExplosion = (Date.now() - rocket.explosionTime) / 1000;
+            
+            if (elapsedExplosion < 3) {
+              rocket.particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.18;
+                p.vx *= 0.98;
+                p.life -= p.decay;
+                
+                if (p.life > 0) {
+                  ctx.save();
+                  ctx.globalAlpha = p.life * 0.95;
+                  ctx.fillStyle = rocket.color;
+                  ctx.shadowBlur = 25;
+                  ctx.shadowColor = rocket.color;
+                  ctx.beginPath();
+                  ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                  ctx.fill();
+                  ctx.restore();
+                }
+              });
+            } else {
+              fireworksRef.current[idx] = {
+                x: Math.random() * chart.width,
+                y: chart.height,
+                targetY: 60 + Math.random() * 280,
+                speed: 5 + Math.random() * 4,
+                color: ['#fbbf24', '#f59e0b', '#ff6b6b', '#4ecdc4', '#95e1d3', '#f38181', '#ffd93d', '#6bcfff', '#ff85a2', '#a8e6cf'][Math.floor(Math.random() * 10)],
+                exploded: false,
+                explosionTime: 0,
+                particles: []
+              };
+            }
+          }
+        });
+      }
     }
   };
   
-  // Animační loop pro kuličku
+  // Animační loop pro kuličku, text a ohňostroj
   useEffect(() => {
     if (!bitcoinData || !chartRef.current) return;
     
     const animate = () => {
-      if (chartRef.current) {
+      const currentPhase = animationPhaseRef.current;
+      
+      // Update vždy kromě fáze 0 (čekání na data)
+      if (chartRef.current && currentPhase >= 1) {
         chartRef.current.update('none');
       }
+      
       animationFrameRef.current = requestAnimationFrame(animate);
     };
     
@@ -372,7 +622,7 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [bitcoinData]);
+  }, [bitcoinData, animationPhase]);
 
   // Mock data s realistickými historickými trendy
   const generateMockBitcoinData = () => {
@@ -441,38 +691,8 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: {
-      x: {
-        type: 'number',
-        easing: 'linear',
-        duration: 2000,
-        from: NaN,
-        delay(ctx) {
-          if (ctx.type !== 'data' || ctx.xStarted) {
-            return 0;
-          }
-          ctx.xStarted = true;
-          return ctx.index * 8;
-        }
-      },
-      y: {
-        type: 'number',
-        easing: 'easeInOutQuart',
-        duration: 2000,
-        from: (ctx) => {
-          if (ctx.type === 'data') {
-            return ctx.chart.scales.y.getPixelForValue(0);
-          }
-        },
-        delay(ctx) {
-          if (ctx.type !== 'data' || ctx.yStarted) {
-            return 0;
-          }
-          ctx.yStarted = true;
-          return ctx.index * 8;
-        }
-      }
-    },
+    events: [],
+    animation: false,
     plugins: {
       title: {
         display: false
@@ -541,11 +761,22 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
     }
   };
 
+  // Dynamicky generuj viditelná data podle fáze animace
+  const getVisibleData = () => {
+    if (!bitcoinData || bitcoinData.length === 0) return null;
+    
+    // Fáze 0: Počkej na start - vrať null aby se graf nevykresloval
+    if (animationPhaseRef.current === 0) return null;
+    
+    // Fáze 1+: Všechna data najednou (Chart.js si je vyanimuje sám)
+    return bitcoinData;
+  };
+
   const chartData = {
     datasets: [
       {
         label: 'Bitcoin Price (USD)',
-        data: bitcoinData || [],
+        data: getVisibleData() || [],
         borderColor: '#f59e0b',
         backgroundColor: 'rgba(245, 158, 11, 0.1)',
         fill: true
@@ -628,7 +859,7 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
 
   // Render portal
   return createPortal(
-    <ChartOverlay onClick={onClose}>
+    <ChartOverlay onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <CloseButton onClick={onClose}>
         <FontAwesomeIcon icon={faTimes} />
       </CloseButton>
@@ -645,7 +876,7 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
       </ChartTitle>
       
       {/* Credits scrollování v místě bear marketu */}
-      {!loading && (
+      {!loading && animationPhase >= 2 && (
         <CreditsOverlay>
           <CreditsScroll>
             <div className="title" style={{ fontSize: '2.25rem' }}>EEO v2 © 2025</div>
