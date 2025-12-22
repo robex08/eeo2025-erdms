@@ -479,7 +479,7 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
     ]
   };
 
-  // Mount efekt
+  // Mount efekt + Visibility API pro auto-refresh
   useEffect(() => {
     if (isVisible) {
       setMounted(true);
@@ -495,11 +495,45 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
         }
       };
 
+      // Visibility API - refresh grafu každých 5 minut, ale jen pokud je stránka viditelná
+      let refreshInterval = null;
+      
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          // Stránka je skrytá - zastavit interval
+          if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+          }
+        } else {
+          // Stránka je viditelná - spustit interval
+          if (!refreshInterval) {
+            refreshInterval = setInterval(() => {
+              fetchBitcoinData();
+            }, 5 * 60 * 1000); // 5 minut
+          }
+        }
+      };
+
+      // Spustit interval, pokud je stránka viditelná
+      if (!document.hidden) {
+        refreshInterval = setInterval(() => {
+          fetchBitcoinData();
+        }, 5 * 60 * 1000); // 5 minut
+      }
+
       document.addEventListener('keydown', handleKeyDown);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       return () => {
         document.removeEventListener('keydown', handleKeyDown);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
         document.body.style.overflow = 'auto';
+        
+        // Vyčisti interval
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+        }
       };
     } else {
       setMounted(false);
