@@ -3017,7 +3017,7 @@ const Invoices25List = () => {
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr pro workflow stavy */}}
+                  {/* Stav - select filtr pro workflow stavy */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
                       value={columnFilters.stav || ''}
@@ -5234,7 +5234,7 @@ const Invoices25List = () => {
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr pro workflow stavy */}}
+                  {/* Stav - select filtr pro workflow stavy */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
                       value={columnFilters.stav || ''}
