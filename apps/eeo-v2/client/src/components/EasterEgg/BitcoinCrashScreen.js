@@ -4,7 +4,7 @@
  * Graf vývoje ceny Bitcoinu od ledna 2021 do současnosti přes celou obrazovku
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
@@ -159,6 +159,7 @@ const ChartContainer = styled.div`
   margin-top: 120px;
   margin-bottom: 2rem;
   padding: 0 2rem;
+  position: relative;
   
   canvas {
     background: rgba(0, 0, 0, 0.3) !important;
@@ -252,6 +253,8 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
   const [bitcoinData, setBitcoinData] = useState(null);
   const [currentPrice, setCurrentPrice] = useState(null);
   const [error, setError] = useState(null);
+  const chartRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   // Fetch Bitcoin historical data
   const fetchBitcoinData = async () => {
@@ -299,6 +302,77 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
       setLoading(false);
     }
   };
+
+  // Chart.js plugin pro scanning ball
+  const scanningBallPlugin = {
+    id: 'scanningBall',
+    afterDatasetsDraw: (chart) => {
+      if (!bitcoinData || bitcoinData.length === 0) return;
+      
+      const ctx = chart.ctx;
+      const { x: xScale, y: yScale } = chart.scales;
+      
+      // Vypočítej aktuální pozici (30s cyklus)
+      const elapsed = (Date.now() % 30000) / 30000; // 0-1
+      const exactIndex = elapsed * (bitcoinData.length - 1);
+      const index1 = Math.floor(exactIndex);
+      const index2 = Math.min(index1 + 1, bitcoinData.length - 1);
+      const fraction = exactIndex - index1; // 0-1 mezi dvěma body
+      
+      const point1 = bitcoinData[index1];
+      const point2 = bitcoinData[index2];
+      
+      if (!point1 || !point2) return;
+      
+      // Lineární interpolace mezi dvěma body
+      const interpolatedX = point1.x.getTime() + (point2.x.getTime() - point1.x.getTime()) * fraction;
+      const interpolatedY = point1.y + (point2.y - point1.y) * fraction;
+      
+      // Získej pixelové souřadnice z Chart.js scales
+      const xPixel = xScale.getPixelForValue(new Date(interpolatedX));
+      const yPixel = yScale.getPixelForValue(interpolatedY);
+      
+      // Vykresli kuličku
+      ctx.save();
+      
+      // Gradient kulička
+      const gradient = ctx.createRadialGradient(xPixel - 2, yPixel - 2, 0, xPixel, yPixel, 7);
+      gradient.addColorStop(0, '#fbbf24');
+      gradient.addColorStop(1, '#f59e0b');
+      
+      // Glow efekt
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#f59e0b';
+      
+      // Vykresli kruh
+      ctx.beginPath();
+      ctx.arc(xPixel, yPixel, 7, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      ctx.restore();
+    }
+  };
+  
+  // Animační loop pro kuličku
+  useEffect(() => {
+    if (!bitcoinData || !chartRef.current) return;
+    
+    const animate = () => {
+      if (chartRef.current) {
+        chartRef.current.update('none');
+      }
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+    
+    animationFrameRef.current = requestAnimationFrame(animate);
+    
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [bitcoinData]);
 
   // Mock data s realistickými historickými trendy
   const generateMockBitcoinData = () => {
@@ -363,7 +437,7 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
     ).sort((a, b) => a.x - b.x);
   };
 
-  // Chart configuration
+  // Chart configuration s vlastním pluginem pro scanning ball
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -660,9 +734,15 @@ const BitcoinCrashScreen = ({ isVisible, onClose }) => {
       )}
       
       {/* Graf se vždy zobrazuje - data se načítají na pozadí */}
-      <ChartContainer onClick={(e) => e.stopPropagation()} key={bitcoinData?.length || 'empty'}>
+      <ChartContainer onClick={(e) => e.stopPropagation()}>
+        
         {bitcoinData ? (
-          <Line data={chartData} options={chartOptions} />
+          <Line 
+            ref={chartRef}
+            data={chartData} 
+            options={chartOptions} 
+            plugins={[scanningBallPlugin]} 
+          />
         ) : (
           <LoadingContainer onClick={(e) => e.stopPropagation()}>
             <FontAwesomeIcon icon={faSpinner} className="spinner" />
