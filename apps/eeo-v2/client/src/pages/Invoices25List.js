@@ -2231,51 +2231,6 @@ const Invoices25List = () => {
     });
   };
 
-  // Handle quick vecna kontrola toggle from status select
-  const handleConfirmVecnaKontrola = async (invoice, verified) => {
-    if (!invoice) return;
-    
-    try {
-      showProgress?.('Aktualizuji věcnou správnost...');
-      
-      await updateInvoiceV2({
-        token,
-        username,
-        invoice_id: invoice.id,
-        updateData: {
-          vecna_spravnost_potvrzeno: verified ? 1 : 0,
-          potvrdil_vecnou_spravnost_id: verified ? null : null, // Backend automaticky doplní current user
-          dt_potvrzeni_vecne_spravnosti: verified ? new Date().toISOString() : null
-        }
-      });
-      
-      // Lokální update faktury
-      setInvoices(prevInvoices => 
-        prevInvoices.map(inv => 
-          inv.id === invoice.id 
-            ? { ...inv, vecna_spravnost_potvrzeno: verified ? 1 : 0 }
-            : inv
-        )
-      );
-      
-      showToast?.(
-        verified 
-          ? `Věcná správnost faktury ${invoice.cislo_faktury} byla potvrzena ✅` 
-          : `Potvrzení věcné správnosti faktury ${invoice.cislo_faktury} bylo zrušeno`,
-        { type: 'success' }
-      );
-      
-      // Obnovit seznam
-      loadData();
-      
-    } catch (err) {
-      console.error('Error updating vecna kontrola:', err);
-      showToast?.(translateErrorMessage(err?.message) || 'Chyba při aktualizaci věcné správnosti', { type: 'error' });
-    } finally {
-      hideProgress?.();
-    }
-  };
-  
   const confirmDeleteInvoice = async (hardDelete = false) => {
     const { invoice } = deleteDialog;
     
@@ -3334,9 +3289,7 @@ const Invoices25List = () => {
                       <InvoiceStatusSelect 
                         currentStatus={invoice.stav || 'ZAEVIDOVANA'}
                         dueDate={invoice.datum_splatnosti}
-                        isVerified={invoice.vecna_spravnost_potvrzeno === 1}
                         onStatusChange={(newStatus) => handleStatusChange(invoice, newStatus)}
-                        onVerifyToggle={(verified) => handleConfirmVecnaKontrola(invoice, verified)}
                         disabled={!canManageInvoices && !isAdmin}
                       />
                     </TableCell>
