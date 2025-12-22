@@ -176,12 +176,13 @@ function handle_invoices25_create($input, $config, $queries) {
             vecna_spravnost_poznamka,
             vecna_spravnost_potvrzeno,
             rozsirujici_data,
+            stav,
             vytvoril_uzivatel_id,
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -248,6 +249,9 @@ function handle_invoices25_create($input, $config, $queries) {
         
         $rozsirujici_data = isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null;
         $smlouva_id = isset($input['smlouva_id']) && !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
+        
+        // ✅ WORKFLOW STAV - výchozí hodnota ZAEVIDOVANA (přidáno 22.12.2025)
+        $stav = isset($input['stav']) ? $input['stav'] : INVOICE_STATUS_REGISTERED;
 
         $stmt->execute([
             $objednavka_id,
@@ -271,6 +275,7 @@ function handle_invoices25_create($input, $config, $queries) {
             $vecna_spravnost_poznamka,
             $vecna_spravnost_potvrzeno,
             $rozsirujici_data,
+            $stav,
             $token_data['id']
         ]);
 
@@ -459,6 +464,33 @@ function handle_invoices25_update($input, $config, $queries) {
         if (isset($input['rozsirujici_data'])) {
             $fields[] = 'rozsirujici_data = ?';
             $values[] = json_encode($input['rozsirujici_data']);
+        }
+
+        // ✅ WORKFLOW STAV - Přidáno 22.12.2025
+        if (isset($input['stav'])) {
+            $fields[] = 'stav = ?';
+            $values[] = $input['stav'];
+            
+            // AUTOMATIKA: Pokud stav = 'ZAPLACENO' → nastavit fa_zaplacena = 1
+            if ($input['stav'] === INVOICE_STATUS_PAID) {
+                $fields[] = 'fa_zaplacena = ?';
+                $values[] = 1;
+            }
+        }
+        
+        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+            // Načíst aktuální stav faktury
+            $current_check = $db->prepare("SELECT stav FROM `$faktury_table` WHERE id = ?");
+            $current_check->execute([$faktura_id]);
+            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($current_row && $current_row['stav'] === INVOICE_STATUS_REGISTERED) {
+                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                $fields[] = 'stav = ?';
+                $values[] = INVOICE_STATUS_VERIFICATION;
+                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+            }
         }
 
         // Vždy aktualizuj dt_aktualizace a aktualizoval_uzivatel_id
