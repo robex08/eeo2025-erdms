@@ -4236,7 +4236,10 @@ function OrderForm25() {
   // Stavy pro přílohy
   const [attachments, setAttachments] = useState([]); // Lokální seznam příloh
   
-  // 📎 SPRINT 4: Consolidated Attachment UI State (6→1 hook)
+  // � OBNOVENÍ NEULOŽENÝCH PŘÍLOH Z LOCALSTORAGE
+
+  
+  // �📎 SPRINT 4: Consolidated Attachment UI State (6→1 hook)
   const [attachmentUI, setAttachmentUI] = useState({
     uploading: false,
     dragOver: false,
@@ -4720,6 +4723,67 @@ function OrderForm25() {
       delete window.__activeOrderFormEvCislo;
     };
   }, [formData.id, formData.cislo_objednavky, formData.ev_cislo]);
+
+  // 📎 LocalStorage obnovení neuložených příloh (musí být AŽ PO formData definici)
+  useEffect(() => {
+    const restoreUnsavedAttachments = () => {
+      try {
+        const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+        const savedAttachmentsStr = localStorage.getItem(storageKey);
+        
+        if (savedAttachmentsStr) {
+          const savedAttachments = JSON.parse(savedAttachmentsStr);
+          
+          if (savedAttachments.length > 0) {
+            addDebugLog('info', 'ATTACHMENTS', 'restore-from-ls',
+              `Nalezeno ${savedAttachments.length} neuložených příloh v LocalStorage`);
+            
+            // Zobrazit upozornění uživateli
+            showToast && showToast(
+              `📎 Nalezeny neuložené přílohy z předchozí session!\n\n` +
+              `🔄 Obnoveno ${savedAttachments.length} příloh.\n` +
+              `⚠️ Soubory bude nutné znovu vybrat a nahrát.`, 
+              { 
+                type: 'info', 
+                timeout: 8000,
+                action: {
+                  confirmText: 'Obnovit přílohy',
+                  cancelText: 'Smazat',
+                  onConfirm: () => {
+                    // Obnovit přílohy bez file objektů (budou označeny pro novou selekci)
+                    const restoredAttachments = savedAttachments.map(att => ({
+                      ...att,
+                      status: 'needs_reselection',
+                      file: null,
+                      uploadError: 'Soubor je nutné znovu vybrat'
+                    }));
+                    
+                    setAttachments(prev => [...prev, ...restoredAttachments]);
+                    
+                    addDebugLog('success', 'ATTACHMENTS', 'restored-from-ls',
+                      `Obnoveno ${restoredAttachments.length} příloh z LocalStorage`);
+                  },
+                  onCancel: () => {
+                    // Smazat z LocalStorage
+                    localStorage.removeItem(storageKey);
+                    addDebugLog('info', 'ATTACHMENTS', 'cleared-ls',
+                      'LocalStorage přílohy smazány na žádost uživatele');
+                  }
+                }
+              }
+            );
+          }
+        }
+      } catch (error) {
+        addDebugLog('error', 'ATTACHMENTS', 'restore-from-ls-error', error.message);
+      }
+    };
+
+    // Obnovit pouze pokud máme user_id a formData je načtené
+    if (user_id && formData) {
+      restoreUnsavedAttachments();
+    }
+  }, [user_id, formData.id]); // Trigger při změně user_id nebo order ID
 
   // 📸 SNAPSHOT původního stavu formuláře pro detekci změn
   const originalFormDataRef = useRef(null);
@@ -6538,11 +6602,13 @@ function OrderForm25() {
     }
 
     const count = attachments.length;
-    // ✅ Chyba = soubor neexistuje (file_exists: false) nebo status: 'error'
+    // ✅ Chyba = soubor neexistuje (file_exists: false), status: 'error', nebo chybí klasifikace
     const hasErrors = attachments.some(att => 
       att.file_exists === false || 
       att.status === 'error' || 
-      att.status === 'failed'
+      att.status === 'failed' ||
+      !att.klasifikace || 
+      att.klasifikace.trim() === ''
     );
 
     return { count, hasErrors };
@@ -7756,7 +7822,7 @@ function OrderForm25() {
     setEditingFaktura(null);
     setShowAddFakturaForm(false);
 
-    showToast && showToast('Faktura přidána - uloží se s objednávkou', { type: 'success' });
+    showToast && showToast(`✅ Faktura úspěšně přidána\n📊 ${fakturaFormData.fa_cislo || 'Nová faktura'}\n💾 Uloží se s objednávkou`, 'success');
 
     // Spustit autosave po změně faktur
     triggerAutosave(true);
@@ -7871,7 +7937,7 @@ function OrderForm25() {
       setEditingFaktura(null);
       setShowAddFakturaForm(false);
 
-      showToast && showToast('✅ Faktura úspěšně aktualizována', { type: 'success' });
+      showToast && showToast(`✅ Faktura úspěšně aktualizována\n📊 ${fakturaFormData.fa_cislo || 'Faktura'}\n💾 Změny uloženy`, 'success');
 
     } catch (err) {
       console.group('❌ CHYBA při aktualizaci faktury');
@@ -8039,7 +8105,7 @@ function OrderForm25() {
 
   // Potvrzení smazání faktury z dialogu
   const confirmDeleteFaktura = async () => {
-    const { fakturaId, pocetPriloh } = deleteFacturaDialog;
+    const { fakturaId, fakturaNazev, pocetPriloh } = deleteFacturaDialog;
 
     // Zavřít dialog
     setDeleteFacturaDialog({ isOpen: false, fakturaId: null, fakturaNazev: '', pocetPriloh: 0 });
@@ -8091,7 +8157,7 @@ function OrderForm25() {
         try {
           // ✅ V2 API: deleteInvoiceV2(invoiceId, token, username, hardDelete=true)
           await deleteInvoiceV2(fakturaId, token, username, true);
-          showToast && showToast('✅ Faktura i přílohy byly trvale smazány', { type: 'success' });
+          showToast && showToast(`✅ Faktura trvale smazána\n📊 ${fakturaNazev || 'Faktura'}\n💾 Včetně příloh`, 'success');
         } catch (err) {
           showToast && showToast('Nepodařilo se smazat fakturu', { type: 'error' });
           // Pokračuj i při chybě - odeber fakturu alespoň lokálně
@@ -8694,7 +8760,7 @@ function OrderForm25() {
   // 🔒 skipUnlock: Pro ADMIN/SUPERADMIN nezamykáme - zůstávají editovat
   const startSaveProgressAndRedirect = async (orderNumber, orderId, skipUnlock = false) => {
     // ✅ Toast zpráva o úspěšném uložení
-    showToast && showToast(formatToastMessage(`Objednávka ${orderNumber} byla úspěšně uložena do databáze`, 'success'), { type: 'success' });
+    showToast && showToast(`✅ Objednávka úspěšně uložena\n📋 ${orderNumber}\n💾 Databáze aktualizována`, 'success');
     
     // 🎯 Spustit progress přes DraftManager (automaticky zakáže autosave)
     setShowSaveProgress(true);
@@ -9081,7 +9147,7 @@ function OrderForm25() {
         // updateOrderV2 vrací přímo data nebo hodí error
         const updatedOrder = await updateOrderV2(formData.id, orderData, token, username);
 
-        showToast && showToast('✅ Archivovaná objednávka aktualizována', { type: 'success' });
+        showToast && showToast(`✅ Objednávka úspěšně aktualizována\n📋 ${formData.cislo_objednavky || 'Archivovaná'}\n💾 Změny uloženy`, 'success');
 
         // Znovu načíst aktuální data z DB (použije se getOrderV2)
         if (formData.id || formData.id) {
@@ -10369,14 +10435,14 @@ function OrderForm25() {
           if (showToast) {
             const isNewOrder = !isOrderSavedToDB; // Byla to nová objednávka nebo update?
             const message = isNewOrder
-              ? `Objednávka ${orderNumber} byla úspěšně vytvořena`
-              : `Objednávka ${orderNumber} byla úspěšně aktualizována`;
-            showToast(message, { type: 'success' });
+              ? '✅ Objednavka uspesne vytvorena\n📋 ' + orderNumber + '\n💾 Databaze aktualizovana'
+              : '✅ Objednavka uspesne aktualizovana\n📋 ' + orderNumber + '\n💾 Zmeny ulozeny';
+            showToast(message, 'success');
           }
 
-          // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
-          // Uživatel má možnost pokračovat tam, kde skončil
-          addDebugLog('info', 'INSERT', 'stay-in-place', 'Zůstaň na stejné pozici po uložení');
+          // ✅ ADMIN: Zustat na stejne pozici - NEAUTOMATICKY scrollovat
+          // Uzivatel ma moznost pokracovat tam, kde skoncil
+          addDebugLog('info', 'INSERT', 'stay-in-place', 'Zustan na stejne pozici po ulozeni');
         }
 
         // RESET isChanged - data jsou synchronizována s DB
@@ -11111,7 +11177,7 @@ function OrderForm25() {
           addDebugLog('info', 'UPDATE', 'stay-on-form', `SUPERADMIN/ADMIN zůstává na formuláři - koncept NENÍ smazán`);
 
           // 🎉 TOAST NOTIFIKACE pro SUPERADMIN/ADMIN při UPDATE
-          showToast && showToast(formatToastMessage(`Objednávka ${orderNumber} byla úspěšně aktualizována`, 'success'), { type: 'success' });
+          showToast && showToast('✅ Objednávka úspěšně aktualizována\n📋 ' + orderNumber + '\n💾 Změny uloženy', 'success');
 
           // ✅ ADMIN: Zůstat na stejné pozici - NEAUTOMATICKY scrollovat
           // Uživatel má možnost pokračovat tam, kde skončil
@@ -11391,7 +11457,7 @@ function OrderForm25() {
       }, isAutoSave ? 300 : 0);
 
       if (!isAutoSave) {
-        showToast && showToast('Koncept byl uložen do místního úložiště', { type: 'success' });
+        showToast && showToast(`✅ Koncept úspěšně uložen\n💾 Místní úložiště\n📝 ${formData.cislo_objednavky || 'Nová objednávka'}`, 'success');
       }
 
       return true;
@@ -12439,13 +12505,7 @@ function OrderForm25() {
       } catch (error) {
       }
 
-      // ❌ EMERGENCY SAVE VYPNUT - způsoboval problémy s přepsáním dat
-      // Spoléháme se na rychlý autosave (500ms debounce)
-      // Emergency save nelze spolehlivě implementovat kvůli:
-      // 1) Šifrovaná data nelze synchronně dešifrovat
-      // 2) formData state může být starý (React batching)
-      // 3) beforeunload event je synchronní a nemůže čekat na async operace
-      // Zjisti, jestli máme nějaké neuložené přílohy
+      // 💾 ULOŽENÍ NEULOŽENÝCH PŘÍLOH DO LOCALSTORAGE
       const unsavedAttachments = attachments.filter(att =>
         !att.serverId && // Nemá server ID = není nahráno na server
         att.status !== 'uploaded' && // Není označeno jako nahrané
@@ -12454,44 +12514,71 @@ function OrderForm25() {
       );
 
       const unclassifiedAttachments = attachments.filter(att =>
-        !att.klasifikace || att.klasifikace.trim() === '' // Není klasifikováno
+        (!att.klasifikace || att.klasifikace.trim() === '') && // Není klasifikováno
+        !att.fromServer // Není ze serveru
       );
 
+      // Uložit neuložené přílohy do LocalStorage (bez file objektů kvůli velikosti)
       if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        const message = `Máte ${unsavedAttachments.length} neuložených a ${unclassifiedAttachments.length} neklasifikovaných příloh. Opravdu chcete opustit stránku? Neuložené přílohy budou ztraceny.`;
-        e.preventDefault();
-        e.returnValue = message; // For Chrome
-        return message; // For other browsers
+        try {
+          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type,
+            klasifikace: att.klasifikace || '',
+            uploadDate: att.uploadDate,
+            lastModified: att.lastModified || Date.now(),
+            // File object nelze uložit do LS - musí se znovu vybrat
+            needsReselection: true
+          }));
+
+          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
+          
+          addDebugLog('info', 'ATTACHMENTS', 'save-to-ls', 
+            `Uloženo ${attachmentsToSave.length} neuložených příloh do LocalStorage`);
+        } catch (error) {
+          addDebugLog('error', 'ATTACHMENTS', 'save-to-ls-error', error.message);
+        }
+
+        // Místo browser alertu - bez preventDefault, jen notifikace
+        addDebugLog('warning', 'ATTACHMENTS', 'unsaved-on-exit', 
+          `Opouštíte stránku s ${unsavedAttachments.length} neuloženými a ${unclassifiedAttachments.length} neklasifikovanými přílohami`);
       }
     };
 
     const handlePopState = () => {
-      // Stejná kontrola pro browser back/forward
+      // 💾 ULOŽIT NEULOŽENÉ PŘÍLOHY při navigaci
       const unsavedAttachments = attachments.filter(att =>
         !att.serverId && att.status !== 'uploaded' && !att.fromServer && att.file
       );
       const unclassifiedAttachments = attachments.filter(att =>
-        !att.klasifikace || att.klasifikace.trim() === ''
+        (!att.klasifikace || att.klasifikace.trim() === '') && !att.fromServer
       );
 
       if (unsavedAttachments.length > 0 || unclassifiedAttachments.length > 0) {
-        showToast && showToast(
-          `Máte ${unsavedAttachments.length} neuložených a ${unclassifiedAttachments.length} neklasifikovaných příloh.\n\nOpravdu chcete opustit stránku? Neuložené přílohy budou ztraceny.`, {
-          type: 'warning',
-          timeout: 0,
-          action: {
-            confirmText: 'ANO, OPUSTIT',
-            cancelText: 'Zůstat',
-            onConfirm: () => {
-              // Pokračuj s opuštěním stránky - nemusíme nic dělat, prohlížeč se postará
-            },
-            onCancel: () => {
-              // 🔧 FIX: Zachovat query parametry (např. ?edit=123)
-              const fullUrl = window.location.pathname + window.location.search;
-              window.history.pushState(null, '', fullUrl);
-            }
-          }
-        });
+        // Jen uložit do LS, neblokovat navigaci
+        try {
+          const attachmentsToSave = [...unsavedAttachments, ...unclassifiedAttachments].map(att => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type,
+            klasifikace: att.klasifikace || '',
+            uploadDate: att.uploadDate,
+            lastModified: att.lastModified || Date.now(),
+            needsReselection: true
+          }));
+
+          const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+          localStorage.setItem(storageKey, JSON.stringify(attachmentsToSave));
+          
+          addDebugLog('info', 'ATTACHMENTS', 'save-on-navigation', 
+            `Uloženo ${attachmentsToSave.length} neuložených příloh při navigaci`);
+        } catch (error) {
+          addDebugLog('error', 'ATTACHMENTS', 'save-on-navigation-error', error.message);
+        }
       }
     };
 
@@ -12642,18 +12729,68 @@ function OrderForm25() {
       return;
     }
 
+    // 📊 Kontrola celkové velikosti příloh před upload
+    const existingAttachmentsSize = attachments
+      .filter(f => getFilePrefix(f) === 'obj-' && (f.status === 'uploaded' || f.status === 'uploading'))
+      .reduce((sum, f) => sum + (f.size || 0), 0);
+    
+    const newFilesSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+    const totalSize = existingAttachmentsSize + newFilesSize;
+    const maxTotalSize = 100 * 1024 * 1024; // 100MB limit pro celou objednávku
+    
+    if (totalSize > maxTotalSize) {
+      const existingSizeMB = (existingAttachmentsSize / 1024 / 1024).toFixed(2);
+      const newSizeMB = (newFilesSize / 1024 / 1024).toFixed(2);
+      const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+      
+      showToast && showToast(
+        `❌ Překročen limit celkové velikosti příloh!\n\n` +
+        `📊 Současná velikost: ${existingSizeMB} MB\n` +
+        `➕ Nové soubory: ${newSizeMB} MB\n` +
+        `📈 Celkem by bylo: ${totalSizeMB} MB\n` +
+        `🚫 Maximum povoleno: 100 MB\n\n` +
+        `💡 Tip: Smažte některé existující přílohy nebo nahrajte menší soubory`, 
+        { type: 'error', timeout: 10000 }
+      );
+      return;
+    }
+
     setUploadingFiles(true);
 
     // Přidáme soubory do lokálního stavu pro klasifikaci
     const newFiles = Array.from(files).map((file, index) => {
-      // Validace souboru
+      // Validace typu souboru
       if (!isAllowedFileType(file.name)) {
-        showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, 'error');
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'bez přípony';
+        
+        showToast && showToast(
+          `❌ Nepodporovaný typ souboru "${file.name}"\n\n` +
+          `📄 Detekovaná přípona: .${fileExtension}\n` +
+          `✅ Podporované typy:\n` +
+          `  • Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT\n` +
+          `  • Tabulky: XLS, XLSX, ODS, CSV\n` +
+          `  • Prezentace: PPT, PPTX, ODP\n` +
+          `  • Obrázky: JPG, PNG, GIF, BMP, WEBP, SVG\n` +
+          `  • Archivy: ZIP, RAR, 7Z\n` +
+          `  • Emaily: EML, MSG\n\n` +
+          `💡 Tip: Převeďte soubor do podporovaného formátu`, 
+          { type: 'error', timeout: 10000 }
+        );
         return null;
       }
 
-      if (!isAllowedFileSize(file.size, 20)) {
-        showToast(`Soubor ${file.name}: Příliš velký (max 20MB)`, 'error');
+      // Validace velikosti souboru
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      const maxSizeMB = 20;
+      
+      if (!isAllowedFileSize(file.size, maxSizeMB)) {
+        showToast && showToast(
+          `❌ Soubor "${file.name}" je příliš velký\n\n` +
+          `📏 Velikost souboru: ${fileSizeMB} MB\n` +
+          `🚫 Maximální povolená velikost: ${maxSizeMB} MB\n\n` +
+          `💡 Tip: Zkomprimujte soubor nebo nahrajte menší verzi`, 
+          { type: 'error', timeout: 8000 }
+        );
         return null;
       }
 
@@ -12715,9 +12852,23 @@ function OrderForm25() {
 
     // Přidáme soubory s automatickou klasifikací "JINE"
     const newFiles = Array.from(files).map((file, index) => {
-      // Validace souboru
+      // Validace typu souboru
       if (!isAllowedFileType(file.name)) {
-        showToast(`Soubor ${file.name}: Nepodporovaný typ souboru`, { type: 'error' });
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'bez přípony';
+        
+        showToast && showToast(
+          `❌ Nepodporovaný typ souboru "${file.name}"\n\n` +
+          `📄 Detekovaná přípona: .${fileExtension}\n` +
+          `✅ Podporované typy:\n` +
+          `  • Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT\n` +
+          `  • Tabulky: XLS, XLSX, ODS, CSV\n` +
+          `  • Prezentace: PPT, PPTX, ODP\n` +
+          `  • Obrázky: JPG, PNG, GIF, BMP, WEBP, SVG\n` +
+          `  • Archivy: ZIP, RAR, 7Z\n` +
+          `  • Emaily: EML, MSG\n\n` +
+          `💡 Tip: Převeďte soubor do podporovaného formátu`, 
+          { type: 'error', timeout: 10000 }
+        );
         return null;
       }
 
@@ -12896,7 +13047,7 @@ function OrderForm25() {
           // Zkontroluj existence souboru po aktualizaci (pomocí sync kontroly)
           await checkAttachmentsSynchronization25(true); // silentMode = true
 
-          showToast('✅ Klasifikace aktualizována v databázi + kontrola existence OK', 'success');
+          showToast('✅ Klasifikace aktualizována\n📄 ' + file.name + '\n🏷️ ' + klasifikace, 'success');
           // Success log odstraněn
 
           addDebugLog('success', 'ATTACHMENTS', 'update-classification-db',
@@ -12996,7 +13147,9 @@ function OrderForm25() {
                 serverId: attachmentId,
                 serverGuid: result.data?.guid || file.systemovy_nazev,
                 uploadError: null,
-                file: null // Uvolnit paměť - soubor je už na serveru
+                file: null, // Uvolnit paměť - soubor je už na serveru
+                nahrano_uzivatel_id: result.data?.uploaded_by_user_id,
+                nahrano_uzivatel: result.data?.nahrano_uzivatel
               }
             : f
         )
@@ -13010,13 +13163,39 @@ function OrderForm25() {
               serverId: attachmentId,
               serverGuid: result.data?.guid || file.systemovy_nazev,
               uploadError: null,
-              file: null // Uvolnit paměť - soubor je už na serveru
+              file: null, // Uvolnit paměť - soubor je už na serveru
+              nahrano_uzivatel_id: result.data?.uploaded_by_user_id,
+              nahrano_uzivatel: result.data?.nahrano_uzivatel
             }
           : f
       ));
 
       // Toast při úspěšném nahrání na server
-      showToast(`✅ Příloha "${file.name}" byla úspěšně nahrána na server`, 'success');
+      showToast(`✅ Příloha úspěšně nahrána\n📄 ${file.name}\n💾 Server aktualizován`, 'success');
+
+      // 🧹 VYČIŠTĚNÍ LOCALSTORAGE po úspěšném uploadu
+      try {
+        const storageKey = `unsaved_attachments_${formData.id || 'draft'}`;
+        const savedAttachmentsStr = localStorage.getItem(storageKey);
+        
+        if (savedAttachmentsStr) {
+          const savedAttachments = JSON.parse(savedAttachmentsStr);
+          // Odstranit nahraný soubor ze seznamu
+          const filteredAttachments = savedAttachments.filter(att => att.id !== fileId);
+          
+          if (filteredAttachments.length === 0) {
+            // Všechny přílohy nahrány - smazat celý LocalStorage klíč
+            localStorage.removeItem(storageKey);
+            addDebugLog('info', 'ATTACHMENTS', 'ls-cleared', 'LocalStorage vyčištěn - všechny přílohy nahrány');
+          } else {
+            // Aktualizovat seznam bez nahrané přílohy
+            localStorage.setItem(storageKey, JSON.stringify(filteredAttachments));
+            addDebugLog('info', 'ATTACHMENTS', 'ls-updated', `LocalStorage aktualizován - zbývá ${filteredAttachments.length} příloh`);
+          }
+        }
+      } catch (error) {
+        addDebugLog('error', 'ATTACHMENTS', 'ls-clear-error', error.message);
+      }
 
     } catch (error) {
       addDebugLog('error', 'ATTACHMENTS', 'upload-error',
@@ -24052,10 +24231,17 @@ function OrderForm25() {
                         {uploadingFiles ? 'Nahrávám soubory...' : dragOver ? 'Pusť soubory zde!' : 'Přetáhni nebo vyber soubory'}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
-                        Každá příloha musí být klasifikována: Objednávka / Faktura / Košilka / Jiné.
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: '500' }}>
-                        📤 Orders25 API: Přílohy se automaticky nahrají na server po klasifikaci pomocí Orders25 attachment API.
+                        Každá příloha musí být klasifikována: Objednávka / Faktura / Košilka / Jiné.<br/>
+                        <span style={{ fontSize: '0.8rem', color: '#f59e0b' }}>
+                          📏 Max. velikost souboru: 20 MB | Max. celková velikost: 100 MB<br/>
+                          📄 Podporované formáty:<br/>
+                          &nbsp;&nbsp;• Dokumenty: PDF, DOC, DOCX, ODT, RTF, TXT<br/>
+                          &nbsp;&nbsp;• Tabulky: XLS, XLSX, ODS, CSV<br/>
+                          &nbsp;&nbsp;• Prezentace: PPT, PPTX, ODP<br/>
+                          &nbsp;&nbsp;• Obrázky: JPG, PNG, GIF, BMP, SVG<br/>
+                          &nbsp;&nbsp;• Archivy: ZIP, RAR, 7Z<br/>
+                          &nbsp;&nbsp;• Emaily: EML, MSG
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -24104,7 +24290,13 @@ function OrderForm25() {
                         }}>
                           <Label>
                             Počet příloh: <strong>{attachments.filter(a => getFilePrefix(a) === 'obj-').length}</strong> |
-                            Nahráno: <span style={{color: '#16a34a'}}><strong>{attachments.filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded').length}</strong></span>
+                            Nahráno: <span style={{color: '#16a34a'}}><strong>{attachments.filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded').length}</strong></span> |
+                            Velikost: <strong>{(() => {
+                              const totalSize = attachments
+                                .filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded')
+                                .reduce((sum, f) => sum + (f.size || 0), 0);
+                              return totalSize > 0 ? `${(totalSize / 1024 / 1024).toFixed(2)} MB` : '0 MB';
+                            })()}</strong>
                           </Label>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -24402,7 +24594,7 @@ function OrderForm25() {
                                   fontSize: '0.6875rem',
                                   fontWeight: '500'
                                 }}>
-                                  Nahráno: {file.nahrano_uzivatel?.prijmeni || 'ADMIN'} {file.nahrano_uzivatel?.jmeno || 'Super'}
+                                  Nahráno: {file.nahrano_uzivatel?.prijmeni || userDetail?.prijmeni || 'Neznámý'} {file.nahrano_uzivatel?.jmeno || userDetail?.jmeno || 'uživatel'}
                                 </span>
                               </div>
                             </div>
