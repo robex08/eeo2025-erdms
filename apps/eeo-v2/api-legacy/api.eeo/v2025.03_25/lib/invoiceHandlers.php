@@ -129,7 +129,8 @@ function handle_invoices25_create($input, $config, $queries) {
     }
 
     // Validace povinných polí
-    $objednavka_id = isset($input['objednavka_id']) && !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+    // ✅ objednavka_id může být NULL (standalone faktura) nebo validní ID objednávky (> 0)
+    $objednavka_id = isset($input['objednavka_id']) && (int)$input['objednavka_id'] > 0 ? (int)$input['objednavka_id'] : null;
     $fa_castka = isset($input['fa_castka']) ? $input['fa_castka'] : null;
     $fa_cislo_vema = isset($input['fa_cislo_vema']) ? trim($input['fa_cislo_vema']) : '';
 
@@ -177,9 +178,10 @@ function handle_invoices25_create($input, $config, $queries) {
             rozsirujici_data,
             vytvoril_uzivatel_id,
             dt_vytvoreni,
+            dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -733,7 +735,8 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
     // Pro multipart/form-data používáme $_POST místo $input
     $token = isset($_POST['token']) ? $_POST['token'] : '';
     $request_username = isset($_POST['username']) ? $_POST['username'] : '';
-    $objednavka_id = isset($_POST['objednavka_id']) && !empty($_POST['objednavka_id']) ? (int)$_POST['objednavka_id'] : null;
+    // ✅ objednavka_id může být NULL (standalone faktura) nebo validní ID objednávky (> 0)
+    $objednavka_id = isset($_POST['objednavka_id']) && (int)$_POST['objednavka_id'] > 0 ? (int)$_POST['objednavka_id'] : null;
     $fa_castka = isset($_POST['fa_castka']) ? $_POST['fa_castka'] : null;
     $fa_cislo_vema = isset($_POST['fa_cislo_vema']) ? trim($_POST['fa_cislo_vema']) : '';
     $typ_prilohy = isset($_POST['typ_prilohy']) ? $_POST['typ_prilohy'] : 'ISDOC';
@@ -837,8 +840,9 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             rozsirujici_data,
             vytvoril_uzivatel_id,
             dt_vytvoreni,
+            dt_aktualizace,
             aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
 
         $stmt_faktura = $db->prepare($sql_faktura);
         
@@ -1067,7 +1071,7 @@ function handle_invoices25_list($input, $config, $queries) {
         // 🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
         // - Pokud je faktura navázána na objednávku (objednavka_id IS NOT NULL) → objednávka MUSÍ být aktivní
         // - Pokud je faktura navázána na smlouvu (smlouva_id IS NOT NULL) → smlouva MUSÍ být aktivní
-        // - Faktury bez přiřazení (standalone) → zobrazit normálně
+        // - Faktury bez přiřazení (objednavka_id/smlouva_id = NULL) → zobrazit normálně
         $where_conditions[] = '(
             (f.objednavka_id IS NULL OR o.aktivni = 1)
             AND
@@ -1503,9 +1507,9 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN 1 END) as pocet_moje_faktury,
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
-            COUNT(CASE WHEN f.smlouva_id IS NOT NULL AND f.smlouva_id > 0 THEN 1 END) as pocet_s_smlouvou,
-            COUNT(CASE WHEN f.objednavka_id IS NOT NULL AND f.objednavka_id > 0 THEN 1 END) as pocet_s_objednavkou,
-            COUNT(CASE WHEN (f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0) THEN 1 END) as pocet_bez_prirazeni,
+            COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
+            COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
+            COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
             COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky
         FROM `$faktury_table` f
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id

@@ -19,7 +19,7 @@ import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives'
 import styled from '@emotion/styled';
 import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR';
 import ErrorDialog from '../ErrorDialog';
-import { getSpisovkaZpracovaniList } from '../../services/apiSpisovkaZpracovani';
+import { getSpisovkaZpracovaniList, deleteSpisovkaZpracovani } from '../../services/apiSpisovkaZpracovani';
 
 // ============================================================
 // STYLED COMPONENTS + ANIMATIONS
@@ -533,7 +533,7 @@ const TxtViewer = styled.pre`
 // MAIN COMPONENT
 // ============================================================
 
-const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username }) => {
+const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username, showToast }) => {
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -825,6 +825,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             uzivatel_jmeno: item.uzivatel_jmeno || 'Neznámý',
             zpracovano_kdy: item.zpracovano_kdy,
             fa_cislo_vema: item.fa_cislo_vema,
+            faktura_id: item.faktura_id, // 🆕 Pro případné smazání faktury
             stav: item.stav
           });
         });
@@ -837,6 +838,64 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       // Neblokujeme - panel může fungovat i bez tohoto
     }
   }, [token, username]);
+
+  // 🗑️ Zrušit zpracování Spisovka dokumentu
+  const handleCancelProcessing = useCallback(async (dokumentId, fakturaId, faCisloVema) => {
+    setErrorDialog({
+      isOpen: true,
+      title: '🗑️ Zrušit zpracování dokumentu',
+      message: (
+        <div style={{ fontFamily: 'system-ui', lineHeight: '1.6' }}>
+          <p style={{ marginBottom: '12px' }}>
+            Chcete zrušit zpracování tohoto dokumentu ze Spisovky?
+          </p>
+          {faCisloVema && (
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fef3c7',
+              borderRadius: '6px',
+              fontSize: '13px',
+              marginBottom: '12px'
+            }}>
+              <div><strong>Zaevidovaná faktura:</strong> {faCisloVema}</div>
+              {fakturaId && <div style={{ fontSize: '12px', color: '#78716c', marginTop: '4px' }}>ID: {fakturaId}</div>}
+            </div>
+          )}
+          <p style={{ marginBottom: '8px', fontWeight: 600, color: '#dc2626' }}>
+            ⚠️ Pozor: Toto pouze odstraní vazbu mezi dokumentem a fakturou.
+          </p>
+          <p style={{ fontSize: '13px', color: '#6b7280' }}>
+            Fakturu můžete smazat ručně z formuláře editace faktury.
+          </p>
+        </div>
+      ),
+      onConfirm: async () => {
+        try {
+          // Smazat tracking
+          await deleteSpisovkaZpracovani({
+            username,
+            token,
+            dokument_id: dokumentId
+          });
+          
+          // Vyčistit localStorage pokud je to aktivní dokument
+          if (activeDokumentId === dokumentId) {
+            localStorage.removeItem('spisovka_active_dokument');
+            setActiveDokumentId(null);
+          }
+          
+          // Refresh seznamu
+          await fetchZpracovaneDokumenty();
+          
+          showToast && showToast('✅ Evidence zrušena', { type: 'success' });
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+        } catch (err) {
+          showToast && showToast(`❌ Chyba: ${err.message}`, { type: 'error' });
+          setErrorDialog({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+        }
+      }
+    });
+  }, [username, token, activeDokumentId, fetchZpracovaneDokumenty, showToast, setActiveDokumentId, setErrorDialog]);
 
   const fetchFaktury = useCallback(async () => {
     setLoading(true);
@@ -1455,6 +1514,30 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                             Zaevidováno <strong>{timeText}</strong>
                             {detail.fa_cislo_vema && <> jako <strong>{detail.fa_cislo_vema}</strong></>}
                           </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancelProcessing(faktura.dokument_id, detail.faktura_id, detail.fa_cislo_vema);
+                            }}
+                            style={{
+                              marginLeft: 'auto',
+                              padding: '4px 8px',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#dc2626',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontWeight: 600
+                            }}
+                            title="Zrušit zpracování tohoto dokumentu"
+                          >
+                            <span>🗑️</span>
+                            <span>Zrušit</span>
+                          </button>
                         </div>
                         <div style={{
                           fontSize: '0.75rem',

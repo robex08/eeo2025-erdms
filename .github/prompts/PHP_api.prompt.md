@@ -13,6 +13,11 @@ last_updated: 2025-12-20
 ---
 
 ## 🎯 KRITICKÁ PRAVIDLA (vždy dodržovat)
+pokud vyvojvoy tym nerekne jinka tak pracuje s databazi 
+
+eeo2025-dev   / verzi dev, a vse se odehrava v ni. 
+pri kontrole obshu, zakladnai novych sloupcu apod. vzdy pracovat s touto verzi DB, nazvem !!
+
 
 !!! vzdy ukladat u vsech PHP endpointu casove a datumove polozky s vyzuitim TimezoneHelper pro spravnou timezone (
 setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zónu (+01:00 nebo +02:00)) !!!

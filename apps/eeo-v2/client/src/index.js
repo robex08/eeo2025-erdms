@@ -42,13 +42,7 @@ if (process.env.NODE_ENV === 'development') {
   }).catch(() => {});
 }
 
-// DEBUG: Log ENV variables
-console.log('🔧 ENV DEBUG:', {
-  REACT_APP_API2_BASE_URL: process.env.REACT_APP_API2_BASE_URL,
-  REACT_APP_VERSION: process.env.REACT_APP_VERSION,
-  NODE_ENV: process.env.NODE_ENV,
-  PUBLIC_URL: process.env.PUBLIC_URL
-});
+
 
 // Aktualizuj verzi na splash screen z .env
 const versionText = document.getElementById('splash-version');

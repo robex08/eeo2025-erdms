@@ -2059,9 +2059,15 @@ const Invoices25List = () => {
   // ⚠️ Filtrování a pagination dělá BE - invoices už jsou filtrované a stránkované!
   
   // Handlers
-  const handleRefresh = () => {
-    setCurrentPage(1); // Reset na první stránku
-    loadData();
+  const handleRefresh = async () => {
+    try {
+      setCurrentPage(1); // Reset na první stránku
+      await loadData();
+      showToast?.('✅ Seznam faktur byl obnoven z databáze', 'success');
+    } catch (err) {
+      console.error('❌ Chyba při obnovování seznamu faktur:', err);
+      showToast?.('❌ Chyba při obnovování seznamu faktur', 'error');
+    }
   };
   
   const handlePageChange = (newPage) => {

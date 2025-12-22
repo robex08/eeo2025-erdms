@@ -3847,7 +3847,7 @@ const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
         // Detekce změny floating header stavu během scrollu
         const currentFloatingState = window.__floatingHeaderVisible || false;
         if (currentFloatingState !== previousFloatingState) {
-          console.log('🔄 [DatePicker] Detekována změna floating header při scrollu -> zavírám dropdown');
+
           setIsOpen(false);
           previousFloatingState = currentFloatingState;
           return;
@@ -4316,11 +4316,6 @@ const Orders25List = () => {
   const [columnWidths, setColumnWidths] = useState([]);
   const tableRef = useRef(null); // Pro Intersection Observer (ukazuje na TableContainer)
 
-  // Debug logování pro floating header
-  useEffect(() => {
-    console.log('🎈 showFloatingHeader změnil na:', showFloatingHeader);
-  }, [showFloatingHeader]);
-
   // Tento effect musí být až PO definici table instance, proto ho přesuneme níže
   // Placeholder pro floating header observer - bude definován až po table instance
 
@@ -4351,22 +4346,18 @@ const Orders25List = () => {
   // 🎈 Měření šířek sloupců pro floating header
   useEffect(() => {
     const measureColumnWidths = () => {
-      console.log('📏 Měření šířek sloupců', { tableRefCurrent: !!tableRef.current });
       if (!tableRef.current) {
-        console.log('📏❌ tableRef.current není dostupný pro měření šířek');
         return;
       }
 
       // Najdeme všechny th elementy v prvním řádku hlavičky
       const headerCells = tableRef.current.querySelectorAll('thead tr:first-child th');
       const widths = Array.from(headerCells).map(cell => cell.offsetWidth);
-      console.log('📏✅ Naměřené šířky sloupců:', widths);
       setColumnWidths(widths);
     };
 
     // Pokud nejsou data nebo je loading, čekáme
     if (loading || !orders || orders.length === 0) {
-      console.log('📏⏳ Čekám na načtení dat pro měření šířek', { loading, ordersCount: orders?.length });
       return;
     }
 
@@ -8142,34 +8133,23 @@ const Orders25List = () => {
 
   // 🎯 Floating header intersection observer - aktivuje se když jsou data načtená a tabulka vykreslená
   useEffect(() => {
-    console.log('🎯 [FloatingHeader] Observer check:', { 
-      loading, 
-      hasData: filteredData.length > 0,
-      tableExists: !!tableRef.current 
-    });
-    
     // Dokud se načítají data nebo nejsou žádná data, observer neběží
     if (loading || filteredData.length === 0) {
-      console.log('🎯 [FloatingHeader] Observer NEAKTIVNÍ - čekám na data');
       setShowFloatingHeader(false);
       return;
     }
     
     // Ověř že tabulka je vykreslená v DOM
     if (!tableRef.current) {
-      console.log('🎯 [FloatingHeader] Observer NEAKTIVNÍ - tabulka ještě není v DOM');
       setShowFloatingHeader(false);
       return;
     }
     
     const thead = tableRef.current.querySelector('thead');
     if (!thead) {
-      console.log('⚠️ [FloatingHeader] thead element nenalezen v tabulce');
       setShowFloatingHeader(false);
       return;
     }
-    
-    console.log('✅ [FloatingHeader] Tabulka vykreslená, AKTIVUJI observer');
     
     const appHeaderHeight = 96;
     const menuBarHeight = 48;
@@ -8180,28 +8160,13 @@ const Orders25List = () => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         const theadBottom = entry.boundingClientRect.bottom;
-        const theadTop = entry.boundingClientRect.top;
-        const isVisible = entry.isIntersecting;
         const shouldShow = theadBottom < totalHeaderHeight;
-        
-        console.log('👁️ [FloatingHeader] Hlavička ve view:', {
-          theadTop: Math.round(theadTop),
-          theadBottom: Math.round(theadBottom),
-          totalHeaderHeight,
-          isVisible,
-          shouldShow,
-          'floating': shouldShow ? 'ZOBRAZIT' : 'SKRÝT'
-        });
-        
-        // Track floating header state globally for DatePicker scroll handlers
-        window.__floatingHeaderVisible = shouldShow;
         
         // Track floating header state globally for DatePicker scroll handlers
         window.__floatingHeaderVisible = shouldShow;
         
         // Close dropdowns only when floating header visibility actually changes
         if (shouldShow !== previousShowState) {
-          console.log('🔄 [FloatingHeader] Změna stavu -> zavírám dropdowny');
           window.dispatchEvent(new Event('closeAllDatePickers'));
           previousShowState = shouldShow;
         }
@@ -8212,10 +8177,8 @@ const Orders25List = () => {
     );
     
     observer.observe(thead);
-    console.log('✅ [FloatingHeader] Observer připojen k thead elementu');
     
     return () => {
-      console.log('🧹 [FloatingHeader] Cleanup - odpojuji observer');
       observer.disconnect();
     };
   }, [loading, filteredData.length, tableRef.current]); // Přidán tableRef.current do dependencies

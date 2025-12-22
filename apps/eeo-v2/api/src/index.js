@@ -26,6 +26,7 @@ app.use(cookieParser()); // Parse cookies
 
 // CORS konfigurace - podpora více portů pro dev prostředí
 const allowedOrigins = [
+  'http://localhost:3000',  // React development server
   'http://localhost:5173',
   'http://localhost:5174', 
   'http://localhost:5175',
@@ -103,10 +104,12 @@ if (process.env.NODE_ENV === 'development') {
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
 const hierarchyRoutes = require('./routes/hierarchy');
+const bitcoinRoutes = require('./routes/bitcoin');
 
 app.use('/api/eeo/auth', authRoutes);
 app.use('/api/eeo/entra', entraRoutes);
 app.use('/api/eeo/hierarchy', hierarchyRoutes);
+app.use('/api', bitcoinRoutes);
 
 // 404 handler
 app.use((req, res) => {

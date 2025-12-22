@@ -409,6 +409,151 @@ if ($endpoint === 'nameday') {
     exit;
 }
 
+// === BITCOIN PRICE ENDPOINT - GET /api.eeo/api.php?action=bitcoin/price ===
+if ($endpoint === 'api.php' && isset($_GET['action']) && $_GET['action'] === 'bitcoin/price') {
+    if ($request_method === 'GET') {
+        try {
+            // Cache mechanismus
+            $cacheDir = __DIR__ . '/cache';
+            $cacheFile = $cacheDir . '/bitcoin_price_cache.json';
+            $cacheLifetime = 15 * 60; // 15 minut cache
+            
+            // Vytvořit cache adresář pokud neexistuje
+            if (!is_dir($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
+            }
+            
+            // Kontrola cache
+            if (file_exists($cacheFile)) {
+                $cacheTime = filemtime($cacheFile);
+                if (time() - $cacheTime < $cacheLifetime) {
+                    // Cache je platná - vrátit cached data
+                    $cachedData = file_get_contents($cacheFile);
+                    
+                    // Přidat cache headers
+                    header('X-Cache: HIT');
+                    header('X-Cache-Age: ' . (time() - $cacheTime));
+                    
+                    echo $cachedData;
+                    exit;
+                }
+            }
+            
+            // Načíst fresh data z Yahoo Finance API
+            $symbol = 'BTC-USD';
+            $fromDate = strtotime('2021-01-01');
+            $toDate = time();
+            $interval = '1wk';
+            
+            $yahooUrl = "https://query1.finance.yahoo.com/v8/finance/chart/{$symbol}?period1={$fromDate}&period2={$toDate}&interval={$interval}";
+            
+            // HTTP context s User-Agent
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'header' => [
+                        'User-Agent: Mozilla/5.0 (compatible; ERDMS-API/1.0; PHP)',
+                        'Accept: application/json'
+                    ],
+                    'timeout' => 15
+                ]
+            ]);
+            
+            // HTTP request
+            $response = file_get_contents($yahooUrl, false, $context);
+            
+            if ($response === false) {
+                throw new Exception('Failed to fetch data from Yahoo Finance API');
+            }
+            
+            // Parse JSON
+            $data = json_decode($response, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON response: ' . json_last_error_msg());
+            }
+            
+            if (!isset($data['chart']['result'][0]['timestamp'])) {
+                throw new Exception('Invalid response format - missing timestamp data');
+            }
+            
+            $result = $data['chart']['result'][0];
+            $timestamps = $result['timestamp'];
+            $prices = $result['indicators']['quote'][0]['close'];
+            
+            if (empty($timestamps) || empty($prices)) {
+                throw new Exception('No price data found');
+            }
+            
+            // Zpracování dat
+            $processedData = [];
+            $validPoints = 0;
+            
+            for ($i = 0; $i < count($timestamps); $i++) {
+                $price = isset($prices[$i]) ? $prices[$i] : null;
+                
+                if ($price === null || $price <= 0) {
+                    continue;
+                }
+                
+                $processedData[] = [
+                    'date' => date('c', $timestamps[$i]),
+                    'price' => round($price, 2)
+                ];
+                $validPoints++;
+            }
+            
+            if ($validPoints === 0) {
+                throw new Exception('No valid price points found');
+            }
+            
+            // Aktuální cena
+            $currentPrice = end($processedData)['price'];
+            
+            // Sestavit odpověď
+            $responseData = [
+                'success' => true,
+                'data' => $processedData,
+                'currentPrice' => $currentPrice,
+                'source' => 'Yahoo Finance',
+                'symbol' => $symbol,
+                'interval' => $interval,
+                'dataPoints' => $validPoints,
+                'fromDate' => date('Y-m-d', $fromDate),
+                'toDate' => date('Y-m-d', $toDate),
+                'timestamp' => date('c'),
+                'cacheTTL' => $cacheLifetime
+            ];
+            
+            $jsonResponse = json_encode($responseData);
+            
+            // Uložit do cache
+            file_put_contents($cacheFile, $jsonResponse, LOCK_EX);
+            
+            // Vrátit response
+            header('X-Cache: MISS');
+            echo $jsonResponse;
+            
+        } catch (Exception $e) {
+            // Log error
+            error_log("Bitcoin API Error: " . $e->getMessage());
+            
+            // Vrátit error response
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'message' => 'Failed to fetch Bitcoin price data',
+                'timestamp' => date('c')
+            ]);
+        }
+    } else {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+    }
+    exit;
+}
+
 // Debug removed - back to normal operation
 
 // === SUPPORT FOR POST BODY ACTION + OPERATION ROUTING ===
@@ -4987,6 +5132,28 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/spisovka-zpracovani/delete
+        if ($endpoint === 'spisovka-zpracovani/delete') {
+            if ($request_method === 'POST') {
+                handle_spisovka_zpracovani_delete($input, $_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // GET /api.eeo/bitcoin/price - Bitcoin ceny pro Easter egg (bez autentizace)
+        if ($endpoint === 'bitcoin/price') {
+            if ($request_method === 'GET') {
+                handle_bitcoin_price($_config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET.'));
+            }
+            break;
+        }
+        
         // Fallback - endpoint not found
         http_response_code(404);
         echo json_encode(array(
@@ -4998,4 +5165,148 @@ switch ($endpoint) {
             )
         ));
         break;
+}
+
+/**
+ * Bitcoin Price Handler - Easter egg endpoint
+ * GET /api.eeo/bitcoin/price
+ * Načte historické Bitcoin ceny z Yahoo Finance API (proxy pro CORS)
+ */
+function handle_bitcoin_price($config) {
+    try {
+        // Cache mechanismus
+        $cacheDir = __DIR__ . '/cache';
+        $cacheFile = $cacheDir . '/bitcoin_price_cache.json';
+        $cacheLifetime = 15 * 60; // 15 minut cache
+        
+        // Vytvořit cache adresář pokud neexistuje
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+        
+        // Kontrola cache
+        if (file_exists($cacheFile)) {
+            $cacheTime = filemtime($cacheFile);
+            if (time() - $cacheTime < $cacheLifetime) {
+                // Cache je platná - vrátit cached data
+                $cachedData = file_get_contents($cacheFile);
+                
+                // Přidat cache headers
+                header('X-Cache: HIT');
+                header('X-Cache-Age: ' . (time() - $cacheTime));
+                
+                echo $cachedData;
+                return;
+            }
+        }
+        
+        // Načíst fresh data z Yahoo Finance API
+        $symbol = 'BTC-USD';
+        $fromDate = strtotime('2021-01-01');
+        $toDate = time();
+        $interval = '1wk';
+        
+        $yahooUrl = "https://query1.finance.yahoo.com/v8/finance/chart/{$symbol}?period1={$fromDate}&period2={$toDate}&interval={$interval}";
+        
+        // HTTP context s User-Agent
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: Mozilla/5.0 (compatible; ERDMS-API/1.0; PHP)',
+                    'Accept: application/json',
+                    'Accept-Encoding: gzip, deflate'
+                ],
+                'timeout' => 15
+            ]
+        ]);
+        
+        // HTTP request
+        $response = file_get_contents($yahooUrl, false, $context);
+        
+        if ($response === false) {
+            throw new Exception('Failed to fetch data from Yahoo Finance API');
+        }
+        
+        // Parse JSON
+        $data = json_decode($response, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Invalid JSON response: ' . json_last_error_msg());
+        }
+        
+        if (!isset($data['chart']['result'][0]['timestamp'])) {
+            throw new Exception('Invalid response format - missing timestamp data');
+        }
+        
+        $result = $data['chart']['result'][0];
+        $timestamps = $result['timestamp'];
+        $prices = $result['indicators']['quote'][0]['close'];
+        
+        if (empty($timestamps) || empty($prices)) {
+            throw new Exception('No price data found');
+        }
+        
+        // Zpracování dat
+        $processedData = [];
+        $validPoints = 0;
+        
+        for ($i = 0; $i < count($timestamps); $i++) {
+            $price = isset($prices[$i]) ? $prices[$i] : null;
+            
+            if ($price === null || $price <= 0) {
+                continue;
+            }
+            
+            $processedData[] = [
+                'date' => date('c', $timestamps[$i]),
+                'price' => round($price, 2)
+            ];
+            $validPoints++;
+        }
+        
+        if ($validPoints === 0) {
+            throw new Exception('No valid price points found');
+        }
+        
+        // Aktuální cena
+        $currentPrice = end($processedData)['price'];
+        
+        // Sestavit odpověď
+        $response = [
+            'success' => true,
+            'data' => $processedData,
+            'currentPrice' => $currentPrice,
+            'source' => 'Yahoo Finance',
+            'symbol' => $symbol,
+            'interval' => $interval,
+            'dataPoints' => $validPoints,
+            'fromDate' => date('Y-m-d', $fromDate),
+            'toDate' => date('Y-m-d', $toDate),
+            'timestamp' => date('c'),
+            'cacheTTL' => $cacheLifetime
+        ];
+        
+        $jsonResponse = json_encode($response, JSON_PRETTY_PRINT);
+        
+        // Uložit do cache
+        file_put_contents($cacheFile, $jsonResponse, LOCK_EX);
+        
+        // Vrátit response
+        header('X-Cache: MISS');
+        echo $jsonResponse;
+        
+    } catch (Exception $e) {
+        // Log error
+        error_log("Bitcoin API Error: " . $e->getMessage());
+        
+        // Vrátit error response
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'message' => 'Failed to fetch Bitcoin price data',
+            'timestamp' => date('c')
+        ]);
+    }
 }

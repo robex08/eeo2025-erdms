@@ -18,6 +18,7 @@ import SearchResultsDropdown from './SearchResultsDropdown';
 import SearchHistory from './SearchHistory';
 import { AuthContext } from '../../context/AuthContext';
 import { getSearchHistory, saveSearchToHistory, removeSearchFromHistory, clearSearchHistory } from '../../utils/searchHistory';
+import BitcoinCrashScreen from '../EasterEgg/BitcoinCrashScreen';
 
 // Styled components
 const SearchWrapper = styled.div`
@@ -197,6 +198,10 @@ const UniversalSearchInput = () => {
   const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
   const [resultActionTrigger, setResultActionTrigger] = useState(0);
   const [resultActionType, setResultActionType] = useState('enter'); // 'enter', 'expand', 'collapse'
+  
+  // 🥚 Easter Egg State - Bitcoin Crash Screen
+  const [showBitcoinCrash, setShowBitcoinCrash] = useState(false);
+  
   const navigableItemsRef = useRef([]);
   const inputRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -364,6 +369,18 @@ const UniversalSearchInput = () => {
       }
     }
     
+    // 🥚 Easter Egg: Shift+Enter s "BitcoiN" = Bitcoin Crash Screen
+    if (e.key === 'Enter' && e.shiftKey && query === 'BitcoiN') {
+      e.preventDefault();
+      setShowBitcoinCrash(true);
+      // Zavři dropdown
+      setShowDropdown(false);
+      setShowHistory(false);
+      setSelectedHistoryIndex(-1);
+      setSelectedResultIndex(-1);
+      return;
+    }
+    
     // Enter - immediate search
     if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
@@ -430,6 +447,16 @@ const UniversalSearchInput = () => {
     setShowDropdown(false);
     setShowHistory(false);
     inputRef.current?.focus();
+  };
+
+  /**
+   * 🥚 Close Bitcoin Crash Screen Easter Egg
+   */
+  const handleCloseBitcoinCrash = () => {
+    setShowBitcoinCrash(false);
+    // Clear search field po easter egg
+    updateQuery('');
+    clearResults();
   };
 
   /**
@@ -560,6 +587,12 @@ const UniversalSearchInput = () => {
           resultActionType={resultActionType}
         />
       )}
+
+      {/* 🥚 Bitcoin Crash Screen Easter Egg */}
+      <BitcoinCrashScreen 
+        isVisible={showBitcoinCrash}
+        onClose={handleCloseBitcoinCrash}
+      />
     </SearchWrapper>
   );
 };
