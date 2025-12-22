@@ -149,6 +149,15 @@ define('TBL_FAKTURY', '25a_objednavky_faktury');
 define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
 define('TBL_DODAVATELE', '25_dodavatele');
 
+// FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
+define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
+define('INVOICE_STATUS_VERIFICATION', 'VECNA_SPRAVNOST'); // Poslaná k potvrzení věcné správnosti
+define('INVOICE_STATUS_IN_PROGRESS', 'V_RESENI');         // Čeká se na dořešení (nejasnosti)
+define('INVOICE_STATUS_HANDOVER_PO', 'PREDANA_PO');       // Fyzicky na ředitelství (v kolečku)
+define('INVOICE_STATUS_TO_PAY', 'K_ZAPLACENI');           // Předáno HÚ k úhradě (finální)
+define('INVOICE_STATUS_PAID', 'ZAPLACENO');               // Uhrazeno
+define('INVOICE_STATUS_CANCELLED', 'STORNO');             // Stažena dodavatelem
+
 // DATABASE TABLE NAMES - AUTORIZACE & ROLE
 define('TBL_PRAVA', '25_prava');
 define('TBL_ROLE', '25_role');
