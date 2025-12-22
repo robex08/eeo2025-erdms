@@ -276,7 +276,9 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             // Nové fieldy - předání zaměstnanci
             'fa_datum_zaplaceni', 'fa_predana_zam_id', 'fa_datum_predani_zam', 'fa_datum_vraceni_zam',
             // Vazba na smlouvu
-            'smlouva_id'
+            'smlouva_id',
+            // Workflow stav - přidáno 22.12.2025
+            'stav'
         );
         
         // Pole vyžadující re-schválení věcné správnosti
@@ -318,6 +320,27 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         if (isset($input['fa_zaplacena']) && (int)$input['fa_zaplacena'] === 0) {
             $updateFields[] = 'fa_datum_zaplaceni = ?';
             $updateValues[] = null;
+        }
+        
+        // ✅ AUTOMATIKA: Pokud stav = 'ZAPLACENO' → nastavit fa_zaplacena = 1
+        if (isset($input['stav']) && $input['stav'] === INVOICE_STATUS_PAID) {
+            $updateFields[] = 'fa_zaplacena = ?';
+            $updateValues[] = 1;
+            // Nastavit datum zaplacení pokud ještě není
+            if (empty($current_invoice['fa_datum_zaplaceni'])) {
+                $updateFields[] = 'fa_datum_zaplaceni = ?';
+                $updateValues[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+            }
+        }
+        
+        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+            if ($current_invoice['stav'] === INVOICE_STATUS_REGISTERED) {
+                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                $updateFields[] = 'stav = ?';
+                $updateValues[] = INVOICE_STATUS_VERIFICATION;
+                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+            }
         }
         
         // Validace: datum vrácení musí být >= datum předání
