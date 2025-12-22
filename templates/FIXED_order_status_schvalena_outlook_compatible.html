@@ -1,0 +1,475 @@
+<!-- RECIPIENT: RECIPIENT -->
+<!-- OUTLOOK COMPATIBLE VERSION -->
+<!DOCTYPE html>
+<html lang="cs" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Objednávka schválena</title>
+    <!--[if mso]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:AllowPNG/>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+        </o:OfficeDocumentSettings>
+    </xml>
+    <style type="text/css">
+        body, table, td, p, a, li {
+            font-family: Arial, sans-serif !important;
+        }
+        table {
+            border-collapse: collapse !important;
+        }
+    </style>
+    <![endif]-->
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    
+    <!-- Wrapper Table -->
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f5f5f5; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                
+                <!-- Main Container Table - 600px wide -->
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; mso-table-lspace: 0pt; mso-table-rspace: 0pt; border: 1px solid #e5e7eb;">
+                    
+                    <!-- HEADER - Solid green background instead of gradient -->
+                    <tr>
+                        <td style="background-color: #059669; padding: 30px 20px; text-align: center; border-bottom: 4px solid #047857;">
+                            <!--[if mso]>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td align="center">
+                            <![endif]-->
+                            <h1 style="margin: 0; padding: 0; color: #ffffff; font-size: 24px; font-weight: 700; font-family: Arial, sans-serif; line-height: 1.3;">
+                                &#10004; Objednávka schválena
+                            </h1>
+                            <!--[if mso]>
+                                    </td>
+                                </tr>
+                            </table>
+                            <![endif]-->
+                        </td>
+                    </tr>
+                    
+                    <!-- CONTENT SECTION -->
+                    <tr>
+                        <td style="padding: 40px 30px; background-color: #ffffff;">
+                            
+                            <!-- Greeting -->
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151; font-family: Arial, sans-serif;">
+                                Dobrý den <strong style="font-weight: 700;">{recipient_name}</strong>,
+                            </p>
+                            
+                            <!-- Main Message -->
+                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #374151; font-family: Arial, sans-serif;">
+                                vaše objednávka byla <strong style="font-weight: 700;">úspěšně schválena</strong> uživatelem <strong style="font-weight: 700;">{trigger_user_name}</strong>.
+                            </p>
+                            
+                            <!-- Order Details Card - Using table instead of div -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f0fdf4; border: 2px solid #bbf7d0; margin-bottom: 30px; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        
+                                        <!-- Card Title -->
+                                        <h2 style="margin: 0 0 15px 0; padding: 0; color: #1f2937; font-size: 18px; font-weight: 600; font-family: Arial, sans-serif; line-height: 1.3;">
+                                            &#128203; Detaily schválené objednávky
+                                        </h2>
+                                        
+                                        <!-- Details Table -->
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif; width: 40%;">
+                                                    Číslo objednávky:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {order_number}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Předmět:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {predmet}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Střediska:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {strediska}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Zdroj financování:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {financovani}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Poznámka:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {financovani_poznamka}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Cena s DPH:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 16px; font-weight: 700; font-family: Arial, sans-serif;">
+                                                    {amount}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Schválil:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {trigger_user_name}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #d1fae5; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Datum schválení:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {approval_date}
+                                                </td>
+                                            </tr>
+                                            
+                                        </table>
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button - Outlook compatible with VML fallback -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin: 30px 0; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td align="center" style="padding: 0;">
+                                        
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" 
+                                            href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" 
+                                            style="height:48px;v-text-anchor:middle;width:300px;" 
+                                            arcsize="10%" 
+                                            stroke="f" 
+                                            fillcolor="#059669">
+                                            <w:anchorlock/>
+                                            <center style="color:#ffffff;font-family:Arial, sans-serif;font-size:16px;font-weight:bold;">
+                                                Zobrazit schválenou objednávku
+                                            </center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                        
+                                        <!--[if !mso]><!-->
+                                        <a href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" 
+                                           target="_blank" 
+                                           style="display: inline-block; background-color: #059669; color: #ffffff; text-decoration: none; padding: 14px 32px; font-size: 16px; font-weight: 600; font-family: Arial, sans-serif; border: 2px solid #047857; text-align: center; mso-hide: all;">
+                                            &#128065; Zobrazit schválenou objednávku
+                                        </a>
+                                        <!--<![endif]-->
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Footer Note -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin-top: 30px; border-top: 1px solid #e5e7eb; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td style="padding-top: 20px;">
+                                        <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280; font-family: Arial, sans-serif;">
+                                            Tento e-mail byl automaticky vygenerován systémem EEO.<br>
+                                            Nyní můžete pokračovat v dalších krocích objednávkového procesu.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                        </td>
+                    </tr>
+                    
+                    <!-- FOOTER -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af; font-family: Arial, sans-serif; line-height: 1.4;">
+                                &copy; 2025 EEO | Systém řízení objednávek
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+                
+            </td>
+        </tr>
+    </table>
+    
+</body>
+</html>
+
+<!-- RECIPIENT: SUBMITTER -->
+<!-- OUTLOOK COMPATIBLE VERSION -->
+<!DOCTYPE html>
+<html lang="cs" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Potvrzení schválení objednávky</title>
+    <!--[if mso]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:AllowPNG/>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+        </o:OfficeDocumentSettings>
+    </xml>
+    <style type="text/css">
+        body, table, td, p, a, li {
+            font-family: Arial, sans-serif !important;
+        }
+        table {
+            border-collapse: collapse !important;
+        }
+    </style>
+    <![endif]-->
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    
+    <!-- Wrapper Table -->
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f5f5f5; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                
+                <!-- Main Container Table - 600px wide -->
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; mso-table-lspace: 0pt; mso-table-rspace: 0pt; border: 1px solid #e5e7eb;">
+                    
+                    <!-- HEADER - Blue theme for submitter -->
+                    <tr>
+                        <td style="background-color: #3b82f6; padding: 30px 20px; text-align: center; border-bottom: 4px solid #2563eb;">
+                            <!--[if mso]>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td align="center">
+                            <![endif]-->
+                            <h1 style="margin: 0; padding: 0; color: #ffffff; font-size: 24px; font-weight: 700; font-family: Arial, sans-serif; line-height: 1.3;">
+                                &#10004; Potvrzení schválení objednávky
+                            </h1>
+                            <!--[if mso]>
+                                    </td>
+                                </tr>
+                            </table>
+                            <![endif]-->
+                        </td>
+                    </tr>
+                    
+                    <!-- CONTENT SECTION -->
+                    <tr>
+                        <td style="padding: 40px 30px; background-color: #ffffff;">
+                            
+                            <!-- Greeting -->
+                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #374151; font-family: Arial, sans-serif;">
+                                Dobrý den <strong style="font-weight: 700;">{recipient_name}</strong>,
+                            </p>
+                            
+                            <!-- Main Message -->
+                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #374151; font-family: Arial, sans-serif;">
+                                toto je potvrzení, že jste <strong style="font-weight: 700;">schválili objednávku</strong> č. <strong style="font-weight: 700;">{order_number}</strong>. Tvůrce objednávky byl informován o schválení.
+                            </p>
+                            
+                            <!-- Order Details Card - Blue theme -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #eff6ff; border: 2px solid #bfdbfe; margin-bottom: 30px; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        
+                                        <!-- Card Title -->
+                                        <h2 style="margin: 0 0 15px 0; padding: 0; color: #1f2937; font-size: 18px; font-weight: 600; font-family: Arial, sans-serif; line-height: 1.3;">
+                                            &#128203; Detaily schválené objednávky
+                                        </h2>
+                                        
+                                        <!-- Details Table -->
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif; width: 40%;">
+                                                    Číslo objednávky:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {order_number}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #dbeafe; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Předmět:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {predmet}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #dbeafe; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Střediska:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {strediska}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #dbeafe; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Cena s DPH:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 16px; font-weight: 700; font-family: Arial, sans-serif;">
+                                                    {amount}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #dbeafe; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Tvůrce objednávky:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {creator_name}
+                                                </td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td colspan="2" style="padding: 0; border-bottom: 1px solid #dbeafe; line-height: 1px; font-size: 1px;">&nbsp;</td>
+                                            </tr>
+                                            
+                                            <tr>
+                                                <td style="padding: 8px 0; font-weight: 600; color: #4b5563; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    Datum schválení:
+                                                </td>
+                                                <td style="padding: 8px 0; color: #1f2937; font-size: 14px; font-family: Arial, sans-serif;">
+                                                    {approval_date}
+                                                </td>
+                                            </tr>
+                                            
+                                        </table>
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button - Blue theme -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin: 30px 0; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td align="center" style="padding: 0;">
+                                        
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" 
+                                            href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" 
+                                            style="height:48px;v-text-anchor:middle;width:300px;" 
+                                            arcsize="10%" 
+                                            stroke="f" 
+                                            fillcolor="#3b82f6">
+                                            <w:anchorlock/>
+                                            <center style="color:#ffffff;font-family:Arial, sans-serif;font-size:16px;font-weight:bold;">
+                                                Zobrazit schválenou objednávku
+                                            </center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                        
+                                        <!--[if !mso]><!-->
+                                        <a href="https://erdms.zachranka.cz/eeo-v2/order-form-25?edit={order_id}" 
+                                           target="_blank" 
+                                           style="display: inline-block; background-color: #3b82f6; color: #ffffff; text-decoration: none; padding: 14px 32px; font-size: 16px; font-weight: 600; font-family: Arial, sans-serif; border: 2px solid #2563eb; text-align: center; mso-hide: all;">
+                                            &#128065; Zobrazit schválenou objednávku
+                                        </a>
+                                        <!--<![endif]-->
+                                        
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Footer Note -->
+                            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; margin-top: 30px; border-top: 1px solid #e5e7eb; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+                                <tr>
+                                    <td style="padding-top: 20px;">
+                                        <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280; font-family: Arial, sans-serif;">
+                                            Tento e-mail byl automaticky vygenerován systémem EEO.<br>
+                                            Záznam o vašem schválení byl uložen do systému.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                        </td>
+                    </tr>
+                    
+                    <!-- FOOTER -->
+                    <tr>
+                        <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af; font-family: Arial, sans-serif; line-height: 1.4;">
+                                &copy; 2025 EEO | Systém řízení objednávek
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+                
+            </td>
+        </tr>
+    </table>
+    
+</body>
+</html>

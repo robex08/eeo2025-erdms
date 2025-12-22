@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "1.87",
+  "version": "1.90c",
   "private": true,
   "homepage": "/eeo-v2",
   "proxy": "https://erdms.zachranka.cz",
@@ -23,6 +23,7 @@
     "axios": "^1.8.4",
     "buffer": "^6.0.3",
     "chart.js": "^4.5.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-datalabels": "^2.2.0",
     "crypto-js": "^4.2.0",
     "dagre": "^0.8.5",

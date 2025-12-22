@@ -273,11 +273,46 @@ export async function isDocumentProcessed(dokument_id, username, token) {
   }
 }
 
+/**
+ * 🗑️ DELETE Zrušit zpracování dokumentu
+ * 
+ * Smaže záznam o zpracování dokumentu ze Spisovky.
+ * Faktura zůstane zachována, pouze se zruší vazba.
+ * 
+ * @param {Object} params - Parametry
+ * @param {string} params.username - Username (required)
+ * @param {string} params.token - Auth token (required)
+ * @param {number} params.dokument_id - ID dokumentu ze Spisovky (required)
+ * @returns {Promise<Object>} Response {status, message}
+ */
+export async function deleteSpisovkaZpracovani({
+  username,
+  token,
+  dokument_id
+}) {
+  try {
+    if (!dokument_id) {
+      throw new Error('dokument_id je povinný parametr');
+    }
+
+    const response = await apiSpisovkaZpracovani.post('/spisovka-zpracovani/delete', {
+      username,
+      token,
+      dokument_id
+    });
+    
+    return response.data;
+  } catch (err) {
+    throw new Error(normalizeError(err));
+  }
+}
+
 export default {
   getSpisovkaZpracovaniList,
   getSpisovkaZpracovaniStats,
   markSpisovkaDocumentProcessed,
   markMultipleSpisovkaDocuments,
   isDocumentProcessed,
+  deleteSpisovkaZpracovani,
   normalizeError
 };

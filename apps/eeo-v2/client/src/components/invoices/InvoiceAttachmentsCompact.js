@@ -473,16 +473,18 @@ const InvoiceAttachmentsCompact = ({
   const attachments = externalAttachments;
 
   // 🔧 Helper funkce pro aktualizaci attachments (volá onAttachmentsChange callback)
+  // ⚠️ DŮLEŽITÉ: attachments NESMÍ být v dependencies - způsobuje stale closure!
   const updateAttachments = useCallback((updater) => {
     if (!onAttachmentsChange) {
       return;
     }
 
-    // Pokud je updater funkce, zavolej ji s aktuálními attachments
-    const newAttachments = typeof updater === 'function' ? updater(attachments) : updater;
-
-    onAttachmentsChange(newAttachments);
-  }, [attachments, onAttachmentsChange]);
+    // ✅ VŽDY použít funkční updater pro získání aktuálního stavu
+    onAttachmentsChange(prev => {
+      const newAttachments = typeof updater === 'function' ? updater(prev) : updater;
+      return newAttachments;
+    });
+  }, [onAttachmentsChange]);
 
   // 🎯 Drag handlers pro file viewer
   const handleFileViewerDrag = useCallback((e) => {
@@ -883,26 +885,27 @@ const InvoiceAttachmentsCompact = ({
         console.log('🎯 Aktivní Spisovka dokument uložen do LS:', firstFile.spisovka_dokument_id);
       }
       
+      // ✅ NEJDŘÍV přidat soubory do UI
       updateAttachments(prev => {
         const updated = [...prev, ...newFiles];
         console.log('📊 Celkový počet příloh po přidání:', updated.length);
         return updated;
       });
 
-      // New files added
-
-      // 🆕 Automatický upload všech souborů (mají již klasifikaci)
-      // 🎯 OKAMŽITÝ FEEDBACK: Soubory jsou VIDITELNÉ hned s progress barem
-
-      // 🆕 Pro temp faktury pouze uložit lokálně, pro reálné faktury uploadnout
-      const isTempFaktura = String(fakturaId).startsWith('temp-');
-      
-      // 🎬 ASYNCHRONNÍ UPLOAD - NEBLOKUJE UI
-      // Spustíme upload na pozadí, soubory jsou již viditelné v UI
-      newFiles.forEach(file => {
-        uploadFileToServer(file.id, file.klasifikace, file).catch(err => {
-          console.error(`❌ Chyba při uploadu souboru ${file.name}:`, err);
-          // Error handler je již v uploadFileToServer - označí soubor jako 'error'
+      // 🎬 ODLOŽENÝ UPLOAD - čeká na vykreslení React komponent
+      // requestAnimationFrame zajistí, že upload se spustí až PO vykreslení
+      requestAnimationFrame(() => {
+        // Ještě jeden frame delay pro jistotu (jako u objednávek)
+        requestAnimationFrame(async () => {
+          // Sekvenční upload (jako u objednávek) - zabraňuje race conditions
+          for (const file of newFiles) {
+            try {
+              await uploadFileToServer(file.id, file.klasifikace, file);
+            } catch (err) {
+              console.error(`❌ Chyba při uploadu souboru ${file.name}:`, err);
+              // Error handler je již v uploadFileToServer - označí soubor jako 'error'
+            }
+          }
         });
       });
       
@@ -947,8 +950,8 @@ const InvoiceAttachmentsCompact = ({
     // (pending_classification i pending_upload)
     if (klasifikace && klasifikace.trim() !== '' && (file.status === 'pending_classification' || file.status === 'pending_upload')) {
       // Triggering auto-upload for pending file
-      // Upload s aktualizovanou klasifikací
-      await uploadFileToServer(fileId, klasifikace);
+      // Upload s aktualizovanou klasifikací - PŘEDAT file objekt
+      await uploadFileToServer(fileId, klasifikace, file);
     }
     // Pokud je již nahraná na serveru -> update přes API
     else if (klasifikace && klasifikace.trim() !== '' && file.status === 'uploaded' && file.serverId) {
@@ -996,10 +999,11 @@ const InvoiceAttachmentsCompact = ({
 
   // Upload na server
   const uploadFileToServer = async (fileId, klasifikaceOverride = null, fileObj = null) => {
-    // Použij předaný fileObj nebo hledej v attachments state
-    const file = fileObj || attachments.find(f => f.id === fileId);
+    // ✅ DŮLEŽITÉ: Vždy použít fileObj (již obsahuje všechna data včetně File objektu)
+    // attachments state může být zastaralý kvůli async aktualizacím
+    const file = fileObj;
     if (!file || !file.file) {
-      // File not found or no file object
+      console.error('❌ uploadFileToServer: Chybí file nebo file.file', { fileId, fileObj });
       return;
     }
 
@@ -1416,7 +1420,12 @@ const InvoiceAttachmentsCompact = ({
             // ✅ Zavřít dialog
             setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
 
-            // 🔄 RELOAD příloh ze serveru (synchronizace)
+            // � Notify parent o smazání (pro Spisovka tracking cleanup)
+            if (onAttachmentRemoved) {
+              onAttachmentRemoved(file);
+            }
+
+            // �🔄 RELOAD příloh ze serveru (synchronizace)
             await loadAttachmentsFromServer();
 
             // ⚠️ POZOR: onAttachmentUploaded se NEvolá při DELETE (není to upload!)

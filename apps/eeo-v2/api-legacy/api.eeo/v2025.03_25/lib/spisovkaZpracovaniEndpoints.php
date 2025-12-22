@@ -541,3 +541,113 @@ function handle_spisovka_zpracovani_mark($input, $config) {
         ]);
     }
 }
+/**
+ * POST /api/spisovka-zpracovani/delete
+ * Smazat záznam o zpracování dokumentu
+ * 
+ * Parametry (POST):
+ * - token: string (required) - Autentizační token
+ * - username: string (required) - Uživatelské jméno
+ * - dokument_id: int (required) - ID dokumentu ze Spisovky
+ * 
+ * Response:
+ * {
+ *   "status": "ok",
+ *   "message": "Evidence dokumentu byla zrušena",
+ *   "meta": { "timestamp": "2025-12-22T..." }
+ * }
+ */
+function handle_spisovka_zpracovani_delete($input, $config) {
+    error_log("🗑️ handle_spisovka_zpracovani_delete called");
+    error_log("Input: " . json_encode($input));
+    
+    // Ověření tokenu
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    if (!function_exists('verify_token_v2')) {
+        error_log("❌ verify_token_v2 function NOT FOUND!");
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'verify_token_v2 not found']);
+        return;
+    }
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Neplatný nebo chybějící token'
+        ]);
+        return;
+    }
+    
+    $current_user_id = $auth_result['id'];
+    
+    // Validace parametrů
+    $dokument_id = isset($input['dokument_id']) ? (int)$input['dokument_id'] : 0;
+    
+    if (!$dokument_id) {
+        http_response_code(400);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'dokument_id je povinný parametr'
+        ]);
+        return;
+    }
+    
+    try {
+        // DB připojení
+        $db = get_pdo_connection($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        
+        // Nastavit časovou zónu
+        TimezoneHelper::setMysqlTimezone($db);
+        
+        // Smazat záznam
+        $stmt = $db->prepare("
+            DELETE FROM `" . TBL_SPISOVKA_ZPRACOVANI_LOG . "`
+            WHERE dokument_id = :dokument_id
+        ");
+        
+        $stmt->execute([
+            ':dokument_id' => $dokument_id
+        ]);
+        
+        $deleted_count = $stmt->rowCount();
+        
+        if ($deleted_count === 0) {
+            http_response_code(404);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Dokument nebyl nalezen v evidenci'
+            ]);
+            return;
+        }
+        
+        error_log("✅ Spisovka zpracování smazáno: dokument_id={$dokument_id}, počet={$deleted_count}");
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Evidence dokumentu byla zrušena',
+            'data' => [
+                'dokument_id' => $dokument_id,
+                'deleted_count' => $deleted_count
+            ],
+            'meta' => [
+                'timestamp' => TimezoneHelper::getApiTimestamp()
+            ]
+        ]);
+        
+    } catch (PDOException $e) {
+        error_log("Spisovka zpracovani delete error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při rušení evidence dokumentu'
+        ]);
+    }
+}

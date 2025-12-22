@@ -13214,7 +13214,32 @@ function OrderForm25() {
       ));
 
       // Toast při úspěšném nahrání na server
-      showToast(`✅ Příloha úspěšně nahrána\n📄 ${file.name}\n💾 Server aktualizován`, 'success');
+      const successMessage = (
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+          <div style={{ 
+            fontSize: '15px', 
+            fontWeight: '600', 
+            marginBottom: '8px', 
+            color: '#1a1a1a',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <span>Příloha úspěšně nahrána</span>
+          </div>
+          <div style={{ 
+            padding: '8px',
+            backgroundColor: '#f0fdf4',
+            borderRadius: '4px',
+            fontSize: '13px',
+            color: '#166534'
+          }}>
+            {file.name}
+          </div>
+        </div>
+      );
+      showToast && showToast(successMessage, { type: 'success' });
 
       // 🧹 VYČIŠTĚNÍ LOCALSTORAGE po úspěšném uploadu
       try {

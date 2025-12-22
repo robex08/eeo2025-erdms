@@ -1503,6 +1503,10 @@ export default function InvoiceEvidencePage() {
   
   // State pro sledování editace faktury (localStorage se načte v useEffect)
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  
+  // 🆕 Flag: Faktura byla POTVRZENA uživatelem (kliknutí na Zaevidovat)
+  // Tento flag se NENASTAVÍ při auto-vytvoření faktury při uploadu přílohy
+  const [invoiceUserConfirmed, setInvoiceUserConfirmed] = useState(false);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
@@ -1668,13 +1672,14 @@ export default function InvoiceEvidencePage() {
       return;
     }
     
-    console.log('📥 Loading from localStorage (F5 or direct URL)...');
-    
     try {
       // Načíst editingInvoiceId
       const savedEditId = localStorage.getItem(`invoiceEdit_${user_id}`);
       if (savedEditId) {
         setEditingInvoiceId(JSON.parse(savedEditId));
+        // 🆕 Pokud je uloženo editingInvoiceId, nastavit i invoiceUserConfirmed
+        // (protože to znamená, že faktura byla již potvrzena)
+        setInvoiceUserConfirmed(true);
       }
       
       // Načíst hadOriginalEntity
@@ -1698,8 +1703,6 @@ export default function InvoiceEvidencePage() {
       if (savedAttach) {
         setAttachments(JSON.parse(savedAttach));
       }
-      
-      console.log('✅ localStorage loaded successfully');
     } catch (err) {
       console.warn('⚠️ Chyba při načítání dat z localStorage:', err);
     }
@@ -2533,6 +2536,9 @@ export default function InvoiceEvidencePage() {
     
     setEditingInvoiceId(faktura.id);
     
+    // 🆕 Při načtení existující faktury pro editaci nastavit flag na true
+    setInvoiceUserConfirmed(true);
+    
     // Nastavit hadOriginalEntity podle toho, jestli má faktura přiřazenou objednávku nebo smlouvu
     const hadEntity = !!(faktura.objednavka_id || faktura.smlouva_id);
     setHadOriginalEntity(hadEntity);
@@ -2545,47 +2551,71 @@ export default function InvoiceEvidencePage() {
   }, [showToast, orderData, canAddInvoiceToOrder]);
 
   // 📎 Handler: změna příloh (controlled component pattern)
-  const handleAttachmentsChange = useCallback((newAttachments) => {
-    setAttachments(newAttachments);
-    
-    // 📋 Při přidání prvního attachmentu zkontrolovat Spisovka metadata a uložit je
-    // DŮLEŽITÉ: Uložit JEN když:
-    // 1. Je attachment ze Spisovky (má metadata)
-    // 2. Ještě nebyl uploadován (!serverId = lokální soubor)
-    // 3. Ref je prázdný (metadata ještě nebyla uložena)
-    if (newAttachments.length > 0 && !pendingSpisovkaMetadataRef.current) {
-      const firstAttachment = newAttachments[0];
+  const handleAttachmentsChange = useCallback((updater) => {
+    // ✅ Správně zpracovat funkční updater (jako setAttachments)
+    setAttachments(prev => {
+      // Pokud je updater funkce, zavolat ji s předchozím stavem
+      const newAttachments = typeof updater === 'function' ? updater(prev) : updater;
       
-      // Uložit metadata JEN pro lokální soubory (před uploadem)
-      if (firstAttachment.spisovka_dokument_id && 
-          firstAttachment.spisovka_file_id && 
-          !firstAttachment.serverId) {
-        pendingSpisovkaMetadataRef.current = {
-          dokument_id: firstAttachment.spisovka_dokument_id,
-          spisovka_priloha_id: firstAttachment.spisovka_file_id,
-          filename: firstAttachment.name
-        };
+      // 📋 Při přidání prvního attachmentu zkontrolovat Spisovka metadata a uložit je
+      // DŮLEŽITÉ: Uložit JEN když:
+      // 1. Je attachment ze Spisovky (má metadata)
+      // 2. Ještě nebyl uploadován (!serverId = lokální soubor)
+      // 3. Ref je prázdný (metadata ještě nebyla uložena)
+      if (newAttachments && newAttachments.length > 0 && !pendingSpisovkaMetadataRef.current) {
+        const firstAttachment = newAttachments[0];
         
-        // 🎯 Označit v localStorage, že s tímto dokumentem pracuji
-        localStorage.setItem('spisovka_active_dokument', firstAttachment.spisovka_dokument_id);
-      } else if (firstAttachment.serverId) {
-        // Attachment už je uploadovaný, přeskakuji uložení metadata
-      } else {
+        // ⚠️ Guard: Zkontrolovat, že firstAttachment existuje a není undefined
+        if (firstAttachment) {
+          // Uložit metadata JEN pro lokální soubory (před uploadem)
+          if (firstAttachment.spisovka_dokument_id && 
+              firstAttachment.spisovka_file_id && 
+              !firstAttachment.serverId) {
+            pendingSpisovkaMetadataRef.current = {
+              dokument_id: firstAttachment.spisovka_dokument_id,
+              spisovka_priloha_id: firstAttachment.spisovka_file_id,
+              filename: firstAttachment.name
+            };
+            
+            // 🎯 Označit v localStorage, že s tímto dokumentem pracuji
+            localStorage.setItem('spisovka_active_dokument', firstAttachment.spisovka_dokument_id);
+          }
+        }
       }
-    }
+      
+      return newAttachments;
+    });
   }, []);
 
   // 🗑️ Handler: při smazání přílohy - vyčistit pending metadata
   const handleAttachmentRemoved = useCallback((removedAttachment) => {
+    // ⚠️ Guard: Zkontrolovat, že removedAttachment existuje
+    if (!removedAttachment) {
+      console.warn('⚠️ handleAttachmentRemoved: removedAttachment je undefined');
+      return;
+    }
+
     // Pokud byla příloha ze Spisovky a ještě nebyla uložena do DB, vyčistit metadata
     if (pendingSpisovkaMetadataRef.current) {
       const metadata = pendingSpisovkaMetadataRef.current;
       
       // Zkontrolovat, jestli mazaný soubor odpovídá pending metadata
-      if (removedAttachment?.spisovka_dokument_id === metadata.dokument_id ||
-          removedAttachment?.spisovka_file_id === metadata.spisovka_priloha_id) {
+      if (removedAttachment.spisovka_dokument_id === metadata.dokument_id ||
+          removedAttachment.spisovka_file_id === metadata.spisovka_priloha_id) {
+        
+        console.log('🧹 Čistím Spisovka metadata pro smazanou přílohu:', {
+          dokument_id: metadata.dokument_id,
+          spisovka_priloha_id: metadata.spisovka_priloha_id
+        });
+        
         pendingSpisovkaMetadataRef.current = null;
         // Vyčistit aktivní dokument z localStorage
+        localStorage.removeItem('spisovka_active_dokument');
+      }
+    } else {
+      // ✅ Žádná pending metadata - vyčistit localStorage pro jistotu
+      if (removedAttachment.spisovka_dokument_id) {
+        console.log('🧹 Čistím localStorage pro Spisovka dokument:', removedAttachment.spisovka_dokument_id);
         localStorage.removeItem('spisovka_active_dokument');
       }
     }
@@ -3133,6 +3163,9 @@ export default function InvoiceEvidencePage() {
   const handleSubmit = async () => {
     setError(null);
     setFieldErrors({});
+    
+    // 🆕 Uživatel klikl na Zaevidovat/Aktualizovat - nastavit flag
+    setInvoiceUserConfirmed(true);
 
     // ✅ Kontrola stavu objednávky
     // - Pro NOVOU fakturu s objednávkou
@@ -3832,8 +3865,8 @@ export default function InvoiceEvidencePage() {
     <>
       <PageHeader>
         <PageTitle>
-          <FontAwesomeIcon icon={editingInvoiceId ? faEdit : faFileInvoice} />
-          {editingInvoiceId 
+          <FontAwesomeIcon icon={(editingInvoiceId && invoiceUserConfirmed) ? faEdit : faFileInvoice} />
+          {(editingInvoiceId && invoiceUserConfirmed)
             ? (isReadOnlyMode ? 'Doplnění věcné správnosti k faktuře' : 'Upravit fakturu') 
             : 'Zaevidovat fakturu'
           }
@@ -4911,7 +4944,12 @@ export default function InvoiceEvidencePage() {
             >
               <FontAwesomeIcon icon={loading ? faExclamationTriangle : faSave} />
               {loading ? 'Ukládám...' : (() => {
-                if (editingInvoiceId) {
+                // ✅ OPRAVA: Tlačítko je "Aktualizovat" jen pokud:
+                // 1. Máme editingInvoiceId (faktura existuje v DB)
+                // 2. A ZÁROVEŇ uživatel potvrdil fakturu (klikl na Zaevidovat)
+                // Tím předejdeme situaci, kdy se tlačítko změní na "Aktualizovat"
+                // jen kvůli auto-vytvoření faktury při uploadu přílohy
+                if (editingInvoiceId && invoiceUserConfirmed) {
                   // Editace faktury - pokud přidáváme entitu (původně neměla), zobrazit "Přiřadit"
                   if ((formData.order_id || formData.smlouva_id) && !hadOriginalEntity) {
                     if (formData.smlouva_id) {
@@ -5757,6 +5795,7 @@ export default function InvoiceEvidencePage() {
           onOCRDataExtracted={handleOCRDataExtracted}
           token={token}
           username={username}
+          showToast={showToast}
         />
       )}
 
@@ -5872,6 +5911,10 @@ export default function InvoiceEvidencePage() {
                     setFieldErrors({});
                     setOriginalFormData(null);
                     setHasChangedCriticalField(false);
+                    
+                    // 🆕 Reset editingInvoiceId a invoiceUserConfirmed
+                    setEditingInvoiceId(null);
+                    setInvoiceUserConfirmed(false);
                     
                     // Zavřít progress dialog
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
