@@ -1449,6 +1449,13 @@ const Invoices25List = () => {
     newStatus: false
   });
   
+  // State pro workflow status change dialog (změna ze ZAPLACENO)
+  const [statusChangeDialog, setStatusChangeDialog] = useState({
+    isOpen: false,
+    invoice: null,
+    newStatus: null
+  });
+  
   // 🔒 State pro LOCK dialog system
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
@@ -2278,9 +2285,27 @@ const Invoices25List = () => {
     }
   };
 
-  // Handle payment status toggle (open dialog only for unpaid change)
   // Handle invoice status change (workflow state)
   const handleStatusChange = async (invoice, newStatus) => {
+    if (!invoice || !newStatus) return;
+    
+    // ⚠️ KONTROLA: Pokud je současný stav ZAPLACENO a uživatel mění na jiný stav -> zobrazit warning
+    const currentStatus = invoice.stav || 'ZAEVIDOVANA';
+    if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+      setStatusChangeDialog({
+        isOpen: true,
+        invoice: invoice,
+        newStatus: newStatus
+      });
+      return; // Přerušit - čeká se na potvrzení
+    }
+    
+    // Provést změnu přímo (bez dialogu)
+    await performStatusChange(invoice, newStatus);
+  };
+  
+  // Provést změnu workflow stavu (voláno přímo nebo po potvrzení dialogu)
+  const performStatusChange = async (invoice, newStatus) => {
     if (!invoice || !newStatus) return;
     
     try {
@@ -3193,7 +3218,9 @@ const Invoices25List = () => {
                   <TableRow 
                     key={invoice.id}
                     style={{
-                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
+                      backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent',
+                      textDecoration: invoice.stav === 'STORNO' ? 'line-through' : 'none',
+                      opacity: invoice.stav === 'STORNO' ? 0.6 : 1
                     }}
                   >
                     <TableCell className="center">
@@ -3396,17 +3423,17 @@ const Invoices25List = () => {
                       <ActionMenu>
                         {/* Ikona "Zaplaceno" - jen pro INVOICE_MANAGE nebo ADMIN */}
                         {(canManageInvoices || isAdmin) && (
-                          <TooltipWrapper text={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
+                          <TooltipWrapper text={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
                             <ActionMenuButton
-                              className={invoice.zaplacena ? "paid" : "unpaid"}
+                              className={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "paid" : "unpaid"}
                               onClick={() => handleTogglePaymentStatus(invoice)}
-                              title={invoice.zaplacena ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
+                              title={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"}
                               style={{
-                                color: invoice.zaplacena ? '#16a34a' : '#dc2626',
+                                color: (invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? '#16a34a' : '#dc2626',
                                 background: 'transparent'
                               }}
                             >
-                              <FontAwesomeIcon icon={invoice.zaplacena ? faCheckCircle : faMoneyBillWave} />
+                              <FontAwesomeIcon icon={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? faCheckCircle : faMoneyBillWave} />
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
@@ -3869,6 +3896,96 @@ const Invoices25List = () => {
                   {paymentDialog.invoice?.fa_datum_splatnosti && (
                     <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
                       <strong>Splatnost:</strong> {new Date(paymentDialog.invoice.fa_datum_splatnosti).toLocaleDateString('cs-CZ')}
+                    </div>
+                  )}
+                </div>
+                
+                <div style={{
+                  padding: '0.5rem',
+                  background: '#d1fae5',
+                  border: '1px solid #10b981',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  color: '#065f46',
+                  fontWeight: '600'
+                }}>
+                  Aktuální stav: ✅ ZAPLACENO
+                </div>
+              </div>
+            </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* Workflow Status Change Dialog - změna ze stavu ZAPLACENO */}
+      {statusChangeDialog.isOpen && statusChangeDialog.invoice && (
+        <ConfirmDialog
+          isOpen={statusChangeDialog.isOpen}
+          onClose={() => setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null })}
+          onConfirm={() => {
+            performStatusChange(statusChangeDialog.invoice, statusChangeDialog.newStatus);
+            setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null });
+          }}
+          title="⚠️ Změna stavu zaplacené faktury"
+          confirmText="Ano, změnit stav"
+          cancelText="Zrušit"
+          variant="warning"
+        >
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{
+              background: '#fef3c7',
+              border: '2px solid #fcd34d',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginRight: '0.5rem' }} />
+                Měníte stav ZAPLACENÉ faktury
+              </h4>
+              <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
+                Faktura je aktuálně ve stavu <strong>ZAPLACENO</strong>. Opravdu chcete změnit stav na{' '}
+                <strong>
+                  {statusChangeDialog.newStatus === 'ZAEVIDOVANA' ? 'Zaevidovaná' :
+                   statusChangeDialog.newStatus === 'VECNA_SPRAVNOST' ? 'Věcná správnost' :
+                   statusChangeDialog.newStatus === 'V_RESENI' ? 'V řešení' :
+                   statusChangeDialog.newStatus === 'PREDANA_PO' ? 'Předaná PO' :
+                   statusChangeDialog.newStatus === 'K_ZAPLACENI' ? 'K zaplacení' :
+                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno' : statusChangeDialog.newStatus}
+                </strong>?
+              </p>
+            </div>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '2px solid #cbd5e1',
+              borderRadius: '8px',
+              padding: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569' }}>
+                🧾 Detail faktury:
+              </h4>
+              <div style={{ margin: 0, color: '#475569' }}>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'white',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1f2937', marginBottom: '0.5rem' }}>
+                    {statusChangeDialog.invoice?.cislo_faktury}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                    <strong>Částka:</strong> {formatCurrency(statusChangeDialog.invoice?.castka)}
+                  </div>
+                  {statusChangeDialog.invoice?.cislo_objednavky && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '0.25rem' }}>
+                      <strong>Objednávka:</strong> {statusChangeDialog.invoice.cislo_objednavky}
+                    </div>
+                  )}
+                  {statusChangeDialog.invoice?.datum_splatnosti && (
+                    <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                      <strong>Splatnost:</strong> {new Date(statusChangeDialog.invoice.datum_splatnosti).toLocaleDateString('cs-CZ')}
                     </div>
                   )}
                 </div>
