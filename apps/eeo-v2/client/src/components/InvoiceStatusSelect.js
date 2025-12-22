@@ -15,12 +15,14 @@ import {
 /**
  * InvoiceStatusSelect - Komponenta pro výběr workflow stavu faktury
  * 
+ * DŮLEŽITÉ: Tato komponenta je POUZE INFORMATIVNÍ!
+ * - Věcná kontrola se potvrzuje POUZE přes formulář faktury (ne zde)
+ * - Jediná automatika: ZAEVIDOVANA + potvrzení věcné (ve formuláři) → VECNA_SPRAVNOST
+ * 
  * @param {Object} props
  * @param {string} props.currentStatus - Aktuální stav faktury (ENUM hodnota)
  * @param {string} props.dueDate - Datum splatnosti (YYYY-MM-DD)
- * @param {boolean} props.isVerified - Zda je potvrzena věcná správnost
  * @param {Function} props.onStatusChange - Callback při změně stavu
- * @param {Function} props.onVerifyToggle - Callback při změně věcné správnosti
  * @param {boolean} props.disabled - Zakázat interakci (read-only)
  */
 
@@ -94,24 +96,6 @@ const OverdueBadge = styled.span`
   color: #991b1b;
   border: 1px solid #fecaca;
   white-space: nowrap;
-`;
-
-const VerifyButton = styled.button`
-  padding: 0.25rem;
-  border-radius: 9999px;
-  transition: colors 0.2s;
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  
-  color: ${props => props.$verified ? '#16a34a' : '#d1d5db'};
-  background-color: ${props => props.$verified ? '#dcfce7' : 'transparent'};
-  
-  &:hover {
-    color: ${props => props.$verified ? '#15803d' : '#22c55e'};
-    background-color: ${props => props.$verified ? '#bbf7d0' : '#f9fafb'};
-  }
 `;
 
 const Dropdown = styled.div`
@@ -265,10 +249,8 @@ const INVOICE_STATES = {
 
 const InvoiceStatusSelect = ({ 
   currentStatus = 'ZAEVIDOVANA', 
-  dueDate, 
-  isVerified = false,
+  dueDate,
   onStatusChange,
-  onVerifyToggle,
   disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -362,22 +344,6 @@ const InvoiceStatusSelect = ({
             }} 
           />
         </StatusButton>
-
-        {/* Indikátor věcné správnosti - zobrazit pouze pro stav VECNA_SPRAVNOST */}
-        {currentStatus === 'VECNA_SPRAVNOST' && !disabled && (
-          <VerifyButton
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onVerifyToggle) {
-                onVerifyToggle(!isVerified);
-              }
-            }}
-            title={isVerified ? "Věcně správné - Potvrzeno" : "Kliknutím potvrďte věcnou správnost"}
-            $verified={isVerified}
-          >
-            <CheckCircle size={20} fill={isVerified ? "currentColor" : "none"} />
-          </VerifyButton>
-        )}
       </ButtonRow>
 
       {/* Dropdown menu */}
