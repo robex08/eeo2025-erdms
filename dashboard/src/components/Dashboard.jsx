@@ -18,6 +18,17 @@ function Dashboard() {
   const [filterLicense, setFilterLicense] = useState('all');
   const [filterAccountStatus, setFilterAccountStatus] = useState('all');
   const [availableLicenses, setAvailableLicenses] = useState([]);
+  const [darkMode, setDarkMode] = useState(() => {
+    // Načíst z localStorage nebo použít systémové nastavení
+    const saved = localStorage.getItem('darkMode');
+    if (saved !== null) return JSON.parse(saved);
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  const [showAllGroups, setShowAllGroups] = useState(false);
+  const [expandedEmployeeGroups, setExpandedEmployeeGroups] = useState({});
+  const [calendarDropdownOpen, setCalendarDropdownOpen] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
   
   // Kontrola zda je admin (u03924 nebo u09721)
   const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
@@ -28,6 +39,16 @@ function Dashboard() {
   useEffect(() => {
     loadUser();
   }, []);
+
+  useEffect(() => {
+    // Aplikovat dark mode na body
+    document.body.classList.toggle('dark-mode', darkMode);
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
 
   const loadUser = async () => {
     try {
@@ -60,11 +81,12 @@ function Dashboard() {
       if (response.ok) {
         const result = await response.json();
         console.log('✅ Zaměstnanci načteni:', result);
+        console.log('📊 Prvních 5 zaměstnanců:', result.data?.slice(0, 5));
         
         if (result.success && result.data) {
           setEmployees(result.data);
-          setTotalEmployees(result.totalCount || result.data.length);
-          console.log('👥 Počet zaměstnanců:', result.data.length, 'z celkem', result.totalCount || result.data.length);
+          setTotalEmployees(result.count || result.data.length);
+          console.log('👥 Počet zaměstnanců:', result.data.length);
           
           // Načti skupiny pro všechny zaměstnance (postupně pro získání licencí)
           loadAllEmployeeGroups(result.data);
@@ -264,6 +286,57 @@ function Dashboard() {
     await authService.logout();
   };
 
+  const loadCalendarEvents = async () => {
+    if (loadingCalendar || calendarEvents.length > 0) return;
+    
+    try {
+      setLoadingCalendar(true);
+      const response = await fetch('/api/entra/me/calendar/events?limit=7', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setCalendarEvents(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load calendar events:', error);
+    } finally {
+      setLoadingCalendar(false);
+    }
+  };
+
+  const toggleCalendarDropdown = () => {
+    if (!calendarDropdownOpen) {
+      loadCalendarEvents();
+    }
+    setCalendarDropdownOpen(!calendarDropdownOpen);
+  };
+
+  const formatEventDate = (dateTimeString) => {
+    const date = new Date(dateTimeString);
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+    
+    if (date.toDateString() === now.toDateString()) {
+      return `Dnes ${timeStr}`;
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return `Zítra ${timeStr}`;
+    } else {
+      return date.toLocaleDateString('cs-CZ', { 
+        day: 'numeric', 
+        month: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -290,12 +363,82 @@ function Dashboard() {
         <div className="header-left">
           <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
           <div className="header-title">
-            <h1>ERDMS Platform</h1>
-            <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje</span>
+            <h1>ERDMS Portál <span className="version-badge">v1.74</span></h1>
+            <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</span>
           </div>
         </div>
         <div className="user-info">
+          {user && user.upn && (
+            <div 
+              className="calendar-dropdown-container"
+              onMouseEnter={() => {
+                setCalendarDropdownOpen(true);
+                loadCalendarEvents();
+              }}
+              onMouseLeave={() => setCalendarDropdownOpen(false)}
+            >
+              <a 
+                href={`https://outlook.office.com/calendar/view/workweek?realm=zachranka.cz&login_hint=${user.upn}`}
+                className="calendar-icon-btn" 
+                title="Můj kalendář"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </a>
+              {calendarDropdownOpen && (
+                <div className="calendar-dropdown">
+                  <div className="calendar-dropdown-header">
+                    <h3>Nadcházející události</h3>
+                    <span className="calendar-count">
+                      {loadingCalendar ? '...' : calendarEvents.length > 0 ? `${calendarEvents.length} událostí` : '0 událostí'}
+                    </span>
+                  </div>
+                  <div className="calendar-events-list">
+                    {loadingCalendar ? (
+                      <div className="calendar-loading">Načítám události...</div>
+                    ) : calendarEvents.length > 0 ? (
+                      calendarEvents.map((event, index) => (
+                        <div key={index} className="calendar-event-item">
+                          <div className="event-time">{formatEventDate(event.start.dateTime)}</div>
+                          <div className="event-subject">{event.subject}</div>
+                          {event.location && (
+                            <div className="event-location">📍 {event.location.displayName}</div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="calendar-empty">Žádné nadcházející události</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <span>👤 {user ? `${user.jmeno} ${user.prijmeni}` : 'Načítání...'}</span>
+          <button onClick={toggleDarkMode} className="theme-toggle-btn" title={darkMode ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}>
+            {darkMode ? (
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/>
+                <path d="M12 1v6m0 6v6m11-11h-6m-6 0H1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+          <a href="#settings" className="settings-icon-btn" title="Nastavení">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </a>
           <button onClick={handleLogout} className="logout-btn">
             Odhlásit
           </button>
@@ -345,7 +488,9 @@ function Dashboard() {
                         <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge">Aktivní</span>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
                   </div>
                   <h3 className="app-title">EEO v2</h3>
                   <p className="app-description">Elektronická správa a workflow objednávek a změn</p>
@@ -365,7 +510,9 @@ function Dashboard() {
                         <path d="M14 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h7a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge">Aktivní</span>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
                   </div>
                   <h3 className="app-title">SZM</h3>
                   <p className="app-description">Objednávkový systém zdravotnického materiálu</p>
@@ -384,10 +531,35 @@ function Dashboard() {
                         <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge">Aktivní</span>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
                   </div>
                   <h3 className="app-title">Intranet</h3>
                   <p className="app-description">Interní portál organizace - aktuality, dokumenty a firemní informace</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://erdms.zachranka.cz/dev/intranet-v26" className="app-card intranet-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="app-badges">
+                      <span className="app-badge" style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>DEV</span>
+                      <span className="app-badge ms365-badge">MS365</span>
+                    </div>
+                  </div>
+                  <h3 className="app-title">Intranet 2026</h3>
+                  <p className="app-description">Nový moderní intranet - React + NestJS - Development verze</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
                     <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
@@ -404,7 +576,9 @@ function Dashboard() {
                         <path d="M9 13h6m-6 4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge">Aktivní</span>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
                   </div>
                   <h3 className="app-title">ELO</h3>
                   <p className="app-description">Elektronický dokument management systém</p>
@@ -424,9 +598,11 @@ function Dashboard() {
                         <path d="M16 3v4a2 2 0 002 2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge">Aktivní</span>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
                   </div>
-                  <h3 className="app-title">Editace / Profilé</h3>
+                  <h3 className="app-title">Editace / Profie</h3>
                   <p className="app-description">Zdravotnická dokumentace</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -436,22 +612,87 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <div className="app-card settings-card disabled">
+                {/* Dělící čára */}
+                <div className="section-divider" style={{ gridColumn: '1 / -1' }}></div>
+
+                <a href="https://vzdelavani.zachranka.cz" className="app-card vzdelavani-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
-                    <div className="app-icon-wrapper">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 14l9-5-9-5-9 5 9 5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge soon">Brzy</span>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Vzdělávání</span>
                   </div>
-                  <h3 className="app-title">Nastavení</h3>
-                  <p className="app-description">Správa systému, uživatelů a nastavení oprávnění</p>
-                  <div className="app-footer disabled-footer">
-                    <span className="app-link-text">Připravujeme</span>
+                  <h3 className="app-title">Vzdělávací platforma</h3>
+                  <p className="app-description">Kurzy a vzdělávací materiály</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
                   </div>
-                </div>
+                </a>
+
+                <a href="https://inspektor.zachranka.cz" className="app-card inspektor-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Kontrola</span>
+                  </div>
+                  <h3 className="app-title">Inspektor</h3>
+                  <p className="app-description">Inspekční systém a kontroly</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://redmine.zachranka.cz/" className="app-card redmine-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper support-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M9 12h6m-6 4h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge support-badge">Podpora</span>
+                  </div>
+                  <h3 className="app-title">Redmine</h3>
+                  <p className="app-description">Správa projektů a úkolů</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://itop.zachranka.cz/" className="app-card itop-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper support-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge support-badge">Podpora</span>
+                  </div>
+                  <h3 className="app-title">iTOP</h3>
+                  <p className="app-description">IT service management a helpdesk</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
               </div>
             </div>
 
@@ -459,19 +700,18 @@ function Dashboard() {
             <div className="apps-section">
               <h2 className="section-title">☁️ Microsoft 365</h2>
               <div className="apps-grid ms-apps-grid">
-                <a href="https://copilot.microsoft.com" className="app-card ms-copilot-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://outlook.office.com" className="app-card ms-outlook-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                        <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+                        <path d="M4 4l8 5 8-5v12l-8 5-8-5V4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M4 4l8 5 8-5" stroke="currentColor" strokeWidth="1.5"/>
                       </svg>
                     </div>
                     <span className="app-badge ms-badge">Microsoft</span>
                   </div>
-                  <h3 className="app-title">MS Copilot</h3>
-                  <p className="app-description">AI asistent pro zvýšení produktivity a kreativní práci</p>
+                  <h3 className="app-title">MS Outlook</h3>
+                  <p className="app-description">E-mailová komunikace a kalendář</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
                     <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
@@ -502,26 +742,6 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://www.office.com/launch/excel" className="app-card ms-excel-card" target="_blank" rel="noopener noreferrer">
-                  <div className="app-card-header">
-                    <div className="app-icon-wrapper ms-icon">
-                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 3h18v18H3V3z" stroke="currentColor" strokeWidth="2"/>
-                        <path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke="currentColor" strokeWidth="1.5"/>
-                      </svg>
-                    </div>
-                    <span className="app-badge ms-badge">Microsoft</span>
-                  </div>
-                  <h3 className="app-title">MS Excel</h3>
-                  <p className="app-description">Tabulky, grafy a analýza dat</p>
-                  <div className="app-footer">
-                    <span className="app-link-text">Otevřít aplikaci</span>
-                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
-                    </svg>
-                  </div>
-                </a>
-
                 <a href="https://www.office.com/launch/word" className="app-card ms-word-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
@@ -542,18 +762,58 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://outlook.office.com" className="app-card ms-outlook-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://www.office.com/launch/excel" className="app-card ms-excel-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M4 4l8 5 8-5v12l-8 5-8-5V4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M4 4l8 5 8-5" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M3 3h18v18H3V3z" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke="currentColor" strokeWidth="1.5"/>
                       </svg>
                     </div>
                     <span className="app-badge ms-badge">Microsoft</span>
                   </div>
-                  <h3 className="app-title">MS Outlook</h3>
-                  <p className="app-description">E-mailová komunikace a kalendář</p>
+                  <h3 className="app-title">MS Excel</h3>
+                  <p className="app-description">Tabulky, grafy a analýza dat</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://m365.cloud.microsoft/" className="app-card ms-copilot-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                        <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS Copilot</h3>
+                  <p className="app-description">AI asistent pro zvýšení produktivity a kreativní práci</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://zachrankacz-my.sharepoint.com/" className="app-card ms-onedrive-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper ms-icon">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-10 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge ms-badge">Microsoft</span>
+                  </div>
+                  <h3 className="app-title">MS OneDrive</h3>
+                  <p className="app-description">Cloudové úložiště a sdílení souborů</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
                     <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
@@ -589,26 +849,20 @@ function Dashboard() {
                   <span className="value">{user.upn}</span>
                 </div>
               )}
+              {(user.entraData?.jobTitle || user.jobTitle) && (
+                <div className="profile-item">
+                  <span className="label">Pozice:</span>
+                  <span className="value">{user.entraData?.jobTitle || user.jobTitle}</span>
+                </div>
+              )}
+              {(user.entraData?.department || user.department) && (
+                <div className="profile-item">
+                  <span className="label">Oddělení:</span>
+                  <span className="value">{user.entraData?.department || user.department}</span>
+                </div>
+              )}
               {user.entraData && (
                 <>
-                  {user.entraData.jobTitle && (
-                    <div className="profile-item">
-                      <span className="label">Pozice:</span>
-                      <span className="value">{user.entraData.jobTitle}</span>
-                    </div>
-                  )}
-                  {user.entraData.department && (
-                    <div className="profile-item">
-                      <span className="label">Oddělení/Úsek:</span>
-                      <span className="value">{user.entraData.department}</span>
-                    </div>
-                  )}
-                  {user.entraData.companyName && (
-                    <div className="profile-item">
-                      <span className="label">Společnost:</span>
-                      <span className="value">{user.entraData.companyName}</span>
-                    </div>
-                  )}
                   {user.entraData.officeLocation && (
                     <div className="profile-item">
                       <span className="label">Lokalita/Pracoviště:</span>
@@ -642,11 +896,26 @@ function Dashboard() {
                       <span className="label">Skupiny ({user.entraData.memberOf.length}):</span>
                       <span className="value">
                         <div className="groups-list-compact">
-                          {user.entraData.memberOf.slice(0, 5).map((group, idx) => (
+                          {(showAllGroups ? user.entraData.memberOf : user.entraData.memberOf.slice(0, 5)).map((group, idx) => (
                             <span key={idx} className="group-badge">{group.displayName}</span>
                           ))}
-                          {user.entraData.memberOf.length > 5 && (
-                            <span className="group-badge-more">+{user.entraData.memberOf.length - 5} dalších</span>
+                          {!showAllGroups && user.entraData.memberOf.length > 5 && (
+                            <span 
+                              className="group-badge-more" 
+                              onClick={() => setShowAllGroups(true)}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              +{user.entraData.memberOf.length - 5} dalších
+                            </span>
+                          )}
+                          {showAllGroups && user.entraData.memberOf.length > 5 && (
+                            <span 
+                              className="group-badge-more" 
+                              onClick={() => setShowAllGroups(false)}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              Zobrazit méně
+                            </span>
                           )}
                         </div>
                       </span>
@@ -662,7 +931,7 @@ function Dashboard() {
         {activeTab === 'employees' && isAdmin && (
           <div className="employees-section">
             <div className="employees-header">
-              <div>
+              <div className="employees-title-wrapper">
                 <h2>Přehled zaměstnanců</h2>
                 {totalEmployees > 0 && (
                   <p className="employees-count">
@@ -674,13 +943,27 @@ function Dashboard() {
                 )}
               </div>
               <div className="search-controls">
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Hledat zaměstnance..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                />
+                <div className="search-input-wrapper">
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Hledat zaměstnance..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button 
+                      className="search-clear-btn"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSearchResults([]);
+                      }}
+                      title="Vymazat vyhledávání"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
                 
                 <div className="filters-section">
                   <div className="filter-group">
@@ -907,7 +1190,7 @@ function Dashboard() {
                           <div className="details-section">
                             <h4 className="details-title">👥 Členství ve skupinách ({details.groups.length})</h4>
                             <div className="groups-list">
-                              {details.groups.slice(0, 5).map((group) => (
+                              {(expandedEmployeeGroups[emp.id] ? details.groups : details.groups.slice(0, 5)).map((group) => (
                                 <div key={group.id} className="group-item">
                                   <svg className="group-icon" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
@@ -920,9 +1203,22 @@ function Dashboard() {
                                   </div>
                                 </div>
                               ))}
-                              {details.groups.length > 5 && (
-                                <div className="groups-more">
+                              {!expandedEmployeeGroups[emp.id] && details.groups.length > 5 && (
+                                <div 
+                                  className="groups-more" 
+                                  onClick={() => setExpandedEmployeeGroups({...expandedEmployeeGroups, [emp.id]: true})}
+                                  style={{ cursor: 'pointer' }}
+                                >
                                   +{details.groups.length - 5} dalších skupin
+                                </div>
+                              )}
+                              {expandedEmployeeGroups[emp.id] && details.groups.length > 5 && (
+                                <div 
+                                  className="groups-more" 
+                                  onClick={() => setExpandedEmployeeGroups({...expandedEmployeeGroups, [emp.id]: false})}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  Zobrazit méně
                                 </div>
                               )}
                             </div>
