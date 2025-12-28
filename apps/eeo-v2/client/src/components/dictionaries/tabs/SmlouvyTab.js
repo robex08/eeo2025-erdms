@@ -1272,13 +1272,11 @@ const SmlouvyTab = () => {
         return a - b;
       }
     }),
-    columnHelper.accessor(
-      row => (parseFloat(row.hodnota_s_dph) || 0) - (parseFloat(row.cerpano_celkem) || 0),
-      {
+    columnHelper.accessor('zbyva', {
         id: 'zbyva',
         header: 'Zbývá s DPH',
         cell: info => {
-          const zbyva = info.getValue();
+          const zbyva = parseFloat(info.getValue()) || 0;
           return (
             <span style={{ 
               color: zbyva >= 0 ? '#10b981' : '#dc2626',
@@ -1290,8 +1288,8 @@ const SmlouvyTab = () => {
         },
         enableSorting: true,
         sortingFn: (rowA, rowB) => {
-          const a = (parseFloat(rowA.original.hodnota_s_dph) || 0) - (parseFloat(rowA.original.cerpano_celkem) || 0);
-          const b = (parseFloat(rowB.original.hodnota_s_dph) || 0) - (parseFloat(rowB.original.cerpano_celkem) || 0);
+          const a = parseFloat(rowA.original.zbyva) || 0;
+          const b = parseFloat(rowB.original.zbyva) || 0;
           return a - b;
         }
       }
