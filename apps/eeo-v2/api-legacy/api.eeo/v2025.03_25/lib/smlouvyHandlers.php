@@ -305,6 +305,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['id'] = (int)$row['id'];
             $row['usek_id'] = (int)$row['usek_id'];
             $row['aktivni'] = (int)$row['aktivni'];
+            $row['pouzit_v_obj_formu'] = isset($row['pouzit_v_obj_formu']) ? (int)$row['pouzit_v_obj_formu'] : 0;
             $row['pocet_objednavek'] = (int)$row['pocet_objednavek'];
             $row['hodnota_bez_dph'] = (float)$row['hodnota_bez_dph'];
             $row['hodnota_s_dph'] = (float)$row['hodnota_s_dph'];
@@ -384,6 +385,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         $smlouva['id'] = (int)$smlouva['id'];
         $smlouva['usek_id'] = (int)$smlouva['usek_id'];
         $smlouva['aktivni'] = (int)$smlouva['aktivni'];
+        $smlouva['pouzit_v_obj_formu'] = isset($smlouva['pouzit_v_obj_formu']) ? (int)$smlouva['pouzit_v_obj_formu'] : 0;
         $smlouva['hodnota_bez_dph'] = (float)$smlouva['hodnota_bez_dph'];
         $smlouva['hodnota_s_dph'] = (float)$smlouva['hodnota_s_dph'];
         $smlouva['sazba_dph'] = (float)$smlouva['sazba_dph'];
@@ -675,13 +677,13 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
             'platnost_od', 'platnost_do',
             'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph',
             'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph',
-            'aktivni', 'poznamka', 'cislo_dms', 'kategorie'
+            'aktivni', 'pouzit_v_obj_formu', 'poznamka', 'cislo_dms', 'kategorie'
         );
         
         foreach ($allowed_fields as $field) {
-            if (isset($input[$field])) {
+            if (array_key_exists($field, $input)) {
                 // Ošetření NULL hodnot pro platnost_od - pokud je NULL nebo prázdný string, uložíme NULL
-                if ($field === 'platnost_od' && (empty($input[$field]) || $input[$field] === null)) {
+                if ($field === 'platnost_od' && ($input[$field] === null || $input[$field] === '' || $input[$field] === 'null')) {
                     $set[] = "$field = :$field";
                     $params[$field] = null;
                 } else {

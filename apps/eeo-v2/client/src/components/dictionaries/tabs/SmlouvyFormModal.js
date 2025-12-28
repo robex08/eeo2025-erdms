@@ -802,6 +802,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     hodnota_plneni_s_dph: smlouva?.hodnota_plneni_s_dph || '',
     sazba_dph: smlouva?.sazba_dph || 21,
     aktivni: smlouva?.aktivni !== undefined ? smlouva.aktivni : 1,
+    pouzit_v_obj_formu: smlouva?.pouzit_v_obj_formu !== undefined ? smlouva.pouzit_v_obj_formu : 1,
     stav: smlouva?.stav || 'AKTIVNI',
     poznamka: smlouva?.poznamka || '',
     cislo_dms: smlouva?.cislo_dms || '',
@@ -946,9 +947,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     }
   };
 
-  const handleHodnotaPln
-
-eniBezDphChange = (value) => {
+  const handleHodnotaPlneniBezDphChange = (value) => {
     const bezDph = parseFloat(value) || 0;
     const sazbaDph = parseFloat(formData.sazba_dph) || 0;
     const sDph = bezDph * (1 + sazbaDph / 100);
@@ -1332,18 +1331,53 @@ eniBezDphChange = (value) => {
               )}
             </FormField>
 
-            {/* Aktivní */}
-            <FormField>
-              <Label>Stav smlouvy</Label>
-              <ToggleSwitch>
-                <input
-                  type="checkbox"
-                  checked={formData.aktivni === 1}
-                  onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
-                />
-                <span className="slider" />
-                <span className="label-text">{formData.aktivni === 1 ? '✅ Aktivní' : '⏸️ Neaktivní'}</span>
-              </ToggleSwitch>
+            {/* Checkboxy: Aktivní + Použití v obj. formuláři */}
+            <FormField $fullWidth style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr 1fr', 
+              gap: '1rem',
+              alignItems: 'start'
+            }}>
+              {/* Aktivní */}
+              <div>
+                <Label>Stav smlouvy</Label>
+                <ToggleSwitch>
+                  <input
+                    type="checkbox"
+                    checked={formData.aktivni === 1}
+                    onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+                  />
+                  <span className="slider" />
+                  <span className="label-text">{formData.aktivni === 1 ? '✅ Aktivní' : '⏸️ Neaktivní'}</span>
+                </ToggleSwitch>
+              </div>
+
+              {/* Použít v obj. formuláři */}
+              <div>
+                <Label>Použití v objednávkách</Label>
+                <ToggleSwitch>
+                  <input
+                    type="checkbox"
+                    checked={formData.pouzit_v_obj_formu === 1}
+                    onChange={(e) => handleChange('pouzit_v_obj_formu', e.target.checked ? 1 : 0)}
+                  />
+                  <span className="slider" />
+                  <span className="label-text">
+                    {formData.pouzit_v_obj_formu === 1 
+                      ? '📋 Použít v obj. formuláři' 
+                      : '🔒 Pouze faktury'}
+                  </span>
+                </ToggleSwitch>
+                {formData.pouzit_v_obj_formu === 1 ? (
+                  <InfoText style={{ marginTop: '0.5rem' }}>
+                    ℹ️ Smlouva se nabízí při vytváření objednávek
+                  </InfoText>
+                ) : (
+                  <InfoText style={{ marginTop: '0.5rem', color: '#f59e0b' }}>
+                    ⚠️ Pouze v modulu faktur
+                  </InfoText>
+                )}
+              </div>
             </FormField>
 
             {/* === DODAVATEL === */}
@@ -1488,9 +1522,7 @@ eniBezDphChange = (value) => {
                 <CurrencyInput
                   fieldName="hodnota_plneni_bez_dph"
                   value={formData.hodnota_plneni_bez_dph}
-                  onChange={(fieldName, value) => handleHodnotaPl
-
-neniBezDphChange(value)}
+                  onChange={(fieldName, value) => handleHodnotaPlneniBezDphChange(value)}
                   highlight={recentlyChangedFields.has('hodnota_plneni_bez_dph')}
                   placeholder="0,00"
                 />
