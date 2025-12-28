@@ -31,7 +31,7 @@ setMysqlTimezone($db) - nastavuje MySQL session timezone na českou časovou zó
 
 ### Databázové připojení
 - ❌ NIKDY nepoužívej `localhost` - databáze běží na vzdáleném serveru
-- ✅ Všechny přístupy najdeš v: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php` prip. nove v .env * souborech!!
+- ✅ Všechny přístupy najdeš v: `/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dbconfig.php` prip. prihlaseni jsou presunuty do .env* souborech!!
 - ✅ Používej POUZE PDO připojení (žádné `mysqli`)
 - ✅ Vždy používej prepared statements proti SQL injection
 

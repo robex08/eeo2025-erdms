@@ -123,18 +123,19 @@ const CloseButton = styled.button`
 `;
 
 const Body = styled.div`
-  padding: 1.5rem 2rem;
+  padding: 1.5rem;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
 `;
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 1rem;
 
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
+  @media (min-width: 600px) {
+    grid-template-columns: repeat(2, 1fr);
   }
 `;
 
@@ -142,10 +143,9 @@ const FormField = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  grid-column: ${props => props.$fullWidth ? 'span 2' : 'span 1'};
-
-  @media (max-width: 768px) {
-    grid-column: span 1;
+  
+  @media (min-width: 600px) {
+    grid-column: ${props => props.$fullWidth ? 'span 2' : 'span 1'};
   }
 `;
 
@@ -165,18 +165,25 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: ${props => props.$highlight ? '600' : '500'};
-  color: ${props => props.$highlight ? '#000000' : 'inherit'};
+  font-weight: ${props => (props.value && props.value !== '') ? '600' : '400'};
+  color: ${props => (props.value && props.value !== '') ? '#1f2937' : '#6b7280'};
   transition: all 0.2s ease;
+  background: white;
 
   &:focus {
     outline: none;
     border-color: ${props => props.$error ? '#ef4444' : '#3b82f6'};
     box-shadow: 0 0 0 3px ${props => props.$error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+
+  &::placeholder {
+    color: #9ca3af;
   }
 
   &:disabled {
@@ -187,12 +194,14 @@ const Input = styled.input`
 `;
 
 const Select = styled.select`
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: ${props => props.$highlight ? '600' : '500'};
-  color: ${props => props.$highlight ? '#000000' : 'inherit'};
+  font-weight: ${props => (props.value && props.value !== '') ? '600' : '400'};
+  color: ${props => (props.value && props.value !== '') ? '#1f2937' : '#6b7280'};
   background: white;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -221,12 +230,15 @@ const Select = styled.select`
 `;
 
 const TextArea = styled.textarea`
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: ${props => props.$highlight ? '600' : '400'};
-  color: ${props => props.$highlight ? '#000000' : 'inherit'};
+  font-weight: ${props => (props.value && props.value !== '') ? '600' : '400'};
+  color: inherit;
+  background: white;
   min-height: 80px;
   font-family: inherit;
   resize: vertical;
@@ -246,11 +258,193 @@ const CurrencyInputWrapper = styled.div`
   align-items: center;
 `;
 
+// ARES Input Components
 const InputWithIcon = styled.div`
   position: relative;
+  width: 100%;
   display: flex;
   align-items: center;
+
+  input {
+    padding-right: 40px;
+  }
+`;
+
+const AresSearchIcon = styled.div`
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #059669;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  z-index: 2;
+
+  &:hover {
+    background-color: #f0fdf4;
+    color: #047857;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+`;
+
+// ARES Popup Components
+const AresPopupOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  animation: fadeIn 0.2s ease-out;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const AresPopupModal = styled.div`
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 800px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+`;
+
+const AresPopupHeader = styled.div`
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: white;
+`;
+
+const AresPopupTitle = styled.h2`
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: white;
+
+  svg {
+    width: 24px;
+    height: 24px;
+  }
+`;
+
+const AresPopupCloseButton = styled.button`
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+`;
+
+const AresPopupContent = styled.div`
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+`;
+
+const AresSearchInputField = styled.input`
   width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #059669;
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const AresList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+`;
+
+const AresItem = styled.div`
+  padding: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #059669;
+    background-color: #f0fdf4;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.15);
+  }
+`;
+
+const AresLoadingSpinner = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #6b7280;
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 `;
 
 const CurrencySymbol = styled.span`
@@ -269,8 +463,9 @@ const StyledCurrencyInput = styled.input`
   border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: ${props => props.$highlight ? '600' : '500'};
-  color: ${props => props.$highlight ? '#000000' : 'inherit'};
+  font-weight: ${props => (props.value && props.value !== '') ? '600' : '400'};
+  color: inherit;
+  background: white;
   text-align: right;
   transition: all 0.2s ease;
 
@@ -452,26 +647,32 @@ const HintBox = styled.div`
 `;
 
 const ThreeColumnRow = styled.div`
-  grid-column: span 2;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
+  overflow: hidden;
 
-  @media (max-width: 768px) {
+  @media (min-width: 600px) {
+    grid-column: span 2;
+  }
+
+  @media (max-width: 599px) {
     grid-template-columns: 1fr;
-    grid-column: span 1;
   }
 `;
 
 const TwoColumnRow = styled.div`
-  grid-column: span 2;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
+  overflow: hidden;
 
-  @media (max-width: 768px) {
+  @media (min-width: 600px) {
+    grid-column: span 2;
+  }
+
+  @media (max-width: 599px) {
     grid-template-columns: 1fr;
-    grid-column: span 1;
   }
 `;
 
@@ -597,6 +798,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     platnost_do: smlouva?.platnost_do?.substring(0, 10) || '',
     hodnota_bez_dph: smlouva?.hodnota_bez_dph || '',
     hodnota_s_dph: smlouva?.hodnota_s_dph || '',
+    zbyva: smlouva?.zbyva || '',
     sazba_dph: smlouva?.sazba_dph || 21,
     aktivni: smlouva?.aktivni !== undefined ? smlouva.aktivni : 1,
     stav: smlouva?.stav || 'AKTIVNI',
@@ -613,6 +815,12 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
   
   // 🎯 State pro zvýraznění nedávno změněných polí
   const [recentlyChangedFields, setRecentlyChangedFields] = useState(new Set());
+  
+  // 🎯 ARES states
+  const [aresPopupOpen, setAresPopupOpen] = useState(false);
+  const [aresSearch, setAresSearch] = useState('');
+  const [aresResults, setAresResults] = useState([]);
+  const [loadingAres, setLoadingAres] = useState(false);
   
   // 🎯 Ref pro tracking timeoutů (aby se správně čistily)
   const highlightTimeoutsRef = useRef({});
@@ -760,10 +968,6 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       newErrors.nazev_smlouvy = 'Název smlouvy je povinný';
     }
 
-    if (!formData.platnost_od) {
-      newErrors.platnost_od = 'Platnost od je povinná';
-    }
-
     if (!formData.platnost_do) {
       newErrors.platnost_do = 'Platnost do je povinná';
     }
@@ -774,12 +978,16 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       }
     }
 
-    if (!formData.hodnota_bez_dph || parseFloat(formData.hodnota_bez_dph) <= 0) {
-      newErrors.hodnota_bez_dph = 'Hodnota bez DPH je povinná a musí být kladná';
+    if (!formData.hodnota_bez_dph || parseFloat(formData.hodnota_bez_dph) < 0) {
+      newErrors.hodnota_bez_dph = 'Hodnota bez DPH je povinná a nesmí být záporná';
     }
 
-    if (!formData.hodnota_s_dph || parseFloat(formData.hodnota_s_dph) <= 0) {
-      newErrors.hodnota_s_dph = 'Hodnota s DPH je povinná a musí být kladná';
+    if (!formData.hodnota_s_dph || parseFloat(formData.hodnota_s_dph) < 0) {
+      newErrors.hodnota_s_dph = 'Hodnota s DPH je povinná a nesmí být záporná';
+    }
+
+    if (!formData.zbyva || parseFloat(formData.zbyva) < 0) {
+      newErrors.zbyva = 'Zbývá s DPH je povinné a nesmí být záporné';
     }
 
     if (formData.ico && !/^\d{8}$/.test(formData.ico)) {
@@ -803,37 +1011,186 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     try {
       setSaving(true);
 
+      // Příprava dat - ošetření prázdných datumů (poslat null místo prázdného stringu)
+      const dataToSave = {
+        ...formData,
+        platnost_od: formData.platnost_od || null,
+        platnost_do: formData.platnost_do || null
+      };
+
       if (isEdit) {
         await updateSmlouva({
           token: token,
           username: user.username,
           id: smlouva.id,
-          smlouvaData: formData
+          smlouvaData: dataToSave
         });
         // Úspěšná aktualizace - zavřít modal a reloadnout data
       } else {
         await createSmlouva({
           token: token,
           username: user.username,
-          smlouvaData: formData
+          smlouvaData: dataToSave
         });
         // Úspěšné vytvoření - zavřít modal a reloadnout data
       }
 
       onClose(true);
     } catch (err) {
+      // Převedeme systémové chyby na lidsky čitelné zprávy
+      let userMessage = err.message;
+      
+      // SQL chyby - neplatné datum
+      if (err.message.includes('Invalid datetime format') || err.message.includes('Incorrect date')) {
+        userMessage = 'Neplatný formát data. Zkontrolujte, prosím, zadaná data.';
+      }
+      // SQL chyby - duplicitní záznam
+      else if (err.message.includes('Duplicate entry')) {
+        userMessage = 'Smlouva s tímto číslem již existuje.';
+      }
+      // SQL chyby - cizí klíč
+      else if (err.message.includes('foreign key constraint')) {
+        userMessage = 'Chyba propojení dat. Zkontrolujte vybrané položky.';
+      }
+      // SQL chyby - obecné
+      else if (err.message.includes('SQLSTATE')) {
+        userMessage = 'Chyba při ukládání dat. Zkontrolujte vyplněné údaje.';
+      }
+      
       // Zobrazíme error inline v modalu
-      setErrors(prev => ({ ...prev, _global: 'Chyba při ukládání: ' + err.message }));
+      setErrors(prev => ({ ...prev, _global: userMessage }));
     } finally {
       setSaving(false);
     }
   };
+
+  // =============================================================================
+  // ARES FUNKCE
+  // =============================================================================
+
+  const handleAresSearch = () => {
+    const currentName = formData.nazev_firmy || '';
+    const currentICO = formData.ico || '';
+    const searchTerm = currentName || currentICO;
+
+    setAresSearch(searchTerm);
+    setAresPopupOpen(true);
+    if (searchTerm && searchTerm.length >= 2) {
+      fetchAresData(searchTerm);
+    }
+  };
+
+  const fetchAresData = async (searchTerm = '') => {
+    const trimmedSearchTerm = searchTerm?.trim();
+    if (!trimmedSearchTerm || trimmedSearchTerm.length < 3) {
+      setAresResults([]);
+      return;
+    }
+
+    try {
+      setLoadingAres(true);
+
+      // Check if search term is numeric (IČO) or text (název)
+      const isICO = /^\d+$/.test(trimmedSearchTerm);
+
+      if (isICO) {
+        // Search by IČO - direct endpoint
+        const url = `https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${trimmedSearchTerm}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const result = {
+            ico: data.ico,
+            dic: data.dic || '',
+            nazev: data.obchodniJmeno || '',
+            adresa: data.sidlo?.textovaAdresa || ''
+          };
+          setAresResults([result]);
+        } else {
+          setAresResults([]);
+        }
+      } else {
+        // Search by název - search endpoint
+        const url = 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/vyhledat';
+        
+        const requestData = {
+          obchodniJmeno: trimmedSearchTerm,
+          pocet: 25
+        };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestData)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const results = (data.ekonomickeSubjekty || []).map(item => ({
+            ico: item.ico,
+            dic: item.dic || '',
+            nazev: item.obchodniJmeno || '',
+            adresa: item.sidlo?.textovaAdresa || ''
+          }));
+          setAresResults(results);
+        } else {
+          setAresResults([]);
+        }
+      }
+
+    } catch (error) {
+      setAresResults([]);
+      console.error('Chyba při připojení k ARES:', error);
+    } finally {
+      setLoadingAres(false);
+    }
+  };
+
+  const handleAresSearchChange = (e) => {
+    const value = e.target.value;
+    setAresSearch(value);
+
+    // Debounce search
+    if (value.length >= 2) {
+      clearTimeout(window.aresSearchTimeout);
+      window.aresSearchTimeout = setTimeout(() => {
+        fetchAresData(value);
+      }, 500);
+    } else {
+      setAresResults([]);
+    }
+  };
+
+  const handleAresSelect = (aresItem) => {
+    setFormData(prev => ({
+      ...prev,
+      nazev_firmy: aresItem.nazev || '',
+      ico: aresItem.ico || '',
+      dic: aresItem.dic || ''
+    }));
+
+    setAresPopupOpen(false);
+    setAresSearch('');
+    setAresResults([]);
+  };
+
+  // =============================================================================
+  // OSTATNÍ HANDLERY
+  // =============================================================================
 
   const handleChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+    
+    // Zvýrazni pole po změně
+    markFieldAsChanged(field);
+    
     // Clear error for this field
     if (errors[field]) {
       setErrors(prev => {
@@ -853,7 +1210,6 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       <Modal>
         <Header>
           <Title>
-            <FontAwesomeIcon icon={isEdit ? faFileContract : faPlus} />
             {isEdit ? 'Upravit smlouvu' : 'Nová smlouva'}
           </Title>
           <CloseButton onClick={() => !saving && onClose(false)}>
@@ -871,11 +1227,11 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
           <FormGrid>
             {/* === ZÁKLADNÍ ÚDAJE === */}
             <SectionHeader $first>
-              <h3>📋 Základní údaje</h3>
+              <h3>Základní údaje</h3>
             </SectionHeader>
 
             <HintBox>
-              💡 Povinné položky jsou označeny hvězdičkou (*). DPH se počítá automaticky.
+              Povinné položky jsou označeny hvězdičkou (*). DPH se počítá automaticky.
             </HintBox>
 
             {/* Číslo smlouvy */}
@@ -886,6 +1242,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 value={formData.cislo_smlouvy}
                 onChange={(e) => handleChange('cislo_smlouvy', e.target.value)}
                 $error={errors.cislo_smlouvy}
+                $highlight={recentlyChangedFields.has('cislo_smlouvy')}
                 placeholder="např. S-147/750309/26/23"
               />
               {errors.cislo_smlouvy && <ErrorText>{errors.cislo_smlouvy}</ErrorText>}
@@ -898,6 +1255,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 value={formData.usek_id}
                 onChange={(e) => handleChange('usek_id', e.target.value)}
                 $error={errors.usek_id}
+                $highlight={recentlyChangedFields.has('usek_id')}
               >
                 <option value="">Vyberte úsek</option>
                 {useky.map(usek => (
@@ -916,6 +1274,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 value={formData.druh_smlouvy}
                 onChange={(e) => handleChange('druh_smlouvy', e.target.value)}
                 $error={errors.druh_smlouvy}
+                $highlight={recentlyChangedFields.has('druh_smlouvy')}
                 disabled={loadingDruhy}
               >
                 {loadingDruhy ? (
@@ -952,7 +1311,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
 
             {/* === DODAVATEL === */}
             <SectionHeader>
-              <h3>🏢 Dodavatel</h3>
+              <h3>Dodavatel</h3>
             </SectionHeader>
 
             {/* Název firmy */}
@@ -963,6 +1322,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 value={formData.nazev_firmy}
                 onChange={(e) => handleChange('nazev_firmy', e.target.value)}
                 $error={errors.nazev_firmy}
+                $highlight={recentlyChangedFields.has('nazev_firmy')}
                 placeholder="např. Alter Audit, s.r.o."
               />
               {errors.nazev_firmy && <ErrorText>{errors.nazev_firmy}</ErrorText>}
@@ -971,15 +1331,26 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
             {/* IČO */}
             <FormField>
               <Label className="required">IČO</Label>
-              <Input
-                type="text"
-                value={formData.ico}
-                onChange={(e) => handleInputChange('ico', e.target.value)}
-                $error={errors.ico}
-                $highlight={recentlyChangedFields.has('ico')}
-                placeholder="8 číslic"
-                maxLength="8"
-              />
+              <InputWithIcon>
+                <Input
+                  type="text"
+                  value={formData.ico}
+                  onChange={(e) => handleInputChange('ico', e.target.value)}
+                  $error={errors.ico}
+                  placeholder="8 číslic"
+                  maxLength="8"
+                />
+                <AresSearchIcon
+                  onClick={handleAresSearch}
+                  title="Ověřit a načíst údaje z ARES"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+                    <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+                  </svg>
+                </AresSearchIcon>
+              </InputWithIcon>
               {errors.ico && <ErrorText>{errors.ico}</ErrorText>}
             </FormField>
 
@@ -990,13 +1361,14 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 type="text"
                 value={formData.dic}
                 onChange={(e) => handleChange('dic', e.target.value)}
+                $highlight={recentlyChangedFields.has('dic')}
                 placeholder="např. CZ12345678"
               />
             </FormField>
 
             {/* === NÁZEV A POPIS === */}
             <SectionHeader>
-              <h3>📄 Název a popis</h3>
+              <h3>Název a popis</h3>
             </SectionHeader>
 
             {/* Název smlouvy */}
@@ -1018,25 +1390,27 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
               <TextArea
                 value={formData.popis_smlouvy}
                 onChange={(e) => handleChange('popis_smlouvy', e.target.value)}
+                $highlight={recentlyChangedFields.has('popis_smlouvy')}
                 placeholder="Detailní popis smlouvy (nepovinné)..."
               />
             </FormField>
 
             {/* === PLATNOST A HODNOTA === */}
             <SectionHeader>
-              <h3>💰 Platnost a hodnota</h3>
+              <h3>Platnost a hodnota</h3>
             </SectionHeader>
 
             {/* První řádek: Platnost od | Platnost do | Sazba DPH */}
             <ThreeColumnRow>
               {/* Platnost od */}
               <InnerFormField>
-                <Label className="required">Platnost od</Label>
+                <Label>Platnost od</Label>
                 <DatePicker
                   value={formData.platnost_od}
                   onChange={(value) => handleChange('platnost_od', value)}
                   placeholder="Vyberte datum od"
                   hasError={!!errors.platnost_od}
+                  highlight={recentlyChangedFields.has('platnost_od')}
                 />
                 {errors.platnost_od && <ErrorText>{errors.platnost_od}</ErrorText>}
               </InnerFormField>
@@ -1049,6 +1423,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                   onChange={(value) => handleChange('platnost_do', value)}
                   placeholder="Vyberte datum do"
                   hasError={!!errors.platnost_do}
+                  highlight={recentlyChangedFields.has('platnost_do')}
                 />
                 {errors.platnost_do && <ErrorText>{errors.platnost_do}</ErrorText>}
               </InnerFormField>
@@ -1059,6 +1434,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 <Select
                   value={formData.sazba_dph}
                   onChange={(e) => handleSazbaDphChange(e.target.value)}
+                  $highlight={recentlyChangedFields.has('sazba_dph')}
                 >
                   {SAZBA_DPH_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1067,8 +1443,8 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
               </InnerFormField>
             </ThreeColumnRow>
 
-            {/* Druhý řádek: Hodnota bez DPH | Hodnota s DPH */}
-            <TwoColumnRow>
+            {/* Druhý řádek: Hodnota bez DPH | Hodnota s DPH | Zbývá s DPH */}
+            <ThreeColumnRow>
               {/* Hodnota bez DPH */}
               <InnerFormField>
                 <Label className="required">Hodnota bez DPH (Kč)</Label>
@@ -1097,7 +1473,19 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 />
                 {errors.hodnota_s_dph && <ErrorText>{errors.hodnota_s_dph}</ErrorText>}
               </InnerFormField>
-            </TwoColumnRow>
+
+              {/* Zbývá s DPH */}
+              <InnerFormField>
+                <Label className="required">Zbývá s DPH (Kč)</Label>
+                <CurrencyInput
+                  fieldName="zbyva"
+                  value={formData.zbyva}
+                  onChange={(fieldName, value) => handleChange('zbyva', value)}
+                  highlight={recentlyChangedFields.has('zbyva')}
+                  placeholder="0,00"
+                />
+              </InnerFormField>
+            </ThreeColumnRow>
 
             {/* === VOLITELNÉ ÚDAJE === */}
             <SectionHeader 
@@ -1105,7 +1493,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
               $collapsed={!showOptionalFields}
               onClick={() => setShowOptionalFields(!showOptionalFields)}
             >
-              <h3>🔧 Volitelné údaje</h3>
+              <h3>Volitelné údaje</h3>
               <FontAwesomeIcon icon={faChevronDown} className="toggle-icon" />
             </SectionHeader>
 
@@ -1138,6 +1526,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 <TextArea
                   value={formData.poznamka}
                   onChange={(e) => handleChange('poznamka', e.target.value)}
+                  $highlight={recentlyChangedFields.has('poznamka')}
                   placeholder="Interní poznámka (nezobrazuje se veřejně)..."
                 />
               </FormField>
@@ -1158,12 +1547,90 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
             ) : (
               <>
                 <FontAwesomeIcon icon={faSave} />
-                {isEdit ? 'Uložit změny' : 'Vytvořit smlouvu'}
+                {isEdit ? 'Uložit změny' : 'Přidat smlouvu'}
               </>
             )}
           </Button>
         </Footer>
       </Modal>
+
+      {/* ARES Popup */}
+      {aresPopupOpen && ReactDOM.createPortal(
+        <AresPopupOverlay onClick={() => {
+          setAresPopupOpen(false);
+          setAresSearch('');
+          setAresResults([]);
+        }}>
+          <AresPopupModal onClick={(e) => e.stopPropagation()}>
+            <AresPopupHeader>
+              <AresPopupTitle>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                  <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/>
+                  <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+                </svg>
+                ARES - Vyhledávání firem
+              </AresPopupTitle>
+              <AresPopupCloseButton
+                onClick={() => {
+                  setAresPopupOpen(false);
+                  setAresSearch('');
+                  setAresResults([]);
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </AresPopupCloseButton>
+            </AresPopupHeader>
+
+            <AresPopupContent>
+              <AresSearchInputField
+                type="text"
+                placeholder="Vyhledat podle názvu firmy nebo IČO..."
+                value={aresSearch}
+                onChange={handleAresSearchChange}
+                autoFocus
+              />
+
+              <AresList>
+                {loadingAres ? (
+                  <AresLoadingSpinner>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                      <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                    </svg>
+                    <span style={{ marginLeft: '12px' }}>Vyhledávám v ARES...</span>
+                  </AresLoadingSpinner>
+                ) : aresResults.length > 0 ? (
+                  aresResults.map((aresItem, index) => (
+                    <AresItem key={index} onClick={() => handleAresSelect(aresItem)}>
+                      <div style={{ fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
+                        {aresItem.nazev}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '4px' }}>
+                        {aresItem.adresa}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                        IČO: {aresItem.ico} {aresItem.dic && `• DIČ: ${aresItem.dic}`}
+                      </div>
+                    </AresItem>
+                  ))
+                ) : aresSearch.length >= 2 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                    Žádné výsledky nenalezeny
+                  </div>
+                ) : (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                    Zadejte název firmy nebo IČO pro vyhledání
+                  </div>
+                )}
+              </AresList>
+            </AresPopupContent>
+          </AresPopupModal>
+        </AresPopupOverlay>,
+        document.body
+      )}
     </Overlay>,
     document.body
   );
