@@ -674,15 +674,21 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
             'cislo_smlouvy', 'usek_id', 'druh_smlouvy',
             'nazev_firmy', 'ico', 'dic', 'nazev_smlouvy', 'popis_smlouvy',
             'platnost_od', 'platnost_do',
-            'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph',
+            'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph', 'zbyva',
             'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph',
             'aktivni', 'poznamka', 'cislo_dms', 'kategorie'
         );
         
         foreach ($allowed_fields as $field) {
             if (isset($input[$field])) {
-                $set[] = "$field = :$field";
-                $params[$field] = $input[$field];
+                // Ošetření NULL hodnot pro platnost_od - pokud je NULL nebo prázdný string, uložíme NULL
+                if ($field === 'platnost_od' && (empty($input[$field]) || $input[$field] === null)) {
+                    $set[] = "$field = :$field";
+                    $params[$field] = null;
+                } else {
+                    $set[] = "$field = :$field";
+                    $params[$field] = $input[$field];
+                }
             }
         }
         
