@@ -222,7 +222,7 @@ const FormGrid = styled.div`
 
 const FormGrid3Col = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr); /* 4 sloupce místo 3 pro Username | Heslo | Vynucení | Aktivní */
   gap: 1rem 1.25rem; /* row-gap column-gap */
 
   @media (max-width: 1024px) {
@@ -827,6 +827,7 @@ const UserManagementModal = ({
     pozice_id: null,
     organizace_id: null,
     aktivni: 1,
+    vynucena_zmena_hesla: 0,
     roles: [],
     direct_rights: []
   });
@@ -992,6 +993,7 @@ const UserManagementModal = ({
         pozice_id: extractedIds.pozice_id,
         organizace_id: extractedIds.organizace_id,
         aktivni: userData.aktivni === 'Ano' || userData.aktivni === 1 || userData.aktivni === '1' ? 1 : 0,
+        vynucena_zmena_hesla: userData.vynucena_zmena_hesla === 1 || userData.vynucena_zmena_hesla === '1' ? 1 : 0,
         roles: rolesIds,
         direct_rights: rightsIds
       };
@@ -1015,6 +1017,7 @@ const UserManagementModal = ({
         pozice_id: null,
         organizace_id: null,
         aktivni: 1,
+        vynucena_zmena_hesla: 0,
         roles: [],
         direct_rights: []
       });
@@ -1573,6 +1576,23 @@ const UserManagementModal = ({
                         </ToggleSwitch>
                         <ToggleLabel $active={formData.aktivni === 1}>
                           {formData.aktivni === 1 ? 'Aktivní' : 'Neaktivní'}
+                        </ToggleLabel>
+                      </ToggleContainer>
+                    </FormGroup>
+
+                    <FormGroup>
+                      <Label>Vynucení</Label>
+                      <ToggleContainer>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={formData.vynucena_zmena_hesla === 1}
+                            onChange={(e) => handleChange('vynucena_zmena_hesla', e.target.checked ? 1 : 0)}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                        <ToggleLabel $active={formData.vynucena_zmena_hesla === 1}>
+                          {formData.vynucena_zmena_hesla === 1 ? 'Vynutit' : 'Normální'}
                         </ToggleLabel>
                       </ToggleContainer>
                     </FormGroup>

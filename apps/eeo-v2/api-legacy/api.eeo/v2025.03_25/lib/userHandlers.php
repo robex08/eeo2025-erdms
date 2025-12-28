@@ -133,6 +133,13 @@ function validateUserInput($input, $is_update = false) {
         $data['aktivni'] = 1;
     }
     
+    // Vynucena zmena hesla (default 0)
+    if (isset($input['vynucena_zmena_hesla'])) {
+        $data['vynucena_zmena_hesla'] = (int)$input['vynucena_zmena_hesla'];
+    } elseif (!$is_update) {
+        $data['vynucena_zmena_hesla'] = 0;
+    }
+    
     // Password (pouze při vytváření nebo změně hesla)
     if (isset($input['password']) && !empty($input['password'])) {
         $password = trim($input['password']);
@@ -543,7 +550,7 @@ function handle_users_update($input, $config, $queries) {
         $update_values = array(':id' => $user_id);
         
         // Username se NEMĚNÍ při UPDATE - je to identifikátor
-        $allowed_fields = array('jmeno', 'prijmeni', 'titul_pred', 'titul_za', 'email', 'telefon', 'usek_id', 'lokalita_id', 'pozice_id', 'organizace_id', 'aktivni');
+        $allowed_fields = array('jmeno', 'prijmeni', 'titul_pred', 'titul_za', 'email', 'telefon', 'usek_id', 'lokalita_id', 'pozice_id', 'organizace_id', 'aktivni', 'vynucena_zmena_hesla');
         
         // DEBUG: Log validated data
         error_log("=== USER UPDATE DEBUG ===");
