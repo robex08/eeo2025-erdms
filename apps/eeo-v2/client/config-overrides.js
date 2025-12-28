@@ -1,6 +1,18 @@
 const webpack = require('webpack');
 
 module.exports = function override(config, env) {
+  // 🌐 DEV SERVER: Konfigurace pro remote development (SSH)
+  if (env === 'development') {
+    config.devServer = {
+      ...config.devServer,
+      host: '0.0.0.0', // Allow connections from any host
+      port: 3000,
+      allowedHosts: 'all', // Allow all hosts (no origin check)
+      // WebSocket se řídí WDS_SOCKET_HOST z .env.development
+      webSocketServer: 'ws',
+    };
+  }
+
   // Ignore source-map-loader warnings for node_modules
   config.ignoreWarnings = [
     {

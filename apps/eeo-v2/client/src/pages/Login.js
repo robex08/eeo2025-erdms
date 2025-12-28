@@ -164,6 +164,10 @@ const Input = styled.input`
   }
 `;
 
+const PasswordInput = styled(Input)`
+  padding-right: 2.5rem; /* Extra prostor pro toggle ikonu */
+`;
+
 const Button = styled.button`
   width: 100%;
   padding: 0.94rem; /* změnšeno z 1.25rem */
@@ -272,7 +276,7 @@ const Login = () => {
                 <InputIcon>
                   <Lock size={20} />
                 </InputIcon>
-                <Input
+                <PasswordInput
                   type={showPassword ? "text" : "password"}
                   placeholder="Zadejte heslo"
                   value={password}
@@ -280,7 +284,6 @@ const Login = () => {
                   autoComplete="current-password"
                   required
                   disabled={loading}
-                  style={{ paddingRight: '2.5rem' }}
                 />
                 <PasswordToggle
                   type="button"

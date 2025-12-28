@@ -421,7 +421,180 @@ class EntraService {
       throw err;
     }
   }
+
+  /**
+   * DEBUG: Zkusit všechny možné varianty Graph API pro kalendář
+   */
+  async debugCalendarAPIs(userAccessToken, limit = 3) {
+    if (!userAccessToken) {
+      throw new Error('User access token is required');
+    }
+
+    const userClient = Client.init({
+      authProvider: (done) => {
+        done(null, userAccessToken);
+      }
+    });
+
+    const now = new Date().toISOString();
+    const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const results = {};
+
+    // 1. /me/calendar/events BEZ select
+    try {
+      console.log('\n📅 === TEST 1: /me/calendar/events BEZ select ===');
+      const r1 = await userClient.api('/me/calendar/events').top(limit).get();
+      results.test1_events_no_select = r1.value;
+      console.log('✅ Test 1 SUCCESS:', JSON.stringify(r1.value[0], null, 2));
+    } catch (err) {
+      results.test1_events_no_select = { error: err.message };
+      console.log('❌ Test 1 ERROR:', err.message);
+    }
+
+    // 2. /me/calendar/events SE select categories
+    try {
+      console.log('\n📅 === TEST 2: /me/calendar/events SE select categories ===');
+      const r2 = await userClient.api('/me/calendar/events')
+        .select('subject,start,end,categories')
+        .top(limit).get();
+      results.test2_events_with_select = r2.value;
+      console.log('✅ Test 2 SUCCESS:', JSON.stringify(r2.value[0], null, 2));
+    } catch (err) {
+      results.test2_events_with_select = { error: err.message };
+      console.log('❌ Test 2 ERROR:', err.message);
+    }
+
+    // 3. /me/calendarview BEZ select
+    try {
+      console.log('\n📅 === TEST 3: /me/calendarview BEZ select ===');
+      const r3 = await userClient.api('/me/calendarview')
+        .query({ startDateTime: now, endDateTime: endDate })
+        .top(limit).get();
+      results.test3_calendarview_no_select = r3.value;
+      console.log('✅ Test 3 SUCCESS:', JSON.stringify(r3.value[0], null, 2));
+    } catch (err) {
+      results.test3_calendarview_no_select = { error: err.message };
+      console.log('❌ Test 3 ERROR:', err.message);
+    }
+
+    // 4. /me/calendarview SE select categories
+    try {
+      console.log('\n📅 === TEST 4: /me/calendarview SE select categories ===');
+      const r4 = await userClient.api('/me/calendarview')
+        .query({ startDateTime: now, endDateTime: endDate })
+        .select('subject,start,end,categories')
+        .top(limit).get();
+      results.test4_calendarview_with_select = r4.value;
+      console.log('✅ Test 4 SUCCESS:', JSON.stringify(r4.value[0], null, 2));
+    } catch (err) {
+      results.test4_calendarview_with_select = { error: err.message };
+      console.log('❌ Test 4 ERROR:', err.message);
+    }
+
+    // 5. /me/events BEZ select
+    try {
+      console.log('\n📅 === TEST 5: /me/events BEZ select ===');
+      const r5 = await userClient.api('/me/events').top(limit).get();
+      results.test5_me_events_no_select = r5.value;
+      console.log('✅ Test 5 SUCCESS:', JSON.stringify(r5.value[0], null, 2));
+    } catch (err) {
+      results.test5_me_events_no_select = { error: err.message };
+      console.log('❌ Test 5 ERROR:', err.message);
+    }
+
+    // 6. /me/events SE select categories
+    try {
+      console.log('\n📅 === TEST 6: /me/events SE select categories ===');
+      const r6 = await userClient.api('/me/events')
+        .select('subject,start,end,categories')
+        .top(limit).get();
+      results.test6_me_events_with_select = r6.value;
+      console.log('✅ Test 6 SUCCESS:', JSON.stringify(r6.value[0], null, 2));
+    } catch (err) {
+      results.test6_me_events_with_select = { error: err.message };
+      console.log('❌ Test 6 ERROR:', err.message);
+    }
+
+    // 7. S Prefer header timezone
+    try {
+      console.log('\n📅 === TEST 7: /me/calendarview S Prefer timezone ===');
+      const r7 = await userClient.api('/me/calendarview')
+        .query({ startDateTime: now, endDateTime: endDate })
+        .header('Prefer', 'outlook.timezone="Europe/Prague"')
+        .top(limit).get();
+      results.test7_with_prefer_timezone = r7.value;
+      console.log('✅ Test 7 SUCCESS:', JSON.stringify(r7.value[0], null, 2));
+    } catch (err) {
+      results.test7_with_prefer_timezone = { error: err.message };
+      console.log('❌ Test 7 ERROR:', err.message);
+    }
+
+    console.log('\n📊 === SUMMARY ===');
+    console.log('Total tests:', Object.keys(results).length);
+    Object.keys(results).forEach(key => {
+      const hasError = results[key].error;
+      const hasCategories = !hasError && results[key][0] && results[key][0].categories;
+      console.log(`${key}: ${hasError ? '❌ ERROR' : hasCategories ? '✅ HAS CATEGORIES' : '⚠️ NO CATEGORIES'}`);
+    });
+
+    return results;
+  }
+
+  /**
+   * Získat nadcházející události z kalendáře přihlášeného uživatele
+   * @param {string} userAccessToken - Access token uživatele (delegated)
+   * @param {number} days - Počet dní dopředu (výchozí 7)
+   * @returns {Promise<Array>} - Pole událostí z kalendáře
+   */
+  async getMyCalendarEvents(userAccessToken, days = 7) {
+    if (!userAccessToken) {
+      throw new Error('User access token is required for calendar access');
+    }
+
+    try {
+      // Vytvoř Graph API klienta s uživatelským tokenem (delegated permissions)
+      const userClient = Client.init({
+        authProvider: (done) => {
+          done(null, userAccessToken);
+        }
+      });
+
+      // Načti události od DNES do DNES + X dní
+      const now = new Date();
+      now.setHours(0, 0, 0, 0); // Začátek dnešního dne
+      const startDate = now.toISOString();
+      
+      const endDateObj = new Date(now);
+      endDateObj.setDate(endDateObj.getDate() + days);
+      endDateObj.setHours(23, 59, 59, 999); // Konec posledního dne
+      const endDate = endDateObj.toISOString();
+      
+      console.log(`📅 Fetching calendar events for next ${days} days: ${startDate} to ${endDate}`);
+      
+      const response = await userClient
+        .api('/me/calendarview')
+        .query({
+          startDateTime: startDate,
+          endDateTime: endDate
+        })
+        .header('Prefer', 'outlook.timezone="Europe/Prague"')
+        .orderby('start/dateTime')
+        .top(999) // Načteme všechny události v rozsahu (ne jen prvních X)
+        .get();
+      
+      console.log('📅 Graph API response (first event):', JSON.stringify(response.value[0], null, 2));
+      console.log('📅 Total events in next', days, 'days:', response.value.length);
+      
+      return response.value || [];
+    } catch (err) {
+      console.error('🔴 getMyCalendarEvents ERROR:', err.message);
+      throw err;
+    }
+  }
 }
+
+// Singleton instance
+module.exports = new EntraService();
 
 // Singleton instance
 module.exports = new EntraService();

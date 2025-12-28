@@ -29,6 +29,7 @@ function Dashboard() {
   const [calendarDropdownOpen, setCalendarDropdownOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
+  const [calendarHoverTimeout, setCalendarHoverTimeout] = useState(null);
   
   // Kontrola zda je admin (u03924 nebo u09721)
   const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
@@ -286,18 +287,20 @@ function Dashboard() {
     await authService.logout();
   };
 
-  const loadCalendarEvents = async () => {
-    if (loadingCalendar || calendarEvents.length > 0) return;
+  const loadCalendarEvents = async (forceReload = false) => {
+    // Pokud už načítáme nebo už máme data (a není force reload), skipni
+    if (loadingCalendar || (!forceReload && calendarEvents.length > 0)) return;
     
     try {
       setLoadingCalendar(true);
-      const response = await fetch('/api/entra/me/calendar/events?limit=7', {
+      const response = await fetch('/api/entra/me/calendar/events?days=7', {
         credentials: 'include'
       });
       
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
+          console.log('📅 Calendar events received:', data.data.length, 'events');
           setCalendarEvents(data.data);
         }
       }
@@ -308,6 +311,23 @@ function Dashboard() {
     }
   };
 
+  // Auto-refresh kalendáře každých 5 minut na pozadí
+  useEffect(() => {
+    if (!user) return;
+
+    // První načtení
+    loadCalendarEvents();
+
+    // Background refresh každých 5 minut (300000 ms)
+    const intervalId = setInterval(() => {
+      console.log('📅 Auto-refresh kalendáře...');
+      loadCalendarEvents(true); // Force reload
+    }, 5 * 60 * 1000);
+
+    // Cleanup při unmount
+    return () => clearInterval(intervalId);
+  }, [user]);
+
   const toggleCalendarDropdown = () => {
     if (!calendarDropdownOpen) {
       loadCalendarEvents();
@@ -315,26 +335,158 @@ function Dashboard() {
     setCalendarDropdownOpen(!calendarDropdownOpen);
   };
 
-  const formatEventDate = (dateTimeString) => {
-    const date = new Date(dateTimeString);
+  const formatEventDate = (startDateTime, endDateTime) => {
+    // Graph API vrací {dateTime: '2025-12-25T11:30:00.0000000', timeZone: 'Europe/Prague'}
+    // Čas už JE v pražském timezone, takže NESMÍME konvertovat!
+    let startStr, endStr;
+    if (typeof startDateTime === 'string') {
+      startStr = startDateTime;
+    } else if (startDateTime && startDateTime.dateTime) {
+      startStr = startDateTime.dateTime;
+    } else {
+      return 'Invalid date';
+    }
+    
+    if (endDateTime) {
+      if (typeof endDateTime === 'string') {
+        endStr = endDateTime;
+      } else if (endDateTime && endDateTime.dateTime) {
+        endStr = endDateTime.dateTime;
+      }
+    }
+    
+    // Parsuj datum a čas přímo (už je v pražském čase)
+    // Format: 2025-12-25T11:30:00.0000000
+    const matchStart = startStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!matchStart) return startStr;
+    
+    const [, year, month, day, hourStart, minuteStart] = matchStart;
+    const timeStart = `${hourStart}:${minuteStart}`;
+    
+    // Parsuj konec pokud existuje
+    let timeEnd = '';
+    if (endStr) {
+      const matchEnd = endStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+      if (matchEnd) {
+        timeEnd = `${matchEnd[4]}:${matchEnd[5]}`;
+      }
+    }
+    
+    // Porovnej s dneškem a zítřkem
     const now = new Date();
-    const tomorrow = new Date(now);
+    const eventDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     
-    const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+    const eventDateOnly = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
     
-    if (date.toDateString() === now.toDateString()) {
-      return `Dnes ${timeStr}`;
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return `Zítra ${timeStr}`;
+    const timeRange = timeEnd ? `${timeStart} – ${timeEnd}` : timeStart;
+    
+    if (eventDateOnly.getTime() === today.getTime()) {
+      return `Dnes ${timeRange}`;
+    } else if (eventDateOnly.getTime() === tomorrow.getTime()) {
+      return `Zítra ${timeRange}`;
     } else {
-      return date.toLocaleDateString('cs-CZ', { 
-        day: 'numeric', 
-        month: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      return `${parseInt(day)}.${parseInt(month)}. ${timeRange}`;
     }
+  };
+
+  const calculateDuration = (startDateTime, endDateTime) => {
+    if (!startDateTime || !endDateTime) return null;
+    
+    let startStr, endStr;
+    if (typeof startDateTime === 'string') {
+      startStr = startDateTime;
+    } else if (startDateTime && startDateTime.dateTime) {
+      startStr = startDateTime.dateTime;
+    }
+    
+    if (typeof endDateTime === 'string') {
+      endStr = endDateTime;
+    } else if (endDateTime && endDateTime.dateTime) {
+      endStr = endDateTime.dateTime;
+    }
+    
+    if (!startStr || !endStr) return null;
+    
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    const diffMs = end - start;
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    if (diffHours < 1) {
+      const diffMinutes = Math.round(diffMs / (1000 * 60));
+      return `${diffMinutes}min`;
+    } else if (diffHours % 1 === 0) {
+      return `${diffHours}h`;
+    } else {
+      return `${diffHours.toFixed(1)}h`;
+    }
+  };
+
+  const isEventPast = (endDateTime) => {
+    if (!endDateTime) return false;
+    
+    let endStr;
+    if (typeof endDateTime === 'string') {
+      endStr = endDateTime;
+    } else if (endDateTime && endDateTime.dateTime) {
+      endStr = endDateTime.dateTime;
+    }
+    
+    if (!endStr) return false;
+    
+    const end = new Date(endStr);
+    const now = new Date();
+    return end < now;
+  };
+
+  const getCategoryColor = (categories) => {
+    if (!categories || categories.length === 0) return '#0078D4';
+    
+    // Skutečné barvy z Outlook kalendarů
+    const categoryColors = {
+      // České názvy
+      'Červená kategorie': '#E74856',
+      'Oranžová kategorie': '#CA5010',
+      'Hnědá kategorie': '#8E562E',
+      'Žlutá kategorie': '#C19C00',
+      'Zelená kategorie': '#10893E',
+      'Tyrkysová kategorie': '#00B7C3',
+      'Modrá kategorie': '#0078D4',
+      'Fialová kategorie': '#8764B8',
+      'Šedá kategorie': '#69797E',
+      // Anglické názvy
+      'Red category': '#E74856',
+      'Orange category': '#CA5010',
+      'Brown category': '#8E562E',
+      'Yellow category': '#C19C00',
+      'Green category': '#10893E',
+      'Teal category': '#00B7C3',
+      'Blue category': '#0078D4',
+      'Purple category': '#8764B8',
+      'Gray category': '#69797E',
+      'Grey category': '#69797E'
+    };
+    
+    return categoryColors[categories[0]] || '#0078D4';
+  };
+
+  const handleCalendarMouseEnter = () => {
+    if (calendarHoverTimeout) {
+      clearTimeout(calendarHoverTimeout);
+      setCalendarHoverTimeout(null);
+    }
+    setCalendarDropdownOpen(true);
+    loadCalendarEvents();
+  };
+
+  const handleCalendarMouseLeave = () => {
+    const timeout = setTimeout(() => {
+      setCalendarDropdownOpen(false);
+    }, 300);
+    setCalendarHoverTimeout(timeout);
   };
 
   if (loading) {
@@ -371,16 +523,13 @@ function Dashboard() {
           {user && user.upn && (
             <div 
               className="calendar-dropdown-container"
-              onMouseEnter={() => {
-                setCalendarDropdownOpen(true);
-                loadCalendarEvents();
-              }}
-              onMouseLeave={() => setCalendarDropdownOpen(false)}
+              onMouseEnter={handleCalendarMouseEnter}
+              onMouseLeave={handleCalendarMouseLeave}
             >
               <a 
-                href={`https://outlook.office.com/calendar/view/workweek?realm=zachranka.cz&login_hint=${user.upn}`}
+                href={`https://outlook.office.com/calendar/view/week?realm=zachranka.cz&login_hint=${user.upn}`}
                 className="calendar-icon-btn" 
-                title="Můj kalendář"
+                title="Můj kalendář - následující týden"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -390,28 +539,78 @@ function Dashboard() {
                   <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+                {!loadingCalendar && calendarEvents.length > 0 && (
+                  <span className="calendar-badge">{calendarEvents.length}</span>
+                )}
               </a>
               {calendarDropdownOpen && (
                 <div className="calendar-dropdown">
                   <div className="calendar-dropdown-header">
                     <h3>Nadcházející události</h3>
-                    <span className="calendar-count">
-                      {loadingCalendar ? '...' : calendarEvents.length > 0 ? `${calendarEvents.length} událostí` : '0 událostí'}
-                    </span>
+                    <div className="calendar-header-actions">
+                      <span className="calendar-count">
+                        {loadingCalendar ? '...' : calendarEvents.length > 0 ? `${calendarEvents.length} událostí` : '0 událostí'}
+                      </span>
+                      <button 
+                        className="calendar-refresh-btn" 
+                        onClick={() => loadCalendarEvents(true)}
+                        disabled={loadingCalendar}
+                        title="Obnovit události"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={loadingCalendar ? 'spinning' : ''}>
+                          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div className="calendar-events-list">
                     {loadingCalendar ? (
                       <div className="calendar-loading">Načítám události...</div>
                     ) : calendarEvents.length > 0 ? (
-                      calendarEvents.map((event, index) => (
-                        <div key={index} className="calendar-event-item">
-                          <div className="event-time">{formatEventDate(event.start.dateTime)}</div>
-                          <div className="event-subject">{event.subject}</div>
-                          {event.location && (
+                      calendarEvents.map((event, index) => {
+                        const isPast = isEventPast(event.end);
+                        return (
+                        <div 
+                          key={index} 
+                          className={`calendar-event-item ${isPast ? 'event-past' : ''}`}
+                          title={event.bodyPreview ? event.bodyPreview : ''}
+                          style={{ borderLeftColor: getCategoryColor(event.categories) }}
+                        >
+                          <div className="event-time">{formatEventDate(event.start, event.end)}</div>
+                          <div className="event-header">
+                            <div 
+                              className="event-subject" 
+                              style={{ 
+                                backgroundColor: getCategoryColor(event.categories),
+                                color: 'white'
+                              }}
+                            >
+                              {event.subject}
+                            </div>
+                            {event.onlineMeeting && event.onlineMeeting.joinUrl && (
+                              <a 
+                                href={event.onlineMeeting.joinUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="teams-join-btn"
+                                title="Připojit se k Teams schůzce"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M19.19 8.77q.27 0 .46.19t.19.46v5.16q0 .27-.19.46t-.46.19h-2.83q-.27 0-.46-.19t-.19-.46V9.42q0-.27.19-.46t.46-.19h2.83zM12.85 4.5q1.43 0 2.44 1.01t1.01 2.44v8.1q0 1.43-1.01 2.44t-2.44 1.01H7.5V4.5h5.35zm-1.33 8.16V9.03q0-.13-.09-.22t-.22-.09H9.03q-.13 0-.22.09t-.09.22v3.63q0 .13.09.22t.22.09h2.18q.13 0 .22-.09t.09-.22zm0 2.91q0-.13-.09-.22t-.22-.09H9.03q-.13 0-.22.09t-.09.22v2.18q0 .13.09.22t.22.09h2.18q.13 0 .22-.09t.09-.22v-2.18zm2.91-2.91V9.03q0-.13-.09-.22t-.22-.09h-2.18q-.13 0-.22.09t-.09.22v3.63q0 .13.09.22t.22.09h2.18q.13 0 .22-.09t.09-.22z"/>
+                                </svg>
+                              </a>
+                            )}
+                            {calculateDuration(event.start, event.end) && (
+                              <span className="event-duration">{calculateDuration(event.start, event.end)}</span>
+                            )}
+                          </div>
+                          {event.location && event.location.displayName && (
                             <div className="event-location">📍 {event.location.displayName}</div>
                           )}
                         </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <div className="calendar-empty">Žádné nadcházející události</div>
                     )}
