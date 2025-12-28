@@ -409,3 +409,6 @@ class EntraService {
       throw err;
     }
   }
+}
+
+module.exports = new EntraService();

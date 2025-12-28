@@ -577,6 +577,7 @@ const CashBookLink = styled(Link)`
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(30,64,175,0.45), 0 0 0 1px rgba(37,99,235,0.5) inset;
   text-decoration: none !important;
+  position: relative;
 
   display: inline-flex;
   align-items: center;
@@ -619,6 +620,7 @@ const InvoiceCreateLink = styled(Link)`
   font-weight: 600;
   box-shadow: 0 3px 10px -2px rgba(59,130,246,0.45), 0 0 0 1px rgba(59,130,246,0.5) inset;
   text-decoration: none !important;
+  position: relative;
 
   display: inline-flex;
   align-items: center;
@@ -1051,14 +1053,14 @@ const GlobalAddBtn = styled(Link)`
   width:46px; height:46px; border-radius:50%; background:#166534; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(22, 101, 52, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; .svg-inline--fa{color:#fff !important; filter:none !important;} &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} &[data-status='draft']{ background:#dc2626; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(185, 28, 28, 0.65) inset; } &[data-status='edit']{ background:#ea580c; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(234,88,12,0.65) inset; }`;
 
 const GlobalInvoiceBtn = styled(Link)`
-  width:46px; height:46px; border-radius:50%; background:#3b82f6; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(59, 130, 246, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  position:relative; width:46px; height:46px; border-radius:50%; background:#3b82f6; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(59, 130, 246, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
   .svg-inline--fa{color:#fff !important; filter:none !important;} 
   &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
   &:active:not([data-inactive='true']){transform:scale(.9);} 
   &[data-inactive='true']{ background:#94a3b8; cursor:default; opacity:.25; pointer-events:none; }`;
 
 const GlobalCashBookBtn = styled(Link)`
-  width:46px; height:46px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(30, 64, 175, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
+  position:relative; width:46px; height:46px; border-radius:50%; background:#1e40af; color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.4em; text-decoration:none; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(30, 64, 175, 0.5) inset; cursor:pointer; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; 
   .svg-inline--fa{color:#fff !important; filter:none !important;} 
   &:hover:not([data-inactive='true']),&:focus-visible:not([data-inactive='true']){opacity:.92; outline:none;} 
   &:active:not([data-inactive='true']){transform:scale(.9);} 
@@ -3267,9 +3269,26 @@ const Layout = ({ children }) => {
                 to="/cash-book"
                 aria-label="Pokladní kniha"
                 title=""
-                style={{ position: 'static' }}
               >
                 <FontAwesomeIcon icon={faCalculator} />
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#10b981',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 3px',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                  pointerEvents: 'none'
+                }}>+</span>
               </GlobalCashBookBtn>
             </SmartTooltip>
           )}
@@ -3293,11 +3312,28 @@ const Layout = ({ children }) => {
                 }}
                 data-inactive={location.pathname === '/invoice-evidence' ? 'true' : 'false'}
                 style={{ 
-                  position: 'static',
                   pointerEvents: location.pathname === '/invoice-evidence' ? 'none' : undefined
                 }}
               >
                 <FontAwesomeIcon icon={faFileInvoice} />
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#10b981',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  minWidth: '16px',
+                  height: '16px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 3px',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                  pointerEvents: 'none'
+                }}>+</span>
               </GlobalInvoiceBtn>
             </SmartTooltip>
           )}

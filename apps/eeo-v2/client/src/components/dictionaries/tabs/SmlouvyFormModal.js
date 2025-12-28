@@ -12,17 +12,19 @@
  * @date 2025-11-23
  */
 
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faTimes, faSave, faSpinner, faChevronDown, faFileContract, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { Calculator } from 'lucide-react';
 
 import AuthContext from '../../../context/AuthContext';
 import {
   createSmlouva,
   updateSmlouva,
-  DRUH_SMLOUVY_OPTIONS,
+  getDruhySmluv,
+  DRUH_SMLOUVY_OPTIONS_FALLBACK,
   STAV_SMLOUVY_OPTIONS,
   SAZBA_DPH_OPTIONS
 } from '../../../services/apiSmlouvy';
@@ -38,67 +40,98 @@ const Overlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  padding: 0.5rem;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 `;
 
 const Modal = styled.div`
   background: white;
-  border-radius: 8px;
+  border-radius: 16px;
   width: 100%;
-  height: 98vh;
-  max-width: 98vw;
+  max-height: 85vh;
+  max-width: 900px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
 `;
 
 const Header = styled.div`
-  padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 1.5rem 2rem;
+  background: linear-gradient(135deg, #1f2a57 0%, #2563eb 70%, #1d4ed8 100%);
+  color: white;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><g fill="%23ffffff" fill-opacity="0.05"><circle cx="30" cy="30" r="1"/></g></svg>');
+    pointer-events: none;
+  }
 `;
 
 const Title = styled.h2`
   margin: 0;
   font-size: 1.5rem;
-  color: #1e293b;
+  color: white;
+  font-weight: 700;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 `;
 
 const CloseButton = styled.button`
-  background: none;
+  background: rgba(255, 255, 255, 0.2);
   border: none;
-  font-size: 1.5rem;
-  color: #64748b;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
   cursor: pointer;
-  padding: 0.5rem;
-  transition: color 0.2s;
+  transition: all 0.2s;
+  position: relative;
+  z-index: 1;
 
   &:hover {
-    color: #dc2626;
+    background: rgba(255, 255, 255, 0.3);
   }
 `;
 
 const Body = styled.div`
-  padding: 1.25rem 1.5rem;
+  padding: 1.5rem 2rem;
   overflow-y: auto;
   flex: 1;
 `;
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.25rem;
-
-  @media (max-width: 1024px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
@@ -109,11 +142,7 @@ const FormField = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  grid-column: ${props => props.$fullWidth ? 'span 3' : 'span 1'};
-
-  @media (max-width: 1024px) {
-    grid-column: ${props => props.$fullWidth ? 'span 2' : 'span 1'};
-  }
+  grid-column: ${props => props.$fullWidth ? 'span 2' : 'span 1'};
 
   @media (max-width: 768px) {
     grid-column: span 1;
@@ -140,7 +169,8 @@ const Input = styled.input`
   border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: ${props => props.$highlight ? '600' : '500'};
+  color: ${props => props.$highlight ? '#000000' : 'inherit'};
   transition: all 0.2s ease;
 
   &:focus {
@@ -161,7 +191,8 @@ const Select = styled.select`
   border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: ${props => props.$highlight ? '600' : '500'};
+  color: ${props => props.$highlight ? '#000000' : 'inherit'};
   background: white;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -194,6 +225,8 @@ const TextArea = styled.textarea`
   border: 2px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.875rem;
+  font-weight: ${props => props.$highlight ? '600' : '400'};
+  color: ${props => props.$highlight ? '#000000' : 'inherit'};
   min-height: 80px;
   font-family: inherit;
   resize: vertical;
@@ -204,6 +237,62 @@ const TextArea = styled.textarea`
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
+`;
+
+// Currency Input Components
+const CurrencyInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const InputWithIcon = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+`;
+
+const CurrencySymbol = styled.span`
+  position: absolute;
+  right: 12px;
+  color: ${props => props.disabled ? '#9ca3af' : '#374151'};
+  font-weight: 600;
+  font-size: 0.875rem;
+  pointer-events: none;
+  user-select: none;
+`;
+
+const StyledCurrencyInput = styled.input`
+  width: 100%;
+  padding: 0.75rem 45px 0.75rem 2.5rem;
+  border: 2px solid ${props => props.$error ? '#ef4444' : '#e5e7eb'};
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: ${props => props.$highlight ? '600' : '500'};
+  color: ${props => props.$highlight ? '#000000' : 'inherit'};
+  text-align: right;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.$error ? '#ef4444' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.$error ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+
+  &:disabled {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+`;
+
+const CalculatorIcon = styled(Calculator)`
+  position: absolute;
+  left: 12px;
+  color: #6b7280;
+  width: 16px;
+  height: 16px;
 `;
 
 const ToggleSwitch = styled.label`
@@ -267,29 +356,32 @@ const ErrorText = styled.span`
 `;
 
 const Footer = styled.div`
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #e2e8f0;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: 1rem;
+  background: #f9fafb;
 `;
 
 const Button = styled.button`
   padding: 0.75rem 1.5rem;
-  background: ${props => props.$variant === 'primary' ? '#3b82f6' : '#6b7280'};
-  color: white;
+  background: ${props => props.$variant === 'primary' ? '#3b82f6' : '#f3f4f6'};
+  color: ${props => props.$variant === 'primary' ? 'white' : '#374151'};
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 0.875rem;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 
-  &:hover {
+  &:hover:not(:disabled) {
+    background: ${props => props.$variant === 'primary' ? '#2563eb' : '#e5e7eb'};
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: ${props => props.$variant === 'primary' ? '0 4px 12px rgba(59, 130, 246, 0.3)' : 'none'};
   }
 
   &:disabled {
@@ -306,6 +398,183 @@ const InfoText = styled.div`
   margin-top: 0.25rem;
 `;
 
+const SectionHeader = styled.div`
+  grid-column: span 2;
+  margin-top: ${props => props.$first ? '0' : '1rem'};
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: ${props => props.$collapsible ? 'pointer' : 'default'};
+  user-select: none;
+
+  @media (max-width: 768px) {
+    grid-column: span 1;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .toggle-icon {
+    font-size: 0.875rem;
+    color: #64748b;
+    transition: transform 0.2s ease;
+    transform: ${props => props.$collapsed ? 'rotate(0deg)' : 'rotate(180deg)'};
+  }
+`;
+
+const CollapsibleContent = styled.div`
+  display: ${props => props.$collapsed ? 'none' : 'contents'};
+`;
+
+const HintBox = styled.div`
+  grid-column: span 2;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #1e40af;
+  margin-bottom: 0.5rem;
+
+  @media (max-width: 768px) {
+    grid-column: span 1;
+  }
+`;
+
+const ThreeColumnRow = styled.div`
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-column: span 1;
+  }
+`;
+
+const TwoColumnRow = styled.div`
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-column: span 1;
+  }
+`;
+
+const InnerFormField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+`;
+
+// =============================================================================
+// CURRENCY INPUT COMPONENT
+// =============================================================================
+
+function CurrencyInput({ 
+  fieldName, 
+  value, 
+  onChange, 
+  onBlur, 
+  disabled = false, 
+  hasError = false, 
+  placeholder = '',
+  highlight = false
+}) {
+  const inputRef = useRef(null);
+  const [localValue, setLocalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Format number to Czech format: "1 234,56"
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '';
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  };
+
+  // Initialize local value from props (only when not focused)
+  useEffect(() => {
+    if (!isFocused) {
+      const formattedValue = formatCurrency(value || '');
+      if (localValue !== formattedValue) {
+        setLocalValue(formattedValue);
+      }
+    }
+  }, [value, isFocused]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    
+    // Update local value immediately (without formatting)
+    setLocalValue(newValue);
+    
+    // Clean value before sending to onChange
+    const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+    
+    // Call onChange with cleaned value
+    onChange(fieldName, finalValue);
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlurLocal = () => {
+    setIsFocused(false);
+    
+    // Format value on blur
+    const formatted = formatCurrency(localValue);
+    setLocalValue(formatted);
+    
+    // Clean value before sending to onBlur
+    const cleanValue = localValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+    
+    if (onBlur) {
+      onBlur(fieldName, finalValue);
+    }
+  };
+
+  return (
+    <CurrencyInputWrapper>
+      <InputWithIcon>
+        <CalculatorIcon />
+        <StyledCurrencyInput
+          ref={inputRef}
+          type="text"
+          value={localValue}
+          onChange={handleChange}
+          onFocus={handleFocus}
+          onBlur={handleBlurLocal}
+          disabled={disabled}
+          $error={hasError}
+          $highlight={highlight}
+          placeholder={placeholder}
+        />
+        <CurrencySymbol disabled={disabled}>Kč</CurrencySymbol>
+      </InputWithIcon>
+    </CurrencyInputWrapper>
+  );
+}
+
 // =============================================================================
 // KOMPONENTA
 // =============================================================================
@@ -318,7 +587,7 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
   const [formData, setFormData] = useState({
     cislo_smlouvy: smlouva?.cislo_smlouvy || '',
     usek_id: smlouva?.usek_id || '',
-    druh_smlouvy: smlouva?.druh_smlouvy || 'SLUŽBY',
+    druh_smlouvy: smlouva?.druh_smlouvy || 'SLUZBY',
     nazev_firmy: smlouva?.nazev_firmy || '',
     ico: smlouva?.ico || '',
     dic: smlouva?.dic || '',
@@ -338,6 +607,78 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
 
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [druhySmluv, setDruhySmluv] = useState(DRUH_SMLOUVY_OPTIONS_FALLBACK);
+  const [loadingDruhy, setLoadingDruhy] = useState(true);
+  
+  // 🎯 State pro zvýraznění nedávno změněných polí
+  const [recentlyChangedFields, setRecentlyChangedFields] = useState(new Set());
+  
+  // 🎯 Ref pro tracking timeoutů (aby se správně čistily)
+  const highlightTimeoutsRef = useRef({});
+
+  // =============================================================================
+  // NAČTENÍ DRUHŮ SMLUV Z API
+  // =============================================================================
+
+  useEffect(() => {
+    const fetchDruhySmluv = async () => {
+      try {
+        setLoadingDruhy(true);
+        const druhy = await getDruhySmluv({ token, username: user.username });
+        setDruhySmluv(druhy);
+      } catch (err) {
+        console.error('Chyba při načítání druhů smluv:', err);
+        // Ponecháme fallback hodnoty
+      } finally {
+        setLoadingDruhy(false);
+      }
+    };
+
+    if (user && token) {
+      fetchDruhySmluv();
+    }
+  }, [user, token]);
+
+  // =============================================================================
+  // FIELD CHANGE TRACKING
+  // =============================================================================
+  
+  const markFieldAsChanged = (fieldName) => {
+    // Pokud existuje předchozí timeout pro toto pole, zruš ho
+    if (highlightTimeoutsRef.current[fieldName]) {
+      clearTimeout(highlightTimeoutsRef.current[fieldName]);
+    }
+    
+    // Přidej pole do Set zvýrazněných polí
+    setRecentlyChangedFields(prev => new Set(prev).add(fieldName));
+    
+    // Nastav nový timeout pro odstranění zvýraznění
+    highlightTimeoutsRef.current[fieldName] = setTimeout(() => {
+      setRecentlyChangedFields(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(fieldName);
+        return newSet;
+      });
+      // Vyčisti referenci na timeout
+      delete highlightTimeoutsRef.current[fieldName];
+    }, 2000);
+  };
+  
+  // Cleanup timeoutů při unmount
+  useEffect(() => {
+    return () => {
+      // Při unmount vyčisti všechny timeouty
+      Object.values(highlightTimeoutsRef.current).forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+    };
+  }, []);
+  
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    markFieldAsChanged(field);
+  };
 
   // =============================================================================
   // AUTO-CALCULATE DPH
@@ -353,6 +694,9 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       hodnota_bez_dph: value,
       hodnota_s_dph: sDph.toFixed(2)
     }));
+    
+    markFieldAsChanged('hodnota_bez_dph');
+    markFieldAsChanged('hodnota_s_dph');
   };
 
   const handleHodnotaSDphChange = (value) => {
@@ -365,6 +709,9 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       hodnota_s_dph: value,
       hodnota_bez_dph: bezDph.toFixed(2)
     }));
+    
+    markFieldAsChanged('hodnota_s_dph');
+    markFieldAsChanged('hodnota_bez_dph');
   };
 
   const handleSazbaDphChange = (value) => {
@@ -377,6 +724,9 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       sazba_dph: value,
       hodnota_s_dph: sDph.toFixed(2)
     }));
+    
+    markFieldAsChanged('sazba_dph');
+    markFieldAsChanged('hodnota_s_dph');
   };
 
   // =============================================================================
@@ -401,6 +751,10 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     if (!formData.nazev_firmy.trim()) {
       newErrors.nazev_firmy = 'Název firmy je povinný';
     }
+    
+    if (!formData.ico.trim()) {
+      newErrors.ico = 'IČO je povinné';
+    }
 
     if (!formData.nazev_smlouvy.trim()) {
       newErrors.nazev_smlouvy = 'Název smlouvy je povinný';
@@ -418,6 +772,10 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
       if (new Date(formData.platnost_do) < new Date(formData.platnost_od)) {
         newErrors.platnost_do = 'Datum do musí být po datu od';
       }
+    }
+
+    if (!formData.hodnota_bez_dph || parseFloat(formData.hodnota_bez_dph) <= 0) {
+      newErrors.hodnota_bez_dph = 'Hodnota bez DPH je povinná a musí být kladná';
     }
 
     if (!formData.hodnota_s_dph || parseFloat(formData.hodnota_s_dph) <= 0) {
@@ -491,10 +849,13 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
   // =============================================================================
 
   return ReactDOM.createPortal(
-    <Overlay onClick={(e) => e.target === e.currentTarget && !saving && onClose(false)}>
+    <Overlay>
       <Modal>
         <Header>
-          <Title>{isEdit ? 'Upravit smlouvu' : 'Nová smlouva'}</Title>
+          <Title>
+            <FontAwesomeIcon icon={isEdit ? faFileContract : faPlus} />
+            {isEdit ? 'Upravit smlouvu' : 'Nová smlouva'}
+          </Title>
           <CloseButton onClick={() => !saving && onClose(false)}>
             <FontAwesomeIcon icon={faTimes} />
           </CloseButton>
@@ -508,6 +869,15 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
 
         <Body>
           <FormGrid>
+            {/* === ZÁKLADNÍ ÚDAJE === */}
+            <SectionHeader $first>
+              <h3>📋 Základní údaje</h3>
+            </SectionHeader>
+
+            <HintBox>
+              💡 Povinné položky jsou označeny hvězdičkou (*). DPH se počítá automaticky.
+            </HintBox>
+
             {/* Číslo smlouvy */}
             <FormField>
               <Label className="required">Číslo smlouvy</Label>
@@ -546,26 +916,44 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 value={formData.druh_smlouvy}
                 onChange={(e) => handleChange('druh_smlouvy', e.target.value)}
                 $error={errors.druh_smlouvy}
+                disabled={loadingDruhy}
               >
-                {DRUH_SMLOUVY_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
+                {loadingDruhy ? (
+                  <option value="">Načítám druhy smluv...</option>
+                ) : (
+                  druhySmluv.map(opt => (
+                    <option key={opt.value} value={opt.value} title={opt.popis}>
+                      {opt.label}
+                    </option>
+                  ))
+                )}
               </Select>
               {errors.druh_smlouvy && <ErrorText>{errors.druh_smlouvy}</ErrorText>}
+              {formData.druh_smlouvy && druhySmluv.find(d => d.value === formData.druh_smlouvy)?.popis && (
+                <InfoText>
+                  {druhySmluv.find(d => d.value === formData.druh_smlouvy).popis}
+                </InfoText>
+              )}
             </FormField>
 
-            {/* Stav */}
+            {/* Aktivní */}
             <FormField>
-              <Label>Stav</Label>
-              <Select
-                value={formData.stav}
-                onChange={(e) => handleChange('stav', e.target.value)}
-              >
-                {STAV_SMLOUVY_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </Select>
+              <Label>Stav smlouvy</Label>
+              <ToggleSwitch>
+                <input
+                  type="checkbox"
+                  checked={formData.aktivni === 1}
+                  onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+                />
+                <span className="slider" />
+                <span className="label-text">{formData.aktivni === 1 ? '✅ Aktivní' : '⏸️ Neaktivní'}</span>
+              </ToggleSwitch>
             </FormField>
+
+            {/* === DODAVATEL === */}
+            <SectionHeader>
+              <h3>🏢 Dodavatel</h3>
+            </SectionHeader>
 
             {/* Název firmy */}
             <FormField $fullWidth>
@@ -582,12 +970,13 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
 
             {/* IČO */}
             <FormField>
-              <Label>IČO</Label>
+              <Label className="required">IČO</Label>
               <Input
                 type="text"
                 value={formData.ico}
-                onChange={(e) => handleChange('ico', e.target.value)}
+                onChange={(e) => handleInputChange('ico', e.target.value)}
                 $error={errors.ico}
+                $highlight={recentlyChangedFields.has('ico')}
                 placeholder="8 číslic"
                 maxLength="8"
               />
@@ -604,6 +993,11 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 placeholder="např. CZ12345678"
               />
             </FormField>
+
+            {/* === NÁZEV A POPIS === */}
+            <SectionHeader>
+              <h3>📄 Název a popis</h3>
+            </SectionHeader>
 
             {/* Název smlouvy */}
             <FormField $fullWidth>
@@ -624,119 +1018,130 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
               <TextArea
                 value={formData.popis_smlouvy}
                 onChange={(e) => handleChange('popis_smlouvy', e.target.value)}
-                placeholder="Detailní popis smlouvy..."
+                placeholder="Detailní popis smlouvy (nepovinné)..."
               />
             </FormField>
 
-            {/* Platnost od */}
-            <FormField>
-              <Label className="required">Platnost od</Label>
-              <DatePicker
-                value={formData.platnost_od}
-                onChange={(value) => handleChange('platnost_od', value)}
-                placeholder="Vyberte datum od"
-                hasError={!!errors.platnost_od}
-              />
-              {errors.platnost_od && <ErrorText>{errors.platnost_od}</ErrorText>}
-            </FormField>
+            {/* === PLATNOST A HODNOTA === */}
+            <SectionHeader>
+              <h3>💰 Platnost a hodnota</h3>
+            </SectionHeader>
 
-            {/* Platnost do */}
-            <FormField>
-              <Label className="required">Platnost do</Label>
-              <DatePicker
-                value={formData.platnost_do}
-                onChange={(value) => handleChange('platnost_do', value)}
-                placeholder="Vyberte datum do"
-                hasError={!!errors.platnost_do}
-              />
-              {errors.platnost_do && <ErrorText>{errors.platnost_do}</ErrorText>}
-            </FormField>
-
-            {/* Sazba DPH */}
-            <FormField>
-              <Label>Sazba DPH (%)</Label>
-              <Select
-                value={formData.sazba_dph}
-                onChange={(e) => handleSazbaDphChange(e.target.value)}
-              >
-                {SAZBA_DPH_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </Select>
-            </FormField>
-
-            {/* Hodnota bez DPH */}
-            <FormField>
-              <Label>Hodnota bez DPH (Kč)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.hodnota_bez_dph}
-                onChange={(e) => handleHodnotaBezDphChange(e.target.value)}
-                placeholder="0.00"
-              />
-              <InfoText>Hodnota s DPH bude vypočítána automaticky</InfoText>
-            </FormField>
-
-            {/* Hodnota s DPH */}
-            <FormField>
-              <Label className="required">Hodnota s DPH (Kč)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.hodnota_s_dph}
-                onChange={(e) => handleHodnotaSDphChange(e.target.value)}
-                $error={errors.hodnota_s_dph}
-                placeholder="0.00"
-              />
-              {errors.hodnota_s_dph && <ErrorText>{errors.hodnota_s_dph}</ErrorText>}
-            </FormField>
-
-            {/* Číslo DMS */}
-            <FormField>
-              <Label>Číslo DMS</Label>
-              <Input
-                type="text"
-                value={formData.cislo_dms}
-                onChange={(e) => handleChange('cislo_dms', e.target.value)}
-                placeholder="např. DMS-2025-123"
-              />
-            </FormField>
-
-            {/* Kategorie */}
-            <FormField>
-              <Label>Kategorie</Label>
-              <Input
-                type="text"
-                value={formData.kategorie}
-                onChange={(e) => handleChange('kategorie', e.target.value)}
-                placeholder="např. IT, Poradenství"
-              />
-            </FormField>
-
-            {/* Poznámka */}
-            <FormField $fullWidth>
-              <Label>Interní poznámka</Label>
-              <TextArea
-                value={formData.poznamka}
-                onChange={(e) => handleChange('poznamka', e.target.value)}
-                placeholder="Interní poznámka (nezobrazuje se veřejně)..."
-              />
-            </FormField>
-
-            {/* Aktivní */}
-            <FormField>
-              <Label style={{ marginBottom: '0' }}>&nbsp;</Label>
-              <ToggleSwitch>
-                <input
-                  type="checkbox"
-                  checked={formData.aktivni === 1}
-                  onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+            {/* První řádek: Platnost od | Platnost do | Sazba DPH */}
+            <ThreeColumnRow>
+              {/* Platnost od */}
+              <InnerFormField>
+                <Label className="required">Platnost od</Label>
+                <DatePicker
+                  value={formData.platnost_od}
+                  onChange={(value) => handleChange('platnost_od', value)}
+                  placeholder="Vyberte datum od"
+                  hasError={!!errors.platnost_od}
                 />
-                <span className="slider" />
-                <span className="label-text">Aktivní</span>
-              </ToggleSwitch>
-            </FormField>
+                {errors.platnost_od && <ErrorText>{errors.platnost_od}</ErrorText>}
+              </InnerFormField>
+
+              {/* Platnost do */}
+              <InnerFormField>
+                <Label className="required">Platnost do</Label>
+                <DatePicker
+                  value={formData.platnost_do}
+                  onChange={(value) => handleChange('platnost_do', value)}
+                  placeholder="Vyberte datum do"
+                  hasError={!!errors.platnost_do}
+                />
+                {errors.platnost_do && <ErrorText>{errors.platnost_do}</ErrorText>}
+              </InnerFormField>
+
+              {/* Sazba DPH */}
+              <InnerFormField>
+                <Label>Sazba DPH (%)</Label>
+                <Select
+                  value={formData.sazba_dph}
+                  onChange={(e) => handleSazbaDphChange(e.target.value)}
+                >
+                  {SAZBA_DPH_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </Select>
+              </InnerFormField>
+            </ThreeColumnRow>
+
+            {/* Druhý řádek: Hodnota bez DPH | Hodnota s DPH */}
+            <TwoColumnRow>
+              {/* Hodnota bez DPH */}
+              <InnerFormField>
+                <Label className="required">Hodnota bez DPH (Kč)</Label>
+                <CurrencyInput
+                  fieldName="hodnota_bez_dph"
+                  value={formData.hodnota_bez_dph}
+                  onChange={(fieldName, value) => handleHodnotaBezDphChange(value)}
+                  hasError={!!errors.hodnota_bez_dph}
+                  highlight={recentlyChangedFields.has('hodnota_bez_dph')}
+                  placeholder="0,00"
+                />
+                {errors.hodnota_bez_dph && <ErrorText>{errors.hodnota_bez_dph}</ErrorText>}
+                <InfoText>🔄 Hodnota s DPH se dopočítá</InfoText>
+              </InnerFormField>
+
+              {/* Hodnota s DPH */}
+              <InnerFormField>
+                <Label className="required">Hodnota s DPH (Kč)</Label>
+                <CurrencyInput
+                  fieldName="hodnota_s_dph"
+                  value={formData.hodnota_s_dph}
+                  onChange={(fieldName, value) => handleHodnotaSDphChange(value)}
+                  hasError={!!errors.hodnota_s_dph}
+                  highlight={recentlyChangedFields.has('hodnota_s_dph')}
+                  placeholder="0,00"
+                />
+                {errors.hodnota_s_dph && <ErrorText>{errors.hodnota_s_dph}</ErrorText>}
+              </InnerFormField>
+            </TwoColumnRow>
+
+            {/* === VOLITELNÉ ÚDAJE === */}
+            <SectionHeader 
+              $collapsible 
+              $collapsed={!showOptionalFields}
+              onClick={() => setShowOptionalFields(!showOptionalFields)}
+            >
+              <h3>🔧 Volitelné údaje</h3>
+              <FontAwesomeIcon icon={faChevronDown} className="toggle-icon" />
+            </SectionHeader>
+
+            <CollapsibleContent $collapsed={!showOptionalFields}>
+              {/* Číslo DMS */}
+              <FormField>
+                <Label>Číslo DMS</Label>
+                <Input
+                  type="text"
+                  value={formData.cislo_dms}
+                  onChange={(e) => handleChange('cislo_dms', e.target.value)}
+                  placeholder="např. DMS-2025-123"
+                />
+              </FormField>
+
+              {/* Kategorie */}
+              <FormField>
+                <Label>Kategorie</Label>
+                <Input
+                  type="text"
+                  value={formData.kategorie}
+                  onChange={(e) => handleChange('kategorie', e.target.value)}
+                  placeholder="např. IT, Poradenství"
+                />
+              </FormField>
+
+              {/* Poznámka */}
+              <FormField $fullWidth>
+                <Label>Interní poznámka</Label>
+                <TextArea
+                  value={formData.poznamka}
+                  onChange={(e) => handleChange('poznamka', e.target.value)}
+                  placeholder="Interní poznámka (nezobrazuje se veřejně)..."
+                />
+              </FormField>
+            </CollapsibleContent>
           </FormGrid>
         </Body>
 

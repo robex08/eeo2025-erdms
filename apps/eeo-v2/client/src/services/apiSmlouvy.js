@@ -249,11 +249,46 @@ export async function prepocetCerpaniSmluv({
 // KONSTANTY PRO FRONTEND
 // =============================================================================
 
-export const DRUH_SMLOUVY_OPTIONS = [
-  { value: 'SLUŽBY', label: 'Smlouva o poskytování služeb' },
-  { value: 'KUPNÍ', label: 'Kupní smlouva' },
-  { value: 'RÁMCOVÁ', label: 'Rámcová smlouva' }
+/**
+ * Načte druhy smluv z číselníku
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Array>} Seznam druhů smluv
+ */
+export const getDruhySmluv = async ({ token, username }) => {
+  try {
+    const response = await api.post('/ciselniky/stavy/list', {
+      token,
+      username,
+      typ_objektu: 'DRUH_SMLOUVY'
+    });
+
+    if (response.data.status === 'ok' && response.data.data) {
+      // Převod na formát pro dropdown (kod_stavu jako value, nazev_stavu jako label)
+      return response.data.data.map(druh => ({
+        value: druh.kod_stavu,
+        label: druh.nazev_stavu,
+        popis: druh.popis
+      }));
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Chyba při načítání druhů smluv:', error);
+    // Fallback na základní druhy pokud API selže
+    return DRUH_SMLOUVY_OPTIONS_FALLBACK;
+  }
+};
+
+// Fallback hodnoty pro případ selhání API (backward compatibility)
+export const DRUH_SMLOUVY_OPTIONS_FALLBACK = [
+  { value: 'SLUZBY', label: 'Smlouva o poskytování služeb' },
+  { value: 'KUPNI', label: 'Kupní smlouva' },
+  { value: 'RAMCOVA', label: 'Rámcová smlouva' }
 ];
+
+// Export pro backward compatibility (bude deprecated)
+export const DRUH_SMLOUVY_OPTIONS = DRUH_SMLOUVY_OPTIONS_FALLBACK;
 
 // Stavy smluv - BE vrací ENUM bez diakritiky (AKTIVNI, UKONCENA, PRERUSENA, PRIPRAVOVANA, NEAKTIVNI)
 // 

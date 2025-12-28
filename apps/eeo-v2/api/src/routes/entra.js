@@ -317,3 +317,4 @@ router.get('/me/calendar/events', authenticateSession, async (req, res) => {
   }
 });
 
+module.exports = router;

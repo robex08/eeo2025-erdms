@@ -59,10 +59,11 @@ function calculateSmlouvaStav($aktivni, $platnost_od, $platnost_do) {
  * Validace dat smlouvy
  * 
  * @param array $data Data k validaci
+ * @param PDO $db Databázové připojení (pro validaci proti číselníku)
  * @param bool $is_insert TRUE pokud je INSERT (povinná všechna pole), FALSE pro UPDATE
  * @return array Pole chybových zpráv (prázdné = validace OK)
  */
-function validateSmlouvaData($data, $is_insert = true) {
+function validateSmlouvaData($data, $db, $is_insert = true) {
     $errors = array();
     
     // Required fields pro INSERT nebo pokud jsou v UPDATE
@@ -81,6 +82,21 @@ function validateSmlouvaData($data, $is_insert = true) {
     if ($is_insert || isset($data['druh_smlouvy'])) {
         if (empty($data['druh_smlouvy'])) {
             $errors[] = 'Druh smlouvy je povinny';
+        } else {
+            // Validace proti číselníku
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as cnt 
+                FROM " . TBL_CISELNIK_STAVY . " 
+                WHERE typ_objektu = 'DRUH_SMLOUVY' 
+                  AND kod_stavu = :druh_smlouvy 
+                  AND aktivni = 1
+            ");
+            $stmt->execute([':druh_smlouvy' => $data['druh_smlouvy']]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result['cnt'] == 0) {
+                $errors[] = 'Neplatny druh smlouvy: ' . $data['druh_smlouvy'];
+            }
         }
     }
     
@@ -468,16 +484,16 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
     
     // TODO: Check permission SMLOUVY_CREATE
     
-    // Validate
-    $errors = validateSmlouvaData($input);
-    if (!empty($errors)) {
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
-        return;
-    }
-    
     try {
         $db = get_db($config);
+        
+        // Validate
+        $errors = validateSmlouvaData($input, $db);
+        if (!empty($errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
+            return;
+        }
         
         // Check duplicate cislo_smlouvy
         $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE cislo_smlouvy = :cislo_smlouvy";
@@ -615,16 +631,16 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         return;
     }
     
-    // Validate
-    $errors = validateSmlouvaData($input, false);
-    if (!empty($errors)) {
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
-        return;
-    }
-    
     try {
         $db = get_db($config);
+        
+        // Validate
+        $errors = validateSmlouvaData($input, $db, false);
+        if (!empty($errors)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => implode(', ', $errors)));
+            return;
+        }
         
         // Check exists
         $sql = "SELECT id FROM " . TBL_SMLOUVY . " WHERE id = :id";
@@ -847,7 +863,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
             }
             
             // Validate
-            $validation_errors = validateSmlouvaData($row);
+            $validation_errors = validateSmlouvaData($row, $db);
             if (!empty($validation_errors)) {
                 $chyby[] = array(
                     'row' => $row_num,
