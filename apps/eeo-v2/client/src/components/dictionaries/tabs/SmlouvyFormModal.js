@@ -798,7 +798,8 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     platnost_do: smlouva?.platnost_do?.substring(0, 10) || '',
     hodnota_bez_dph: smlouva?.hodnota_bez_dph || '',
     hodnota_s_dph: smlouva?.hodnota_s_dph || '',
-    zbyva: smlouva?.zbyva || '',
+    hodnota_plneni_bez_dph: smlouva?.hodnota_plneni_bez_dph || '',
+    hodnota_plneni_s_dph: smlouva?.hodnota_plneni_s_dph || '',
     sazba_dph: smlouva?.sazba_dph || 21,
     aktivni: smlouva?.aktivni !== undefined ? smlouva.aktivni : 1,
     stav: smlouva?.stav || 'AKTIVNI',
@@ -927,14 +928,54 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     const bezDph = parseFloat(formData.hodnota_bez_dph) || 0;
     const sDph = bezDph * (1 + sazbaDph / 100);
     
+    // Přepočítat i hodnotu plnění pokud existuje
+    const plneniBezDph = parseFloat(formData.hodnota_plneni_bez_dph) || 0;
+    const plneniSDph = plneniBezDph * (1 + sazbaDph / 100);
+    
     setFormData(prev => ({
       ...prev,
       sazba_dph: value,
-      hodnota_s_dph: sDph.toFixed(2)
+      hodnota_s_dph: sDph.toFixed(2),
+      hodnota_plneni_s_dph: plneniBezDph > 0 ? plneniSDph.toFixed(2) : prev.hodnota_plneni_s_dph
     }));
     
     markFieldAsChanged('sazba_dph');
     markFieldAsChanged('hodnota_s_dph');
+    if (plneniBezDph > 0) {
+      markFieldAsChanged('hodnota_plneni_s_dph');
+    }
+  };
+
+  const handleHodnotaPln
+
+eniBezDphChange = (value) => {
+    const bezDph = parseFloat(value) || 0;
+    const sazbaDph = parseFloat(formData.sazba_dph) || 0;
+    const sDph = bezDph * (1 + sazbaDph / 100);
+    
+    setFormData(prev => ({
+      ...prev,
+      hodnota_plneni_bez_dph: value,
+      hodnota_plneni_s_dph: sDph.toFixed(2)
+    }));
+    
+    markFieldAsChanged('hodnota_plneni_bez_dph');
+    markFieldAsChanged('hodnota_plneni_s_dph');
+  };
+
+  const handleHodnotaPlneniSDphChange = (value) => {
+    const sDph = parseFloat(value) || 0;
+    const sazbaDph = parseFloat(formData.sazba_dph) || 0;
+    const bezDph = sDph / (1 + sazbaDph / 100);
+    
+    setFormData(prev => ({
+      ...prev,
+      hodnota_plneni_s_dph: value,
+      hodnota_plneni_bez_dph: bezDph.toFixed(2)
+    }));
+    
+    markFieldAsChanged('hodnota_plneni_s_dph');
+    markFieldAsChanged('hodnota_plneni_bez_dph');
   };
 
   // =============================================================================
@@ -979,15 +1020,11 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
     }
 
     if (!formData.hodnota_bez_dph || parseFloat(formData.hodnota_bez_dph) < 0) {
-      newErrors.hodnota_bez_dph = 'Hodnota bez DPH je povinná a nesmí být záporná';
+      newErrors.hodnota_bez_dph = 'Počáteční stav bez DPH je povinný a nesmí být záporný';
     }
 
     if (!formData.hodnota_s_dph || parseFloat(formData.hodnota_s_dph) < 0) {
-      newErrors.hodnota_s_dph = 'Hodnota s DPH je povinná a nesmí být záporná';
-    }
-
-    if (!formData.zbyva || parseFloat(formData.zbyva) < 0) {
-      newErrors.zbyva = 'Zbývá s DPH je povinné a nesmí být záporné';
+      newErrors.hodnota_s_dph = 'Počáteční stav s DPH je povinný a nesmí být záporný';
     }
 
     if (formData.ico && !/^\d{8}$/.test(formData.ico)) {
@@ -1443,11 +1480,44 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
               </InnerFormField>
             </ThreeColumnRow>
 
-            {/* Druhý řádek: Hodnota bez DPH | Hodnota s DPH | Zbývá s DPH */}
+            {/* Druhý řádek: Hodnota plnění bez DPH | Hodnota plnění s DPH | (prázdné) */}
             <ThreeColumnRow>
-              {/* Hodnota bez DPH */}
+              {/* Hodnota plnění bez DPH */}
               <InnerFormField>
-                <Label className="required">Hodnota bez DPH (Kč)</Label>
+                <Label>Hodnota plnění bez DPH (Kč)</Label>
+                <CurrencyInput
+                  fieldName="hodnota_plneni_bez_dph"
+                  value={formData.hodnota_plneni_bez_dph}
+                  onChange={(fieldName, value) => handleHodnotaPl
+
+neniBezDphChange(value)}
+                  highlight={recentlyChangedFields.has('hodnota_plneni_bez_dph')}
+                  placeholder="0,00"
+                />
+                <InfoText>🔄 Hodnota s DPH se dopočítá</InfoText>
+              </InnerFormField>
+
+              {/* Hodnota plnění s DPH */}
+              <InnerFormField>
+                <Label>Hodnota plnění s DPH (Kč)</Label>
+                <CurrencyInput
+                  fieldName="hodnota_plneni_s_dph"
+                  value={formData.hodnota_plneni_s_dph}
+                  onChange={(fieldName, value) => handleHodnotaPlneniSDphChange(value)}
+                  highlight={recentlyChangedFields.has('hodnota_plneni_s_dph')}
+                  placeholder="0,00"
+                />
+              </InnerFormField>
+
+              {/* Prázdný sloupec */}
+              <InnerFormField></InnerFormField>
+            </ThreeColumnRow>
+
+            {/* Třetí řádek: Počáteční stav bez DPH | Počáteční stav s DPH | (prázdné) */}
+            <ThreeColumnRow>
+              {/* Počáteční stav bez DPH */}
+              <InnerFormField>
+                <Label className="required">Počáteční stav bez DPH (Kč)</Label>
                 <CurrencyInput
                   fieldName="hodnota_bez_dph"
                   value={formData.hodnota_bez_dph}
@@ -1460,9 +1530,9 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 <InfoText>🔄 Hodnota s DPH se dopočítá</InfoText>
               </InnerFormField>
 
-              {/* Hodnota s DPH */}
+              {/* Počáteční stav s DPH */}
               <InnerFormField>
-                <Label className="required">Hodnota s DPH (Kč)</Label>
+                <Label className="required">Počáteční stav s DPH (Kč)</Label>
                 <CurrencyInput
                   fieldName="hodnota_s_dph"
                   value={formData.hodnota_s_dph}
@@ -1474,17 +1544,8 @@ const SmlouvyFormModal = ({ smlouva, useky, onClose }) => {
                 {errors.hodnota_s_dph && <ErrorText>{errors.hodnota_s_dph}</ErrorText>}
               </InnerFormField>
 
-              {/* Zbývá s DPH */}
-              <InnerFormField>
-                <Label className="required">Zbývá s DPH (Kč)</Label>
-                <CurrencyInput
-                  fieldName="zbyva"
-                  value={formData.zbyva}
-                  onChange={(fieldName, value) => handleChange('zbyva', value)}
-                  highlight={recentlyChangedFields.has('zbyva')}
-                  placeholder="0,00"
-                />
-              </InnerFormField>
+              {/* Prázdný sloupec */}
+              <InnerFormField></InnerFormField>
             </ThreeColumnRow>
 
             {/* === VOLITELNÉ ÚDAJE === */}

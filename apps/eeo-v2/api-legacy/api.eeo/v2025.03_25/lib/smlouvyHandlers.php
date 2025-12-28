@@ -162,13 +162,7 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
         }
     }
     
-    if ($is_insert || isset($data['zbyva'])) {
-        if (!isset($data['zbyva']) || !is_numeric($data['zbyva']) || $data['zbyva'] < 0) {
-            $errors[] = 'Zbyva s DPH je povinne a nesmi byt zaporne';
-        }
-    }
-    
-    // STAV - ignorujeme z inputu, počítá se automaticky
+    // STAV a ZBYVA - ignorujeme z inputu, počítá se automaticky
     // (nevalidujeme, protože se přepočítá)
     
     return $errors;
@@ -527,7 +521,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $hodnota_s_dph = (float)$input['hodnota_s_dph'];
         $hodnota_bez_dph = isset($input['hodnota_bez_dph']) ? (float)$input['hodnota_bez_dph'] : 0;
         $sazba_dph = isset($input['sazba_dph']) ? (float)$input['sazba_dph'] : 21.00;
-        $zbyva = isset($input['zbyva']) ? (float)$input['zbyva'] : $hodnota_s_dph; // zbyva z inputu nebo hodnota_s_dph
+        $zbyva = 0; // Zbývá se počítá algoritmem, při vytvoření je vždy 0
         $aktivni = isset($input['aktivni']) ? (int)$input['aktivni'] : 1;
         
         // Automatický výpočet stavu (ignoruje $input['stav'])
@@ -674,12 +668,12 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         $set = array();
         $params = array('id' => $id, 'upravil_user_id' => $user_id);
         
-        // Povolené sloupce k updatu (stav se ignoruje - počítá se automaticky)
+        // Povolené sloupce k updatu (stav a zbyva se ignoruje - počítá se automaticky)
         $allowed_fields = array(
             'cislo_smlouvy', 'usek_id', 'druh_smlouvy',
             'nazev_firmy', 'ico', 'dic', 'nazev_smlouvy', 'popis_smlouvy',
             'platnost_od', 'platnost_do',
-            'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph', 'zbyva',
+            'hodnota_bez_dph', 'hodnota_s_dph', 'sazba_dph',
             'hodnota_plneni_bez_dph', 'hodnota_plneni_s_dph',
             'aktivni', 'poznamka', 'cislo_dms', 'kategorie'
         );
