@@ -799,7 +799,8 @@ const SmlouvyTab = () => {
     nazev_smlouvy: '',
     usek_zkr: '',
     druh_smlouvy: '',
-    stav: ''
+    stav: '',
+    pouzit_v_obj_formu: ''
   });
 
   // Pagination
@@ -963,6 +964,9 @@ const SmlouvyTab = () => {
         return false;
       }
       if (columnFilters.stav && smlouva.stav !== columnFilters.stav) {
+        return false;
+      }
+      if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
         return false;
       }
 
@@ -1294,6 +1298,28 @@ const SmlouvyTab = () => {
         }
       }
     ),
+    columnHelper.accessor('pouzit_v_obj_formu', {
+      header: 'Použití',
+      cell: info => {
+        const value = info.getValue();
+        return (
+          <SmartTooltip content={value === 1 ? 'Použít v obj. formuláři při objednávkách' : 'Pouze v modulu faktur'}>
+            <span style={{ 
+              fontSize: '0.875rem',
+              display: 'inline-block',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '4px',
+              backgroundColor: value === 1 ? '#dbeafe' : '#fef3c7',
+              color: value === 1 ? '#1e40af' : '#92400e',
+              fontWeight: '500'
+            }}>
+              {value === 1 ? '📋 Obj. formulář' : '🔒 Faktury'}
+            </span>
+          </SmartTooltip>
+        );
+      },
+      enableSorting: true
+    }),
     columnHelper.accessor('stav', {
       header: 'Stav',
       cell: info => (
@@ -1697,6 +1723,17 @@ const SmlouvyTab = () => {
                 <TableHeaderFilterCell />
                 {/* Zbývá - prázdná buňka */}
                 <TableHeaderFilterCell />
+                {/* Použití */}
+                <TableHeaderFilterCell>
+                  <ColumnFilterSelect
+                    value={columnFilters.pouzit_v_obj_formu}
+                    onChange={(e) => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: e.target.value}))}
+                  >
+                    <option value="">Vše</option>
+                    <option value="1">📋 Obj. formulář</option>
+                    <option value="0">🔒 Faktury</option>
+                  </ColumnFilterSelect>
+                </TableHeaderFilterCell>
                 {/* Stav */}
                 <TableHeaderFilterCell>
                   <ColumnFilterSelect
