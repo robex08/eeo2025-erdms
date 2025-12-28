@@ -1491,6 +1491,7 @@ const Users = () => {
         ),
         phone: user.phone || user.telefon || 'N/A',
         active: user.aktivni === 1 || user.aktivni === '1' || user.aktivni === true || user.active === 'a' || user.active === true,
+        vynucena_zmena_hesla: user.vynucena_zmena_hesla === 1 || user.vynucena_zmena_hesla === '1' || user.vynucena_zmena_hesla === true ? 1 : 0,
         roles: user.roles || [],
         direct_rights: user.direct_rights || [],
         group_name: user.roles && user.roles.length > 0
@@ -1808,7 +1809,9 @@ const Users = () => {
     },
     {
       accessorKey: 'username',
-      header: 'Uživatelské jméno',
+      header: 'Username',
+      size: 180,
+      maxSize: 180,
       cell: ({ row }) => (
         <div style={{ fontWeight: 600, color: '#1e293b' }}>
           {row.original.username}
@@ -1826,7 +1829,9 @@ const Users = () => {
     },
     {
       accessorKey: 'fullName',
-      header: 'Celé jméno',
+      header: 'Jméno',
+      size: 160,
+      maxSize: 160,
       cell: (info) => <div style={{ fontWeight: 500 }}>{info.getValue()}</div>,
     },
     {
@@ -1965,8 +1970,41 @@ const Users = () => {
       },
     },
     {
+      accessorKey: 'vynucena_zmena_hesla',
+      header: 'Vynucení',
+      size: 80,
+      maxSize: 80,
+      cell: ({ row }) => {
+        const isForced = row.original.vynucena_zmena_hesla === 1;
+        return (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              fontSize: '1.1rem',
+              cursor: 'pointer',
+              padding: '4px'
+            }}
+            title={isForced ? 'Uživatel musí změnit heslo při příštím přihlášení' : 'Normální přihlašování'}
+            onClick={() => handleToggleForcePasswordChange(row.original)}
+          >
+            <FontAwesomeIcon
+              icon={isForced ? faExclamationTriangle : faQuestionCircle}
+              style={{ 
+                color: isForced ? '#f59e0b' : '#94a3b8',
+                transition: 'color 0.2s ease'
+              }}
+            />
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'active',
       header: 'Status',
+      size: 80,
+      maxSize: 80,
       cell: ({ row }) => (
         <div
           style={{
@@ -2198,6 +2236,51 @@ const Users = () => {
     setSelectedUser(user);
     setDialogAction('toggle');
     setIsDialogOpen(true);
+  };
+
+  const handleToggleForcePasswordChange = async (user) => {
+    const currentValue = user.vynucena_zmena_hesla === 1;
+    const newValue = !currentValue;
+    
+    try {
+      startGlobalProgress();
+      setGlobalProgress(30);
+
+      // Volání API pro update vynucena_zmena_hesla
+      const result = await partialUpdateUser({
+        token,
+        username,
+        id: user.id,
+        vynucena_zmena_hesla: newValue ? 1 : 0
+      });
+
+      setGlobalProgress(70);
+
+      // Update local data
+      const updatedUsers = users.map(u => 
+        u.id === user.id 
+          ? { ...u, vynucena_zmena_hesla: newValue ? 1 : 0 }
+          : u
+      );
+      setUsers(updatedUsers);
+
+      setGlobalProgress(100);
+      doneGlobalProgress();
+
+      if (showToast) {
+        const fullName = user.fullName || user.username;
+        const action = newValue ? 'vynutí změnu hesla' : 'zruší vynucení změny hesla';
+        showToast(`✓ Uživatel ${fullName} - ${action}`, { type: 'success' });
+      }
+
+    } catch (error) {
+      doneGlobalProgress();
+
+      const errorMessage = error.message || 'Chyba při změně nastavení hesla';
+      if (showToast) {
+        showToast(`✗ ${errorMessage}`, { type: 'error' });
+      }
+    }
   };
 
   const handleResetPassword = (user) => {

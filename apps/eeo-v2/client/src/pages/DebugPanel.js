@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -16,9 +16,11 @@ import {
   faBookOpen,
   faDownload,
   faSpinner,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faCode
 } from '@fortawesome/free-solid-svg-icons';
 import { getStatusIcon, getStatusEmoji } from '../utils/iconMapping';
+import { AuthContext } from '../context/AuthContext';
 import OrderV2TestPanel from './OrderV2TestPanel';
 import NotificationTestPanel from './NotificationTestPanel';
 import AttachmentsV2TestPanel from './AttachmentsV2TestPanel';
@@ -571,6 +573,9 @@ const DebugPanel = () => {
       case 'mail':
         return <MailTestPanelV2 />;
 
+      case 'html-templates':
+        return <HtmlTemplatesPanel />;
+
       case 'email-previews':
         return (
           <IconsPanel>
@@ -979,6 +984,14 @@ const DebugPanel = () => {
           <FontAwesomeIcon icon={faIcons} />
           Icons Library
         </Tab>
+
+        <Tab
+          $active={activeTab === 'html-templates'}
+          onClick={() => setActiveTab('html-templates')}
+        >
+          <FontAwesomeIcon icon={faCode} />
+          HTML Šablony
+        </Tab>
       </TabsContainer>
 
       <Content>
@@ -1019,7 +1032,7 @@ const SpisovkaPanel = () => {
       }
     } catch (err) {
       setError(err.message);
-      console.error('Chyba při načítání faktur ze spisovky:', err);
+      // ...existing code...
     } finally {
       setLoading(false);
     }
@@ -1318,5 +1331,860 @@ const DownloadButton = styled.a`
     font-size: 14px;
   }
 `;
+
+// ============================================================
+// HTML TEMPLATES PANEL - HTML šablony s odesláním na mail
+// ============================================================
+const HtmlTemplatesPanel = () => {
+  const { token, username } = useContext(AuthContext);
+  const [users, setUsers] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [generatingPasswords, setGeneratingPasswords] = useState(false);
+  const [passwordResults, setPasswordResults] = useState([]);
+  
+  // Emailové šablony z databáze pro výběr
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  
+  // Vyhledávání v seznamu uživatelů
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  
+  // Templates pro zobrazení - načítají se z emailTemplates (DB)
+  const [templates, setTemplates] = useState([]);
+  
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [emailTo, setEmailTo] = useState('');
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Welcome preview state
+  const [welcomePreviewHtml, setWelcomePreviewHtml] = useState('');
+  const [showWelcomePreview, setShowWelcomePreview] = useState(false);
+  const [welcomeSelectedId, setWelcomeSelectedId] = useState(null);
+
+  // Načtení uživatelů při mount
+  useEffect(() => {
+    const fetchUsers = async () => {
+      if (!token || !username) return;
+      
+      setLoadingUsers(true);
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const response = await fetch(`${API_BASE_URL}users/list`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username,
+            aktivni: 1  // Načíst jen aktivní uživatele
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // API vrací přímo pole uživatelů
+          if (Array.isArray(data)) {
+            // Seřadit podle jména
+            const sortedUsers = data.sort((a, b) => {
+              const nameA = `${a.jmeno || ''} ${a.prijmeni || ''}`.trim();
+              const nameB = `${b.jmeno || ''} ${b.prijmeni || ''}`.trim();
+              return nameA.localeCompare(nameB, 'cs');
+            });
+            setUsers(sortedUsers);
+          }
+        }
+      } catch (error) {
+        // Tichá chyba
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+    
+    fetchUsers();
+  }, [token, username]);
+
+  // Načtení emailových šablon z DB
+  useEffect(() => {
+    const fetchEmailTemplates = async () => {
+      if (!token || !username) return;
+      
+      setLoadingTemplates(true);
+      try {
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const url = `${API_BASE_URL}notifications/templates/list`;
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.status === 'ok' && Array.isArray(data.data)) {
+            setEmailTemplates(data.data);
+            // Automaticky vybrat uvítací šablonu (welcome_new_user)
+            const welcomeTemplate = data.data.find(t => t.typ === 'welcome_new_user');
+            if (welcomeTemplate) {
+              setSelectedTemplateId(welcomeTemplate.id);
+            }
+          }
+        }
+      } catch (error) {
+      } finally {
+        setLoadingTemplates(false);
+      }
+    };
+    
+    fetchEmailTemplates();
+  }, [token, username]);
+
+  // Transformace emailTemplates do formátu templates pro zobrazení
+  useEffect(() => {
+    if (emailTemplates.length > 0) {
+      const transformedTemplates = emailTemplates.map(template => ({
+        id: template.id,
+        name: template.nazev || template.email_predmet || `Šablona ${template.id}`,
+        subject: template.email_predmet || 'Bez předmětu',
+        html: template.email_telo || ''
+      }));
+      setTemplates(transformedTemplates);
+    }
+  }, [emailTemplates]);
+
+  const handleUserToggle = (userId) => {
+    setSelectedUsers(prev => {
+      if (prev.includes(userId)) {
+        return prev.filter(id => id !== userId);
+      } else {
+        return [...prev, userId];
+      }
+    });
+  };
+
+  const handleGeneratePasswords = async () => {
+    if (selectedUsers.length === 0) {
+      setMessage({ type: 'error', text: 'Vyberte alespoň jednoho uživatele' });
+      return;
+    }
+
+    if (!selectedTemplateId) {
+      setMessage({ type: 'error', text: 'Vyberte emailovou šablonu' });
+      return;
+    }
+
+    setGeneratingPasswords(true);
+    setMessage({ type: '', text: '' });
+    setPasswordResults([]);
+
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+      const response = await fetch(`${API_BASE_URL}users/generate-temp-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username,
+          user_ids: selectedUsers,
+          template_id: selectedTemplateId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'ok') {
+        setPasswordResults(data.results || []);
+        setMessage({ 
+          type: 'success', 
+          text: `Úspěšně vygenerováno ${data.results.length} hesel a odesláno uvítacích emailů` 
+        });
+        setSelectedUsers([]);
+      } else {
+        throw new Error(data.err || 'Nepodařilo se vygenerovat hesla');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+      // ...existing code...
+    } finally {
+      setGeneratingPasswords(false);
+    }
+  };
+
+
+  const handleSendEmail = async (template) => {
+    if (!emailTo || !emailTo.includes('@')) {
+      setMessage({ type: 'error', text: 'Zadejte platnou emailovou adresu' });
+      return;
+    }
+
+    setSending(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API2_BASE_URL}v2025.03_25/debug-mail.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: emailTo,
+          subject: template.subject,
+          html: template.html,
+          template_name: template.name
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setMessage({ type: 'success', text: `Email odeslán na ${emailTo}` });
+        setEmailTo('');
+      } else {
+        throw new Error(data.message || 'Nepodařilo se odeslat email');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+      // ...existing code...
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handlePreview = (template) => {
+    setSelectedTemplate(template);
+  };
+
+  return (
+    <IconsPanel>
+      <SectionTitle>
+        <FontAwesomeIcon icon={faCode} />
+        HTML Email Šablony
+      </SectionTitle>
+      <SectionDescription>
+        Správa a testování HTML email šablon s možností odeslání na testovací adresu
+      </SectionDescription>
+
+      {message.text && (
+        <div style={{
+          padding: '15px 20px',
+          margin: '20px 0',
+          borderRadius: '8px',
+          background: message.type === 'success' ? '#d1fae5' : '#fee2e2',
+          border: `2px solid ${message.type === 'success' ? '#10b981' : '#ef4444'}`,
+          color: message.type === 'success' ? '#065f46' : '#991b1b',
+          fontSize: '14px',
+          fontWeight: '500'
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      {/* GENEROVÁNÍ DOČASNÝCH HESEL A UVÍTACÍCH EMAILŮ */}
+      <div style={{
+        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+        borderRadius: '12px',
+        padding: '24px',
+        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+        marginTop: '20px',
+        border: '2px solid #1d4ed8'
+      }}>
+        <h3 style={{ margin: '0 0 8px 0', color: 'white', fontSize: '20px', fontWeight: '700' }}>
+          🎉 Generování dočasných hesel a uvítacích emailů
+        </h3>
+        <p style={{ margin: '0 0 20px 0', color: '#e0f2fe', fontSize: '14px' }}>
+          Vyberte uživatele, kterým chcete vygenerovat dočasné heslo a odeslat uvítací email
+        </p>
+
+        {loadingUsers ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'white' }}>
+            <FontAwesomeIcon icon={faSpinner} spin style={{ marginRight: '8px' }} />
+            Načítám uživatele...
+          </div>
+        ) : (
+          <>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.95)',
+              borderRadius: '8px',
+              padding: '20px',
+              maxHeight: '400px',
+              overflowY: 'auto'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '16px',
+                paddingBottom: '12px',
+                borderBottom: '2px solid #e5e7eb'
+              }}>
+                <strong style={{ color: '#1f2937', fontSize: '15px' }}>
+                  👥 Seznam uživatelů ({users.filter(u => {
+                    if (!userSearchQuery) return true;
+                    const query = userSearchQuery.toLowerCase();
+                    const fullName = `${u.jmeno || ''} ${u.prijmeni || ''}`.toLowerCase();
+                    const username = (u.username || '').toLowerCase();
+                    const email = (u.email || '').toLowerCase();
+                    return fullName.includes(query) || username.includes(query) || email.includes(query);
+                  }).length})
+                </strong>
+                <span style={{ color: '#6b7280', fontSize: '13px' }}>
+                  Vybráno: {selectedUsers.length}
+                </span>
+              </div>
+
+              {/* Vyhledávací pole */}
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Hledat uživatele (jméno, username, email)..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: '14px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    background: 'white',
+                    color: '#1f2937',
+                    transition: 'all 0.2s'
+                  }}
+                />
+              </div>
+
+              {users.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>
+                  Žádní uživatelé
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {users.filter(user => {
+                    // Filtrování podle vyhledávacího dotazu
+                    if (!userSearchQuery) return true;
+                    const query = userSearchQuery.toLowerCase();
+                    const fullName = `${user.jmeno || ''} ${user.prijmeni || ''}`.toLowerCase();
+                    const username = (user.username || '').toLowerCase();
+                    const email = (user.email || '').toLowerCase();
+                    return fullName.includes(query) || username.includes(query) || email.includes(query);
+                  }).map(user => {
+                    const fullName = `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || 'Bez jména';
+                    const isSelected = selectedUsers.includes(user.id);
+                    
+                    return (
+                      <div
+                        key={user.id}
+                        onClick={() => handleUserToggle(user.id)}
+                        style={{
+                          padding: '12px 16px',
+                          background: isSelected ? '#dbeafe' : 'white',
+                          border: `2px solid ${isSelected ? '#3b82f6' : '#e5e7eb'}`,
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            color: '#1f2937', 
+                            fontSize: '14px', 
+                            fontWeight: '600',
+                            marginBottom: '4px'
+                          }}>
+                            {fullName}
+                          </div>
+                          <div style={{ 
+                            color: '#6b7280', 
+                            fontSize: '12px',
+                            display: 'flex',
+                            gap: '12px',
+                            flexWrap: 'wrap'
+                          }}>
+                            <span>👤 {user.username}</span>
+                            <span>📧 {user.email || 'Bez emailu'}</span>
+                            <span style={{ 
+                              background: '#f3f4f6', 
+                              padding: '2px 8px', 
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              color: '#374151'
+                            }}>
+                              {user.role_nazev || 'Bez role'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* VÝBĚR EMAILOVÉ ŠABLONY */}
+            <div style={{
+              marginTop: '16px',
+              background: 'rgba(255, 255, 255, 0.95)',
+              borderRadius: '8px',
+              padding: '20px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '12px'
+              }}>
+                <FontAwesomeIcon icon={faEnvelope} style={{ color: '#3b82f6' }} />
+                <strong style={{ color: '#1f2937', fontSize: '15px' }}>
+                  Vyberte emailovou šablonu
+                </strong>
+              </div>
+              
+              {loadingTemplates ? (
+                <div style={{ padding: '12px', color: '#6b7280', textAlign: 'center' }}>
+                  <FontAwesomeIcon icon={faSpinner} spin style={{ marginRight: '8px' }} />
+                  Načítám šablony...
+                </div>
+              ) : (
+                <select
+                  value={selectedTemplateId || ''}
+                  onChange={(e) => setSelectedTemplateId(parseInt(e.target.value))}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    fontSize: '14px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    background: 'white',
+                    color: '#1f2937',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <option value="">-- Vyberte šablonu --</option>
+                  {emailTemplates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.nazev || template.email_predmet || `Šablona ${template.id}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+              
+              {selectedTemplateId && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: '#f0f9ff',
+                  borderRadius: '6px',
+                  border: '1px solid #bae6fd',
+                  fontSize: '13px',
+                  color: '#0c4a6e'
+                }}>
+                  ℹ️ Vybraná šablona bude použita pro odeslání emailu všem zvoleným uživatelům
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              marginTop: '16px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center'
+            }}>
+              <button
+                onClick={handleGeneratePasswords}
+                disabled={generatingPasswords || selectedUsers.length === 0 || !selectedTemplateId}
+                style={{
+                  flex: 1,
+                  padding: '14px 24px',
+                  background: generatingPasswords || selectedUsers.length === 0 || !selectedTemplateId
+                    ? 'rgba(255, 255, 255, 0.3)' 
+                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  cursor: generatingPasswords || selectedUsers.length === 0 || !selectedTemplateId ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: generatingPasswords || selectedUsers.length === 0 || !selectedTemplateId
+                    ? 'none' 
+                    : '0 2px 8px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                {generatingPasswords ? (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin style={{ marginRight: '8px' }} />
+                    Generuji hesla a odesílám emaily...
+                  </>
+                ) : (
+                  <>🔑 Vygenerovat hesla a odeslat uvítací emaily ({selectedUsers.length})</>
+                )}
+              </button>
+            </div>
+
+            {passwordResults.length > 0 && (
+              <div style={{
+                marginTop: '16px',
+                background: 'rgba(255, 255, 255, 0.95)',
+                borderRadius: '8px',
+                padding: '16px'
+              }}>
+                <strong style={{ color: '#1f2937', fontSize: '14px', display: 'block', marginBottom: '12px' }}>
+                  ✅ Výsledky generování:
+                </strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {passwordResults.map((result, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '10px 12px',
+                        background: result.success ? '#d1fae5' : '#fee2e2',
+                        border: `1px solid ${result.success ? '#10b981' : '#ef4444'}`,
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        color: result.success ? '#065f46' : '#991b1b'
+                      }}
+                    >
+                      <div style={{ fontWeight: '600' }}>
+                        {result.success ? '✓' : '✗'} {result.user_name} ({result.username})
+                      </div>
+                      {result.success && (
+                        <div style={{ fontSize: '12px', marginTop: '4px', fontFamily: 'monospace' }}>
+                          Heslo: <strong>{result.temp_password}</strong> | Email odeslán na: {result.email}
+                        </div>
+                      )}
+                      {!result.success && (
+                        <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                          Chyba: {result.error}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* NÁHLED WELCOME EMAIL ŠABLONY Z DATABÁZE */}
+      {emailTemplates.filter(t => t.typ && t.typ.startsWith('welcome_')).length > 0 && (
+        <div style={{
+          background: 'white',
+          borderRadius: '12px',
+          padding: '24px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          marginTop: '26px'
+        }}>
+          <h3 style={{ margin: '0 0 16px 0', color: '#1f2937', fontSize: '18px' }}>
+            👁️ Náhled welcome šablon z databáze
+          </h3>
+
+          <div style={{ marginBottom: '16px' }}>
+            {emailTemplates.filter(t => t.typ && t.typ.startsWith('welcome_')).map((template) => (
+              <div key={template.id} style={{
+                background: '#f9fafb',
+                border: '2px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '12px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '4px' }}>
+                      {template.nazev || template.email_predmet}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                      Typ: <code style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>{template.typ}</code>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!template.email_telo) {
+                        alert('⚠️ CHYBA: Šablona nemá vyplněné email_telo v databázi!');
+                        return;
+                      }
+                      
+                      const placeholders = {
+                        '{uzivatelske_jmeno}': 'jan.novak',
+                        '{docasne_heslo}': 'Test1234!',
+                        '{cele_jmeno}': 'Jan Novák',
+                        '{jmeno}': 'Jan',
+                        '{prijmeni}': 'Novák',
+                        '{email}': 'jan.novak@zachranka.cz'
+                      };
+                      let html = template.email_telo || '';
+                      
+                      Object.entries(placeholders).forEach(([placeholder, value]) => {
+                        html = html.replaceAll(placeholder, value);
+                      });
+                      
+                      setWelcomePreviewHtml(html);
+                      setShowWelcomePreview(true);
+                      setWelcomeSelectedId(template.id);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    👁️ Zobrazit náhled
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {showWelcomePreview && welcomePreviewHtml && (
+            <div style={{
+              marginTop: '16px',
+              padding: '10px',
+              background: '#f0f9ff',
+              borderRadius: '8px',
+              border: '1px solid #bae6fd',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                background: '#3b82f6',
+                color: 'white',
+                padding: '12px 16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <strong>📧 Náhled šablony - TADY JE NÁHLED!!!</strong>
+                <button
+                  onClick={() => {
+                    setShowWelcomePreview(false);
+                    setWelcomePreviewHtml('');
+                    setWelcomeSelectedId(null);
+                  }}
+                  style={{
+                    padding: '4px 12px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontWeight: '600'
+                  }}
+                >
+                  ✕ Zavřít
+                </button>
+              </div>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                maxHeight: '600px',
+                overflowY: 'auto'
+              }} dangerouslySetInnerHTML={{ __html: welcomePreviewHtml }} />
+            </div>
+          )}
+
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: '#f0f9ff',
+            borderRadius: '6px',
+            border: '1px solid #bae6fd',
+            fontSize: '13px',
+            color: '#0c4a6e'
+          }}>
+            ℹ️ Tyto šablony se načítají přímo z databáze (tabulka: <code>25_notifikace_sablony</code>, typ začíná na: <code>welcome_</code>)
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        padding: '24px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+        marginTop: '26px'
+      }}>
+        <h3 style={{ margin: '0 0 20px 0', color: '#1f2937', fontSize: '18px' }}>
+          📧 Email pro testování
+        </h3>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            type="email"
+            placeholder="vas.email@example.com"
+            value={emailTo}
+            onChange={(e) => setEmailTo(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              border: '2px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '14px'
+            }}
+          />
+          <div style={{ fontSize: '13px', color: '#6b7280' }}>
+            Sem se pošlou testovací emaily
+          </div>
+        </div>
+      </div>
+
+      <CategorySection>
+        <CategoryTitle>
+          📋 Dostupné šablony ({templates.length})
+        </CategoryTitle>
+
+        {templates.map((template) => (
+          <div key={template.id} style={{
+            background: 'white',
+            border: '2px solid #e5e7eb',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px' }}>
+              <div>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1f2937', fontSize: '18px' }}>
+                  {template.name}
+                </h4>
+                <div style={{ fontSize: '14px', color: '#6b7280', fontFamily: 'monospace' }}>
+                  Předmět: {template.subject}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => handlePreview(template)}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  👁️ Náhled
+                </button>
+                <button
+                  onClick={() => handleSendEmail(template)}
+                  disabled={sending || !emailTo}
+                  style={{
+                    padding: '8px 16px',
+                    background: sending || !emailTo ? '#cbd5e1' : '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    cursor: sending || !emailTo ? 'not-allowed' : 'pointer',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {sending ? '📤 Odesílám...' : '📧 Odeslat'}
+                </button>
+              </div>
+            </div>
+            
+            {selectedTemplate?.id === template.id && (
+              <div style={{
+                marginTop: '20px',
+                padding: '20px',
+                background: '#f9fafb',
+                borderRadius: '8px',
+                border: '2px solid #e5e7eb'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <strong style={{ color: '#1f2937' }}>Náhled šablony:</strong>
+                  <button
+                    onClick={() => setSelectedTemplate(null)}
+                    style={{
+                      padding: '4px 12px',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✕ Zavřít
+                  </button>
+                </div>
+                <div style={{
+                  background: 'white',
+                  padding: '20px',
+                  borderRadius: '6px',
+                  border: '1px solid #e5e7eb'
+                }} dangerouslySetInnerHTML={{ __html: template.html }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </CategorySection>
+
+      <div style={{
+        background: '#fef3c7',
+        border: '2px solid #f59e0b',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '26px'
+      }}>
+        <h3 style={{ margin: '0 0 10px 0', color: '#92400e', fontSize: '16px' }}>
+          ℹ️ Jak na to
+        </h3>
+        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#78350f', lineHeight: '1.8' }}>
+          <li>Zadejte testovací email adresu do pole nahoře</li>
+          <li>Klikněte na "Náhled" pro zobrazení šablony</li>
+          <li>Klikněte na "Odeslat" pro odeslání na testovací email</li>
+        </ul>
+      </div>
+
+      <div style={{
+        background: '#e0f2fe',
+        border: '2px solid #3b82f6',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '20px'
+      }}>
+        <h3 style={{ margin: '0 0 10px 0', color: '#1e40af', fontSize: '16px' }}>
+          📋 Placeholders v šabloně "Uvítací email"
+        </h3>
+        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#1e3a8a', lineHeight: '1.8', fontFamily: 'monospace' }}>
+          <li><strong>{'{docasne_heslo}'}</strong> - Dočasné heslo pro první přihlášení (např. U0xxxxx)</li>
+        </ul>
+        <p style={{ margin: '10px 0 0 0', fontSize: '13px', color: '#1e3a8a' }}>
+          Odkaz na aplikaci: <strong>https://erdms.zachranka.cz/eeo-v2</strong>
+        </p>
+      </div>
+    </IconsPanel>
+  );
+};
 
 export default DebugPanel;

@@ -319,8 +319,7 @@ $queries['ciselniky_pro_formular'] = [
 ];
 
 // LOGIN dotaz pro uživatele (username + aktivni)
-$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email, role_id FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
-$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
+$queries['uzivatele_login'] = "SELECT id, username, password_hash, jmeno, prijmeni, email, vynucena_zmena_hesla FROM ".TBL_UZIVATELE." WHERE username = :username AND aktivni = 1 LIMIT 1";
 
 // KOMPLETNÍ dotaz pro uživatele s JOIN na všechny související tabulky
 $queries['uzivatele_detail'] = "
@@ -335,6 +334,7 @@ $queries['uzivatele_detail'] = "
         u.email,
         u.telefon,
         u.aktivni,
+        u.vynucena_zmena_hesla,
         u.dt_vytvoreni,
         u.dt_aktualizace,
         
@@ -396,6 +396,7 @@ $queries['uzivatele_detail_by_username'] = "
         u.email,
         u.telefon,
         u.aktivni,
+        u.vynucena_zmena_hesla,
         u.dt_vytvoreni,
         u.dt_aktualizace,
         
