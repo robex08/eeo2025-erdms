@@ -573,8 +573,13 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':dic', isset($input['dic']) ? $input['dic'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':nazev_smlouvy', $input['nazev_smlouvy'], PDO::PARAM_STR);
         $stmt->bindValue(':popis_smlouvy', isset($input['popis_smlouvy']) ? $input['popis_smlouvy'] : null, PDO::PARAM_STR);
-        // Ošetření NULL hodnot pro datumy - pokud je NULL nebo prázdný string, uložíme NULL do DB
-        $stmt->bindValue(':platnost_od', (!empty($input['platnost_od']) && $input['platnost_od'] !== null) ? $input['platnost_od'] : null, PDO::PARAM_STR);
+        // Ošetření NULL hodnot pro datumy - použit PDO::PARAM_NULL pro NULL hodnoty
+        $platnost_od_value = (!empty($input['platnost_od']) && $input['platnost_od'] !== null) ? $input['platnost_od'] : null;
+        if ($platnost_od_value === null) {
+            $stmt->bindValue(':platnost_od', null, PDO::PARAM_NULL);
+        } else {
+            $stmt->bindValue(':platnost_od', $platnost_od_value, PDO::PARAM_STR);
+        }
         $stmt->bindValue(':platnost_do', $input['platnost_do'], PDO::PARAM_STR);
         $stmt->bindValue(':hodnota_bez_dph', $hodnota_bez_dph);
         $stmt->bindValue(':hodnota_s_dph', $hodnota_s_dph);
@@ -732,7 +737,14 @@ function handle_ciselniky_smlouvy_update($input, $config, $queries) {
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
-            $stmt->bindValue(':' . $key, $value);
+            // Použit PDO::PARAM_NULL pro NULL hodnoty
+            if ($value === null) {
+                $stmt->bindValue(':' . $key, null, PDO::PARAM_NULL);
+            } else if (is_int($value)) {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
+            }
         }
         
         if ($stmt->execute()) {
