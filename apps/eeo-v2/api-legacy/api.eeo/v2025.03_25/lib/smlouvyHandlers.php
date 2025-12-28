@@ -22,14 +22,15 @@
 /**
  * Automatický výpočet stavu smlouvy podle logiky:
  * 1. aktivni = 0 => "NEAKTIVNI" (manuálně deaktivováno)
- * 2. CURDATE() < platnost_od => "PRIPRAVOVANA" (ještě nezačala)
- * 3. CURDATE() > platnost_do => "UKONCENA" (vypršela)
- * 4. Jinak => "AKTIVNI" (platná)
+ * 2. platnost_od je NULL => "AKTIVNI" (datum od nebylo zadáno, platí pouze datum do)
+ * 3. CURDATE() < platnost_od => "PRIPRAVOVANA" (ještě nezačala)
+ * 4. CURDATE() > platnost_do => "UKONCENA" (vypršela)
+ * 5. Jinak => "AKTIVNI" (platná)
  * 
  * POZOR: Stav je ENUM('AKTIVNI','UKONCENA','PRERUSENA','PRIPRAVOVANA','NEAKTIVNI')
  * 
  * @param int $aktivni Aktivní (0/1)
- * @param string $platnost_od Datum platnosti od (YYYY-MM-DD)
+ * @param string $platnost_od Datum platnosti od (YYYY-MM-DD) nebo NULL
  * @param string $platnost_do Datum platnosti do (YYYY-MM-DD)
  * @return string Vypočítaný stav (AKTIVNI/UKONCENA/PRIPRAVOVANA/NEAKTIVNI)
  */
@@ -41,17 +42,26 @@ function calculateSmlouvaStav($aktivni, $platnost_od, $platnost_do) {
     
     $today = date('Y-m-d');
     
-    // Priorita 2: Ještě nezačala platit = PRIPRAVOVANA
+    // Priorita 2: Pokud platnost_od není zadáno, platí od okamžiku vytvoření
+    if (empty($platnost_od) || $platnost_od === null) {
+        // Kontrolujeme pouze datum do
+        if ($today > $platnost_do) {
+            return 'UKONCENA';
+        }
+        return 'AKTIVNI';
+    }
+    
+    // Priorita 3: Ještě nezačala platit = PRIPRAVOVANA
     if ($today < $platnost_od) {
         return 'PRIPRAVOVANA';
     }
     
-    // Priorita 3: Již vypršela = UKONCENA
+    // Priorita 4: Již vypršela = UKONCENA
     if ($today > $platnost_do) {
         return 'UKONCENA';
     }
     
-    // Priorita 4: Je platná = AKTIVNI
+    // Priorita 5: Je platná = AKTIVNI
     return 'AKTIVNI';
 }
 
@@ -112,12 +122,6 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
         }
     }
     
-    if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] <= 0) {
-            $errors[] = 'Hodnota s DPH je povinna a musi byt kladne cislo';
-        }
-    }
-    
     // Date validation
     // platnost_od - NEPOVINNÉ (ekonomové často neuvádějí)
     if (!empty($data['platnost_od']) && !strtotime($data['platnost_od'])) {
@@ -145,17 +149,22 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
         }
     }
     
-    // Financial validation
-    if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (empty($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] <= 0) {
-            $errors[] = 'Hodnota s DPH je povinne kladne cislo';
+    // Financial validation - akceptujeme 0 Kč jako validní hodnotu (>= 0)
+    if ($is_insert || isset($data['hodnota_bez_dph'])) {
+        if (!isset($data['hodnota_bez_dph']) || !is_numeric($data['hodnota_bez_dph']) || $data['hodnota_bez_dph'] < 0) {
+            $errors[] = 'Hodnota bez DPH je povinna a nesmi byt zaporna';
         }
     }
     
-    // IČO validation (8 digits, optional)
-    if (isset($data['ico']) && !empty($data['ico'])) {
-        if (!preg_match('/^\d{8}$/', $data['ico'])) {
-            $errors[] = 'ICO musi obsahovat 8 cislic';
+    if ($is_insert || isset($data['hodnota_s_dph'])) {
+        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] < 0) {
+            $errors[] = 'Hodnota s DPH je povinna a nesmi byt zaporna';
+        }
+    }
+    
+    if ($is_insert || isset($data['zbyva'])) {
+        if (!isset($data['zbyva']) || !is_numeric($data['zbyva']) || $data['zbyva'] < 0) {
+            $errors[] = 'Zbyva s DPH je povinne a nesmi byt zaporne';
         }
     }
     
@@ -518,6 +527,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $hodnota_s_dph = (float)$input['hodnota_s_dph'];
         $hodnota_bez_dph = isset($input['hodnota_bez_dph']) ? (float)$input['hodnota_bez_dph'] : 0;
         $sazba_dph = isset($input['sazba_dph']) ? (float)$input['sazba_dph'] : 21.00;
+        $zbyva = isset($input['zbyva']) ? (float)$input['zbyva'] : $hodnota_s_dph; // zbyva z inputu nebo hodnota_s_dph
         $aktivni = isset($input['aktivni']) ? (int)$input['aktivni'] : 1;
         
         // Automatický výpočet stavu (ignoruje $input['stav'])
@@ -539,7 +549,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
                 hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                 hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
                 aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
-                dt_vytvoreni, vytvoril_user_id,
+                dt_vytvoreni, vytvoril_user_id, dt_aktualizace, upravil_user_id,
                 cerpano_celkem, zbyva, procento_cerpani
             ) VALUES (
                 :cislo_smlouvy, :usek_id, :usek_zkr, :druh_smlouvy,
@@ -548,7 +558,7 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
                 :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                 :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
                 :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
-                NOW(), :vytvoril_user_id,
+                NOW(), :vytvoril_user_id, NOW(), :upravil_user_id,
                 0, :zbyva, 0
             )
         ";
@@ -563,7 +573,8 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':dic', isset($input['dic']) ? $input['dic'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':nazev_smlouvy', $input['nazev_smlouvy'], PDO::PARAM_STR);
         $stmt->bindValue(':popis_smlouvy', isset($input['popis_smlouvy']) ? $input['popis_smlouvy'] : null, PDO::PARAM_STR);
-        $stmt->bindValue(':platnost_od', $input['platnost_od'], PDO::PARAM_STR);
+        // Ošetření NULL hodnot pro datumy - pokud je NULL nebo prázdný string, uložíme NULL do DB
+        $stmt->bindValue(':platnost_od', (!empty($input['platnost_od']) && $input['platnost_od'] !== null) ? $input['platnost_od'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':platnost_do', $input['platnost_do'], PDO::PARAM_STR);
         $stmt->bindValue(':hodnota_bez_dph', $hodnota_bez_dph);
         $stmt->bindValue(':hodnota_s_dph', $hodnota_s_dph);
@@ -577,7 +588,8 @@ function handle_ciselniky_smlouvy_insert($input, $config, $queries) {
         $stmt->bindValue(':cislo_dms', isset($input['cislo_dms']) ? $input['cislo_dms'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':kategorie', isset($input['kategorie']) ? $input['kategorie'] : null, PDO::PARAM_STR);
         $stmt->bindValue(':vytvoril_user_id', $user_id, PDO::PARAM_INT);
-        $stmt->bindValue(':zbyva', $hodnota_s_dph); // zbyva = hodnota_s_dph na začátku
+        $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
+        $stmt->bindValue(':zbyva', $zbyva); // zbyva z inputu nebo hodnota_s_dph
         
         if ($stmt->execute()) {
             $new_id = $db->lastInsertId();
@@ -976,7 +988,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                         hodnota_bez_dph, hodnota_s_dph, sazba_dph,
                         hodnota_plneni_bez_dph, hodnota_plneni_s_dph,
                         aktivni, pouzit_v_obj_formu, stav, poznamka, cislo_dms, kategorie,
-                        dt_vytvoreni, vytvoril_user_id,
+                        dt_vytvoreni, vytvoril_user_id, dt_aktualizace, upravil_user_id,
                         cerpano_celkem, zbyva, procento_cerpani
                     ) VALUES (
                         :cislo_smlouvy, :usek_id, :usek_zkr, :druh_smlouvy,
@@ -985,7 +997,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                         :hodnota_bez_dph, :hodnota_s_dph, :sazba_dph,
                         :hodnota_plneni_bez_dph, :hodnota_plneni_s_dph,
                         :aktivni, :pouzit_v_obj_formu, :stav, :poznamka, :cislo_dms, :kategorie,
-                        NOW(), :vytvoril_user_id,
+                        NOW(), :vytvoril_user_id, NOW(), :upravil_user_id,
                         0, :zbyva, 0
                     )
                 ";
@@ -1014,6 +1026,7 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
                 $stmt->bindValue(':cislo_dms', isset($row['cislo_dms']) ? $row['cislo_dms'] : null, PDO::PARAM_STR);
                 $stmt->bindValue(':kategorie', isset($row['kategorie']) ? $row['kategorie'] : null, PDO::PARAM_STR);
                 $stmt->bindValue(':vytvoril_user_id', $user_id, PDO::PARAM_INT);
+                $stmt->bindValue(':upravil_user_id', $user_id, PDO::PARAM_INT);
                 $stmt->bindValue(':zbyva', $hodnota_s_dph);
                 
                 if ($stmt->execute()) {

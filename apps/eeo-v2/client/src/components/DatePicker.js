@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { Calendar } from 'lucide-react';
 
-function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard' }) {
+function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [openUpwards, setOpenUpwards] = useState(false);
@@ -258,6 +258,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           onClick={() => !disabled && setIsOpen(!isOpen)}
           disabled={disabled}
           hasError={hasError}
+          $highlight={highlight}
           hasValue={!!value}
           data-datepicker={fieldName}
           $variant={variant}
@@ -425,7 +426,7 @@ const DateInputButton = styled.button`
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
   color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1e293b' : '#94a3af'};
   font-size: ${props => props.$variant === 'compact' ? '0.75rem' : '0.95rem'};
-  font-weight: 400;
+  font-weight: ${props => props.hasValue ? '600' : '400'};
   line-height: 1;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.2s ease;
