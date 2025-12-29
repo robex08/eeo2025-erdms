@@ -830,8 +830,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           });
         });
         setZpracovaneDetails(detailsMap);
-        
-        console.log('✅ Načteno zpracovaných dokumentů:', processedIds.size);
       }
     } catch (err) {
       console.warn('⚠️ Nepodařilo se načíst zpracované dokumenty:', err);
@@ -1340,8 +1338,11 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             // 🔍 Filtrování faktur podle režimu + datum rozsahu + název (pouze faktury)
             const filteredFaktury = faktury.filter(faktura => {
               // 0. Filter podle názvu - pouze dokumenty obsahující "Faktura", "Fa č.", "Fač.", "FA" atd.
-              // Regex zachytí: faktura/faktúra, fa č./fa c./fač./fac., FA na začátku
-              const isFaktura = /faktur[aáuú]|fa[\s\.]*(č|c)\.?|^fa\s/i.test(faktura.nazev || '');
+              // Regex zachytí: faktura/faktúra, fa.č./fa.c./fa č./fa c./fač./fac./fak.č./fak.c./fak č./fak c., FA na začátku
+              const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalizace diakritiky
+              const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                                /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+              
               if (!isFaktura) {
                 return false; // Není faktura podle názvu
               }
