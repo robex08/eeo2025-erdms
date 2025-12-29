@@ -427,7 +427,8 @@ const InvoiceAttachmentsCompact = ({
   attachments: externalAttachments = [], // 🆕 Attachments z formData.faktury[].attachments (controlled)
   onAttachmentsChange, // 🆕 Callback pro aktualizaci attachments (controlled component pattern)
   onCreateInvoiceInDB, // 🆕 Callback pro vytvoření faktury v DB (temp → real ID)
-  onOCRDataExtracted // 🆕 Callback pro předání OCR vytěžených dat
+  onOCRDataExtracted, // 🆕 Callback pro předání OCR vytěžených dat
+  allUsers = [] // 🆕 Seznam všech uživatelů pro zobrazení jména nahrávajícího uživatele
 }) => {
   const { username, token } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext); // ✅ OPRAVENO: showToast místo addToast
@@ -471,23 +472,64 @@ const InvoiceAttachmentsCompact = ({
 
   // 🔄 Použít external attachments jako zdroj pravdy (controlled component)
   // ✅ BEZPEČNOSTNÍ KONTROLA: zajistit že attachments je vždy pole
-  const attachments = Array.isArray(externalAttachments) ? externalAttachments : [];
+  // ✅ OPRAVA: Mapovat file_size -> size pokud přijde z API
+  const attachments = useMemo(() => {
+    if (!Array.isArray(externalAttachments)) return [];
+    
+    const mapped = externalAttachments.map(att => {
+      // Pokud už má size, použij ho
+      if (att.size !== undefined) return att;
+      
+      // Jinak mapuj z file_size nebo velikost_souboru_b
+      const mapped = {
+        ...att,
+        size: att.file_size || att.velikost_souboru_b || 0
+      };
+      
+      return mapped;
+    });
+    
+    return mapped;
+  }, [externalAttachments, fakturaId]);
 
   // 🔧 Helper funkce pro aktualizaci attachments (volá onAttachmentsChange callback)
-  // ⚠️ DŮLEŽITÉ: attachments NESMÍ být v dependencies - způsobuje stale closure!
+  // ⚠️ DŮLEŽITÉ: Musí správně fungovat s controlled component pattern
   const updateAttachments = useCallback((updater) => {
     if (!onAttachmentsChange) {
       return;
     }
 
-    // ✅ VŽDY použít funkční updater pro získání aktuálního stavu
-    onAttachmentsChange(prev => {
-      const newAttachments = typeof updater === 'function' ? updater(prev) : updater;
-      return newAttachments;
-    });
-  }, [onAttachmentsChange]);
+    // ✅ Pokud je updater funkce, musíme ji zavolat s aktuálními attachments
+    // ✅ Pokud je to hodnota, předat ji přímo
+    if (typeof updater === 'function') {
+      // Získat aktuální hodnotu z props (externalAttachments jsou controlled)
+      const currentAttachments = externalAttachments || [];
+      const newAttachments = updater(currentAttachments);
+      onAttachmentsChange(newAttachments); // ✅ Předat HODNOTU, ne funkci
+    } else {
+      onAttachmentsChange(updater); // ✅ Předat hodnotu přímo
+    }
+  }, [onAttachmentsChange, externalAttachments]);
 
-  // 🎯 Drag handlers pro file viewer
+  // � Helper funkce pro získání jména uživatele podle ID
+  const getUserDisplayName = useCallback((userId) => {
+    if (!userId) return username || 'Neznámý uživatel';
+    
+    // Najít uživatele v seznamu
+    const user = allUsers.find(u => u.id === userId || u.user_id === userId);
+    if (!user) return `Uživatel #${userId}`;
+    
+    // Sestavit celé jméno s tituly
+    const parts = [];
+    if (user.titul_pred) parts.push(user.titul_pred);
+    if (user.jmeno) parts.push(user.jmeno);
+    if (user.prijmeni) parts.push(user.prijmeni);
+    if (user.titul_za) parts.push(user.titul_za);
+    
+    return parts.length > 0 ? parts.join(' ') : (user.username || `Uživatel #${userId}`);
+  }, [allUsers, username]);
+
+  // �🎯 Drag handlers pro file viewer
   const handleFileViewerDrag = useCallback((e) => {
     if (!isDraggingViewer) return;
     e.preventDefault();
@@ -532,14 +574,19 @@ const InvoiceAttachmentsCompact = ({
   }, [isDraggingViewer, handleFileViewerDrag, handleFileViewerDragEnd]);
 
   // Načtení příloh při mount nebo změně faktura_id
+  // ✅ OPRAVA: Načítat ze serveru pokud je fakturaId validní, a pokud nemáme data v props
   useEffect(() => {
-
     if (fakturaId && !String(fakturaId).startsWith('temp-')) {
+      // ✅ Pokud už máme attachments z props (a nejsou prázdné), použít je
+      // ⚠️  ALE: Pokud jsou prázdné, zkusit načíst ze serveru (možná ještě nebyly načteny)
+      if (externalAttachments && externalAttachments.length > 0) {
+        return; // Máme data z props, nepřepisovat
+      }
+      
+      // Prázdné nebo undefined → načíst ze serveru
       loadAttachmentsFromServer();
-    } else {
-      // NEnulovat attachments - přílohy se vytvoří až po uploadu
     }
-  }, [fakturaId]);
+  }, [fakturaId, externalAttachments]);
 
   // 🆕 AUTO-UPLOAD pending příloh když se ID změní z temp na reálné
   const prevFakturaIdRef = React.useRef(fakturaId);
@@ -651,6 +698,9 @@ const InvoiceAttachmentsCompact = ({
         const fileExists = att.file_exists !== false; // Backend by měl vrátit file_exists: false pokud soubor chybí
         const hasError = att.error || att.file_error;
 
+        // 🔍 Najít název typu přílohy z číselníku
+        const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === (att.type || att.typ_prilohy));
+
         return {
           id: att.id,
           serverId: att.id,
@@ -658,8 +708,9 @@ const InvoiceAttachmentsCompact = ({
           size: att.file_size || att.velikost_souboru_b,
           type: (att.original_name || att.originalni_nazev_souboru || '').endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
           klasifikace: att.type || att.typ_prilohy || 'FILE', // ✅ Fallback na 'FILE' pokud chybí
-          faktura_typ_nazev: att.faktura_typ_nazev,
+          faktura_typ_nazev: typPrilohy?.nazev || att.faktura_typ_nazev, // ✅ Získat název z číselníku nebo použít z API
           uploadDate: att.upload_date || att.dt_vytvoreni || new Date().toISOString(), // ✅ Fallback na aktuální čas
+          uploadedByUserId: att.uploaded_by_user_id || att.nahrano_uzivatel_id, // ✅ ID uživatele, který nahrál
           status: fileExists ? 'uploaded' : 'error', // ⚠️ Označit poškozené přílohy
           je_isdoc: att.je_isdoc,
           error: hasError || (!fileExists ? 'Fyzický soubor chybí na disku' : null) // ⚠️ Chybová zpráva
@@ -2483,7 +2534,7 @@ const InvoiceAttachmentsCompact = ({
                     fontSize: '0.6875rem',
                     fontWeight: '500'
                   }}>
-                    Nahráno: {username || 'Super ADMIN'}
+                    Nahráno: {getUserDisplayName(file.uploadedByUserId)}
                   </span>
                   {file.faktura_typ_nazev && (
                     <>

@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { getOrderV2, getNextOrderNumberV2 } from '../../../services/apiOrderV2'; // ✅ V2 API
+import { getOrderV2, getNextOrderNumberV2, listInvoiceAttachments } from '../../../services/apiOrderV2'; // ✅ V2 API + přílohy faktur
 import { WORKFLOW_STATES } from '../../../constants/workflow25';
 
 export const useOrderDataLoader = ({ token, username, dictionaries }) => {
@@ -329,7 +329,9 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
           // ✅ Zachovat originální DB pole pro API odesílání
           fa_datum_doruceni: faktura.fa_datum_doruceni,
           fa_datum_splatnosti: faktura.fa_datum_splatnosti,
-          fa_datum_vystaveni: faktura.fa_datum_vystaveni
+          fa_datum_vystaveni: faktura.fa_datum_vystaveni,
+          // 📎 PŘÍLOHY: Přenést attachments z dbOrder (načtené v loadOrderForEdit)
+          attachments: faktura.attachments || []
           // ✅ VĚCNÁ SPRÁVNOST: 1:1 mapování - žádné přejmenovávání polí!
           // vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
           // potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti - vše 1:1 z DB
@@ -606,6 +608,41 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       if (!dbOrder) {
         console.error('❌ [useOrderDataLoader] dbOrder is null!');
         throw new Error(`Order ${orderId} not found`);
+      }
+
+      // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (pokud existují)
+      if (dbOrder.faktury && Array.isArray(dbOrder.faktury) && dbOrder.faktury.length > 0) {
+        console.log(`🔍 [useOrderDataLoader] Načítám přílohy pro ${dbOrder.faktury.length} faktur`);
+        
+        const fakturyWithAttachments = await Promise.all(
+          dbOrder.faktury.map(async (faktura) => {
+            let attachments = [];
+            
+            // Načíst přílohy pouze pro reálné ID (ne temp-)
+            if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+              try {
+                console.log(`🔍 [useOrderDataLoader] Načítám přílohy pro fakturu ID=${faktura.id}`);
+                const attachResponse = await listInvoiceAttachments(
+                  faktura.id,
+                  username,
+                  token,
+                  orderId
+                );
+                attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                console.log(`✅ [useOrderDataLoader] Načteno ${attachments.length} příloh pro fakturu ID=${faktura.id}`);
+              } catch (err) {
+                console.error(`❌ [useOrderDataLoader] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                // Pokračovat i při chybě - přílohy jsou optional
+              }
+            }
+            
+            return { ...faktura, attachments };
+          })
+        );
+        
+        // Nahradit faktury včetně příloh
+        dbOrder.faktury = fakturyWithAttachments;
+        console.log(`✅ [useOrderDataLoader] Faktury obohaceny o přílohy`);
       }
 
       const transformedData = transformOrderData(dbOrder, dictionaries);

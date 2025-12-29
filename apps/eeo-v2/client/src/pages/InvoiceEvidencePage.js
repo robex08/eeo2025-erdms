@@ -4798,6 +4798,7 @@ export default function InvoiceEvidencePage() {
                 fa_strediska_kod: formData.fa_strediska_kod
               }}
               validateInvoiceForAttachments={validateInvoiceForAttachments}
+              allUsers={zamestnanci}
               attachments={attachments}
               onAttachmentsChange={handleAttachmentsChange}
               onAttachmentUploaded={handleAttachmentUploaded}
