@@ -432,7 +432,9 @@ function loadOrderInvoices($db, $order_id) {
             s.popis as fa_typ_popis,
             u_vecna.jmeno as potvrdil_vecnou_spravnost_jmeno,
             u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
-            u_vecna.email as potvrdil_vecnou_spravnost_email
+            u_vecna.email as potvrdil_vecnou_spravnost_email,
+            u_vecna.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
+            u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za
         FROM `$faktury_table` f
         LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
@@ -1190,6 +1192,18 @@ function enrichOrderWithCodebooks($db, &$order) {
     // Druh objednávky
     if (isset($order['druh_objednavky_kod']) && $order['druh_objednavky_kod']) {
         $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $order['druh_objednavky_kod']);
+    }
+    
+    // Enrichment pro faktury (potvrdil_vecnou_spravnost)
+    if (isset($order['faktury']) && is_array($order['faktury'])) {
+        foreach ($order['faktury'] as &$faktura) {
+            $faktura_enriched = array();
+            if (isset($faktura['potvrdil_vecnou_spravnost_id']) && $faktura['potvrdil_vecnou_spravnost_id']) {
+                $faktura_enriched['potvrdil_vecnou_spravnost'] = loadUserById($db, $faktura['potvrdil_vecnou_spravnost_id']);
+            }
+            $faktura['_enriched'] = $faktura_enriched;
+        }
+        unset($faktura); // Uvolnění reference
     }
     
     // Přidáme enriched data k objednávce

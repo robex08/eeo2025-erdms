@@ -1858,23 +1858,126 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 </div>
               )}
 
-              {/* 6. Věcná správnost */}
+              {/* 6. Věcná správnost objednávky (agregovaná) */}
               {orderData.dt_potvrzeni_vecne_spravnosti && (
                 <div style={{ 
                   display: 'flex', 
                   alignItems: 'flex-start', 
                   gap: '0.75rem',
-                  marginBottom: '0.75rem'
+                  marginBottom: '0.75rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px solid #e5e7eb'
                 }}>
                   <span style={{ color: '#16a34a', fontSize: '1.1rem', lineHeight: '1.4' }}>✅</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.25rem' }}>
-                      Potvrzení věcné správnosti
+                      Potvrzení věcné správnosti (objednávka)
                     </div>
                     <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                       {formatDateOnly(orderData.dt_potvrzeni_vecne_spravnosti)}
                       {(() => {
                         const enriched = orderData._enriched?.potvrdil_vecnou_spravnost;
+                        if (enriched) {
+                          const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
+                          const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
+                          return ` • ${titul_pred}${enriched.jmeno} ${enriched.prijmeni}${titul_za}`;
+                        }
+                        return '';
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 6b. Individuální věcná správnost u faktur */}
+              {orderData.faktury && orderData.faktury.some(f => f.dt_potvrzeni_vecne_spravnosti) && (
+                <div style={{ 
+                  marginBottom: '0.75rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+                    Věcná správnost jednotlivých faktur:
+                  </div>
+                  {orderData.faktury
+                    .filter(f => f.dt_potvrzeni_vecne_spravnosti)
+                    .map((faktura, idx) => {
+                      const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));
+                      return (
+                        <div key={faktura.id || idx} style={{ 
+                          display: 'flex', 
+                          alignItems: 'flex-start', 
+                          gap: '0.75rem',
+                          marginBottom: idx < orderData.faktury.filter(f => f.dt_potvrzeni_vecne_spravnosti).length - 1 ? '0.5rem' : 0,
+                          paddingLeft: '1rem',
+                          padding: isBeingEdited ? '0.5rem 0.75rem 0.5rem 1rem' : '0 0 0 1rem',
+                          background: isBeingEdited ? '#fffbeb' : 'transparent',
+                          borderRadius: '6px',
+                          border: isBeingEdited ? '2px solid #f59e0b' : 'none',
+                          transition: 'all 0.2s ease'
+                        }}>
+                          <span style={{ color: '#16a34a', fontSize: '1rem', lineHeight: '1.4' }}>✓</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.875rem', color: isBeingEdited ? '#78350f' : '#6b7280' }}>
+                              <span style={{ 
+                                fontWeight: isBeingEdited ? '700' : '500', 
+                                color: isBeingEdited ? '#92400e' : '#4b5563' 
+                              }}>
+                                {faktura.fa_cislo_vema || `Faktura #${orderData.faktury.indexOf(faktura) + 1}`}
+                                {isBeingEdited && ' ← PRÁVĚ EDITUJETE'}
+                              </span>
+                              {' • '}
+                              {formatDateOnly(faktura.dt_potvrzeni_vecne_spravnosti)}
+                              {(() => {
+                                // Použít data z SQL JOINu (priorita) nebo enriched jako fallback
+                                let jmeno, prijmeni, titul_pred, titul_za;
+                                
+                                if (faktura.potvrdil_vecnou_spravnost_jmeno) {
+                                  // Data z SQL JOINu
+                                  jmeno = faktura.potvrdil_vecnou_spravnost_jmeno;
+                                  prijmeni = faktura.potvrdil_vecnou_spravnost_prijmeni;
+                                  titul_pred = faktura.potvrdil_vecnou_spravnost_titul_pred;
+                                  titul_za = faktura.potvrdil_vecnou_spravnost_titul_za;
+                                } else if (faktura._enriched?.potvrdil_vecnou_spravnost) {
+                                  // Enriched data jako fallback
+                                  const enriched = faktura._enriched.potvrdil_vecnou_spravnost;
+                                  jmeno = enriched.jmeno;
+                                  prijmeni = enriched.prijmeni;
+                                  titul_pred = enriched.titul_pred;
+                                  titul_za = enriched.titul_za;
+                                }
+                                
+                                if (jmeno && prijmeni) {
+                                  const titul_pred_str = titul_pred ? `${titul_pred} ` : '';
+                                  const titul_za_str = titul_za ? `, ${titul_za}` : '';
+                                  return ` • ${titul_pred_str}${jmeno} ${prijmeni}${titul_za_str}`;
+                                }
+                                return '';
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* 7. Dokončení objednávky */}
+              {orderData.dt_dokonceni && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'flex-start', 
+                  gap: '0.75rem'
+                }}>
+                  <span style={{ color: '#16a34a', fontSize: '1.1rem', lineHeight: '1.4' }}>✅</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '600', color: '#374151', marginBottom: '0.25rem' }}>
+                      Dokončení objednávky
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {formatDateOnly(orderData.dt_dokonceni)}
+                      {(() => {
+                        const enriched = orderData._enriched?.dokoncil;
                         if (enriched) {
                           const titul_pred = enriched.titul_pred ? `${enriched.titul_pred} ` : '';
                           const titul_za = enriched.titul_za ? `, ${enriched.titul_za}` : '';
