@@ -1591,9 +1591,20 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
         $stmt->execute([':order_id' => $objectId]);
         $items = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Dekóduj JSON pole - STŘEDISKA
+        // Dekóduj JSON pole - STŘEDISKA a načti názvy z číselníku
         $strediska_arr = json_decode($order['strediska_kod'] ?? '[]', true);
-        $strediska_names = is_array($strediska_arr) ? $strediska_arr : [];
+        $strediska_names = [];
+        
+        if (is_array($strediska_arr) && !empty($strediska_arr)) {
+            $placeholders_str = implode(',', array_fill(0, count($strediska_arr), '?'));
+            $stmt_str = $db->prepare("SELECT kod_stavu, nazev_stavu FROM " . TBL_CISELNIK_STAVY . " WHERE typ_objektu = 'STREDISKA' AND kod_stavu IN ($placeholders_str)");
+            $stmt_str->execute($strediska_arr);
+            
+            while ($str_row = $stmt_str->fetch(PDO::FETCH_ASSOC)) {
+                $strediska_names[] = $str_row['nazev_stavu'];
+            }
+        }
+        
         $strediska_text = !empty($strediska_names) ? implode(', ', $strediska_names) : 'Neuvedeno';
         
         // Dekóduj JSON - FINANCOVÁNÍ (komplexní struktura)
@@ -1611,11 +1622,11 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             } elseif ($typ === 'FAKTURA' && isset($financovani_obj['cislo_faktury'])) {
                 $financovani_text = 'Faktura č. ' . $financovani_obj['cislo_faktury'];
             } elseif ($typ === 'LP' && isset($financovani_obj['lp_kody']) && is_array($financovani_obj['lp_kody'])) {
-                // LP jsou uložené jako pole ID - načíst z DB
+                // LP jsou uložené jako pole ID - načíst z DB (OPRAVENO: použít správnou tabulku 25_limitovane_prisliby)
                 $lp_ids = array_map('intval', $financovani_obj['lp_kody']);
                 if (!empty($lp_ids)) {
                     $placeholders_lp = implode(',', array_fill(0, count($lp_ids), '?'));
-                    $stmt_lp = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . OLD_TABLE_LPS . " WHERE id IN ($placeholders_lp)");
+                    $stmt_lp = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LP_MASTER . " WHERE id IN ($placeholders_lp)");
                     $stmt_lp->execute($lp_ids);
                     $lp_names = [];
                     while ($lp_row = $stmt_lp->fetch(PDO::FETCH_ASSOC)) {
@@ -1880,7 +1891,7 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
             $stmt = $db->prepare("
-                SELECT id FROM users 
+                SELECT id FROM " . TBL_UZIVATELE . " 
                 WHERE id IN ($placeholders) 
                 AND lokalita_id = ?
             ");
@@ -1900,7 +1911,7 @@ function applyScopeFilter($db, $userIds, $scopeFilter, $entityType, $entityId) {
             
             $placeholders = implode(',', array_fill(0, count($userIds), '?'));
             $stmt = $db->prepare("
-                SELECT id FROM users 
+                SELECT id FROM " . TBL_UZIVATELE . " 
                 WHERE id IN ($placeholders) 
                 AND usek_id = ?
             ");
@@ -2679,15 +2690,15 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
                 
-                // 8. Určit variantu šablony podle recipientRole
-                $variant = 'normalVariant'; // default
+                // 8. Určit variantu šablony podle recipientRole (OPRAVENO: názvy variant odpovídají HTML markerům)
+                $variant = 'APPROVER_NORMAL'; // default
                 
                 if ($recipientRole === 'EXCEPTIONAL') {
-                    $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'urgentVariant';
+                    $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
                 } elseif ($recipientRole === 'INFO' || $recipientRole === 'AUTHOR_INFO' || $recipientRole === 'GUARANTOR_INFO') {
-                    $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'infoVariant';
+                    $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
                 } else {
-                    $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'normalVariant';
+                    $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'APPROVER_NORMAL';
                 }
                 
                 error_log("         → Template variant: $variant");
@@ -2791,8 +2802,8 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                         
                         $sourceParticipants = array_unique($sourceParticipants);  // Odstranit duplicity
                         
-                        // Získat INFO variantu z NODE
-                        $infoVariantName = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : '';
+                        // Získat INFO variantu z NODE (OPRAVENO: default na SUBMITTER)
+                        $infoVariantName = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
                         
                         foreach ($sourceParticipants as $sourceUserId) {
                             // Zkontrolovat, zda už není v seznamu (z NODE filtru)
@@ -3126,7 +3137,7 @@ function handle_notifications_user_preferences($input, $config, $queries) {
         $db = get_db($config);
         
         // Načíst uzivatel_id z username
-        $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_UZIVATELE . " WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -3187,7 +3198,7 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
         $db = get_db($config);
         
         // Načíst uzivatel_id
-        $stmt = $db->prepare("SELECT id FROM users WHERE username = :username");
+        $stmt = $db->prepare("SELECT id FROM " . TBL_UZIVATELE . " WHERE username = :username");
         $stmt->execute([':username' => $request_username]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
