@@ -1481,7 +1481,7 @@ export default function InvoiceEvidencePage() {
   // 🎨 Readonly režim pro omezené účty
   const isReadOnlyMode = !hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS');
 
-  // 📂 Collapsible sections state
+  // �📂 Collapsible sections state
   const [sectionStates, setSectionStates] = useState({
     invoiceData: true, // vždy rozvinutá při načtení
     materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro uživatele bez INVOICE_MANAGE (tě s INVOICE_MATERIAL_CORRECTNESS)
@@ -1648,7 +1648,12 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // 💾 AUTO-SAVE všech dat do localStorage při změně (per-user pomocí user_id)
+  // � Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
+  const isInvoiceEditable = useMemo(() => {
+    return !isReadOnlyMode && !(formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed);
+  }, [isReadOnlyMode, formData.order_id, orderData, canAddInvoiceToOrder]);
+
+  // �💾 AUTO-SAVE všech dat do localStorage při změně (per-user pomocí user_id)
   // Sloučení všech AUTO-SAVE operací do jednoho useEffect pro efektivitu
   useEffect(() => {
     if (!lsLoaded || !user_id || !allowLSSave) return; // ✅ OPRAVENO: Kontrola allowLSSave flagu
@@ -4495,7 +4500,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_doruceni}
                 />
@@ -4515,7 +4520,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_vystaveni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_vystaveni}
                 />
@@ -4535,7 +4540,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_splatnosti}
                 />
@@ -4560,7 +4565,7 @@ export default function InvoiceEvidencePage() {
                   onChange={(e) => {
                     setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
                   }}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   options={[
                     { id: 'BEZNA', nazev: 'Běžná faktura' },
                     { id: 'ZALOHOVA', nazev: 'Zálohová faktura' },
@@ -4594,18 +4599,19 @@ export default function InvoiceEvidencePage() {
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, fa_cislo_vema: '' }))}
+                      disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
+                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat variabilní symbol"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -4617,7 +4623,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_cislo_vema"
                   value={formData.fa_cislo_vema}
                   onChange={handleInputChange}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   onBlur={(e) => {
                     // Po ztrátě fokusu zvýraznit text tučně (pokud má hodnotu)
                     if (e.target.value) {
@@ -4647,18 +4653,19 @@ export default function InvoiceEvidencePage() {
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, fa_castka: '' }))}
+                      disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
+                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat částku"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -4688,7 +4695,7 @@ export default function InvoiceEvidencePage() {
                       }
                     }
                   }}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   hasError={!!fieldErrors.fa_castka}
                   placeholder="25 000,50"
                 />
@@ -4710,18 +4717,19 @@ export default function InvoiceEvidencePage() {
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, fa_strediska_kod: [] }))}
+                      disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
+                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat střediska"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -4740,7 +4748,7 @@ export default function InvoiceEvidencePage() {
                   }}
                   options={strediskaOptions}
                   placeholder={strediskaLoading ? "Načítám střediska..." : "Vyberte střediska..."}
-                  disabled={isReadOnlyMode || loading || strediskaLoading}
+                  disabled={!isInvoiceEditable || loading || strediskaLoading}
                 />
               </FieldGroup>
             </FieldRow>
@@ -4754,18 +4762,19 @@ export default function InvoiceEvidencePage() {
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, fa_poznamka: '' }))}
+                      disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
+                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat poznámku"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -4776,7 +4785,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_poznamka"
                   value={formData.fa_poznamka}
                   onChange={handleInputChange}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="Volitelná poznámka..."
                 />
               </FieldGroup>
@@ -4787,7 +4796,7 @@ export default function InvoiceEvidencePage() {
               fakturaId={editingInvoiceId || 'temp-new-invoice'}
               objednavkaId={formData.order_id || null}
               fakturaTypyPrilohOptions={typyFakturOptions}
-              readOnly={isReadOnlyMode}
+              readOnly={!isInvoiceEditable}
               onISDOCParsed={handleISDOCParsed}
               formData={formData}
               faktura={{
@@ -4838,7 +4847,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_predani_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="dd.mm.rrrr"
                 />
               </FieldGroup>
@@ -4851,7 +4860,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_vraceni_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
-                  disabled={isReadOnlyMode || loading}
+                  disabled={!isInvoiceEditable || loading}
                   placeholder="dd.mm.rrrr"
                 />
                 {formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam && 
@@ -4878,18 +4887,19 @@ export default function InvoiceEvidencePage() {
                         fa_datum_predani_zam: '',
                         fa_datum_vraceni_zam: ''
                       }))}
+                      disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#9ca3af',
-                        cursor: 'pointer',
+                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#6b7280'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat zaměstnance (včetně datumů předání/vrácení)"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -4904,7 +4914,7 @@ export default function InvoiceEvidencePage() {
                   }))}
                   options={zamestnanci}
                   placeholder={zamestnanciLoading ? "Načítám zaměstnance..." : "-- Nevybráno --"}
-                  disabled={isReadOnlyMode || loading || zamestnanciLoading}
+                  disabled={!isInvoiceEditable || loading || zamestnanciLoading}
                   field="fa_predana_zam_id"
                   selectStates={selectStates}
                   setSelectStates={setSelectStates}
