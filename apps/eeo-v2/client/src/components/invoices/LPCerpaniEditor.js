@@ -94,7 +94,7 @@ const LPRow = styled.div`
   grid-template-columns: 280px minmax(180px, 1fr) 50px;
   gap: 12px;
   margin-bottom: 12px;
-  align-items: end; /* 🎯 Alignment na konec aby byly prvky ve stejné linii */
+  align-items: start; /* 🎯 Alignment na začátek pro lepší zarovnání */
 `;
 
 const FormGroup = styled.div`
@@ -107,6 +107,7 @@ const FormGroup = styled.div`
     color: #495057;
     margin-bottom: 4px;
     height: 18px; /* 🎯 Fixní výška labelu pro konzistenci */
+    line-height: 18px; /* 🎯 Line height pro vertikální centrování */
     
     /* Červená hvězdička pro povinná pole */
     &:has(+ select[required]),
@@ -115,6 +116,15 @@ const FormGroup = styled.div`
         content: ' *';
         color: #dc2626;
       }
+    }
+  }
+
+  /* 🎯 Override CustomSelect výšky pro sladění */
+  [data-component="CustomSelect"] {
+    height: 42px !important;
+    
+    & > div:first-child {
+      height: 42px !important;
     }
   }
 `;
@@ -183,8 +193,9 @@ const CurrencySymbol = styled.span`
 const ButtonGroup = styled.div`
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end; /* 🎯 Zarovnání na spodní hranu pro konzistenci s inputy */
   justify-content: center;
+  height: 42px; /* 🎯 Stejná výška jako prvky ve sloupci */
 `;
 
 const IconButton = styled.button`
@@ -729,15 +740,25 @@ function LPCerpaniEditor({
         </AutoFillNote>
       )}
 
-      {rows.map((row, index) => (
+      {rows.map((row, index) => {
+        // 🔍 DEBUG: Kontrola dat řádku a options
+        console.log('🔍 [Řádek render] row:', row);
+        console.log('🔍 [Řádek render] filteredLPCodes.length:', filteredLPCodes.length);
+        console.log('🔍 [Řádek render] filteredLPCodes[0]:', filteredLPCodes[0]);
+        
+        return (
         <LPRow key={row.id}>
           <FormGroup>
             <label>
               LP kód <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <CustomSelect
+              data-component="CustomSelect"
               value={row.lp_cislo ? [row.lp_cislo] : []}
               onChange={(selectedValues) => {
+                // 🔍 DEBUG: Log hodnot z CustomSelect
+                console.log('🔍 [CustomSelect onChange]:', { selectedValues, row });
+                
                 // 🎯 Oprava: použít první vybrané ID (selectedValues jsou ID, ne cislo_lp)
                 const selectedId = selectedValues.length > 0 ? selectedValues[0] : null;
                 handleLPChange(row.id, selectedId);
@@ -761,10 +782,16 @@ function LPCerpaniEditor({
               toggleSelect={toggleSelect}
               filterOptions={filterOptions}
               getOptionLabel={(option) => {
+                // 🔍 DEBUG: Log option struktura
+                console.log('🔍 [getOptionLabel] option:', option);
+                
                 // 🎯 Stejný formát jako v OrderForm25
-                return option.cislo_lp
+                const label = option.cislo_lp
                   ? `${option.cislo_lp} - ${option.nazev_uctu || 'Bez názvu'}`
                   : `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
+                
+                console.log('🔍 [getOptionLabel] finální label:', label);
+                return label;
               }}
             />
           </FormGroup>
@@ -792,7 +819,8 @@ function LPCerpaniEditor({
             </IconButton>
           </ButtonGroup>
         </LPRow>
-      ))}
+        );
+      })}
 
       {filteredLPCodes.length > rows.length && (
         <AddButton
