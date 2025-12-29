@@ -3915,19 +3915,42 @@ export default function InvoiceEvidencePage() {
           <FormColumn>
             <div style={{ 
               display: 'flex', 
+              flexDirection: 'column',
               alignItems: 'center', 
               justifyContent: 'center',
-              minHeight: '200px',
-              color: '#6b7280',
-              fontSize: '1.1rem'
+              minHeight: '400px',
+              gap: '1.5rem'
             }}>
-              <div>
-                <FontAwesomeIcon icon={faSpinner} spin style={{marginRight: '0.5rem'}} />
+              <div style={{
+                width: '80px',
+                height: '80px',
+                border: '6px solid #e5e7eb',
+                borderTop: '6px solid #3b82f6',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <div style={{
+                color: '#6b7280',
+                fontSize: '1.1rem',
+                fontWeight: '500'
+              }}>
                 Načítají se číselníky...
+              </div>
+              <div style={{
+                color: '#9ca3af',
+                fontSize: '0.9rem'
+              }}>
+                Střediska, typy faktur, zaměstnanci
               </div>
             </div>
           </FormColumn>
         </ContentLayout>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </PageContainer>
     );
   }
