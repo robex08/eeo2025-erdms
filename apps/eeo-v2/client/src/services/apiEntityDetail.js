@@ -33,7 +33,7 @@ const getAuthBody = async (additionalData = {}) => {
 export const getUserDetail = async (userId) => {
   try {
     const body = await getAuthBody({ user_id: userId });
-    const response = await fetch(`${API_BASE_URL}users/detail`, {
+    const response = await fetch(`${API_BASE_URL}user/detail`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
