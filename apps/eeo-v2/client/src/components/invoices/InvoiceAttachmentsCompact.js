@@ -470,7 +470,8 @@ const InvoiceAttachmentsCompact = ({
   });
 
   // 🔄 Použít external attachments jako zdroj pravdy (controlled component)
-  const attachments = externalAttachments;
+  // ✅ BEZPEČNOSTNÍ KONTROLA: zajistit že attachments je vždy pole
+  const attachments = Array.isArray(externalAttachments) ? externalAttachments : [];
 
   // 🔧 Helper funkce pro aktualizaci attachments (volá onAttachmentsChange callback)
   // ⚠️ DŮLEŽITÉ: attachments NESMÍ být v dependencies - způsobuje stale closure!

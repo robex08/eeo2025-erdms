@@ -93,6 +93,7 @@ import {
 // 🎯 NOVÉ: Import refactored hooks pro state management
 import { useFormController, useWorkflowManager } from './OrderForm25/hooks';
 import { DocxGeneratorModal } from '../components/DocxGeneratorModal';
+import FinancialControlConfirmationModal from '../components/FinancialControlConfirmationModal';
 
 // Pomocná funkce pro formátování data pro DatePicker (YYYY-MM-DD formát)
 const formatDateForPicker = (date) => {
@@ -4297,6 +4298,11 @@ function OrderForm25() {
   const [isPhase3SectionsUnlocked, setIsPhase3SectionsUnlocked] = useState(false); // Výchozí stav - zamčeno
   const [isPhase3SectionsLockProcessedFromDB, setIsPhase3SectionsLockProcessedFromDB] = useState(false); // Flag že zamčení bylo zpracováno při načtení z DB
 
+  // 📋 State pro modal potvrzení finanční kontroly před dokončením objednávky
+  const [showFinancialControlConfirmation, setShowFinancialControlConfirmation] = useState(false);
+  const [financialControlConfirmed, setFinancialControlConfirmed] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState(null); // Data pro odložené uložení po potvrzení
+
   // State pro sledování stavu sbalení/rozbalení sekcí
   const [areSectionsCollapsed, setAreSectionsCollapsed] = useState(false);
 
@@ -8340,12 +8346,13 @@ function OrderForm25() {
   const handleInvoiceAttachmentsChange = useCallback((fakturaId, newAttachments) => {
     // ✅ OPRAVA: Pokud attachments mají faktura_id, použij to jako skutečné ID
     let realFakturaId = fakturaId;
-    if (newAttachments.length > 0 && newAttachments[0].faktura_id) {
+    if (newAttachments && Array.isArray(newAttachments) && newAttachments.length > 0 && newAttachments[0] && newAttachments[0].faktura_id) {
       realFakturaId = newAttachments[0].faktura_id;
     }
 
     // 🆕 DETEKCE POKLADNÍHO DOKLADU podle klasifikace příloh
-    const hasPokladniDoklad = newAttachments.some(att => {
+    const hasPokladniDoklad = Array.isArray(newAttachments) && newAttachments.some(att => {
+      if (!att) return false;
       const klasifikace = att.klasifikace || att.typ_prilohy || '';
       return klasifikace.toLowerCase().includes('pokladn') ||
              klasifikace.toLowerCase().includes('paragon');
@@ -9049,8 +9056,71 @@ function OrderForm25() {
     }
   };
 
+  // 📋 CALLBACK: Potvrzení dokončení objednávky (po vygenerování PDF)
+  const handleConfirmCompletion = async (pdfFile) => {
+    console.log('📋 [handleConfirmCompletion] Modal se zavřel, pokračujem...');
+    
+    // 1. OKAMŽITĚ zavřít modal a nastavit flag PŘED voláním save
+    setShowFinancialControlConfirmation(false);
+    setFinancialControlConfirmed(true); // 🚩 DŮLEŽITÉ: Nastavit PŘED saveOrderToAPI()
+    
+    try {
+      // 2. Na pozadí nahrát PDF
+      console.log('📋 Nahrávám PDF...');
+      await uploadOrderAttachment(
+        formData.id,
+        pdfFile,
+        username,
+        token,
+        'KOSILKA',
+        'fk-'
+      );
+      
+      // 3. NYNÍ save - předám flag přímo jako parametr
+      console.log('📋 Spouštím save s přeskočením finanční kontroly...');
+      await saveOrderToAPI(true); // ← Předám flag přímo
+
+      // 4. Přenačíst přílohy aby se zobrazila nově nahraná finanční kontrola
+      console.log('📋 Přenačítám přílohy...');
+      await loadAttachmentsSmartly();
+
+      console.log('📋 Hotovo!');
+      showToast && showToast('✅ Objednávka dokončena a finanční kontrola uložena', { type: 'success' });
+
+    } catch (error) {
+      console.error('❌ Chyba:', error);
+      showToast && showToast(`Chyba: ${error.message || error}`, { type: 'error' });
+    } finally {
+      // 5. Reset flag na konci (ať už úspěch nebo chyba)
+      setFinancialControlConfirmed(false);
+    }
+  };
+
+  // ❌ CALLBACK: Zrušení dokončení objednávky
+  const handleCancelCompletion = () => {
+    try {
+      // 1. Zavřít modal a resetovat flag
+      setShowFinancialControlConfirmation(false);
+      setFinancialControlConfirmed(false); // 🚩 Reset flag
+
+      // 2. Odškrtnout checkbox - vrátit zpět bez uložení
+      setFormData(prev => ({
+        ...prev,
+        potvrzeni_dokonceni_objednavky: 0
+      }));
+
+      // 3. NEULOŽIT - uživatel zrušil akci, vrátíme ho na formulář
+      
+      // 4. Toast info
+      showToast && showToast('ℹ️ Dokončení bylo zrušeno, změny nebyly uloženy', { type: 'info' });
+
+    } catch (error) {
+      console.error('Chyba při zrušení dokončení:', error);
+    }
+  };
+
   // Uložení objednávky do API (když je validní)
-  const saveOrderToAPI = async () => {
+  const saveOrderToAPI = async (skipFinancialControlModal = false) => {
     
     if (!token || !username) {
       showToast && showToast(formatToastMessage('Pro uložení objednávky musíte být přihlášeni', 'error'), { type: 'error' });
@@ -9063,7 +9133,21 @@ function OrderForm25() {
       return;
     }
 
-    // 🔒 KRITICKÉ: Vyčistit workflow update flag na začátku
+    // � INTERCEPT: Kontrola zda uživatel chce dokončit objednávku
+    // Pokud je zaškrtnutý checkbox dokončení a objednávka NENÍ ve stavu DOKONCENA,
+    // otevře se modal s náhledem finanční kontroly před potvrzením
+    const jeCheckboxZaskrtnut = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
+    const jeUzDokoncena = workflowManager?.hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA') || false;
+    
+    if (jeCheckboxZaskrtnut && !jeUzDokoncena && !financialControlConfirmed && !skipFinancialControlModal) {
+      // 🛑 STOP - NEPOKRAČOVAT v normálním save!
+      // ✅ Otevřít modal pro potvrzení finanční kontroly
+      console.log('📋 [DOKONCENI] Otevírám modal pro potvrzení finanční kontroly...');
+      setShowFinancialControlConfirmation(true);
+      return; // Ukončit - čeká se na uživatelovo rozhodnutí v modalu
+    }
+
+    // �🔒 KRITICKÉ: Vyčistit workflow update flag na začátku
     window.__workflowStateUpdated = false;
 
     // Nastavit saving state
@@ -26141,7 +26225,22 @@ function OrderForm25() {
       />
     )}
 
-    {/* 💾 Save Overlay - rozmaže zbytek stránky při ukládání (kromě hlavičky s progress barem) */}
+    {/* � Financial Control Confirmation Modal - Potvrzení dokončení objednávky */}
+    {showFinancialControlConfirmation && (
+      <FinancialControlConfirmationModal
+        order={formData}
+        onConfirm={handleConfirmCompletion}
+        onCancel={handleCancelCompletion}
+        generatedBy={{
+          fullName: userDetail ? `${userDetail.titul_pred || ''} ${userDetail.jmeno || ''} ${userDetail.prijmeni || ''} ${userDetail.titul_za || ''}`.trim() : username,
+          position: userDetail?.pozice_nazev || 'Uživatel'
+        }}
+        token={token}
+        username={username}
+      />
+    )}
+
+    {/* �💾 Save Overlay - rozmaže zbytek stránky při ukládání (kromě hlavičky s progress barem) */}
     {(showSaveProgress || isSaving) && (
       <SaveOverlay $visible={true} />
     )}
