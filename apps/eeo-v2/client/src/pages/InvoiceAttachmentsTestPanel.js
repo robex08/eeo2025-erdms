@@ -461,7 +461,6 @@ const InvoiceAttachmentsTestPanel = () => {
     const loadClassifications = async () => {
       try {
         const types = await getTypyFaktur25({ token, username, aktivni: 1 });
-        console.log('📎 Načtené typy faktur:', types);
         setFakturaTypyPrilohOptions(types);
       } catch (error) {
         console.error('Chyba načítání klasifikací:', error);

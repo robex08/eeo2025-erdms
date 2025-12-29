@@ -42,6 +42,9 @@ export const AuthProvider = ({ children }) => {
   const [user_id, setUserId] = useState(null); // Ensure user_id is part of the context
   const [userDetail, setUserDetail] = useState(null); // Ulož detail uživatele
   const [userPermissions, setUserPermissions] = useState([]); // array of normalized permission codes
+  const [needsPasswordChange, setNeedsPasswordChange] = useState(false); // 🔑 Vynucená změna hesla
+  const [temporaryPassword, setTemporaryPassword] = useState(''); // 🔑 Dočasné heslo pro vynucenou změnu
+  const [tempToken, setTempToken] = useState(null); // 🔑 Dočasný token pro změnu hesla
   
   // 🌲 HIERARCHIE WORKFLOW: Stav hierarchie pro aktuálního uživatele
   const [hierarchyStatus, setHierarchyStatus] = useState({
@@ -99,6 +102,7 @@ export const AuthProvider = ({ children }) => {
           return; // neprovádět další kroky
         }
       } catch {}
+
       // extract and store normalized permission codes
       try {
         const perms = extractPermissionCodes(userDetail || {});
@@ -165,6 +169,17 @@ export const AuthProvider = ({ children }) => {
       // ✅ BROADCAST: Oznámit ostatním záložkám, že došlo k přihlášení
       broadcastLogin(loginData.id, loginData.username);
 
+      // 🔑 VYNUCENÁ ZMĚNA HESLA: Nastavit flag POUZE při prvním přihlášení (login() je volán jen z Login.js handleSubmit)
+      // ⚠️ KRITICKÉ: Toto NESMÍ být v page reload logice (checkToken funkce v useEffect)
+      const forcePasswordChange = userDetail?.vynucena_zmena_hesla === 1 || userDetail?.vynucena_zmena_hesla === '1';
+      if (forcePasswordChange) {
+        setNeedsPasswordChange(true);
+        // ⚠️ ŽÁDNÝ return! - uživatel musí být přihlášen, dialog se zobrazí v Login.js
+      } else {
+        // ✅ Reset flag pokud backend NEVRÁTIL vynucenou změnu (např. po úspěšné změně hesla)
+        setNeedsPasswordChange(false);
+      }
+
       // 🎯 SPLASH SCREEN: Nastavit příznak, že aplikace byla inicializována
       // (aby se splash screen již nezobrazoval při dalších načteních)
       try {
@@ -221,6 +236,16 @@ export const AuthProvider = ({ children }) => {
       }
 
     } catch (err) {
+      // Kontrola na vynucenou změnu hesla
+      if (err.forcePasswordChange) {
+        setNeedsPasswordChange(true);
+        setError(err.message || 'Musíte si změnit heslo');
+        // Nastavit dočasné údaje pro změnu hesla včetně tokenu
+        setUser({ id: err.userId, username: err.username });
+        setTempToken(err.tempToken); // Dočasný token pro změnu hesla
+        return; // Nepropagovat error dál
+      }
+      
       const norm = normalizeApiError(err);
       setError(norm.userMessage || 'Nepodařilo se přihlásit.');
       // keep throwing the original error for logging callers if needed
@@ -340,6 +365,7 @@ export const AuthProvider = ({ children }) => {
     setUserDetail(null);
     setUserPermissions([]);
     setExpandedPermissions([]); // 🔐 Vyčistit i rozšířená práva
+    setNeedsPasswordChange(false); // 🔑 Reset vynucené změny hesla
     setHierarchyStatus({
       hierarchyEnabled: false,
       isImmune: false,
@@ -437,9 +463,9 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
       }
 
+      // Nastavit základní user data, ale ještě NE isLoggedIn
       setUser(storedUser);
       setToken(storedToken);
-      setIsLoggedIn(true);
       setUserId(storedUser.id);
 
       // Ověř platnost tokenu (např. jednoduchý request na backend)
@@ -520,6 +546,9 @@ export const AuthProvider = ({ children }) => {
               await saveAuthData.userPermissions(perms);
             } catch {}
           }
+          
+          // ✅ KRITICKÉ: Nastavit isLoggedIn = true PO úspěšné validaci tokenu!
+          setIsLoggedIn(true);
           setLoading(false);
         } catch (error) {
           // ⚠️ KRITICKÁ LOGIKA: Rozpoznej TYP chyby
@@ -646,13 +675,14 @@ export const AuthProvider = ({ children }) => {
                 if (storedUser && storedToken) {
                   setUser(storedUser);
                   setToken(storedToken);
-                  setIsLoggedIn(true);
                   setUserId(storedUser.id);
 
                   if (storedDetail) {
                     setUserDetail(storedDetail);
                     setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
                   }
+
+                  setIsLoggedIn(true);
 
                   if (storedPerms && storedPerms.length > 0) {
                     setUserPermissions(storedPerms);
@@ -852,6 +882,62 @@ export const AuthProvider = ({ children }) => {
 
   const username = user?.username || null;
 
+  // 🔑 Funkce pro změnu hesla při vynuceném heslu  
+  const changeForcePassword = async (newPassword) => {
+    console.log('🔐 changeForcePassword START:', { 
+      hasUser: !!user, 
+      username: user?.username, 
+      hasTempToken: !!tempToken,
+      newPasswordLength: newPassword?.length 
+    });
+    
+    if (!user || !user.username || !tempToken) {
+      console.error('❌ Chybí data:', { user, tempToken });
+      throw new Error('Chybí informace o uživateli nebo token');
+    }
+
+    const username = user.username;
+    
+    try {
+      // Změnit heslo přes správné API s tokenem z 403
+      // NEPOTŘEBUJEME oldPassword - backend ověří vynucena_zmena_hesla flag
+      const { changePasswordApi2 } = await import('../services/api2auth');
+      console.log('📤 Volám changePasswordApi2 s tokenem:', tempToken.substring(0, 20) + '...');
+      
+      const result = await changePasswordApi2({
+        token: tempToken,
+        username,
+        oldPassword: '', // Prázdné - backend to nevyžaduje při vynucené změně
+        newPassword
+      });
+      
+      console.log('✅ changePasswordApi2 result:', result);
+
+      // Backend vrátil potvrzení o změně hesla
+      if (result.success || result.token) {
+        // Vyčisti temporary token (ale NECHEJ needsPasswordChange = true pro zobrazení dialogu)
+        setTempToken(null);
+        
+        // 🔄 KOMPLETNÍ RELOGIN: Zavolat login() s novým heslem
+        // Tím se načte všechno stejně jako při běžném přihlášení
+        // DŮLEŽITÉ: login() automaticky nastaví needsPasswordChange = false pokud backend nevrátí forcePasswordChange
+        console.log('🔄 Spouštím kompletní relogin s novým heslem...');
+        await login(username, newPassword);
+        console.log('✅ Relogin dokončen úspěšně - proběhne full reload stránky');
+        
+        // 🔄 FULL RELOAD: Zajistit čistý start aplikace po změně hesla
+        // Tím se zaručí, že všechny komponenty a state se správně inicializují
+        setTimeout(() => {
+          window.location.href = '/dev/eeo-v2/';
+        }, 500);
+      }
+      
+    } catch (error) {
+      console.error('❌ Chyba při vynucené změně hesla:', error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -871,7 +957,9 @@ export const AuthProvider = ({ children }) => {
       hasPermission, 
       hasAdminRole, 
       refreshUserDetail,
-      hierarchyStatus // 🌲 HIERARCHIE WORKFLOW
+      hierarchyStatus, // 🌲 HIERARCHIE WORKFLOW
+      needsPasswordChange, // 🔑 Flag pro vynucenou změnu hesla
+      changeForcePassword // 🔑 Funkce pro změnu hesla
     }}>
       {children}
     </AuthContext.Provider>

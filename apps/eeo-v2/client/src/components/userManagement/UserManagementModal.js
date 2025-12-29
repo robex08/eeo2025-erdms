@@ -16,7 +16,7 @@ import {
   fetchPrava,
   fetchUseky
 } from '../../services/api2auth';
-import { User, Shield, Building, X, Save, AlertCircle, Check, Mail, Phone, Key, MapPin, Briefcase, Award, Search } from 'lucide-react';
+import { User, Shield, Building, X, Save, AlertCircle, Check, Mail, Phone, Key, MapPin, Briefcase, Award, Search, Eye, EyeOff, Shuffle } from 'lucide-react';
 import { CustomSelect } from '../CustomSelect';
 import PasswordStrengthValidator, { validatePasswordStrength } from '../PasswordStrengthValidator';
 
@@ -222,7 +222,7 @@ const FormGrid = styled.div`
 
 const FormGrid3Col = styled.div`
   display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 sloupce místo 3 pro Username | Heslo | Vynucení | Aktivní */
+  grid-template-columns: repeat(3, 1fr); /* 3 sloupce pro Username | Heslo | Vynutit změnu */
   gap: 1rem 1.25rem; /* row-gap column-gap */
 
   @media (max-width: 1024px) {
@@ -291,6 +291,101 @@ const InputWithIcon = styled.div`
     pointer-events: none;
     width: 15px !important;
     height: 15px !important;
+  }
+`;
+
+// Wrapper pro password input s více ikonami
+const PasswordInputWrapper = styled.div`
+  position: relative;
+  width: 100%;
+
+  > svg:first-of-type {
+    position: absolute;
+    left: 0.625rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    z-index: 1;
+    pointer-events: none;
+    width: 15px !important;
+    height: 15px !important;
+  }
+`;
+
+const PasswordActionIcons = styled.div`
+  position: absolute;
+  right: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.375rem;
+  z-index: 2;
+`;
+
+const PasswordIcon = styled.div`
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid #e2e8f0;
+  
+  svg {
+    width: 14px !important;
+    height: 14px !important;
+    color: #64748b !important;
+  }
+  
+  &:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    
+    svg {
+      color: #334155 !important;
+    }
+  }
+  
+  &:active {
+    transform: scale(0.95);
+    background: #e2e8f0;
+  }
+`;
+
+const PasswordInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.625rem 5rem 0.625rem 2.25rem; /* Více místa vpravo pro ikony */
+  border: 2px solid ${props => props.hasError ? '#dc2626' : '#e5e7eb'};
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  transition: all 0.2s ease;
+  background: ${props => props.hasError ? '#fef2f2' : '#ffffff'};
+
+  color: ${props => props.value && props.value !== '' ? '#1f2937' : '#6b7280'};
+  font-weight: ${props => {
+    if (props.disabled) return '400';
+    return props.value && props.value !== '' ? '600' : '400';
+  }};
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.hasError ? '#dc2626' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.hasError ? 'rgba(220, 38, 38, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+  }
+
+  &:disabled {
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: not-allowed;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+    font-weight: 400;
   }
 `;
 
@@ -477,6 +572,7 @@ const ToggleContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  height: 2.375rem; /* Same height as input (padding 0.625rem top/bottom + border + content) */
 `;
 
 const ToggleLabel = styled.div`
@@ -844,6 +940,7 @@ const UserManagementModal = ({
   const [roleFilter, setRoleFilter] = useState('');
   const [pravaFilter, setPravaFilter] = useState('');
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(false); // 🎯 Checkbox pro zobrazení jen nepřiřazených práv
+  const [showPassword, setShowPassword] = useState(false); // 👁️ State pro zobrazení hesla
 
   // Práva načtená z rolí (pro zobrazení jako disabled/readonly)
   const [rightsFromRoles, setRightsFromRoles] = useState(new Set());
@@ -1134,6 +1231,52 @@ const UserManagementModal = ({
     return '';
   };
 
+  // 🔑 Funkce pro generování náhodného hesla
+  const generatePassword = (length = 12, complexity = 'high') => {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    
+    let charset = lowercase;
+    let password = '';
+    
+    if (complexity === 'medium' || complexity === 'high') {
+      charset += uppercase + numbers;
+    }
+    if (complexity === 'high') {
+      charset += special;
+    }
+    
+    // Zajistit alespoň jeden znak z každé kategorie při high complexity
+    if (complexity === 'high') {
+      password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
+      password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+      password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+      password += special.charAt(Math.floor(Math.random() * special.length));
+      length -= 4;
+    }
+    
+    // Doplnit zbývající znaky náhodně
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    
+    // Zamíchat znaky
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
+
+  // 👁️ Funkce pro přepínání zobrazení hesla
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  // 🎲 Funkce pro vygenerování a nastavení nového hesla
+  const handleGeneratePassword = () => {
+    const newPassword = generatePassword(12, 'high');
+    handleChange('password', newPassword);
+  };
+
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -1310,6 +1453,7 @@ const UserManagementModal = ({
         pozice_id: formData.pozice_id || null,
         organizace_id: formData.organizace_id || null,
         aktivni: formData.aktivni,
+        vynucena_zmena_hesla: formData.vynucena_zmena_hesla,
         roles: formData.roles,
         direct_rights: formData.direct_rights
       };
@@ -1542,18 +1686,31 @@ const UserManagementModal = ({
                         Heslo
                         {mode === 'edit' && <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400 }}> (ponechat prázdné)</span>}
                       </Label>
-                      <InputWithIcon>
+                      <PasswordInputWrapper>
                         <Key size={16} />
-                        <Input
-                          hasIcon
-                          type="password"
+                        <PasswordInput
+                          type={showPassword ? 'text' : 'password'}
                           value={formData.password}
                           onChange={(e) => handleChange('password', e.target.value)}
                           placeholder={mode === 'edit' ? 'Nové heslo (volitelné)' : 'Heslo'}
                           autoComplete="new-password"
                           hasError={!!errors.password}
                         />
-                      </InputWithIcon>
+                        <PasswordActionIcons>
+                          <PasswordIcon 
+                            onClick={handleGeneratePassword}
+                            title="Vygenerovat náhodné heslo"
+                          >
+                            <Shuffle />
+                          </PasswordIcon>
+                          <PasswordIcon 
+                            onClick={togglePasswordVisibility}
+                            title={showPassword ? 'Skrýt heslo' : 'Zobrazit heslo'}
+                          >
+                            {showPassword ? <EyeOff /> : <Eye />}
+                          </PasswordIcon>
+                        </PasswordActionIcons>
+                      </PasswordInputWrapper>
                       {errors.password && <ErrorText><AlertCircle size={12} />{errors.password}</ErrorText>}
                       {formData.password && (
                         <PasswordStrengthValidator
@@ -1564,24 +1721,7 @@ const UserManagementModal = ({
                     </FormGroup>
 
                     <FormGroup>
-                      <Label>Aktivní</Label>
-                      <ToggleContainer>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={formData.aktivni === 1}
-                            onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                        <ToggleLabel $active={formData.aktivni === 1}>
-                          {formData.aktivni === 1 ? 'Aktivní' : 'Neaktivní'}
-                        </ToggleLabel>
-                      </ToggleContainer>
-                    </FormGroup>
-
-                    <FormGroup>
-                      <Label>Vynucení</Label>
+                      <Label>Vynutit změnu</Label>
                       <ToggleContainer>
                         <ToggleSwitch>
                           <input
@@ -1657,8 +1797,8 @@ const UserManagementModal = ({
                     </FormGroup>
                   </FormGrid4Col>
 
-                  <FormGrid style={{ marginTop: '1rem' }}>
-                    <FormGroup>
+                  <FormGrid4Col style={{ marginTop: '1rem' }}>
+                    <FormGroup $fullWidth>
                       <Label required>Email</Label>
                       <InputWithIcon>
                         <Mail size={16} />
@@ -1688,7 +1828,24 @@ const UserManagementModal = ({
                       </InputWithIcon>
                       {errors.telefon && <ErrorText><AlertCircle size={12} />{errors.telefon}</ErrorText>}
                     </FormGroup>
-                  </FormGrid>
+
+                    <FormGroup>
+                      <Label>Aktivní</Label>
+                      <ToggleContainer>
+                        <ToggleSwitch>
+                          <input
+                            type="checkbox"
+                            checked={formData.aktivni === 1}
+                            onChange={(e) => handleChange('aktivni', e.target.checked ? 1 : 0)}
+                          />
+                          <span></span>
+                        </ToggleSwitch>
+                        <ToggleLabel $active={formData.aktivni === 1}>
+                          {formData.aktivni === 1 ? 'Aktivní' : 'Neaktivní'}
+                        </ToggleLabel>
+                      </ToggleContainer>
+                    </FormGroup>
+                  </FormGrid4Col>
                 </FormSection>
               )}
 

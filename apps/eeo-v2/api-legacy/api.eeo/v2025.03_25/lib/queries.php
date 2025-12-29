@@ -178,6 +178,7 @@ $queries['uzivatele_select_all'] = "
         u.email,
         u.telefon,
         u.aktivni,
+        u.vynucena_zmena_hesla,
         u.dt_vytvoreni,
         u.dt_aktualizace,
         
@@ -199,7 +200,7 @@ $queries['uzivatele_select_all'] = "
     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
         LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
     WHERE u.id > 0
-    GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+    GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
     ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
 ";
 $queries['uzivatele_select_by_id'] = "SELECT * FROM ".TBL_UZIVATELE." WHERE id = :id";
@@ -1178,6 +1179,7 @@ $queries['user_detail_full'] = "
         u.titul_pred,
         u.titul_za,
         u.aktivni,
+        u.vynucena_zmena_hesla,
         u.dt_vytvoreni,
         u.dt_aktualizace,
         u.dt_posledni_aktivita,
