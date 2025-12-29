@@ -29,7 +29,8 @@ import {
   faExclamationTriangle,
   faCheckCircle
 } from '@fortawesome/free-solid-svg-icons';
-import { Trash } from 'lucide-react';
+import { Trash, Hash } from 'lucide-react';
+import { CustomSelect } from '../CustomSelect';
 
 // ============ STYLED COMPONENTS ============
 
@@ -569,13 +570,28 @@ function LPCerpaniEditor({
   }, [rows, totalAssigned, faktura, isLPFinancing]);
 
   // Handler pro změnu LP kódu
-  const handleLPChange = useCallback((rowId, lpCislo) => {
+  const handleLPChange = useCallback((rowId, selectedValues) => {
     setRows(prev => {
-      const updated = prev.map(row => 
-        row.id === rowId 
-          ? { ...row, lp_cislo: lpCislo, lp_id: null }
-          : row
-      );
+      const updated = prev.map(row => {
+        if (row.id === rowId) {
+          // selectedValues je array hodnot (protože multiple=false, bude obsahovat max 1 prvek)
+          const newValue = Array.isArray(selectedValues) && selectedValues.length > 0 
+            ? selectedValues[0] 
+            : '';
+          
+          // Najít LP objekt podle cislo_lp
+          const selectedLP = filteredLPCodes.find(lp => 
+            (lp.cislo_lp || lp.kod) === newValue
+          );
+          
+          return {
+            ...row,
+            lp_cislo: newValue,
+            lp_id: selectedLP?.id || null
+          };
+        }
+        return row;
+      });
       
       // Volání onChange okamžitě po aktualizaci
       if (onChange) {
@@ -585,7 +601,7 @@ function LPCerpaniEditor({
       
       return updated;
     });
-  }, [onChange]);
+  }, [filteredLPCodes, onChange]);
 
   // Handler pro změnu částky
   const handleCastkaChange = useCallback((rowId, value) => {
@@ -681,24 +697,30 @@ function LPCerpaniEditor({
       {rows.map((row, index) => (
         <LPRow key={row.id}>
           <FormGroup>
-            <label>LP kód</label>
-            <Select
-              value={row.lp_cislo}
-              onChange={(e) => handleLPChange(row.id, e.target.value)}
+            <label>
+              LP kód <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <CustomSelect
+              value={row.lp_cislo ? [row.lp_cislo] : []}
+              onChange={(selectedValues) => handleLPChange(row.id, selectedValues)}
+              options={filteredLPCodes}
+              placeholder="-- Vyberte LP --"
+              field={`lp_row_${row.id}`}
+              icon={<Hash />}
               disabled={disabled}
-              required
-            >
-              <option value="">-- Vyberte LP --</option>
-              {filteredLPCodes.map(lp => {
+              hasError={false}
+              required={true}
+              multiple={false}
+              getOptionLabel={(option) => {
+                if (!option) return '';
                 // Použít label pokud existuje, jinak sestavit z cislo_lp a nazev_uctu
-                const displayText = lp.label || `${lp.cislo_lp || lp.kod} - ${lp.nazev_uctu || lp.nazev || 'Bez názvu'}`;
-                return (
-                  <option key={lp.id} value={lp.cislo_lp || lp.kod}>
-                    {displayText}
-                  </option>
-                );
-              })}
-            </Select>
+                return option.label || `${option.cislo_lp || option.kod} - ${option.nazev_uctu || option.nazev || 'Bez názvu'}`;
+              }}
+              getOptionValue={(option) => {
+                if (!option) return '';
+                return option.cislo_lp || option.kod || option.id || String(option);
+              }}
+            />
           </FormGroup>
 
           <FormGroup>

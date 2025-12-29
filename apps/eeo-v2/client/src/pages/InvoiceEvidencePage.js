@@ -1684,7 +1684,6 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     if (!token || !username) return;
     
-    console.log('🔄 Načítám LP číselníky pro faktury...');
     dictionaries.loadAll();
   }, [token, username]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1994,17 +1993,13 @@ export default function InvoiceEvidencePage() {
           // 🆕 LP ČERPÁNÍ: Načíst čerpání LP pokud má objednávku (předběžně načteme, finální check bude až po loadOrderData)
           if (invoiceData.objednavka_id) {
             try {
-              console.log('💰 Načítám LP čerpání pro fakturu:', editIdToLoad);
               const lpResponse = await getFakturaLPCerpani(editIdToLoad, token, username);
-              console.log('🔍 [LP Load] Response from API:', lpResponse);
               
               // ✅ Backend vrací: { status: "ok", data: { lp_cerpani: [...], suma, fa_castka } }
               if (lpResponse && lpResponse.status === 'ok' && lpResponse.data && lpResponse.data.lp_cerpani) {
                 setLpCerpani(lpResponse.data.lp_cerpani);
                 setLpCerpaniLoaded(true);
-                console.log('✅ LP čerpání načteno:', lpResponse.data.lp_cerpani);
               } else {
-                console.log('⚠️ [LP Load] LP čerpání prázdné nebo neočekávaná struktura response');
                 setLpCerpani([]);
                 setLpCerpaniLoaded(true);
               }
@@ -2014,8 +2009,6 @@ export default function InvoiceEvidencePage() {
               setLpCerpani([]);
               setLpCerpaniLoaded(true);
             }
-          } else {
-            console.log('⚠️ [LP Load] Faktura nemá objednavka_id:', { 'invoiceData.objednavka_id': invoiceData.objednavka_id });
           }
           
           // Pokud je známa objednávka, načíst ji a nastavit searchTerm
@@ -2092,7 +2085,6 @@ export default function InvoiceEvidencePage() {
       const is423Error = err?.response?.status === 423 || err?.message?.includes('423') || err?.message?.includes('zamčen');
       
       if (is423Error) {
-        console.log('🔒 Objednávka je zamčená, naviguji zpět na seznam faktur');
         setError('Objednávka je zamčená jiným uživatelem');
         showToast && showToast('Objednávka je zamčená jiným uživatelem', 'error');
         setOrderLoading(false);
@@ -2188,7 +2180,6 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     // ✅ Pokud právě probíhá reset, nic nenačítat
     if (isResettingRef.current) {
-      console.log('⏭️ Skip loading - právě probíhá reset');
       return;
     }
     
@@ -2699,11 +2690,6 @@ export default function InvoiceEvidencePage() {
       if (removedAttachment.spisovka_dokument_id === metadata.dokument_id ||
           removedAttachment.spisovka_file_id === metadata.spisovka_priloha_id) {
         
-        console.log('🧹 Čistím Spisovka metadata pro smazanou přílohu:', {
-          dokument_id: metadata.dokument_id,
-          spisovka_priloha_id: metadata.spisovka_priloha_id
-        });
-        
         pendingSpisovkaMetadataRef.current = null;
         // Vyčistit aktivní dokument z localStorage
         localStorage.removeItem('spisovka_active_dokument');
@@ -2711,7 +2697,6 @@ export default function InvoiceEvidencePage() {
     } else {
       // ✅ Žádná pending metadata - vyčistit localStorage pro jistotu
       if (removedAttachment.spisovka_dokument_id) {
-        console.log('🧹 Čistím localStorage pro Spisovka dokument:', removedAttachment.spisovka_dokument_id);
         localStorage.removeItem('spisovka_active_dokument');
       }
     }
@@ -2767,7 +2752,6 @@ export default function InvoiceEvidencePage() {
             });
 
             if (result.success) {
-              console.log('✅ Duplicitní Spisovka dokument označen jako zpracovaný (force):', metadata);
               showToast && showToast('✅ Příloha přidána (duplicitní záznam vytvořen)', { type: 'success' });
             } else {
               console.warn('⚠️ Force tracking se nezdařil:', result);
@@ -2796,7 +2780,6 @@ export default function InvoiceEvidencePage() {
   const handleAttachmentUploaded = useCallback(async (fakturaId, uploadedAttachment) => {
     // Guard: Pokud není fakturaId, není co trackovat
     if (!fakturaId) {
-      console.log('⚠️ handleAttachmentUploaded: Chybí fakturaId, přeskakuji tracking');
       return;
     }
     
@@ -2832,7 +2815,7 @@ export default function InvoiceEvidencePage() {
           // ⚠️ NEvyčišťovat LS - uživatel může přidat další přílohy
         }
       } else {
-        console.log('ℹ️ Žádná Spisovka metadata k trackingu (není ze Spisovky)');
+        // Pokud není metadata - nic se neděá
       }
     } catch (spisovkaErr) {
       console.error('⚠️ Nepodařilo se označit Spisovka dokument jako zpracovaný:', spisovkaErr);
@@ -2930,8 +2913,6 @@ export default function InvoiceEvidencePage() {
         throw new Error('Nepodařilo se vytvořit fakturu v DB - backend nevrátil ID');
       }
 
-      console.log('✅ Faktura vytvořena v DB, ID:', newInvoiceId);
-
       // Nastav editingInvoiceId, aby se další přílohy uploadovaly k této faktuře
       setEditingInvoiceId(newInvoiceId);
       
@@ -2939,7 +2920,6 @@ export default function InvoiceEvidencePage() {
       // Tím zajistíme, že tlačítko bude "Aktualizovat" místo "Přiřadit"
       if (formData.order_id || formData.smlouva_id) {
         setHadOriginalEntity(true);
-        console.log('✅ hadOriginalEntity nastaveno na true (faktura má objednávku/smlouvu)');
       }
       
       // 🔄 Refresh náhledu objednávky/smlouvy - aby se FA zobrazila v seznamu
@@ -3227,8 +3207,6 @@ export default function InvoiceEvidencePage() {
         potvrdil_vecnou_spravnost_id: formData.potvrdil_vecnou_spravnost_id,
         dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti
       };
-
-      console.log('🔄 Aktualizace věcné kontroly faktury:', editingInvoiceId, updateData);
       
       const response = await updateInvoiceV2({
         token,
@@ -3236,8 +3214,6 @@ export default function InvoiceEvidencePage() {
         invoice_id: editingInvoiceId,
         updateData
       });
-      
-      console.log('🔄 Response dětails:', response);
 
       // ✅ Úspěšná aktualizace - zkontrolovat různé formáty response
       const isSuccess = response?.success === true || 
@@ -3254,9 +3230,7 @@ export default function InvoiceEvidencePage() {
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
         if (lpCerpani && lpCerpani.length > 0) {
           try {
-            console.log('💰 Ukládám LP čerpání:', lpCerpani);
             await saveFakturaLPCerpani(editingInvoiceId, lpCerpani, token, username);
-            console.log('✅ LP čerpání úspěšně uloženo');
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
@@ -3458,25 +3432,15 @@ export default function InvoiceEvidencePage() {
         });
         
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
-        console.log('🔍 [Submit] LP čerpání check:', { 
-          lpCerpani, 
-          lpCerpaniLength: lpCerpani?.length, 
-          hasLpCerpani: lpCerpani && lpCerpani.length > 0,
-          editingInvoiceId 
-        });
         
         if (lpCerpani && lpCerpani.length > 0) {
           try {
-            console.log('💰 Ukládám LP čerpání při UPDATE faktury:', lpCerpani);
             await saveFakturaLPCerpani(editingInvoiceId, lpCerpani, token, username);
-            console.log('✅ LP čerpání úspěšně uloženo');
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
             showToast && showToast('Faktura uložena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
           }
-        } else {
-          console.log('ℹ️ [Submit] LP čerpání prázdné - neukládám');
         }
         
         setProgress?.(100);
@@ -3514,25 +3478,15 @@ export default function InvoiceEvidencePage() {
 
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro novou fakturu (pokud je LP financování)
         const newInvoiceId = result?.data?.invoice_id || result?.data?.id || result?.invoice_id || result?.id;
-        console.log('🔍 [Submit CREATE] LP čerpání check:', { 
-          lpCerpani, 
-          lpCerpaniLength: lpCerpani?.length, 
-          hasLpCerpani: lpCerpani && lpCerpani.length > 0,
-          newInvoiceId 
-        });
         
         if (newInvoiceId && lpCerpani && lpCerpani.length > 0) {
           try {
-            console.log('💰 Ukládám LP čerpání při CREATE faktury:', lpCerpani);
             await saveFakturaLPCerpani(newInvoiceId, lpCerpani, token, username);
-            console.log('✅ LP čerpání úspěšně uloženo');
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
             showToast && showToast('Faktura vytvořena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
           }
-        } else {
-          console.log('ℹ️ [Submit CREATE] LP čerpání prázdné nebo faktura ID chybí - neukládám');
         }
 
         setProgress?.(100);
@@ -3608,23 +3562,14 @@ export default function InvoiceEvidencePage() {
               stavKody.push('FAKTURACE');
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
-              console.log(isAddingOrderToExistingInvoice 
-                ? '✅ PŘIŘAZENÍ FAKTURY: Objednávka nastavena na věcnou správnost' 
-                : '✅ NOVÁ FAKTURA: Objednávka nastavena na věcnou správnost'
-              );
             } else if (currentState === 'FAKTURACE') {
               // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
-              console.log(isAddingOrderToExistingInvoice 
-                ? '✅ PŘIŘAZENÍ FAKTURY: Přidán stav věcná správnost' 
-                : '✅ NOVÁ FAKTURA: Přidán stav věcná správnost'
-              );
             } else if (currentState === 'ZKONTROLOVANA') {
               // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
               stavKody.pop(); // Odstraň ZKONTROLOVANA
               needsUpdate = true;
-              console.log('⚠️ Objednávka vrácena z ZKONTROLOVANA na VECNA_SPRAVNOST');
             }
             // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
           }
@@ -3648,12 +3593,6 @@ export default function InvoiceEvidencePage() {
               token,
               username
             );
-
-            console.log('✅ Workflow objednávky aktualizováno:', {
-              oldState: currentState,
-              newStates: stavKody,
-              newStatusText: 'Věcná správnost'
-            });
 
             // 🔔 NOTIFIKACE: Odeslat notifikace objednateli, garantovi a schvalovateli
             await sendInvoiceNotifications(formData.order_id, orderData);
@@ -3729,13 +3668,7 @@ export default function InvoiceEvidencePage() {
                 poznamka: `Auto-tracking: Párování podle názvu souboru (fallback)`
               });
               
-              console.log('✅ Spisovka dokument označen jako zpracovaný (fallback podle názvu):', {
-                dokument_id: potentialDoc.dokument_id,
-                faktura_id: result.data.id,
-                filename: formData.file.name
-              });
             } else {
-              console.log('ℹ️ Nelze automaticky propojit Spisovka dokument (žádná shoda podle názvu souboru)');
             }
           }
         } catch (spisovkaErr) {
@@ -3820,17 +3753,16 @@ export default function InvoiceEvidencePage() {
                   objednavka_id: formData.order_id || null,
                   hard_delete: 1 // Fyzicky smazat ze serveru
                 });
-                console.log(`✅ Příloha ${att.name} smazána`);
               } catch (err) {
                 console.error(`❌ Chyba při mazání přílohy ${att.name}:`, err);
                 // Pokračovat v mazání dalších příloh i při chybě
               }
             }
           } else if (uploadedAttachments.length > 0 && !hasRealInvoiceId) {
-            console.log(`⚠️ Přílohy nahrány k temp-new-invoice - nemají DB záznam, nemazat přes API`);
+            // Přílohy nahrány k temp-new-invoice - nemají DB záznam, nemazat přes API
           }
         } else {
-          console.log('ℹ️ Editace reálné faktury - přílohy NEMAZAT (patří k existující faktuře)');
+          // Editace reálné faktury - přílohy NEMAZAT (patří k existující faktuře)
         }
         
         // Vyčistit formData aby se uvolnila reference na soubor
@@ -5429,11 +5361,7 @@ export default function InvoiceEvidencePage() {
 
                 {/* 🔥 LP ČERPÁNÍ EDITOR - pro faktury s LP financováním */}
                 {(() => {
-                  console.log('🔍 [LP Editor Check] orderData:', orderData);
-                  console.log('🔍 [LP Editor Check] orderData.financovani:', orderData?.financovani);
-                  
                   if (!orderData || !orderData.financovani) {
-                    console.log('❌ [LP Editor] Chybí orderData nebo financovani');
                     return null;
                   }
                   
@@ -5442,12 +5370,7 @@ export default function InvoiceEvidencePage() {
                       ? JSON.parse(orderData.financovani) 
                       : orderData.financovani;
                     
-                    console.log('🔍 [LP Editor Check] Parsed financovani:', fin);
-                    console.log('🔍 [LP Editor Check] fin.typ:', fin?.typ);
-                    console.log('🔍 [LP Editor Check] isLP:', fin?.typ === 'LP');
-                    
                     if (fin?.typ === 'LP') {
-                      console.log('✅ [LP Editor] Zobrazuji LP editor');
                       return (
                         <LPCerpaniEditor
                           faktura={formData}
@@ -5459,7 +5382,6 @@ export default function InvoiceEvidencePage() {
                         />
                       );
                     } else {
-                      console.log('❌ [LP Editor] Není LP financování');
                       return null;
                     }
                   } catch (e) {
