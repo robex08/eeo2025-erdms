@@ -262,6 +262,15 @@ const EmptyState = styled.div`
   background: #f9fafb;
   border: 1px dashed #d1d5db;
   border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  
+  svg {
+    width: 16px;
+    height: 16px;
+  }
 `;
 
 // File Viewer Modal Styles (převzato ze Spisovky)
@@ -470,7 +479,10 @@ const InvoiceAttachmentsCompact = ({
     onConfirm: null
   });
 
-  // 🔄 Použít external attachments jako zdroj pravdy (controlled component)
+  // � FLAG: Sleduje, zda jsme už jednou načetli přílohy ze serveru (prevence infinite loop)
+  const hasLoadedFromServerRef = React.useRef(false);
+
+  // �🔄 Použít external attachments jako zdroj pravdy (controlled component)
   // ✅ BEZPEČNOSTNÍ KONTROLA: zajistit že attachments je vždy pole
   // ✅ OPRAVA: Mapovat file_size -> size pokud přijde z API
   const attachments = useMemo(() => {
@@ -574,16 +586,27 @@ const InvoiceAttachmentsCompact = ({
   }, [isDraggingViewer, handleFileViewerDrag, handleFileViewerDragEnd]);
 
   // Načtení příloh při mount nebo změně faktura_id
-  // ✅ OPRAVA: Načítat ze serveru pokud je fakturaId validní, a pokud nemáme data v props
+  // ✅ OPRAVA INFINITE LOOP: Použít ref flag pro kontrolu, zda jsme už načetli data
+  useEffect(() => {
+    // ✅ Pokud se fakturaId změní, resetovat flag
+    hasLoadedFromServerRef.current = false;
+  }, [fakturaId]);
+
   useEffect(() => {
     if (fakturaId && !String(fakturaId).startsWith('temp-')) {
-      // ✅ Pokud už máme attachments z props (a nejsou prázdné), použít je
-      // ⚠️  ALE: Pokud jsou prázdné, zkusit načíst ze serveru (možná ještě nebyly načteny)
-      if (externalAttachments && externalAttachments.length > 0) {
-        return; // Máme data z props, nepřepisovat
+      // ✅ Pokud už máme attachments z props A NEJSOU undefined, použít je
+      // (prázdné pole [] je validní stav - znamená 0 příloh)
+      if (externalAttachments !== undefined && externalAttachments !== null) {
+        return; // Máme data z props (i když prázdné)
       }
       
-      // Prázdné nebo undefined → načíst ze serveru
+      // ✅ Pokud jsme už jednou načetli ze serveru, nepokračovat (prevence loop)
+      if (hasLoadedFromServerRef.current) {
+        return;
+      }
+      
+      // Prázdné nebo undefined → načíst ze serveru (pouze jednou!)
+      hasLoadedFromServerRef.current = true;
       loadAttachmentsFromServer();
     }
   }, [fakturaId, externalAttachments]);
@@ -727,7 +750,15 @@ const InvoiceAttachmentsCompact = ({
         return; // Nepřepisovat lokální pending attachments
       }
       
-      updateAttachments(serverAttachments);
+      // ⚠️ OPRAVA INFINITE LOOP: Neaktualizovat attachments pokud se nezměnily
+      // (prevence zbytečných re-renderů a loop)
+      const areAttachmentsEqual = (a, b) => {
+        if (a.length !== b.length) return false;
+        return a.every((att, i) => att.id === b[i]?.id && att.status === b[i]?.status);
+      };
+      
+      // Zatím neaktualizovat - počkat na verify
+      let finalAttachments = serverAttachments;
 
       // 🔍 VERIFY - Zkontrolovat fyzickou existenci souborů na serveru
       // ✅ OPRAVA: Použít invoice_id místo faktura_id + objednavka_id
@@ -745,7 +776,7 @@ const InvoiceAttachmentsCompact = ({
 
           if (verifyResult && verifyResult.attachments) {
             // ✅ OPRAVA: Aktualizovat serverAttachments (ne prev!), pak zavolat updateAttachments
-            const verifiedAttachments = serverAttachments.map(att => {
+            finalAttachments = serverAttachments.map(att => {
               const verifiedAtt = verifyResult.attachments.find(v => v.attachment_id === att.serverId);
               if (verifiedAtt && !verifiedAtt.file_exists) {
                 return {
@@ -757,11 +788,6 @@ const InvoiceAttachmentsCompact = ({
               return att;
             });
 
-            // Pouze pokud se něco změnilo, aktualizuj
-            if (verifiedAttachments.some((att, i) => att.status !== serverAttachments[i].status)) {
-              updateAttachments(verifiedAttachments);
-            }
-
             // Zobrazit summary pokud jsou nějaké chybějící soubory
             const summary = verifyResult.summary || {};
             if (summary.missing_files > 0) {
@@ -772,8 +798,11 @@ const InvoiceAttachmentsCompact = ({
           console.error('❌ Chyba při verify attachments:', verifyErr);
           // Neblokovat načítání kvůli chybě verify
         }
-      } else {
-        // VERIFY ATTACHMENTS přeskočeno - neplatné ID faktury
+      }
+
+      // ✅ AKTUALIZOVAT POUZE POKUD SE ZMĚNILY (prevence loop)
+      if (!areAttachmentsEqual(finalAttachments, externalAttachments || [])) {
+        updateAttachments(finalAttachments);
       }
 
     } catch (err) {
@@ -2294,6 +2323,14 @@ const InvoiceAttachmentsCompact = ({
           <Loader />
           Načítám přílohy...
         </LoadingState>
+      )}
+
+      {/* Empty state - když nejsou žádné přílohy */}
+      {!loading && attachments.length === 0 && (
+        <EmptyState>
+          <Paperclip />
+          Žádné přílohy nejsou
+        </EmptyState>
       )}
 
       {/* Attachments list - PŘESNĚ JAKO OBJEDNÁVKY */}

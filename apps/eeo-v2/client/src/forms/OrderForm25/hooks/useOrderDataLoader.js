@@ -612,8 +612,6 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
       // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (pokud existují)
       if (dbOrder.faktury && Array.isArray(dbOrder.faktury) && dbOrder.faktury.length > 0) {
-        console.log(`🔍 [useOrderDataLoader] Načítám přílohy pro ${dbOrder.faktury.length} faktur`);
-        
         const fakturyWithAttachments = await Promise.all(
           dbOrder.faktury.map(async (faktura) => {
             let attachments = [];
@@ -621,7 +619,6 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
             // Načíst přílohy pouze pro reálné ID (ne temp-)
             if (faktura.id && !String(faktura.id).startsWith('temp-')) {
               try {
-                console.log(`🔍 [useOrderDataLoader] Načítám přílohy pro fakturu ID=${faktura.id}`);
                 const attachResponse = await listInvoiceAttachments(
                   faktura.id,
                   username,
@@ -629,10 +626,10 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
                   orderId
                 );
                 attachments = attachResponse.data?.attachments || attachResponse.data || [];
-                console.log(`✅ [useOrderDataLoader] Načteno ${attachments.length} příloh pro fakturu ID=${faktura.id}`);
               } catch (err) {
                 console.error(`❌ [useOrderDataLoader] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
                 // Pokračovat i při chybě - přílohy jsou optional
+                attachments = []; // ✅ Ujistit se, že attachments je pole i při chybě
               }
             }
             
@@ -642,7 +639,9 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         
         // Nahradit faktury včetně příloh
         dbOrder.faktury = fakturyWithAttachments;
-        console.log(`✅ [useOrderDataLoader] Faktury obohaceny o přílohy`);
+      } else if (dbOrder.faktury && Array.isArray(dbOrder.faktury)) {
+        // ✅ I když faktury nemají přílohy, ujistit se že mají prázdné pole attachments
+        dbOrder.faktury = dbOrder.faktury.map(f => ({ ...f, attachments: [] }));
       }
 
       const transformedData = transformOrderData(dbOrder, dictionaries);

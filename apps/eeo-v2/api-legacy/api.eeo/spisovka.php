@@ -81,6 +81,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     $rok = isset($_GET['rok']) ? (int)$_GET['rok'] : 2025;
     
     // SQL dotaz - seznam faktur s počtem příloh
+    // REGEXP pattern odpovídá JS regex: /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i
     $sql = "
         SELECT 
             d.id as dokument_id,
@@ -93,7 +94,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
             COUNT(DISTINCT dtf.file_id) as pocet_priloh
         FROM dokument d
         LEFT JOIN dokument_to_file dtf ON d.id = dtf.dokument_id AND dtf.active = 1
-        WHERE d.nazev LIKE 'fa č. %'
+        WHERE d.nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'
           AND YEAR(d.datum_vzniku) = ?
         GROUP BY d.id
         ORDER BY d.id DESC
