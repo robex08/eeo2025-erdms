@@ -94,7 +94,7 @@ const LPRow = styled.div`
   grid-template-columns: 280px minmax(180px, 1fr) 50px;
   gap: 12px;
   margin-bottom: 12px;
-  align-items: center;
+  align-items: end; /* 🎯 Alignment na konec aby byly prvky ve stejné linii */
 `;
 
 const FormGroup = styled.div`
@@ -106,6 +106,7 @@ const FormGroup = styled.div`
     font-weight: 600;
     color: #495057;
     margin-bottom: 4px;
+    height: 18px; /* 🎯 Fixní výška labelu pro konzistenci */
     
     /* Červená hvězdička pro povinná pole */
     &:has(+ select[required]),
@@ -139,6 +140,7 @@ const Select = styled.select`
 
 const AmountInput = styled.input`
   flex: 1;
+  height: 42px; /* 🎯 Stejná výška jako CustomSelect */
   padding: 8px 12px;
   border: 1px solid ${props => props.hasError ? '#dc3545' : '#ced4da'};
   border-radius: 4px;
@@ -146,6 +148,7 @@ const AmountInput = styled.input`
   text-align: right;
   font-family: 'Roboto Mono', monospace;
   padding-right: 40px; /* Prostor pro Kč */
+  box-sizing: border-box; /* 🎯 Zahrnout border do výšky */
   
   &:focus {
     outline: none;
@@ -185,7 +188,7 @@ const ButtonGroup = styled.div`
 `;
 
 const IconButton = styled.button`
-  margin-top: 18px;
+  margin-top: 0; /* 🎯 Odstraněno margin-top pro správné alignment */
   background: #ef4444;
   color: white;
   border: 2px solid white;
@@ -195,8 +198,8 @@ const IconButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 42px; /* 🎯 Stejná šířka jako výška pro čtverec */
+  height: 42px; /* 🎯 Stejná výška jako input a CustomSelect */
   transition: all 0.2s;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
@@ -395,6 +398,11 @@ function LPCerpaniEditor({
   const [rows, setRows] = useState([]);
   const [validationMessages, setValidationMessages] = useState([]);
   
+  // 🆕 States pro CustomSelect
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+  const [touchedSelectFields, setTouchedSelectFields] = useState({});
+  
   // 🔥 Ref pro sledování, zda už byl proveden auto-fill (aby se neopakoval)
   const autoFilledRef = useRef(false);
   const prevFakturaIdRef = useRef(null);
@@ -408,35 +416,61 @@ function LPCerpaniEditor({
 
   // 🔥 Filtrovat LP kódy podle financování objednávky
   const filteredLPCodes = useMemo(() => {
-    if (!availableLPCodes || availableLPCodes.length === 0) return [];
+    if (!availableLPCodes || availableLPCodes.length === 0) {
+      console.warn('🚨 [LPCerpaniEditor] Žádné dostupné LP kódy!');
+      console.log('🔍 availableLPCodes:', availableLPCodes);
+      return [];
+    }
+    
+    // 🔍 DEBUG: Log všech dostupných LP kódů
+    console.log('🔍 [LPCerpaniEditor] Všechny dostupné LP kódy:', availableLPCodes);
     
     // Zkusit několik možných umístění LP kódů v orderData
     let lpKodyFromOrder = null;
     
+    // 🔍 DEBUG: Log orderData pro analýzu
+    console.log('🔍 [LPCerpaniEditor] orderData pro LP filtrování:', orderData);
+    console.log('🔍 [LPCerpaniEditor] orderData.lp_kod:', orderData?.lp_kod);
+    console.log('🔍 [LPCerpaniEditor] orderData.financovani:', orderData?.financovani);
+    
     // Možnost 1: orderData.lp_kod (array) - původní OrderForm25
     if (orderData?.lp_kod && Array.isArray(orderData.lp_kod) && orderData.lp_kod.length > 0) {
       lpKodyFromOrder = orderData.lp_kod;
+      console.log('🎯 [LPCerpaniEditor] Našel LP kódy v orderData.lp_kod:', lpKodyFromOrder);
     }
     // Možnost 2: orderData.financovani.lp_kody (z parsed financování)
     else if (orderData?.financovani?.lp_kody && Array.isArray(orderData.financovani.lp_kody) && orderData.financovani.lp_kody.length > 0) {
       lpKodyFromOrder = orderData.financovani.lp_kody;
+      console.log('🎯 [LPCerpaniEditor] Našel LP kódy v orderData.financovani.lp_kody:', lpKodyFromOrder);
     }
     
     if (!lpKodyFromOrder || lpKodyFromOrder.length === 0) {
-      return [];
+      console.warn('🚨 [LPCerpaniEditor] Žádné LP kódy v objednávce - zobrazím všechny!');
+      console.log('🔍 Kontrola LP kódů: orderData.lp_kod =', orderData?.lp_kod);
+      console.log('🔍 Kontrola LP kódů: orderData.financovani =', orderData?.financovani);
+      
+      // 🔥 FALLBACK: Pokud nejsou specifikovány LP kódy, zobraz všechny dostupné
+      console.log('✅ [LPCerpaniEditor] Používám všechny dostupné LP kódy jako fallback');
+      return availableLPCodes;
     }
     
     // Filtrovat availableLPCodes podle LP kódů z objednávky
     const filtered = availableLPCodes.filter(lpOption => {
       return lpKodyFromOrder.some(kodValue => {
         // kodValue může být ID nebo kód (string)
-        return lpOption.id === kodValue || 
+        const match = lpOption.id === kodValue || 
                lpOption.id === Number(kodValue) ||
                lpOption.kod === kodValue ||
                lpOption.cislo_lp === kodValue;
+        
+        if (match) {
+          console.log('✅ [LPCerpaniEditor] LP kód match:', { lpOption, kodValue });
+        }
+        return match;
       });
     });
     
+    console.log('🎯 [LPCerpaniEditor] Finální filtrované LP kódy:', filtered);
     return filtered;
   }, [orderData?.lp_kod, availableLPCodes]);
 
@@ -658,31 +692,32 @@ function LPCerpaniEditor({
       return updated;
     });
   }, [onChange]);
+  
+  // 🆕 Toggle funkce pro CustomSelect
+  const toggleSelect = useCallback((fieldName) => {
+    setSelectStates(prev => ({
+      ...prev,
+      [fieldName]: !prev[fieldName]
+    }));
+  }, []);
 
-  // Pokud není LP financování, nezobrazovat editor
-  if (!isLPFinancing) {
-    return null;
-  }
-
-  const hasErrors = validationMessages.some(m => m.type === 'error');
-  const faCastka = parseFloat(faktura?.fa_castka) || 0;
+  const filterOptions = useCallback((options, searchTerm, field) => {
+    if (!searchTerm) return options;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return options.filter(option => {
+      const label = option.label || 
+        `${option.cislo_lp || option.kod} - ${option.nazev_uctu || option.nazev || 'Bez názvu'}`;
+      return label.toLowerCase().includes(searchLower);
+    });
+  }, []);
 
   return (
-    <EditorWrapper 
-      hasError={hasErrors}
-    >
+    <EditorWrapper>
       <EditorHeader>
-        <HeaderTitle>
-          <FontAwesomeIcon icon={faInfoCircle} />
-          Rozložení LP čerpání
-        </HeaderTitle>
         <SummaryBox>
           <SummaryItem>
-            <label>Částka faktury</label>
-            <span>{formatCurrency(faCastka)} Kč</span>
-          </SummaryItem>
-          <SummaryItem highlight>
-            <label>Přiřazeno na LP</label>
+            <label>Celková částka faktury</label>
             <span>{formatCurrency(totalAssigned)} Kč</span>
           </SummaryItem>
         </SummaryBox>
@@ -703,22 +738,27 @@ function LPCerpaniEditor({
             <CustomSelect
               value={row.lp_cislo ? [row.lp_cislo] : []}
               onChange={(selectedValues) => handleLPChange(row.id, selectedValues)}
+              onBlur={() => {}}
               options={filteredLPCodes}
               placeholder="-- Vyberte LP --"
-              field={`lp_row_${row.id}`}
+              field={`lp_${row.id}`}
               icon={<Hash />}
               disabled={disabled}
               hasError={false}
               required={true}
               multiple={false}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              touchedSelectFields={touchedSelectFields}
+              setTouchedSelectFields={setTouchedSelectFields}
+              hasTriedToSubmit={false}
+              toggleSelect={toggleSelect}
+              filterOptions={filterOptions}
               getOptionLabel={(option) => {
                 if (!option) return '';
-                // Použít label pokud existuje, jinak sestavit z cislo_lp a nazev_uctu
                 return option.label || `${option.cislo_lp || option.kod} - ${option.nazev_uctu || option.nazev || 'Bez názvu'}`;
-              }}
-              getOptionValue={(option) => {
-                if (!option) return '';
-                return option.cislo_lp || option.kod || option.id || String(option);
               }}
             />
           </FormGroup>

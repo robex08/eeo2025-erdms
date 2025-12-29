@@ -1,7 +1,5 @@
 ---
 agent: agent
-priority: high
-model: Claude Sonnet 4.5 (copilot)
 name: OBECNA_pravidla
 ---
 ## KRITICKE, snazit se minimalne vyuzivat
