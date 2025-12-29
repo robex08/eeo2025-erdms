@@ -1648,12 +1648,31 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // � Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
+  // 🔒 Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
   const isInvoiceEditable = useMemo(() => {
     return !isReadOnlyMode && !(formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed);
   }, [isReadOnlyMode, formData.order_id, orderData, canAddInvoiceToOrder]);
 
-  // �💾 AUTO-SAVE všech dat do localStorage při změně (per-user pomocí user_id)
+  // 🔒 Zjistit, zda je objednávka ve stavu DOKONČENA (již nelze provádět věcnou kontrolu)
+  const isOrderCompleted = useMemo(() => {
+    if (!orderData || !orderData.stav_workflow_kod) return false;
+    
+    let stavKody = [];
+    try {
+      if (typeof orderData.stav_workflow_kod === 'string') {
+        stavKody = JSON.parse(orderData.stav_workflow_kod);
+      } else if (Array.isArray(orderData.stav_workflow_kod)) {
+        stavKody = orderData.stav_workflow_kod;
+      }
+    } catch (e) {
+      return false;
+    }
+    
+    const currentState = stavKody.length > 0 ? stavKody[stavKody.length - 1] : null;
+    return currentState === 'DOKONCENA';
+  }, [orderData]);
+
+  // 💾 AUTO-SAVE všech dat do localStorage při změně (per-user pomocí user_id)
   // Sloučení všech AUTO-SAVE operací do jednoho useEffect pro efektivitu
   useEffect(() => {
     if (!lsLoaded || !user_id || !allowLSSave) return; // ✅ OPRAVENO: Kontrola allowLSSave flagu
@@ -5132,6 +5151,30 @@ export default function InvoiceEvidencePage() {
             </CollapsibleHeader>
             <SectionContent $collapsed={!sectionStates.materialCorrectness}>
               <FakturaCard>
+                {/* Informace - Objednávka je dokončena */}
+                {isOrderCompleted && (
+                  <div style={{
+                    background: '#f0f9ff',
+                    border: '2px solid #0284c7',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem'
+                  }}>
+                    <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#0284c7', fontSize: '1.5rem' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, color: '#075985', fontSize: '0.95rem', marginBottom: '0.25rem' }}>
+                        Objednávka je dokončena
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#0c4a6e' }}>
+                        Věcná kontrola již byla provedena. Pole jsou pouze pro čtení.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Porovnání MAX CENA vs FAKTURA */}
                 {orderData && orderData.max_cena_s_dph && formData.fa_castka && (
                   (() => {
@@ -5186,7 +5229,7 @@ export default function InvoiceEvidencePage() {
                     <input
                       type="text"
                       value={formData.vecna_spravnost_umisteni_majetku || ''}
-                      disabled={loading}
+                      disabled={isOrderCompleted || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_umisteni_majetku: e.target.value }))}
                       placeholder="Např. Kladno, budova K2, místnost 203"
                       style={{
@@ -5197,11 +5240,11 @@ export default function InvoiceEvidencePage() {
                         borderRadius: '8px',
                         outline: 'none',
                         transition: 'all 0.2s',
-                        background: loading ? '#f9fafb' : 'white',
-                        cursor: loading ? 'not-allowed' : 'text'
+                        background: (isOrderCompleted || loading) ? '#f9fafb' : 'white',
+                        cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'text'
                       }}
                       onFocus={(e) => {
-                        if (!loading) {
+                        if (!isOrderCompleted && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5225,7 +5268,7 @@ export default function InvoiceEvidencePage() {
                     </FieldLabel>
                     <textarea
                       value={formData.vecna_spravnost_poznamka || ''}
-                      disabled={loading}
+                      disabled={isOrderCompleted || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_poznamka: e.target.value }))}
                       placeholder="Volitelná poznámka k věcné správnosti..."
                       rows={2}
@@ -5237,13 +5280,13 @@ export default function InvoiceEvidencePage() {
                         borderRadius: '8px',
                         outline: 'none',
                         transition: 'all 0.2s',
-                        background: loading ? '#f9fafb' : 'white',
-                        cursor: loading ? 'not-allowed' : 'text',
+                        background: (isOrderCompleted || loading) ? '#f9fafb' : 'white',
+                        cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'text',
                         resize: 'vertical',
                         fontFamily: 'inherit'
                       }}
                       onFocus={(e) => {
-                        if (!loading) {
+                        if (!isOrderCompleted && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5268,15 +5311,15 @@ export default function InvoiceEvidencePage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    cursor: loading ? 'not-allowed' : 'pointer',
+                    cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'pointer',
                     fontSize: '0.9rem',
-                    fontWeight: loading ? '400' : '600',
-                    color: loading ? '#9ca3af' : '#374151'
+                    fontWeight: (isOrderCompleted || loading) ? '400' : '600',
+                    color: (isOrderCompleted || loading) ? '#9ca3af' : '#374151'
                   }}>
                     <input
                       type="checkbox"
                       checked={formData.vecna_spravnost_potvrzeno === 1}
-                      disabled={loading}
+                      disabled={isOrderCompleted || loading}
                       onChange={(e) => {
                         const newValue = e.target.checked ? 1 : 0;
                         
@@ -5300,8 +5343,8 @@ export default function InvoiceEvidencePage() {
                       style={{
                         width: '18px',
                         height: '18px',
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        accentColor: loading ? '#9ca3af' : '#16a34a'
+                        cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'pointer',
+                        accentColor: (isOrderCompleted || loading) ? '#9ca3af' : '#16a34a'
                       }}
                     />
                     <span style={{ flex: 1 }}>
