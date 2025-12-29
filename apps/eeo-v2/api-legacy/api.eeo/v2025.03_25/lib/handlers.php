@@ -385,6 +385,22 @@ function handle_login($input, $config, $queries) {
             }
         }
 
+        // ✅ Kontrola vynucené změny hesla - pokud je vynucena_zmena_hesla = 1, vrátíme error + token
+        if (isset($user['vynucena_zmena_hesla']) && (int)$user['vynucena_zmena_hesla'] === 1) {
+            // Vygeneruj dočasný token pro změnu hesla
+            $tempToken = base64_encode($user['username'] . '|' . time());
+            http_response_code(403);
+            echo json_encode(array(
+                'err' => 'Musíte si změnit heslo',
+                'code' => 'FORCE_PASSWORD_CHANGE',
+                'force_password_change' => true,
+                'userId' => $user['id'],
+                'username' => $user['username'],
+                'token' => $tempToken
+            ));
+            return;
+        }
+
         $token = base64_encode($user['username'] . '|' . time());
         unset($user['password_hash']);
         $user['token'] = $token;
@@ -1443,8 +1459,9 @@ function handle_user_change_password($input, $config, $queries) {
     $old = trim($old);
     $new = trim($new);
 
-    if ($old === '' || $new === '') {
-        api_error(400, 'Chybí staré nebo nové heslo', 'MISSING_FIELDS');
+    // Pro nové heslo musí být vždy zadáno
+    if ($new === '') {
+        api_error(400, 'Chybí nové heslo', 'MISSING_FIELDS');
         return;
     }
     if (strlen($new) < 6) {
@@ -1454,8 +1471,8 @@ function handle_user_change_password($input, $config, $queries) {
 
     try {
         $db = get_db($config);
-        // Fetch current stored hash
-        $stmt = $db->prepare("SELECT id, username, password_hash FROM " . TBL_UZIVATELE . " WHERE id = :id LIMIT 1");
+        // Fetch current stored hash + vynucena_zmena_hesla flag
+        $stmt = $db->prepare("SELECT id, username, password_hash, vynucena_zmena_hesla FROM " . TBL_UZIVATELE . " WHERE id = :id LIMIT 1");
         $stmt->bindParam(':id', $token_data['id'], PDO::PARAM_INT);
         $stmt->execute();
         $user = $stmt->fetch();
@@ -1464,29 +1481,40 @@ function handle_user_change_password($input, $config, $queries) {
             return;
         }
 
-        $stored = isset($user['password_hash']) ? $user['password_hash'] : '';
-        $ok = false;
-
-        // Verify old password (same logic as in handle_login)
-        $bcrypt_prefix = substr($stored, 0, 4);
-        if (in_array($bcrypt_prefix, array('$2y$', '$2a$', '$2b$')) && strlen($stored) >= 59) {
-            if (function_exists('password_verify')) {
-                $ok = password_verify($old, $stored);
-            } else {
-                $ok = (crypt($old, $stored) === $stored);
+        // Pokud má uživatel vynucenou změnu hesla, NEPOTŘEBUJE staré heslo
+        $forceChange = isset($user['vynucena_zmena_hesla']) && (int)$user['vynucena_zmena_hesla'] === 1;
+        
+        // Pokud NENÍ vynucená změna, musí ověřit staré heslo
+        if (!$forceChange) {
+            if ($old === '') {
+                api_error(400, 'Chybí staré heslo', 'MISSING_FIELDS');
+                return;
             }
-        }
-        if (!$ok && preg_match('/^[0-9a-f]{32}$/i', $stored)) {
-            $ok = (md5($old) === $stored);
-        }
-        if (!$ok && $stored !== '') {
-            // legacy plaintext fallback
-            $ok = ($old === $stored);
-        }
+            
+            $stored = isset($user['password_hash']) ? $user['password_hash'] : '';
+            $ok = false;
 
-        if (!$ok) {
-            api_error(400, 'Původní heslo není správné', 'OLD_PASSWORD_INVALID');
-            return;
+            // Verify old password (same logic as in handle_login)
+            $bcrypt_prefix = substr($stored, 0, 4);
+            if (in_array($bcrypt_prefix, array('$2y$', '$2a$', '$2b$')) && strlen($stored) >= 59) {
+                if (function_exists('password_verify')) {
+                    $ok = password_verify($old, $stored);
+                } else {
+                    $ok = (crypt($old, $stored) === $stored);
+                }
+            }
+            if (!$ok && preg_match('/^[0-9a-f]{32}$/i', $stored)) {
+                $ok = (md5($old) === $stored);
+            }
+            if (!$ok && $stored !== '') {
+                // legacy plaintext fallback
+                $ok = ($old === $stored);
+            }
+
+            if (!$ok) {
+                api_error(400, 'Původní heslo není správné', 'OLD_PASSWORD_INVALID');
+                return;
+            }
         }
 
         // Hash new password using password_hash if available, else legacy fallback
@@ -1502,12 +1530,15 @@ function handle_user_change_password($input, $config, $queries) {
             return;
         }
 
-        $stmtU = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash, dt_aktualizace = NOW() WHERE id = :id");
+        $stmtU = $db->prepare("UPDATE " . TBL_UZIVATELE . " SET password_hash = :hash, vynucena_zmena_hesla = 0, dt_aktualizace = NOW() WHERE id = :id");
         $stmtU->bindParam(':hash', $newHash);
         $stmtU->bindParam(':id', $user['id'], PDO::PARAM_INT);
         $stmtU->execute();
 
-        api_ok(array('changed' => true));
+        // Vygeneruj nový token po úspěšné změně hesla
+        $newToken = base64_encode($user['username'] . '|' . time());
+        
+        api_ok(array('changed' => true, 'token' => $newToken));
         return;
     } catch (Exception $e) {
         api_error(500, 'Chyba databáze: ' . $e->getMessage(), 'DB_ERROR');
@@ -3136,6 +3167,7 @@ function handle_users_list($input, $config, $queries) {
                     u.email,
                     u.telefon,
                     u.aktivni,
+                    u.vynucena_zmena_hesla,
                     u.dt_vytvoreni,
                     u.dt_aktualizace,
                     
@@ -3157,7 +3189,7 @@ function handle_users_list($input, $config, $queries) {
                     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
                     LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
-                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
             ";
             $stmt = $db->prepare($sql);

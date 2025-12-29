@@ -1494,7 +1494,7 @@ const Invoices25List = () => {
     });
   };
 
-  // Handler: Přidat fakturu k objednávce/smlouvě kliknutím na číslo
+  // Handler: Otevřít fakturu k náhledu kliknutím na číslo objednávky/smlouvy
   // 🔒 Handler pro zavření LOCK dialogu
   const handleLockedOrderCancel = () => {
     setShowLockedOrderDialog(false);
@@ -1512,7 +1512,7 @@ const Invoices25List = () => {
     if (invoice.objednavka_id) {
       setIsCheckingLock(true); // Zamknout funkci
       
-      // 🔒 KONTROLA LOCK před přidáním faktury k objednávce
+      // 🔒 KONTROLA LOCK před otevřením faktury k objednávce
       try {
         const { getOrderV2 } = await import('../services/apiOrderV2');
         const orderCheck = await getOrderV2(invoice.objednavka_id, token, username, false);
@@ -1562,17 +1562,19 @@ const Invoices25List = () => {
         return; // ⚠️ VŽDY ukonči - NIKDY nenaviguj při chybě
       }
       
-      // ✅ Není zamčená - přidat fakturu k objednávce
+      // ✅ Není zamčená - otevřít fakturu k náhledu (s editInvoiceId pro načtení dat faktury)
       setIsCheckingLock(false); // Odemknout
       navigate('/invoice-evidence', {
         state: {
+          editInvoiceId: invoice.id,
           orderIdForLoad: invoice.objednavka_id
         }
       });
     } else if (invoice.smlouva_id) {
-      // Přidat fakturu ke smlouvě
+      // Otevřít fakturu ke smlouvě
       navigate('/invoice-evidence', {
         state: {
+          editInvoiceId: invoice.id,
           smlouvaIdForLoad: invoice.smlouva_id
         }
       });
@@ -3317,7 +3319,7 @@ const Invoices25List = () => {
                               color: '#3b82f6'
                             }}
                             onClick={() => handleAddInvoiceToEntity(invoice)}
-                            title="Klikněte pro přidání další faktury k této smlouvě"
+                            title="Klikněte zde pro otevření přidružené faktury"
                           >
                             <div style={{ 
                               display: 'flex', 
@@ -3341,7 +3343,7 @@ const Invoices25List = () => {
                             onClick={() => handleAddInvoiceToEntity(invoice)}
                             onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
                             onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                            title="Klikněte pro přidání další faktury k této objednávce"
+                            title="Klikněte zde pro otevření přidružené faktury"
                           >
                             <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
                             {invoice.cislo_objednavky}

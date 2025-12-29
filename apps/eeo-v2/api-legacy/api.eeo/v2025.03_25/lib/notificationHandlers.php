@@ -3447,3 +3447,59 @@ function handle_notifications_trigger($input, $config, $queries) {
         echo json_encode(array('err' => 'Exception: ' . $e->getMessage()));
     }
 }
+
+/**
+ * Načte seznam všech emailových šablon
+ */
+function handle_notifications_templates_list($input, $config, $queries) {
+    error_log('📧 [Templates] handle_notifications_templates_list called');
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    error_log('📧 [Templates] Token: ' . ($token ? 'YES' : 'NO') . ', Username: ' . $request_username);
+    
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        error_log('📧 [Templates] Token verification FAILED');
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    error_log('📧 [Templates] Token verified, loading templates from DB');
+    
+    try {
+        $db = get_db($config);
+        error_log('📧 [Templates] DB connection OK');
+        
+        $sql = "SELECT 
+                    id,
+                    typ,
+                    nazev,
+                    email_predmet,
+                    email_telo,
+                    app_nadpis,
+                    app_zprava,
+                    aktivni,
+                    dt_created,
+                    dt_updated
+                FROM " . TBL_NOTIFIKACE_SABLONY . "
+                WHERE aktivni = 1
+                ORDER BY nazev ASC";
+        
+        error_log('📧 [Templates] SQL: ' . $sql);
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        error_log('📧 [Templates] Loaded ' . count($templates) . ' templates');
+        
+        echo json_encode(array('status' => 'ok', 'data' => $templates));
+        
+    } catch (Exception $e) {
+        error_log('📧 [Templates] ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'err' => 'Chyba při načítání šablon: ' . $e->getMessage()));
+    }
+}

@@ -2242,6 +2242,13 @@ const Users = () => {
     const currentValue = user.vynucena_zmena_hesla === 1;
     const newValue = !currentValue;
     
+    console.log('🔄 Toggle force password change:', {
+      userId: user.id,
+      currentValue,
+      newValue,
+      userData: user
+    });
+    
     try {
       startGlobalProgress();
       setGlobalProgress(30);
@@ -2253,6 +2260,8 @@ const Users = () => {
         id: user.id,
         vynucena_zmena_hesla: newValue ? 1 : 0
       });
+
+      console.log('✅ Toggle API result:', result);
 
       setGlobalProgress(70);
 
@@ -2338,13 +2347,6 @@ const Users = () => {
           username,
           id: user.id
         });
-        console.log('🔍 handleEditUser - userDetail z API:', userDetail);
-        console.log('🔍 handleEditUser - usek_id:', userDetail?.usek_id);
-        console.log('🔍 handleEditUser - usek:', userDetail?.usek);
-        console.log('🔍 handleEditUser - lokalita_id:', userDetail?.lokalita_id);
-        console.log('🔍 handleEditUser - lokalita:', userDetail?.lokalita);
-        console.log('🔍 handleEditUser - organizace_id:', userDetail?.organizace_id);
-        console.log('🔍 handleEditUser - organizace:', userDetail?.organizace);
       } catch (apiError) {
         // API detail selhal, použije se fallback data
         console.error('❌ handleEditUser - API error:', apiError);

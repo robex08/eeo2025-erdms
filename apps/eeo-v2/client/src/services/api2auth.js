@@ -178,6 +178,18 @@ export async function loginApi2(username, password) {
     const response = await api2.post('user/login', payload, { timeout: 10000 });
     return response.data;
   } catch (err) {
+    // Kontrola na vynucenou změnu hesla
+    if (err.response && err.response.status === 403 && err.response.data?.force_password_change) {
+      // Přehoď error objekt, aby obsahoval potřebné informace pro frontend
+      const forceChangeError = new Error('FORCE_PASSWORD_CHANGE');
+      forceChangeError.forcePasswordChange = true;
+      forceChangeError.userId = err.response.data.userId;
+      forceChangeError.username = err.response.data.username;
+      forceChangeError.tempToken = err.response.data.token; // Dočasný token pro změnu hesla
+      forceChangeError.message = err.response.data.err || 'Musíte si změnit heslo';
+      throw forceChangeError;
+    }
+    
     const allowMd5 = String(process.env.REACT_APP_ALLOW_MD5_FALLBACK).toLowerCase() === 'true';
     if (allowMd5) {
       try {
@@ -186,6 +198,16 @@ export async function loginApi2(username, password) {
         const response = await api2.post('user/login', md5Payload, { timeout: 10000 });
         return response.data;
       } catch (err2) {
+        // Kontrola na vynucenou změnu hesla i pro MD5 fallback
+        if (err2.response && err2.response.status === 403 && err2.response.data?.force_password_change) {
+          const forceChangeError = new Error('FORCE_PASSWORD_CHANGE');
+          forceChangeError.forcePasswordChange = true;
+          forceChangeError.userId = err2.response.data.userId;
+          forceChangeError.username = err2.response.data.username;
+          forceChangeError.tempToken = err2.response.data.token;
+          forceChangeError.message = err2.response.data.err || 'Musíte si změnit heslo';
+          throw forceChangeError;
+        }
         throw err2;
       }
     }
@@ -334,6 +356,7 @@ export async function getUserDetailApi2(username, token, user_id) {
     titul_za: first('titul_za', 'post_title', 'postTitle') ?? null,
     telefon: first('telefon', 'phone', 'telefon_cislo') || '',
     aktivni: first('aktivni', 'active', 'is_active') ?? 1,
+    vynucena_zmena_hesla: first('vynucena_zmena_hesla', 'force_password_change', 'forcePasswordChange') ?? 0,
     dt_vytvoreni: first('dt_vytvoreni', 'created_at', 'createdAt') || '',
     dt_aktualizace: first('dt_aktualizace', 'updated_at', 'updatedAt') || '',
     nazev_pozice: poziceNazev,
@@ -734,15 +757,20 @@ export async function fetchApprovers({ token, username }) {
  */
 export async function changePasswordApi2({ token, username, oldPassword, newPassword }) {
   if (!token || !username) throw new Error('Chybí přístupový token nebo uživatelské jméno.');
-  if (!oldPassword || !newPassword) throw new Error('Chybí staré nebo nové heslo.');
+  if (!newPassword) throw new Error('Chybí nové heslo.');
+  // oldPassword je volitelné - při vynucené změně není potřeba
   try {
     // API expects camelCase field names: oldPassword, newPassword
-    const payload = { token, username, oldPassword, newPassword };
+    const payload = { token, username, oldPassword: oldPassword || '', newPassword };
     const response = await api2.post('user/change-password', payload, { timeout: 10000 });
     if (response.status !== 200) throw new Error('Neočekávaný stavový kód při změně hesla');
     const data = response.data || {};
     if (data.status === 'ok' && data.data && data.data.changed === true) {
-      return { changed: true };
+      // Vrátit i nový token, pokud ho backend poslal
+      return { 
+        changed: true,
+        token: data.data.token || null
+      };
     }
     // If server responded but not ok
     const msg = data.message || 'Změna hesla se nezdařila.';
@@ -2827,6 +2855,7 @@ export async function createUser({
   pozice_id,
   organizace_id,
   aktivni,
+  vynucena_zmena_hesla,
   roles,
   direct_rights,
   token,
@@ -2847,6 +2876,7 @@ export async function createUser({
       pozice_id,
       organizace_id,
       aktivni,
+      vynucena_zmena_hesla,
       roles,
       direct_rights,
       token,
@@ -2883,6 +2913,7 @@ export async function updateUser({
   pozice_id,
   organizace_id,
   aktivni,
+  vynucena_zmena_hesla,
   password,
   roles,
   direct_rights,
@@ -2915,6 +2946,7 @@ export async function updateUser({
     if (pozice_id !== undefined) payload.pozice_id = pozice_id;
     if (organizace_id !== undefined) payload.organizace_id = organizace_id;
     if (aktivni !== undefined) payload.aktivni = aktivni;
+    if (vynucena_zmena_hesla !== undefined) payload.vynucena_zmena_hesla = vynucena_zmena_hesla;
     if (password) payload.password = password;
     if (roles !== undefined) payload.roles = roles;
     if (direct_rights !== undefined) payload.direct_rights = direct_rights;
@@ -2962,11 +2994,12 @@ export async function deactivateUser({ id, token, username }) {
  * Partial update uživatele (změna hesla, aktivní stav, apod.)
  * POST /users/partial_update
  */
-export async function partialUpdateUser({ id, token, username, password, aktivni }) {
+export async function partialUpdateUser({ id, token, username, password, aktivni, vynucena_zmena_hesla }) {
   try {
     const payload = { id, token, username };
     if (password !== undefined) payload.password = password;
     if (aktivni !== undefined) payload.aktivni = aktivni;
+    if (vynucena_zmena_hesla !== undefined) payload.vynucena_zmena_hesla = vynucena_zmena_hesla;
 
     const response = await api2.post('users/partial-update', payload);
 

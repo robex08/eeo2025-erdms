@@ -1556,8 +1556,50 @@ const HtmlTemplatesPanel = () => {
     }
   };
 
-  const handlePreview = (template) => {
-    setSelectedTemplate(template);
+  const handlePreview = async (template) => {
+    // Vždy načti aktuální data z DB před zobrazením náhledu
+    setLoadingTemplates(true);
+    try {
+      const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+      const url = `${API_BASE_URL}notifications/templates/list`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.status === 'ok' && Array.isArray(data.data)) {
+          // Najdi aktuální verzi šablony podle ID
+          const freshTemplate = data.data.find(t => t.id === template.id);
+          if (freshTemplate) {
+            const transformedTemplate = {
+              id: freshTemplate.id,
+              name: freshTemplate.nazev || freshTemplate.email_predmet || `Šablona ${freshTemplate.id}`,
+              subject: freshTemplate.email_predmet || 'Bez předmětu',
+              html: freshTemplate.email_telo || ''
+            };
+            setSelectedTemplate(transformedTemplate);
+          } else {
+            setSelectedTemplate(template);
+          }
+        } else {
+          setSelectedTemplate(template);
+        }
+      } else {
+        setSelectedTemplate(template);
+      }
+    } catch (error) {
+      setSelectedTemplate(template);
+    } finally {
+      setLoadingTemplates(false);
+    }
   };
 
   return (
@@ -1728,7 +1770,9 @@ const HtmlTemplatesPanel = () => {
                               fontWeight: '600',
                               color: '#374151'
                             }}>
-                              {user.role_nazev || 'Bez role'}
+                              {user.roles && user.roles.length > 0 
+                                ? user.roles.map(r => r.nazev_role).join(', ')
+                                : 'Bez role'}
                             </span>
                           </div>
                         </div>

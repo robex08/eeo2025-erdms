@@ -1508,6 +1508,9 @@ export default function InvoiceEvidencePage() {
   // Tento flag se NENASTAVÍ při auto-vytvoření faktury při uploadu přílohy
   const [invoiceUserConfirmed, setInvoiceUserConfirmed] = useState(false);
 
+  // 🆕 Ref pro sledování, zda právě probíhá reset formuláře
+  const isResettingRef = useRef(false);
+
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -1861,6 +1864,8 @@ export default function InvoiceEvidencePage() {
       
       setLoading(true);
       setEditingInvoiceId(editIdToLoad);
+      // ✅ Nastavit invoiceUserConfirmed na true - načítáme existující fakturu
+      setInvoiceUserConfirmed(true);
       
       try {
         // Načíst data faktury
@@ -2090,6 +2095,12 @@ export default function InvoiceEvidencePage() {
 
   // Načtení objednávky nebo smlouvy z location.state při mount
   useEffect(() => {
+    // ✅ Pokud právě probíhá reset, nic nenačítat
+    if (isResettingRef.current) {
+      console.log('⏭️ Skip loading - právě probíhá reset');
+      return;
+    }
+    
     const orderIdForLoad = location.state?.orderIdForLoad;
     const smlouvaIdForLoad = location.state?.smlouvaIdForLoad;
     const openMaterialCorrectness = location.state?.openMaterialCorrectness;
@@ -3990,8 +4001,23 @@ export default function InvoiceEvidencePage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation(); // Zabránit zavření sekce
-                      // ✅ Kompletní reset při zrušení úpravy
+                      
+                      // ✅ KROK 0: Nastavit flag, že probíhá reset (blokuje useEffect)
+                      isResettingRef.current = true;
+                      
+                      // ✅ KROK 1: Vyčistit localStorage IHNED (před jakýmkoliv state update)
+                      try {
+                        localStorage.removeItem(`invoiceForm_${user_id}`);
+                        localStorage.removeItem(`invoiceAttach_${user_id}`);
+                        localStorage.removeItem(`invoiceEdit_${user_id}`);
+                        localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
+                      } catch (err) {
+                        console.warn('Chyba při mazání localStorage:', err);
+                      }
+                      
+                      // ✅ KROK 2: Kompletní reset state
                       setEditingInvoiceId(null);
+                      setInvoiceUserConfirmed(false);
                       setAttachments([]);
                       setOriginalFormData(null);
                       setHasChangedCriticalField(false);
@@ -3999,11 +4025,10 @@ export default function InvoiceEvidencePage() {
                       setHadOriginalEntity(false);
                       setFieldErrors({});
                       
-                      const shouldResetEntity = searchTerm.trim().length > 0;
-                      
+                      // ✅ VŽDY resetovat všechno včetně entity
                       setFormData({
-                        order_id: shouldResetEntity ? '' : formData.order_id,
-                        smlouva_id: shouldResetEntity ? null : formData.smlouva_id,
+                        order_id: '',
+                        smlouva_id: null,
                         fa_cislo_vema: '',
                         fa_typ: 'BEZNA',
                         fa_datum_doruceni: formatDateForPicker(new Date()),
@@ -4020,23 +4045,24 @@ export default function InvoiceEvidencePage() {
                         vecna_spravnost_poznamka: '',
                         vecna_spravnost_potvrzeno: 0,
                         potvrdil_vecnou_spravnost_id: null,
-                        dt_potvrzeni_vecne_spravnosti: '',
-                        vecna_spravnost_umisteni_majetku: '',
-                        vecna_spravnost_poznamka: '',
-                        vecna_spravnost_potvrzeno: 0,
-                        potvrdil_vecnou_spravnost_id: null,
                         dt_potvrzeni_vecne_spravnosti: ''
                       });
                       
-                      if (shouldResetEntity) {
-                        setOrderData(null);
-                        setSmlouvaData(null);
-                        setSearchTerm('');
-                        setShowSuggestions(false);
-                      }
+                      // ✅ Vyčistit preview entity
+                      setOrderData(null);
+                      setSmlouvaData(null);
+                      setSearchTerm('');
+                      setShowSuggestions(false);
+                      setSelectedType('order');
                       
+                      // ✅ KROK 3: Reset location.state
                       navigate(location.pathname, { replace: true, state: {} });
                       showToast && showToast('✨ Formulář resetován pro novou fakturu', 'info');
+                      
+                      // ✅ KROK 4: Reset flagu po krátkém delay (až se vše dokončí)
+                      setTimeout(() => {
+                        isResettingRef.current = false;
+                      }, 100);
                     }}
                     style={{
                       background: '#dc2626',
