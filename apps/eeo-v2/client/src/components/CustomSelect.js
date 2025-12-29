@@ -403,6 +403,10 @@ const CustomSelect = ({
       if (field === 'vychozi_rok' || field === 'vychozi_obdobi' || field === 'vychozi_sekce_po_prihlaseni') {
         return opt.value === value || opt === value;
       }
+      // 🆕 Pro garanta a příkazce (ProfilePage) porovnávej podle value (může být string nebo number)
+      if (field === 'vychozi_garant_id' || field === 'vychozi_prikazce_id') {
+        return opt.value == value || opt === value; // == pro porovnání string vs number
+      }
       // Pro ostatní podle ID
       return (opt.id || opt.user_id || opt.uzivatel_id) === value || opt === value;
     });
@@ -546,6 +550,9 @@ const CustomSelect = ({
     } else if (field === 'fa_typ') {
       // Pro typ faktury ukládej id
       optionValue = option.id || option;
+    } else if (field === 'vychozi_garant_id' || field === 'vychozi_prikazce_id') {
+      // 🆕 Pro garanta a příkazce (ProfilePage) ukládej value
+      optionValue = option.value || option.id || option.user_id || option;
     } else {
       optionValue = option.id || option.user_id || option.uzivatel_id || option;
     }

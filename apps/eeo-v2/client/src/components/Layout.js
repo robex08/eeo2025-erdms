@@ -1362,9 +1362,9 @@ const NotificationBellWrapper = ({ userId }) => {
       const { markNotificationAsRead } = require('../services/notificationsApi');
       await markNotificationAsRead(notificationId);
 
-      // Aktualizuj lokální stav
+      // Aktualizuj lokální stav - použij 'precteno' místo 'is_read'
       setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: 1 } : n)
+        prev.map(n => n.id === notificationId ? { ...n, precteno: 1, is_read: 1 } : n)
       );
 
       // Aktualizuj badge
@@ -1384,9 +1384,9 @@ const NotificationBellWrapper = ({ userId }) => {
       const { markAllNotificationsAsRead } = require('../services/notificationsApi');
       await markAllNotificationsAsRead();
 
-      // Aktualizuj všechny jako přečtené
+      // Aktualizuj všechny jako přečtené - použij 'precteno' místo 'is_read'
       setNotifications(prev =>
-        prev.map(n => ({ ...n, is_read: 1 }))
+        prev.map(n => ({ ...n, precteno: 1, is_read: 1 }))
       );
 
       // Aktualizuj badge na 0
