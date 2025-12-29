@@ -9,3 +9,4 @@ export { default as InvoiceAttachmentUploadButton } from './InvoiceAttachmentUpl
 export { default as ISDOCDetectionBadge } from './ISDOCDetectionBadge';
 export { default as InvoiceAttachmentsCompact } from './InvoiceAttachmentsCompact';
 export { default as ISDOCParsingDialog } from './ISDOCParsingDialog';
+export { default as LPCerpaniEditor } from './LPCerpaniEditor';

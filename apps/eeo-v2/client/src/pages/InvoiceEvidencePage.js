@@ -67,9 +67,10 @@ import { Search } from 'lucide-react';
 import draftManager from '../services/DraftManager';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import SpisovkaInboxPanel from '../components/panels/SpisovkaInboxPanel';
-import { InvoiceAttachmentsCompact } from '../components/invoices';
+import { InvoiceAttachmentsCompact, LPCerpaniEditor } from '../components/invoices';
 import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/isdocParser';
 import { markSpisovkaDocumentProcessed } from '../services/apiSpisovkaZpracovani';
+import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -1618,7 +1619,10 @@ export default function InvoiceEvidencePage() {
   
   // 🔄 Flag pro sledování zda už bylo načteno z localStorage (zabránit opakovanému načítání)
   const [lsLoaded, setLsLoaded] = useState(false);
-  
+
+  // 🔥 LP čerpání (Limitované přísliby) - např. [{lp_cislo: '6', lp_id: 6, castka: 50000, poznamka: ''}]
+  const [lpCerpani, setLpCerpani] = useState([]);
+  const [lpCerpaniLoaded, setLpCerpaniLoaded] = useState(false);
   // ✅ Flag pro kontrolu zda POVOLIT auto-save do localStorage
   // Když uživatel klikne "Zrušit úpravu", nastaví se na false aby se data znovu neuložila
   const [allowLSSave, setAllowLSSave] = useState(true);
@@ -1974,6 +1978,22 @@ export default function InvoiceEvidencePage() {
             setHadOriginalEntity(hadEntity);
             localStorage.setItem('hadOriginalEntity', JSON.stringify(hadEntity));
           });
+          
+          // 🆕 LP ČERPÁNÍ: Načíst čerpání LP pokud má objednávku (předběžně načteme, finální check bude až po loadOrderData)
+          if (invoiceData.objednavka_id) {
+            try {
+              console.log('💰 Načítám LP čerpání pro fakturu:', editIdToLoad);
+              const lpResponse = await getFakturaLPCerpani(editIdToLoad);
+              if (lpResponse && lpResponse.lp_cerpani) {
+                setLpCerpani(lpResponse.lp_cerpani);
+                setLpCerpaniLoaded(true);
+                console.log('✅ LP čerpání načteno:', lpResponse.lp_cerpani);
+              }
+            } catch (lpError) {
+              console.error('❌ Chyba při načítání LP čerpání:', lpError);
+              // Nezastavujeme načítání faktury - LP čerpání je bonusová data
+            }
+          }
           
           // Pokud je známa objednávka, načíst ji a nastavit searchTerm
           if (orderIdForLoad || invoiceData.objednavka_id) {
@@ -3138,6 +3158,33 @@ export default function InvoiceEvidencePage() {
         return;
       }
 
+      // 🔥 Validace LP čerpání pro LP financování
+      if (orderData && orderData.financovani) {
+        try {
+          const fin = typeof orderData.financovani === 'string' 
+            ? JSON.parse(orderData.financovani) 
+            : orderData.financovani;
+          
+          if (fin.typ === 'LP') {
+            if (!lpCerpani || lpCerpani.length === 0 || lpCerpani.every(lp => !lp.lp_cislo || lp.castka <= 0)) {
+              showToast && showToast('⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
+              setLoading(false);
+              return;
+            }
+
+            const totalLP = lpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
+            const faCastka = parseFloat(formData.fa_castka) || 0;
+            if (totalLP > faCastka) {
+              showToast && showToast(`❌ Součet LP čerpání překračuje částku faktury`, 'error');
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Chyba při validaci LP:', e);
+        }
+      }
+
       // Validace - poznámka je POVINNÁ pokud faktura překračuje MAX cenu
       if (orderData && orderData.max_cena_s_dph && formData.fa_castka) {
         const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
@@ -3180,6 +3227,19 @@ export default function InvoiceEvidencePage() {
           ...prev,
           ...updateData
         }));
+
+        // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
+        if (lpCerpani && lpCerpani.length > 0) {
+          try {
+            console.log('💰 Ukládám LP čerpání:', lpCerpani);
+            await saveFakturaLPCerpani(editingInvoiceId, lpCerpani);
+            console.log('✅ LP čerpání úspěšně uloženo');
+          } catch (lpError) {
+            console.error('❌ Chyba při ukládání LP čerpání:', lpError);
+            // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
+            showToast && showToast('Věcná správnost uložena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
+          }
+        }
 
         // Odeslat notifikaci o věcné kontrole (pokud má objednávku)
         if (formData.order_id) {
@@ -3374,6 +3434,19 @@ export default function InvoiceEvidencePage() {
           updateData
         });
         
+        // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
+        if (lpCerpani && lpCerpani.length > 0) {
+          try {
+            console.log('💰 Ukládám LP čerpání při UPDATE faktury:', lpCerpani);
+            await saveFakturaLPCerpani(editingInvoiceId, lpCerpani);
+            console.log('✅ LP čerpání úspěšně uloženo');
+          } catch (lpError) {
+            console.error('❌ Chyba při ukládání LP čerpání:', lpError);
+            // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
+            showToast && showToast('Faktura uložena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
+          }
+        }
+        
         setProgress?.(100);
         
         // 🎯 Progress - úspěšná aktualizace
@@ -3405,6 +3478,20 @@ export default function InvoiceEvidencePage() {
         } else {
           // Bez přílohy
           result = await createInvoiceV2(apiParams);
+        }
+
+        // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro novou fakturu (pokud je LP financování)
+        const newInvoiceId = result?.data?.invoice_id || result?.data?.id || result?.invoice_id || result?.id;
+        if (newInvoiceId && lpCerpani && lpCerpani.length > 0) {
+          try {
+            console.log('💰 Ukládám LP čerpání při CREATE faktury:', lpCerpani);
+            await saveFakturaLPCerpani(newInvoiceId, lpCerpani);
+            console.log('✅ LP čerpání úspěšně uloženo');
+          } catch (lpError) {
+            console.error('❌ Chyba při ukládání LP čerpání:', lpError);
+            // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
+            showToast && showToast('Faktura vytvořena, ale čerpání LP se nepodařilo uložit: ' + lpError.message, 'warning');
+          }
         }
 
         setProgress?.(100);
@@ -5298,6 +5385,26 @@ export default function InvoiceEvidencePage() {
                     />
                   </FieldGroup>
                 </FieldRow>
+
+                {/* 🔥 LP ČERPÁNÍ EDITOR - pro faktury s LP financováním */}
+                {orderData && orderData.financovani && (() => {
+                  try {
+                    const fin = typeof orderData.financovani === 'string' 
+                      ? JSON.parse(orderData.financovani) 
+                      : orderData.financovani;
+                    return fin.typ === 'LP';
+                  } catch (e) {
+                    return false;
+                  }
+                })() && (
+                  <LPCerpaniEditor
+                    faktura={formData}
+                    orderData={orderData}
+                    lpCerpani={lpCerpani}
+                    onChange={(newLpCerpani) => setLpCerpani(newLpCerpani)}
+                    disabled={isOrderCompleted || loading}
+                  />
+                )}
 
                 {/* Checkbox potvrzení věcné správnosti */}
                 <div style={{
