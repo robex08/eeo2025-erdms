@@ -2149,6 +2149,19 @@ export const NotificationsPage = () => {
                 const notificationData = mainNotification.data || {};
                 mainNotification.data = notificationData;
 
+                // 🔍 DEBUG: Log první notifikaci pro kontrolu dat
+                if (index === 0) {
+                  console.log('🔔 [NotificationsPage] První vlákno - hlavní notifikace:', mainNotification);
+                  console.log('🔔 [NotificationsPage] mainNotification.data:', mainNotification.data);
+                  console.log('🔔 [NotificationsPage] mainNotification.data_json:', mainNotification.data_json);
+                  console.log('🔔 [NotificationsPage] Klíče v data:', Object.keys(notificationData));
+                  console.log('🔔 [NotificationsPage] order_subject:', notificationData.order_subject);
+                  console.log('🔔 [NotificationsPage] max_price_with_dph:', notificationData.max_price_with_dph);
+                  console.log('🔔 [NotificationsPage] creator_name:', notificationData.creator_name);
+                  console.log('🔔 [NotificationsPage] garant_name:', notificationData.garant_name);
+                  console.log('🔔 [NotificationsPage] prikazce_name:', notificationData.prikazce_name);
+                }
+
                 return (
                   <React.Fragment key={threadKey}>
                     {/* Hlavní (nejnovější) notifikace vlákna */}
