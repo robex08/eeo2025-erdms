@@ -705,7 +705,7 @@ const TableRow = styled.tr`
   }
 
   /* Buňka se stavem (dropdown) - bez stylování */
-  &[data-storno="true"] td:nth-child(9) {
+  &[data-storno="true"] td:nth-of-type(9) {
     text-decoration: none;
     opacity: 1;
   }

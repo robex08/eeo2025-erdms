@@ -1703,10 +1703,20 @@ export default function InvoiceEvidencePage() {
       }
       
       localStorage.setItem(`invoiceOrigEntity_${user_id}`, JSON.stringify(hadOriginalEntity));
+      
+      // 🆕 Uložit LP čerpání
+      if (lpCerpani && Array.isArray(lpCerpani) && lpCerpani.length > 0) {
+        localStorage.setItem(`invoiceLpCerpani_${user_id}`, JSON.stringify(lpCerpani));
+      } else {
+        localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
+      }
+      
+      // 🆕 Uložit stav sekcí (sbalené/rozbalené)
+      localStorage.setItem(`invoiceSections_${user_id}`, JSON.stringify(sectionStates));
     } catch (err) {
       console.warn('❌ Chyba při ukládání do localStorage:', err);
     }
-  }, [formData, attachments, editingInvoiceId, hadOriginalEntity, user_id, lsLoaded, allowLSSave]); // ✅ Přidáno allowLSSave
+  }, [formData, attachments, editingInvoiceId, hadOriginalEntity, lpCerpani, sectionStates, user_id, lsLoaded, allowLSSave]); // ✅ Přidáno lpCerpani, sectionStates
 
   // 🔄 NOVÝ: Načtení dat z localStorage při mount (pouze jednou, po získání user_id)
   useEffect(() => {
@@ -1749,6 +1759,33 @@ export default function InvoiceEvidencePage() {
       const savedOrigEntity = localStorage.getItem(`invoiceOrigEntity_${user_id}`);
       if (savedOrigEntity) {
         setHadOriginalEntity(JSON.parse(savedOrigEntity));
+      }
+      
+      // 🆕 Načíst LP čerpání
+      const savedLpCerpani = localStorage.getItem(`invoiceLpCerpani_${user_id}`);
+      if (savedLpCerpani) {
+        try {
+          const parsed = JSON.parse(savedLpCerpani);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLpCerpani(parsed);
+          }
+        } catch (e) {
+          console.warn('⚠️ Chyba při parsování LP čerpání z localStorage:', e);
+        }
+      }
+      
+      // 🆕 Načíst stav sekcí
+      const savedSections = localStorage.getItem(`invoiceSections_${user_id}`);
+      if (savedSections) {
+        try {
+          const parsed = JSON.parse(savedSections);
+          setSectionStates(prev => ({
+            ...prev,
+            ...parsed
+          }));
+        } catch (e) {
+          console.warn('⚠️ Chyba při parsování stavu sekcí z localStorage:', e);
+        }
       }
       
       // Načíst formData
