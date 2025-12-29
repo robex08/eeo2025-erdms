@@ -19,12 +19,13 @@
  * Created: 2025-12-29
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faPlus,
-  faMinus,
+  faTimes,
+  faTrash,
   faInfoCircle,
   faExclamationTriangle,
   faCheckCircle
@@ -89,10 +90,10 @@ const SummaryItem = styled.div`
 
 const LPRow = styled.div`
   display: grid;
-  grid-template-columns: 200px 1fr 100px;
+  grid-template-columns: 280px minmax(180px, 1fr) 50px;
   gap: 12px;
   margin-bottom: 12px;
-  align-items: start;
+  align-items: center;
 `;
 
 const FormGroup = styled.div`
@@ -126,13 +127,15 @@ const Select = styled.select`
   }
 `;
 
-const Input = styled.input`
+const AmountInput = styled.input`
+  flex: 1;
   padding: 8px 12px;
   border: 1px solid ${props => props.hasError ? '#dc3545' : '#ced4da'};
   border-radius: 4px;
   font-size: 14px;
   text-align: right;
   font-family: 'Roboto Mono', monospace;
+  padding-right: 40px; /* Prostor pro Kč */
   
   &:focus {
     outline: none;
@@ -146,9 +149,30 @@ const Input = styled.input`
   }
 `;
 
+const AmountInputWrapper = styled.div`
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+`;
+
+const CurrencySymbol = styled.span`
+  position: absolute;
+  right: 12px;
+  color: ${props => props.disabled ? '#9ca3af' : '#374151'};
+  font-weight: 600;
+  font-size: 0.875rem;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+`;
+
 const ButtonGroup = styled.div`
   display: flex;
   gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 `;
 
 const IconButton = styled.button`
@@ -260,66 +284,180 @@ const parseCurrency = (value) => {
 
 // ============ MAIN COMPONENT ============
 
-export default function LPCerpaniEditor({ 
+// CurrencyAmountInput Sub-komponenta pro částku s Kč
+function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
+  const [localValue, setLocalValue] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Formátování měny
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '';
+    const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
+    if (isNaN(num)) return '';
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  };
+
+  // Počítaná hodnota místo useEffect
+  const displayValue = useMemo(() => {
+    if (isFocused) {
+      return localValue;
+    }
+    return formatCurrency(value || '');
+  }, [value, isFocused, localValue]);
+
+  // Synchronizovat localValue s value pouze když není focused
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalValue(formatCurrency(value || ''));
+    }
+  }, [value, isFocused]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+
+    // Očistit hodnotu a vrátit jako string s tečkou
+    const cleanValue = newValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+    const numValue = parseFloat(cleanValue);
+    const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
+
+    onChange(finalValue);
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlurLocal = () => {
+    setIsFocused(false);
+
+    // Formátovat hodnotu při ztrátě fokusu
+    const formatted = formatCurrency(localValue);
+    setLocalValue(formatted);
+  };
+
+  return (
+    <AmountInputWrapper>
+      <AmountInput
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlurLocal}
+        disabled={disabled}
+        hasError={hasError}
+        placeholder="0,00"
+      />
+      <CurrencySymbol disabled={disabled}>Kč</CurrencySymbol>
+    </AmountInputWrapper>
+  );
+}
+
+function LPCerpaniEditor({ 
   faktura, 
   orderData, 
   lpCerpani = [], 
+  availableLPCodes = [], // 🔥 LP kódy z číselníku (předané z OrderForm25)
   onChange,
-  disabled = false 
+  onValidationChange, // 🔥 Callback pro zprávu o chybách
+  disabled = false
 }) {
   const [rows, setRows] = useState([]);
   const [validationMessages, setValidationMessages] = useState([]);
+  
+  // 🔥 Ref pro sledování, zda už byl proveden auto-fill (aby se neopakoval)
+  const autoFilledRef = useRef(false);
+  const prevFakturaIdRef = useRef(null);
+  const prevLpCerpaniLengthRef = useRef(0);
+  
+  // 🔥 Stabilní ref pro onValidationChange callback (prevence infinite loop)
+  const onValidationChangeRef = useRef(onValidationChange);
+  useEffect(() => {
+    onValidationChangeRef.current = onValidationChange;
+  }, [onValidationChange]);
 
-  // Extrahovat LP kódy z financování objednávky
-  const availableLPCodes = useMemo(() => {
-    if (!orderData?.financovani) return [];
+  // 🔥 Filtrovat LP kódy podle financování objednávky
+  const filteredLPCodes = useMemo(() => {
+    if (!availableLPCodes || availableLPCodes.length === 0) return [];
     
-    try {
-      const fin = typeof orderData.financovani === 'string' 
-        ? JSON.parse(orderData.financovani) 
-        : orderData.financovani;
-      
-      if (fin.typ === 'LP' && Array.isArray(fin.lp_kody)) {
-        return fin.lp_kody.map(kod => ({
-          cislo: kod,
-          id: null // ID se může načíst z číselníku LP, pokud potřeba
-        }));
-      }
-    } catch (e) {
-      console.error('Chyba při parsování financování:', e);
+    // Zkusit několik možných umístění LP kódů v orderData
+    let lpKodyFromOrder = null;
+    
+    // Možnost 1: orderData.lp_kod (array) - původní OrderForm25
+    if (orderData?.lp_kod && Array.isArray(orderData.lp_kod) && orderData.lp_kod.length > 0) {
+      lpKodyFromOrder = orderData.lp_kod;
+    }
+    // Možnost 2: orderData.financovani.lp_kody (z parsed financování)
+    else if (orderData?.financovani?.lp_kody && Array.isArray(orderData.financovani.lp_kody) && orderData.financovani.lp_kody.length > 0) {
+      lpKodyFromOrder = orderData.financovani.lp_kody;
     }
     
-    return [];
-  }, [orderData]);
+    if (!lpKodyFromOrder || lpKodyFromOrder.length === 0) {
+      return [];
+    }
+    
+    // Filtrovat availableLPCodes podle LP kódů z objednávky
+    const filtered = availableLPCodes.filter(lpOption => {
+      return lpKodyFromOrder.some(kodValue => {
+        // kodValue může být ID nebo kód (string)
+        return lpOption.id === kodValue || 
+               lpOption.id === Number(kodValue) ||
+               lpOption.kod === kodValue ||
+               lpOption.cislo_lp === kodValue;
+      });
+    });
+    
+    return filtered;
+  }, [orderData?.lp_kod, availableLPCodes]);
 
   // Je LP financování?
-  const isLPFinancing = availableLPCodes.length > 0;
+  const isLPFinancing = filteredLPCodes.length > 0;
+  
+  // Reset auto-fill flag když se změní faktura
+  useEffect(() => {
+    if (faktura?.id !== prevFakturaIdRef.current) {
+      autoFilledRef.current = false;
+      prevFakturaIdRef.current = faktura?.id;
+      prevLpCerpaniLengthRef.current = 0;
+    }
+  }, [faktura?.id]);
 
   // Inicializace rows z lpCerpani prop
   useEffect(() => {
-    if (lpCerpani && lpCerpani.length > 0) {
-      setRows(lpCerpani.map((item, idx) => ({
-        id: `row_${idx}_${Date.now()}`,
-        lp_cislo: item.lp_cislo || '',
-        lp_id: item.lp_id || null,
-        castka: item.castka || 0,
-        poznamka: item.poznamka || ''
-      })));
-    } else if (isLPFinancing && availableLPCodes.length === 1 && faktura?.fa_castka) {
-      // 🔥 AUTO-FILL: Pokud je jen jeden LP kód, automaticky předvyplnit
-      const autoRow = {
-        id: `row_auto_${Date.now()}`,
-        lp_cislo: availableLPCodes[0].cislo,
-        lp_id: availableLPCodes[0].id,
-        castka: parseFloat(faktura.fa_castka),
-        poznamka: ''
-      };
-      setRows([autoRow]);
-      onChange && onChange([autoRow]);
-    } else {
-      setRows([]);
+    const currentLength = lpCerpani?.length || 0;
+    
+    // Pokud se lpCerpani ZMĚNILO (jiná délka než předtím)
+    if (currentLength !== prevLpCerpaniLengthRef.current) {
+      prevLpCerpaniLengthRef.current = currentLength;
+      
+      if (currentLength > 0) {
+        // Načíst existující data
+        setRows(lpCerpani.map((item, idx) => ({
+          id: `row_${idx}_${Date.now()}`,
+          lp_cislo: item.lp_cislo || '',
+          lp_id: item.lp_id || null,
+          castka: item.castka || 0,
+          poznamka: item.poznamka || ''
+        })));
+        autoFilledRef.current = true;
+      } else if (!autoFilledRef.current && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka) {
+        // 🔥 AUTO-FILL: Pouze pokud ještě nebylo auto-filled
+        const autoRow = {
+          id: `row_auto_${Date.now()}`,
+          lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
+          lp_id: filteredLPCodes[0].id,
+          castka: parseFloat(faktura.fa_castka),
+          poznamka: ''
+        };
+        setRows([autoRow]);
+        autoFilledRef.current = true;
+        // Parent bude informován skrz druhý useEffect
+      } else {
+        // Prázdné lpCerpani a není co auto-fillovat
+        setRows([]);
+      }
     }
-  }, [lpCerpani, isLPFinancing, availableLPCodes, faktura?.fa_castka]);
+  }, [lpCerpani, isLPFinancing, filteredLPCodes, faktura?.fa_castka]);
 
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {
@@ -331,16 +469,30 @@ export default function LPCerpaniEditor({
     const messages = [];
     const faCastka = parseFloat(faktura?.fa_castka) || 0;
 
-    // 1. Povinnost pro LP financování
-    if (isLPFinancing && rows.length === 0) {
+    // 1. Povinnost pro LP financování - musí mít alespoň jeden VALIDNÍ řádek
+    const validRows = rows.filter(r => r.lp_cislo && r.castka > 0);
+    if (isLPFinancing && validRows.length === 0) {
       messages.push({
         type: 'error',
-        text: '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!',
+        text: '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!',
         code: 'MISSING_LP'
       });
     }
 
-    // 2. Kontrola překročení
+    // 2. Kontrola nevyplněných řádků (má LP kód ale ne částku nebo naopak)
+    const incompleteRows = rows.filter(r => 
+      (r.lp_cislo && (!r.castka || r.castka <= 0)) || 
+      (!r.lp_cislo && r.castka > 0)
+    );
+    if (incompleteRows.length > 0) {
+      messages.push({
+        type: 'error',
+        text: '❌ Všechny řádky musí mít vyplněný LP kód i částku',
+        code: 'INCOMPLETE_ROWS'
+      });
+    }
+
+    // 3. Kontrola překročení
     if (totalAssigned > faCastka) {
       messages.push({
         type: 'error',
@@ -349,7 +501,7 @@ export default function LPCerpaniEditor({
       });
     }
 
-    // 3. Informace o neúplném přiřazení (ne error!)
+    // 4. Informace o neúplném přiřazení (ne error!)
     if (totalAssigned > 0 && totalAssigned < faCastka) {
       messages.push({
         type: 'info',
@@ -358,22 +510,12 @@ export default function LPCerpaniEditor({
       });
     }
 
-    // 4. Potvrzení úplného přiřazení
+    // 5. Potvrzení úplného přiřazení
     if (totalAssigned === faCastka && rows.length > 0) {
       messages.push({
         type: 'success',
         text: `✅ Celá částka faktury byla přiřazena na LP kódy.`,
         code: 'COMPLETE'
-      });
-    }
-
-    // 5. Kontrola nulových částek
-    const zeroRows = rows.filter(r => !r.castka || parseFloat(r.castka) <= 0);
-    if (zeroRows.length > 0) {
-      messages.push({
-        type: 'error',
-        text: `❌ Všechny částky musí být větší než 0 Kč`,
-        code: 'ZERO_AMOUNT'
       });
     }
 
@@ -389,30 +531,66 @@ export default function LPCerpaniEditor({
     }
 
     setValidationMessages(messages);
+    
+    // Informovat parent o chybách pomocí stabilního ref callbacku
+    if (onValidationChangeRef.current) {
+      const hasErrors = messages.some(m => m.type === 'error');
+      onValidationChangeRef.current(hasErrors);
+    }
   }, [rows, totalAssigned, faktura, isLPFinancing]);
 
   // Handler pro změnu LP kódu
   const handleLPChange = useCallback((rowId, lpCislo) => {
-    setRows(prev => prev.map(row => 
-      row.id === rowId 
-        ? { ...row, lp_cislo: lpCislo, lp_id: null } // TODO: načíst lp_id z číselníku
-        : row
-    ));
-  }, []);
+    setRows(prev => {
+      const updated = prev.map(row => 
+        row.id === rowId 
+          ? { ...row, lp_cislo: lpCislo, lp_id: null }
+          : row
+      );
+      
+      // Volání onChange okamžitě po aktualizaci
+      if (onChange) {
+        const validRows = updated.filter(r => r.lp_cislo && r.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
+      }
+      
+      return updated;
+    });
+  }, [onChange]);
 
   // Handler pro změnu částky
   const handleCastkaChange = useCallback((rowId, value) => {
-    setRows(prev => prev.map(row => 
-      row.id === rowId 
-        ? { ...row, castka: parseCurrency(value) }
-        : row
-    ));
-  }, []);
+    setRows(prev => {
+      const updated = prev.map(row => 
+        row.id === rowId 
+          ? { ...row, castka: parseCurrency(value) }
+          : row
+      );
+      
+      // Volání onChange okamžitě po aktualizaci
+      if (onChange) {
+        const validRows = updated.filter(r => r.lp_cislo && r.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
+      }
+      
+      return updated;
+    });
+  }, [onChange]);
 
   // Handler pro smazání řádku
   const handleRemoveRow = useCallback((rowId) => {
-    setRows(prev => prev.filter(row => row.id !== rowId));
-  }, []);
+    setRows(prev => {
+      const updated = prev.filter(row => row.id !== rowId);
+      
+      // Volání onChange okamžitě po aktualizaci
+      if (onChange) {
+        const validRows = updated.filter(r => r.lp_cislo && r.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
+      }
+      
+      return updated;
+    });
+  }, [onChange]);
 
   // Handler pro přidání řádku
   const handleAddRow = useCallback(() => {
@@ -423,17 +601,18 @@ export default function LPCerpaniEditor({
       castka: 0,
       poznamka: ''
     };
-    setRows(prev => [...prev, newRow]);
-  }, []);
-
-  // Aktualizovat parent component při změně rows
-  useEffect(() => {
-    if (onChange) {
-      // Vyfiltrovat pouze validní řádky (s LP kódem a částkou)
-      const validRows = rows.filter(r => r.lp_cislo && r.castka > 0);
-      onChange(validRows);
-    }
-  }, [rows, onChange]);
+    setRows(prev => {
+      const updated = [...prev, newRow];
+      
+      // Volání onChange okamžitě po aktualizaci
+      if (onChange) {
+        const validRows = updated.filter(r => r.lp_cislo && r.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
+      }
+      
+      return updated;
+    });
+  }, [onChange]);
 
   // Pokud není LP financování, nezobrazovat editor
   if (!isLPFinancing) {
@@ -444,7 +623,9 @@ export default function LPCerpaniEditor({
   const faCastka = parseFloat(faktura?.fa_castka) || 0;
 
   return (
-    <EditorWrapper hasError={hasErrors}>
+    <EditorWrapper 
+      hasError={hasErrors}
+    >
       <EditorHeader>
         <HeaderTitle>
           <FontAwesomeIcon icon={faInfoCircle} />
@@ -462,7 +643,7 @@ export default function LPCerpaniEditor({
         </SummaryBox>
       </EditorHeader>
 
-      {availableLPCodes.length === 1 && rows.length > 0 && (
+      {filteredLPCodes.length === 1 && rows.length > 0 && (
         <AutoFillNote>
           ℹ️ Objednávka používá pouze jeden LP kód, částka byla automaticky předvyplněna. Můžete ji upravit podle potřeby.
         </AutoFillNote>
@@ -478,23 +659,25 @@ export default function LPCerpaniEditor({
               disabled={disabled}
             >
               <option value="">-- Vyberte LP --</option>
-              {availableLPCodes.map(lp => (
-                <option key={lp.cislo} value={lp.cislo}>
-                  LP-{lp.cislo}
-                </option>
-              ))}
+              {filteredLPCodes.map(lp => {
+                // Použít label pokud existuje, jinak sestavit z cislo_lp a nazev_uctu
+                const displayText = lp.label || `${lp.cislo_lp || lp.kod} - ${lp.nazev_uctu || lp.nazev || 'Bez názvu'}`;
+                return (
+                  <option key={lp.id} value={lp.cislo_lp || lp.kod}>
+                    {displayText}
+                  </option>
+                );
+              })}
             </Select>
           </FormGroup>
 
           <FormGroup>
             <label>Částka (Kč) *</label>
-            <Input
-              type="text"
-              value={formatCurrency(row.castka)}
-              onChange={(e) => handleCastkaChange(row.id, e.target.value)}
-              placeholder="0,00"
-              disabled={disabled}
+            <CurrencyAmountInput
+              value={row.castka || ''}
+              onChange={(newValue) => handleCastkaChange(row.id, newValue)}
               hasError={!row.castka || row.castka <= 0}
+              disabled={disabled}
             />
           </FormGroup>
 
@@ -506,13 +689,13 @@ export default function LPCerpaniEditor({
               disabled={disabled || rows.length === 1}
               title="Odebrat řádek"
             >
-              <FontAwesomeIcon icon={faMinus} />
+              <FontAwesomeIcon icon={faTrash} />
             </IconButton>
           </ButtonGroup>
         </LPRow>
       ))}
 
-      {availableLPCodes.length > rows.length && (
+      {filteredLPCodes.length > rows.length && (
         <AddButton
           type="button"
           onClick={handleAddRow}
@@ -537,3 +720,15 @@ export default function LPCerpaniEditor({
     </EditorWrapper>
   );
 }
+
+// ✅ React.memo pro prevenci zbytečných re-renderů
+export default React.memo(LPCerpaniEditor, (prevProps, nextProps) => {
+  // Porovnat jen klíčové props pro re-render
+  return (
+    prevProps.faktura?.id === nextProps.faktura?.id &&
+    prevProps.orderData?.id === nextProps.orderData?.id &&
+    prevProps.lpCerpani === nextProps.lpCerpani &&
+    prevProps.availableLPCodes === nextProps.availableLPCodes &&
+    prevProps.disabled === nextProps.disabled
+  );
+});
