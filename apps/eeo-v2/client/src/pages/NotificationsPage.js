@@ -964,17 +964,6 @@ export const NotificationsPage = () => {
       // Backend vrací data v result.data
       const notificationsData = result.data || [];
 
-      // 🔍 DEBUG: Zobraz RAW data z backendu
-      if (notificationsData.length > 0) {
-        console.log('🔔 [NotificationsPage/loadNotifications] Celkem notifikací:', notificationsData.length);
-        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace (RAW z backendu):', notificationsData[0]);
-        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace - data:', notificationsData[0].data);
-        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace - data_json:', notificationsData[0].data_json);
-        if (notificationsData[0].data) {
-          console.log('🔔 [NotificationsPage/loadNotifications] Klíče v data:', Object.keys(notificationsData[0].data));
-        }
-      }
-
       // Obohať notifikace o config (ikony, barvy)
       const enrichedNotifications = notificationsData.map(notification => {
         const config = NOTIFICATION_CONFIG[notification.typ] || {};
@@ -2160,19 +2149,6 @@ export const NotificationsPage = () => {
                 const notificationData = mainNotification.data || {};
                 mainNotification.data = notificationData;
 
-                // 🔍 DEBUG: Log první notifikaci pro kontrolu dat
-                if (index === 0) {
-                  console.log('🔔 [NotificationsPage] První vlákno - hlavní notifikace:', mainNotification);
-                  console.log('🔔 [NotificationsPage] mainNotification.data:', mainNotification.data);
-                  console.log('🔔 [NotificationsPage] mainNotification.data_json:', mainNotification.data_json);
-                  console.log('🔔 [NotificationsPage] Klíče v data:', Object.keys(notificationData));
-                  console.log('🔔 [NotificationsPage] order_subject:', notificationData.order_subject);
-                  console.log('🔔 [NotificationsPage] max_price_with_dph:', notificationData.max_price_with_dph);
-                  console.log('🔔 [NotificationsPage] creator_name:', notificationData.creator_name);
-                  console.log('🔔 [NotificationsPage] garant_name:', notificationData.garant_name);
-                  console.log('🔔 [NotificationsPage] prikazce_name:', notificationData.prikazce_name);
-                }
-
                 return (
                   <React.Fragment key={threadKey}>
                     {/* Hlavní (nejnovější) notifikace vlákna */}
@@ -2227,7 +2203,7 @@ export const NotificationsPage = () => {
                                         <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                           | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
                                           {getTimeAgo(mainNotification.dt_created || mainNotification.created_at)}
-                                          {mainNotification.data?.action_performed_by && ` | ${mainNotification.data.action_performed_by}`}
+                                          {mainNotification.data?.placeholders?.action_performed_by && ` | ${mainNotification.data.placeholders.action_performed_by}`}
                                           {mainNotification.from_user_name && ` | Od: ${mainNotification.from_user_name}`}
                                         </span>
                                       )}
@@ -2242,7 +2218,7 @@ export const NotificationsPage = () => {
                                     <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                       | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
                                       {getTimeAgo(mainNotification.dt_created || mainNotification.created_at)}
-                                      {mainNotification.data?.action_performed_by && ` | ${mainNotification.data.action_performed_by}`}
+                                      {mainNotification.data?.placeholders?.action_performed_by && ` | ${mainNotification.data.placeholders.action_performed_by}`}
                                       {mainNotification.from_user_name && ` | Od: ${mainNotification.from_user_name}`}
                                     </span>
                                   )}
@@ -2282,9 +2258,9 @@ export const NotificationsPage = () => {
                             )}
                           </NotificationTitle>
                         </NotificationHeader>
-                        {mainNotification.typ?.includes('order') && mainNotification.data ? (
+                        {mainNotification.typ?.includes('order') && mainNotification.data?.placeholders ? (
                           <NotificationMessage>
-                            <strong>Předmět:</strong> {mainNotification.data.order_subject || 'N/A'} | <strong>Cena:</strong> {mainNotification.data.max_price_with_dph || mainNotification.data.max_price || 'N/A'} Kč | <strong>Objednatel:</strong> {mainNotification.data.creator_name || 'N/A'} | <strong>Garant:</strong> {mainNotification.data.garant_name || 'N/A'} | <strong>Příkazce:</strong> {mainNotification.data.prikazce_name || 'N/A'}
+                            <strong>Předmět:</strong> {mainNotification.data.placeholders.order_subject || mainNotification.data.placeholders.predmet || 'N/A'} | <strong>Cena:</strong> {mainNotification.data.placeholders.max_price_with_dph || mainNotification.data.placeholders.amount || 'N/A'} | <strong>Objednatel:</strong> {mainNotification.data.placeholders.creator_name || mainNotification.data.placeholders.objednatel_name || 'N/A'} | <strong>Garant:</strong> {mainNotification.data.placeholders.garant_name || 'N/A'} | <strong>Příkazce:</strong> {mainNotification.data.placeholders.prikazce_name || mainNotification.data.placeholders.schvalovatel_name || 'N/A'}
                           </NotificationMessage>
                         ) : mainNotification.zprava || mainNotification.message ? (
                           <NotificationMessage>
@@ -2292,7 +2268,7 @@ export const NotificationsPage = () => {
                           </NotificationMessage>
                         ) : null}
 
-                        {detailMode && mainNotification.data?.note && (
+                        {detailMode && mainNotification.data?.placeholders?.note && (
                           <div style={{
                             fontSize: '0.85rem',
                             color: '#475569',
@@ -2304,7 +2280,7 @@ export const NotificationsPage = () => {
                             borderRadius: '4px'
                           }}>
                             <strong style={{ fontStyle: 'normal', color: '#64748b' }}>📝 Poznámka:</strong>{' '}
-                            {mainNotification.data.note}
+                            {mainNotification.data.placeholders.note}
                           </div>
                         )}
 
@@ -2314,14 +2290,14 @@ export const NotificationsPage = () => {
                               {getCategoryLabel(mainNotification.category)}
                             </TypeBadge>
                           )}
-                          {mainNotification.data?.action_date && (
+                          {mainNotification.data?.placeholders?.action_date && (
                             <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
-                              📅 {mainNotification.data.action_date}
+                              📅 {mainNotification.data.placeholders.action_date}
                             </TypeBadge>
                           )}
-                          {mainNotification.data?.action_performed_by && (
+                          {mainNotification.data?.placeholders?.action_performed_by && (
                             <TypeBadge style={{ background: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>
-                              👤 {mainNotification.data.action_performed_by}
+                              👤 {mainNotification.data.placeholders.action_performed_by}
                             </TypeBadge>
                           )}
                         </NotificationMeta>
@@ -2451,7 +2427,7 @@ export const NotificationsPage = () => {
                                             <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.85em', marginLeft: '0.5em' }}>
                                               | <FontAwesomeIcon icon={faClock} style={{ fontSize: '10px', marginRight: '4px' }} />
                                               {getTimeAgo(olderNotif.dt_created || olderNotif.created_at)}
-                                              {olderNotif.data?.action_performed_by && ` | ${olderNotif.data.action_performed_by}`}
+                                              {olderNotif.data?.placeholders?.action_performed_by && ` | ${olderNotif.data.placeholders.action_performed_by}`}
                                               {olderNotif.from_user_name && ` | Od: ${olderNotif.from_user_name}`}
                                             </span>
                                           )}
@@ -2466,7 +2442,7 @@ export const NotificationsPage = () => {
                                         <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.85em', marginLeft: '0.5em' }}>
                                           | <FontAwesomeIcon icon={faClock} style={{ fontSize: '10px', marginRight: '4px' }} />
                                           {getTimeAgo(olderNotif.dt_created || olderNotif.created_at)}
-                                          {olderNotif.data?.action_performed_by && ` | ${olderNotif.data.action_performed_by}`}
+                                          {olderNotif.data?.placeholders?.action_performed_by && ` | ${olderNotif.data.placeholders.action_performed_by}`}
                                           {olderNotif.from_user_name && ` | Od: ${olderNotif.from_user_name}`}
                                         </span>
                                       )}
@@ -2485,7 +2461,7 @@ export const NotificationsPage = () => {
                               </NotificationMessage>
                             ) : null}
 
-                            {detailMode && olderNotif.data?.note && (
+                            {detailMode && olderNotif.data?.placeholders?.note && (
                               <div style={{
                                 fontSize: '0.8rem',
                                 color: '#475569',
@@ -2498,7 +2474,7 @@ export const NotificationsPage = () => {
                                 lineHeight: '1.4'
                               }}>
                                 <strong style={{ fontStyle: 'normal', color: '#64748b' }}>📝 Poznámka:</strong>{' '}
-                                {olderNotif.data.note}
+                                {olderNotif.data.placeholders.note}
                               </div>
                             )}
 
@@ -2508,14 +2484,14 @@ export const NotificationsPage = () => {
                                   {getCategoryLabel(olderNotif.category)}
                                 </TypeBadge>
                               )}
-                              {olderNotif.data?.action_date && (
+                              {olderNotif.data?.placeholders?.action_date && (
                                 <TypeBadge style={{ background: '#dbeafe', color: '#1e40af', fontSize: '10px', padding: '2px 6px' }}>
-                                  📅 {olderNotif.data.action_date}
+                                  📅 {olderNotif.data.placeholders.action_date}
                                 </TypeBadge>
                               )}
-                              {olderNotif.data?.action_performed_by && (
+                              {olderNotif.data?.placeholders?.action_performed_by && (
                                 <TypeBadge style={{ background: '#f3e8ff', color: '#6b21a8', fontSize: '10px', padding: '2px 6px', fontWeight: 600 }}>
-                                  👤 {olderNotif.data.action_performed_by}
+                                  👤 {olderNotif.data.placeholders.action_performed_by}
                                 </TypeBadge>
                               )}
                               {olderIsDismissed && (
@@ -2636,7 +2612,7 @@ export const NotificationsPage = () => {
                                     <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                       | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
                                       {getTimeAgo(notification.dt_created || notification.created_at)}
-                                      {notification.data?.action_performed_by && ` | ${notification.data.action_performed_by}`}
+                                      {notification.data?.placeholders?.action_performed_by && ` | ${notification.data.placeholders.action_performed_by}`}
                                       {notification.from_user_name && ` | Od: ${notification.from_user_name}`}
                                     </span>
                                   )}
@@ -2651,7 +2627,7 @@ export const NotificationsPage = () => {
                                 <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                   | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
                                   {getTimeAgo(notification.dt_created || notification.created_at)}
-                                  {notification.data?.action_performed_by && ` | ${notification.data.action_performed_by}`}
+                                  {notification.data?.placeholders?.action_performed_by && ` | ${notification.data.placeholders.action_performed_by}`}
                                   {notification.from_user_name && ` | Od: ${notification.from_user_name}`}
                                 </span>
                               )}
@@ -2671,7 +2647,7 @@ export const NotificationsPage = () => {
                     ) : null}
 
                     {/* Poznámka */}
-                    {detailMode && notification.data?.note && (
+                    {detailMode && notification.data?.placeholders?.note && (
                       <div style={{
                         fontSize: '0.85rem',
                         color: '#475569',
@@ -2683,7 +2659,7 @@ export const NotificationsPage = () => {
                         borderRadius: '4px'
                       }}>
                         <strong style={{ fontStyle: 'normal', color: '#64748b' }}>📝 Poznámka:</strong>{' '}
-                        {notification.data.note}
+                        {notification.data.placeholders.note}
                       </div>
                     )}
 
@@ -2700,15 +2676,15 @@ export const NotificationsPage = () => {
                         </TypeBadge>
                       )}
                       {/* Datum akce jako badge */}
-                      {detailMode && notification.data?.action_date && (
+                      {detailMode && notification.data?.placeholders?.action_date && (
                         <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
-                          📅 {notification.data.action_date}
+                          📅 {notification.data.placeholders.action_date}
                         </TypeBadge>
                       )}
                       {/* Osoba jako badge */}
-                      {detailMode && notification.data?.action_performed_by && (
+                      {detailMode && notification.data?.placeholders?.action_performed_by && (
                         <TypeBadge style={{ background: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>
-                          👤 {notification.data.action_performed_by}
+                          👤 {notification.data.placeholders.action_performed_by}
                         </TypeBadge>
                       )}
                     </NotificationMeta>

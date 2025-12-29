@@ -629,14 +629,6 @@ export const NotificationDropdown = ({
                 notificationData = {};
               }
 
-              // 🔍 DEBUG: Log notifikaci pro kontrolu dat
-              if (index === 0) {
-                console.log('🔔 [NotificationDropdown] První notifikace:', notification);
-                console.log('🔔 [NotificationDropdown] notification.data:', notification.data);
-                console.log('🔔 [NotificationDropdown] notification.data_json:', notification.data_json);
-                console.log('🔔 [NotificationDropdown] parsovaná notificationData:', notificationData);
-              }
-
               return (
                 <NotificationItem
                   key={notification.id}

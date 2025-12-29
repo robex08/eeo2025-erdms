@@ -189,8 +189,26 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       params: { token, username }
     });
     
-    if (response.data.status === 'ok' && response.data.data?.nastaveni) {
-      const settings = response.data.data.nastaveni;
+    // ✅ PODPORA PRO response.data.status === 'ok'
+    if (response.data.status === 'ok') {
+      // ⚠️ FALLBACK: Pokud backend vrátí null nebo prázdné nastavení, vrať výchozí
+      const settings = response.data.data?.nastaveni || null;
+      
+      // Pokud je nastavení null nebo prázdné, použij výchozí z localStorage nebo výchozí default
+      if (!settings || Object.keys(settings).length === 0) {
+        console.warn('[UserSettings] ⚠️ Backend vrátil prázdné nastavení - použijí se výchozí');
+        const localSettings = loadSettingsFromLocalStorage(userId);
+        if (localSettings) {
+          return localSettings;
+        }
+        // Výchozí nastavení
+        return {
+          theme: 'light',
+          language: 'cs',
+          notifications: { email: true, inapp: true },
+          vychozi_sekce_po_prihlaseni: 'orders'
+        };
+      }
       
       // 🔧 EXTRAKCE: Vyextrahuj .value z objektů před uložením do localStorage
       const cleanedSettings = { ...settings };
@@ -226,7 +244,20 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       return cleanedSettings;
     }
     
-    throw new Error('Neplatná odpověď z API');
+    // ⚠️ FALLBACK: Backend vrátil neočekávanou strukturu
+    console.warn('[UserSettings] ⚠️ Neplatná odpověď z API - použije se fallback');
+    const localSettings = loadSettingsFromLocalStorage(userId);
+    if (localSettings) {
+      return localSettings;
+    }
+    
+    // Výchozí nastavení jako poslední fallback
+    return {
+      theme: 'light',
+      language: 'cs',
+      notifications: { email: true, inapp: true },
+      vychozi_sekce_po_prihlaseni: 'orders'
+    };
     
   } catch (error) {
     console.error('[UserSettings] ❌ Chyba při načítání z API:', error);
