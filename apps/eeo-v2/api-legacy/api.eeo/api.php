@@ -147,6 +147,7 @@ define('TBL_SMLOUVY', '25_smlouvy');
 define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
 define('TBL_FAKTURY', '25a_objednavky_faktury');
 define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
+define('TBL_FAKTURY_LP_CERPANI', '25a_faktury_lp_cerpani');
 define('TBL_DODAVATELE', '25_dodavatele');
 
 // FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
@@ -248,6 +249,7 @@ require_once __DIR__ . '/v2025.03_25/lib/orderV2Endpoints.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2AttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2PolozkyLPHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/fakturyLpCerpaniHandlers.php';
 
 // CASHBOOK - Pokladní knihy
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlers.php';
@@ -3489,6 +3491,28 @@ switch ($endpoint) {
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use PUT or POST.'));
+            }
+            break;
+        }
+
+        // POST /api.eeo/faktury/lp-cerpani/save - uložit LP čerpání na faktuře
+        if ($endpoint === 'faktury/lp-cerpani/save') {
+            if ($request_method === 'POST') {
+                handle_save_faktura_lp_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/faktury/lp-cerpani/get - načíst LP čerpání faktury
+        if ($endpoint === 'faktury/lp-cerpani/get') {
+            if ($request_method === 'POST') {
+                handle_get_faktura_lp_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
             }
             break;
         }
