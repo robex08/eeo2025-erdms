@@ -6859,6 +6859,36 @@ function OrderForm25() {
 
           if (existingDraft && existingDraft.formData && existingDraft.formData.id == editOrderId) {
             // ✅ Máme čerstvý draft z Orders25List - použij ho!
+            
+            console.log(`🔍 [OrderForm25 LOAD DRAFT] Draft faktury:`, existingDraft.formData.faktury);
+            
+            // 📎 NAČÍST PŘÍLOHY PRO FAKTURY Z DRAFTU (draft neobsahuje attachments)
+            if (existingDraft.formData.faktury && Array.isArray(existingDraft.formData.faktury)) {
+              const fakturyWithAttachments = await Promise.all(
+                existingDraft.formData.faktury.map(async faktura => {
+                  console.log(`🔍 [OrderForm25 LOAD DRAFT] Načítám přílohy pro fakturu ID=${faktura.id}`);
+                  let attachments = [];
+                  if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+                    try {
+                      const attachResponse = await listInvoiceAttachments(
+                        faktura.id,
+                        username,
+                        token,
+                        editOrderId
+                      );
+                      attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                      console.log(`🔍 [OrderForm25 LOAD DRAFT] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
+                    } catch (err) {
+                      console.error(`❌ [OrderForm25 LOAD DRAFT] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                    }
+                  }
+                  return { ...faktura, attachments };
+                })
+              );
+              
+              existingDraft.formData.faktury = fakturyWithAttachments;
+              console.log(`🔍 [OrderForm25 LOAD DRAFT] Faktury s přílohami:`, fakturyWithAttachments);
+            }
 
             // Aplikuj draft data na formData
             setFormData(existingDraft.formData);
@@ -6976,6 +7006,34 @@ function OrderForm25() {
             }
           }
 
+          // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (PŘED vytvořením draft objektu)
+          console.log(`🔍 [OrderForm25 LOAD] dbOrder.faktury:`, dbOrder.faktury);
+          const fakturyWithAttachments = dbOrder.faktury && Array.isArray(dbOrder.faktury)
+            ? await Promise.all(dbOrder.faktury.map(async faktura => {
+                console.log(`🔍 [OrderForm25 LOAD] Načítám přílohy pro fakturu ID=${faktura.id}`);
+                // Načti přílohy
+                let attachments = [];
+                if (faktura.id && !String(faktura.id).startsWith('temp-')) {
+                  try {
+                    const attachResponse = await listInvoiceAttachments(
+                      faktura.id,
+                      username,
+                      token,
+                      dbOrder.id
+                    );
+                    attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                    console.log(`🔍 [OrderForm25 LOAD] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
+                  } catch (err) {
+                    console.error(`❌ [OrderForm25 LOAD] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
+                  }
+                }
+                
+                return { ...faktura, attachments };
+              }))
+            : [];
+          
+          console.log(`🔍 [OrderForm25 LOAD] fakturyWithAttachments:`, fakturyWithAttachments);
+
           // Vytvoř údaje objednatele
           let objednatelData = {
             objednatel_id: dbOrder.objednatel_id || user_id,
@@ -7069,8 +7127,8 @@ function OrderForm25() {
               }),
               // 🔧 KRITICKÁ OPRAVA: Mapování faktur z DB na FE formát (stejně jako v řádku 7867)
               faktury: (() => {
-                if (dbOrder.faktury && Array.isArray(dbOrder.faktury)) {
-                  return dbOrder.faktury.map(faktura => {
+                if (fakturyWithAttachments && Array.isArray(fakturyWithAttachments) && fakturyWithAttachments.length > 0) {
+                  return fakturyWithAttachments.map(faktura => {
                     // 🆕 DETEKCE POKLADNÍHO DOKLADU z rozsirujici_data
                     const rozsirujiciData = typeof faktura.rozsirujici_data === 'string'
                       ? JSON.parse(faktura.rozsirujici_data || '{}')
@@ -7146,12 +7204,16 @@ function OrderForm25() {
                     // Zachovat originální DB pole pro API odesílání
                     fa_datum_doruceni: faktura.fa_datum_doruceni,
                     fa_datum_splatnosti: faktura.fa_datum_splatnosti,
-                    fa_datum_vystaveni: faktura.fa_datum_vystaveni
+                    fa_datum_vystaveni: faktura.fa_datum_vystaveni,
+                    // 📎 PŘÍLOHY jsou už načteny v fakturyWithAttachments
+                    attachments: faktura.attachments || []
                     };
 
+                    console.log(`🔍 [OrderForm25 LOAD] Mapovaná faktura:`, { id: mappedFaktura.id, attachments: mappedFaktura.attachments });
                     return mappedFaktura;
                   });
                 } else {
+                  console.log(`🔍 [OrderForm25 LOAD] Žádné faktury k mapování`);
                   return []; // Žádné faktury
                 }
               })()
@@ -11016,7 +11078,9 @@ function OrderForm25() {
                   formData.id  // orderId
                 );
                 attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                console.log(`🔍 [OrderForm25] Načteny přílohy faktury ID=${fakturaFromDB.id}:`, attachments);
               } catch (err) {
+                console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
               }
             }
 
@@ -22645,8 +22709,14 @@ function OrderForm25() {
                                   faktura={formData.faktury[0]}
                                   validateInvoiceForAttachments={validateInvoiceForAttachments}
                                   isPokladna={true}
-                                  attachments={formData.faktury[0].attachments || []}
+                                  allUsers={allUsers}
+                                  attachments={(() => {
+                                    const atts = formData.faktury[0].attachments || [];
+                                    console.log(`🔍 [OrderForm25] Předávám přílohy do InvoiceAttachmentsCompact (fakturaId=${formData.faktury[0].id}):`, atts);
+                                    return atts;
+                                  })()}
                                   onAttachmentsChange={(newAttachments) => {
+                                    console.log(`🔍 [OrderForm25] onAttachmentsChange volán s:`, newAttachments);
                                     handleInvoiceAttachmentsChange(formData.faktury[0].id, newAttachments);
                                   }}
                                   onAttachmentUploaded={(uploadedAttachment) => {
@@ -23469,6 +23539,7 @@ function OrderForm25() {
                                 formData={formData}
                                 faktura={faktura}
                                 validateInvoiceForAttachments={validateInvoiceForAttachments}
+                                allUsers={allUsers}
                                 attachments={faktura.attachments || []}
                                 onAttachmentsChange={(newAttachments) => {
                                   handleInvoiceAttachmentsChange(faktura.id, newAttachments);
