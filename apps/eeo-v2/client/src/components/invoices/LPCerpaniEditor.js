@@ -418,8 +418,8 @@ function LPCerpaniEditor({
   const filteredLPCodes = useMemo(() => {
     if (!availableLPCodes || availableLPCodes.length === 0) {
       console.warn('🚨 [LPCerpaniEditor] Žádné dostupné LP kódy!');
-      console.log('🔍 availableLPCodes:', availableLPCodes);
-      return [];
+      console.log('🔍 availableLPCodes:', availableLPCodes);    console.log('🔍 availableLPCodes.length:', availableLPCodes?.length);
+    console.log('🔍 prvních 3 LP kódy:', availableLPCodes?.slice(0, 3));      return [];
     }
     
     // 🔍 DEBUG: Log všech dostupných LP kódů
@@ -471,6 +471,10 @@ function LPCerpaniEditor({
     });
     
     console.log('🎯 [LPCerpaniEditor] Finální filtrované LP kódy:', filtered);
+    console.log('🎯 [LPCerpaniEditor] Počet filtrovaných LP kódů:', filtered.length);
+    if (filtered.length > 0) {
+      console.log('🎯 [LPCerpaniEditor] Prvních 3 filtrované:', filtered.slice(0, 3));
+    }
     return filtered;
   }, [orderData?.lp_kod, availableLPCodes]);
 
@@ -604,24 +608,20 @@ function LPCerpaniEditor({
   }, [rows, totalAssigned, faktura, isLPFinancing]);
 
   // Handler pro změnu LP kódu
-  const handleLPChange = useCallback((rowId, selectedValues) => {
+  const handleLPChange = useCallback((rowId, selectedLpId) => {
+    console.log('🔍 [handleLPChange] Změna LP kódu:', { rowId, selectedLpId });
+    
     setRows(prev => {
       const updated = prev.map(row => {
         if (row.id === rowId) {
-          // selectedValues je array hodnot (protože multiple=false, bude obsahovat max 1 prvek)
-          const newValue = Array.isArray(selectedValues) && selectedValues.length > 0 
-            ? selectedValues[0] 
-            : '';
-          
-          // Najít LP objekt podle cislo_lp
-          const selectedLP = filteredLPCodes.find(lp => 
-            (lp.cislo_lp || lp.kod) === newValue
-          );
+          // 🎯 Najít LP kód podle ID
+          const lpOption = filteredLPCodes.find(lp => lp.id === selectedLpId);
+          console.log('🎯 [handleLPChange] Nalezený LP:', lpOption);
           
           return {
             ...row,
-            lp_cislo: newValue,
-            lp_id: selectedLP?.id || null
+            lp_cislo: selectedLpId || null,  // Uložit ID
+            lp_data: lpOption || null       // Uložit celý objekt pro reference
           };
         }
         return row;
@@ -737,7 +737,11 @@ function LPCerpaniEditor({
             </label>
             <CustomSelect
               value={row.lp_cislo ? [row.lp_cislo] : []}
-              onChange={(selectedValues) => handleLPChange(row.id, selectedValues)}
+              onChange={(selectedValues) => {
+                // 🎯 Oprava: použít první vybrané ID (selectedValues jsou ID, ne cislo_lp)
+                const selectedId = selectedValues.length > 0 ? selectedValues[0] : null;
+                handleLPChange(row.id, selectedId);
+              }}
               onBlur={() => {}}
               options={filteredLPCodes}
               placeholder="-- Vyberte LP --"
@@ -757,8 +761,10 @@ function LPCerpaniEditor({
               toggleSelect={toggleSelect}
               filterOptions={filterOptions}
               getOptionLabel={(option) => {
-                if (!option) return '';
-                return option.label || `${option.cislo_lp || option.kod} - ${option.nazev_uctu || option.nazev || 'Bez názvu'}`;
+                // 🎯 Stejný formát jako v OrderForm25
+                return option.cislo_lp
+                  ? `${option.cislo_lp} - ${option.nazev_uctu || 'Bez názvu'}`
+                  : `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
               }}
             />
           </FormGroup>
