@@ -1,6 +1,8 @@
 /**
  * API služba pro LP čerpání na fakturách
  * Endpoint: /faktury/lp-cerpani/*
+ * 
+ * ⚠️ DŮLEŽITÉ: API očekává token a username v BODY (ne v headerech!)
  */
 
 import axios from 'axios';
@@ -14,11 +16,14 @@ const api = axios.create({
  * Uložit LP čerpání na faktuře
  * @param {number} fakturaId - ID faktury
  * @param {Array} lpCerpani - Array of {lp_cislo, lp_id, castka, poznamka}
+ * @param {string} token - Auth token (předat z AuthContext)
+ * @param {string} username - Username (předat z AuthContext)
  * @returns {Promise} Response s uloženými daty
  */
-export async function saveFakturaLPCerpani(fakturaId, lpCerpani) {
-  const token = localStorage.getItem('token');
-  const username = localStorage.getItem('username');
+export async function saveFakturaLPCerpani(fakturaId, lpCerpani, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí autentizační údaje (token nebo username)');
+  }
 
   const response = await api.post('/faktury/lp-cerpani/save', {
     token,
@@ -33,11 +38,14 @@ export async function saveFakturaLPCerpani(fakturaId, lpCerpani) {
 /**
  * Načíst LP čerpání pro fakturu
  * @param {number} fakturaId - ID faktury
+ * @param {string} token - Auth token (předat z AuthContext)
+ * @param {string} username - Username (předat z AuthContext)
  * @returns {Promise} Response s LP čerpáním
  */
-export async function getFakturaLPCerpani(fakturaId) {
-  const token = localStorage.getItem('token');
-  const username = localStorage.getItem('username');
+export async function getFakturaLPCerpani(fakturaId, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí autentizační údaje (token nebo username)');
+  }
 
   const response = await api.post('/faktury/lp-cerpani/get', {
     token,
