@@ -964,6 +964,17 @@ export const NotificationsPage = () => {
       // Backend vrací data v result.data
       const notificationsData = result.data || [];
 
+      // 🔍 DEBUG: Zobraz RAW data z backendu
+      if (notificationsData.length > 0) {
+        console.log('🔔 [NotificationsPage/loadNotifications] Celkem notifikací:', notificationsData.length);
+        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace (RAW z backendu):', notificationsData[0]);
+        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace - data:', notificationsData[0].data);
+        console.log('🔔 [NotificationsPage/loadNotifications] První notifikace - data_json:', notificationsData[0].data_json);
+        if (notificationsData[0].data) {
+          console.log('🔔 [NotificationsPage/loadNotifications] Klíče v data:', Object.keys(notificationsData[0].data));
+        }
+      }
+
       // Obohať notifikace o config (ikony, barvy)
       const enrichedNotifications = notificationsData.map(notification => {
         const config = NOTIFICATION_CONFIG[notification.typ] || {};
