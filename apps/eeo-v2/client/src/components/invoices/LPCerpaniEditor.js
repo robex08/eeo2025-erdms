@@ -25,11 +25,11 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faPlus,
   faTimes,
-  faTrash,
   faInfoCircle,
   faExclamationTriangle,
   faCheckCircle
 } from '@fortawesome/free-solid-svg-icons';
+import { Trash } from 'lucide-react';
 
 // ============ STYLED COMPONENTS ============
 
@@ -105,6 +105,15 @@ const FormGroup = styled.div`
     font-weight: 600;
     color: #495057;
     margin-bottom: 4px;
+    
+    /* Červená hvězdička pro povinná pole */
+    &:has(+ select[required]),
+    &:has(+ input[required]) {
+      &::after {
+        content: ' *';
+        color: #dc2626;
+      }
+    }
   }
 `;
 
@@ -172,28 +181,46 @@ const ButtonGroup = styled.div`
   gap: 8px;
   align-items: center;
   justify-content: center;
-  height: 100%;
 `;
 
 const IconButton = styled.button`
-  padding: 8px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  background: white;
-  color: ${props => props.variant === 'danger' ? '#dc3545' : '#007bff'};
+  margin-top: 18px;
+  background: #ef4444;
+  color: white;
+  border: 2px solid white;
+  border-radius: 6px;
+  padding: 0.375rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   transition: all 0.2s;
-  
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
   &:hover:not(:disabled) {
-    background: ${props => props.variant === 'danger' ? '#dc3545' : '#007bff'};
-    color: white;
+    background-color: #dc2626;
+    transform: scale(1.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
   }
-  
+
+  &:active:not(:disabled) {
+    background-color: #b91c1c;
+    transform: scale(0.95);
+  }
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-`;
+
+  svg {
+    color: white;
+    width: 16px;
+    height: 16px;
+  }
+`;;
 
 const AddButton = styled.button`
   padding: 10px 16px;
@@ -285,17 +312,18 @@ const parseCurrency = (value) => {
 // ============ MAIN COMPONENT ============
 
 // CurrencyAmountInput Sub-komponenta pro částku s Kč
-function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
+const CurrencyAmountInput = React.memo(function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
   const [localValue, setLocalValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef(null);
 
   // Formátování měny
-  const formatCurrency = (val) => {
+  const formatCurrency = useCallback((val) => {
     if (!val && val !== 0) return '';
     const num = parseFloat(val.toString().replace(/[^0-9.-]/g, ''));
     if (isNaN(num)) return '';
     return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
-  };
+  }, []);
 
   // Počítaná hodnota místo useEffect
   const displayValue = useMemo(() => {
@@ -303,16 +331,16 @@ function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
       return localValue;
     }
     return formatCurrency(value || '');
-  }, [value, isFocused, localValue]);
+  }, [value, isFocused, localValue, formatCurrency]);
 
   // Synchronizovat localValue s value pouze když není focused
   useEffect(() => {
     if (!isFocused) {
       setLocalValue(formatCurrency(value || ''));
     }
-  }, [value, isFocused]);
+  }, [value, isFocused, formatCurrency]);
 
-  const handleChange = (e) => {
+  const handleChange = useCallback((e) => {
     const newValue = e.target.value;
     setLocalValue(newValue);
 
@@ -322,23 +350,24 @@ function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
     const finalValue = isNaN(numValue) ? '' : numValue.toFixed(2);
 
     onChange(finalValue);
-  };
+  }, [onChange]);
 
-  const handleFocus = () => {
+  const handleFocus = useCallback(() => {
     setIsFocused(true);
-  };
+  }, []);
 
-  const handleBlurLocal = () => {
+  const handleBlurLocal = useCallback(() => {
     setIsFocused(false);
 
     // Formátovat hodnotu při ztrátě fokusu
     const formatted = formatCurrency(localValue);
     setLocalValue(formatted);
-  };
+  }, [localValue, formatCurrency]);
 
   return (
     <AmountInputWrapper>
       <AmountInput
+        ref={inputRef}
         type="text"
         value={displayValue}
         onChange={handleChange}
@@ -351,7 +380,7 @@ function CurrencyAmountInput({ value, onChange, hasError, disabled }) {
       <CurrencySymbol disabled={disabled}>Kč</CurrencySymbol>
     </AmountInputWrapper>
   );
-}
+});
 
 function LPCerpaniEditor({ 
   faktura, 
@@ -652,11 +681,12 @@ function LPCerpaniEditor({
       {rows.map((row, index) => (
         <LPRow key={row.id}>
           <FormGroup>
-            <label>LP kód *</label>
+            <label>LP kód</label>
             <Select
               value={row.lp_cislo}
               onChange={(e) => handleLPChange(row.id, e.target.value)}
               disabled={disabled}
+              required
             >
               <option value="">-- Vyberte LP --</option>
               {filteredLPCodes.map(lp => {
@@ -672,12 +702,13 @@ function LPCerpaniEditor({
           </FormGroup>
 
           <FormGroup>
-            <label>Částka (Kč) *</label>
+            <label>Částka (Kč) <span style={{color: '#dc2626'}}>*</span></label>
             <CurrencyAmountInput
               value={row.castka || ''}
               onChange={(newValue) => handleCastkaChange(row.id, newValue)}
               hasError={!row.castka || row.castka <= 0}
               disabled={disabled}
+              required
             />
           </FormGroup>
 
@@ -689,7 +720,7 @@ function LPCerpaniEditor({
               disabled={disabled || rows.length === 1}
               title="Odebrat řádek"
             >
-              <FontAwesomeIcon icon={faTrash} />
+              <Trash size={16} />
             </IconButton>
           </ButtonGroup>
         </LPRow>
