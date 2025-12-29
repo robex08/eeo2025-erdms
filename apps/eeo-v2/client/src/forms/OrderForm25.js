@@ -7982,7 +7982,6 @@ function OrderForm25() {
     }
 
     try {
-      console.log('💰 [LP] Načítám LP čerpání pro fakturu:', fakturaId);
       const response = await getFakturaLPCerpani(fakturaId, token, username);
       
       if (response && response.status === 'ok' && response.data) {
@@ -7993,7 +7992,6 @@ function OrderForm25() {
             loaded: true
           }
         }));
-        console.log('✅ [LP] LP čerpání načteno:', response.data.lp_cerpani);
       }
     } catch (error) {
       console.error('❌ [LP] Chyba při načítání LP čerpání:', error);
@@ -23397,7 +23395,6 @@ function OrderForm25() {
                                     // Skip pokud není LP financování
                                     const financovani = formData.financovani;
                                     if (!financovani) {
-                                      console.log('❌ [LP Editor] Žádné financování');
                                       return null;
                                     }
                                     
@@ -23405,10 +23402,6 @@ function OrderForm25() {
                                       const fin = typeof financovani === 'string' 
                                         ? JSON.parse(financovani) 
                                         : financovani;
-                                      
-                                      console.log('🔍 [LP Editor] Financování:', fin);
-                                      console.log('🔍 [LP Editor] typ_financovani:', fin?.typ_financovani);
-                                      console.log('🔍 [LP Editor] formData.lp_kod:', formData.lp_kod);
                                       
                                       // Zobrazit LP editor pouze pokud:
                                       // 1. typ_financovani obsahuje "LP" NEBO
@@ -23419,21 +23412,15 @@ function OrderForm25() {
                                       );
                                       
                                       if (!isLPFinancing) {
-                                        console.log('❌ [LP Editor] Není LP financování');
                                         return null;
                                       }
-                                      
-                                      console.log('✅ [LP Editor] Zobrazuji LP editor pro fakturu:', faktura.id);
                                       
                                       // Načíst LP čerpání pro fakturu s reálným ID
                                       const fakturaId = faktura.id;
                                       const isRealInvoice = fakturaId && !String(fakturaId).startsWith('temp-');
                                       
-                                      console.log('🔍 [LP Editor] fakturaId:', fakturaId, 'isRealInvoice:', isRealInvoice);
-                                      
                                       // Načtení LP dat - lazy loading při prvním zobrazení
                                       if (isRealInvoice && !fakturyLPCerpani[fakturaId]?.loaded) {
-                                        console.log('💾 [LP Editor] Triggering load for fakturaId:', fakturaId);
                                         // Načíst asynchronně - nebude blokovat render
                                         Promise.resolve().then(() => {
                                           loadFakturaLPCerpani(fakturaId);
@@ -23442,7 +23429,6 @@ function OrderForm25() {
                                       
                                       // Získat LP data z state
                                       const lpData = fakturyLPCerpani[fakturaId] || { lpCerpani: [], loaded: false };
-                                      console.log('📊 [LP Editor] LP data:', lpData);
                                       
                                       return (
                                         <div style={{ 
@@ -23486,7 +23472,7 @@ function OrderForm25() {
                                                   });
                                               }
                                             }}
-                                            disabled={faktura.vecna_spravnost_potvrzeno || shouldLockFaktury}
+                                            disabled={!!faktura.vecna_spravnost_potvrzeno}
                                           />
                                         </div>
                                       );
