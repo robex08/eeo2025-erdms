@@ -1108,12 +1108,10 @@ export const NotificationsPage = () => {
     const nonOrderNotifications = [];
 
     notificationsList.forEach((notification, idx) => {
-      // Parsuj data_json pokud existuje
+      // ✅ Backend už vrací parsovaný objekt 'data'
       let orderId = null;
       try {
-        const data = notification.data_json
-          ? (typeof notification.data_json === 'string' ? JSON.parse(notification.data_json) : notification.data_json)
-          : notification.data;
+        const data = notification.data || {};
         orderId = data?.order_id;
 
         // ✅ Normalizuj orderId na string pro konzistentní porovnávání
@@ -1303,7 +1301,8 @@ export const NotificationsPage = () => {
 
     // Navigace podle typu notifikace
     try {
-      const data = notification.data_json ? JSON.parse(notification.data_json) : {};
+      // ✅ Backend už vrací parsovaný objekt 'data', nemusíme parsovat 'data_json'
+      const data = notification.data || {};
 
       // ✅ VŽDY EDIT MÓD - všechny notifikace otevírají objednávku k editaci!
       const mode = 'edit';
@@ -2146,20 +2145,8 @@ export const NotificationsPage = () => {
                 const isDismissed = mainNotification.skryto === 1 || mainNotification.skryto === true;
                 const priority = mainNotification.priorita || 'normal';
 
-                // Parse data hlavní notifikace (backend už flattenuje placeholders)
-                let notificationData = {};
-                try {
-                  if (mainNotification.data_json) {
-                    notificationData = typeof mainNotification.data_json === 'string'
-                      ? JSON.parse(mainNotification.data_json)
-                      : mainNotification.data_json;
-                  } else if (mainNotification.data) {
-                    notificationData = mainNotification.data;
-                  }
-                } catch (error) {
-                  notificationData = mainNotification.data || {};
-                }
-
+                // ✅ Backend už vrací parsovaný objekt 'data', nemusíme parsovat
+                const notificationData = mainNotification.data || {};
                 mainNotification.data = notificationData;
 
                 return (
@@ -2381,19 +2368,8 @@ export const NotificationsPage = () => {
                       const olderIsDismissed = olderNotif.skryto === 1;
                       const olderPriority = olderNotif.priority || 'normal';
 
-                      let olderData = {};
-                      try {
-                        if (olderNotif.data_json) {
-                          olderData = typeof olderNotif.data_json === 'string'
-                            ? JSON.parse(olderNotif.data_json)
-                            : olderNotif.data_json;
-                        } else if (olderNotif.data) {
-                          olderData = olderNotif.data;
-                        }
-                      } catch (error) {
-                        olderData = olderNotif.data || {};
-                      }
-
+                      // ✅ Backend už vrací parsovaný objekt 'data'
+                      const olderData = olderNotif.data || {};
                       olderNotif.data = olderData;
 
                       return (
@@ -2576,21 +2552,8 @@ export const NotificationsPage = () => {
               const isDismissed = notification.skryto === 1 || notification.skryto === true;
               const priority = notification.priorita || 'normal';
 
-              // ✅ Parse data_json if exists
-              let notificationData = {};
-              try {
-                if (notification.data_json) {
-                  notificationData = typeof notification.data_json === 'string'
-                    ? JSON.parse(notification.data_json)
-                    : notification.data_json;
-                } else if (notification.data) {
-                  notificationData = notification.data;
-                }
-              } catch (error) {
-                notificationData = notification.data || {};
-              }
-
-              // ✅ Attach parsed data to notification object for rendering
+              // ✅ Backend už vrací parsovaný objekt 'data'
+              const notificationData = notification.data || {};
               notification.data = notificationData;
 
               // ✅ Unikátní klíč pro jednotlivé notifikace - použijeme ID notifikace

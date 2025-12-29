@@ -1153,7 +1153,7 @@ const LabelWithClear = styled.div`
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
-  margin-bottom: 0.5rem;
+  min-height: 1.25rem; /* Minimální výška pro konzistenci s Label */
 `;
 
 const LabelText = styled.label`
@@ -5673,6 +5673,71 @@ function OrderForm25() {
         }
       }
 
+      // 🔢 KRITICKÉ: SYNCHRONNÍ NAČTENÍ EV_CISLO pro nové objednávky
+      // Priorita: Načíst číslo PŘED nastavením formData, ne asynchronně v useEffect
+      if (isNewOrder && !finalData.ev_cislo && token && username) {
+        try {
+          console.log('🔢 [OrderForm25/handleDataLoaded] Načítám evidenční číslo synchronně...');
+          const orderNumberData = await getNextOrderNumberV2(token, username);
+          const nextNumber = orderNumberData.next_order_string || orderNumberData.order_number_string || orderNumberData.next_number;
+          
+          if (nextNumber) {
+            finalData.ev_cislo = nextNumber;
+            console.log('✅ [OrderForm25/handleDataLoaded] Evidenční číslo načteno:', nextNumber);
+            
+            // Označit že ev_cislo je načteno aby useEffect ho už nenačítal
+            if (window.__orderForm_hasLoadedNextNumberRef) {
+              window.__orderForm_hasLoadedNextNumberRef.current = true;
+            }
+          } else {
+            console.warn('⚠️ [OrderForm25/handleDataLoaded] API nevrátilo ev_cislo');
+          }
+        } catch (error) {
+          console.error('❌ [OrderForm25/handleDataLoaded] Chyba při načítání ev_cislo:', error);
+          // Fallback - useEffect to zkusí načíst
+        }
+      }
+
+      // 🎯 NOVÁ OBJEDNÁVKA: Aplikovat výchozí hodnoty garanta a příkazce z user settings
+      if (isNewOrder && user_id && !finalData.garant_uzivatel_id && !finalData.prikazce_id) {
+        try {
+          const { loadSettingsFromLocalStorage } = require('../services/userSettingsApi');
+          const userSettings = loadSettingsFromLocalStorage(parseInt(user_id, 10));
+          
+          console.log('🔍 [OrderForm25/handleDataLoaded] Načítám user settings pro user_id:', user_id, userSettings);
+          
+          if (userSettings) {
+            // Extrahuj hodnoty garanta
+            if (userSettings.vychozi_garant_id && userSettings.vychozi_garant_id !== '' && userSettings.vychozi_garant_id !== null) {
+              const defaultGarantId = typeof userSettings.vychozi_garant_id === 'object' 
+                ? userSettings.vychozi_garant_id.value 
+                : userSettings.vychozi_garant_id;
+              
+              if (defaultGarantId && defaultGarantId !== '') {
+                finalData.garant_uzivatel_id = String(defaultGarantId);
+                console.log('✅ [OrderForm25/handleDataLoaded] Nastavuji výchozího garanta:', defaultGarantId);
+              }
+            }
+            
+            // Extrahuj hodnoty příkazce
+            if (userSettings.vychozi_prikazce_id && userSettings.vychozi_prikazce_id !== '' && userSettings.vychozi_prikazce_id !== null) {
+              const defaultPrikazceId = typeof userSettings.vychozi_prikazce_id === 'object'
+                ? userSettings.vychozi_prikazce_id.value
+                : userSettings.vychozi_prikazce_id;
+              
+              if (defaultPrikazceId && defaultPrikazceId !== '') {
+                finalData.prikazce_id = String(defaultPrikazceId);
+                console.log('✅ [OrderForm25/handleDataLoaded] Nastavuji výchozího příkazce:', defaultPrikazceId);
+              }
+            }
+          } else {
+            console.log('⚠️ [OrderForm25/handleDataLoaded] User settings nejsou v localStorage');
+          }
+        } catch (error) {
+          console.error('❌ [OrderForm25/handleDataLoaded] Chyba při načítání výchozích hodnot garanta/příkazce:', error);
+        }
+      }
+
       // 🔄 AUTOMATICKÉ DOPLNĚNÍ DODAVATELE ZE SMLOUVY
       // Pokud je fáze 3+, financování = Smlouva a dodavatel prázdný, zkusit doplnit
       let wasAutoFilled = false;
@@ -7186,6 +7251,9 @@ function OrderForm25() {
     if (isNewOrder && isDraftLoaded && !formData.jmeno && userDetail && user_id) {
 
       const jmeno = `${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim();
+
+      // NOTE: Výchozí hodnoty garanta a příkazce se nyní nastavují v handleDataLoaded
+      // (v loading gate fázi, kde jsou k dispozici všechny číselníky)
 
       setFormData(prev => ({
         ...prev,
@@ -19344,7 +19412,7 @@ function OrderForm25() {
           <FormRow>
             <FormGroup data-custom-select>
               <LabelWithClear>
-                <LabelText required>PŘÍKAZCE</LabelText>
+                <LabelText required>SCHVALOVATEL/PŘÍKAZCE</LabelText>
                 <ClearSelectButton
                   type="button"
                   $visible={!!formData.prikazce_id}

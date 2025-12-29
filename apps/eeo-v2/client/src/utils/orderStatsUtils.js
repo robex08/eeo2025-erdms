@@ -167,19 +167,39 @@ export function filterOrders(orders, options = {}) {
   } = options;
 
   // 1. Základní filtrování: ID > 1 (systémová obj) a !isLocalConcept
-  let filtered = orders.filter(o => o.id && o.id > 1 && !o.isLocalConcept);
+  // ⚠️ VÝJIMKA: Koncepty (isDraft nebo je_koncept) VŽDY projdou filtrem!
+  let filtered = orders.filter(o => {
+    // Koncepty vždy projdou
+    if (o.isDraft || o.je_koncept) return true;
+    
+    // Ostatní objednávky: ID > 1 a !isLocalConcept
+    return o.id && o.id > 1 && !o.isLocalConcept;
+  });
 
   // 2. Archivované objednávky
+  // ⚠️ VÝJIMKA: Koncepty nejsou nikdy archivované
   if (!showArchived) {
     filtered = filtered.filter(o => {
+      // Koncepty vždy projdou
+      if (o.isDraft || o.je_koncept) return true;
+      
       const status = getOrderSystemStatus(o);
       return status !== 'ARCHIVOVANO';
     });
   }
 
   // 3. Filtrování podle příkazce (pouze pro non-admin)
+  // ⚠️ VÝJIMKA: Koncepty patří vždy aktuálnímu uživateli (objednatel_id)
   if (!isAdmin && userId) {
-    filtered = filtered.filter(o => o.prikazce_id === userId);
+    filtered = filtered.filter(o => {
+      // Koncepty: kontroluj objednatel_id nebo uzivatel_id
+      if (o.isDraft || o.je_koncept) {
+        return o.objednatel_id === userId || o.uzivatel_id === userId;
+      }
+      
+      // Ostatní: kontroluj příkazce
+      return o.prikazce_id === userId;
+    });
   }
 
   return filtered;

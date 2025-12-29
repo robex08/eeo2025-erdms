@@ -5543,11 +5543,15 @@ const Orders25List = () => {
           draftManager.setCurrentUser(user_id);
           const draftData = await draftManager.loadDraft();
 
-          // Draft loading debug removed for performance
+          console.log('🔍 [Orders25List] Draft data loaded:', draftData);
 
           if (draftData) {
             const isConceptValid = isValidConcept(draftData);
             const hasDbChanges = hasDraftChanges(draftData);
+
+            console.log('🔍 [Orders25List] isConceptValid:', isConceptValid);
+            console.log('🔍 [Orders25List] hasDbChanges:', hasDbChanges);
+            console.log('🔍 [Orders25List] Will show in list:', isConceptValid && !hasDbChanges);
 
             if (isConceptValid && !hasDbChanges) {
               const formData = draftData.formData || draftData;
@@ -5592,16 +5596,22 @@ const Orders25List = () => {
                 _formData: formData
               };
 
+              console.log('✅ [Orders25List] Koncept vytvořen:', conceptOrder);
               localDrafts.push(conceptOrder);
             }
+          } else {
+            console.log('⚠️ [Orders25List] Žádný draft data nenalezen');
           }
         } catch (err) {
-          //  FIX: Lepší error handling pro draft loading
+          console.error('❌ [Orders25List] Chyba při načítání draftu:', err);
         }
 
         // Přidej koncepty na začátek seznamu
         if (localDrafts.length > 0) {
+          console.log('✅ [Orders25List] Přidávám', localDrafts.length, 'konceptů na začátek seznamu');
           ordersData = [...localDrafts, ...(ordersData || [])];
+        } else {
+          console.log('⚠️ [Orders25List] Žádné koncepty k přidání');
         }
 
         // Uložíme také všechny uživatele pro filtry (ne jen ty z objednávek)
@@ -6633,6 +6643,23 @@ const Orders25List = () => {
     return nazev || `Středisko (kód ${kod})`;
   }, [strediskaList]);
 
+  // 🎯 HELPER: Wrapper pro sortingFn - VŽDY dává konceptům prioritu
+  // Zajišťuje, že koncepty (isDraft nebo je_koncept) jsou VŽDY první v tabulce,
+  // bez ohledu na řazení ostatních sloupců
+  const withDraftPriority = useCallback((sortingFn) => {
+    return (rowA, rowB, columnId) => {
+      const aIsDraft = rowA.original.isDraft || rowA.original.je_koncept || false;
+      const bIsDraft = rowB.original.isDraft || rowB.original.je_koncept || false;
+      
+      // Pokud jedna je draft a druhá ne, draft je vždy první
+      if (aIsDraft && !bIsDraft) return -1;
+      if (!aIsDraft && bIsDraft) return 1;
+      
+      // Obě jsou drafty nebo obě nejsou - použij původní sorting
+      return sortingFn(rowA, rowB, columnId);
+    };
+  }, []);
+
   // Column definitions
   const columns = useMemo(() => [
     {
@@ -6696,7 +6723,7 @@ const Orders25List = () => {
     {
       accessorKey: 'dt_objednavky',
       header: 'Datum objednávky',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const dateA = getOrderDateTime(rowA.original);
         const dateB = getOrderDateTime(rowB.original);
 
@@ -6709,7 +6736,7 @@ const Orders25List = () => {
         const timeA = new Date(dateA).getTime();
         const timeB = new Date(dateB).getTime();
         return timeA - timeB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -6747,7 +6774,7 @@ const Orders25List = () => {
     {
       accessorKey: 'cislo_objednavky',
       header: 'Evidenční číslo',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const numA = rowA.original.cislo_objednavky || '';
         const numB = rowB.original.cislo_objednavky || '';
 
@@ -6758,7 +6785,7 @@ const Orders25List = () => {
 
         // České třídění čísel objednávek
         return numA.localeCompare(numB, 'cs', { numeric: true, sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -6849,7 +6876,7 @@ const Orders25List = () => {
     {
       accessorKey: 'objednatel_garant',
       header: 'Objednatel / Garant',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         // Třídění primárně podle objednatele
         const getObjednatelName = (order) => {
           if (order.objednatel_uzivatel) {
@@ -6887,7 +6914,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7007,7 +7034,7 @@ const Orders25List = () => {
     {
       accessorKey: 'prikazce_schvalovatel',
       header: 'Příkazce / Schvalovatel',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getPrikazceName = (order) => {
           if (order.prikazce_uzivatel) {
             return getUserDisplayName(null, order.prikazce_uzivatel);
@@ -7041,7 +7068,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7145,7 +7172,7 @@ const Orders25List = () => {
     {
       accessorKey: 'dodavatel_nazev',
       header: 'Dodavatel',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const nameA = rowA.original.dodavatel_nazev || '---';
         const nameB = rowB.original.dodavatel_nazev || '---';
 
@@ -7155,7 +7182,7 @@ const Orders25List = () => {
         if (nameB === '---') return -1;
 
         return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7226,7 +7253,7 @@ const Orders25List = () => {
     {
       accessorKey: 'stav_objednavky',
       header: 'Stav',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getStatusText = (order) => {
           const displayStatus = getOrderDisplayStatus(order);
 
@@ -7258,7 +7285,7 @@ const Orders25List = () => {
         if (!statusB) return -1;
 
         return statusA.localeCompare(statusB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7355,7 +7382,7 @@ const Orders25List = () => {
     {
       accessorKey: 'stav_registru',
       header: 'Stav registru',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const getRegistrStav = (order) => {
           const registr = order.registr_smluv;
           const workflowStatus = getOrderWorkflowStatus(order);
@@ -7384,7 +7411,7 @@ const Orders25List = () => {
         if (!stavB) return 1;
 
         return stavA.localeCompare(stavB, 'cs', { sensitivity: 'base' });
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7494,7 +7521,7 @@ const Orders25List = () => {
     {
       accessorKey: 'max_cena_s_dph',
       header: 'Max. cena s DPH',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const priceA = parseFloat(rowA.original.max_cena_s_dph || 0);
         const priceB = parseFloat(rowB.original.max_cena_s_dph || 0);
 
@@ -7503,7 +7530,7 @@ const Orders25List = () => {
         const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
 
         return validA - validB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7568,7 +7595,7 @@ const Orders25List = () => {
     {
       accessorKey: 'cena_s_dph',
       header: 'Cena s DPH',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const priceA = getOrderTotalPriceWithDPH(rowA.original);
         const priceB = getOrderTotalPriceWithDPH(rowB.original);
 
@@ -7577,7 +7604,7 @@ const Orders25List = () => {
         const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
 
         return validA - validB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7645,7 +7672,7 @@ const Orders25List = () => {
     {
       accessorKey: 'faktury_celkova_castka_s_dph',
       header: 'Cena FA s DPH',
-      sortingFn: (rowA, rowB) => {
+      sortingFn: withDraftPriority((rowA, rowB) => {
         const priceA = parseFloat(rowA.original.faktury_celkova_castka_s_dph || 0);
         const priceB = parseFloat(rowB.original.faktury_celkova_castka_s_dph || 0);
 
@@ -7654,7 +7681,7 @@ const Orders25List = () => {
         const validB = !isNaN(priceB) && priceB > 0 ? priceB : -Infinity;
 
         return validA - validB;
-      },
+      }),
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
@@ -7871,58 +7898,112 @@ const Orders25List = () => {
 
   // ✨ REFACTORED: Filter function - rozděleno do modulárních funkcí
   const filteredData = useMemo(() => {
+    console.log('🔍 [Orders25List/filteredData] Začínám filtrovat orders:', orders.length);
+    
+    const draftsInOrders = orders.filter(o => o.isDraft || o.je_koncept);
+    console.log('🔍 [Orders25List/filteredData] Koncepty v orders:', draftsInOrders.length, draftsInOrders);
+    
     const filtered = orders.filter(order => {
+      // DEBUG: Pro koncepty loguj každý filtr
+      const isDraftOrder = order.isDraft || order.je_koncept;
+      if (isDraftOrder) {
+        console.log('🔍 [Koncept filtrování] Začínám kontrolu konceptu:', order.cislo_objednavky);
+      }
+      
       // 1. "Jen moje" filtr
-      if (!filterMyOrders(order, showOnlyMyOrders, userDetail, currentUserId)) return false;
+      if (!filterMyOrders(order, showOnlyMyOrders, userDetail, currentUserId)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem "Jen moje"');
+        return false;
+      }
 
       // 2a. Sloupcové filtry z hlavičky tabulky (textové)
-      if (!applyColumnFilters(order, columnFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) return false;
+      if (!applyColumnFilters(order, columnFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel sloupcovými filtry');
+        return false;
+      }
 
       // 2b. Multiselect filtry z rozšířeného panelu (ID)
-      if (!applyColumnFilters(order, multiselectFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) return false;
+      if (!applyColumnFilters(order, multiselectFilters, getOrderDate, getOrderDisplayStatus, getUserDisplayName)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel multiselect filtry');
+        return false;
+      }
 
       // 3. Globální vyhledávání
-      if (!filterByGlobalSearch(order, globalFilter, getUserDisplayName, getOrderDisplayStatus)) return false;
+      if (!filterByGlobalSearch(order, globalFilter, getUserDisplayName, getOrderDisplayStatus)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel globálním vyhledáváním');
+        return false;
+      }
 
       // 4. Filtr podle statusu (pole stavů)
-      if (!filterByStatusArray(order, statusFilter, getOrderSystemStatus)) return false;
+      if (!filterByStatusArray(order, statusFilter, getOrderSystemStatus)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem statusu');
+        return false;
+      }
 
       // 5. ❌ ODSTRANĚNO: Filtr archivovaných - už jsou vyfiltrované společnou funkcí filterOrders()!
       // if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
 
       // 6. Filtr podle uživatele
-      if (!filterByUser(order, userFilter)) return false;
+      if (!filterByUser(order, userFilter)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem uživatele');
+        return false;
+      }
 
       // 7. Filtr podle datového rozmezí
-      if (!filterByDateRange(order, dateFromFilter, dateToFilter, getOrderDate)) return false;
+      if (!filterByDateRange(order, dateFromFilter, dateToFilter, getOrderDate)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem datového rozmezí');
+        return false;
+      }
 
       // 8. Filtr podle částky
-      if (!filterByAmountRange(order, amountFromFilter, amountToFilter)) return false;
+      if (!filterByAmountRange(order, amountFromFilter, amountToFilter)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem částky');
+        return false;
+      }
 
       // 9. Filtr podle registru smluv
-      if (!filterByRegistrStatus(order, filterMaBytZverejneno, filterByloZverejneno, getOrderWorkflowStatus)) return false;
+      if (!filterByRegistrStatus(order, filterMaBytZverejneno, filterByloZverejneno, getOrderWorkflowStatus)) {
+        if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem registru smluv');
+        return false;
+      }
 
       // 10. Filtr podle mimořádných objednávek
       if (filterMimoradneObjednavky) {
-        if (!order.mimoradna_udalost) return false;
+        if (!order.mimoradna_udalost) {
+          if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem mimořádných objednávek');
+          return false;
+        }
       }
 
       // 11. Filtr podle faktur (min. 1 faktura)
       if (filterWithInvoices) {
         const faktury = order.faktury || [];
         const fakturyCount = order.faktury_count || faktury.length || 0;
-        if (fakturyCount === 0) return false;
+        if (fakturyCount === 0) {
+          if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem faktur');
+          return false;
+        }
       }
 
       // 12. Filtr podle příloh (min. 1 příloha)
       if (filterWithAttachments) {
         const prilohy = order.prilohy || [];
         const prilohyCount = order.prilohy_count || prilohy.length || 0;
-        if (prilohyCount === 0) return false;
+        if (prilohyCount === 0) {
+          if (isDraftOrder) console.log('❌ [Koncept] Neprošel filtrem příloh');
+          return false;
+        }
       }
 
+      if (isDraftOrder) {
+        console.log('✅ [Koncept] Prošel všemi filtry!');
+      }
       return true;
     });
+    
+    console.log('🔍 [Orders25List/filteredData] Po filtrování:', filtered.length);
+    const draftsInFiltered = filtered.filter(o => o.isDraft || o.je_koncept);
+    console.log('🔍 [Orders25List/filteredData] Koncepty po filtrování:', draftsInFiltered.length);
 
     // 📌 SORTING: Koncepty (drafty) vždy jako první
     // Objednávky co nejsou ještě uložené v DB (isDraft nebo je_koncept) zobrazit jako první řádky
@@ -7937,6 +8018,14 @@ const Orders25List = () => {
       // Jinak zachovat původní pořadí
       return 0;
     });
+
+    console.log('🔍 [Orders25List/filteredData] Po řazení:', sortedFiltered.length);
+    const draftsInSorted = sortedFiltered.filter(o => o.isDraft || o.je_koncept);
+    console.log('🔍 [Orders25List/filteredData] Koncepty po řazení (měly by být první):', draftsInSorted.length);
+    if (draftsInSorted.length > 0) {
+      console.log('🔍 [Orders25List/filteredData] První objednávka je koncept?', sortedFiltered[0]?.isDraft || sortedFiltered[0]?.je_koncept);
+      console.log('🔍 [Orders25List/filteredData] První objednávka:', sortedFiltered[0]);
+    }
 
     return sortedFiltered;
   }, [

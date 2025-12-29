@@ -8,7 +8,7 @@ import { ToastContext } from '../context/ToastContext';
 import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
-import { fetchFreshUserDetail, fetchCiselniky } from '../services/api2auth';
+import { fetchFreshUserDetail, fetchCiselniky, fetchAllUsers, fetchApprovers } from '../services/api2auth';
 import { getOrganizaceDetail } from '../services/apiv2Dictionaries';
 import { CustomSelect } from '../components/CustomSelect';
 import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } from '../utils/availableSections';
@@ -1378,6 +1378,10 @@ const getDefaultSettings = (hasPermission, userDetail) => {
     vychozi_filtry_stavu_objednavek: [],
     auto_sbalit_zamcene_sekce: true,
     
+    // Předvolby pro OrderForm25
+    vychozi_garant_id: null,  // Výchozí garant pro nové objednávky
+    vychozi_prikazce_id: null, // Výchozí příkazce pro nové objednávky
+    
     // Výchozí rok a období
     vychozi_rok: 'current',
     vychozi_obdobi: 'last-quarter',
@@ -1714,6 +1718,11 @@ const ProfilePage = () => {
 
   // Stavy objednávek z číselníku API (načítáme stejně jako v Orders25List)
   const [orderStatesList, setOrderStatesList] = useState([]);
+  
+  // 🆕 Uživatelé pro výběr garanta a příkazce
+  const [allUsers, setAllUsers] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
+  const [approvers, setApprovers] = useState([]); // Pro příkazce (pouze ti s právem schvalovat)
 
   // 🎨 Dynamické menu options podle oprávnění uživatele
   const MENU_TAB_OPTIONS = useMemo(() => {
@@ -1728,6 +1737,36 @@ const ProfilePage = () => {
     () => getDefaultSettings(hasPermission, userDetail)
   );
 
+  // 🆕 Načíst všechny uživatele (pro garanta a příkazce)
+  useEffect(() => {
+    const loadUsers = async () => {
+      if (!token || !username) return;
+      
+      try {
+        // Načíst všechny uživatele pro garanta
+        const usersData = await fetchAllUsers({ token, username });
+        if (usersData && Array.isArray(usersData)) {
+          setAllUsers(usersData);
+          // Filtrovat pouze aktivní uživatele
+          const active = usersData.filter(u => u.aktivni === true || u.aktivni === 1);
+          setActiveUsers(active);
+        }
+        
+        // Načíst approvers pro příkazce (pouze uživatelé s právem schvalovat)
+        const approversData = await fetchApprovers({ token, username });
+        if (approversData && Array.isArray(approversData)) {
+          setApprovers(approversData);
+        }
+      } catch (error) {
+        console.error('Chyba při načítání uživatelů:', error);
+      }
+    };
+    
+    if (token && username) {
+      loadUsers();
+    }
+  }, [token, username]);
+  
   // Načíst stavy objednávek z API (stejně jako v Orders25List)
   useEffect(() => {
     const loadOrderStates = async () => {
@@ -1815,7 +1854,6 @@ const ProfilePage = () => {
         }
         
         // 🎯 Uživatel MÁ nastavení v DB → Použij je (NEPŘEPISUJ)
-        console.log('📦 Načítám existující nastavení z DB');
         
         // Ulož do localStorage
         saveSettingsToLocalStorage(parseInt(user_id, 10), settingsFromDB);
@@ -1982,6 +2020,15 @@ const ProfilePage = () => {
         auto_sbalit_zamcene_sekce: userSettings.auto_sbalit_zamcene_sekce,
         vychozi_rok: extractValue(userSettings.vychozi_rok),
         vychozi_obdobi: extractValue(userSettings.vychozi_obdobi),
+        // 🔧 Zajistit že prázdný string se převede na null
+        vychozi_garant_id: (() => {
+          const val = extractValue(userSettings.vychozi_garant_id);
+          return (val === '' || val === null || val === undefined) ? null : val;
+        })(),
+        vychozi_prikazce_id: (() => {
+          const val = extractValue(userSettings.vychozi_prikazce_id);
+          return (val === '' || val === null || val === undefined) ? null : val;
+        })(),
         viditelne_dlazdice: userSettings.viditelne_dlazdice,
         export_pokladna_format: userSettings.export_pokladna_format,
         export_csv_sloupce: userSettings.export_csv_sloupce,
@@ -3472,6 +3519,75 @@ const ProfilePage = () => {
 
                   {/* PRAVÝ SLOUPEC - SELECTY */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {/* Výchozí garant */}
+                    <SettingItem>
+                      <SettingLabel>
+                        Výchozí garant
+                      </SettingLabel>
+                      <CustomSelect
+                        icon={<User size={16} />}
+                        value={userSettings.vychozi_garant_id || ''}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_garant_id', value: e.target.value || null } })}
+                        options={[
+                          { value: '', label: '-- Žádný (nevybírat automaticky) --' },
+                          ...activeUsers.map(u => ({
+                            value: u.id || u.user_id,
+                            label: `${u.titul_pred ? u.titul_pred + ' ' : ''}${u.jmeno || ''} ${u.prijmeni || ''}${u.titul_za ? ', ' + u.titul_za : ''}`.trim() || u.username || u.login
+                          }))
+                        ]}
+                        placeholder="Vyberte garanta..."
+                        field="vychozi_garant_id"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                      />
+                      <SettingDescription>
+                        Automaticky předvybrán při vytvoření nové objednávky
+                      </SettingDescription>
+                    </SettingItem>
+
+                    {/* Výchozí příkazce */}
+                    <SettingItem>
+                      <SettingLabel>
+                        Výchozí schvalovatel/příkazce
+                      </SettingLabel>
+                      <CustomSelect
+                        icon={<User size={16} />}
+                        value={userSettings.vychozi_prikazce_id || ''}
+                        onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_prikazce_id', value: e.target.value || null } })}
+                        options={[
+                          { value: '', label: '-- Žádný (nevybírat automaticky) --' },
+                          ...approvers.map(u => ({
+                            value: u.id || u.user_id,
+                            label: `${u.titul_pred ? u.titul_pred + ' ' : ''}${u.jmeno || ''} ${u.prijmeni || ''}${u.titul_za ? ', ' + u.titul_za : ''}`.trim() || u.username || u.login
+                          }))
+                        ]}
+                        placeholder="Vyberte příkazce..."
+                        field="vychozi_prikazce_id"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                      />
+                      <SettingDescription>
+                        Automaticky předvybrán při vytvoření nové objednávky (jen schvalovatelé)
+                      </SettingDescription>
+                    </SettingItem>
+
+                    {/* Oddělovač */}
+                    <div style={{ height: '1px', background: '#e5e7eb', margin: '1.5rem 0' }}></div>
+
                     {/* Výchozí menu záložka */}
                     <SettingItem>
                       <SettingLabel>
