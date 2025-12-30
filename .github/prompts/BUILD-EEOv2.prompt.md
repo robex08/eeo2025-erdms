@@ -10,95 +10,136 @@ priority: LOW
 **Oblast:** Build proces, Environment variables, Build separation  
 **Datum vytvoření:** 30.12.2024  
 **Poslední update:** 30.12.2025  
-**Status:** ✅ VYŘEŠENO + UPGRADED
+**Status:** ✅ KOMPLETNÍ ŘEŠENÍ
 
 ---
 
-## 🆕 UPDATE 30.12.2025 - Build Separation
+## 🆕 UPDATE 30.12.2025 - Finální Build Separace
 
-### ✅ Vyřešený problém: Separace DEV a PRODUCTION buildů
+### ✅ Kompletní řešení: DEV a PROD buildy
 
-**Nové řešení:**
-- **DEV build** → `build-dev/` (používá DEV API)
-- **PRODUCTION build** → `build/` (používá PRODUCTION API)
+**Struktura:**
+- **DEV build** → `build/` (zůstává na místě, Apache Alias)
+- **PROD build** → `build-prod/` (kopíruje se do erdms-platform)
 
-### 📦 Nové build příkazy:
+### 📦 Build příkazy:
 
 ```bash
 # DEV build (testovací server)
-npm run build:dev
-# → Výstup: build-dev/
+npm run build:dev:explicit
+# → Výstup: build/
 # → API: https://erdms.zachranka.cz/dev/api.eeo/
 # → Public URL: /dev/eeo-v2
+# → DB: eeo2025-dev
+# → Deploy: AUTOMATICKÝ (Apache Alias)
 
-# PRODUCTION build (ostrá verze)
+# PROD build (ostrá verze)
 npm run build:prod
-# → Výstup: build/
+# → Výstup: build-prod/
 # → API: https://erdms.zachranka.cz/api.eeo/
 # → Public URL: /eeo-v2
-
-# Default build (= PRODUCTION)
-npm run build
-# → Výstup: build/
+# → DB: eeo2025
+# → Deploy: MANUÁLNÍ (kopírování)
 ```
 
-### 📂 Struktura:
+### 📂 Struktura adresářů:
+
 ```
-apps/eeo-v2/client/
-├── build/              ← PRODUCTION build
-├── build-dev/          ← DEV build
-├── .env.production     ← Config pro PRODUCTION
-├── .env.development    ← Config pro DEV
-└── BUILD_SEPARATION.md ← Detailní dokumentace
+DEV:
+/var/www/erdms-dev/apps/eeo-v2/
+├── client/build/              # DEV frontend (Apache: /dev/eeo-v2)
+└── api-legacy/api.eeo/.env    # DB: eeo2025-dev
+
+PROD:
+/var/www/erdms-platform/apps/eeo-v2/
+├── static/                    # PROD frontend (Apache: /eeo-v2)
+├── index.html
+└── api-legacy/api.eeo/.env    # DB: eeo2025
 ```
 
-### ✅ Výhody nového řešení:
-1. **Žádné konflikty** - DEV a PROD buildy v oddělených složkách
-2. **Jasné příkazy** - `build:dev` vs `build:prod`
-3. **Bezpečné** - nelze přepsat PROD build DEV buildem
-4. **Jednoduché** - automatická správa ENV proměnných
+### 🚀 Deploy PROD (kompletní):
+
+```bash
+cd /var/www/erdms-dev/apps/eeo-v2/client && \
+npm run build:prod && \
+cp -r build-prod/* /var/www/erdms-platform/apps/eeo-v2/ && \
+cp -r /var/www/erdms-dev/apps/eeo-v2/api-legacy /var/www/erdms-platform/apps/eeo-v2/ && \
+cat > /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env << 'EOF'
+# PROD Environment
+DB_HOST=10.3.172.11
+DB_PORT=3306
+DB_NAME=eeo2025
+DB_USER=erdms_user
+DB_PASSWORD=CHANGE_ME_DB_PASSWORD
+DB_CHARSET=utf8mb4
+REACT_APP_VERSION=1.92c
+UPLOAD_ROOT_PATH=/var/www/erdms-platform/data/eeo-v2/prilohy/
+DOCX_TEMPLATES_PATH=/var/www/erdms-platform/data/eeo-v2/sablony/
+MANUALS_PATH=/var/www/erdms-platform/data/eeo-v2/manualy/
+EOF
+mkdir -p /var/www/erdms-platform/data/eeo-v2/manualy && \
+cp -r /var/www/erdms-data/eeo-v2/manualy/* /var/www/erdms-platform/data/eeo-v2/manualy/ && \
+systemctl reload apache2 && \
+echo "✅ PROD deploy kompletní!"
+```
+
+### ⚠️ KRITICKÉ PRAVIDLA:
+
+**❌ NIKDY:**
+- Nekopírovat DEV build nikam
+- Nekopírovat DEV .env do PROD
+- Nezaměnit databáze: DEV=`eeo2025-dev`, PROD=`eeo2025`
+
+**✅ VŽDY:**
+- Po kopírování API legacy VŽDY opravit PROD .env
+- Zkontrolovat DB v .env před reloadem Apache
+- Testovat DEV před PROD deployem
 
 ---
 
-## 📋 Původní Problém (vyřešeno 30.12.2024)
+## 📋 Package.json Scripts:
 
-DEV build (`npm run build:dev`) generoval build, který v prohlížeči volal **production API endpoint** (`/api.eeo`) místo development endpointu (`/dev/api.eeo`).
-
-### Symptomy:
-- ✅ Build soubory obsahovaly správnou URL (`dev/api.eeo`)
-- ❌ Footer v prohlížeči zobrazoval špatnou URL (`/api.eeo`)
-- ❌ Network volání šly na production endpoint místo dev
-- ⚠️ Problém persistoval i po kompletním rebuildu a Apache restartu
+```json
+{
+  "scripts": {
+    "build:dev:explicit": "REACT_APP_API_BASE_URL=https://erdms.zachranka.cz/api REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/dev/api.eeo/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
+    "build:prod": "NODE_ENV=production BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build"
+  }
+}
+```
 
 ---
 
-## 🔍 Root Cause
+## 🔍 Troubleshooting
 
-### Jak React/CRA načítá environment variables při buildu:
-
-**KRITICKÉ:** React buildy (`npm run build`) **VŽDY** čtou `.env.production`, **NE** `.env.development`!
+### PROD používá DEV databázi
 
 ```bash
-# ❌ TOTO NEFUNGUJE pro načtení .env.development:
-NODE_ENV=development npm run build
+# Zkontroluj .env
+cat /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env | grep DB_NAME
+# Mělo by být: DB_NAME=eeo2025
+
+# Oprav .env (viz deploy příkaz výše)
 ```
 
-**Důvod:**
-- `NODE_ENV=development` ovlivňuje pouze **webpack chování** (source maps, optimalizace)
-- `.env.development` se načítá **POUZE** při `npm start` (dev server)
-- `.env.production` se načítá **VŽDY** při `npm run build` (production build)
+### DEV nefunguje
 
-### Stav před opravou:
-
-**`.env.production`:**
 ```bash
-REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/api.eeo/  # ❌ Production URL
+# Vyčisti cache
+cd /var/www/erdms-dev/apps/eeo-v2/client
+rm -rf node_modules/.cache build
+
+# Znovu build
+npm run build:dev:explicit
 ```
 
-**`.env.development`:**
-```bash
-REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/dev/api.eeo/  # ✅ Dev URL (NEPOUŽITO při buildu!)
-```
+---
+
+## 📚 Dokumentace
+
+**Hlavní dokument:** `/var/www/erdms-dev/BUILD.md`
+
+---
 
 **`package.json`:**
 ```json

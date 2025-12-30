@@ -852,9 +852,10 @@ const HelpPage = () => {
   const getManualDescription = (filename) => {
     const descriptions = {
       'Jak poprvé pracovat s Pokladnou.pdf': 'Komplexní průvodce pro správu pokladní knihy, vedení příjmů a výdajů.',
-      'Návod pro první spuštění.pdf': 'První kroky v systému ERDMS, nastavení účtu a základní orientace.'
+      'Návod pro první spuštění.pdf': 'První kroky v systému EEO v2, nastavení účtu a základní orientace.',
+      'Uživatelský manuál EEO 2.0.pdf': 'Detailní návod pro práci se systémem EEO v2.'
     };
-    return descriptions[filename] || 'Detailní návod pro práci se systémem ERDMS.';
+    return descriptions[filename] || 'Detailní návod pro práci se systémem EEO v2.';
   };
 
   // Toggle FAQ expansion
@@ -1068,7 +1069,7 @@ const HelpPage = () => {
               </ManualHeader>
               <ManualTitle>{manual.title || manual.filename}</ManualTitle>
               <ManualDescription>
-                {getManualDescription(manual.filename)}
+                {manual.description || getManualDescription(manual.filename)}
               </ManualDescription>
               <ManualActions>
                 {!isAdminMode ? (
@@ -1103,39 +1104,6 @@ const HelpPage = () => {
           ))}
         </ManualsGrid>
       )}
-
-      <QuickLinksSection>
-        <SectionTitle>
-          <FontAwesomeIcon icon={faQuestionCircle} />
-          Rychlé odkazy
-        </SectionTitle>
-        <QuickLinksGrid>
-          <QuickLinkCard href="#faq" onClick={(e) => { e.preventDefault(); document.querySelector('h2:has(svg[data-icon="question-circle"])')?.scrollIntoView({ behavior: 'smooth' }); }}>
-            <FontAwesomeIcon icon={faQuestionCircle} />
-            <QuickLinkText>
-              <h4>Časté dotazy</h4>
-              <p>Odpovědi na běžné otázky</p>
-            </QuickLinkText>
-            <FontAwesomeIcon icon={faChevronRight} />
-          </QuickLinkCard>
-          <QuickLinkCard href="/about">
-            <FontAwesomeIcon icon={faLifeRing} />
-            <QuickLinkText>
-              <h4>Podpora</h4>
-              <p>Kontaktujte náš tým podpory</p>
-            </QuickLinkText>
-            <FontAwesomeIcon icon={faChevronRight} />
-          </QuickLinkCard>
-          <QuickLinkCard href="#" $disabled onClick={(e) => { e.preventDefault(); }}>
-            <FontAwesomeIcon icon={faBook} />
-            <QuickLinkText>
-              <h4>Dokumentace API</h4>
-              <p>V přípravě...</p>
-            </QuickLinkText>
-            <FontAwesomeIcon icon={faChevronRight} />
-          </QuickLinkCard>
-        </QuickLinksGrid>
-      </QuickLinksSection>
 
       <FaqSection>
         <SectionTitle>

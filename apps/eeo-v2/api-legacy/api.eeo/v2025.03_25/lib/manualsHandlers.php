@@ -77,15 +77,31 @@ function handle_manuals_list($input, $config) {
                 $title = str_replace('_', ' ', $title);
                 $title = str_replace('-', ' ', $title);
                 
+                // Speciální úprava pro EEO 2.0 → EEO v2
+                if ($filename === 'Uživatelský manuál EEO 2.0.pdf') {
+                    $title = 'Uživatelský manuál EEO v2';
+                }
+                
                 // Formátování velikosti
                 $size_formatted = format_file_size($size);
                 
                 // Formátování data
                 $modified_formatted = date('d.m.Y H:i', $modified);
                 
+                // Popis manuálu
+                $description = 'Detailní návod pro práci se systémem EEO v2.';
+                if ($filename === 'Jak poprvé pracovat s Pokladnou.pdf') {
+                    $description = 'Komplexní průvodce pro správu pokladní knihy, vedení příjmů a výdajů.';
+                } elseif ($filename === 'Návod pro první spuštění.pdf') {
+                    $description = 'První kroky v systému EEO v2, nastavení účtu a základní orientace.';
+                } elseif ($filename === 'Uživatelský manuál EEO 2.0.pdf') {
+                    $description = 'Detailní návod pro práci se systémem EEO v2.';
+                }
+                
                 $manuals[] = [
                     'filename' => $filename,
                     'title' => $title,
+                    'description' => $description,
                     'size' => $size,
                     'size_formatted' => $size_formatted,
                     'modified' => $modified,
