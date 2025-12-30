@@ -21,6 +21,7 @@ import DatePicker from '../components/DatePicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
 import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
+import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 
 // =============================================================================
@@ -1478,6 +1479,9 @@ const Invoices25List = () => {
   const [slidePanelInvoice, setSlidePanelInvoice] = useState(null);
   const [slidePanelLoading, setSlidePanelLoading] = useState(false);
   const [slidePanelAttachments, setSlidePanelAttachments] = useState([]);
+  
+  // State pro attachments tooltip
+  const [attachmentsTooltip, setAttachmentsTooltip] = useState(null);
   
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
@@ -3472,8 +3476,43 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1' }} title="Počet příloh">
+                      <div 
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', cursor: invoice.pocet_priloh > 0 ? 'pointer' : 'default' }}
+                        onClick={(e) => {
+                          if (invoice.pocet_priloh > 0 && invoice.prilohy && invoice.prilohy.length > 0) {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const spaceBelow = window.innerHeight - rect.bottom;
+                            const tooltipHeight = Math.min(invoice.prilohy.length * 70 + 100, 400);
+                            
+                            setAttachmentsTooltip({
+                              attachments: invoice.prilohy,
+                              invoiceId: invoice.id,
+                              position: {
+                                top: spaceBelow > tooltipHeight ? rect.bottom + 5 : rect.top - tooltipHeight - 5,
+                                left: rect.left + (rect.width / 2) - 140
+                              }
+                            });
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          // Zavřít tooltip po 500ms, pokud není hover nad tooltipem
+                          setTimeout(() => {
+                            if (!document.querySelector('[data-tooltip-hover]')) {
+                              setAttachmentsTooltip(null);
+                            }
+                          }, 500);
+                        }}
+                      >
+                        <div 
+                          style={{ 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem', 
+                            color: invoice.pocet_priloh > 0 ? '#64748b' : '#cbd5e1',
+                            transition: 'color 0.2s'
+                          }} 
+                          title="Počet příloh"
+                        >
                           <FontAwesomeIcon icon={faPaperclip} />
                           <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{invoice.pocet_priloh || 0}</span>
                         </div>
@@ -5549,6 +5588,28 @@ const Invoices25List = () => {
           </FloatingTableWrapper>
         </FloatingHeaderPanel>,
         document.body
+      )}
+      
+      {/* Attachments Tooltip */}
+      {attachmentsTooltip && (
+        <div
+          onMouseEnter={(e) => e.currentTarget.setAttribute('data-tooltip-hover', 'true')}
+          onMouseLeave={(e) => {
+            e.currentTarget.removeAttribute('data-tooltip-hover');
+            setAttachmentsTooltip(null);
+          }}
+        >
+          <InvoiceAttachmentsTooltip
+            attachments={attachmentsTooltip.attachments}
+            position={attachmentsTooltip.position}
+            onClose={() => setAttachmentsTooltip(null)}
+            onDownload={(attachment) => {
+              const baseUrl = process.env.REACT_APP_API_URL || 'https://erdms.zachranka.cz';
+              const url = `${baseUrl}/api.eeo/v2025.03_25/?action=downloadInvoiceAttachment&attachment_id=${attachment.id}`;
+              window.open(url, '_blank');
+            }}
+          />
+        </div>
       )}
     </>
   );
