@@ -35,9 +35,8 @@ function get_orders25_upload_path($config, $objednavka_id, $user_id) {
     } else if (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // ✅ Fallback - použij správnou cestu z dbconfig.php
-        // Cesta: /var/www/erdms-data/eeo-v2/prilohy/
-        $basePath = '/var/www/erdms-data/eeo-v2/prilohy/';
+        // ✅ Fallback - použij cestu z .env (UPLOAD_ROOT_PATH)
+        $basePath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/';
     }
     
     // Přidání lomítka na konec pokud chybí

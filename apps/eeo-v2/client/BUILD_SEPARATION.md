@@ -60,10 +60,17 @@ npm run build:prod
 
 **Deploy na production server:**
 ```bash
-# Zkopírovat build-prod/ do erdms-platform
-rsync -avz build-prod/ /var/www/erdms-platform/eeo-v2/
-# nebo
-cp -r build-prod/* /var/www/erdms-platform/eeo-v2/
+# ⚠️ DŮLEŽITÉ: NIKDY nepoužívat --delete flag!
+# V produkci je podsložka api-legacy/, která nesmí být smazána!
+
+# SPRÁVNĚ - bez --delete:
+rsync -avz build-prod/ /var/www/erdms-platform/apps/eeo-v2/
+
+# NEBO pomocí cp:
+cp -r build-prod/* /var/www/erdms-platform/apps/eeo-v2/
+
+# NIKDY NEDĚLAT:
+# rsync -avz --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/  ❌ ŠPATNĚ!
 ```
 
 ---

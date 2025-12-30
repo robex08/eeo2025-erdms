@@ -12455,16 +12455,22 @@ function OrderForm25() {
       return;
     }
 
-    setLoadingLpDetails(prev => {
+    setLpDetailsState(prev => {
       // Pokud už máme detaily nebo se právě načítají, nemusíme načítat znovu
-      if (prev[lp_id_or_kod]) return prev;
-      return { ...prev, [lp_id_or_kod]: true };
+      if (prev.loading[lp_id_or_kod]) return prev;
+      return {
+        ...prev,
+        loading: { ...prev.loading, [lp_id_or_kod]: true }
+      };
     });
 
     try {
       const detail = await fetchLPDetail({ token, username, cislo_lp });
       if (detail) {
-        setLpDetails(prev => ({ ...prev, [lp_id_or_kod]: detail }));
+        setLpDetailsState(prev => ({
+          ...prev,
+          details: { ...prev.details, [lp_id_or_kod]: detail }
+        }));
       }
     } catch (error) {
       // Netobrazovat toast pokud je to jen 404 - LP nemusí existovat
@@ -12472,7 +12478,10 @@ function OrderForm25() {
         showToast(`Nepodařilo se načíst detail LP: ${error.message}`, 'error');
       }
     } finally {
-      setLoadingLpDetails(prev => ({ ...prev, [lp_id_or_kod]: false }));
+      setLpDetailsState(prev => ({
+        ...prev,
+        loading: { ...prev.loading, [lp_id_or_kod]: false }
+      }));
     }
   }, [token, username, showToast, lpKodyOptions]);
 

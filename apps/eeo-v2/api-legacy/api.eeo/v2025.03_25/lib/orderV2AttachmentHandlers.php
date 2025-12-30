@@ -78,9 +78,8 @@ function get_order_v2_upload_path($config, $objednavka_id, $user_id) {
     } elseif (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // ✅ Fallback - použij správnou cestu z dbconfig.php
-        // Cesta: /var/www/erdms-data/eeo-v2/prilohy/
-        $basePath = '/var/www/erdms-data/eeo-v2/prilohy/';
+        // ✅ Fallback - použij cestu z .env (UPLOAD_ROOT_PATH)
+        $basePath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/';
     }
     
     // Přidání lomítka na konec pokud chybí
@@ -432,7 +431,7 @@ function handle_order_v2_list_attachments($input, $config, $queries) {
         
         // Získání base path z konfigurace - stejná logika jako v download handleru
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : '/var/www/erdms-data/eeo-v2/prilohy/';
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : (getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/');
         
         // Standardizace výstupu
         $result = array();
@@ -546,7 +545,7 @@ function handle_order_v2_download_attachment($input, $config, $queries) {
         
         // ✅ Sestavení plné cesty - systemova_cesta je jen název souboru
         $uploadConfig = isset($config['upload']) ? $config['upload'] : array();
-        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : '/var/www/erdms-data/eeo-v2/prilohy/';
+        $basePath = isset($uploadConfig['root_path']) ? $uploadConfig['root_path'] : (getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/');
         $fullPath = $basePath . $attachment['systemova_cesta'];
         
         // Kontrola existence souboru
