@@ -35,14 +35,28 @@ Tento dokument popisuje oddělení DEV a PRODUCTION buildů pro zabránění kon
 
 ### 1️⃣ **Development Build** (pro testovací server)
 
+⚠️ **KRITICKÉ:** React NEVYSTAČÍ jen s `NODE_ENV=development`! Environment variables se musí zadat explicitně:
+
 ```bash
+# ❌ NEFUNGUJE - React ignoruje .env.development
 npm run build:dev
+
+# ✅ FUNGUJE - Explicitní environment variables
+REACT_APP_API_BASE_URL=https://erdms.zachranka.cz/api \
+REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/dev/api.eeo/ \
+PUBLIC_URL=/dev/eeo-v2 \
+npm run build
+```
+
+**Alternativa - použít správný script:**
+```bash
+npm run build:dev:explicit
 ```
 
 - **Výstup:** `build/`
 - **API:** `https://erdms.zachranka.cz/dev/api.eeo/`
 - **Public URL:** `/dev/eeo-v2`
-- **Config:** `.env.development`
+- **Config:** Environment variables musí být explicitní
 - **Deploy:** Apache už směruje do `build/`, není potřeba kopírovat
 
 ---
@@ -215,11 +229,41 @@ REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/api.eeo/
 
 ## 🆘 Troubleshooting
 
+### ⚠️ HLAVNÍ PROBLÉM: React ignoruje .env soubory při build
+
+**Problém:** `npm run build:dev` nevytváří správnou konfiguraci, používá PROD API.
+
+**Příčina:** React.js při buildu **NEAUTOMATICKY** načítá `.env.development` soubor na základě `NODE_ENV=development`. Environment variables musí být explicitně zadány.
+
+**❌ NEFUNGUJE:**
+```bash
+npm run build:dev  # Používá špatné API
+```
+
+**✅ ŘEŠENÍ:**
+```bash
+# Použij explicitní script:
+npm run build:dev:explicit
+
+# Nebo manuálně:
+REACT_APP_API_BASE_URL=https://erdms.zachranka.cz/api \
+REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/dev/api.eeo/ \
+PUBLIC_URL=/dev/eeo-v2 \
+npm run build
+```
+
+**Jak poznat problém:**
+- DEV aplikace volá `https://erdms.zachranka.cz/api.eeo/` místo `/dev/api.eeo/`
+- JavaScript error: `Uncaught SyntaxError: Unexpected token '<'`
+- 404 errors na statické soubory (špatný PUBLIC_URL)
+
+---
+
 ### Problém: Build se vytváří do špatného adresáře
-**Řešení:** Zkontroluj použitý příkaz - `build:dev` → `build-dev/`, `build:prod` → `build/`
+**Řešení:** Zkontroluj použitý příkaz - `build:dev` → `build/`, `build:prod` → `build-prod/`
 
 ### Problém: Build používá špatné API
-**Řešení:** Zkontroluj `.env.development` nebo `.env.production` a použij správný build příkaz
+**Řešení:** ⚠️ **VŽDY** použij `npm run build:dev:explicit` pro DEV build!
 
 ### Problém: Stará verze buildu se nezmaže
 **Řešení:** 
