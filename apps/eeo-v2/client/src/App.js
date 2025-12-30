@@ -32,6 +32,7 @@ const Invoices25List = lazy(() => import('./pages/Invoices25List'));
 const InvoiceEvidencePage = lazy(() => import('./pages/InvoiceEvidencePage'));
 const AddressBookPage = lazy(() => import('./pages/AddressBookPage'));
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
 const NotificationTestPanel = lazy(() => import('./pages/NotificationTestPanel'));
 const OrderV2TestPanel = lazy(() => import('./pages/OrderV2TestPanel'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
@@ -486,6 +487,7 @@ function App() {
                   {isLoggedIn && hasPermission && hasPermission('CONTACT_READ') && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
+                  {isLoggedIn && <Route path="/help" element={<HelpPage />} />}
                   {isLoggedIn && <Route path="/about" element={<About />} />}
                   {isLoggedIn && <Route path="/change-password" element={<ChangePasswordPage />} />}
                   {isLoggedIn && <Route path="/notifications" element={<NotificationsPage />} />}
