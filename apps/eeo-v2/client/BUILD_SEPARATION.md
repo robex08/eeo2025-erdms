@@ -59,9 +59,14 @@ npm run build:prod
 - **Config:** `.env.production`
 
 **Deploy na production server:**
+
+🚨 **KRITICKÉ PRAVIDLO: NIKDY bez explicitního potvrzení!** 🚨
+
 ```bash
-# ⚠️ DŮLEŽITÉ: NIKDY nepoužívat --delete flag!
-# V produkci je podsložka api-legacy/, která nesmí být smazána!
+# ⚠️ DŮLEŽITÉ: 
+# 1. NIKDY nepoužívat --delete flag (smaže api-legacy/)
+# 2. Deploy jen po EXPLICITNÍM POTVRZENÍ
+# 3. Produkční .env NIKDY neměnit automaticky!
 
 # SPRÁVNĚ - bez --delete:
 rsync -avz build-prod/ /var/www/erdms-platform/apps/eeo-v2/
@@ -69,8 +74,20 @@ rsync -avz build-prod/ /var/www/erdms-platform/apps/eeo-v2/
 # NEBO pomocí cp:
 cp -r build-prod/* /var/www/erdms-platform/apps/eeo-v2/
 
-# NIKDY NEDĚLAT:
-# rsync -avz --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/  ❌ ŠPATNĚ!
+# ❌ ZAKÁZÁNO:
+# rsync -avz --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/
+```
+
+**API Legacy Deploy** (pouze když je to nutné):
+```bash
+# ⚠️ Vždy potvrdit před nasazením!
+# Produkční .env NESMÍ být přepsán!
+rsync -avz /var/www/erdms-dev/apps/eeo-v2/api-legacy/ \
+            /var/www/erdms-platform/apps/eeo-v2/api-legacy/ \
+            --exclude='.git' --exclude='api.eeo/.env'
+
+# Po deploy VŽDY restartovat PHP-FPM:
+systemctl restart php8.4-fpm && systemctl restart apache2
 ```
 
 ---
