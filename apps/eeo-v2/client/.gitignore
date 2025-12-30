@@ -9,6 +9,7 @@ node_modules/
 # Production builds
 /build
 /build-dev
+/build-prod
 /build_temp
 
 # Environment variables
