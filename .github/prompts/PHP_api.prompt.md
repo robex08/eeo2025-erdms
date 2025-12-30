@@ -5,10 +5,39 @@ model: Claude Sonnet 4.5 (copilot)
 description: PHP legacy API coding
 priority: high
 version: 1.0
-last_updated: 2025-12-20
+last_updated: 2025-12-30
 ---
 
 **DŮLEŽITÉ: Komunikuj vždy v češtině.**
+
+---
+
+## 🚨 NEJVYŠŠÍ PRIORITA - PRODUCTION OCHRANA 🚨
+
+### ⛔ ABSOLUTNĚ ZAKÁZÁNO BEZ POTVRZENÍ:
+1. ❌ **NIKDY neměnit /var/www/erdms-platform/** (produkce)
+2. ❌ **NIKDY neměnit produkční .env** v `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env`
+3. ❌ **NIKDY nedělat rsync do /var/www/erdms-platform/** bez explicitního příkazu
+4. ❌ **NIKDY nepoužívat `--delete` flag** při rsync (smaže api-legacy/)
+5. ❌ **NIKDY neměnit produkční databázi** `eeo2025` (pouze `eeo2025-dev`)
+
+### ✅ POVOLENÉ OPERACE (bez potvrzení):
+- ✅ Všechny změny v `/var/www/erdms-dev/` (dev workspace)
+- ✅ Build:dev pro testování
+- ✅ Práce s `eeo2025-dev` databází
+- ✅ Upload do `/var/www/erdms-data/`
+- ✅ Commit do GIT
+
+### ⚠️ VYŽADUJE EXPLICITNÍ POTVRZENÍ:
+- 🔴 `npm run build:prod` - zeptat se: "Mám dát build:prod?"
+- 🔴 Deploy do produkce - zeptat se: "Mám nasadit do produkce?"
+- 🔴 Změny v produkční .env - zeptat se: "Mám změnit produkční .env?"
+- 🔴 rsync api-legacy do produkce - zeptat se: "Mám nasadit API do produkce?"
+
+**WORKFLOW:**
+1. Pracuj POUZE v `/var/www/erdms-dev/`
+2. Testuj s `eeo2025-dev` DB a `/var/www/erdms-data/`
+3. Před JAKOUKOLIV akcí v produkci → ZEPTEJ SE!
 
 ---
 
