@@ -5470,7 +5470,8 @@ function OrderForm25() {
           token,
           username,
           show_inactive: false,
-          limit: 500
+          limit: 500,
+          pouzit_v_obj_formu: true
         });
         
         if (response?.data && Array.isArray(response.data)) {
@@ -12497,7 +12498,8 @@ function OrderForm25() {
         token,
         username,
         show_inactive: false,
-        limit: 500 // Načíst max 500 aktivních smluv
+        limit: 500, // Načíst max 500 aktivních smluv
+        pouzit_v_obj_formu: true
       });
 
       if (response?.data && Array.isArray(response.data)) {

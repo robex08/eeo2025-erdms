@@ -30,7 +30,8 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
-import { listManuals, downloadManual } from '../services/api25manuals';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { listManuals, downloadManual, uploadManual, deleteManual } from '../services/api25manuals';
 
 // =============================================================================
 // ANIMATIONS
@@ -762,36 +763,41 @@ const HelpPage = () => {
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // State pro ConfirmDialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [manualToDelete, setManualToDelete] = useState(null);
 
-  // Načtení seznamu manuálů
-  useEffect(() => {
-    const loadManuals = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Načtení seznamu manuálů (jako samostatná funkce pro re-použití)
+  const loadManuals = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const response = await listManuals(token, username);
-        
-        if (response.status === 'success') {
-          setManuals(response.data || []);
-        } else {
-          throw new Error(response.message || 'Nepodařilo se načíst seznam manuálů');
-        }
-      } catch (err) {
-        console.error('Error loading manuals:', err);
-        setError(err.message || 'Chyba při načítání manuálů');
-        if (showToast) {
-          showToast('Nepodařilo se načíst seznam manuálů', { type: 'error' });
-        }
-      } finally {
-        setLoading(false);
+      const response = await listManuals(token, username);
+      
+      if (response.status === 'success') {
+        setManuals(response.data || []);
+      } else {
+        throw new Error(response.message || 'Nepodařilo se načíst seznam manuálů');
       }
-    };
+    } catch (err) {
+      console.error('Error loading manuals:', err);
+      setError(err.message || 'Chyba při načítání manuálů');
+      if (showToast) {
+        showToast('Nepodařilo se načíst seznam manuálů', { type: 'error' });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Načtení seznamu manuálů při mount
+  useEffect(() => {
     if (token && username) {
       loadManuals();
     }
-  }, [token, username, showToast]);
+  }, [token, username]);
 
   // Otevření PDF v prohlížeči
   const handleViewPdf = async (manual) => {
@@ -864,43 +870,75 @@ const HelpPage = () => {
   };
 
   // Admin funkce - smazat manuál
-  const handleDeleteManual = async (manual) => {
-    if (!window.confirm(`Opravdu chcete smazat manuál "${manual.title || manual.filename}"?`)) {
-      return;
-    }
+  const handleDeleteManual = (manual) => {
+    setManualToDelete(manual);
+    setDeleteDialogOpen(true);
+  };
+
+  // Potvrzení smazání manuálu
+  const confirmDeleteManual = async () => {
+    if (!manualToDelete) return;
 
     try {
-      // TODO: Implementovat delete API endpoint
-      console.log('Deleting manual:', manual.filename);
-      if (showToast) {
-        showToast('Manuál byl smazán', { type: 'success' });
+      const response = await deleteManual(manualToDelete.filename, token, username);
+      
+      if (response.success) {
+        if (showToast) {
+          showToast(`Manuál "${manualToDelete.title || manualToDelete.filename}" byl smazán`, { type: 'success' });
+        }
+        // Re-load seznamu manuálů
+        await loadManuals();
+      } else {
+        throw new Error(response.error || 'Nepodařilo se smazat manuál');
       }
-      // Re-load manuals
-      // loadManuals();
     } catch (err) {
       console.error('Error deleting manual:', err);
       if (showToast) {
-        showToast('Nepodařilo se smazat manuál', { type: 'error' });
+        showToast(err.response?.data?.error || err.message || 'Nepodařilo se smazat manuál', { type: 'error' });
       }
+    } finally {
+      setDeleteDialogOpen(false);
+      setManualToDelete(null);
     }
   };
 
   // Admin funkce - upload manuálu
   const handleUploadManual = async (file) => {
+    // Validace - pouze PDF
+    if (file.type !== 'application/pdf') {
+      if (showToast) {
+        showToast('Pouze PDF soubory jsou podporovány', { type: 'error' });
+      }
+      return;
+    }
+
+    // Validace velikosti (max 50 MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      if (showToast) {
+        showToast('Soubor je příliš velký (max 50 MB)', { type: 'error' });
+      }
+      return;
+    }
+
     try {
       setUploading(true);
-      // TODO: Implementovat upload API endpoint
-      console.log('Uploading manual:', file.name);
       
-      if (showToast) {
-        showToast(`Manuál "${file.name}" byl nahrán`, { type: 'success' });
+      const response = await uploadManual(file, token, username);
+      
+      if (response.success) {
+        if (showToast) {
+          showToast(`Manuál "${file.name}" byl nahrán`, { type: 'success' });
+        }
+        // Re-load seznamu manuálů
+        await loadManuals();
+      } else {
+        throw new Error(response.error || 'Nepodařilo se nahrát manuál');
       }
-      // Re-load manuals
-      // loadManuals();
     } catch (err) {
       console.error('Error uploading manual:', err);
       if (showToast) {
-        showToast('Nepodařilo se nahrát manuál', { type: 'error' });
+        showToast(err.response?.data?.error || err.message || 'Nepodařilo se nahrát manuál', { type: 'error' });
       }
     } finally {
       setUploading(false);
@@ -912,16 +950,31 @@ const HelpPage = () => {
     e.preventDefault();
     e.stopPropagation();
     
+    // Odstranit dragover třídu
+    if (e.currentTarget) {
+      e.currentTarget.classList.remove('dragover');
+    }
+    
     const files = Array.from(e.dataTransfer.files);
     const pdfFiles = files.filter(file => file.type === 'application/pdf');
     
-    if (pdfFiles.length === 0) {
+    // Osetřit případ, kdy uživatel nahraje obrázky místo PDF
+    const nonPdfFiles = files.filter(file => file.type !== 'application/pdf');
+    
+    if (nonPdfFiles.length > 0 && pdfFiles.length === 0) {
       if (showToast) {
         showToast('Pouze PDF soubory jsou podporovány', { type: 'error' });
       }
       return;
     }
     
+    if (nonPdfFiles.length > 0) {
+      if (showToast) {
+        showToast(`${nonPdfFiles.length} soubor(ů) bylo ignorováno - podporovány jsou pouze PDF`, { type: 'warning' });
+      }
+    }
+    
+    // Nahrát pouze validní PDF soubory
     pdfFiles.forEach(file => handleUploadManual(file));
   };
 
@@ -1231,6 +1284,29 @@ const HelpPage = () => {
           }}
         />
       )}
+
+      {/* Confirm Dialog pro smazání manuálu */}
+      <ConfirmDialog
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setManualToDelete(null);
+        }}
+        onConfirm={confirmDeleteManual}
+        title="Smazat manuál"
+        message={
+          <>
+            <p>Opravdu chcete smazat manuál <strong>"{manualToDelete?.title || manualToDelete?.filename}"</strong>?</p>
+            <p style={{ marginTop: '0.5rem', color: '#dc2626', fontWeight: 600 }}>
+              ⚠️ Tato akce je nevratná!
+            </p>
+          </>
+        }
+        icon={faTrash}
+        variant="danger"
+        confirmText="Smazat"
+        cancelText="Zrušit"
+      />
       </ContentWrapper>
     </PageContainer>
   );

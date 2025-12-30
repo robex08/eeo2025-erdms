@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS `25_smlouvy_import_log` (
   `pocet_chyb` INT(11) DEFAULT 0 COMMENT 'Počet chyb při importu',
   
   -- Detaily chyb
-  `chybove_zaznamy` TEXT DEFAULT NULL COMMENT 'JSON se seznamem chyb: [{row, field, message}]',
+  `chybove_zaznamy` MEDIUMTEXT DEFAULT NULL COMMENT 'JSON se seznamem chyb: [{row, field, message}] - MEDIUMTEXT pro velké importy (16MB)',
   `status` ENUM('SUCCESS', 'PARTIAL', 'FAILED') DEFAULT 'SUCCESS' 
     COMMENT 'Stav importu - SUCCESS=vše OK, PARTIAL=některé chyby, FAILED=selhalo',
   

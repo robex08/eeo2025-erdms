@@ -290,16 +290,28 @@ $request_uri = $_SERVER['REQUEST_URI'];
 $request_method = $_SERVER['REQUEST_METHOD'];
 
 // Parse input data - support both JSON and Form data
-$raw_input = file_get_contents('php://input');
-$input = json_decode($raw_input, true);
+// ⚠️ KRITICKÉ: Pro multipart/form-data NESMÍME číst php://input!
+// Multipart data jsou POUZE v $_POST a $_FILES
+$content_type = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+$is_multipart = strpos($content_type, 'multipart/form-data') !== false;
 
-// If JSON parsing failed or no JSON data, use $_POST (form data)
-if (json_last_error() !== JSON_ERROR_NONE || empty($input)) {
+if ($is_multipart) {
+    // Pro multipart použij přímo $_POST (FormData parametry)
     $input = $_POST;
+    error_log("API Input parsing - MULTIPART detected, using \$_POST directly");
+} else {
+    // Pro JSON nebo application/x-www-form-urlencoded
+    $raw_input = file_get_contents('php://input');
+    $input = json_decode($raw_input, true);
+    
+    // If JSON parsing failed or no JSON data, use $_POST (form data)
+    if (json_last_error() !== JSON_ERROR_NONE || empty($input)) {
+        $input = $_POST;
+    }
 }
 
 // Debug: log what we received
-error_log("API Input parsing - Content-Type: " . (isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : 'unknown'));
+error_log("API Input parsing - Content-Type: " . $content_type);
 error_log("API Input data: " . json_encode($input));
 
 // Extrakce endpointu - priorita X-Endpoint header, pak URI
@@ -2398,7 +2410,7 @@ switch ($endpoint) {
         break;
     
     // === MANUALS - PDF MANUÁLY A NÁPOVĚDA ===
-    case 'api25/manuals/list':
+    case 'manuals/list':
         if ($request_method === 'POST') {
             handle_manuals_list($input, $config);
         } else {
@@ -2407,9 +2419,27 @@ switch ($endpoint) {
         }
         break;
         
-    case 'api25/manuals/download':
+    case 'manuals/download':
         if ($request_method === 'POST') {
             handle_manuals_download($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'manuals/upload':
+        if ($request_method === 'POST') {
+            handle_manuals_upload($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'manuals/delete':
+        if ($request_method === 'POST') {
+            handle_manuals_delete($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
@@ -5146,6 +5176,18 @@ switch ($endpoint) {
         if ($endpoint === 'ciselniky/smlouvy/prepocet-cerpani') {
             if ($request_method === 'POST') {
                 handle_ciselniky_smlouvy_prepocet_cerpani($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/ciselniky/smlouvy/import-csv
+        // CSV/Excel import smluv - parsuje soubor a normalizuje "platnost_do" na 31.12.2099 pokud chybí
+        if ($endpoint === 'ciselniky/smlouvy/import-csv') {
+            if ($request_method === 'POST') {
+                handle_ciselniky_smlouvy_import_csv($input, $config, $queries);
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));

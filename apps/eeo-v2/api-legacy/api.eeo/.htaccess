@@ -10,7 +10,8 @@ RewriteEngine On
     # Always set CORS headers for all requests including OPTIONS
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, x-endpoint"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, x-endpoint, Content-Disposition"
+    Header always set Access-Control-Expose-Headers "Content-Disposition, Content-Length"
     Header always set Access-Control-Max-Age "3600"
     Header always set Access-Control-Allow-Credentials "true"
 </IfModule>

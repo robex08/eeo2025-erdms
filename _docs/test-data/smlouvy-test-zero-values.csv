@@ -1,0 +1,8 @@
+ČÍSLO SML,ÚSEK,DRUH SMLOUVY,PARTNER,NÁZEV SML,HODNOTA BEZ DPH,HODNOTA S DPH,DATUM DO
+S-357/75030926/22,LPPT,DODAVATELSKA,Test Partner 1,Smlouva bez hodnot,,,
+019/75030926/17,LPPT,DODAVATELSKA,Test Partner 2,Smlouva s hodnotou s DPH,,121000,31.12.2026
+16/06/127,LPPT,DODAVATELSKA,Test Partner 3,Smlouva s hodnotou bez DPH,100000,,
+S-056/75030926/20,LPPT,DODAVATELSKA,Test Partner 4,Smlouva s nulovými hodnotami,0,0,
+TEST-001,LPPT,DODAVATELSKA,Test Partner 5,Smlouva s mezerami v hodnotě,100 000,121 000,
+TEST-002,LPPT,DODAVATELSKA,Test Partner 6,Smlouva s čárkou,100000,"121,000.50",
+TEST-003,LPPT,DODAVATELSKA,Test Partner 7,Smlouva s nevalidní hodnotou,abc,xyz,
