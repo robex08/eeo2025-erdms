@@ -7,13 +7,60 @@ priority: LOW
 
 # BUILD-EEOv2 - React Build Process pro DEV/PROD oddělení
 
-**Oblast:** Build proces, Environment variables  
+**Oblast:** Build proces, Environment variables, Build separation  
 **Datum vytvoření:** 30.12.2024  
-**Status:** ✅ VYŘEŠENO
+**Poslední update:** 30.12.2025  
+**Status:** ✅ VYŘEŠENO + UPGRADED
 
 ---
 
-## 📋 Problém
+## 🆕 UPDATE 30.12.2025 - Build Separation
+
+### ✅ Vyřešený problém: Separace DEV a PRODUCTION buildů
+
+**Nové řešení:**
+- **DEV build** → `build-dev/` (používá DEV API)
+- **PRODUCTION build** → `build/` (používá PRODUCTION API)
+
+### 📦 Nové build příkazy:
+
+```bash
+# DEV build (testovací server)
+npm run build:dev
+# → Výstup: build-dev/
+# → API: https://erdms.zachranka.cz/dev/api.eeo/
+# → Public URL: /dev/eeo-v2
+
+# PRODUCTION build (ostrá verze)
+npm run build:prod
+# → Výstup: build/
+# → API: https://erdms.zachranka.cz/api.eeo/
+# → Public URL: /eeo-v2
+
+# Default build (= PRODUCTION)
+npm run build
+# → Výstup: build/
+```
+
+### 📂 Struktura:
+```
+apps/eeo-v2/client/
+├── build/              ← PRODUCTION build
+├── build-dev/          ← DEV build
+├── .env.production     ← Config pro PRODUCTION
+├── .env.development    ← Config pro DEV
+└── BUILD_SEPARATION.md ← Detailní dokumentace
+```
+
+### ✅ Výhody nového řešení:
+1. **Žádné konflikty** - DEV a PROD buildy v oddělených složkách
+2. **Jasné příkazy** - `build:dev` vs `build:prod`
+3. **Bezpečné** - nelze přepsat PROD build DEV buildem
+4. **Jednoduché** - automatická správa ENV proměnných
+
+---
+
+## 📋 Původní Problém (vyřešeno 30.12.2024)
 
 DEV build (`npm run build:dev`) generoval build, který v prohlížeči volal **production API endpoint** (`/api.eeo`) místo development endpointu (`/dev/api.eeo`).
 
