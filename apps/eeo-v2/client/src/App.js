@@ -438,7 +438,7 @@ function App() {
   // 📱 MOBILE VERSION: Pokud je zařízení mobilní, zobrazí se mobilní verze
   if (isMobile) {
     return (
-      <Router basename={window.location.pathname.match(/^\/dev\/[^\/]+/)?.[0] || process.env.PUBLIC_URL || ''}>
+      <Router basename={process.env.PUBLIC_URL || ''}>
         <Suspense fallback={<div style={{display:'none'}}></div>}>
           {!isLoggedIn ? (
             <MobileLoginPage />
@@ -453,7 +453,7 @@ function App() {
   // 🖥️ DESKTOP VERSION
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
-      <Router basename={window.location.pathname.match(/^\/dev\/[^\/]+/)?.[0] || process.env.PUBLIC_URL || ''}>
+      <Router basename={process.env.PUBLIC_URL || ''}>
         <MaintenanceModeWrapper isLoggedIn={isLoggedIn} userDetail={userDetail}>
           <AppShell>
             <Layout>
