@@ -100,9 +100,8 @@ const OverdueBadge = styled.span`
 
 const Dropdown = styled.div`
   position: absolute;
-  z-index: 50;
+  z-index: 1050;
   width: 18rem;
-  margin-top: 0.5rem;
   background-color: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -110,6 +109,13 @@ const Dropdown = styled.div`
   outline: none;
   animation: fadeIn 0.1s;
   left: 0;
+  
+  /* Dynamické umístění - nad nebo pod */
+  ${props => props.$openUpward ? `
+    bottom: calc(100% + 0.5rem);
+  ` : `
+    top: calc(100% + 0.5rem);
+  `}
   
   @keyframes fadeIn {
     from {
@@ -254,7 +260,9 @@ const InvoiceStatusSelect = ({
   disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const dropdownRef = useRef(null);
+  const buttonRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -265,6 +273,18 @@ const InvoiceStatusSelect = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Detekce směru otevření dropdownu (nahoru/dolů)
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - buttonRect.bottom;
+      const dropdownHeight = 400; // Přibližná výška dropdownu
+      
+      // Pokud není dole dostatek místa, otevři nahoru
+      setOpenUpward(spaceBelow < dropdownHeight && buttonRect.top > dropdownHeight);
+    }
+  }, [isOpen]);
 
   // Získat konfiguraci aktuálního stavu
   const activeStateConfig = INVOICE_STATES[currentStatus] || INVOICE_STATES.ZAEVIDOVANA;
@@ -320,6 +340,7 @@ const InvoiceStatusSelect = ({
     <Container ref={dropdownRef}>
       <ButtonRow>
         <StatusButton
+          ref={buttonRef}
           onClick={handleStatusClick}
           type="button"
           title={tooltipText}
@@ -348,7 +369,7 @@ const InvoiceStatusSelect = ({
 
       {/* Dropdown menu */}
       {isOpen && !disabled && (
-        <Dropdown>
+        <Dropdown $openUpward={openUpward}>
           <DropdownContent>
             <DropdownHeader>
               <span>Změnit stav</span>
