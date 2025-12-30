@@ -1782,6 +1782,8 @@ const Invoices25List = () => {
         apiParams.filter_ma_prilohy = 1; // Pouze s přílohami
       } else if (columnFilters.ma_prilohy === 'without') {
         apiParams.filter_ma_prilohy = 0; // Pouze bez příloh
+      } else if (columnFilters.ma_prilohy === 'spisovka') {
+        apiParams.filter_ma_prilohy = 2; // Pouze ze spisovky
       }
       
       // Věcná kontrola - filtr
