@@ -280,8 +280,13 @@ const InvoiceStatusSelect = ({
       const updatePosition = () => {
         const buttonRect = buttonRef.current.getBoundingClientRect();
         const spaceBelow = window.innerHeight - buttonRect.bottom;
-        const dropdownHeight = 400; // Přibližná výška
-        const openUpward = spaceBelow < dropdownHeight && buttonRect.top > dropdownHeight;
+        
+        // Získat skutečnou výšku dropdownu pokud existuje, jinak použít odhad
+        const dropdownHeight = dropdownRef.current 
+          ? dropdownRef.current.offsetHeight 
+          : 380; // Přibližná výška pro první render
+        
+        const openUpward = spaceBelow < dropdownHeight + 16 && buttonRect.top > dropdownHeight + 16;
         
         setDropdownPosition({
           top: openUpward ? buttonRect.top - dropdownHeight - 8 : buttonRect.bottom + 8,
@@ -290,7 +295,10 @@ const InvoiceStatusSelect = ({
         });
       };
       
+      // První update s malým zpožděním pro získání výšky dropdownu
       updatePosition();
+      setTimeout(updatePosition, 0);
+      
       window.addEventListener('scroll', updatePosition, true);
       window.addEventListener('resize', updatePosition);
       
