@@ -18,12 +18,16 @@ Tento dokument popisuje oddělení DEV a PRODUCTION buildů pro zabránění kon
 
 ```
 /var/www/erdms-dev/apps/eeo-v2/client/
-├── build/              ← PRODUCTION build (ostrá verze)
-├── build-dev/          ← DEV build (vývojová verze)
+├── build/              ← DEV build (Apache směruje sem)
+├── build-prod/         ← PRODUCTION build (kopíruje se na erdms-platform)
 ├── build_temp/         ← Dočasný build pro maintenance
-└── .env.production     ← Config pro PRODUCTION
+├── .env.production     ← Config pro PRODUCTION
 └── .env.development    ← Config pro DEV
 ```
+
+**📍 Deploy flow:**
+- DEV: `build/` → Apache servíruje přímo odtud
+- PRODUCTION: `build-prod/` → kopíruje se na `/var/www/erdms-platform/eeo-v2/`
 
 ---
 
@@ -35,16 +39,11 @@ Tento dokument popisuje oddělení DEV a PRODUCTION buildů pro zabránění kon
 npm run build:dev
 ```
 
-- **Výstup:** `build-dev/`
+- **Výstup:** `build/`
 - **API:** `https://erdms.zachranka.cz/dev/api.eeo/`
 - **Public URL:** `/dev/eeo-v2`
 - **Config:** `.env.development`
-
-**Deploy na server:**
-```bash
-# Zkopírovat build-dev/ do /dev/eeo-v2/ na serveru
-rsync -avz build-dev/ user@server:/var/www/erdms/dev/eeo-v2/
-```
+- **Deploy:** Apache už směruje do `build/`, není potřeba kopírovat
 
 ---
 
@@ -54,15 +53,17 @@ rsync -avz build-dev/ user@server:/var/www/erdms/dev/eeo-v2/
 npm run build:prod
 ```
 
-- **Výstup:** `build/`
+- **Výstup:** `build-prod/`
 - **API:** `https://erdms.zachranka.cz/api.eeo/`
 - **Public URL:** `/eeo-v2`
 - **Config:** `.env.production`
 
-**Deploy na server:**
+**Deploy na production server:**
 ```bash
-# Zkopírovat build/ do /eeo-v2/ na serveru
-rsync -avz build/ user@server:/var/www/erdms/eeo-v2/
+# Zkopírovat build-prod/ do erdms-platform
+rsync -avz build-prod/ /var/www/erdms-platform/eeo-v2/
+# nebo
+cp -r build-prod/* /var/www/erdms-platform/eeo-v2/
 ```
 
 ---
@@ -90,10 +91,10 @@ npm start
 # 2. Build pro DEV server
 npm run build:dev
 
-# 3. Deploy na /dev/eeo-v2/
-# (manuální nebo automatický deploy)
+# 3. Apache servíruje přímo z build/
+# Nic nekopírovat - build/ je už dostupný na https://erdms.zachranka.cz/dev/eeo-v2/
 
-# 4. Testování na https://erdms.zachranka.cz/dev/eeo-v2/
+# 4. Testování na DEV serveru
 ```
 
 ---
@@ -104,11 +105,11 @@ npm run build:dev
 # 1. Build pro PRODUCTION
 npm run build:prod
 
-# 2. Kontrola buildu v build/
-ls -la build/
+# 2. Kontrola buildu v build-prod/
+ls -la build-prod/
 
-# 3. Deploy na /eeo-v2/
-# (manuální nebo automatický deploy)
+# 3. Zkopírovat na produkční server
+cp -r build-prod/* /var/www/erdms-platform/eeo-v2/
 
 # 4. Ověření na https://erdms.zachranka.cz/eeo-v2/
 ```
@@ -150,9 +151,9 @@ REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/api.eeo/
 | Příkaz | Výstup | API | Použití |
 |--------|--------|-----|---------|
 | `npm start` | localhost:3000 | DEV API | Lokální vývoj |
-| `npm run build:dev` | `build-dev/` | DEV API | Deploy na /dev/eeo-v2/ |
-| `npm run build:prod` | `build/` | PROD API | Deploy na /eeo-v2/ |
-| `npm run build` | `build/` | PROD API | Výchozí (PRODUCTION) |
+| `npm run build:dev` | `build/` | DEV API | DEV server (Apache) |
+| `npm run build:prod` | `build-prod/` | PROD API | Kopírovat na erdms-platform |
+| `npm run build` | `build/` | DEV API | Výchozí (DEV) |
 
 ---
 
@@ -164,8 +165,8 @@ REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/api.eeo/
   "scripts": {
     "start": "NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired start",
     "build": "NODE_OPTIONS=--max_old_space_size=8192 BUILD_PATH=build react-app-rewired build",
-    "build:prod": "NODE_ENV=production BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
-    "build:dev": "NODE_ENV=development BUILD_PATH=build-dev PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build"
+    "build:dev": "NODE_ENV=development BUILD_PATH=build PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
+    "build:prod": "NODE_ENV=production BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build"
   }
 }
 ```
@@ -179,10 +180,12 @@ REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/api.eeo/
 
 ## 📅 Changelog
 
-- **2025-12-30**: Vytvořena separace DEV a PRODUCTION buildů
-- Odděleny build adresáře: `build/` (prod) a `build-dev/` (dev)
-- Přidány příkazy: `build:prod` a `build:dev`
-- Aktualizován `.gitignore` pro ignorování obou build adresářů
+- **2025-12-30 (v2)**: Upravena struktura - PRODUCTION build jde do `build-prod/`
+  - `build/` → DEV (Apache směruje sem)
+  - `build-prod/` → PRODUCTION (kopíruje se na erdms-platform)
+- **2025-12-30 (v1)**: Vytvořena separace DEV a PRODUCTION buildů
+  - Odděleny build adresáře
+  - Přidány příkazy: `build:prod` a `build:dev`
 
 ---
 
