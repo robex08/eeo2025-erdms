@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { 
   CheckCircle, 
@@ -99,8 +100,8 @@ const OverdueBadge = styled.span`
 `;
 
 const Dropdown = styled.div`
-  position: absolute;
-  z-index: 1050;
+  position: fixed;
+  z-index: 9999;
   width: 18rem;
   background-color: white;
   border: 1px solid #e5e7eb;
@@ -108,14 +109,8 @@ const Dropdown = styled.div`
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   outline: none;
   animation: fadeIn 0.1s;
-  left: 0;
   
-  /* Dynamické umístění - nad nebo pod */
-  ${props => props.$openUpward ? `
-    bottom: calc(100% + 0.5rem);
-  ` : `
-    top: calc(100% + 0.5rem);
-  `}
+  /* Pozice se nastaví dynamicky pomocí inline style */
   
   @keyframes fadeIn {
     from {
@@ -260,13 +255,18 @@ const InvoiceStatusSelect = ({
   disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, openUpward: false });
+  const containerRef = useRef(null);
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      // Kontrola, zda klik není na tlačítko nebo dropdown
+      if (
+        buttonRef.current && !buttonRef.current.contains(event.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(event.target)
+      ) {
         setIsOpen(false);
       }
     };
@@ -274,15 +274,30 @@ const InvoiceStatusSelect = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Detekce směru otevření dropdownu (nahoru/dolů)
+  // Výpočet pozice dropdownu v portalu
   useEffect(() => {
     if (isOpen && buttonRef.current) {
-      const buttonRect = buttonRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - buttonRect.bottom;
-      const dropdownHeight = 400; // Přibližná výška dropdownu
+      const updatePosition = () => {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        const dropdownHeight = 400; // Přibližná výška
+        const openUpward = spaceBelow < dropdownHeight && buttonRect.top > dropdownHeight;
+        
+        setDropdownPosition({
+          top: openUpward ? buttonRect.top - dropdownHeight - 8 : buttonRect.bottom + 8,
+          left: buttonRect.left,
+          openUpward
+        });
+      };
       
-      // Pokud není dole dostatek místa, otevři nahoru
-      setOpenUpward(spaceBelow < dropdownHeight && buttonRect.top > dropdownHeight);
+      updatePosition();
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
     }
   }, [isOpen]);
 
@@ -337,7 +352,7 @@ const InvoiceStatusSelect = ({
   };
 
   return (
-    <Container ref={dropdownRef}>
+    <Container ref={containerRef}>
       <ButtonRow>
         <StatusButton
           ref={buttonRef}
@@ -367,9 +382,15 @@ const InvoiceStatusSelect = ({
         </StatusButton>
       </ButtonRow>
 
-      {/* Dropdown menu */}
-      {isOpen && !disabled && (
-        <Dropdown $openUpward={openUpward}>
+      {/* Dropdown menu v React Portal */}
+      {isOpen && !disabled && createPortal(
+        <Dropdown 
+          ref={dropdownRef}
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`
+          }}
+        >
           <DropdownContent>
             <DropdownHeader>
               <span>Změnit stav</span>
@@ -408,7 +429,8 @@ const InvoiceStatusSelect = ({
               );
             })}
           </DropdownContent>
-        </Dropdown>
+        </Dropdown>,
+        document.body
       )}
     </Container>
   );
