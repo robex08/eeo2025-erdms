@@ -1493,7 +1493,7 @@ const Select = styled.select`
   }
 
   /* Placeholder styl pro první option */
-  option:first-child {
+  option:first-of-type {
     color: #9ca3af;
     font-weight: 400;
   }
@@ -8015,7 +8015,6 @@ function OrderForm25() {
     }
 
     try {
-      console.log('💰 [LP] Ukládám LP čerpání pro fakturu:', fakturaId, lpCerpaniData);
       await saveFakturaLPCerpani(fakturaId, lpCerpaniData, token, username);
       
       // Aktualizovat lokální state
@@ -8027,7 +8026,6 @@ function OrderForm25() {
         }
       }));
       
-      console.log('✅ [LP] LP čerpání uloženo');
       return true;
     } catch (error) {
       console.error('❌ [LP] Chyba při ukládání LP čerpání:', error);
@@ -23452,8 +23450,6 @@ function OrderForm25() {
                                             lpCerpani={lpData.lpCerpani}
                                             availableLPCodes={lpKodyOptions || []}
                                             onChange={(newLpCerpani) => {
-                                              console.log('💾 [LP Editor] Změna LP čerpání:', newLpCerpani);
-                                              
                                               // Aktualizovat lokální state
                                               setFakturyLPCerpani(prev => ({
                                                 ...prev,

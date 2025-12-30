@@ -1487,9 +1487,25 @@ export default function InvoiceEvidencePage() {
   const isReadOnlyMode = !hasPermission('INVOICE_MANAGE') && hasPermission('INVOICE_MATERIAL_CORRECTNESS');
 
   // �📂 Collapsible sections state
-  const [sectionStates, setSectionStates] = useState({
-    invoiceData: true, // vždy rozvinutá při načtení
-    materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro uživatele bez INVOICE_MANAGE (tě s INVOICE_MATERIAL_CORRECTNESS)
+  const [sectionStates, setSectionStates] = useState(() => {
+    // Default stavy
+    const defaultStates = {
+      invoiceData: true, // vždy rozvinutá při načtení
+      materialCorrectness: !hasPermission('INVOICE_MANAGE') // rozvinuto pouze pro uživatele bez INVOICE_MANAGE
+    };
+
+    // Zkusit načíst z localStorage při první inicializaci
+    try {
+      const savedSections = localStorage.getItem(`invoiceSections_${user_id}`);
+      if (savedSections) {
+        const parsed = JSON.parse(savedSections);
+        return { ...defaultStates, ...parsed };
+      }
+    } catch (e) {
+      console.warn('⚠️ Chyba při načítání stavu sekcí z localStorage:', e);
+    }
+
+    return defaultStates;
   });
 
   // Toggle funkce pro sekce
@@ -1771,20 +1787,6 @@ export default function InvoiceEvidencePage() {
           }
         } catch (e) {
           console.warn('⚠️ Chyba při parsování LP čerpání z localStorage:', e);
-        }
-      }
-      
-      // 🆕 Načíst stav sekcí
-      const savedSections = localStorage.getItem(`invoiceSections_${user_id}`);
-      if (savedSections) {
-        try {
-          const parsed = JSON.parse(savedSections);
-          setSectionStates(prev => ({
-            ...prev,
-            ...parsed
-          }));
-        } catch (e) {
-          console.warn('⚠️ Chyba při parsování stavu sekcí z localStorage:', e);
         }
       }
       

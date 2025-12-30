@@ -97,52 +97,85 @@ const SummaryItem = styled.div`
 
 const LPRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 200px 48px; /* Flexibilnější layout */
-  gap: 20px;
-  margin-bottom: 20px;
-  align-items: end; /* Zarovnání na spodní hranu pro konzistenci */
-  padding: 20px;
+  grid-template-columns: 1fr 220px 52px; /* Lepší proporce pro větší elementy */
+  gap: 24px; /* Větší mezery */
+  margin-bottom: 24px;
+  align-items: end;
+  padding: 24px; /* Větší padding */
   background: white;
   border: 1px solid #e9ecef;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-radius: 12px; /* Větší border-radius */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); /* Jemnější shadow */
+  
+  @media (max-width: 1200px) {
+    grid-template-columns: 2fr 180px 52px;
+    gap: 16px;
+  }
   
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
     gap: 16px;
     align-items: stretch;
+    padding: 16px;
   }
 `;
 
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  min-height: 70px; /* Zajistí konzistentní výšku */
+  min-height: 80px; /* Větší výška pro lepší proporce */
   
   label {
-    font-size: 13px;
+    font-size: 14px; /* Větší font pro lepší čitelnost */
     font-weight: 600;
     color: #495057;
-    margin-bottom: 6px;
-    height: 20px;
-    line-height: 20px;
+    margin-bottom: 8px;
+    height: 22px;
+    line-height: 22px;
     display: flex;
     align-items: center;
   }
 
-  /* 🎯 Sjednocení výšky všech input elementů */
+  /* Sjednocení výšky všech input elementů */
   [data-component="CustomSelect"] {
-    height: 44px !important;
+    height: 48px !important; /* Větší výška pro lepší UX */
     
-    & > div:first-child {
-      height: 44px !important;
+    & > div:first-of-type {
+      height: 48px !important;
       display: flex;
       align-items: center;
+      padding: 0 16px; /* Větší padding pro lepší design */
+      font-size: 15px; /* Větší font v selectu */
+      font-weight: ${props => props.isFilled ? '600' : '400'}; /* Tučný když je vyplněné */
+      
+      /* Ellipsis pro dlouhé texty */
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
     
     /* Centrace placeholderu */
     .select__placeholder {
       line-height: 1;
+      font-size: 15px;
+      font-weight: 400; /* Placeholder vždy normální */
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    
+    /* Styling pro dropdown options */
+    .select__option {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      padding: 8px 12px;
+      
+      &:hover {
+        background: #f8f9fa;
+      }
     }
   }
 `;
@@ -168,13 +201,14 @@ const Select = styled.select`
 
 const AmountInput = styled.input`
   width: 100%;
-  height: 44px; /* Stejná výška jako CustomSelect */
-  padding: 10px 50px 10px 12px;
+  height: 48px; /* Stejná výška jako CustomSelect */
+  padding: 12px 50px 12px 16px; /* Větší padding pro lepší UX */
   border: 1px solid ${props => props.hasError ? '#dc3545' : '#ced4da'};
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 15px; /* Větší font pro lepší čitelnost */
+  font-weight: ${props => (props.value && props.value !== '0' && props.value !== '') ? '600' : '400'}; /* Tučný když je vyplněné */
   text-align: right;
-  font-family: 'Roboto Mono', monospace;
+  font-family: inherit; /* Sjednocený font s celou stránkou */
   box-sizing: border-box;
   transition: border-color 0.15s ease;
   
@@ -205,10 +239,10 @@ const AmountInputWrapper = styled.div`
 
 const CurrencySymbol = styled.span`
   position: absolute;
-  right: 12px;
+  right: 16px; /* Větší offset kvůli většímu paddingu */
   color: ${props => props.disabled ? '#9ca3af' : '#374151'};
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 15px; /* Větší font pro sladění s inputem */
   font-family: inherit;
   pointer-events: none;
   user-select: none;
@@ -220,8 +254,8 @@ const ButtonGroup = styled.div`
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
-  min-height: 70px; /* Odpovídá FormGroup min-height */
-  padding-bottom: 2px; /* Drobné doladění zarovnání */
+  min-height: 80px; /* Odpovídá FormGroup min-height */
+  padding-bottom: 4px;
 `;
 
 const IconButton = styled.button`
@@ -234,8 +268,8 @@ const IconButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 48px; /* Stejná velikost jako výška inputů */
+  height: 48px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
 
@@ -259,27 +293,28 @@ const IconButton = styled.button`
 
   svg {
     color: white;
-    width: 16px;
-    height: 16px;
+    width: 18px; /* Větší ikona pro lepší proporce */
+    height: 18px;
   }
 `;
 
 const AddButton = styled.button`
-  padding: 10px 16px;
+  padding: 12px 20px; /* Větší padding */
   border: 2px dashed #007bff;
-  border-radius: 4px;
+  border-radius: 8px; /* Větší border-radius */
   background: white;
   color: #007bff;
-  font-size: 14px;
+  font-size: 15px; /* Větší font */
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 8px;
+  margin-top: 12px;
   width: 100%;
   
   &:hover:not(:disabled) {
     background: #007bff;
     color: white;
+    border-style: solid;
   }
   
   &:disabled {
@@ -428,20 +463,11 @@ function LPCerpaniEditor({
   faktura, 
   orderData, 
   lpCerpani = [], 
-  availableLPCodes = [], // 🔥 LP kódy z číselníku (předané z OrderForm25)
+  availableLPCodes = [], 
   onChange,
-  onValidationChange, // 🔥 Callback pro zprávu o chybách
+  onValidationChange, 
   disabled = false
 }) {
-  // 🚨 DEBUG: Log props na začátku
-  console.log('🚨 [LPCerpaniEditor] INIT - Props debug:', {
-    hasOrderData: !!orderData,
-    orderDataKeys: orderData ? Object.keys(orderData) : null,
-    orderDataLpKod: orderData?.lp_kod,
-    orderDataFinancovani: orderData?.financovani,
-    availableLPCodesCount: availableLPCodes?.length,
-    lpCerpaniCount: lpCerpani?.length
-  });
   
   const [rows, setRows] = useState([]);
   const [validationMessages, setValidationMessages] = useState([]);
@@ -462,46 +488,26 @@ function LPCerpaniEditor({
     onValidationChangeRef.current = onValidationChange;
   }, [onValidationChange]);
 
-  // 🔥 Filtrovat LP kódy podle financování objednávky
+  // Filtrovat LP kódy podle financování objednávky
   const filteredLPCodes = useMemo(() => {
     if (!availableLPCodes || availableLPCodes.length === 0) {
-      console.warn('🚨 [LPCerpaniEditor] Žádné dostupné LP kódy!');
-      console.log('🔍 availableLPCodes:', availableLPCodes);
-      console.log('🔍 availableLPCodes.length:', availableLPCodes?.length);
-      console.log('🔍 prvních 3 LP kódy:', availableLPCodes?.slice(0, 3));
       return [];
     }
-    
-    // 🔍 DEBUG: Log všech dostupných LP kódů
-    console.log('🔍 [LPCerpaniEditor] Všechny dostupné LP kódy:', availableLPCodes.slice(0, 5));
     
     // Zkusit několik možných umístění LP kódů v orderData
     let lpKodyFromOrder = null;
     
-    // 🔍 DEBUG: Log orderData pro analýzu
-    console.log('🔍 [LPCerpaniEditor] orderData pro LP filtrování:', {
-      lp_kod: orderData?.lp_kod,
-      financovani: orderData?.financovani
-    });
-    
     // Možnost 1: orderData.lp_kod (array) - původní OrderForm25
     if (orderData?.lp_kod && Array.isArray(orderData.lp_kod) && orderData.lp_kod.length > 0) {
       lpKodyFromOrder = orderData.lp_kod;
-      console.log('🎯 [LPCerpaniEditor] Našel LP kódy v orderData.lp_kod:', lpKodyFromOrder);
     }
     // Možnost 2: orderData.financovani.lp_kody (z parsed financování)
     else if (orderData?.financovani?.lp_kody && Array.isArray(orderData.financovani.lp_kody) && orderData.financovani.lp_kody.length > 0) {
       lpKodyFromOrder = orderData.financovani.lp_kody;
-      console.log('🎯 [LPCerpaniEditor] Našel LP kódy v orderData.financovani.lp_kody:', lpKodyFromOrder);
     }
     
     if (!lpKodyFromOrder || lpKodyFromOrder.length === 0) {
-      console.warn('🚨 [LPCerpaniEditor] Žádné LP kódy v objednávce - zobrazím všechny!');
-      console.log('🔍 Kontrola LP kódů: orderData.lp_kod =', orderData?.lp_kod);
-      console.log('🔍 Kontrola LP kódů: orderData.financovani =', orderData?.financovani);
-      
-      // 🔥 FALLBACK: Pokud nejsou specifikovány LP kódy, zobraz všechny dostupné
-      console.log('✅ [LPCerpaniEditor] Používám všechny dostupné LP kódy jako fallback');
+      // Fallback: Pokud nejsou specifikovány LP kódy, zobraz všechny dostupné
       return availableLPCodes;
     }
     
@@ -509,28 +515,36 @@ function LPCerpaniEditor({
     const filtered = availableLPCodes.filter(lpOption => {
       return lpKodyFromOrder.some(kodValue => {
         // kodValue může být ID nebo kód (string)
-        const match = lpOption.id === kodValue || 
+        return lpOption.id === kodValue || 
                lpOption.id === Number(kodValue) ||
                lpOption.kod === kodValue ||
                lpOption.cislo_lp === kodValue;
-        
-        if (match) {
-          console.log('✅ [LPCerpaniEditor] LP kód match:', { lpOption, kodValue });
-        }
-        return match;
       });
     });
     
-    console.log('🎯 [LPCerpaniEditor] Finální filtrované LP kódy:', filtered);
-    console.log('🎯 [LPCerpaniEditor] Počet filtrovaných LP kódů:', filtered.length);
-    if (filtered.length > 0) {
-      console.log('🎯 [LPCerpaniEditor] Prvních 3 filtrované:', filtered.slice(0, 3));
-    } else {
-      console.warn('⚠️ [LPCerpaniEditor] Žádné LP kódy po filtrování! Použiji všechny jako fallback.');
-      return availableLPCodes; // 🔥 Fallback na všechny
-    }
-    return filtered;
+    return filtered.length > 0 ? filtered : availableLPCodes;
   }, [orderData?.lp_kod, orderData?.financovani, availableLPCodes]);
+
+  // Transformovat options pro CustomSelect
+  const transformedOptions = useMemo(() => {
+    return filteredLPCodes.map(lp => ({
+      ...lp,
+      label: (() => {
+        const kod = lp.cislo_lp || lp.kod || lp.id;
+        const nazev = lp.nazev_uctu || lp.nazev || 'Bez názvu';
+        
+        // Zkrácení dlouhých názvů pro lepší responsivitu
+        const maxLength = 35;
+        const fullLabel = `${kod} - ${nazev}`;
+        
+        if (fullLabel.length > maxLength) {
+          return `${kod} - ${nazev.substring(0, maxLength - kod.length - 6)}...`;
+        }
+        
+        return fullLabel;
+      })()
+    }));
+  }, [filteredLPCodes]);
 
   // Je LP financování?
   const isLPFinancing = filteredLPCodes.length > 0;
@@ -544,13 +558,11 @@ function LPCerpaniEditor({
     }
   }, [faktura?.id]);
 
-  // Inicializace rows z lpCerpani prop
+  // Inicializace rows z lpCerpani prop - JEN při změně faktury
   useEffect(() => {
-    const currentLength = lpCerpani?.length || 0;
-    
-    // Pokud se lpCerpani ZMĚNILO (jiná délka než předtím)
-    if (currentLength !== prevLpCerpaniLengthRef.current) {
-      prevLpCerpaniLengthRef.current = currentLength;
+    // SPUSTIT JEN při první inicializaci nebo změně faktury
+    if (!autoFilledRef.current) {
+      const currentLength = lpCerpani?.length || 0;
       
       if (currentLength > 0) {
         // Načíst existující data
@@ -572,7 +584,7 @@ function LPCerpaniEditor({
           };
         }));
         autoFilledRef.current = true;
-      } else if (!autoFilledRef.current && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka) {
+      } else if (isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka) {
         // 🔥 AUTO-FILL: Pouze pokud ještě nebylo auto-filled
         const autoRow = {
           id: `row_auto_${Date.now()}`,
@@ -584,13 +596,12 @@ function LPCerpaniEditor({
         };
         setRows([autoRow]);
         autoFilledRef.current = true;
-        // Parent bude informován skrz druhý useEffect
       } else {
         // Prázdné lpCerpani a není co auto-fillovat
         setRows([]);
       }
     }
-  }, [lpCerpani, isLPFinancing, filteredLPCodes, faktura?.fa_castka]);
+  }, [faktura?.id, isLPFinancing, filteredLPCodes]);
 
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {
@@ -652,17 +663,6 @@ function LPCerpaniEditor({
       });
     }
 
-    // 6. Kontrola duplicitních LP kódů
-    const lpCisla = rows.map(r => r.lp_cislo).filter(Boolean);
-    const duplicates = lpCisla.filter((item, index) => lpCisla.indexOf(item) !== index);
-    if (duplicates.length > 0) {
-      messages.push({
-        type: 'warning',
-        text: `⚠️ Duplicitní LP kódy: ${duplicates.join(', ')}`,
-        code: 'DUPLICATES'
-      });
-    }
-
     setValidationMessages(messages);
     
     // Informovat parent o chybách pomocí stabilního ref callbacku
@@ -674,34 +674,25 @@ function LPCerpaniEditor({
 
   // Handler pro změnu LP kódu
   const handleLPChange = useCallback((rowId, selectedLpId) => {
-    console.log('🔍 [handleLPChange] Změna LP kódu:', { rowId, selectedLpId });
-    
     setRows(prev => {
       const updated = prev.map(row => {
         if (row.id === rowId) {
-          // 🎯 Najít LP kód podle ID
+          // Najít LP kód podle ID
           const lpOption = filteredLPCodes.find(lp => lp.id === selectedLpId);
-          console.log('🎯 [handleLPChange] Nalezený LP:', lpOption);
           
           return {
             ...row,
-            lp_cislo: lpOption ? lpOption.cislo_lp || lpOption.kod : '',  // Uložit cislo_lp/kod
-            lp_id: selectedLpId || null,     // Uložit ID pro databázi
-            lp_data: lpOption || null       // Uložit celý objekt pro reference
+            lp_cislo: lpOption ? lpOption.cislo_lp || lpOption.kod : '',
+            lp_id: selectedLpId || null,
+            lp_data: lpOption || null
           };
         }
         return row;
       });
       
-      // Volání onChange okamžitě po aktualizaci
-      if (onChange) {
-        const validRows = updated.filter(r => r.lp_cislo && r.lp_id && r.castka > 0);
-        setTimeout(() => onChange(validRows), 0);
-      }
-      
       return updated;
     });
-  }, [filteredLPCodes, onChange]);
+  }, [filteredLPCodes]);
 
   // Handler pro změnu částky
   const handleCastkaChange = useCallback((rowId, value) => {
@@ -712,15 +703,9 @@ function LPCerpaniEditor({
           : row
       );
       
-      // Volání onChange okamžitě po aktualizaci
-      if (onChange) {
-        const validRows = updated.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-        setTimeout(() => onChange(validRows), 0);
-      }
-      
       return updated;
     });
-  }, [onChange]);
+  }, []);
 
   // Handler pro smazání řádku
   const handleRemoveRow = useCallback((rowId) => {
@@ -759,6 +744,14 @@ function LPCerpaniEditor({
     });
   }, [onChange]);
   
+  // Handler pro uložení dat při opuštění pole
+  const handleSaveData = useCallback(() => {
+    if (onChange) {
+      const validRows = rows.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
+      onChange(validRows);
+    }
+  }, [onChange, rows]);
+
   const toggleSelect = useCallback((fieldName) => {
     setSelectStates(prev => ({
       ...prev,
@@ -809,36 +802,23 @@ function LPCerpaniEditor({
         </AutoFillNote>
       )}
 
-      {rows.map((row, index) => {
-        // 🔍 DEBUG: Kontrola dat řádku a options
-        console.log('🔍 [LPCerpaniEditor Řádek render]', {
-          rowId: row.id,
-          lp_cislo: row.lp_cislo,
-          lp_id: row.lp_id,
-          castka: row.castka,
-          availableOptions: filteredLPCodes.length,
-          firstOption: filteredLPCodes[0]
-        });
-        
-        return (
+      {rows.map((row, index) => (
         <LPRow key={row.id}>
           <FormGroup>
             <label>
-              LP kód <span style={{ color: '#dc2626' }}>*</span>
+              LP kód&nbsp;<span style={{ color: '#dc2626' }}>*</span>
             </label>
             <CustomSelect
               data-component="CustomSelect"
-              value={row.lp_id}
-              onChange={(selectedValue) => {
-                // 🔍 DEBUG: Log hodnot z CustomSelect
-                console.log('🔍 [CustomSelect onChange]:', { selectedValue, row });
-                
-                handleLPChange(row.id, selectedValue);
+              value={row.lp_id || ''}
+              onChange={(e) => {
+                const selectedId = e?.target?.value || e;
+                handleLPChange(row.id, selectedId);
               }}
-              onBlur={() => {}}
-              options={filteredLPCodes}
+              onBlur={handleSaveData}
+              options={transformedOptions}
               placeholder="-- Vyberte LP kód --"
-              field={`lp_${row.id}`}
+              field={`lp_kod_${row.id}`}
               icon={<Hash />}
               disabled={disabled}
               hasError={!row.lp_id}
@@ -853,27 +833,16 @@ function LPCerpaniEditor({
               hasTriedToSubmit={false}
               toggleSelect={toggleSelect}
               filterOptions={filterOptions}
-              getOptionLabel={(option) => {
-                // 🔍 DEBUG: Log option struktura
-                console.log('🔍 [getOptionLabel] option:', option);
-                
-                if (!option) return '';
-                
-                // Priorita: cislo_lp > kod > id
-                const kod = option.cislo_lp || option.kod || option.id;
-                const nazev = option.nazev_uctu || option.nazev || 'Bez názvu';
-                
-                return `${kod} - ${nazev}`;
-              }}
-              getOptionValue={(option) => option?.id || option?.value || option}
+              getOptionLabel={(option) => option?.label || `${option?.cislo_lp || option?.kod || option?.id} - ${option?.nazev_uctu || option?.nazev || 'Bez názvu'}`}
             />
           </FormGroup>
 
           <FormGroup>
-            <label>Částka (Kč) <span style={{color: '#dc2626'}}>*</span></label>
+            <label>Částka (Kč)&nbsp;<span style={{color: '#dc2626'}}>*</span></label>
             <CurrencyAmountInput
               value={row.castka || ''}
               onChange={(newValue) => handleCastkaChange(row.id, newValue)}
+              onBlur={handleSaveData}
               hasError={!row.castka || row.castka <= 0}
               disabled={disabled}
               required
@@ -892,8 +861,7 @@ function LPCerpaniEditor({
             </IconButton>
           </ButtonGroup>
         </LPRow>
-        );
-      })}
+      ))}
 
       {filteredLPCodes.length > rows.length && (
         <AddButton
@@ -921,14 +889,5 @@ function LPCerpaniEditor({
   );
 }
 
-// ✅ React.memo pro prevenci zbytečných re-renderů
-export default React.memo(LPCerpaniEditor, (prevProps, nextProps) => {
-  // Porovnat jen klíčové props pro re-render
-  return (
-    prevProps.faktura?.id === nextProps.faktura?.id &&
-    prevProps.orderData?.id === nextProps.orderData?.id &&
-    prevProps.lpCerpani === nextProps.lpCerpani &&
-    prevProps.availableLPCodes === nextProps.availableLPCodes &&
-    prevProps.disabled === nextProps.disabled
-  );
-});
+// React.memo pro prevenci zbytečných re-renderů
+export default React.memo(LPCerpaniEditor);

@@ -500,7 +500,7 @@ const SectionTitle = styled.h3`
   letter-spacing: 0.05em;
   border-bottom: 1px solid #e5e7eb;
 
-  &:first-child {
+  &:first-of-type {
     margin-top: 0;
   }
 `;
