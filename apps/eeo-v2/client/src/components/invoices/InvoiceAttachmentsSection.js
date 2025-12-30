@@ -223,20 +223,20 @@ const InvoiceAttachmentsSection = ({
         objednavka_id: objednavkaId // ✅ PŘIDÁNO pro nové Order V2 API
       });
 
-      // ✅ V2 API response structure: response.data.attachments
-      const attachmentsList = response?.data?.attachments || response.prilohy || [];
+      // ✅ V2 API response structure: response.data.data.attachments
+      const attachmentsList = response?.data?.data?.attachments || response?.data?.attachments || response.prilohy || [];
 
       // 🔍 DEBUG: Kompletní výpis všech příloh
 
-      // ⚠️ Kontrola existence fyzických souborů
+      // ⚠️ Kontrola existence fyzických souborů + ČESKÉ NÁZVY 1:1 JAK JSOU V DB
       const processedAttachments = attachmentsList.map(att => {
-        const fileExists = att.file_exists !== false; // Backend by měl vrátit file_exists: false pokud soubor chybí
+        const fileExists = att.file_exists !== false;
         const hasError = att.error || att.file_error;
 
         if (!fileExists || hasError) {
           console.warn('⚠️ Příloha faktury má problém:', {
             id: att.id,
-            name: att.original_name || att.originalni_nazev_souboru,
+            name: att.originalni_nazev_souboru,
             file_exists: fileExists,
             error: hasError,
             path: att.systemova_cesta
@@ -391,8 +391,8 @@ const InvoiceAttachmentsSection = ({
         objednavka_id: objednavkaId // ✅ Order V2 API - required
       });
 
-      // Název souboru - support both API v2 and old API
-      const filename = attachment.original_name || attachment.originalni_nazev_souboru || 'priloha.pdf';
+      // Název souboru - ČESKÉ NÁZVY 1:1 Z DB
+      const filename = attachment.originalni_nazev_souboru || 'priloha.pdf';
 
       // Importovat utility funkce
       const { isPreviewableInBrowser, openInBrowser25 } = await import('../../services/api25orders');

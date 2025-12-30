@@ -391,8 +391,8 @@ const cashbookAPI = {
         });
 
         return {
-          status: 'success',
-          data: assignments
+          status: 'ok',
+          data: { assignments }
         };
       }
 

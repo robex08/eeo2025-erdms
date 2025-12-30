@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "1.91c",
+  "version": "1.92",
   "private": true,
   "homepage": "/eeo-v2",
   "proxy": "https://erdms.zachranka.cz",
@@ -51,7 +51,7 @@
   "scripts": {
     "start": "NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired start",
     "build": "NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
-    "build:dev": "cross-env PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
+    "build:dev": "cross-env NODE_ENV=development REACT_APP_API2_BASE_URL=https://erdms.zachranka.cz/dev/api.eeo/ PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",
     "deploy-maintenance": "npm run deploy-maintenance:prepare && npm run deploy-maintenance:build && npm run deploy-maintenance:finalize",
     "deploy-maintenance:prepare": "shx rm -rf build && shx mkdir -p build && shx cp maintenance.html build/index.html",
     "deploy-maintenance:build": "cross-env BUILD_PATH=build_temp NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",

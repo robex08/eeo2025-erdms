@@ -2029,6 +2029,31 @@ export default function InvoiceEvidencePage() {
             localStorage.setItem('hadOriginalEntity', JSON.stringify(hadEntity));
           });
           
+          // 📎 NAČÍST PŘÍLOHY FAKTURY (pokud má reálné ID)
+          try {
+            const { listInvoiceAttachments } = await import('../services/apiOrderV2');
+            const attachResponse = await listInvoiceAttachments(
+              editIdToLoad,
+              username,
+              token,
+              invoiceData.objednavka_id || null
+            );
+            const loadedAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+            // ✅ Přidat aliasy name/size/klasifikace pro kompatibilitu s komponentami
+            const mappedAttachments = loadedAttachments.map(att => ({
+              ...att,
+              name: att.originalni_nazev_souboru,
+              size: att.velikost_souboru_b,
+              klasifikace: att.typ_prilohy,
+              uploadDate: att.dt_vytvoreni
+            }));
+            setAttachments(mappedAttachments);
+          } catch (attErr) {
+            console.error('❌ Chyba při načítání příloh faktury:', attErr);
+            // Nepřerušujeme načítání faktury
+            setAttachments([]);
+          }
+
           // 🆕 LP ČERPÁNÍ: Načíst čerpání LP pokud má objednávku (předběžně načteme, finální check bude až po loadOrderData)
           if (invoiceData.objednavka_id) {
             try {
@@ -5546,23 +5571,25 @@ export default function InvoiceEvidencePage() {
                     </button>
                     <button
                       onClick={handleUpdateMaterialCorrectness}
-                      disabled={loading}
+                      disabled={loading || isOrderCompleted}
                       style={{
                         padding: '0.75rem 1.5rem',
-                        background: loading ? '#9ca3af' : '#16a34a',
+                        background: (loading || isOrderCompleted) ? '#9ca3af' : '#16a34a',
                         color: 'white',
                         border: 'none',
                         borderRadius: '8px',
                         fontSize: '0.95rem',
                         fontWeight: '600',
-                        cursor: loading ? 'not-allowed' : 'pointer',
+                        cursor: (loading || isOrderCompleted) ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.5rem',
-                        transition: 'all 0.2s'
+                        transition: 'all 0.2s',
+                        opacity: (loading || isOrderCompleted) ? 0.6 : 1
                       }}
-                      onMouseEnter={(e) => !loading && (e.target.style.background = '#15803d')}
-                      onMouseLeave={(e) => !loading && (e.target.style.background = '#16a34a')}
+                      onMouseEnter={(e) => !(loading || isOrderCompleted) && (e.target.style.background = '#15803d')}
+                      onMouseLeave={(e) => !(loading || isOrderCompleted) && (e.target.style.background = '#16a34a')}
+                      title={isOrderCompleted ? 'Nelze aktualizovat věcnou správnost u dokončené objednávky' : ''}
                     >
                       <FontAwesomeIcon icon={loading ? faSpinner : faSave} spin={loading} />
                       Aktualizovat věcnou správnost
