@@ -2293,7 +2293,7 @@ export function isAllowedFileExtension(filename) {
  * @param {number} [maxSizeMB=5] - Maximální povolená velikost v MB
  * @returns {boolean} True pokud je velikost v pořádku
  */
-export function isAllowedFileSize(sizeBytes, maxSizeMB = 5) {
+export function isAllowedFileSize(sizeBytes, maxSizeMB = 50) {
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
   return sizeBytes <= maxSizeBytes;
 }
