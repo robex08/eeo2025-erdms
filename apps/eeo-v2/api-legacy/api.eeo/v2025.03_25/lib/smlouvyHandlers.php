@@ -20,6 +20,130 @@
  */
 
 /**
+ * Normalizace data "platnost_do"
+ * 
+ * Pokud je "platnost_do" prázdné, NULL nebo nevalidní,
+ * nastaví se automaticky na 31.12.2099 (dlouhodobě platná smlouva)
+ * 
+ * Logika:
+ * - Pokud je "platnost_do" prázdné nebo NULL → "2099-12-31"
+ * - Pokud je datum nevalidní → "2099-12-31"
+ * - Pokud je datum validní → vrátí jej v ISO formátu (YYYY-MM-DD)
+ * - Pokud je "00.00.0000" nebo podobný → "2099-12-31"
+ * 
+ * @param mixed $platnost_do Vstupní datum (string, různé formáty povoleny)
+ * @return string Normalizované datum ve formátu YYYY-MM-DD
+ */
+function normalizePlatnostDo($platnost_do) {
+    // Pokud je prázdné nebo NULL
+    if (empty($platnost_do)) {
+        return '2099-12-31';
+    }
+    
+    // Převod string -> string
+    $value = trim((string)$platnost_do);
+    
+    // Kontrola na speciální "prázdné" hodnoty
+    if ($value === '' || $value === '0' || $value === '00.00.0000' || $value === '1900-01-01') {
+        return '2099-12-31';
+    }
+    
+    // Pokus o parsování data
+    $timestamp = strtotime($value);
+    
+    // Pokud je nevalidní nebo je starší než 1980
+    if ($timestamp === false) {
+        return '2099-12-31';
+    }
+    
+    // Převod na YYYY-MM-DD formát
+    $date = date('Y-m-d', $timestamp);
+    
+    // Pokud je rok < 2000, pravděpodobně jde o chybu v datech
+    if ((int)date('Y', $timestamp) < 2000) {
+        return '2099-12-31';
+    }
+    
+    return $date;
+}
+
+/**
+ * Normalizace finančních hodnot smlouvy
+ * 
+ * Automaticky:
+ * 1. Parsuje hodnoty (i s mezerami, čárkami apod.)
+ * 2. Pokud hodnota není číslo → nastaví 0
+ * 3. Pokud chybí obě hodnoty → nastaví obě na 0
+ * 4. Pokud existuje jen jedna hodnota → dopočítá druhou (DPH 21%)
+ * 
+ * @param array $data Reference na data smlouvy
+ * @return array Upravená data s normalizovanými hodnotami
+ */
+function normalizeFinancialValues(&$data) {
+    // Pomocná funkce pro parsování číselné hodnoty
+    $parseNumber = function($value) {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        
+        // Převod na string
+        $str = trim((string)$value);
+        
+        // Odstranění mezer (např. "100 000")
+        $str = str_replace(' ', '', $str);
+        
+        // Nahrazení čárky tečkou (např. "1234,56" -> "1234.56")
+        $str = str_replace(',', '.', $str);
+        
+        // Pokud není číslo, vrátit null
+        if (!is_numeric($str)) {
+            return null;
+        }
+        
+        return (float)$str;
+    };
+    
+    // Parsování hodnot
+    $hodnota_bez_dph = isset($data['hodnota_bez_dph']) ? $parseNumber($data['hodnota_bez_dph']) : null;
+    $hodnota_s_dph = isset($data['hodnota_s_dph']) ? $parseNumber($data['hodnota_s_dph']) : null;
+    
+    // Pravidlo 1: Pokud jsou obě hodnoty null/prázdné → nastavit obě na 0
+    if ($hodnota_bez_dph === null && $hodnota_s_dph === null) {
+        $data['hodnota_bez_dph'] = 0;
+        $data['hodnota_s_dph'] = 0;
+        $data['_note_hodnoty'] = 'AUTO: Obě hodnoty nastaveny na 0 (chyběly)';
+        return $data;
+    }
+    
+    // Pravidlo 2: Pokud jedna hodnota není číslo → nastavit na 0
+    if ($hodnota_bez_dph === null) {
+        $hodnota_bez_dph = 0;
+    }
+    if ($hodnota_s_dph === null) {
+        $hodnota_s_dph = 0;
+    }
+    
+    // Pravidlo 3: Pokud je jedna z hodnot 0 a druhá > 0 → dopočítat
+    $dph_rate = 1.21; // DPH 21%
+    
+    if ($hodnota_bez_dph > 0 && $hodnota_s_dph == 0) {
+        // Dopočítat hodnotu S DPH z hodnoty BEZ DPH
+        $hodnota_s_dph = round($hodnota_bez_dph * $dph_rate, 2);
+        $data['_note_hodnoty'] = 'AUTO: Hodnota s DPH dopočítána (21% DPH)';
+    } elseif ($hodnota_s_dph > 0 && $hodnota_bez_dph == 0) {
+        // Dopočítat hodnotu BEZ DPH z hodnoty S DPH
+        $hodnota_bez_dph = round($hodnota_s_dph / $dph_rate, 2);
+        $data['_note_hodnoty'] = 'AUTO: Hodnota bez DPH dopočítána (21% DPH)';
+    }
+    
+    // Nastavení normalizovaných hodnot
+    $data['hodnota_bez_dph'] = $hodnota_bez_dph;
+    $data['hodnota_s_dph'] = $hodnota_s_dph;
+    
+    return $data;
+}
+
+/**
  * Automatický výpočet stavu smlouvy podle logiky:
  * 1. aktivni = 0 => "NEAKTIVNI" (manuálně deaktivováno)
  * 2. platnost_od je NULL => "AKTIVNI" (datum od nebylo zadáno, platí pouze datum do)
@@ -128,37 +252,40 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
         $errors[] = 'Platnost od musi byt platne datum';
     }
     
-    // platnost_do - POVINNÉ
-    if ($is_insert || isset($data['platnost_do'])) {
-        if (empty($data['platnost_do']) || !strtotime($data['platnost_do'])) {
-            $errors[] = 'Platnost do je povinne datum';
-        }
+    // platnost_do - NORMALIZUJE SE NA 31.12.2099 POKUD CHYBÍ
+    // (neměli bychom vyžadovat, aby ekonomové vždycky znali konec platnosti)
+    // Normalizace se provádí v bulk-import handleru
+    if (!empty($data['platnost_do']) && !strtotime($data['platnost_do'])) {
+        // Pokud je zadáno, ale není validní → chyba
+        $errors[] = 'Platnost do musi byt platne datum (nebo ponechte prázdné pro 2099-12-31)';
     }
     
     // Date range validation
-    if (isset($data['platnost_od']) && isset($data['platnost_do'])) {
+    if (!empty($data['platnost_od']) && !empty($data['platnost_do']) && strtotime($data['platnost_do']) && strtotime($data['platnost_od'])) {
         if (strtotime($data['platnost_do']) < strtotime($data['platnost_od'])) {
             $errors[] = 'Datum platnosti do musi byt po datu platnosti od';
         }
     }
     
-    // IČO validation (volitelné, ale pokud je zadáno, musí být 8 číslic)
-    if (isset($data['ico']) && !empty($data['ico'])) {
-        if (!preg_match('/^\d{8}$/', $data['ico'])) {
-            $errors[] = 'ICO musi obsahovat presne 8 cislic';
-        }
-    }
+    // IČO validation - ZRUŠENO, akceptujeme jakýkoliv formát
+    // (IČO může mít různé formáty, včetně prefixů, mezer atd.)
     
     // Financial validation - akceptujeme 0 Kč jako validní hodnotu (>= 0)
+    // Hodnoty se normalizují PŘED validací pomocí normalizeFinancialValues()
+    // Takže zde už jen kontrolujeme, že jsou numeric a >= 0
     if ($is_insert || isset($data['hodnota_bez_dph'])) {
-        if (!isset($data['hodnota_bez_dph']) || !is_numeric($data['hodnota_bez_dph']) || $data['hodnota_bez_dph'] < 0) {
-            $errors[] = 'Hodnota bez DPH je povinna a nesmi byt zaporna';
+        if (!isset($data['hodnota_bez_dph']) || !is_numeric($data['hodnota_bez_dph'])) {
+            $errors[] = 'Hodnota bez DPH musi byt cislo (po normalizaci)';
+        } elseif ($data['hodnota_bez_dph'] < 0) {
+            $errors[] = 'Hodnota bez DPH nesmi byt zaporna';
         }
     }
     
     if ($is_insert || isset($data['hodnota_s_dph'])) {
-        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph']) || $data['hodnota_s_dph'] < 0) {
-            $errors[] = 'Hodnota s DPH je povinna a nesmi byt zaporna';
+        if (!isset($data['hodnota_s_dph']) || !is_numeric($data['hodnota_s_dph'])) {
+            $errors[] = 'Hodnota s DPH musi byt cislo (po normalizaci)';
+        } elseif ($data['hodnota_s_dph'] < 0) {
+            $errors[] = 'Hodnota s DPH nesmi byt zaporna';
         }
     }
     
@@ -218,6 +345,12 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         if (isset($input['stav']) && !empty($input['stav'])) {
             $where[] = 's.stav = :stav';
             $params['stav'] = $input['stav'];
+        }
+        
+        // Filter: pouzit_v_obj_formu (pro OrderForm25 autocomplete)
+        // Pokud je true, vrátí pouze smlouvy použitelné v objednávkovém formuláři
+        if (isset($input['pouzit_v_obj_formu']) && $input['pouzit_v_obj_formu']) {
+            $where[] = 's.pouzit_v_obj_formu = 1';
         }
         
         // Filter: search (fulltext)
@@ -868,6 +1001,22 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
         foreach ($data as $index => $row) {
             $row_num = $index + 1;
             
+            // NORMALIZACE 1: Pokud "platnost_do" chybí, nastav na 31.12.2099
+            // Tohle se dělá PŘED validací, aby smlouva bez konce nebyly vyloučeny
+            if (!isset($row['platnost_do']) || empty($row['platnost_do'])) {
+                $row['platnost_do'] = '2099-12-31';
+                // Log informace, že jsme normalizovali
+                error_log("SMLOUVY IMPORT: Smlouva bez 'platnost_do' -> normalizace na 2099-12-31");
+            } else {
+                // Normalizuj už existující hodnotu (formátování)
+                $row['platnost_do'] = normalizePlatnostDo($row['platnost_do']);
+            }
+            
+            // NORMALIZACE 2: Finanční hodnoty (dopočet DPH, parsování, 0 pro chybějící)
+            // Tohle se dělá PŘED validací, aby smlouva s nulovou hodnotou prošla
+            $row = normalizeFinancialValues($row);
+            error_log("SMLOUVY IMPORT: Normalizace hodnot - bez DPH: " . $row['hodnota_bez_dph'] . ", s DPH: " . $row['hodnota_s_dph']);
+            
             // Map usek_zkr to usek_id
             if (isset($row['usek_zkr'])) {
                 $sql = "SELECT id, usek_zkr FROM " . TBL_USEKY . " WHERE usek_zkr = :usek_zkr";
@@ -1059,6 +1208,22 @@ function handle_ciselniky_smlouvy_bulk_import($input, $config, $queries) {
         $status = count($chyby) == 0 ? 'SUCCESS' : (count($chyby) < $celkem ? 'PARTIAL' : 'FAILED');
         $chyby_json = json_encode($chyby);
         
+        // 🛡️ OCHRANA: Pokud JSON je větší než 15 MB (MEDIUMTEXT limit), zkrať ho
+        // MEDIUMTEXT limit = 16,777,215 bytů (16 MB), používáme 15 MB jako safe limit
+        $max_size = 15 * 1024 * 1024; // 15 MB
+        if (strlen($chyby_json) > $max_size) {
+            // Počet chyb k zachování (odhadujeme průměrnou velikost na 500 bytů/chyba)
+            $keep_count = floor($max_size / 500);
+            $truncated_chyby = array_slice($chyby, 0, $keep_count);
+            $truncated_chyby[] = array(
+                'warning' => 'TRUNCATED',
+                'message' => 'Chybových záznamů bylo příliš mnoho (' . count($chyby) . '), zobrazeno pouze prvních ' . $keep_count,
+                'total_errors' => count($chyby)
+            );
+            $chyby_json = json_encode($truncated_chyby);
+            error_log("CSV Import: Chybové záznamy zkráceny z " . count($chyby) . " na " . $keep_count . " (JSON size: " . strlen($chyby_json) . " bytů)");
+        }
+        
         // Informace o souboru (volitelné, FE může poslat)
         $nazev_souboru = isset($input['nazev_souboru']) ? $input['nazev_souboru'] : null;
         $typ_souboru = isset($input['typ_souboru']) ? $input['typ_souboru'] : null;
@@ -1235,6 +1400,293 @@ function prepocetCerpaniSmlouvyAuto($cislo_smlouvy) {
     } catch (Exception $e) {
         error_log("AUTO PREPOCET ERROR: " . $e->getMessage());
         // Nechceme aby chyba přepočtu zablokovala uložení objednávky
+    }
+}
+
+/**
+ * 8. IMPORT CSV/EXCEL SMLUV
+ * POST /ciselniky/smlouvy/import-csv
+ * 
+ * Parsuje CSV/Excel soubor a vloží data do pole $data pro bulk-import
+ * 
+ * POVINNÉ SLOUPCE:
+ * - ČÍSLO SML (cislo_smlouvy)
+ * - ÚSEK (usek_zkr)
+ * - DRUH SMLOUVY (druh_smlouvy) - NOVÝ! 
+ * - PARTNER (nazev_firmy)
+ * - NÁZEV SML (nazev_smlouvy)
+ * - HODNOTA S DPH (hodnota_s_dph)
+ * 
+ * VOLITELNÉ SLOUPCE:
+ * - IČO (ico)
+ * - DIČ (dic)
+ * - POPIS SML (popis_smlouvy)
+ * - DATUM OD (platnost_od) - automaticky nastavi NA 31.12.2099 pokud chybí!
+ * - DATUM DO (platnost_do) - automaticky nastavi NA 31.12.2099 pokud chybí!
+ * 
+ * FEATURES:
+ * ✅ Automatická normalizace "DATUM DO" na 31.12.2099 pokud chybí
+ * ✅ Povolí import i bez "DATA OD" i bez "DATA DO"
+ * ✅ Validace IČO (8 číslic)
+ * ✅ Párování ÚSEK => usek_id
+ * ✅ Vytrimování bílých znaků
+ * 
+ * VRACÍ:
+ * - Parsovaná data připravená pro bulk-import
+ * - Počet vyanalyzovaných řádků
+ * - Chyby parsování (pokud existují)
+ * 
+ * @author Backend Team
+ * @date 30. prosince 2025 - CSV/Excel import s normalizací "platnost_do"
+ */
+function handle_ciselniky_smlouvy_import_csv($input, $config, $queries) {
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatny nebo chybejici token'));
+        return;
+    }
+    
+    // Expect CSV data in $input['csv_data'] (string) OR base64-encoded Excel
+    if (!isset($input['csv_data']) && !isset($input['excel_data'])) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybi CSV data nebo Excel file'));
+        return;
+    }
+    
+    $csv_data = isset($input['csv_data']) ? $input['csv_data'] : '';
+    $excel_base64 = isset($input['excel_data']) ? $input['excel_data'] : '';
+    
+    // Pokud je Excel (base64), vyžadujeme knihovnu PhpSpreadsheet
+    // Pro teď: jen CSV support
+    if ($excel_base64 && !$csv_data) {
+        // TODO: Implementovat PhpSpreadsheet support
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Excel format momentálně není podporován, používejte CSV'));
+        return;
+    }
+    
+    $start_time = microtime(true);
+    $parsed_rows = array();
+    $parse_errors = array();
+    $header_map = array();
+    
+    try {
+        // Parse CSV
+        $lines = preg_split("/[\r\n]+/", $csv_data);
+        $header_row = null;
+        $row_num = 0;
+        
+        // Očekávané sloupce a jejich mapování
+        $column_mapping = array(
+            // Povinné
+            'číslo sml' => 'cislo_smlouvy',
+            'číslo smlouvy' => 'cislo_smlouvy',
+            'úsek' => 'usek_zkr',
+            'druh smlouvy' => 'druh_smlouvy',
+            'druh' => 'druh_smlouvy',
+            'partner' => 'nazev_firmy',
+            'název sml' => 'nazev_smlouvy',
+            'název smlouvy' => 'nazev_smlouvy',
+            'předmět sml' => 'nazev_smlouvy',
+            'hodnota s dph' => 'hodnota_s_dph',
+            'hodnota' => 'hodnota_s_dph',
+            
+            // Volitelné
+            'iço' => 'ico',
+            'ico' => 'ico',
+            'dič' => 'dic',
+            'dic' => 'dic',
+            'popis sml' => 'popis_smlouvy',
+            'popis' => 'popis_smlouvy',
+            'datum od' => 'platnost_od',
+            'od' => 'platnost_od',
+            'datum do' => 'platnost_do',
+            'do' => 'platnost_do',
+            'poznámka' => 'poznamka',
+            'poznámky' => 'poznamka',
+            'aktivní' => 'aktivni',
+        );
+        
+        foreach ($lines as $line) {
+            $row_num++;
+            
+            if (empty(trim($line))) {
+                continue; // Skip empty lines
+            }
+            
+            // CSV parsing (jednoduché - pokud chcete komplexní CSV s uvozovkami, použijte str_getcsv)
+            $cells = str_getcsv($line, ',', '"');
+            
+            if ($header_row === null) {
+                // První řádek = hlavička
+                $header_row = $row_num;
+                
+                // VALIDACE 1: Kontrola, že hlavička není prázdná
+                if (empty($cells) || count($cells) < 6) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV hlavička je neplatná nebo obsahuje méně než 6 sloupců',
+                        'detected_columns' => $cells,
+                        'min_required' => 6
+                    ));
+                    return;
+                }
+                
+                // Mapování sloupců
+                $unrecognized_columns = array();
+                foreach ($cells as $idx => $cell) {
+                    $cell_normalized = strtolower(trim($cell));
+                    
+                    // Pokus najít v mapování
+                    $mapped_name = null;
+                    foreach ($column_mapping as $pattern => $db_field) {
+                        if (strpos($cell_normalized, $pattern) !== false || $pattern === $cell_normalized) {
+                            $mapped_name = $db_field;
+                            break;
+                        }
+                    }
+                    
+                    if ($mapped_name) {
+                        $header_map[$idx] = $mapped_name;
+                    } else {
+                        // Sloupec nebyl rozpoznán
+                        if (!empty(trim($cell))) {
+                            $unrecognized_columns[] = $cell;
+                        }
+                    }
+                }
+                
+                // VALIDACE 2: Kontrola povinných sloupců
+                $required_fields = array(
+                    'cislo_smlouvy' => 'ČÍSLO SML / ČÍSLO SMLOUVY',
+                    'usek_zkr' => 'ÚSEK',
+                    'druh_smlouvy' => 'DRUH SMLOUVY / DRUH',
+                    'nazev_firmy' => 'PARTNER',
+                    'nazev_smlouvy' => 'NÁZEV SML / NÁZEV SMLOUVY / PŘEDMĚT SML',
+                    'hodnota_s_dph' => 'HODNOTA S DPH / HODNOTA'
+                );
+                
+                $missing_fields = array();
+                
+                foreach ($required_fields as $field => $readable_name) {
+                    if (!in_array($field, $header_map)) {
+                        $missing_fields[] = $readable_name;
+                    }
+                }
+                
+                // VALIDACE 3: Pokud chybí povinné sloupce, vrať chybu s detaily
+                if (!empty($missing_fields)) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV neobsahuje všechny povinné sloupce',
+                        'missing_columns' => $missing_fields,
+                        'recognized_columns' => array_values(array_unique($header_map)),
+                        'unrecognized_columns' => $unrecognized_columns,
+                        'help' => 'Ujistěte se, že CSV má hlavičku s názvy: ČÍSLO SML, ÚSEK, DRUH SMLOUVY, PARTNER, NÁZEV SML, HODNOTA S DPH',
+                        'detected_header_raw' => $cells
+                    ));
+                    return;
+                }
+                
+                // VALIDACE 4: Log varování o nerozpoznaných sloupcích (pouze info)
+                if (!empty($unrecognized_columns)) {
+                    error_log('CSV import: Nerozpoznané sloupce (budou ignorovány): ' . implode(', ', $unrecognized_columns));
+                }
+                
+                // VALIDACE 5: Ověř, že jsme našli dostatečný počet sloupců
+                if (count($header_map) < 6) {
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'CSV obsahuje málo rozpoznaných sloupců (minimum 6 povinných)',
+                        'recognized_count' => count($header_map),
+                        'recognized_columns' => array_values(array_unique($header_map)),
+                        'minimum_required' => 6
+                    ));
+                    return;
+                }
+                
+                continue; // Skip header row
+            }
+            
+            // Parsuj data řádku
+            $row_data = array();
+            foreach ($header_map as $col_idx => $db_field) {
+                $value = isset($cells[$col_idx]) ? trim($cells[$col_idx]) : '';
+                $row_data[$db_field] = $value;
+            }
+            
+            // Normalizace PLATNOST_DO
+            // Pokud chybí, nastav na 31.12.2099
+            if (!isset($row_data['platnost_do']) || empty($row_data['platnost_do'])) {
+                $row_data['platnost_do'] = '2099-12-31';
+                $row_data['_note_platnost_do'] = 'AUTO (chybělo)'; // Info log
+            } else {
+                $row_data['platnost_do'] = normalizePlatnostDo($row_data['platnost_do']);
+            }
+            
+            // Normalizace PLATNOST_OD (pokud existuje)
+            if (isset($row_data['platnost_od']) && !empty($row_data['platnost_od'])) {
+                $parsed_date = date('Y-m-d', strtotime($row_data['platnost_od']));
+                if ($parsed_date) {
+                    $row_data['platnost_od'] = $parsed_date;
+                }
+            }
+            
+            // NORMALIZACE FINANČNÍCH HODNOT
+            // Dopočet DPH, parsování, 0 pro chybějící/nevalidní
+            $row_data = normalizeFinancialValues($row_data);
+            
+            // Trimování a čistění
+            foreach ($row_data as &$val) {
+                $val = trim($val);
+            }
+            
+            $parsed_rows[] = $row_data;
+        }
+        
+        if (empty($parsed_rows)) {
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Soubor neobsahuje žádné datové řádky',
+                'parsed_rows_count' => 0
+            ));
+            return;
+        }
+        
+        $elapsed_ms = round((microtime(true) - $start_time) * 1000);
+        
+        // Vrátíme parsovaná data - připravená na bulk-import
+        // Frontend pošle tato data do bulk-import endpointu
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'parsed_data' => $parsed_rows,
+                'parsed_rows_count' => count($parsed_rows),
+                'header_map' => $header_map,
+                'parse_errors' => $parse_errors,
+                'parse_time_ms' => $elapsed_ms,
+                '_info' => 'Data jsou připravena k importu. Pošli je na endpoint /ciselniky/smlouvy/bulk-import'
+            ),
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'endpoint' => 'import-csv',
+                'timestamp' => date('c')
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log('SMLOUVY CSV IMPORT ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'CSV import error: ' . $e->getMessage()));
     }
 }
 

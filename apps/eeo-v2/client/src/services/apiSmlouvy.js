@@ -86,7 +86,8 @@ export async function getSmlouvyList({
   platnost_od = null,
   platnost_do = null,
   limit = 1000,
-  offset = 0
+  offset = 0,
+  pouzit_v_obj_formu = null
 }) {
   try {
     const payload = {
@@ -100,7 +101,8 @@ export async function getSmlouvyList({
       platnost_od,
       platnost_do,
       limit,
-      offset
+      offset,
+      pouzit_v_obj_formu
     };
 
     const response = await api.post('ciselniky/smlouvy/list', payload);
