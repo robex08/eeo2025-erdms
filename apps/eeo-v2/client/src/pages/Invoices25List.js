@@ -1046,6 +1046,46 @@ const LoadingSubtext = styled.div`
   text-align: center;
 `;
 
+// Jemný overlay pro filtrování (když už jsou zobrazené faktury)
+const FilteringOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  opacity: ${props => props.$visible ? 1 : 0};
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+  backdrop-filter: blur(2px);
+`;
+
+const FilteringSpinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(229, 231, 235, 0.8);
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const FilteringText = styled.div`
+  margin-left: 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.02em;
+`;
+
 // =============================================================================
 // SLIDE PANEL - Detail faktury styled components
 // =============================================================================
@@ -2464,12 +2504,18 @@ const Invoices25List = () => {
 
   return (
     <>
-      {/* Loading Overlay */}
+      {/* Loading Overlay - při prvním načítání */}
       <LoadingOverlay $visible={loading && invoices.length === 0}>
         <LoadingSpinner $visible={loading} />
         <LoadingMessage $visible={loading}>Načítám faktury...</LoadingMessage>
         <LoadingSubtext $visible={loading}>Vytvářím přehled faktur pro rok {selectedYear}</LoadingSubtext>
       </LoadingOverlay>
+
+      {/* Filtering Overlay - jemný při filtrování už načtených faktur */}
+      <FilteringOverlay $visible={loading && invoices.length > 0}>
+        <FilteringSpinner />
+        <FilteringText>Filtruji...</FilteringText>
+      </FilteringOverlay>
 
       <Container>
         {/* Year Filter Panel */}
@@ -3196,8 +3242,8 @@ const Invoices25List = () => {
                   {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
-                      value={columnFilters.ma_prilohy || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, ma_prilohy: e.target.value})}
+                      value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                      onChange={(e) => { const value = e.target.value; if (value === 'spisovka') { setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' })); setActiveFilterStatus('from_spisovka'); setColumnFilters({...columnFilters, ma_prilohy: ''}); } else { setFilters(prev => ({ ...prev, filter_status: '' })); setActiveFilterStatus(null); setColumnFilters({...columnFilters, ma_prilohy: value}); } setCurrentPage(1); }}
                       style={{
                         width: '100%',
                         padding: '0.375rem 0.625rem',
@@ -5575,8 +5621,8 @@ const Invoices25List = () => {
                   {/* Přílohy - select filtr */}
                   <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                     <select
-                      value={columnFilters.ma_prilohy || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, ma_prilohy: e.target.value})}
+                      value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                      onChange={(e) => { const value = e.target.value; if (value === 'spisovka') { setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' })); setActiveFilterStatus('from_spisovka'); setColumnFilters({...columnFilters, ma_prilohy: ''}); } else { setFilters(prev => ({ ...prev, filter_status: '' })); setActiveFilterStatus(null); setColumnFilters({...columnFilters, ma_prilohy: value}); } setCurrentPage(1); }}
                       style={{
                         width: '100%',
                         padding: '0.375rem 0.625rem',
