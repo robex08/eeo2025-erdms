@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faFileAlt, faFilePdf, faFileImage, faFileExcel, faFileWord, 
-  faFileArchive, faFile, faDownload, faEye, faTimes 
+  faFileArchive, faFile, faExternalLinkAlt
 } from '@fortawesome/free-solid-svg-icons';
 
 // Styled Components
@@ -101,7 +101,8 @@ const FileIconBox = styled.div`
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: ${props => props.$bgColor || '#f1f5f9'};
+  background: ${props => props.$bgColor || 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)'};
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   
   svg {
     color: ${props => props.$iconColor || '#64748b'};
@@ -142,8 +143,9 @@ const FileBadge = styled.span`
   font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
-  background: ${props => props.$bgColor || '#f1f5f9'};
+  background: ${props => props.$bgColor || 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)'};
   color: ${props => props.$color || '#64748b'};
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 `;
 
 const ActionButtons = styled.div`
@@ -155,24 +157,30 @@ const ActionButtons = styled.div`
 `;
 
 const ActionButton = styled.button`
-  background: transparent;
-  border: none;
-  padding: 0.375rem;
-  cursor: pointer;
-  color: #64748b;
-  border-radius: 4px;
-  transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  &:hover {
-    background: #e2e8f0;
-    color: #334155;
-  }
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2563eb;
+  cursor: pointer;
+  transition: all 0.2s ease;
   
   svg {
     font-size: 0.9rem;
+  }
+  
+  &:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -184,156 +192,26 @@ const EmptyState = styled.div`
   letter-spacing: 0.01em;
 `;
 
-// Float Viewer Modal
-const ViewerOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  z-index: 10001;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  animation: fadeIn 0.2s ease-out;
-`;
-
-const ViewerContainer = styled.div`
-  position: relative;
-  background: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 1200px;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-`;
-
-const ViewerHeader = styled.div`
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-`;
-
-const ViewerTitle = styled.h3`
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #1e293b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 80%;
-  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: 0.01em;
-`;
-
-const CloseButton = styled.button`
-  background: #f1f5f9;
-  border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: #e2e8f0;
-    color: #334155;
-  }
-`;
-
-const ViewerContent = styled.div`
-  flex: 1;
-  overflow: auto;
-  background: #f8fafc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  
-  iframe, img {
-    width: 100%;
-    height: 100%;
-    border: none;
-  }
-  
-  img {
-    object-fit: contain;
-    max-width: 100%;
-    max-height: 100%;
-  }
-`;
-
-const UnsupportedMessage = styled.div`
-  text-align: center;
-  padding: 3rem;
-  color: #64748b;
-  
-  svg {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    color: #94a3b8;
-  }
-  
-  h4 {
-    margin: 0 0 0.5rem 0;
-    color: #1e293b;
-    font-size: 1.125rem;
-  }
-  
-  p {
-    margin: 0 0 1.5rem 0;
-  }
-`;
-
-const DownloadButton = styled.button`
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: #2563eb;
-  }
-`;
-
 // Helper functions
 const getFileIcon = (filename) => {
   const ext = filename?.split('.').pop()?.toLowerCase();
   
   const iconMap = {
-    pdf: { icon: faFilePdf, color: '#dc2626', bg: '#fee2e2' },
-    doc: { icon: faFileWord, color: '#2563eb', bg: '#dbeafe' },
-    docx: { icon: faFileWord, color: '#2563eb', bg: '#dbeafe' },
-    xls: { icon: faFileExcel, color: '#059669', bg: '#d1fae5' },
-    xlsx: { icon: faFileExcel, color: '#059669', bg: '#d1fae5' },
-    png: { icon: faFileImage, color: '#7c3aed', bg: '#ede9fe' },
-    jpg: { icon: faFileImage, color: '#7c3aed', bg: '#ede9fe' },
-    jpeg: { icon: faFileImage, color: '#7c3aed', bg: '#ede9fe' },
-    gif: { icon: faFileImage, color: '#7c3aed', bg: '#ede9fe' },
-    zip: { icon: faFileArchive, color: '#ea580c', bg: '#fed7aa' },
-    rar: { icon: faFileArchive, color: '#ea580c', bg: '#fed7aa' },
-    txt: { icon: faFileAlt, color: '#64748b', bg: '#f1f5f9' }
+    pdf: { icon: faFilePdf, color: '#dc2626', bg: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' },
+    doc: { icon: faFileWord, color: '#1d4ed8', bg: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)' },
+    docx: { icon: faFileWord, color: '#1d4ed8', bg: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)' },
+    xls: { icon: faFileExcel, color: '#047857', bg: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)' },
+    xlsx: { icon: faFileExcel, color: '#047857', bg: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)' },
+    png: { icon: faFileImage, color: '#7e22ce', bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' },
+    jpg: { icon: faFileImage, color: '#7e22ce', bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' },
+    jpeg: { icon: faFileImage, color: '#7e22ce', bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' },
+    gif: { icon: faFileImage, color: '#7e22ce', bg: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)' },
+    zip: { icon: faFileArchive, color: '#c2410c', bg: 'linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)' },
+    rar: { icon: faFileArchive, color: '#c2410c', bg: 'linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)' },
+    txt: { icon: faFileAlt, color: '#374151', bg: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)' }
   };
   
-  return iconMap[ext] || { icon: faFile, color: '#64748b', bg: '#f1f5f9' };
+  return iconMap[ext] || { icon: faFile, color: '#64748b', bg: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)' };
 };
 
 const getFileExtension = (filename) => {
@@ -347,10 +225,7 @@ const formatFileSize = (bytes) => {
   return (bytes / 1048576).toFixed(1) + ' MB';
 };
 
-const canPreview = (filename) => {
-  const ext = filename?.split('.').pop()?.toLowerCase();
-  return ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'txt'].includes(ext);
-};
+
 
 /**
  * InvoiceAttachmentsTooltip
@@ -360,9 +235,10 @@ const InvoiceAttachmentsTooltip = ({
   attachments = [], 
   position = { top: 0, left: 0 },
   onClose,
-  onDownload
+  onView,
+  token,
+  username
 }) => {
-  const [viewerAttachment, setViewerAttachment] = useState(null);
 
   // Helper pro získání názvu souboru z různých možných klíčů
   const getFileName = (attachment) => {
@@ -373,77 +249,116 @@ const InvoiceAttachmentsTooltip = ({
            'Příloha';
   };
 
-  // Helper pro získání velikosti souboru
+  // Helper pro získání velikosti souboru (v bytech)
   const getFileSize = (attachment) => {
-    return attachment.velikost || 
+    return attachment.velikost_b || 
+           attachment.velikost || 
            attachment.velikost_souboru_b || 
            attachment.size || 
            0;
   };
 
-  const handleView = (attachment) => {
-    const filename = getFileName(attachment);
-    if (!canPreview(filename)) {
-      // Pokud nelze zobrazit, stáhnout
-      handleDownload(attachment);
-      return;
+  // Helper pro zobrazení jména uživatele
+  const getUserName = (attachment) => {
+    // Priorita: nahrano_uzivatel_detail > nahrano_uzivatel > fallback
+    if (attachment.nahrano_uzivatel_detail) {
+      const detail = attachment.nahrano_uzivatel_detail;
+      const parts = [];
+      
+      if (detail.titul_pred) parts.push(detail.titul_pred);
+      if (detail.jmeno) parts.push(detail.jmeno);
+      if (detail.prijmeni) parts.push(detail.prijmeni);
+      if (detail.titul_za) parts.push(detail.titul_za);
+      
+      const fullName = parts.join(' ').trim();
+      if (fullName) return fullName;
     }
-    setViewerAttachment(attachment);
-  };
-
-  const handleDownload = (attachment) => {
-    if (onDownload) {
-      onDownload(attachment);
-    }
-  };
-
-  const getFileUrl = (attachment) => {
-    // URL pro zobrazení/stažení přílohy
-    const baseUrl = process.env.REACT_APP_API_URL || 'https://erdms.zachranka.cz';
-    return `${baseUrl}/api.eeo/v2025.03_25/?action=downloadInvoiceAttachment&attachment_id=${attachment.id}`;
-  };
-
-  if (viewerAttachment) {
-    const filename = getFileName(viewerAttachment);
-    const ext = filename?.split('.').pop()?.toLowerCase();
-    const url = getFileUrl(viewerAttachment);
     
-    return ReactDOM.createPortal(
-      <ViewerOverlay onClick={() => setViewerAttachment(null)}>
-        <ViewerContainer onClick={(e) => e.stopPropagation()}>
-          <ViewerHeader>
-            <ViewerTitle>{filename}</ViewerTitle>
-            <CloseButton onClick={() => setViewerAttachment(null)}>
-              <FontAwesomeIcon icon={faTimes} />
-            </CloseButton>
-          </ViewerHeader>
-          <ViewerContent>
-            {ext === 'pdf' && (
-              <iframe src={url} title={filename} />
-            )}
-            {['png', 'jpg', 'jpeg', 'gif'].includes(ext) && (
-              <img src={url} alt={filename} />
-            )}
-            {ext === 'txt' && (
-              <iframe src={url} title={filename} />
-            )}
-            {!canPreview(filename) && (
-              <UnsupportedMessage>
-                <FontAwesomeIcon icon={faFileAlt} />
-                <h4>Náhled není podporován</h4>
-                <p>Tento typ souboru nelze zobrazit v prohlížeči.</p>
-                <DownloadButton onClick={() => handleDownload(viewerAttachment)}>
-                  <FontAwesomeIcon icon={faDownload} />
-                  Stáhnout soubor
-                </DownloadButton>
-              </UnsupportedMessage>
-            )}
-          </ViewerContent>
-        </ViewerContainer>
-      </ViewerOverlay>,
-      document.body
-    );
-  }
+    // Fallback na string field
+    if (attachment.nahrano_uzivatel) {
+      return attachment.nahrano_uzivatel;
+    }
+    
+    // Staré klíče (pro kompatibilitu)
+    if (attachment.nahrano_jmeno && attachment.nahrano_prijmeni) {
+      const titulPred = attachment.nahrano_titul_pred || '';
+      const titulZa = attachment.nahrano_titul_za || '';
+      return `${titulPred} ${attachment.nahrano_jmeno} ${attachment.nahrano_prijmeni} ${titulZa}`.trim();
+    }
+    
+    if (attachment.uploaded_by_name && attachment.uploaded_by_surname) {
+      return `${attachment.uploaded_by_name} ${attachment.uploaded_by_surname}`.trim();
+    }
+    
+    if (attachment.user_jmeno && attachment.user_prijmeni) {
+      return `${attachment.user_jmeno} ${attachment.user_prijmeni}`.trim();
+    }
+    
+    return 'System';
+  };
+
+  const handleOpenInViewer = async (attachment) => {
+    if (!attachment.id) return;
+    
+    try {
+      // Import download funkce
+      const { downloadInvoiceAttachment25 } = await import('../../services/api25invoices');
+      
+      if (!token || !username) {
+        console.error('Chybí přihlašovací údaje');
+        return;
+      }
+      
+      // Stáhnout soubor jako blob
+      const blobData = await downloadInvoiceAttachment25({
+        token,
+        username,
+        faktura_id: attachment.faktura_id,
+        priloha_id: attachment.id,
+        objednavka_id: attachment.objednavka_id
+      });
+      
+      const filename = getFileName(attachment);
+      const ext = filename.toLowerCase().split('.').pop();
+
+      // Určit MIME type podle přípony
+      let mimeType = 'application/octet-stream';
+      if (ext === 'pdf') {
+        mimeType = 'application/pdf';
+      } else if (['jpg', 'jpeg'].includes(ext)) {
+        mimeType = 'image/jpeg';
+      } else if (ext === 'png') {
+        mimeType = 'image/png';
+      } else if (ext === 'gif') {
+        mimeType = 'image/gif';
+      } else if (ext === 'bmp') {
+        mimeType = 'image/bmp';
+      } else if (ext === 'webp') {
+        mimeType = 'image/webp';
+      } else if (ext === 'svg') {
+        mimeType = 'image/svg+xml';
+      }
+
+      // Vytvořit nový Blob se správným MIME typem
+      const blob = new Blob([blobData], { type: mimeType });
+      
+      // Vytvořit URL pro blob
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Zavolat onView s attachment + blobUrl
+      if (onView) {
+        onView({
+          ...attachment,
+          blobUrl: blobUrl,
+          filename: filename,
+          fileType: ext === 'pdf' ? 'pdf' : (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(ext) ? 'image' : 'other')
+        });
+      }
+      
+    } catch (error) {
+      console.error('Chyba při otevírání přílohy:', error);
+    }
+  };
 
   return ReactDOM.createPortal(
     <TooltipContainer style={{ top: position.top, left: position.left }}>
@@ -476,21 +391,16 @@ const InvoiceAttachmentsTooltip = ({
                       {ext}
                     </FileBadge>
                     <span>{formatFileSize(filesize)}</span>
+                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>• {getUserName(attachment)}</span>
                   </FileDetails>
                 </AttachmentInfo>
                 
                 <ActionButtons>
                   <ActionButton 
-                    onClick={() => handleView(attachment)}
-                    title="Zobrazit náhled"
+                    onClick={() => handleOpenInViewer(attachment)}
+                    title="Otevřít náhled"
                   >
-                    <FontAwesomeIcon icon={faEye} />
-                  </ActionButton>
-                  <ActionButton 
-                    onClick={() => handleDownload(attachment)}
-                    title="Stáhnout"
-                  >
-                    <FontAwesomeIcon icon={faDownload} />
+                    <FontAwesomeIcon icon={faExternalLinkAlt} />
                   </ActionButton>
                 </ActionButtons>
               </AttachmentItem>

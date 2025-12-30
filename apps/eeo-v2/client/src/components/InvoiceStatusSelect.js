@@ -34,6 +34,7 @@ const Container = styled.div`
   text-align: left;
   width: 100%;
   max-width: 260px;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 `;
 
 const ButtonRow = styled.div`
@@ -48,8 +49,9 @@ const StatusButton = styled.button`
   justify-content: space-between;
   width: 100%;
   padding: 0.375rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   border: 1px solid;
   border-radius: 6px;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -180,6 +182,9 @@ const StatusOption = styled.button`
   cursor: pointer;
   border-top: ${props => props.$hasBorder ? '1px solid #f3f4f6' : 'none'};
   margin-top: ${props => props.$hasBorder ? '0.25rem' : '0'};
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   
   &:hover {
     background-color: #f9fafb;
@@ -198,18 +203,21 @@ const StatusOptionContent = styled.div`
 `;
 
 const StatusOptionLabel = styled.p`
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.9rem;
+  font-weight: 400;
   color: ${props => props.$cancelled ? '#6b7280' : '#111827'};
   text-decoration: ${props => props.$cancelled ? 'line-through' : 'none'};
   margin: 0;
+  letter-spacing: -0.01em;
 `;
 
 const StatusOptionDesc = styled.p`
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 400;
   color: #6b7280;
   margin: 0.125rem 0 0 0;
   line-height: 1.25;
+  letter-spacing: -0.01em;
 `;
 
 const ActiveCheck = styled(CheckCircle)`

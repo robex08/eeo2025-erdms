@@ -22,6 +22,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
 import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
+import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 
 // =============================================================================
@@ -1482,6 +1483,9 @@ const Invoices25List = () => {
   
   // State pro attachments tooltip
   const [attachmentsTooltip, setAttachmentsTooltip] = useState(null);
+  
+  // State pro attachment viewer
+  const [viewerAttachment, setViewerAttachment] = useState(null);
   
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
@@ -3202,8 +3206,9 @@ const Invoices25List = () => {
                       }}
                     >
                       <option value="">Vše</option>
-                      <option value="with">S přílohami</option>
                       <option value="without">Bez příloh</option>
+                      <option value="with">S přílohami</option>
+                      <option value="spisovka">Ze spisovky</option>
                     </select>
                   </TableHeader>
                   {/* Akce - tlačítko pro vymazání filtrů */}
@@ -3483,13 +3488,27 @@ const Invoices25List = () => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             const spaceBelow = window.innerHeight - rect.bottom;
                             const tooltipHeight = Math.min(invoice.prilohy.length * 70 + 100, 400);
+                            const tooltipWidth = 280; // min-width z TooltipContainer
+                            
+                            // Horizontální pozice - centrovat pod element, ale respektovat okraje okna
+                            let leftPos = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+                            const rightEdge = leftPos + tooltipWidth;
+                            
+                            // Pokud tooltip přetéká vlevo, zarovnat k levému okraji (+20px padding)
+                            if (leftPos < 20) {
+                              leftPos = 20;
+                            }
+                            // Pokud tooltip přetéká vpravo, zarovnat k pravému okraji (-20px padding)
+                            if (rightEdge > window.innerWidth - 20) {
+                              leftPos = window.innerWidth - tooltipWidth - 20;
+                            }
                             
                             setAttachmentsTooltip({
                               attachments: invoice.prilohy,
                               invoiceId: invoice.id,
                               position: {
                                 top: spaceBelow > tooltipHeight ? rect.bottom + 5 : rect.top - tooltipHeight - 5,
-                                left: rect.left + (rect.width / 2) - 140
+                                left: leftPos
                               }
                             });
                           }
@@ -5566,8 +5585,9 @@ const Invoices25List = () => {
                       }}
                     >
                       <option value="">Vše</option>
-                      <option value="with">S přílohami</option>
                       <option value="without">Bez příloh</option>
+                      <option value="with">S přílohami</option>
+                      <option value="spisovka">Ze spisovky</option>
                     </select>
                   </TableHeader>
                   {/* Akce - tlačítko pro vymazání filtrů */}
@@ -5603,13 +5623,22 @@ const Invoices25List = () => {
             attachments={attachmentsTooltip.attachments}
             position={attachmentsTooltip.position}
             onClose={() => setAttachmentsTooltip(null)}
-            onDownload={(attachment) => {
-              const baseUrl = process.env.REACT_APP_API_URL || 'https://erdms.zachranka.cz';
-              const url = `${baseUrl}/api.eeo/v2025.03_25/?action=downloadInvoiceAttachment&attachment_id=${attachment.id}`;
-              window.open(url, '_blank');
+            onView={(attachmentWithBlob) => {
+              setViewerAttachment(attachmentWithBlob);
+              setAttachmentsTooltip(null);
             }}
+            token={token}
+            username={username}
           />
         </div>
+      )}
+      
+      {/* Attachment Viewer */}
+      {viewerAttachment && (
+        <AttachmentViewer
+          attachment={viewerAttachment}
+          onClose={() => setViewerAttachment(null)}
+        />
       )}
     </>
   );
