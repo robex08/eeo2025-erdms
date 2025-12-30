@@ -46,8 +46,7 @@ function normalize_invoice_attachment_path($systemova_cesta, $config) {
         // Zkus staré umístění (migrace z legacy systému)
         $legacy_paths = [
             '/var/www/eeo2025/doc/prilohy/' . $filename,
-            '/var/www/erdms-data/eeo-v2/prilohy/' . $filename,
-            '/var/www/erdms-platform/data/eeo-v2/prilohy/' . $filename
+            (getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/') . $filename
         ];
         
         foreach ($legacy_paths as $legacy_path) {
