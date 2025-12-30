@@ -841,7 +841,7 @@ const TooltipTable = styled.table`
   td {
     padding: 0.25rem 0;
     
-    &:first-child {
+    &:first-of-type {
       color: #d1d5db;
       padding-right: 1rem;
     }

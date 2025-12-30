@@ -2707,7 +2707,6 @@ export async function fetchLimitovanePrisliby({ token, username }) {
     // Podle příkladu API vrací { "data": [...] }
     if (response.data && response.data.data && Array.isArray(response.data.data)) {
       // Data v response.data.data
-      console.log('🔍 [fetchLimitovanePrisliby] Raw LP data:', response.data.data.slice(0, 2));
       return response.data.data;
     } else if (response.data && Array.isArray(response.data)) {
       console.log('🔍 [fetchLimitovanePrisliby] Direct LP data:', response.data.slice(0, 2));
