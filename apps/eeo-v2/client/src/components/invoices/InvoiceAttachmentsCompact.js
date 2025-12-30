@@ -482,46 +482,70 @@ const InvoiceAttachmentsCompact = ({
   // � FLAG: Sleduje, zda jsme už jednou načetli přílohy ze serveru (prevence infinite loop)
   const hasLoadedFromServerRef = React.useRef(false);
 
+  // 🔄 LOKÁLNÍ STATE pro attachments - umožňuje okamžité UI aktualizace
+  // Synchronizuje se s externalAttachments, ale může se měnit i lokálně
+  const [localAttachments, setLocalAttachments] = useState([]);
+
+  // 🔄 Synchronizovat lokální state s external attachments při změně props
+  useEffect(() => {
+    if (Array.isArray(externalAttachments)) {
+      setLocalAttachments(externalAttachments);
+    }
+  }, [externalAttachments]);
+
   // �🔄 Použít external attachments jako zdroj pravdy (controlled component)
   // ✅ BEZPEČNOSTNÍ KONTROLA: zajistit že attachments je vždy pole
   // ✅ OPRAVA: Mapovat file_size -> size pokud přijde z API
+  // ✅ OPRAVA 2: Používat localAttachments pro okamžité UI updates
   const attachments = useMemo(() => {
-    if (!Array.isArray(externalAttachments)) return [];
+    if (!Array.isArray(localAttachments)) return [];
     
-    const mapped = externalAttachments.map(att => {
-      // Pokud už má size, použij ho
-      if (att.size !== undefined) return att;
-      
-      // Jinak mapuj z file_size nebo velikost_souboru_b
-      const mapped = {
+    const mapped = localAttachments.map(att => {
+      // Vždy přidat aliasy pro kompatibilitu (pokud chybí)
+      return {
         ...att,
-        size: att.file_size || att.velikost_souboru_b || 0
+        name: att.name || att.originalni_nazev_souboru,
+        size: att.size || att.velikost_souboru_b || 0,
+        klasifikace: att.klasifikace || att.typ_prilohy,
+        uploadDate: att.uploadDate || att.dt_vytvoreni,
+        serverId: att.serverId || att.id,
+        status: att.status || 'uploaded'
       };
-      
-      return mapped;
     });
     
     return mapped;
-  }, [externalAttachments, fakturaId]);
+  }, [localAttachments, fakturaId]);
 
   // 🔧 Helper funkce pro aktualizaci attachments (volá onAttachmentsChange callback)
   // ⚠️ DŮLEŽITÉ: Musí správně fungovat s controlled component pattern
+  // ✅ OPRAVA: Používat localAttachments pro okamžité UI updates
   const updateAttachments = useCallback((updater) => {
-    if (!onAttachmentsChange) {
-      return;
-    }
-
     // ✅ Pokud je updater funkce, musíme ji zavolat s aktuálními attachments
     // ✅ Pokud je to hodnota, předat ji přímo
     if (typeof updater === 'function') {
-      // Získat aktuální hodnotu z props (externalAttachments jsou controlled)
-      const currentAttachments = externalAttachments || [];
-      const newAttachments = updater(currentAttachments);
-      onAttachmentsChange(newAttachments); // ✅ Předat HODNOTU, ne funkci
+      // ✅ OPRAVA: Aktualizovat lokální state OKAMŽITĚ pro UI
+      setLocalAttachments(prev => {
+        const updated = updater(prev || []);
+        // ⚠️ DŮLEŽITÉ: Odložit callback do další event loop iterace
+        // Tím se vyhneme React warning "Cannot update component while rendering"
+        setTimeout(() => {
+          if (onAttachmentsChange) {
+            onAttachmentsChange(updated);
+          }
+        }, 0);
+        return updated;
+      });
     } else {
-      onAttachmentsChange(updater); // ✅ Předat hodnotu přímo
+      // Přímá hodnota
+      setLocalAttachments(updater);
+      // ⚠️ DŮLEŽITÉ: Odložit callback do další event loop iterace
+      setTimeout(() => {
+        if (onAttachmentsChange) {
+          onAttachmentsChange(updater);
+        }
+      }, 0);
     }
-  }, [onAttachmentsChange, externalAttachments]);
+  }, [onAttachmentsChange]);
 
   // � Helper funkce pro získání jména uživatele podle ID
   const getUserDisplayName = useCallback((userId) => {
@@ -672,7 +696,7 @@ const InvoiceAttachmentsCompact = ({
             } : a
           ));
 
-          showToast&&showToast(`✅ Příloha "${attachment.name}" byla úspěšně nahrána`, { type: 'success' });
+          showToast&&showToast(`✅ Příloha "${attachment.originalni_nazev_souboru || attachment.name}" byla úspěšně nahrána`, { type: 'success' });
 
         } catch (uploadError) {
 
@@ -681,7 +705,7 @@ const InvoiceAttachmentsCompact = ({
             a.id === attachment.id ? { ...a, status: 'error', error: uploadError.message } : a
           ));
 
-          showToast&&showToast(`Nepodařilo se nahrát přílohu "${attachment.name}"`, { type: 'error' });
+          showToast&&showToast(`Nepodařilo se nahrát přílohu "${attachment.originalni_nazev_souboru || attachment.name}"`, { type: 'error' });
         }
       }
 
@@ -711,32 +735,41 @@ const InvoiceAttachmentsCompact = ({
         objednavka_id: objednavkaId // ✅ PŘIDÁNO pro nové Order V2 API
       });
 
-      // ✅ NOVÁ V2 STRUKTURA: response.data.attachments (místo response.prilohy)
-      const attachmentsList = response.data?.attachments || response.prilohy || [];
+      // ✅ BACKEND VRACÍ ČESKÉ NÁZVY 1:1 JAK JSOU V DB
+      const attachmentsList = response.data?.data?.attachments || response.data?.attachments || response.prilohy || [];
 
       // 🔍 DEBUG: Kompletní výpis všech příloh
 
       const serverAttachments = attachmentsList.map(att => {
         // ⚠️ Kontrola existence fyzického souboru
-        const fileExists = att.file_exists !== false; // Backend by měl vrátit file_exists: false pokud soubor chybí
+        const fileExists = att.file_exists !== false;
         const hasError = att.error || att.file_error;
 
         // 🔍 Najít název typu přílohy z číselníku
-        const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === (att.type || att.typ_prilohy));
+        const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === att.typ_prilohy);
 
+        // ✅ ZACHOVAT ČESKÉ NÁZVY 1:1 JAK JSOU V DB - NEPŘEJMENOVÁVAT!
+        // + přidat aliasy pro zpětnou kompatibilitu
         return {
           id: att.id,
           serverId: att.id,
-          name: att.original_name || att.originalni_nazev_souboru,
-          size: att.file_size || att.velikost_souboru_b,
-          type: (att.original_name || att.originalni_nazev_souboru || '').endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-          klasifikace: att.type || att.typ_prilohy || 'FILE', // ✅ Fallback na 'FILE' pokud chybí
-          faktura_typ_nazev: typPrilohy?.nazev || att.faktura_typ_nazev, // ✅ Získat název z číselníku nebo použít z API
-          uploadDate: att.upload_date || att.dt_vytvoreni || new Date().toISOString(), // ✅ Fallback na aktuální čas
-          uploadedByUserId: att.uploaded_by_user_id || att.nahrano_uzivatel_id, // ✅ ID uživatele, který nahrál
-          status: fileExists ? 'uploaded' : 'error', // ⚠️ Označit poškozené přílohy
+          originalni_nazev_souboru: att.originalni_nazev_souboru,
+          velikost_souboru_b: att.velikost_souboru_b,
+          typ_prilohy: att.typ_prilohy,
+          systemova_cesta: att.systemova_cesta,
+          dt_vytvoreni: att.dt_vytvoreni,
+          nahrano_uzivatel_id: att.nahrano_uzivatel_id,
           je_isdoc: att.je_isdoc,
-          error: hasError || (!fileExists ? 'Fyzický soubor chybí na disku' : null) // ⚠️ Chybová zpráva
+          faktura_typ_nazev: typPrilohy?.nazev || att.faktura_typ_nazev,
+          type: (att.originalni_nazev_souboru || '').endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+          status: fileExists ? 'uploaded' : 'error',
+          file_exists: fileExists,
+          error: hasError || (!fileExists ? 'Fyzický soubor chybí na disku' : null),
+          // Aliasy pro zpětnou kompatibilitu s kódem který používá name/size/klasifikace
+          name: att.originalni_nazev_souboru,
+          size: att.velikost_souboru_b,
+          klasifikace: att.typ_prilohy,
+          uploadDate: att.dt_vytvoreni
         };
       });
       
@@ -836,7 +869,7 @@ const InvoiceAttachmentsCompact = ({
     // Pro každý ne-ISDOC soubor zkontroluj validaci faktury
     if (nonIsdocFiles.length > 0 && !isPokladna) {
       // Zkontroluj validaci (bez file parametru = kontrola základních polí)
-      const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
+      const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, categories: {} };
       
       if (!validation.isValid) {
         // ⚠️ ZAMÍTNOUT běžné soubory - chybí povinná pole
@@ -855,7 +888,7 @@ const InvoiceAttachmentsCompact = ({
               <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
               <span>Pro uložení je nutné vyplnit následující položky:</span>
             </div>
-            {Object.values(validation.categories).map((cat, idx) => 
+            {validation.categories && Object.values(validation.categories).map((cat, idx) => 
               cat.errors.length > 0 && (
                 <div key={idx} style={{ 
                   marginBottom: '10px',
@@ -1437,7 +1470,7 @@ const InvoiceAttachmentsCompact = ({
     setConfirmDialog({
       isOpen: true,
       title: 'Odstranit přílohu',
-      message: `Opravdu chcete odstranit přílohu "${file.name}"?`,
+      message: `Opravdu chcete odstranit přílohu "${file.originalni_nazev_souboru || file.name}"?`,
       onConfirm: () => {
         // ✅ Odstranit z lokálního stavu
         updateAttachments(prev => prev.filter(f => f.id !== fileId));
@@ -1463,7 +1496,7 @@ const InvoiceAttachmentsCompact = ({
     setConfirmDialog({
       isOpen: true,
       title: 'Smazat přílohu',
-      message: `Opravdu chcete smazat přílohu "${file.name}"?`,
+      message: `Opravdu chcete smazat přílohu "${file.originalni_nazev_souboru || file.name}"?`,
       onConfirm: async () => {
 
         try {
@@ -1540,7 +1573,7 @@ const InvoiceAttachmentsCompact = ({
         objednavka_id: objednavkaId
       });
 
-      const filename = file.name || 'priloha.pdf';
+      const filename = file.originalni_nazev_souboru || file.name || 'priloha.pdf';
       const ext = filename.toLowerCase().split('.').pop();
 
       // Určit MIME type podle přípony
@@ -1825,7 +1858,7 @@ const InvoiceAttachmentsCompact = ({
         const hasISDOC = attachments.some(a => isISDOCFile(a.filename));
         
         if (!hasISDOC && !isPokladna) {
-          const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
+          const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, categories: {} };
           
           if (!validation.isValid) {
             const errorMessage = (
@@ -1842,7 +1875,7 @@ const InvoiceAttachmentsCompact = ({
                   <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
                   <span>Pro uložení je nutné vyplnit následující položky:</span>
                 </div>
-                {Object.values(validation.categories).map((cat, idx) => 
+                {validation.categories && Object.values(validation.categories).map((cat, idx) => 
                   cat.errors.length > 0 && (
                     <div key={idx} style={{ 
                       marginBottom: '10px',
@@ -1953,7 +1986,7 @@ const InvoiceAttachmentsCompact = ({
       
       if (!isISDOC && !isPokladna) {
         // Zkontroluj validaci faktury před stažením
-        const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true };
+        const validation = validateInvoiceForAttachments ? validateInvoiceForAttachments(faktura) : { isValid: true, categories: {} };
         
         if (!validation.isValid) {
           // ⚠️ ZAMÍTNOUT - chybí povinná pole
@@ -1971,7 +2004,7 @@ const InvoiceAttachmentsCompact = ({
                 <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
                 <span>Pro uložení je nutné vyplnit následující položky:</span>
               </div>
-              {Object.values(validation.categories).map((cat, idx) => 
+              {validation.categories && Object.values(validation.categories).map((cat, idx) => 
                 cat.errors.length > 0 && (
                   <div key={idx} style={{ 
                     marginBottom: '10px',
@@ -2485,7 +2518,7 @@ const InvoiceAttachmentsCompact = ({
                       fontSize: '0.75rem',
                       flexShrink: 0
                     }}>
-                      ({Math.round((file.size || 0) / 1024)} kB)
+                      ({Math.round((file.velikost_souboru_b || file.size || 0) / 1024)} kB)
                     </span>
 
                     {/* Náhled v novém okně */}
