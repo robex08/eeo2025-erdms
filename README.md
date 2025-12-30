@@ -5,6 +5,7 @@ Systém pro správu dat záchranné služby s přihlášením přes Microsoft En
 ## 📁 Dokumentace
 
 - **[START.md](START.md)** - 🚀 Návod na spuštění aplikace (začni tady!)
+- **[apps/eeo-v2/client/BUILD_SEPARATION.md](apps/eeo-v2/client/BUILD_SEPARATION.md)** - 🔧 **BUILD konfigurace DEV vs PROD** (DŮLEŽITÉ!)
 - **[MICROSOFT_ENTRA_SETUP.md](MICROSOFT_ENTRA_SETUP.md)** - Instrukce pro IT admina - registrace v Microsoft Entra ID
 
 ## 🏗️ Struktura projektu
