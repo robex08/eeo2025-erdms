@@ -1123,8 +1123,9 @@ function handle_cashbox_sync_users_post($config, $input) {
         
         return api_ok(array(
             'message' => 'Uživatelé synchronizováni',
-            'deleted' => $result['deleted'],
-            'inserted' => $result['inserted']
+            'updated' => isset($result['updated']) ? $result['updated'] : 0,
+            'inserted' => $result['inserted'],
+            'deleted' => $result['deleted']
         ));
         
     } catch (Exception $e) {

@@ -352,21 +352,19 @@ function handle_order_v2_list_invoice_attachments($input, $config, $queries) {
             $basePath = '/var/www/eeo2025/doc/prilohy/';
         }
         
-        // Response
+        // Response - VRÁTIT PŘESNĚ SLOUPCE Z DB (ČESKÉ NÁZVY 1:1)
         $result = array();
         foreach ($attachments as $attachment) {
-            // ✅ OPRAVA: Vrátíme base_path z configu a filename zvlášť
-            // FE si je spojí, nebo použije pouze filename pokud už má plnou cestu
             $result[] = array(
                 'id' => (int)$attachment['id'],
                 'guid' => $attachment['guid'],
-                'type' => $attachment['typ_prilohy'],
-                'original_name' => $attachment['originalni_nazev_souboru'],
-                'filename' => $attachment['systemova_cesta'], // Pouze název souboru (nový záznam) nebo plná cesta (starý)
-                'file_path' => $basePath, // Base path z configu
-                'file_size' => (int)$attachment['velikost_souboru_b'],
-                'upload_date' => $attachment['dt_vytvoreni'],
-                'uploaded_by_user_id' => (int)$attachment['nahrano_uzivatel_id']
+                'typ_prilohy' => $attachment['typ_prilohy'],
+                'originalni_nazev_souboru' => $attachment['originalni_nazev_souboru'],
+                'systemova_cesta' => $attachment['systemova_cesta'],
+                'velikost_souboru_b' => (int)$attachment['velikost_souboru_b'],
+                'dt_vytvoreni' => $attachment['dt_vytvoreni'],
+                'nahrano_uzivatel_id' => (int)$attachment['nahrano_uzivatel_id'],
+                'je_isdoc' => (int)$attachment['je_isdoc']
             );
         }
         

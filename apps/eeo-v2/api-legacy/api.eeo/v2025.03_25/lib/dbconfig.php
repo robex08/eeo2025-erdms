@@ -38,14 +38,18 @@ return [
         'database' => getenv('DB_NAME') ?: 'eeo2025'
     ],
     'upload' => [
-        // Root cesta pro nahrávání příloh - jednotná pro dev i produkci
-        'root_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
+        // Root cesta pro nahrávání příloh - environment aware
+        // DEV: /var/www/erdms-data/eeo-v2/prilohy/
+        // PROD: /var/www/erdms-platform/data/eeo-v2/prilohy/
+        'root_path' => getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
         
         // Alternativní relativní cesta (stejná jako root_path)
-        'relative_path' => '/var/www/erdms-data/eeo-v2/prilohy/',
+        'relative_path' => getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/',
         
-        // Cesta pro DOCX šablony
-        'docx_templates_path' => '/var/www/erdms-data/eeo-v2/sablony/',
+        // Cesta pro DOCX šablony - environment aware
+        // DEV: /var/www/erdms-data/eeo-v2/sablony/
+        // PROD: /var/www/erdms-platform/data/eeo-v2/sablony/
+        'docx_templates_path' => getenv('DOCX_TEMPLATES_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/sablony/',
         
         // Maximální velikost souboru v bajtech (20MB)
         'max_file_size' => 20 * 1024 * 1024,

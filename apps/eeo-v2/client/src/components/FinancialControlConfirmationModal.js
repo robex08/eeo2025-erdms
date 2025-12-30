@@ -215,72 +215,66 @@ const FinancialControlConfirmationModal = ({
   const [pdfUrl, setPdfUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [organizace, setOrganizace] = useState(null);
-  const [strediskaMap, setStrediskaMap] = useState({});
+  const pdfDataRef = React.useRef({ organizace: null, strediskaMap: {} });
 
-  // Generování PDF náhledu při otevření
+  // 🎯 OPTIMALIZOVANÉ GENEROVÁNÍ - BEZ setTimeout, BEZ zbytečných rerenderů
   useEffect(() => {
+    let isCancelled = false;
+    
     const generatePreview = async () => {
       try {
-        setIsLoading(true);
+        // 📋 Načtení dat (organizace + střediska) - paralelně
+        const [orgData, strediskaData] = await Promise.all([
+          getOrganizaceDetail({ token, username, id: 1 }).catch(err => {
+            console.warn('Nepodařilo se načíst organizaci:', err);
+            return null;
+          }),
+          getStrediska25({ token, username, aktivni: 1 }).catch(err => {
+            console.warn('Nepodařilo se načíst střediska:', err);
+            return [];
+          })
+        ]);
 
-        // 📋 Načtení vizitky organizace (ID=1 - hlavní organizace)
-        let orgData = null;
-        try {
-          const orgResponse = await getOrganizaceDetail({ token, username, id: 1 });
-          orgData = orgResponse;
-        } catch (orgError) {
-          console.warn('Nepodařilo se načíst vizitku organizace:', orgError);
-        }
+        if (isCancelled) return;
 
-        // 🏢 Načtení středisek pro převod kódů na názvy
-        let strediska = {};
-        try {
-          const strediskaData = await getStrediska25({ token, username, aktivni: 1 });
-          if (Array.isArray(strediskaData)) {
-            strediska = strediskaData.reduce((acc, s) => {
-              if (s.kod_strediska) {
-                acc[s.kod_strediska] = s.nazev_strediska || s.kod_strediska;
-              }
+        // Převod středisek na mapu
+        const strediska = Array.isArray(strediskaData) 
+          ? strediskaData.reduce((acc, s) => {
+              if (s.kod_strediska) acc[s.kod_strediska] = s.nazev_strediska || s.kod_strediska;
               return acc;
-            }, {});
-          }
-        } catch (strediskaError) {
-          console.warn('Nepodařilo se načíst střediska:', strediskaError);
-        }
+            }, {})
+          : {};
 
-        setOrganizace(orgData);
-        setStrediskaMap(strediska);
+        // Uložit do ref pro použití při potvrzení
+        pdfDataRef.current = { organizace: orgData, strediskaMap: strediska };
 
-        // � Načtení uživatelů pro faktury s věcnou kontrolou
+        // � Načtení uživatelů pro faktury (jen pokud existují)
         const enrichedFaktury = [];
         if (order.faktury && Array.isArray(order.faktury)) {
           for (const faktura of order.faktury) {
             const enrichedFaktura = { ...faktura };
-            
-            // Načíst uživatele pro věcnou kontrolu
             if (faktura.potvrdil_vecnou_spravnost_id) {
               try {
                 const userData = await getUserDetail(faktura.potvrdil_vecnou_spravnost_id);
                 enrichedFaktura.potvrdil_vecnou_spravnost = userData;
-              } catch (userError) {
-                console.warn('Nepodařilo se načíst uživatele:', userError);
+              } catch (err) {
+                console.warn('Nepodařilo se načíst uživatele:', err);
               }
             }
-            
             enrichedFaktury.push(enrichedFaktura);
           }
         }
 
-        // 🔧 Mapování dat z OrderForm25 formData na formát očekávaný FinancialControlPDF
-        // OrderForm25 má: polozky_objednavky, FinancialControlPDF očekává: polozky
+        if (isCancelled) return;
+
+        // Mapování dat pro PDF
         const orderForPDF = {
           ...order,
           polozky: order.polozky_objednavky || order.polozky || [],
-          faktury: enrichedFaktury // Použít faktury s načtenými uživateli
+          faktury: enrichedFaktury
         };
 
-        // Vygenerovat PDF blob
+        // ✅ Generování PDF - IHNED bez umělého čekání
         const blob = await pdf(
           <FinancialControlPDF 
             order={orderForPDF} 
@@ -290,89 +284,88 @@ const FinancialControlConfirmationModal = ({
           />
         ).toBlob();
 
+        if (isCancelled) return;
+
         const url = URL.createObjectURL(blob);
         setPdfUrl(url);
+        setIsLoading(false); // ✅ NA PRVNÍ DOBROU - žádný setTimeout
         
-        // Minimální delay pro lepší UX - aby loading nebyl příliš rychlý
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setIsLoading(false);
       } catch (error) {
-        console.error('Chyba při generování náhledu finanční kontroly:', error);
-        alert('Chyba při generování náhledu finanční kontroly');
-        setIsLoading(false);
+        if (!isCancelled) {
+          console.error('Chyba při generování náhledu:', error);
+          alert('Chyba při generování náhledu finanční kontroly');
+          setIsLoading(false);
+        }
       }
     };
 
     generatePreview();
-  }, [order, generatedBy, token, username]);
+    
+    // ✅ Cleanup při unmount
+    return () => {
+      isCancelled = true;
+    };
+  }, []); // ⚠️ Prázdné deps - spustí se JEDNOU při mount
 
-  // Cleanup PDF URL při unmount
+  // ✅ Cleanup PDF URL při unmount - JEDNODUŠE
   useEffect(() => {
     return () => {
-      if (pdfUrl) {
-        console.log('🧹 Cleaning up PDF URL...');
-        URL.revokeObjectURL(pdfUrl);
-      }
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     };
   }, [pdfUrl]);
 
-  // ✅ POTVRDIT - Vrátit PDF data parent komponentě pro upload
+  // ✅ POTVRDIT - Vygenerovat finální PDF a předat parent komponentě
   const handleConfirm = async () => {
+    if (isSaving) return; // Prevence dvojkliku
+    
     try {
       setIsSaving(true);
 
-      // � Načtení uživatelů pro faktury s věcnou kontrolou (stejně jako v generatePreview)
+      // � Načtení uživatelů pro faktury (stejně jako při náhledu)
       const enrichedFaktury = [];
       if (order.faktury && Array.isArray(order.faktury)) {
         for (const faktura of order.faktury) {
           const enrichedFaktura = { ...faktura };
-          
-          // Načíst uživatele pro věcnou kontrolu
           if (faktura.potvrdil_vecnou_spravnost_id) {
             try {
               const userData = await getUserDetail(faktura.potvrdil_vecnou_spravnost_id);
               enrichedFaktura.potvrdil_vecnou_spravnost = userData;
-            } catch (userError) {
-              console.warn('Nepodařilo se načíst uživatele:', userError);
+            } catch (err) {
+              console.warn('Nepodařilo se načíst uživatele:', err);
             }
           }
-          
           enrichedFaktury.push(enrichedFaktura);
         }
       }
 
-      // 🔧 Mapování dat z OrderForm25 formData na formát očekávaný FinancialControlPDF
+      // Mapování dat pro PDF
       const orderForPDF = {
         ...order,
         polozky: order.polozky_objednavky || order.polozky || [],
-        faktury: enrichedFaktury // Použít faktury s načtenými uživateli
+        faktury: enrichedFaktury
       };
 
-      // 1. Vygenerovat PDF jako File
+      // ✅ Vygenerovat finální PDF
       const blob = await pdf(
         <FinancialControlPDF 
           order={orderForPDF} 
           generatedBy={generatedBy}
-          organizace={organizace}
-          strediskaMap={strediskaMap}
+          organizace={pdfDataRef.current.organizace}
+          strediskaMap={pdfDataRef.current.strediskaMap}
         />
       ).toBlob();
 
-      // 2. Vytvořit název souboru: "Financni_kontrola_YYYY-MM-DD_cislo_obj.pdf"
+      // Vytvořit název: Financni_kontrola_YYYY-MM-DD_cislo.pdf
       const today = new Date();
-      const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateStr = today.toISOString().split('T')[0];
       const orderNumber = (order.cislo_objednavky || 'neznama').replace(/[^a-zA-Z0-9]/g, '_');
       const filename = `Financni_kontrola_${dateStr}_${orderNumber}.pdf`;
-
       const pdfFile = new File([blob], filename, { type: 'application/pdf' });
 
-      console.log('✅ PDF vygenerováno, předávám parent komponentě...');
-
-      // 3. Předat PDF parent komponentě a OKAMŽITĚ zavřít modal
+      // ✅ OKAMŽITĚ předat parent komponentě - BEZ ČEKÁNÍ
       onConfirm(pdfFile);
       
-      // Modal je nyní zavřený, parent pokračuje asynchronně na pozadí
+      // Modal zavře parent komponenta - žádný další kód zde
 
     } catch (error) {
       console.error('❌ Chyba při generování PDF:', error);
@@ -381,21 +374,22 @@ const FinancialControlConfirmationModal = ({
     }
   };
 
-  // ❌ ZRUŠIT - Odškrtnout checkbox + uložit bez DOKONCENA
+  // ❌ ZRUŠIT - Odškrtne checkbox a zavře modal
   const handleCancel = () => {
+    if (isSaving) return; // Během generování nelze zrušit
     onCancel();
   };
 
-  // Zavření na ESC
+  // ✅ ESC handler - BEZ zbytečných dependencies
   useEffect(() => {
     const handleEsc = (e) => {
-      if (e.key === 'Escape' && !isSaving) {
+      if (e.key === 'Escape' && !isSaving && !isLoading) {
         handleCancel();
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isSaving]);
+  }, [isSaving, isLoading]);
 
   return createPortal(
     <ModalOverlay 
@@ -441,7 +435,7 @@ const FinancialControlConfirmationModal = ({
           <InfoBox>
             ℹ️ <strong>Před dokončením objednávky zkontrolujte finanční kontrolu.</strong>
             <br />
-            Po potvrzení bude dokument automaticky uložen jako příloha objednávky s klasifikací "Kontrolka" 
+            Po potvrzení bude dokument automaticky uložen jako příloha objednávky s klasifikací "Košilka" 
             a objednávka bude označena jako DOKONČENÁ (nelze již editovat).
           </InfoBox>
 

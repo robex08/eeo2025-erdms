@@ -16,6 +16,52 @@
 require_once __DIR__ . '/TimezoneHelper.php';
 
 /**
+ * Normalizuje cestu k příloze faktury podle prostředí
+ * Historicky byly cesty ukládány absolutně, nyní potřebujeme dynamicky měnit podle ENV
+ * 
+ * @param string $systemova_cesta Cesta z databáze (může být /var/www/eeo2025/..., /var/www/erdms-data/..., nebo jen název)
+ * @param array $config Konfigurace s upload cestami
+ * @return string Normalizovaná plná cesta pro aktuální prostředí
+ */
+function normalize_invoice_attachment_path($systemova_cesta, $config) {
+    // Pokud cesta neexistuje, vrátíme přímo
+    if (empty($systemova_cesta)) {
+        return $systemova_cesta;
+    }
+    
+    // Pokud cesta existuje a je validní, použijeme ji
+    if (file_exists($systemova_cesta)) {
+        return $systemova_cesta;
+    }
+    
+    // Extrahuj pouze název souboru z jakékoliv cesty
+    $filename = basename($systemova_cesta);
+    
+    // Použij aktuální upload root path z konfigurace (environment aware)
+    $current_upload_path = $config['upload']['root_path'];
+    $normalized_path = $current_upload_path . $filename;
+    
+    // Zkusíme ještě alternativní cesty, pokud soubor na nové cestě neexistuje
+    if (!file_exists($normalized_path)) {
+        // Zkus staré umístění (migrace z legacy systému)
+        $legacy_paths = [
+            '/var/www/eeo2025/doc/prilohy/' . $filename,
+            '/var/www/erdms-data/eeo-v2/prilohy/' . $filename,
+            '/var/www/erdms-platform/data/eeo-v2/prilohy/' . $filename
+        ];
+        
+        foreach ($legacy_paths as $legacy_path) {
+            if (file_exists($legacy_path)) {
+                return $legacy_path;
+            }
+        }
+    }
+    
+    // Vrátíme normalizovanou cestu (i když neexistuje - pro error handling)
+    return $normalized_path;
+}
+
+/**
  * POST - Načte přílohy konkrétní faktury
  * Endpoint: invoices25/attachments/by-invoice
  * POST: {token, username, faktura_id}
@@ -564,8 +610,8 @@ function handle_invoices25_attachments_download($input, $config, $queries) {
             return;
         }
 
-        // systemova_cesta je již plná fyzická cesta (stejně jako u objednávek)
-        $full_path = $priloha['systemova_cesta'];
+        // ✅ Normalizuj cestu podle prostředí (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
 
         // Kontrola existence souboru
         if (!file_exists($full_path)) {
@@ -660,8 +706,8 @@ function handle_invoices25_attachments_delete($input, $config, $queries) {
             return;
         }
 
-        // systemova_cesta je již plná fyzická cesta
-        $full_path = $priloha['systemova_cesta'];
+        // ✅ Normalizuj cestu podle prostředí (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
         if (file_exists($full_path)) {
             unlink($full_path);
         }
@@ -873,8 +919,9 @@ function handle_invoices25_attachments_by_id($input, $config, $queries) {
         $priloha['je_isdoc'] = (int)$priloha['je_isdoc'] === 1;
         $priloha['isdoc_parsed'] = (int)$priloha['isdoc_parsed'] === 1;
         
-        // Kontrola existence souboru (systemova_cesta je plná fyzická cesta)
-        $priloha['soubor_existuje'] = file_exists($priloha['systemova_cesta']);
+        // ✅ Kontrola existence souboru s normalizovanou cestou (DEV/PROD aware)
+        $full_path = normalize_invoice_attachment_path($priloha['systemova_cesta'], $config);
+        $priloha['soubor_existuje'] = file_exists($full_path);
 
         http_response_code(200);
         echo json_encode([

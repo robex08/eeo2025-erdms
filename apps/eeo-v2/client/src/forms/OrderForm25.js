@@ -6881,7 +6881,16 @@ function OrderForm25() {
                         token,
                         editOrderId
                       );
-                      attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                      // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                      const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                      // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                      attachments = rawAttachments.map(att => ({
+                        ...att,
+                        name: att.originalni_nazev_souboru,
+                        size: att.velikost_souboru_b,
+                        klasifikace: att.typ_prilohy,
+                        uploadDate: att.dt_vytvoreni
+                      }));
                       console.log(`🔍 [OrderForm25 LOAD DRAFT] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
                     } catch (err) {
                       console.error(`❌ [OrderForm25 LOAD DRAFT] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
@@ -7026,7 +7035,16 @@ function OrderForm25() {
                       token,
                       dbOrder.id
                     );
-                    attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                    // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                    const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                    // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                    attachments = rawAttachments.map(att => ({
+                      ...att,
+                      name: att.originalni_nazev_souboru,
+                      size: att.velikost_souboru_b,
+                      klasifikace: att.typ_prilohy,
+                      uploadDate: att.dt_vytvoreni
+                    }));
                     console.log(`🔍 [OrderForm25 LOAD] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
                   } catch (err) {
                     console.error(`❌ [OrderForm25 LOAD] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
@@ -8294,7 +8312,8 @@ function OrderForm25() {
           formData.id  // orderId
         );
 
-        prilohyCount = (response.data?.attachments || response.data || []).length;
+        // ✅ OPRAVA: Backend vrací response.data.data.attachments
+        prilohyCount = (response.data?.data?.attachments || response.data?.attachments || []).length;
       } catch (err) {
       }
     }
@@ -8331,7 +8350,8 @@ function OrderForm25() {
             formData.id  // orderId
           );
 
-          const prilohy = response.data?.attachments || response.data || [];
+          // ✅ OPRAVA: Backend vrací response.data.data.attachments
+          const prilohy = response.data?.data?.attachments || response.data?.attachments || [];
 
           // Smaž každou přílohu
           for (const priloha of prilohy) {
@@ -9257,15 +9277,12 @@ function OrderForm25() {
 
   // 📋 CALLBACK: Potvrzení dokončení objednávky (po vygenerování PDF)
   const handleConfirmCompletion = async (pdfFile) => {
-    console.log('📋 [handleConfirmCompletion] Modal se zavřel, pokračujem...');
-    
-    // 1. OKAMŽITĚ zavřít modal a nastavit flag PŘED voláním save
+    // ✅ OKAMŽITĚ zavřít modal - BEZ čekání
     setShowFinancialControlConfirmation(false);
-    setFinancialControlConfirmed(true); // 🚩 DŮLEŽITÉ: Nastavit PŘED saveOrderToAPI()
+    setFinancialControlConfirmed(true);
     
     try {
-      // 2. Na pozadí nahrát PDF
-      console.log('📋 Nahrávám PDF...');
+      // 1. Nahrát PDF jako košilku
       await uploadOrderAttachment(
         formData.id,
         pdfFile,
@@ -9275,47 +9292,36 @@ function OrderForm25() {
         'fk-'
       );
       
-      // 3. NYNÍ save - předám flag přímo jako parametr
-      console.log('📋 Spouštím save s přeskočením finanční kontroly...');
-      await saveOrderToAPI(true); // ← Předám flag přímo
+      // 2. Uložit objednávku s novým stavem DOKONCENA
+      await saveOrderToAPI(true);
 
-      // 4. Přenačíst přílohy aby se zobrazila nově nahraná finanční kontrola
-      console.log('📋 Přenačítám přílohy...');
+      // 3. Přenačíst přílohy
       await loadAttachmentsSmartly();
 
-      console.log('📋 Hotovo!');
       showToast && showToast('✅ Objednávka dokončena a finanční kontrola uložena', { type: 'success' });
 
     } catch (error) {
-      console.error('❌ Chyba:', error);
+      console.error('❌ Chyba při dokončení:', error);
       showToast && showToast(`Chyba: ${error.message || error}`, { type: 'error' });
     } finally {
-      // 5. Reset flag na konci (ať už úspěch nebo chyba)
       setFinancialControlConfirmed(false);
     }
   };
 
   // ❌ CALLBACK: Zrušení dokončení objednávky
   const handleCancelCompletion = () => {
-    try {
-      // 1. Zavřít modal a resetovat flag
-      setShowFinancialControlConfirmation(false);
-      setFinancialControlConfirmed(false); // 🚩 Reset flag
+    // ✅ OKAMŽITĚ zavřít modal a odškrtnout checkbox
+    setShowFinancialControlConfirmation(false);
+    setFinancialControlConfirmed(false);
 
-      // 2. Odškrtnout checkbox - vrátit zpět bez uložení
-      setFormData(prev => ({
-        ...prev,
-        potvrzeni_dokonceni_objednavky: 0
-      }));
+    // Vrátit checkbox zpět
+    setFormData(prev => ({
+      ...prev,
+      potvrzeni_dokonceni_objednavky: 0
+    }));
 
-      // 3. NEULOŽIT - uživatel zrušil akci, vrátíme ho na formulář
-      
-      // 4. Toast info
-      showToast && showToast('ℹ️ Dokončení bylo zrušeno, změny nebyly uloženy', { type: 'info' });
-
-    } catch (error) {
-      console.error('Chyba při zrušení dokončení:', error);
-    }
+    // NEULOŽIT - zrušení bez změn
+    showToast && showToast('ℹ️ Dokončení zrušeno', { type: 'info' });
   };
 
   // Uložení objednávky do API (když je validní)
@@ -10428,7 +10434,16 @@ function OrderForm25() {
                     token,             // token
                     parsedInsertData.id  // orderId
                   );
-                  attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                  // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                  const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                  // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                  attachments = rawAttachments.map(att => ({
+                    ...att,
+                    name: att.originalni_nazev_souboru,
+                    size: att.velikost_souboru_b,
+                    klasifikace: att.typ_prilohy,
+                    uploadDate: att.dt_vytvoreni
+                  }));
                 } catch (err) {
                 }
               }
@@ -11146,7 +11161,16 @@ function OrderForm25() {
                   token,
                   formData.id  // orderId
                 );
-                attachments = attachResponse.data?.attachments || attachResponse.data || [];
+                // ✅ OPRAVA: Backend vrací response.data.data.attachments s ČESKÝMI NÁZVY
+                const rawAttachments = attachResponse.data?.data?.attachments || attachResponse.data?.attachments || [];
+                // Přidat aliasy name/size/klasifikace pro kompatibilitu
+                attachments = rawAttachments.map(att => ({
+                  ...att,
+                  name: att.originalni_nazev_souboru,
+                  size: att.velikost_souboru_b,
+                  klasifikace: att.typ_prilohy,
+                  uploadDate: att.dt_vytvoreni
+                }));
                 console.log(`🔍 [OrderForm25] Načteny přílohy faktury ID=${fakturaFromDB.id}:`, attachments);
               } catch (err) {
                 console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
@@ -13088,7 +13112,7 @@ function OrderForm25() {
       const metadata = createAttachmentMetadata(file);
 
       return {
-        id: metadata.id,
+        id: metadata.guid, // ✅ OPRAVA: Použij guid jako id (unikátní identifikátor)
         guid: metadata.guid,
         name: file.name,
         originalName: metadata.originalName,
@@ -13169,7 +13193,7 @@ function OrderForm25() {
       const metadata = createAttachmentMetadata(file);
 
       const newFile = {
-        id: metadata.id,
+        id: metadata.guid, // ✅ OPRAVA: Použij guid jako id (unikátní identifikátor)
         guid: metadata.guid,
         name: file.name,
         originalName: metadata.originalName,
@@ -14201,10 +14225,10 @@ function OrderForm25() {
 
   // Centrální mapování přílohy z API response na lokální objekt - 1:1 mapování bez transformací
   const mapApiAttachmentToLocal = (attachment) => {
-    // V2 API používá: original_name, file_size, upload_date, uploaded_by_user_id, type, system_path
+    // ✅ ČESKÉ NÁZVY 1:1 Z DB jsou primární
 
     // 🔍 EXTRAKCE file_prefix ze system_path (backend pole)
-    const systemPath = attachment.system_path || attachment.systemovy_nazev || attachment.final_filename || '';
+    const systemPath = attachment.systemova_cesta || attachment.system_path || attachment.systemovy_nazev || attachment.final_filename || '';
     const fileName = systemPath.split('/').pop() || systemPath; // Vezmi název souboru (poslední část cesty)
 
     let filePrefix = 'obj-'; // Default
@@ -14215,26 +14239,26 @@ function OrderForm25() {
     }
 
     const mapped = {
-      // Přímé mapování z DB/API struktury
+      // Přímé mapování z DB/API struktury - ČESKÉ NÁZVY PRIMÁRNÍ
       id: `server_${attachment.id}`,
       serverId: attachment.id,
-      objednavka_id: attachment.order_id || attachment.objednavka_id,
+      objednavka_id: attachment.objednavka_id || attachment.order_id,
       guid: attachment.guid,
-      typ_prilohy: attachment.type || attachment.typ_prilohy,
-      originalni_nazev_souboru: attachment.original_name || attachment.originalni_nazev_souboru,
-      systemovy_nazev: attachment.system_path, // ✅ Backend vrací system_path
-      systemova_cesta: attachment.system_path, // ✅ Backend vrací system_path
-      velikost: attachment.file_size || attachment.velikost || attachment.velikost_souboru_b,
-      dt_vytvoreni: attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni,
-      dt_aktualizace: attachment.updated_at || attachment.dt_aktualizace,
-      nahrano_uzivatel_id: attachment.uploaded_by_user_id || attachment.nahrano_uzivatel_id,
+      typ_prilohy: attachment.typ_prilohy || attachment.type,
+      originalni_nazev_souboru: attachment.originalni_nazev_souboru || attachment.original_name,
+      systemovy_nazev: attachment.systemova_cesta || attachment.system_path, // ✅ Backend vrací systemova_cesta
+      systemova_cesta: attachment.systemova_cesta || attachment.system_path, // ✅ Backend vrací systemova_cesta
+      velikost: attachment.velikost_souboru_b || attachment.file_size || attachment.velikost,
+      dt_vytvoreni: attachment.dt_vytvoreni || attachment.upload_date || attachment.created_at,
+      dt_aktualizace: attachment.dt_aktualizace || attachment.updated_at,
+      nahrano_uzivatel_id: attachment.nahrano_uzivatel_id || attachment.uploaded_by_user_id,
       nahrano_uzivatel: attachment.nahrano_uzivatel,
       file_exists: attachment.file_exists,
       file_prefix: filePrefix, // ✅ Extrahováno ze system_path
 
       // Kompatibilita s frontendem (aliasy)
-      name: attachment.original_name || attachment.originalni_nazev_souboru,
-      size: attachment.file_size || attachment.velikost || attachment.velikost_souboru_b,
+      name: attachment.originalni_nazev_souboru || attachment.original_name,
+      size: attachment.velikost_souboru_b || attachment.file_size || attachment.velikost,
       type: 'application/octet-stream',
       lastModified: new Date(attachment.upload_date || attachment.created_at || attachment.dt_vytvoreni || Date.now()).getTime(),
       klasifikace: attachment.type || attachment.typ_prilohy,
@@ -25180,8 +25204,8 @@ function OrderForm25() {
                 </FormRow>
               </SectionContent>
             </FormSection>
-            );
-          })()}
+          );
+        })()}
 
           </ScrollableInner>
         </ScrollableContent>

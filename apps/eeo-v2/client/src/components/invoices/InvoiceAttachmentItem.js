@@ -197,8 +197,8 @@ const InvoiceAttachmentItem = ({
   const handleDelete = async () => {
     if (!onDelete) return;
 
-    // Support both API v2 (original_name) and old API (originalni_nazev_souboru)
-    const fileName = attachment.original_name || attachment.originalni_nazev_souboru || 'tento soubor';
+    // ČESKÉ NÁZVY 1:1 Z DB
+    const fileName = attachment.originalni_nazev_souboru || 'tento soubor';
     const confirmMessage = `Opravdu chcete smazat přílohu "${fileName}"?`;
     if (!window.confirm(confirmMessage)) return;
 
@@ -213,11 +213,11 @@ const InvoiceAttachmentItem = ({
     }
   };
 
-  // Získání názvu souboru - support both API v2 and old API
-  const fileName = attachment.original_name || attachment.originalni_nazev_souboru || 'Neznámý soubor';
+  // Získání názvu souboru - ČESKÉ NÁZVY 1:1 Z DB
+  const fileName = attachment.originalni_nazev_souboru || 'Neznámý soubor';
 
-  // Formátování velikosti - support both API v2 (file_size) and old API (velikost_souboru_b)
-  const fileSize = formatFileSize(attachment.file_size || attachment.velikost_souboru_b || 0);
+  // Formátování velikosti - ČESKÉ NÁZVY 1:1 Z DB
+  const fileSize = formatFileSize(attachment.velikost_souboru_b || 0);
 
   // Datum vytvoření
   const uploadDate = attachment.dt_vytvoreni

@@ -4792,8 +4792,9 @@ const Invoices25List = () => {
                   </SectionTitle>
                   <AttachmentsGrid>
                     {slidePanelAttachments.map((attachment, index) => {
-                      const fileName = attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
-                      const fileSize = attachment.velikost_souboru || attachment.file_size;
+                      // ✅ ČESKÉ NÁZVY 1:1 Z DB
+                      const fileName = attachment.originalni_nazev_souboru || attachment.nazev_souboru || attachment.file_name || 'Neznámý soubor';
+                      const fileSize = attachment.velikost_souboru_b || attachment.velikost_souboru || attachment.file_size;
                       const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
                       
                       // Ikona a barva podle typu souboru

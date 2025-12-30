@@ -1787,29 +1787,29 @@ const CashBookPage = () => {
 
         if (canSeeAllCashboxes) {
           try {
-            const allResult = await cashbookAPI.getCashboxListByPeriod(
-              currentYear,
-              currentMonth,
-              true,  // active_only
-              true   // include_users
-            );
+            // ✅ FIX: Používat listAllAssignments() místo getCashboxListByPeriod()
+            // getCashboxListByPeriod() vrací pouze pokladny s položkami v daném měsíci
+            // listAllAssignments() vrací všechny aktivní pokladny včetně těch bez položek
+            const allResult = await cashbookAPI.listAllAssignments();
 
-            if (allResult.status === 'ok' && allResult.data?.pokladny) {
-              const transformedData = allResult.data.pokladny.map(item => ({
+            if (allResult && allResult.status === 'ok' && allResult.data?.assignments) {
+              const transformedData = allResult.data.assignments.map(item => ({
                 ...item,
-                id: parseInt(item.prirazeni_id || item.id, 10),
-                pokladna_id: parseInt(item.id, 10),
+                id: parseInt(item.id, 10),
+                pokladna_id: parseInt(item.pokladna_id, 10),
                 cislo_pokladny: parseInt(item.cislo_pokladny, 10),
-                aktivni: parseInt(item.aktivni, 10),
+                aktivni: parseInt(item.aktivni || 1, 10),
                 uzivatel_id: parseInt(item.uzivatel_id, 10),
-                je_hlavni: 1,
+                je_hlavni: parseInt(item.je_hlavni || 0, 10),
               }));
 
               setAllAssignments(transformedData);
               allAvailableAssignments = transformedData; // Admin vidí všechny
             }
           } catch (err) {
-            // Tichá chyba - není kritická
+            console.error('❌ Chyba při načítání všech pokladen:', err);
+            // Fallback: admin aspoň uvidí své vlastní přiřazení
+            allAvailableAssignments = userAssignments;
           }
         }
 

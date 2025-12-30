@@ -475,8 +475,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   // (NE order._enriched.*!)
 
   // 🔴 Helper pro označení chybějících dat
-  const MISSING = '⚠️ NEVÍM';
-  const getMissingStyle = (value) => value === MISSING ? { color: '#dc2626', fontWeight: 700 } : {};
+  const MISSING = '---';
+  const getMissingStyle = (value) => value === MISSING ? { color: '#6b7280', fontWeight: 400 } : {};
 
   // Základní údaje
   const objednavkaCislo = order?.cislo_objednavky || MISSING;
