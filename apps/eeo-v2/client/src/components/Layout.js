@@ -37,6 +37,7 @@ import { onTabSyncMessage, BROADCAST_TYPES, initTabSync, closeTabSync } from '..
 import draftManager from '../services/DraftManager'; // CENTRALIZED DRAFT MANAGER
 import { getToolsVisibility } from '../utils/toolsVisibility';
 import UniversalSearchInput from './UniversalSearch/UniversalSearchInput';
+import { checkMaintenanceMode } from '../services/globalSettingsApi';
 
 // Inject small CSS for bell pulse if missing
 if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styles')) {
@@ -45,6 +46,7 @@ if (typeof document !== 'undefined' && !document.getElementById('bell-pulse-styl
   style.textContent = `
     @keyframes bell-pulse { 0% { transform: scale(1); box-shadow: 0 0 0 rgba(0,0,0,0); } 50% { transform: scale(1.12); box-shadow: 0 6px 18px rgba(59,130,246,0.18); } 100% { transform: scale(1); box-shadow: 0 0 0 rgba(0,0,0,0); } }
     @keyframes mic-pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 50% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    @keyframes pulse-maintenance { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     [data-bell-pulse='1'] { animation: bell-pulse .9s ease; }
   `;
   document.head.appendChild(style);
@@ -1527,6 +1529,9 @@ const Layout = ({ children }) => {
   
   // State pro název databáze (načte se z API)
   const [databaseName, setDatabaseName] = useState(null);
+  
+  // State pro maintenance mode indikátor
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
 
   // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
@@ -1707,6 +1712,27 @@ const Layout = ({ children }) => {
         });
     }
   }, []); // Run only once on mount
+
+  // Check maintenance mode status periodically
+  useEffect(() => {
+    const checkMaintenance = async () => {
+      try {
+        const maintenanceActive = await checkMaintenanceMode();
+        setIsMaintenanceMode(maintenanceActive);
+      } catch (error) {
+        console.warn('Nepodařilo se zkontrolovat maintenance mode:', error);
+        setIsMaintenanceMode(false);
+      }
+    };
+
+    // Check immediately on mount
+    checkMaintenance();
+
+    // Check every 30 seconds
+    const interval = setInterval(checkMaintenance, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Listen for settings changes (triggered after saving settings in ProfilePage)
   useEffect(() => {
@@ -2567,6 +2593,24 @@ const Layout = ({ children }) => {
             <HeaderTitle>
               Systém správy a workflow objednávek
               <sup style={{ fontSize: '0.5em', marginLeft: '4px', fontWeight: '600', color: '#fbbf24', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
+                {/* MAINTENANCE label při aktivním maintenance módu */}
+                {isMaintenanceMode && (
+                  <span style={{ 
+                    color: '#f97316', 
+                    fontWeight: '700',
+                    backgroundColor: 'rgba(249, 115, 22, 0.2)',
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    marginRight: '6px',
+                    border: '1px solid rgba(249, 115, 22, 0.4)',
+                    textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    animation: 'pulse-maintenance 2s ease-in-out infinite'
+                  }}>
+                    MAINTENANCE
+                  </span>
+                )}
                 {/* DEVELOP label pro dev prostředí */}
                 {typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/') && (
                   <span style={{ 

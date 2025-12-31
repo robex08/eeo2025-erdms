@@ -28,6 +28,10 @@ function handle_global_settings($input, $db) {
     // Určit operaci
     $operation = isset($input['operation']) ? $input['operation'] : 'get';
     
+    error_log("=== HANDLE GLOBAL SETTINGS ===");
+    error_log("Operation: " . $operation);
+    error_log("User ID: " . $user_id);
+    
     // Pro čtení (get) nemusí být admin, pro save musí
     if ($operation === 'save') {
         // Kontrola oprávnění - pouze Admin nebo SuperAdmin nebo MAINTENANCE_ADMIN
@@ -55,6 +59,8 @@ function handle_global_settings($input, $db) {
             }
         }
         
+        error_log("Admin check: isAdmin=" . ($isAdmin ? 'YES' : 'NO') . ", isSuperAdmin=" . ($isSuperAdmin ? 'YES' : 'NO'));
+        
         // Kontrola práva MAINTENANCE_ADMIN
         $hasMaintenanceAdmin = false;
         $sqlPerm = "
@@ -62,23 +68,32 @@ function handle_global_settings($input, $db) {
             FROM 25_prava p
             LEFT JOIN 25_uzivatel_prava up ON p.id = up.pravo_id AND up.uzivatel_id = :user_id
             LEFT JOIN 25_role_prava rp ON p.id = rp.pravo_id
-            LEFT JOIN 25_uzivatele_role ur ON rp.role_id = ur.role_id AND ur.uzivatel_id = :user_id
+            LEFT JOIN 25_uzivatele_role ur2 ON rp.role_id = ur2.role_id AND ur2.uzivatel_id = :user_id
             WHERE p.kod_prava = 'MAINTENANCE_ADMIN'
-            AND (up.uzivatel_id IS NOT NULL OR ur.uzivatel_id IS NOT NULL)
+            AND (up.uzivatel_id IS NOT NULL OR ur2.uzivatel_id IS NOT NULL)
             LIMIT 1
         ";
-        $stmtPerm = $db->prepare($sqlPerm);
-        $stmtPerm->bindParam(':user_id', $user_id, PDO::PARAM_INT);
-        $stmtPerm->execute();
-        $permRow = $stmtPerm->fetch(PDO::FETCH_ASSOC);
-        $hasMaintenanceAdmin = ($permRow && $permRow['cnt'] > 0);
+        
+        try {
+            $stmtPerm = $db->prepare($sqlPerm);
+            $stmtPerm->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+            $stmtPerm->execute();
+            $permRow = $stmtPerm->fetch(PDO::FETCH_ASSOC);
+            $hasMaintenanceAdmin = ($permRow && $permRow['cnt'] > 0);
+            error_log("MAINTENANCE_ADMIN check: " . ($hasMaintenanceAdmin ? 'YES' : 'NO'));
+        } catch (Exception $e) {
+            error_log("ERROR checking MAINTENANCE_ADMIN: " . $e->getMessage());
+            $hasMaintenanceAdmin = false;
+        }
         
         if (!$isAdmin && !$hasMaintenanceAdmin) {
+            error_log("Access denied: Neither admin nor MAINTENANCE_ADMIN");
             http_response_code(403);
             echo json_encode(array('status' => 'error', 'message' => 'Přístup odepřen'));
             return;
         }
         
+        error_log("Calling handle_save_settings...");
         // Uložit nastavení
         handle_save_settings($db, isset($input['settings']) ? $input['settings'] : array(), $isSuperAdmin, $hasMaintenanceAdmin);
     } else {
@@ -125,10 +140,16 @@ function handle_get_settings($db) {
  * Uloží nastavení do DB
  */
 function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmin = false) {
+    error_log("=== GLOBAL SETTINGS SAVE DEBUG ===");
+    error_log("isSuperAdmin: " . ($isSuperAdmin ? 'YES' : 'NO'));
+    error_log("hasMaintenanceAdmin: " . ($hasMaintenanceAdmin ? 'YES' : 'NO'));
+    error_log("Settings: " . json_encode($settings));
+    
     try {
         // Kontrola oprávnění pro maintenance_mode
         // Může měnit: SUPERADMIN nebo uživatel s právem MAINTENANCE_ADMIN
         if (isset($settings['maintenance_mode']) && !$isSuperAdmin && !$hasMaintenanceAdmin) {
+            error_log("ERROR: Permission denied for maintenance_mode");
             http_response_code(403);
             echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN nebo MAINTENANCE_ADMIN může měnit maintenance_mode'));
             return;
@@ -147,40 +168,64 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
         );
         
         $db->beginTransaction();
+        error_log("Transaction started");
         
         foreach ($mapping as $frontKey => $dbKey) {
             if (!isset($settings[$frontKey])) continue;
             
             $value = $settings[$frontKey];
+            error_log("Processing: $frontKey => $dbKey = " . json_encode($value));
             
             // Převod boolean na string
             if (is_bool($value)) {
                 $value = $value ? '1' : '0';
             }
             
+            // Převod NULL na string 'NULL' pro hierarchy_profile_id
+            if ($value === null || $value === 'null') {
+                $value = 'NULL';
+            }
+            
+            // Převod čísel na string
+            if (is_numeric($value)) {
+                $value = (string)$value;
+            }
+            
+            error_log("Final value for $dbKey: " . $value);
+            
             // INSERT nebo UPDATE
             $sql = "
                 INSERT INTO " . TBL_NASTAVENI_GLOBALNI . " (klic, hodnota, vytvoreno) 
                 VALUES (:klic, :hodnota, NOW())
-                ON DUPLICATE KEY UPDATE hodnota = :hodnota, aktualizovano = NOW()
+                ON DUPLICATE KEY UPDATE hodnota = VALUES(hodnota), aktualizovano = NOW()
             ";
             
-            $stmt = $db->prepare($sql);
-            $stmt->bindParam(':klic', $dbKey, PDO::PARAM_STR);
-            $stmt->bindParam(':hodnota', $value, PDO::PARAM_STR);
-            $stmt->execute();
+            try {
+                $stmt = $db->prepare($sql);
+                $stmt->bindValue(':klic', $dbKey, PDO::PARAM_STR);
+                $stmt->bindValue(':hodnota', $value, PDO::PARAM_STR);
+                $stmt->execute();
+                error_log("✓ Saved: $dbKey");
+            } catch (Exception $e) {
+                error_log("✗ ERROR saving $dbKey: " . $e->getMessage());
+                throw $e;
+            }
         }
         
         $db->commit();
+        error_log("Transaction committed");
         
         http_response_code(200);
         echo json_encode(array('status' => 'ok', 'message' => 'Nastavení uloženo'));
         
     } catch (Exception $e) {
-        $db->rollBack();
-        error_log("Chyba při ukládání nastavení: " . $e->getMessage());
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log("ERROR in handle_save_settings: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
         http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Chyba při ukládání nastavení'));
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při ukládání nastavení: ' . $e->getMessage()));
     }
 }
 
