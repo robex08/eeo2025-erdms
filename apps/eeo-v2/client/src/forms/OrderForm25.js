@@ -4045,15 +4045,15 @@ const transformBackendDataToFrontend = (backendData) => {
  * Helper funkce pro zobrazení LP kódu s rokem
  * Přidává zkrácený rok k číslu LP: LPIT1 → LPIT1'25 (pro rok 2025)
  * @param {string} cisloLp - Číslo LP (např. "LPIT1")
- * @param {string|Date} platneOd - Datum platnosti od
+ * @param {string|Date} platneDo - Datum platnosti do
  * @returns {string} - Číslo LP s rokem (např. "LPIT1'25")
  */
-const formatLpWithYear = (cisloLp, platneOd) => {
+const formatLpWithYear = (cisloLp, platneDo) => {
   if (!cisloLp) return '';
-  if (!platneOd) return cisloLp;
+  if (!platneDo) return cisloLp;
   
   try {
-    const date = typeof platneOd === 'string' ? new Date(platneOd) : platneOd;
+    const date = typeof platneDo === 'string' ? new Date(platneDo) : platneDo;
     const year = date.getFullYear();
     const shortYear = year.toString().slice(-2); // Poslední 2 číslice roku
     return `${cisloLp}'${shortYear}`;
@@ -5801,7 +5801,7 @@ function OrderForm25() {
         if (loadedData?.financovani?.lp_nazvy && Array.isArray(loadedData.financovani.lp_nazvy)) {
           const lpOptions = loadedData.financovani.lp_nazvy
             .map(lp => {
-              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
               return {
                 id: lp.id,
                 kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
@@ -5812,6 +5812,7 @@ function OrderForm25() {
                 zbyva: lp.zbyva || lp.zbyva_skutecne,
                 rok: lp.rok,
                 platne_od: lp.platne_od,
+                platne_do: lp.platne_do,
                 label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
               };
             })
@@ -5869,7 +5870,7 @@ function OrderForm25() {
                     console.warn(`⚠️ LP ${lpKod} (ID: ${originalValue}) nebylo nalezeno nebo nemá platná data`);
                     return null;
                   }
-                  const lpKodWithYear = formatLpWithYear(lpDetail.cislo_lp || lpDetail.kod, lpDetail.platne_od);
+                  const lpKodWithYear = formatLpWithYear(lpDetail.cislo_lp || lpDetail.kod, lpDetail.platne_do);
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
@@ -5880,6 +5881,7 @@ function OrderForm25() {
                     zbyva: lpDetail.zbyva_skutecne || 0,
                     rok: lpDetail.rok,
                     platne_od: lpDetail.platne_od,
+                    platne_do: lpDetail.platne_do,
                     label: `${lpKodWithYear} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
                   };
                 } catch (err) {
@@ -10667,7 +10669,7 @@ function OrderForm25() {
         if (result.financovani?.lp_nazvy && Array.isArray(result.financovani.lp_nazvy)) {
           const lpOptions = result.financovani.lp_nazvy
             .map(lp => {
-              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
               return {
                 id: lp.id,
                 kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
@@ -10678,6 +10680,7 @@ function OrderForm25() {
                 zbyva: lp.zbyva || lp.zbyva_skutecne,
                 rok: lp.rok,
                 platne_od: lp.platne_od,
+                platne_do: lp.platne_do,
                 label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
               };
             })
@@ -11258,7 +11261,7 @@ function OrderForm25() {
           if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
             const lpOptions = freshOrderData.financovani.lp_nazvy
               .map(lp => {
-                const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+                const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
                 return {
                   id: lp.id,
                   kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
@@ -11269,6 +11272,7 @@ function OrderForm25() {
                   zbyva: lp.zbyva || lp.zbyva_skutecne,
                   rok: lp.rok,
                   platne_od: lp.platne_od,
+                  platne_do: lp.platne_do,
                   label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
                 };
               })
@@ -17997,7 +18001,7 @@ function OrderForm25() {
       case 'lp_kod':
         // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev + rok
         if (option.cislo_lp) {
-          const lpKodWithYear = formatLpWithYear(option.cislo_lp, option.platne_od);
+          const lpKodWithYear = formatLpWithYear(option.cislo_lp, option.platne_do);
           return `${lpKodWithYear} - ${option.nazev_uctu || 'Bez názvu'}`;
         }
         return `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
@@ -18836,7 +18840,7 @@ function OrderForm25() {
                     const isNegative = zbyva < 0;
                     const lpOption = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id);
                     const lpCislo = lpOption?.cislo_lp || lp_id;
-                    const lpCisloWithYear = formatLpWithYear(lpCislo, lpOption?.platne_od);
+                    const lpCisloWithYear = formatLpWithYear(lpCislo, lpOption?.platne_do);
                     const lpNazev = lpOption?.nazev_uctu || lpOption?.nazev || '';
                     
                     // Získat informaci o správci z detail (pokud je načten)
