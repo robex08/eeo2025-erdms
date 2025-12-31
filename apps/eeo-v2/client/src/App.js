@@ -75,9 +75,44 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
   const [maintenanceMode, setMaintenanceMode] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
   
+  // SUPERADMIN role má automatický přístup
   const isSuperAdmin = React.useMemo(() => {
     return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
   }, [userDetail]);
+  
+  // Kontrola práva MAINTENANCE_ADMIN (z rolí nebo přímých práv)
+  const hasMaintenanceAdmin = React.useMemo(() => {
+    if (!userDetail) return false;
+    
+    // Kontrola přímých práv
+    if (userDetail.direct_rights) {
+      const hasDirectRight = Array.isArray(userDetail.direct_rights) 
+        ? userDetail.direct_rights.some(r => 
+            (typeof r === 'string' && r === 'MAINTENANCE_ADMIN') ||
+            (typeof r === 'object' && r.kod_prava === 'MAINTENANCE_ADMIN')
+          )
+        : false;
+      if (hasDirectRight) return true;
+    }
+    
+    // Kontrola práv z rolí
+    if (userDetail.roles && Array.isArray(userDetail.roles)) {
+      for (const role of userDetail.roles) {
+        if (role.rights && Array.isArray(role.rights)) {
+          const hasRoleRight = role.rights.some(r => 
+            (typeof r === 'string' && r === 'MAINTENANCE_ADMIN') ||
+            (typeof r === 'object' && r.kod_prava === 'MAINTENANCE_ADMIN')
+          );
+          if (hasRoleRight) return true;
+        }
+      }
+    }
+    
+    return false;
+  }, [userDetail]);
+  
+  // Kombinovaná kontrola: SUPERADMIN NEBO MAINTENANCE_ADMIN
+  const canBypassMaintenance = isSuperAdmin || hasMaintenanceAdmin;
   
   useEffect(() => {
     const checkMaintenance = async () => {
@@ -111,8 +146,8 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
     return null; // Tichá kontrola na pozadí, žádný loading
   }
   
-  // Pokud je údržba aktivní a uživatel NENÍ SUPERADMIN a JE přihlášen
-  if (maintenanceMode && isLoggedIn && !isSuperAdmin) {
+  // Pokud je údržba aktivní a uživatel NEMŮŽE obejít údržbu (není SUPERADMIN ani MAINTENANCE_ADMIN)
+  if (maintenanceMode && isLoggedIn && !canBypassMaintenance) {
     return (
       <Suspense fallback={null}>
         <MaintenancePage />
