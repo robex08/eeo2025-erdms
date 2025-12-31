@@ -120,7 +120,13 @@ export const uploadManual = async (file, token, username) => {
     
     console.log('  Posting to:', url);
     
-    const response = await axios.post(url, formData);
+    const response = await axios.post(url, formData, {
+      timeout: 300000, // 5 minut timeout pro velké soubory
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        console.log(`  Upload progress: ${percentCompleted}%`);
+      }
+    });
     
     console.log('✅ Upload SUCCESS:', response.data);
     return response.data;

@@ -1,0 +1,46 @@
+SECTION
+=======================================================================
+INFO
+1. DATABASE SIZE & STRUCTURE
+SECTION
+=======================================================================
+Database	Tables	Size_MB	Data_MB	Index_MB
+eeo2025	89	18.57	9.43	9.13
+eeo2025-dev	89	32.00	20.04	11.95
+SECTION
+=======================================================================
+INFO
+2. OBJEDNÁVKY (25a_objednavky)
+SECTION
+=======================================================================
+Total Orders	Unique IDs	Duplicate IDs	Without Number	Without Date	Without Subject	Without Status	Zero Price	Without User	Without Supplier
+7	7	0	0	0	0	0	0	0	7
+INFO
+Date Range:
+First Order	Last Order	Days Range
+2000-10-18 23:31:03	2025-12-30 21:43:52	9204
+INFO
+Orders by Status:
+Status	Count	Avg Price
+Dokončená	2	7500.00
+Odeslaná dodavateli	1	5000.00
+Schválená	1	8000.00
+Rozpracovaná	1	400.00
+Ke schválení	1	5000.00
+Věcná správnost	1	85000.00
+SECTION
+=======================================================================
+INFO
+3. ORDER ITEMS (25a_objednavky_polozky)
+SECTION
+=======================================================================
+--------------
+SELECT 
+    COUNT(*) as 'Total Items',
+    COUNT(DISTINCT id) as 'Unique Items',
+    SUM(mnozstvi) as 'Total Quantity',
+    ROUND(SUM(cena_celkem_s_dph), 2) as 'Total Value'
+FROM 25a_objednavky_polozky
+--------------
+
+ERROR 1054 (42S22) at line 69: Unknown column 'mnozstvi' in 'SELECT'

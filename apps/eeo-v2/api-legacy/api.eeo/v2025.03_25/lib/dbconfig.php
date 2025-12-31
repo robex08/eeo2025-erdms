@@ -51,8 +51,8 @@ return [
         // PROD: /var/www/erdms-platform/data/eeo-v2/sablony/
         'docx_templates_path' => getenv('DOCX_TEMPLATES_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/sablony/',
         
-        // Maximální velikost souboru v bajtech (20MB)
-        'max_file_size' => 20 * 1024 * 1024,
+        // Maximální velikost souboru v bajtech (50MB)
+        'max_file_size' => 50 * 1024 * 1024,
         
         // Povolené přípony souborů
         'allowed_extensions' => [
