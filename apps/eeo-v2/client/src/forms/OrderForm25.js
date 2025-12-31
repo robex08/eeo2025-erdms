@@ -4041,6 +4041,27 @@ const transformBackendDataToFrontend = (backendData) => {
   return transformed;
 };
 
+/**
+ * Helper funkce pro zobrazení LP kódu s rokem
+ * Přidává zkrácený rok k číslu LP: LPIT1 → LPIT1'25 (pro rok 2025)
+ * @param {string} cisloLp - Číslo LP (např. "LPIT1")
+ * @param {string|Date} platneOd - Datum platnosti od
+ * @returns {string} - Číslo LP s rokem (např. "LPIT1'25")
+ */
+const formatLpWithYear = (cisloLp, platneOd) => {
+  if (!cisloLp) return '';
+  if (!platneOd) return cisloLp;
+  
+  try {
+    const date = typeof platneOd === 'string' ? new Date(platneOd) : platneOd;
+    const year = date.getFullYear();
+    const shortYear = year.toString().slice(-2); // Poslední 2 číslice roku
+    return `${cisloLp}'${shortYear}`;
+  } catch (e) {
+    return cisloLp; // Fallback při chybě
+  }
+};
+
 // OrderForm25 - Modern form for 2025 orders following workflow phases
 function OrderForm25() {
   const navigate = useNavigate();
@@ -5779,17 +5800,21 @@ function OrderForm25() {
         // Extrahuj LP z financovani.lp_nazvy (primární zdroj pro položky)
         if (loadedData?.financovani?.lp_nazvy && Array.isArray(loadedData.financovani.lp_nazvy)) {
           const lpOptions = loadedData.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
+            .map(lp => {
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+              return {
+                id: lp.id,
+                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                nazev: lp.nazev || 'Bez názvu',
+                kategorie: lp.kategorie,
+                limit: lp.limit || lp.celkovy_limit,
+                cerpano: lp.cerpano || lp.skutecne_cerpano,
+                zbyva: lp.zbyva || lp.zbyva_skutecne,
+                rok: lp.rok,
+                platne_od: lp.platne_od,
+                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+              };
+            })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
           
           setLpOptionsForItems(lpOptions);
@@ -5844,6 +5869,7 @@ function OrderForm25() {
                     console.warn(`⚠️ LP ${lpKod} (ID: ${originalValue}) nebylo nalezeno nebo nemá platná data`);
                     return null;
                   }
+                  const lpKodWithYear = formatLpWithYear(lpDetail.cislo_lp || lpDetail.kod, lpDetail.platne_od);
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
@@ -5853,7 +5879,8 @@ function OrderForm25() {
                     cerpano: lpDetail.skutecne_cerpano || 0,
                     zbyva: lpDetail.zbyva_skutecne || 0,
                     rok: lpDetail.rok,
-                    label: `${lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
+                    platne_od: lpDetail.platne_od,
+                    label: `${lpKodWithYear} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
                   };
                 } catch (err) {
                   console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${originalValue}):`, err);
@@ -10639,17 +10666,21 @@ function OrderForm25() {
         // 🎯 NAČÍST LP OPTIONS z enriched response (z financovani.lp_nazvy)
         if (result.financovani?.lp_nazvy && Array.isArray(result.financovani.lp_nazvy)) {
           const lpOptions = result.financovani.lp_nazvy
-            .map(lp => ({
-              id: lp.id,
-              kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-              nazev: lp.nazev || 'Bez názvu',
-              kategorie: lp.kategorie,
-              limit: lp.limit || lp.celkovy_limit,
-              cerpano: lp.cerpano || lp.skutecne_cerpano,
-              zbyva: lp.zbyva || lp.zbyva_skutecne,
-              rok: lp.rok,
-              label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-            }))
+            .map(lp => {
+              const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+              return {
+                id: lp.id,
+                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                nazev: lp.nazev || 'Bez názvu',
+                kategorie: lp.kategorie,
+                limit: lp.limit || lp.celkovy_limit,
+                cerpano: lp.cerpano || lp.skutecne_cerpano,
+                zbyva: lp.zbyva || lp.zbyva_skutecne,
+                rok: lp.rok,
+                platne_od: lp.platne_od,
+                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+              };
+            })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
           
           setLpOptionsForItems(lpOptions);
@@ -11226,17 +11257,21 @@ function OrderForm25() {
           
           if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
             const lpOptions = freshOrderData.financovani.lp_nazvy
-              .map(lp => ({
-                id: lp.id,
-                kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-                nazev: lp.nazev || 'Bez názvu',
-                kategorie: lp.kategorie,
-                limit: lp.limit || lp.celkovy_limit,
-                cerpano: lp.cerpano || lp.skutecne_cerpano,
-                zbyva: lp.zbyva || lp.zbyva_skutecne,
-                rok: lp.rok,
-                label: `${lp.cislo_lp || lp.kod || `LP${lp.id}`} - ${lp.nazev || 'Bez názvu'}`
-              }))
+              .map(lp => {
+                const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_od);
+                return {
+                  id: lp.id,
+                  kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
+                  nazev: lp.nazev || 'Bez názvu',
+                  kategorie: lp.kategorie,
+                  limit: lp.limit || lp.celkovy_limit,
+                  cerpano: lp.cerpano || lp.skutecne_cerpano,
+                  zbyva: lp.zbyva || lp.zbyva_skutecne,
+                  rok: lp.rok,
+                  platne_od: lp.platne_od,
+                  label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+                };
+              })
               .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
             
             setLpOptionsForItems(lpOptions);
@@ -17960,10 +17995,12 @@ function OrderForm25() {
         // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek
         return option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
       case 'lp_kod':
-        // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev
-        return option.cislo_lp
-          ? `${option.cislo_lp} - ${option.nazev_uctu || 'Bez názvu'}`
-          : `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
+        // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev + rok
+        if (option.cislo_lp) {
+          const lpKodWithYear = formatLpWithYear(option.cislo_lp, option.platne_od);
+          return `${lpKodWithYear} - ${option.nazev_uctu || 'Bez názvu'}`;
+        }
+        return `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
         // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek + indikátor majetku
         const druhLabel = option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
@@ -18799,13 +18836,14 @@ function OrderForm25() {
                     const isNegative = zbyva < 0;
                     const lpOption = lpKodyOptions.find(opt => (opt.id || opt.kod) === lp_id);
                     const lpCislo = lpOption?.cislo_lp || lp_id;
+                    const lpCisloWithYear = formatLpWithYear(lpCislo, lpOption?.platne_od);
                     const lpNazev = lpOption?.nazev_uctu || lpOption?.nazev || '';
                     
                     // Získat informaci o správci z detail (pokud je načten)
                     const spravce = detail?.spravce;
                     const spravceText = spravce ? `${spravce.jmeno || ''} ${spravce.prijmeni || ''}`.trim() : '';
                     const tooltipText = [
-                      lpNazev ? `${lpCislo} - ${lpNazev}` : lpCislo,
+                      lpNazev ? `${lpCisloWithYear} - ${lpNazev}` : lpCisloWithYear,
                       spravceText ? `PO: ${spravceText}` : ''
                     ].filter(Boolean).join('\n');
                     
