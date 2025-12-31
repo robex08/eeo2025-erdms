@@ -3354,7 +3354,7 @@ function handle_orders_next_number($input, $config, $queries) {
         
         $ico = $org_data['organizace_ico'];
         $usek_zkr = $org_data['usek_zkr'];
-        $current_year = date('Y');
+        $current_year = TimezoneHelper::getCzechDateTime('Y');
         
         // Format numbers with leading zeros to 4 digits
         $formatted_last_used = sprintf('%04d', $last_used_number);
@@ -3977,7 +3977,7 @@ function handle_create_order($input, $config, $queries) {
                 if ($org_data && $nextResult) {
                     $ico = $org_data['organizace_ico'];
                     $usek_zkr = $org_data['usek_zkr'];
-                    $current_year = date('Y');
+                    $current_year = TimezoneHelper::getCzechDateTime('Y');
                     $formatted_number = sprintf('%04d', $nextResult['next_number']);
                     $orderNumber = 'O-' . $formatted_number . '/' . $ico . '/' . $current_year . '/' . $usek_zkr;
                     

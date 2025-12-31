@@ -716,7 +716,7 @@ class OrderV2Handler {
             
             $lastUsedNumber = (int)$result['last_used_number'];
             $nextNumber = $lastUsedNumber + 1;
-            $currentYear = date('Y');
+            $currentYear = TimezoneHelper::getCzechDateTime('Y');
             
             // Formátování čísel s nulami
             $formattedLastUsed = sprintf('%04d', $lastUsedNumber);
