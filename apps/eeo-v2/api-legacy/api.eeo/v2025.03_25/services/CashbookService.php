@@ -252,6 +252,15 @@ class CashbookService {
                 array('stav_knihy' => 'aktivni'), 
                 array('stav_knihy' => 'uzavrena_uzivatelem'));
             
+            // 🔔 NOTIFICATION TRIGGER: CASHBOOK_MONTH_CLOSED
+            try {
+                require_once __DIR__ . '/../lib/notificationHandlers.php';
+                triggerNotification($this->db, 'CASHBOOK_MONTH_CLOSED', $bookId, $userId);
+                error_log("🔔 Triggered: CASHBOOK_MONTH_CLOSED for book $bookId");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+            
             return array(
                 'status' => 'ok',
                 'message' => 'Měsíc byl uzavřen. Čeká na schválení správce.'
@@ -287,6 +296,15 @@ class CashbookService {
             $this->auditModel->logAction('kniha', $bookId, 'zamknuti', $adminId, 
                 array('stav_knihy' => 'uzavrena_uzivatelem'), 
                 array('stav_knihy' => 'zamknuta_spravcem'));
+            
+            // 🔔 NOTIFICATION TRIGGER: CASHBOOK_MONTH_LOCKED (URGENT!)
+            try {
+                require_once __DIR__ . '/../lib/notificationHandlers.php';
+                triggerNotification($this->db, 'CASHBOOK_MONTH_LOCKED', $bookId, $adminId);
+                error_log("🔔 Triggered: CASHBOOK_MONTH_LOCKED for book $bookId");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
             
             return array(
                 'status' => 'ok',

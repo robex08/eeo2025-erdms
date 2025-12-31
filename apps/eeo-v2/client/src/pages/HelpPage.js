@@ -1161,7 +1161,7 @@ const HelpPage = () => {
       <FaqSection>
         <SectionTitle>
           <FontAwesomeIcon icon={faQuestionCircle} />
-          Časté dotazy
+          Nejčastější otázky a problémy
         </SectionTitle>
         
         <FaqItem>
@@ -1169,14 +1169,35 @@ const HelpPage = () => {
             $expanded={expandedFaq === 0} 
             onClick={() => toggleFaq(0)}
           >
-            Aplikace se chová podezřele nebo nereaguje správně
+            🔍 Nevidím svou objednávku nebo fakturu
             <FontAwesomeIcon icon={expandedFaq === 0 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 0}>
-            <p>Pokud aplikace nereaguje správně, nejdříve zkuste <strong>obnovit stránku</strong>:</p>
-            <p>• Stiskněte <kbd>F5</kbd> pro základní obnovení<br />
-            • Stiskněte <kbd>Ctrl+Shift+R</kbd> pro úplné obnovení s vyčištěním cache</p>
-            <p>Toto řeší většinu problémů s načítáním dat nebo zobrazením stránek.</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#334155' }}>
+                <strong style={{ color: '#0f172a' }}>Nejčastější příčinou jsou aktivní filtry.</strong>
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🎯</span>
+                  <span style={{ color: '#64748b' }}>V přehledu objednávek → klikněte na <strong style={{ color: '#dc2626' }}>Vymazat filtr</strong></span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🎯</span>
+                  <span style={{ color: '#64748b' }}>V přehledu faktur → klikněte na <strong style={{ color: '#dc2626' }}>Vymazat vše</strong></span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🔎</span>
+                  <span style={{ color: '#64748b' }}>Použijte globální vyhledávání pro konkrétní objednávku</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#fef3c7', borderLeft: '4px solid #f59e0b', borderRadius: '6px' }}>
+              <strong style={{ color: '#92400e', fontSize: '0.95rem' }}>💡 Tip:</strong>
+              <span style={{ color: '#78350f', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                První věc, kterou vyzkoušejte, je vždy smazání všech filtrů!
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
 
@@ -1185,15 +1206,31 @@ const HelpPage = () => {
             $expanded={expandedFaq === 1} 
             onClick={() => toggleFaq(1)}
           >
-            Formulář objednávky se chová nekorektně
+            🔄 EEO nereaguje nebo je stránka prázdná
             <FontAwesomeIcon icon={expandedFaq === 1 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 1}>
-            <p>Pokud máte problémy s formulářem objednávky (nenačítá se, nejdou uložit data, chybí pole):</p>
-            <p><strong>1.</strong> Zavřete aktuální formulář kliknutím na tlačítko ZAVŘÍT<br />
-            <strong>2.</strong> Vraťte se zpět na seznam objednávek<br />
-            <strong>3.</strong> Znovu otevřete objednávku</p>
-            <p>Toto resetuje stav formuláře a obvykle vyřeší problémy s načítáním nebo uložením dat.</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: '600' }}>
+                Vyzkoušejte obnovení stránky:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <kbd style={{ padding: '0.375rem 0.625rem', backgroundColor: '#1e293b', color: 'white', border: 'none', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>F5</kbd>
+                  <span style={{ color: '#475569', fontSize: '0.9rem' }}>Základní obnovení stránky</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <kbd style={{ padding: '0.375rem 0.625rem', backgroundColor: '#1e293b', color: 'white', border: 'none', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>Ctrl+Shift+R</kbd>
+                  <span style={{ color: '#475569', fontSize: '0.9rem' }}>Úplné obnovení s vyčištěním cache</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#dbeafe', borderLeft: '4px solid #3b82f6', borderRadius: '6px' }}>
+              <strong style={{ color: '#1e40af', fontSize: '0.95rem' }}>ℹ️ Info:</strong>
+              <span style={{ color: '#1e3a8a', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                Úplné obnovení vyřeší většinu problémů s načítáním nebo zobrazením.
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
 
@@ -1202,15 +1239,44 @@ const HelpPage = () => {
             $expanded={expandedFaq === 2} 
             onClick={() => toggleFaq(2)}
           >
-            Nelze uložit změny v objednávce
+            ⚠️ Nelze uložit objednávku nebo fakturu
             <FontAwesomeIcon icon={expandedFaq === 2 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 2}>
-            <p>Pokud se vám nedaří uložit změny:</p>
-            <p><strong>1.</strong> Zkontrolujte, zda jsou vyplněna všechna povinná pole (označená červenou hvězdičkou)<br />
-            <strong>2.</strong> Zkontrolujte, zda máte oprávnění k úpravám této objednávky<br />
-            <strong>3.</strong> Zkuste obnovit stránku a změny zadejte znovu</p>
-            <p>Pokud problém přetrvává, kontaktujte nás na tím podpory.</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: '600' }}>
+                Postupujte následovně:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', padding: '0.625rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontWeight: 'bold', color: '#3b82f6', minWidth: '1.5rem' }}>1.</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#334155', fontSize: '0.9rem', fontWeight: '600' }}>Zkontrolujte povinná pole</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '0.25rem' }}>Označena červenou hvězdičkou <span style={{ color: '#dc2626' }}>*</span></div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', padding: '0.625rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontWeight: 'bold', color: '#3b82f6', minWidth: '1.5rem' }}>2.</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#334155', fontSize: '0.9rem', fontWeight: '600' }}>Obnovte stránku</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '0.25rem' }}>Stiskněte <kbd style={{ padding: '0.125rem 0.375rem', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '3px', fontSize: '0.8rem' }}>F5</kbd></div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', padding: '0.625rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontWeight: 'bold', color: '#3b82f6', minWidth: '1.5rem' }}>3.</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#334155', fontSize: '0.9rem', fontWeight: '600' }}>Zavřete a znovu otevřete formulář</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '0.25rem' }}>Někdy pomůže "čerstvý start"</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#fee2e2', borderLeft: '4px solid #dc2626', borderRadius: '6px' }}>
+              <strong style={{ color: '#991b1b', fontSize: '0.95rem' }}>⚠️ Stále problém?</strong>
+              <span style={{ color: '#7f1d1d', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                Kontaktujte IT podporu a popište chybové hlášení.
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
 
@@ -1219,16 +1285,43 @@ const HelpPage = () => {
             $expanded={expandedFaq === 3} 
             onClick={() => toggleFaq(3)}
           >
-            Nevidím objednávky nebo faktury
+            ⭐ Jak přidat EEO do oblíbených v prohlížeči?
             <FontAwesomeIcon icon={expandedFaq === 3 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 3}>
-            <p>Pokud nevidíte očekávané objednávky nebo faktury:</p>
-            <p><strong>1.</strong> Zkontrolujte nastavení filtrů (datum, stav, organizace)<br />
-            <strong>2.</strong> Klikněte na červené tlačítko "Vymazat filtry" - často to vyřeší problém<br />
-            <strong>3.</strong> Zkontrolujte, zda jste přihlášeni pod správným účtem<br />
-            <strong>4.</strong> Zkuste vyhledat podle čísla objednávky v globálním vyhledávání</p>
-            <p>Můžete vidět pouze objednávky, ke kterým máte přístup na základě vašich oprávnění a organizace.</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: '600' }}>
+                Podle vašeho prohlížeče:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🔷</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Chrome / Edge</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    Klikněte na <strong>★</strong> hvězdičku vpravo nahoře v adresním řádku<br />
+                    Nebo stiskněte <kbd style={{ padding: '0.125rem 0.375rem', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '3px' }}>Ctrl+D</kbd>
+                  </div>
+                </div>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🦊</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Firefox</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    Klikněte na <strong>★</strong> hvězdičku v adresním řádku<br />
+                    Nebo stiskněte <kbd style={{ padding: '0.125rem 0.375rem', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '3px' }}>Ctrl+D</kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#f0fdf4', borderLeft: '4px solid #22c55e', borderRadius: '6px' }}>
+              <strong style={{ color: '#166534', fontSize: '0.95rem' }}>✅ Doporučení:</strong>
+              <span style={{ color: '#14532d', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                Pro rychlý přístup si vytvořte záložku nebo PIN na hlavní panel prohlížeče.
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
 
@@ -1237,19 +1330,56 @@ const HelpPage = () => {
             $expanded={expandedFaq === 4} 
             onClick={() => toggleFaq(4)}
           >
-            Jak nahrát přílohu k objednávce nebo faktuře?
+            📱 Jak nainstalovat EEO jako aplikaci (PWA)?
             <FontAwesomeIcon icon={expandedFaq === 4 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 4}>
-            <p><strong>Pro objednávky:</strong></p>
-            <p>1. Otevřete detail objednávky<br />
-            2. Najděte sekci "Přílohy"<br />
-            3. Klikněte na "Nahrát přílohu" nebo přetáhněte soubor do oblasti</p>
-            <p><strong>Pro faktury:</strong></p>
-            <p>1. V detailu objednávky přejděte na záložku "Faktury"<br />
-            2. Otevřete detail faktury<br />
-            3. Nahrávejte přílohy stejným způsobem</p>
-            <p><strong>Podporované formáty:</strong> PDF, JPG, PNG, ISDOC (max. 10 MB)</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: '600' }}>
+                EEO můžete nainstalovat jako samostatnou aplikaci:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>💻</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Na počítači (Chrome/Edge)</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    1. Klikněte na ikonu <strong>⊕</strong> (instalovat) v adresním řádku vpravo<br />
+                    2. Nebo v menu (⋮) → "Nainstalovat EEO"<br />
+                    3. Potvrďte instalaci
+                  </div>
+                </div>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>📱</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Na mobilu (Android)</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    1. Otevřete menu (⋮) → "Přidat na plochu"<br />
+                    2. Nebo klikněte na vyskakovací banner "Nainstalovat aplikaci"<br />
+                    3. Ikona se objeví na domovské obrazovce
+                  </div>
+                </div>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🍎</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Na iPhone/iPad (Safari)</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    1. Klikněte na tlačítko "Sdílet" <strong>⎙</strong> (dole uprostřed)<br />
+                    2. Vyberte "Přidat na plochu"<br />
+                    3. Potvrďte název a klikněte "Přidat"
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#ede9fe', borderLeft: '4px solid #a855f7', borderRadius: '6px' }}>
+              <strong style={{ color: '#6b21a8', fontSize: '0.95rem' }}>🚀 Výhody PWA:</strong>
+              <span style={{ color: '#581c87', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                Rychlejší spuštění, ikona na ploše, funguje i offline (částečně).
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
 
@@ -1258,15 +1388,71 @@ const HelpPage = () => {
             $expanded={expandedFaq === 5} 
             onClick={() => toggleFaq(5)}
           >
-            Zapomněl jsem heslo nebo nejde přihlášení
+            📎 Jak nahrát přílohu?
             <FontAwesomeIcon icon={expandedFaq === 5 ? faChevronUp : faChevronDown} />
           </FaqQuestion>
           <FaqAnswer $expanded={expandedFaq === 5}>
-            <p>Přihlášení do systému EEO probíhá prostřednictvím <strong>Microsoft Azure</strong>. Používejte stejné přihlašovací údaje jako pro ostatní pracovní aplikace.</p>
-            <p>Pokud jste zapomněli heslo:</p>
-            <p>1. Klikněte na "Zapomněl jsem heslo" na přihlašovací stránce<br />
-            2. Postupujte podle pokynů pro obnovení<br />
-            3. Nebo kontaktujte IT podporu</p>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>📄</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Pro objednávky</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    Detail objednávky → sekce "Přílohy" → "Nahrát přílohu"<br />
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>(nebo přetáhněte soubor myší)</span>
+                  </div>
+                </div>
+                <div style={{ padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '1.1rem' }}>🧾</span>
+                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Pro faktury</strong>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                    Detail objednávky → záložka "Faktury" → detail faktury → nahrát přílohu
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#f1f5f9', borderLeft: '4px solid #64748b', borderRadius: '6px' }}>
+              <strong style={{ color: '#334155', fontSize: '0.95rem' }}>📋 Podporované formáty:</strong>
+              <span style={{ color: '#475569', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                PDF, JPG, PNG, ISDOC (max. 10 MB)
+              </span>
+            </div>
+          </FaqAnswer>
+        </FaqItem>
+
+        <FaqItem>
+          <FaqQuestion 
+            $expanded={expandedFaq === 6} 
+            onClick={() => toggleFaq(6)}
+          >
+            🔑 Zapomněl jsem heslo
+            <FontAwesomeIcon icon={expandedFaq === 6 ? faChevronUp : faChevronDown} />
+          </FaqQuestion>
+          <FaqAnswer $expanded={expandedFaq === 6}>
+            <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#334155' }}>
+                Pokud jste zapomněli heslo, kontaktujte prosím IT podporu.
+              </p>
+              <div style={{ padding: '0.875rem', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '1.1rem' }}>📞</span>
+                  <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>Kontakt na IT podporu</strong>
+                </div>
+                <div style={{ color: '#64748b', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                  IT podpora vám pomůže s resetováním hesla a zřízením nového přístupu.
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '0.875rem', backgroundColor: '#fef3c7', borderLeft: '4px solid #f59e0b', borderRadius: '6px' }}>
+              <strong style={{ color: '#92400e', fontSize: '0.95rem' }}>💡 Tip:</strong>
+              <span style={{ color: '#78350f', fontSize: '0.95rem', marginLeft: '0.5rem' }}>
+                Pro rychlejší vyřízení mějte připravené své uživatelské jméno nebo email.
+              </span>
+            </div>
           </FaqAnswer>
         </FaqItem>
       </FaqSection>

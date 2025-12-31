@@ -337,12 +337,13 @@ function handle_invoices25_update($input, $config, $queries) {
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
 
-        // Ověř, že faktura existuje
+        // Ověř, že faktura existuje + načti aktuální data pro detekci změn
         $faktury_table = get_invoices_table_name();
-        $check_stmt = $db->prepare("SELECT id FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
+        $check_stmt = $db->prepare("SELECT id, stav, objednavka_id, vecna_spravnost_potvrzeno FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
         $check_stmt->execute([$faktura_id]);
+        $oldInvoiceData = $check_stmt->fetch(PDO::FETCH_ASSOC);
         
-        if (!$check_stmt->fetch()) {
+        if (!$oldInvoiceData) {
             http_response_code(404);
             echo json_encode(['err' => 'Faktura nenalezena']);
             return;
@@ -509,6 +510,96 @@ function handle_invoices25_update($input, $config, $queries) {
         
         $stmt = $db->prepare($sql);
         $stmt->execute($values);
+
+        // ==========================================
+        // 🔔 NOTIFICATION TRIGGERS - Nové události
+        // ==========================================
+        
+        // Načti aktuální user_id z tokenu
+        $currentUserId = $token_data['id'];
+        
+        // TRIGGER 1: INVOICE_UPDATED - Pouze pokud se nezměnil stav (jinak jsou specifické triggery)
+        $stavChanged = isset($input['stav']) && $input['stav'] !== $oldInvoiceData['stav'];
+        $vecnaSpravnostChanged = isset($input['vecna_spravnost_potvrzeno']) && 
+                                  (int)$input['vecna_spravnost_potvrzeno'] === 1 && 
+                                  (int)$oldInvoiceData['vecna_spravnost_potvrzeno'] !== 1;
+        
+        if (!$stavChanged && !$vecnaSpravnostChanged) {
+            // Standardní update bez změny stavu → INVOICE_UPDATED
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_UPDATED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_UPDATED for invoice $faktura_id");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 2: INVOICE_SUBMITTED - Pokud se změnil stav na určité hodnoty
+        if ($stavChanged) {
+            $newStav = $input['stav'];
+            $submitStates = ['PREDANA', 'KE_KONTROLE', 'SUBMITTED'];
+            
+            if (in_array(strtoupper($newStav), $submitStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_SUBMITTED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_SUBMITTED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // TRIGGER 3: INVOICE_RETURNED - Pokud se změnil stav na vráceno
+            $returnStates = ['VRACENA', 'RETURNED', 'K_DOPLNENI'];
+            if (in_array(strtoupper($newStav), $returnStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_RETURNED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_RETURNED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // TRIGGER 4: INVOICE_REGISTRY_PUBLISHED - Pokud se změnil stav na uveřejněno
+            $publishStates = ['UVEREJNENA', 'PUBLISHED'];
+            if (in_array(strtoupper($newStav), $publishStates)) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_REGISTRY_PUBLISHED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_REGISTRY_PUBLISHED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+        }
+        
+        // TRIGGER 5: INVOICE_MATERIAL_CHECK_APPROVED - Pokud se potvrdila věcná správnost
+        if ($vecnaSpravnostChanged) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 6: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se přiřadila k objednávce
+        $orderAssigned = isset($input['objednavka_id']) && 
+                         !empty($input['objednavka_id']) && 
+                         empty($oldInvoiceData['objednavka_id']);
+        
+        if ($orderAssigned) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
 
         http_response_code(200);
         echo json_encode([

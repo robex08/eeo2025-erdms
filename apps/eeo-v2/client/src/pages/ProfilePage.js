@@ -2756,6 +2756,12 @@ const ProfilePage = () => {
                     {profileData.usek_nazev && (
                       <span> • {safeDisplayValue(profileData.usek_nazev)}</span>
                     )}
+                    {profileData.email && (
+                      <span> • 📧 {safeDisplayValue(profileData.email)}</span>
+                    )}
+                    {profileData.telefon && (
+                      <span> • 📞 {safeDisplayValue(profileData.telefon)}</span>
+                    )}
                     {profileData.dt_posledni_aktivita && (
                       <span> • Poslední aktivita: {formatDateTime(profileData.dt_posledni_aktivita)}</span>
                     )}
@@ -3006,6 +3012,22 @@ const ProfilePage = () => {
                   </InfoContent>
                 </InfoItem>
               )}
+              
+              {/* Rychlý odkaz na Limitované příslušnosti */}
+              <InfoItem style={{ cursor: 'pointer', transition: 'background 0.2s ease' }} onClick={() => setActiveTab('lp')}>
+                <InfoIcon color="#10b981">
+                  <Coins size={16} />
+                </InfoIcon>
+                <InfoContent>
+                  <InfoLabel>Limitované příslušnosti</InfoLabel>
+                  <InfoValue style={{ color: '#10b981', fontWeight: 600 }}>
+                    Zobrazit moje LP →
+                  </InfoValue>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
+                    Klikněte pro zobrazení detailního přehledu čerpání
+                  </div>
+                </InfoContent>
+              </InfoItem>
             </InfoCard>
 
             {/* Sloupec 2: Aktivita účtu */}

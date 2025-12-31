@@ -1205,18 +1205,18 @@ export const NotificationsPage = () => {
     total: notifications.length,
 
     // Statistiky podle stavů objednávek
-    nova: notifications.filter(n => n.type === 'order_status_nova').length,
-    keSchvaleni: notifications.filter(n => n.type === 'order_status_ke_schvaleni').length,
-    schvalena: notifications.filter(n => n.type === 'order_status_schvalena').length,
-    zamitnuta: notifications.filter(n => n.type === 'order_status_zamitnuta').length,
-    cekaSe: notifications.filter(n => n.type === 'order_status_ceka_se').length,
-    odeslana: notifications.filter(n => n.type === 'order_status_odeslana').length,
-    potvrzena: notifications.filter(n => n.type === 'order_status_potvrzena').length,
-    cekaKontrola: notifications.filter(n => n.type === 'order_status_kontrola_ceka').length,
-    vecnaSpravnost: notifications.filter(n => n.type === 'order_status_kontrola_potvrzena').length,
-    registrZverejnena: notifications.filter(n => n.type === 'order_status_registr_zverejnena').length,
-    dokoncena: notifications.filter(n => n.type === 'order_status_dokoncena').length,
-    zrusena: notifications.filter(n => n.type === 'order_status_zrusena').length,
+    nova: notifications.filter(n => n.typ === 'order_status_nova').length,
+    keSchvaleni: notifications.filter(n => n.typ === 'order_status_ke_schvaleni').length,
+    schvalena: notifications.filter(n => n.typ === 'order_status_schvalena').length,
+    zamitnuta: notifications.filter(n => n.typ === 'order_status_zamitnuta').length,
+    cekaSe: notifications.filter(n => n.typ === 'order_status_ceka_se').length,
+    odeslana: notifications.filter(n => n.typ === 'order_status_odeslana').length,
+    potvrzena: notifications.filter(n => n.typ === 'order_status_potvrzena').length,
+    cekaKontrola: notifications.filter(n => n.typ === 'order_status_kontrola_ceka').length,
+    vecnaSpravnost: notifications.filter(n => n.typ === 'order_status_kontrola_potvrzena').length,
+    registrZverejnena: notifications.filter(n => n.typ === 'order_status_registr_zverejnena').length,
+    dokoncena: notifications.filter(n => n.typ === 'order_status_dokoncena').length,
+    zrusena: notifications.filter(n => n.typ === 'order_status_zrusena').length,
   };
 
   // ✅ Paginace - výpočet
@@ -2453,7 +2453,7 @@ export const NotificationsPage = () => {
                             </NotificationHeader>
                             {olderNotif.typ?.includes('order') && olderNotif.data ? (
                               <NotificationMessage style={{ fontSize: '13px', lineHeight: '1.5', marginBottom: '6px' }}>
-                                <strong>Předmět:</strong> {olderNotif.data.order_subject || 'N/A'} | <strong>Cena:</strong> {olderNotif.data.max_price_with_dph || olderNotif.data.max_price || 'N/A'} Kč | <strong>Objednatel:</strong> {olderNotif.data.creator_name || 'N/A'} | <strong>Garant:</strong> {olderNotif.data.garant_name || 'N/A'} | <strong>Příkazce:</strong> {olderNotif.data.prikazce_name || 'N/A'}
+                                <strong>Předmět:</strong> {olderNotif.data.placeholders?.order_subject || olderNotif.data.placeholders?.predmet || 'N/A'} | <strong>Cena:</strong> {olderNotif.data.placeholders?.max_price_with_dph || olderNotif.data.placeholders?.amount || 'N/A'} | <strong>Objednatel:</strong> {olderNotif.data.placeholders?.creator_name || olderNotif.data.placeholders?.objednatel_name || 'N/A'} | <strong>Garant:</strong> {olderNotif.data.placeholders?.garant_name || 'N/A'} | <strong>Příkazce:</strong> {olderNotif.data.placeholders?.prikazce_name || olderNotif.data.placeholders?.schvalovatel_name || 'N/A'}
                               </NotificationMessage>
                             ) : olderNotif.zprava || olderNotif.message ? (
                               <NotificationMessage style={{ fontSize: '13px', lineHeight: '1.5', marginBottom: '6px' }}>

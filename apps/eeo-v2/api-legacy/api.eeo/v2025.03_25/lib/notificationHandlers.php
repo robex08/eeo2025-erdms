@@ -2215,13 +2215,16 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         'errors' => array()
     );
     
-    error_log("════════════════════════════════════════════════════════════════");
-    error_log("🔔 [NotificationRouter] TRIGGER PŘIJAT!");
-    error_log("   Event Type: $eventType");
-    error_log("   Object ID: $objectId");
-    error_log("   Trigger User ID: $triggerUserId");
-    error_log("   Placeholder Data (frontend): " . json_encode($placeholderData));
-    error_log("════════════════════════════════════════════════════════════════");
+    error_log("");
+    error_log("╔════════════════════════════════════════════════════════════════╗");
+    error_log("║  🎯 NOTIFICATION ROUTER - Processing Trigger                   ║");
+    error_log("╠════════════════════════════════════════════════════════════════╣");
+    error_log("║  Event:     " . str_pad($eventType, 50) . "║");
+    error_log("║  Object:    " . str_pad($objectId, 50) . "║");
+    error_log("║  User:      " . str_pad($triggerUserId, 50) . "║");
+    error_log("║  Frontend:  " . str_pad(count($placeholderData) . " placeholders", 50) . "║");
+    error_log("╚════════════════════════════════════════════════════════════════╝");
+    error_log("");
     
     // DEBUG do DB - START
     try {
@@ -2277,6 +2280,14 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                     'keys' => array_keys($dbPlaceholders)
                 ])]);
             } catch (Exception $e) {}
+        } elseif ($objectType === 'invoices') {
+            // Načti placeholders pro faktury
+            $dbPlaceholders = loadInvoicePlaceholders($db, $objectId, $triggerUserId);
+            error_log("📊 [NotificationRouter] Invoice placeholders loaded: " . count($dbPlaceholders) . " keys");
+        } elseif ($objectType === 'cashbook') {
+            // Načti placeholders pro pokladnu
+            $dbPlaceholders = loadCashbookPlaceholders($db, $objectId, $triggerUserId);
+            error_log("📊 [NotificationRouter] Cashbook placeholders loaded: " . count($dbPlaceholders) . " keys");
         } else {
             $dbPlaceholders = array();
             error_log("⚠️ [NotificationRouter] No placeholder loader for object type: $objectType");
@@ -2552,9 +2563,34 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         
         $result['success'] = ($result['sent'] > 0);
         
+        // ═══════════════════════════════════════════════════════════════════
+        // FINÁLNÍ SHRNUTÍ
+        // ═══════════════════════════════════════════════════════════════════
+        error_log("");
+        error_log("╔══════════════════════════════════════════════════════════════╗");
+        error_log("║  🎯 NOTIFICATION ROUTER - FINAL SUMMARY                      ║");
+        error_log("╠══════════════════════════════════════════════════════════════╣");
+        error_log("║  Event:              " . str_pad($eventType, 38) . "║");
+        error_log("║  Object ID:          " . str_pad($objectId, 38) . "║");
+        error_log("║  Recipients Found:   " . str_pad(count($recipients), 38) . "║");
+        error_log("║  Notifications Sent: " . str_pad($result['sent'], 38) . "║");
+        error_log("║  Errors:             " . str_pad(count($result['errors']), 38) . "║");
+        
+        if ($result['success']) {
+            error_log("║                                                              ║");
+            error_log("║  ✅ ✅ ✅  SUCCESS - Notifications sent successfully!         ║");
+        } else {
+            error_log("║                                                              ║");
+            error_log("║  ❌ FAILED - No notifications sent!                          ║");
+        }
+        
+        error_log("╚══════════════════════════════════════════════════════════════╝");
+        error_log("");
+        
     } catch (Exception $e) {
         $result['errors'][] = $e->getMessage();
-        error_log("[NotificationRouter] Exception: " . $e->getMessage());
+        error_log("❌ [NotificationRouter] Exception: " . $e->getMessage());
+        error_log("");
     }
     
     return $result;
@@ -2572,8 +2608,15 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
 function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) {
     $recipients = array();
     
-    error_log("📋 [findNotificationRecipients] GENERIC SYSTEM START");
-    error_log("   Event: $eventType, Object ID: $objectId, Trigger User: $triggerUserId");
+    error_log("");
+    error_log("┌──────────────────────────────────────────────────────────────┐");
+    error_log("│  📊 ORGANIZATIONAL HIERARCHY - Finding Recipients             │");
+    error_log("├──────────────────────────────────────────────────────────────┤");
+    error_log("│  Event Type:   " . str_pad($eventType, 46) . "│");
+    error_log("│  Object ID:    " . str_pad($objectId, 46) . "│");
+    error_log("│  Trigger User: " . str_pad($triggerUserId, 46) . "│");
+    error_log("└──────────────────────────────────────────────────────────────┘");
+    error_log("");
     
     try {
         // 1. Najít aktivní profil hierarchie
@@ -2588,26 +2631,29 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
         $profile = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$profile) {
-            error_log("   ❌ ŽÁDNÝ aktivní hierarchický profil nenalezen!");
+            error_log("❌ ❌ ❌ ŽÁDNÝ AKTIVNÍ HIERARCHICKÝ PROFIL NENALEZEN!");
+            error_log("");
             return $recipients;
         }
         
-        error_log("   ✅ Nalezen profil ID={$profile['id']}");
+        error_log("✅ Nalezen aktivní profil: ID={$profile['id']}");
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
-            error_log("   ❌ Neplatný JSON ve structure_json");
+            error_log("❌ Neplatný JSON ve structure_json");
+            error_log("");
             return $recipients;
         }
         
-        error_log("   📊 Structure: " . count($structure['nodes']) . " nodes, " . count($structure['edges']) . " edges");
+        error_log("📊 Hierarchie: " . count($structure['nodes']) . " nodes, " . count($structure['edges']) . " edges");
         
         // Určit object type z event type
         $objectType = getObjectTypeFromEvent($eventType);
-        error_log("   📦 Object type: $objectType");
+        error_log("📦 Object type: $objectType");
+        error_log("");
         
         // 2. Najít TEMPLATE nodes s tímto event typem
-        error_log("   🔍 Hledám template nodes s event typem '$eventType'...");
+        error_log("🔍 Hledám templates s event typem '$eventType'...");
         $matchingTemplates = 0;
         
         foreach ($structure['nodes'] as $node) {
@@ -2619,7 +2665,9 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
             if (!in_array($eventType, $eventTypes)) continue;
             
             $matchingTemplates++;
-            error_log("      ✅ Template '{$node['data']['name']}' má event '$eventType'");
+            error_log("");
+            error_log("   ✅ MATCH! Template: '{$node['data']['name']}'");
+            error_log("      ↪ Event: '$eventType'");
             
             // 3. Najít všechny EDGES vedoucí z tohoto template
             $edgeCount = 0;
@@ -2867,8 +2915,36 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
             }
         }
         
+        // ═══════════════════════════════════════════════════════════════════
+        // SHRNUTÍ
+        // ═══════════════════════════════════════════════════════════════════
+        error_log("");
+        error_log("┌────────────────────────────────────────────────────────────────┐");
+        error_log("│  📊 ORGANIZATIONAL HIERARCHY - SUMMARY                         │");
+        error_log("├────────────────────────────────────────────────────────────────┤");
+        error_log("│  Event:              " . str_pad($eventType, 38) . "│");
+        error_log("│  Matching Templates: " . str_pad($matchingTemplates, 38) . "│");
+        error_log("│  Total Recipients:   " . str_pad(count($recipients), 38) . "│");
+        
+        if ($matchingTemplates === 0) {
+            error_log("│                                                                │");
+            error_log("│  ⚠️  WARNING: No templates matched this event type!           │");
+            error_log("│      Check organizational hierarchy configuration.            │");
+        } else if (count($recipients) === 0) {
+            error_log("│                                                                │");
+            error_log("│  ⚠️  WARNING: Templates matched but no recipients found!      │");
+            error_log("│      Check edge configurations and user filters.              │");
+        } else {
+            error_log("│                                                                │");
+            error_log("│  ✅ Recipients found and ready to receive notifications       │");
+        }
+        
+        error_log("└────────────────────────────────────────────────────────────────┘");
+        error_log("");
+        
     } catch (Exception $e) {
-        error_log("[findNotificationRecipients] Exception: " . $e->getMessage());
+        error_log("❌ [findNotificationRecipients] Exception: " . $e->getMessage());
+        error_log("");
     }
     
     return $recipients;
@@ -3512,5 +3588,161 @@ function handle_notifications_templates_list($input, $config, $queries) {
         error_log('📧 [Templates] ERROR: ' . $e->getMessage());
         http_response_code(500);
         echo json_encode(array('status' => 'error', 'err' => 'Chyba při načítání šablon: ' . $e->getMessage()));
+    }
+}
+
+// ==========================================
+// NOVÉ FUNKCE PRO TRIGGERY FAKTUR A POKLADNY
+// ==========================================
+
+/**
+ * Načte placeholder data pro faktury
+ * Používá se v notificationRouter pro typ 'invoices'
+ */
+function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
+    error_log("[loadInvoicePlaceholders] START for invoice $invoiceId");
+    
+    try {
+        // Načti fakturu s joiny
+        $sql = "
+            SELECT f.*, 
+                   o.cislo_objednavky as order_number,
+                   o.id as order_id,
+                   o.nazev_objednavky as order_name,
+                   d.nazev as supplier_name,
+                   CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name
+            FROM 25_faktury f
+            LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
+            LEFT JOIN 25_dodavatele d ON f.dodavatel_id = d.id
+            LEFT JOIN 25_uzivatele u ON f.uzivatel_id = u.id
+            WHERE f.id = :invoice_id
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([':invoice_id' => $invoiceId]);
+        $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$invoice) {
+            error_log("[loadInvoicePlaceholders] Invoice $invoiceId not found");
+            return array();
+        }
+        
+        // Formátuj placeholders
+        $placeholders = array(
+            'invoice_id' => $invoiceId,
+            'invoice_number' => $invoice['cislo_faktury'] ?? '',
+            'invoice_vs' => $invoice['vs'] ?? '',
+            'supplier_name' => $invoice['supplier_name'] ?? 'Neznámý dodavatel',
+            'amount' => number_format((float)($invoice['castka'] ?? 0), 2, ',', ' ') . ' Kč',
+            'amount_raw' => $invoice['castka'] ?? 0,
+            'due_date' => $invoice['datum_splatnosti'] ?? '',
+            'invoice_date' => $invoice['datum_vystaveni'] ?? '',
+            'order_number' => $invoice['order_number'] ?? '',
+            'order_id' => $invoice['order_id'] ?? null,
+            'order_name' => $invoice['order_name'] ?? '',
+            'creator_name' => $invoice['creator_name'] ?? '',
+            'stav' => $invoice['stav'] ?? '',
+            'poznamka' => $invoice['poznamka'] ?? '',
+            'user_name' => '{user_name}', // placeholder pro pozdější nahrazení
+        );
+        
+        error_log("[loadInvoicePlaceholders] Loaded placeholders for invoice $invoiceId");
+        return $placeholders;
+        
+    } catch (Exception $e) {
+        error_log("[loadInvoicePlaceholders] Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * Načte placeholder data pro pokladnu
+ * Používá se v notificationRouter pro typ 'cashbook'
+ */
+function loadCashbookPlaceholders($db, $cashbookId, $triggerUserId = null) {
+    error_log("[loadCashbookPlaceholders] START for cashbook entry $cashbookId");
+    
+    try {
+        // Načti pokladní záznam
+        $sql = "
+            SELECT p.*, 
+                   CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name,
+                   s.kod as stredisko_kod,
+                   s.nazev as stredisko_nazev
+            FROM 25_pokladna p
+            LEFT JOIN 25_uzivatele u ON p.uzivatel_id = u.id
+            LEFT JOIN 25_strediska s ON p.stredisko_id = s.id
+            WHERE p.id = :cashbook_id
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([':cashbook_id' => $cashbookId]);
+        $entry = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$entry) {
+            error_log("[loadCashbookPlaceholders] Cashbook entry $cashbookId not found");
+            return array();
+        }
+        
+        // Formátuj placeholders
+        $placeholders = array(
+            'cashbook_id' => $cashbookId,
+            'month' => $entry['mesic'] ?? '',
+            'year' => $entry['rok'] ?? '',
+            'period' => ($entry['mesic'] ?? '') . '/' . ($entry['rok'] ?? ''),
+            'balance' => number_format((float)($entry['zustatek'] ?? 0), 2, ',', ' ') . ' Kč',
+            'balance_raw' => $entry['zustatek'] ?? 0,
+            'income_total' => number_format((float)($entry['prijmy_celkem'] ?? 0), 2, ',', ' ') . ' Kč',
+            'expense_total' => number_format((float)($entry['vydaje_celkem'] ?? 0), 2, ',', ' ') . ' Kč',
+            'stredisko_kod' => $entry['stredisko_kod'] ?? '',
+            'stredisko_nazev' => $entry['stredisko_nazev'] ?? '',
+            'creator_name' => $entry['creator_name'] ?? '',
+            'closed_date' => $entry['datum_uzavreni'] ?? '',
+            'locked_date' => $entry['datum_uzamceni'] ?? '',
+            'user_name' => '{user_name}', // placeholder pro pozdější nahrazení
+        );
+        
+        error_log("[loadCashbookPlaceholders] Loaded placeholders for cashbook $cashbookId");
+        return $placeholders;
+        
+    } catch (Exception $e) {
+        error_log("[loadCashbookPlaceholders] Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * Helper funkce pro triggering notifikací z business logiky
+ * Volá se z invoice/cashbook handlerů místo přímého volání notificationRouter
+ * 
+ * @param PDO $db - Database connection
+ * @param string $eventType - Event type kód (např. 'INVOICE_SUBMITTED')
+ * @param int $objectId - ID objektu (invoice_id, cashbook_id, ...)
+ * @param int $triggerUserId - ID uživatele který vyvolal akci
+ * @param array $customPlaceholders - Volitelné custom placeholders
+ * @return array - Výsledek z notificationRouter
+ */
+function triggerNotification($db, $eventType, $objectId, $triggerUserId, $customPlaceholders = array()) {
+    // ╔══════════════════════════════════════════════════════════════════╗
+    error_log("║                                                                  ║");
+    error_log("║  🔔 NOTIFICATION TRIGGER CALLED!                                ║");
+    error_log("║                                                                  ║");
+    error_log("║  Event Type:   " . str_pad($eventType, 47) . "║");
+    error_log("║  Object ID:    " . str_pad($objectId, 47) . "║");
+    error_log("║  Trigger User: " . str_pad($triggerUserId, 47) . "║");
+    error_log("║                                                                  ║");
+    error_log("╚══════════════════════════════════════════════════════════════════╝");
+    
+    try {
+        // Zavolej notificationRouter
+        $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $customPlaceholders);
+        
+        error_log("✅ ✅ ✅ [triggerNotification] SUCCESS for $eventType - Sent: {$result['sent']} notifications");
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("❌ [triggerNotification] Error for $eventType: " . $e->getMessage());
+        // Neblokujeme business logiku kvůli chybě notifikace
+        return array('status' => 'error', 'message' => $e->getMessage());
     }
 }
