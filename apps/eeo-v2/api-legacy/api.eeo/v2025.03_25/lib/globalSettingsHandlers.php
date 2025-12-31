@@ -30,7 +30,7 @@ function handle_global_settings($input, $db) {
     
     // Pro čtení (get) nemusí být admin, pro save musí
     if ($operation === 'save') {
-        // Kontrola oprávnění - pouze Admin nebo SuperAdmin
+        // Kontrola oprávnění - pouze Admin nebo SuperAdmin nebo MAINTENANCE_ADMIN
         $sql = "
             SELECT DISTINCT r.kod_role
             FROM 25_role r
@@ -55,14 +55,32 @@ function handle_global_settings($input, $db) {
             }
         }
         
-        if (!$isAdmin) {
+        // Kontrola práva MAINTENANCE_ADMIN
+        $hasMaintenanceAdmin = false;
+        $sqlPerm = "
+            SELECT COUNT(*) as cnt
+            FROM 25_prava p
+            LEFT JOIN 25_uzivatel_prava up ON p.id = up.pravo_id AND up.uzivatel_id = :user_id
+            LEFT JOIN 25_role_prava rp ON p.id = rp.pravo_id
+            LEFT JOIN 25_uzivatele_role ur ON rp.role_id = ur.role_id AND ur.uzivatel_id = :user_id
+            WHERE p.kod_prava = 'MAINTENANCE_ADMIN'
+            AND (up.uzivatel_id IS NOT NULL OR ur.uzivatel_id IS NOT NULL)
+            LIMIT 1
+        ";
+        $stmtPerm = $db->prepare($sqlPerm);
+        $stmtPerm->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmtPerm->execute();
+        $permRow = $stmtPerm->fetch(PDO::FETCH_ASSOC);
+        $hasMaintenanceAdmin = ($permRow && $permRow['cnt'] > 0);
+        
+        if (!$isAdmin && !$hasMaintenanceAdmin) {
             http_response_code(403);
             echo json_encode(array('status' => 'error', 'message' => 'Přístup odepřen'));
             return;
         }
         
         // Uložit nastavení
-        handle_save_settings($db, isset($input['settings']) ? $input['settings'] : array(), $isSuperAdmin);
+        handle_save_settings($db, isset($input['settings']) ? $input['settings'] : array(), $isSuperAdmin, $hasMaintenanceAdmin);
     } else {
         // Načíst nastavení - dostupné pro všechny přihlášené uživatele
         handle_get_settings($db);
@@ -106,12 +124,13 @@ function handle_get_settings($db) {
 /**
  * Uloží nastavení do DB
  */
-function handle_save_settings($db, $settings, $isSuperAdmin) {
+function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmin = false) {
     try {
         // Kontrola oprávnění pro maintenance_mode
-        if (isset($settings['maintenance_mode']) && !$isSuperAdmin) {
+        // Může měnit: SUPERADMIN nebo uživatel s právem MAINTENANCE_ADMIN
+        if (isset($settings['maintenance_mode']) && !$isSuperAdmin && !$hasMaintenanceAdmin) {
             http_response_code(403);
-            echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN může měnit maintenance_mode'));
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN nebo MAINTENANCE_ADMIN může měnit maintenance_mode'));
             return;
         }
         
