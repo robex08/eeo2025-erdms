@@ -1,7 +1,7 @@
 # EEO v2 - Build & Deploy
 
 **Datum:** 31. prosince 2025  
-**Verze:** 1.92d  
+**Verze:** 1.93  
 **Autor:** Robert Holovský
 
 ---
@@ -107,7 +107,7 @@ DB_PASSWORD=AhchohTahnoh7eim
 DB_CHARSET=utf8mb4
 
 # Application version
-REACT_APP_VERSION=1.92c
+REACT_APP_VERSION=1.93
 
 # Upload paths - PROD používá /var/www/erdms-platform/data/
 UPLOAD_ROOT_PATH=/var/www/erdms-platform/data/eeo-v2/prilohy/
@@ -165,7 +165,7 @@ DB_PASSWORD=AhchohTahnoh7eim
 DB_CHARSET=utf8mb4
 
 # Application version
-REACT_APP_VERSION=1.92d
+REACT_APP_VERSION=1.93
 
 # Upload paths - PROD používá /var/www/erdms-platform/data/
 UPLOAD_ROOT_PATH=/var/www/erdms-platform/data/eeo-v2/prilohy/
