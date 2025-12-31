@@ -167,20 +167,31 @@ function generate_order_v2_file_guid() {
  * PHP 5.6 + MySQL 5.5.43 compatible
  */
 function handle_order_v2_upload_attachment($input, $config, $queries) {
+    // DEBUG LOGGING
+    error_log("=== ORDER V2 ATTACHMENT UPLOAD START ===");
+    error_log("Input data: " . json_encode($input));
+    error_log("FILES data: " . json_encode($_FILES));
+    error_log("POST data: " . json_encode($_POST));
+    
     // Token authentication
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['id']) ? $input['id'] : null;
     
+    error_log("Token: " . substr($token, 0, 20) . "..., Username: " . $request_username . ", Order ID: " . $order_id);
+    
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
+        error_log("ERROR: Token validation failed");
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
         return;
     }
     
+    error_log("Token validated for user ID: " . $token_data['id']);
     
     if (!$order_id) {
+        error_log("ERROR: Missing order ID");
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí ID objednávky'));
         return;
@@ -198,26 +209,34 @@ function handle_order_v2_upload_attachment($input, $config, $queries) {
     
     // Kontrola uploaded file
     if (!isset($_FILES['file']) || empty($_FILES['file']['name'])) {
+        error_log("ERROR: Missing file in upload. FILES keys: " . implode(', ', array_keys($_FILES)));
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí soubor k nahrání'));
         return;
     }
     
+    error_log("File received: " . $_FILES['file']['name'] . " (" . $_FILES['file']['size'] . " bytes)");
+    
     try {
         $db = get_db($config);
         
         // Kontrola existence objednávky
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Checking order_id: " . $order_id);
         $stmt = $db->prepare("SELECT id FROM " . get_orders_table_name() . " WHERE id = :id AND aktivni = 1");
         $numeric_order_id = intval($order_id);
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Numeric ID: " . $numeric_order_id . ", Table: " . get_orders_table_name());
         if (strpos($order_id, "draft_") === 0) {
+            error_log("ORDER V2 ATTACHMENT UPLOAD - Draft order detected, rejecting");
             http_response_code(422);
             echo json_encode(array("status" => "error", "message" => "Přílohy nejsou podporovány pro draft objednávky"));
             return;
         }
         $stmt->bindValue(":id", $numeric_order_id, PDO::PARAM_INT);
         $stmt->execute();
+        $result = $stmt->fetch();
+        error_log("ORDER V2 ATTACHMENT UPLOAD - Order found: " . ($result ? 'YES' : 'NO'));
         
-        if (!$stmt->fetch()) {
+        if (!$result) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena nebo není aktivní'));
             return;
