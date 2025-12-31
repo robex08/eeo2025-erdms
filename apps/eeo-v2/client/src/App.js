@@ -181,7 +181,8 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
               'profile': '/profile',
               'orders25-list': '/orders25-list',
               'invoices25-list': '/invoices25-list',
-              'users': '/users'
+              'users': '/users',
+              'help': '/help' // Nápověda a manuály
             };
             
             let targetSection = userSettings.vychozi_sekce_po_prihlaseni;

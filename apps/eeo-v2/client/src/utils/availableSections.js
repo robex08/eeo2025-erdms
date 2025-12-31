@@ -90,6 +90,9 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   // PROFIL UŽIVATELE - vždy dostupný pro všechny přihlášené
   sections.push({ value: 'profile', label: 'Profil uživatele' });
   
+  // NÁPOVĚDA - vždy dostupná pro všechny přihlášené
+  sections.push({ value: 'help', label: 'Nápověda' });
+  
   // OBJEDNÁVKY - ORDER_MANAGE nebo ORDER_2025
   if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025'))) {
     sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
