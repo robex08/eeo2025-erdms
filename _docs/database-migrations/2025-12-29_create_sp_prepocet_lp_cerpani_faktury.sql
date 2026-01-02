@@ -48,15 +48,27 @@ BEGIN
       AND f.stav != 'STORNO'
       AND f.aktivni = 1;
     
-    -- 2. Součet čerpání z POKLADNY (existující funkcionalita)
-    --    Zachováno pro zpětnou kompatibilitu
-    SELECT COALESCE(SUM(pd.castka), 0) INTO v_cerpano_pokladna
-    FROM 25a_pokladni_polozky_detail pd
-    JOIN 25a_pokladni_polozky pp ON pd.polozka_id = pp.id
-    JOIN 25a_pokladni_knihy pk ON pp.pokladna_kniha_id = pk.id
-    WHERE pd.lp_cislo = v_lp_cislo
-      AND pk.aktivni = 1
-      AND pp.aktivni = 1;
+    -- 2. Součet čerpání z POKLADNY (STARÝ + NOVÝ formát)
+    -- ⚠️ LIVE stav: Počítá se okamžitě po uložení dokladu, bez ohledu na uzavření knihy
+    -- Pokud se doklad změní/vyloučí, provede se nový přepočet
+    SELECT COALESCE(SUM(castka), 0) INTO v_cerpano_pokladna
+    FROM (
+      -- NOVÝ formát: Multi-LP detail položky
+      SELECT pd.castka
+      FROM 25a_pokladni_polozky_detail pd
+      JOIN 25a_pokladni_polozky pp ON pd.polozka_id = pp.id
+      WHERE pd.lp_kod = v_lp_cislo
+        AND pp.smazano = 0
+      
+      UNION ALL
+      
+      -- STARÝ formát: Single-LP bez detailů
+      SELECT COALESCE(pp.castka_vydaj, pp.castka_celkem) as castka
+      FROM 25a_pokladni_polozky pp
+      WHERE pp.lp_kod = v_lp_cislo
+        AND pp.smazano = 0
+        AND (pp.ma_detail = 0 OR pp.ma_detail IS NULL)
+    ) as lp_pokladna;
     
     -- 3. UPDATE agregace: skutecne_cerpano = faktury, cerpano_pokladna = pokladna
     --    ⚠️ POZOR: skutecne_cerpano NYNÍ obsahuje POUZE faktury!

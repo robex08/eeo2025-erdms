@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
-import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search } from 'lucide-react';
+import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search, DollarSign } from 'lucide-react';
 import cashbookAPI from '../../services/cashbookService';
 import { getUsekyList } from '../../services/apiv2Dictionaries';
 import { AuthContext } from '../../context/AuthContext';
@@ -114,42 +114,59 @@ const CloseButton = styled.button`
 `;
 
 const ModalBody = styled.div`
-  display: grid;
-  grid-template-columns: 420px 1fr;
-  gap: 0;
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  max-height: calc(75vh - 140px);
+  padding: 1.25rem 1.5rem;
+`;
+
+const TopSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
 `;
 
 const LeftSection = styled.div`
-  padding: 2rem;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
-  overflow-y: auto;
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
 `;
 
 const RightSection = styled.div`
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  gap: 1rem;
+  padding-left: 0.75rem;
+`;
+
+const BottomSection = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e2e8f0;
+`;
+
+const BottomLeftColumn = styled.div`
+  padding-right: 0.75rem;
+  border-right: 2px solid #e2e8f0;
+`;
+
+const BottomRightColumn = styled.div`
+  padding-left: 0.75rem;
 `;
 
 const SectionTitle = styled.h3`
-  margin: 0 0 1.25rem 0;
-  font-size: 0.875rem;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
 
   svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     color: #64748b;
   }
 `;
@@ -185,19 +202,19 @@ const WarningText = styled.div`
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.875rem;
 `;
 
 const FormRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
   font-weight: 500;
   font-size: 0.8125rem;
   color: #1e293b;
@@ -213,10 +230,10 @@ const Label = styled.label`
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid ${props => props.$error ? '#f87171' : '#e2e8f0'};
   border-radius: 6px;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   transition: all 0.15s;
   font-family: inherit;
   background: white;
@@ -236,6 +253,33 @@ const Input = styled.input`
     color: #94a3b8;
     cursor: not-allowed;
   }
+`;
+
+const InputWithCurrency = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const CurrencyInput = styled(Input)`
+  padding-right: 2.5rem;
+  
+  /* Odstranění spin tlačítek */
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  -moz-appearance: textfield;
+`;
+
+const CurrencySuffix = styled.span`
+  position: absolute;
+  right: 0.75rem;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  pointer-events: none;
 `;
 
 const Textarea = styled.textarea`
@@ -267,21 +311,30 @@ const Textarea = styled.textarea`
   }
 `;
 
+const HelpText = styled.div`
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: 4px;
+  line-height: 1.4;
+`;
+
 const UsersList = styled.div`
   flex: 1;
-  overflow-y: auto;
-  min-height: 200px;
+  min-height: auto;
 `;
 
 const UserItem = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem;
+  padding: 0.625rem 0.75rem;
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  margin-bottom: 0.625rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
   transition: all 0.15s;
 
   &:hover {
@@ -297,20 +350,20 @@ const UserItem = styled.div`
 const UserInfo = styled.div`
   display: flex;
   align-items: flex-start;
-  gap: 0.875rem;
+  gap: 0.5rem;
   flex: 1;
 `;
 
 const UserIcon = styled.div`
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   flex-shrink: 0;
 `;
@@ -318,7 +371,7 @@ const UserIcon = styled.div`
 const UserDetails = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.125rem;
   flex: 1;
   min-width: 0;
 `;
@@ -326,24 +379,24 @@ const UserDetails = styled.div`
 const UserName = styled.span`
   font-weight: 600;
   color: #0f172a;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
 `;
 
 const UserMeta = styled.span`
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #64748b;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 `;
 
 const MainBadge = styled.span`
-  padding: 0.25rem 0.625rem;
+  padding: 0.125rem 0.5rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border-radius: 4px;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -498,36 +551,36 @@ const CancelEditButton = styled.button`
 `;
 
 const AddUserSection = styled.div`
-  padding: 1.25rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
 `;
 
 const AddUserRow = styled.div`
-  display: flex;
-  gap: 0.625rem;
-  margin-bottom: 0.75rem;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
 `;
 
 const CheckboxLabel = styled.label`
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  font-size: 0.8125rem;
-  color: #334155;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #475569;
   cursor: pointer;
-  user-select: none;
 
   input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
     cursor: pointer;
-    accent-color: #3b82f6;
   }
 `;
 
@@ -600,7 +653,6 @@ const UsekName = styled.span`
 `;
 
 const AddButton = styled.button`
-  width: 100%;
   padding: 0.625rem 1rem;
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
@@ -613,7 +665,8 @@ const AddButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
+  white-space: nowrap;
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
@@ -626,8 +679,8 @@ const AddButton = styled.button`
   }
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
   }
 `;
 
@@ -1114,6 +1167,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     nazev: '',
     kod_pracoviste: '',
     nazev_pracoviste: '',
+    pocatecni_stav_rok: '', // 🆕 Počáteční stav pro nový rok
     ciselna_rada_vpd: '',
     vpd_od_cislo: 1,
     ciselna_rada_ppd: '',
@@ -1143,6 +1197,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
         nazev: cashbox.nazev || '',
         kod_pracoviste: cashbox.kod_pracoviste || '',
         nazev_pracoviste: cashbox.nazev_pracoviste || '',
+        pocatecni_stav_rok: cashbox.pocatecni_stav_rok !== null && cashbox.pocatecni_stav_rok !== undefined ? cashbox.pocatecni_stav_rok : '',
         ciselna_rada_vpd: cashbox.ciselna_rada_vpd || '',
         vpd_od_cislo: cashbox.vpd_od_cislo || 1,
         ciselna_rada_ppd: cashbox.ciselna_rada_ppd || '',
@@ -1513,136 +1568,89 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
         </ModalHeader>
 
         <ModalBody>
-          {/* LEVÁ ČÁST - Parametry pokladny */}
-          <LeftSection>
-            <SectionTitle>
-              <Hash />
-              Parametry pokladny
-            </SectionTitle>
+          {/* HORNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <TopSection>
+            {/* LEVÁ ČÁST - Základní informace */}
+            <LeftSection>
+              <SectionTitle>
+                <Building size={14} />
+                Základní informace
+              </SectionTitle>
 
-            {error && (
-              <ErrorMessage>
-                <AlertTriangle />
-                {error}
-              </ErrorMessage>
-            )}
-
-            <FormGroup>
-              <Label>
-                <Hash />
-                Číslo pokladny
-              </Label>
-              <Input
-                type="number"
-                value={cashbox?.cislo_pokladny || ''}
-                disabled
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Název pokladny</Label>
-              <Input
-                type="text"
-                value={formData.nazev}
-                onChange={e => handleChange('nazev', e.target.value)}
-                placeholder="Pokladna IT oddělení..."
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>
-                <Building />
-                Úsek (zkratka)
-              </Label>
-              <SearchableSelect
-                value={selectedUsek?.id || ''}
-                onChange={(val) => handleUsekChange(val)}
-                options={useky.map(usek => ({
-                  value: usek.id,
-                  label: `${usek.usek_zkr} - ${usek.usek_nazev}`
-                }))}
-                placeholder="Vyberte úsek..."
-                disabled={loadingUseky}
-                icon={<Building size={16} />}
-              />
-
-              {selectedUsek && (
-                <UsekDisplay>
-                  <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
-                  <UsekName>{selectedUsek.usek_nazev}</UsekName>
-                </UsekDisplay>
+              {error && (
+                <ErrorMessage>
+                  <AlertTriangle />
+                  {error}
+                </ErrorMessage>
               )}
-            </FormGroup>
 
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
+              <FormGroup>
                 <Label>
                   <Hash />
-                  VPD prefix *
+                  Číslo pokladny
                 </Label>
                 <Input
-                  type="text"
-                  value={formData.ciselna_rada_vpd}
-                  onChange={e => handleChange('ciselna_rada_vpd', e.target.value)}
-                  placeholder="599"
-                  $error={!formData.ciselna_rada_vpd}
-                />
-              </FormGroup>
-
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>VPD od čísla</Label>
-                <Input
                   type="number"
-                  value={formData.vpd_od_cislo}
-                  onChange={e => handleChange('vpd_od_cislo', parseInt(e.target.value) || 1)}
+                  value={cashbox?.cislo_pokladny || ''}
+                  disabled
                 />
               </FormGroup>
-            </FormRow>
 
-            <FormRow>
-              <FormGroup style={{ marginBottom: 0 }}>
+              <FormGroup>
+                <Label>Název pokladny</Label>
+                <Input
+                  type="text"
+                  value={formData.nazev}
+                  onChange={e => handleChange('nazev', e.target.value)}
+                  placeholder="Pokladna IT oddělení..."
+                />
+              </FormGroup>
+
+              <FormGroup>
                 <Label>
-                  <Hash />
-                  PPD prefix *
+                  <Building />
+                  Úsek (zkratka)
                 </Label>
-                <Input
-                  type="text"
-                  value={formData.ciselna_rada_ppd}
-                  onChange={e => handleChange('ciselna_rada_ppd', e.target.value)}
-                  placeholder="499"
-                  $error={!formData.ciselna_rada_ppd}
+                <SearchableSelect
+                  value={selectedUsek?.id || ''}
+                  onChange={(val) => handleUsekChange(val)}
+                  options={useky.map(usek => ({
+                    value: usek.id,
+                    label: `${usek.usek_zkr} - ${usek.usek_nazev}`
+                  }))}
+                  placeholder="Vyberte úsek..."
+                  disabled={loadingUseky}
+                  icon={<Building size={14} />}
                 />
+
+                {selectedUsek && (
+                  <UsekDisplay>
+                    <UsekBadge>{selectedUsek.usek_zkr}</UsekBadge>
+                    <UsekName>{selectedUsek.usek_nazev}</UsekName>
+                  </UsekDisplay>
+                )}
               </FormGroup>
 
-              <FormGroup style={{ marginBottom: 0 }}>
-                <Label>PPD od čísla</Label>
-                <Input
-                  type="number"
-                  value={formData.ppd_od_cislo}
-                  onChange={e => handleChange('ppd_od_cislo', parseInt(e.target.value) || 1)}
+              <FormGroup>
+                <Label>Poznámka</Label>
+                <Textarea
+                  value={formData.poznamka}
+                  onChange={e => handleChange('poznamka', e.target.value)}
+                  placeholder="Volitelná poznámka..."
+                  rows={2}
                 />
               </FormGroup>
-            </FormRow>
+            </LeftSection>
 
-            <FormGroup>
-              <Label>Poznámka</Label>
-              <Textarea
-                value={formData.poznamka}
-                onChange={e => handleChange('poznamka', e.target.value)}
-                placeholder="Volitelná poznámka..."
-                rows={2}
-              />
-            </FormGroup>
-          </LeftSection>
+            {/* PRAVÁ ČÁST - Uživatelé */}
+            <RightSection>
+              <SectionTitle>
+                <User size={14} />
+                Přiřazení uživatelé ({users.length})
+              </SectionTitle>
 
-          {/* PRAVÁ ČÁST - Správa uživatelů */}
-          <RightSection>
-            <SectionTitle>
-              <User />
-              Přiřazení uživatelé ({users.length})
-            </SectionTitle>
-
-            <UsersList style={{ marginBottom: 0 }}>
+              {/* Seznam přiřazených uživatelů */}
+              <UsersList style={{ marginBottom: 0 }}>
               {users.length === 0 ? (
                 <EmptyUsers>
                   <User size={48} />
@@ -1761,7 +1769,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                   }))}
                   placeholder="Vyberte uživatele..."
                   disabled={loading}
-                  icon={<User size={16} />}
+                  icon={<User size={14} />}
                 />
                 <AddButton
                   onClick={handleAddUser}
@@ -1783,6 +1791,97 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
               </CheckboxLabel>
             </AddUserSection>
           </RightSection>
+          </TopSection>
+
+          {/* SPODNÍ SEKCE - DVOUSLOUPCOVÝ LAYOUT */}
+          <BottomSection>
+            {/* LEVÝ SLOUPEC - Prefixy VPD/PPD */}
+            <BottomLeftColumn>
+              <SectionTitle>
+                <Hash size={14} />
+                Prefixy dokladů
+              </SectionTitle>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash />
+                    VPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_vpd}
+                    onChange={e => handleChange('ciselna_rada_vpd', e.target.value)}
+                    placeholder="599"
+                    $error={!formData.ciselna_rada_vpd}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>VPD od čísla</Label>
+                  <Input
+                    type="number"
+                    value={formData.vpd_od_cislo}
+                    onChange={e => handleChange('vpd_od_cislo', parseInt(e.target.value) || 1)}
+                  />
+                </FormGroup>
+              </FormRow>
+
+              <FormRow>
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>
+                    <Hash />
+                    PPD prefix *
+                  </Label>
+                  <Input
+                    type="text"
+                    value={formData.ciselna_rada_ppd}
+                    onChange={e => handleChange('ciselna_rada_ppd', e.target.value)}
+                    placeholder="499"
+                    $error={!formData.ciselna_rada_ppd}
+                  />
+                </FormGroup>
+
+                <FormGroup style={{ marginBottom: 0 }}>
+                  <Label>PPD od čísla</Label>
+                  <Input
+                    type="number"
+                    value={formData.ppd_od_cislo}
+                    onChange={e => handleChange('ppd_od_cislo', parseInt(e.target.value) || 1)}
+                  />
+                </FormGroup>
+              </FormRow>
+            </BottomLeftColumn>
+
+            {/* PRAVÝ SLOUPEC - Počáteční stav roku */}
+            <BottomRightColumn>
+              <SectionTitle>
+                <DollarSign size={14} />
+                Počáteční stav roku
+              </SectionTitle>
+
+              <FormGroup>
+                <Label>
+                  <DollarSign />
+                  Počáteční stav 1. ledna (nový rok)
+                </Label>
+                <InputWithCurrency>
+                  <CurrencyInput
+                    type="number"
+                    step="0.01"
+                    value={formData.pocatecni_stav_rok}
+                    onChange={e => handleChange('pocatecni_stav_rok', e.target.value)}
+                    placeholder="Ponechte prázdné pro převod z prosince"
+                  />
+                  <CurrencySuffix>Kč</CurrencySuffix>
+                </InputWithCurrency>
+                <HelpText>
+                  ⓘ <strong>Použije se při vytvoření knihy pro leden každého nového roku:</strong><br/>
+                  Zadejte hodnotu (včetně 0) = použije se jako počáteční stav | Ponechte prázdné = převezme se koncový stav z prosince předchozího roku.
+                </HelpText>
+              </FormGroup>
+            </BottomRightColumn>
+          </BottomSection>
         </ModalBody>
 
         <ModalFooter>

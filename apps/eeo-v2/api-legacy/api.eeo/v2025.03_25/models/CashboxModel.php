@@ -137,6 +137,7 @@ class CashboxModel {
                 nazev,
                 kod_pracoviste,
                 nazev_pracoviste,
+                pocatecni_stav_rok,
                 ciselna_rada_vpd,
                 vpd_od_cislo,
                 ciselna_rada_ppd,
@@ -145,7 +146,7 @@ class CashboxModel {
                 poznamka,
                 vytvoreno,
                 vytvoril
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         ";
         
         $nazev = isset($data['nazev']) ? $data['nazev'] : 'Pokladna ' . $data['cislo_pokladny'];
@@ -156,6 +157,7 @@ class CashboxModel {
             $nazev,
             isset($data['kod_pracoviste']) ? $data['kod_pracoviste'] : null,
             isset($data['nazev_pracoviste']) ? $data['nazev_pracoviste'] : null,
+            isset($data['pocatecni_stav_rok']) && $data['pocatecni_stav_rok'] !== null && $data['pocatecni_stav_rok'] !== '' ? $data['pocatecni_stav_rok'] : null,
             isset($data['ciselna_rada_vpd']) ? $data['ciselna_rada_vpd'] : null,
             isset($data['vpd_od_cislo']) ? $data['vpd_od_cislo'] : 1,
             isset($data['ciselna_rada_ppd']) ? $data['ciselna_rada_ppd'] : null,
@@ -188,6 +190,7 @@ class CashboxModel {
                 nazev = ?,
                 kod_pracoviste = ?,
                 nazev_pracoviste = ?,
+                pocatecni_stav_rok = ?,
                 ciselna_rada_vpd = ?,
                 vpd_od_cislo = ?,
                 ciselna_rada_ppd = ?,
@@ -204,6 +207,7 @@ class CashboxModel {
             isset($data['nazev']) ? $data['nazev'] : $cashbox['nazev'],
             isset($data['kod_pracoviste']) ? $data['kod_pracoviste'] : $cashbox['kod_pracoviste'],
             isset($data['nazev_pracoviste']) ? $data['nazev_pracoviste'] : $cashbox['nazev_pracoviste'],
+            isset($data['pocatecni_stav_rok']) && $data['pocatecni_stav_rok'] !== '' ? $data['pocatecni_stav_rok'] : null,
             isset($data['ciselna_rada_vpd']) ? $data['ciselna_rada_vpd'] : $cashbox['ciselna_rada_vpd'],
             isset($data['vpd_od_cislo']) ? $data['vpd_od_cislo'] : $cashbox['vpd_od_cislo'],
             isset($data['ciselna_rada_ppd']) ? $data['ciselna_rada_ppd'] : $cashbox['ciselna_rada_ppd'],

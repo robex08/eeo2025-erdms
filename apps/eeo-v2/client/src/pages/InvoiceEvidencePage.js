@@ -2248,13 +2248,42 @@ export default function InvoiceEvidencePage() {
   // 🔓 UNLOCK objednávky při unmount komponenty (opuštění stránky)
   useEffect(() => {
     return () => {
+      // 🧹 CLEANUP při unmount - kompletní čištění localStorage
+      if (user_id) {
+        try {
+          console.log('🧹 InvoiceEvidencePage unmount: Čištění localStorage');
+          
+          // 1. 📋 Invoice form data
+          localStorage.removeItem(`invoiceForm_${user_id}`);
+          localStorage.removeItem(`invoiceAttach_${user_id}`);
+          localStorage.removeItem(`invoiceEdit_${user_id}`);
+          localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
+          localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
+          localStorage.removeItem(`invoiceSections_${user_id}`);
+          
+          // 2. 🌍 Global flags
+          localStorage.removeItem('hadOriginalEntity');
+          localStorage.removeItem('activeOrderEditId');
+          localStorage.removeItem('spisovka_active_dokument');
+          
+          // 3. 📎 Cache pro objednávky a smlouvy načtené v tomto formuláři
+          // (Pokud jsou cache klíče specifické pro invoice page)
+          localStorage.removeItem(`invoice_order_cache_${user_id}`);
+          localStorage.removeItem(`invoice_smlouva_cache_${user_id}`);
+          
+          console.log('✅ InvoiceEvidencePage unmount: Čištění dokončeno');
+        } catch (error) {
+          console.error('❌ InvoiceEvidencePage unmount: Chyba při čištění:', error);
+        }
+      }
+
       // Cleanup při unmount - odemkni objednávku pokud byla zamčená
       if (formData.order_id && token && username) {
         unlockOrderV2({ orderId: formData.order_id, token, username })
           .catch(err => console.warn('⚠️ Nepodařilo se odemknout objednávku:', err));
       }
     };
-  }, [formData.order_id, token, username]); // Aktuální hodnoty pro unlock
+  }, [formData.order_id, token, username, user_id]); // Aktuální hodnoty pro unlock a cleanup
 
   // Načtení objednávky nebo smlouvy z location.state při mount
   useEffect(() => {

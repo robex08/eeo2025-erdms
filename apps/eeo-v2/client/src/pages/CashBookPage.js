@@ -1113,6 +1113,42 @@ const CashBookPage = () => {
     return key;
   }, [userDetail?.id, mainAssignment?.id, currentYear, currentMonth]);
 
+  // 🧹 CLEANUP při unmount - vymazat localStorage cache
+  useEffect(() => {
+    return () => {
+      if (userDetail?.id) {
+        try {
+          console.log('🧹 CashBookPage unmount: Čištění localStorage');
+          
+          const userId = userDetail.id;
+          
+          // 1. 📋 Pokladní kniha cache - všechny měsíce a roky
+          // Najít všechny klíče začínající na cashbook_
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(`cashbook_${userId}_`)) {
+              keysToRemove.push(key);
+            }
+          }
+          
+          keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`  ✅ Vymazán klíč: ${key}`);
+          });
+          
+          // 2. 🎯 Selector states
+          localStorage.removeItem('cashbook_selector_period');
+          localStorage.removeItem('cashbook_selector_cashbox');
+          
+          console.log(`✅ CashBookPage unmount: Vyčištěno ${keysToRemove.length} klíčů pokladny`);
+        } catch (error) {
+          console.error('❌ CashBookPage unmount: Chyba při čištění:', error);
+        }
+      }
+    };
+  }, [userDetail?.id]);
+
   // 🆕 OPRÁVNĚNÍ: Výpočet oprávnění uživatele
   const cashbookPermissions = useMemo(() => {
     return getCashbookPermissionsObject(userDetail);

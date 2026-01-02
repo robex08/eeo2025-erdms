@@ -2549,6 +2549,20 @@ function handle_orders25_update($input, $config, $queries) {
                         continue; // Přeskoč neplatnou fakturu
                     }
                     
+                    // 🔒 BEZPEČNOSTNÍ KONTROLA: Neexistuje už faktura se stejným číslem?
+                    // Pokud ano, NEPŘIŘAZOVAT ji k této objednávce - může být z minula!
+                    if (!empty($fa_cislo_vema)) {
+                        $check_sql = "SELECT id, objednavka_id FROM `$faktury_table` WHERE fa_cislo_vema = ? AND aktivni = 1 LIMIT 1";
+                        $check_stmt = $db->prepare($check_sql);
+                        $check_stmt->execute(array($fa_cislo_vema));
+                        $existing_faktura = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                        
+                        if ($existing_faktura) {
+                            error_log("⚠️ BEZPEČNOST: Faktura #{$existing_faktura['id']} s číslem '$fa_cislo_vema' už existuje (přiřazena k obj #{$existing_faktura['objednavka_id']}). NEPŘIŘAZUJI k nové objednávce #{$order_id}!");
+                            continue; // Přeskoč - nepřiřazuj existující fakturu!
+                        }
+                    }
+                    
                     // Zpracuj fa_strediska_kod - array → JSON, string → přímo
                     $fa_strediska_value = null;
                     if (isset($faktura['fa_strediska_kod'])) {
