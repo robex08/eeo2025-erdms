@@ -3588,19 +3588,22 @@ const Invoices25List = () => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             const spaceBelow = window.innerHeight - rect.bottom;
                             const tooltipHeight = Math.min(invoice.prilohy.length * 70 + 100, 400);
-                            const tooltipWidth = 280; // min-width z TooltipContainer
+                            // Vypočítat reálnou šířku tooltip podle obsahu a šířky okna
+                            const maxFilenameLength = Math.max(...invoice.prilohy.map(p => (p.originalni_nazev_souboru || p.original_filename || p.nazev_souboru || p.filename || 'Příloha').length));
+                            const maxPossibleWidth = Math.min(400, window.innerWidth - 40); // 20px margin z každé strany
+                            const estimatedWidth = Math.max(280, Math.min(maxPossibleWidth, maxFilenameLength * 8 + 120)); // 8px per char + padding + icon space
                             
                             // Horizontální pozice - centrovat pod element, ale respektovat okraje okna
-                            let leftPos = rect.left + (rect.width / 2) - (tooltipWidth / 2);
-                            const rightEdge = leftPos + tooltipWidth;
+                            let leftPos = rect.left + (rect.width / 2) - (estimatedWidth / 2);
+                            const rightEdge = leftPos + estimatedWidth;
                             
                             // Pokud tooltip přetéká vlevo, zarovnat k levému okraji (+20px padding)
                             if (leftPos < 20) {
                               leftPos = 20;
                             }
-                            // Pokud tooltip přetéká vpravo, zarovnat k pravému okraji (-20px padding)
+                            // Pokud tooltip přetéká vpravo, zarovnat k pravému okraji (-20px padding)  
                             if (rightEdge > window.innerWidth - 20) {
-                              leftPos = window.innerWidth - tooltipWidth - 20;
+                              leftPos = window.innerWidth - estimatedWidth - 20;
                             }
                             
                             setAttachmentsTooltip({

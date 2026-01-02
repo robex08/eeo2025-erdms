@@ -17,7 +17,7 @@ const TooltipContainer = styled.div`
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   padding: 0;
   min-width: 280px;
-  max-width: 400px;
+  max-width: min(400px, calc(100vw - 40px)); /* Respektovat šířku okna s 20px marginem z každé strany */
   animation: fadeIn 0.15s ease-out;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   
