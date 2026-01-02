@@ -270,50 +270,23 @@ function format_file_size($bytes) {
 function handle_manuals_upload($input, $config) {
     // DEBUG - zkontrolovat co přijde
     $debug_info = array();
-    $debug_info['_POST'] = $_POST;
-    $debug_info['_FILES_keys'] = array_keys($_FILES);
-    $debug_info['input'] = $input;
-    $debug_info['Content-Type'] = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : 'unknown';
-    $debug_info['current_working_directory'] = getcwd();
-    $debug_info['script_filename'] = $_SERVER['SCRIPT_FILENAME'];
-    $debug_info['api_root_dir'] = __DIR__;
-    
-    error_log("=== MANUALS UPLOAD DEBUG ===");
-    error_log("  _POST: " . json_encode($_POST));
-    error_log("  _FILES: " . json_encode(array_keys($_FILES)));
-    error_log("  input: " . json_encode($input));
-    error_log("  Content-Type: " . (isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : 'unknown'));
-    error_log("  🗂️ CWD: " . getcwd());
-    error_log("  📁 SCRIPT: " . $_SERVER['SCRIPT_FILENAME']);
-    error_log("  🏠 API DIR: " . __DIR__);
-    
     // 1. Token authentication - STANDARD V2
     // Pro multipart/form-data používáme $_POST místo $input
     $token = isset($_POST['token']) ? $_POST['token'] : '';
     $username = isset($_POST['username']) ? $_POST['username'] : '';
-    
-    $debug_info['parsed_token'] = $token;
-    $debug_info['parsed_username'] = $username;
-    
-    error_log("  Parsed token: '$token', username: '$username'");
-    
     if (empty($token)) {
-        error_log("  Token is empty!");
         http_response_code(400);
         echo json_encode(array(
             'status' => 'error', 
-            'message' => 'Chybí token',
-            'debug' => $debug_info
+            'message' => 'Chybí token'
         ));
         return;
     }
     if (empty($username)) {
-        error_log("  Username is empty!");
         http_response_code(400);
         echo json_encode(array(
             'status' => 'error', 
-            'message' => 'Chybí username',
-            'debug' => $debug_info
+            'message' => 'Chybí username'
         ));
         return;
     }
@@ -321,43 +294,28 @@ function handle_manuals_upload($input, $config) {
     $db = get_db($config);
     $token_data = verify_token_v2($username, $token, $db);
     if (!$token_data) {
-        error_log("  Token verification FAILED!");
-        $debug_info['token_verification'] = 'FAILED';
         http_response_code(401);
         echo json_encode(array(
             'status' => 'error', 
-            'message' => 'Neplatný nebo chybějící token',
-            'debug' => $debug_info
+            'message' => 'Neplatný nebo chybějící token'
         ));
         return;
     }
-    
-    $debug_info['token_verification'] = 'SUCCESS';
-    $debug_info['user_id'] = $token_data['id'];
-    error_log("  Token verification OK, user_id: " . $token_data['id']);
-
     // 2. Kontrola admin práv
     if (empty($token_data['is_admin'])) {
-        $debug_info['is_admin'] = false;
         http_response_code(403);
         echo json_encode(array(
             'status' => 'error',
-            'message' => 'Nedostatečná oprávnění - pouze administrátoři mohou nahrávat manuály',
-            'debug' => $debug_info
+            'message' => 'Nedostatečná oprávnění - pouze administrátoři mohou nahrávat manuály'
         ));
         return;
     }
-    
-    $debug_info['is_admin'] = true;
-
     // 3. Kontrola uploaded file - STANDARD V2
     if (!isset($_FILES['file']) || empty($_FILES['file']['name'])) {
-        $debug_info['file_upload_error'] = 'No file uploaded';
         http_response_code(400);
         echo json_encode(array(
             'status' => 'error', 
-            'message' => 'Chybí soubor k nahrání',
-            'debug' => $debug_info
+            'message' => 'Chybí soubor k nahrání'
         ));
         return;
     }
@@ -365,32 +323,16 @@ function handle_manuals_upload($input, $config) {
     try {
         // 4. Cesta k manuálům z ENV
         $manuals_path = get_manuals_path();
-        
-        $debug_info['manuals_path'] = $manuals_path;
-        $debug_info['manuals_path_realpath'] = realpath($manuals_path);
-        $debug_info['manuals_path_exists'] = is_dir($manuals_path);
-        
-        error_log("  MANUALS PATH DEBUG:");
-        error_log("    get_manuals_path() returned: '$manuals_path'");
-        error_log("    realpath(): " . realpath($manuals_path));
-        
         if (!is_dir($manuals_path)) {
-            error_log("    Directory does not exist, attempting to create...");
-            $debug_info['creating_directory'] = true;
             // Pokus o vytvoření adresáře
             if (!mkdir($manuals_path, 0755, true)) {
-                error_log("    ERROR: Failed to create directory: $manuals_path");
-                $debug_info['directory_creation_failed'] = true;
                 http_response_code(500);
                 echo json_encode(array(
                     'status' => 'error', 
-                    'message' => 'Nelze vytvořit adresář pro manuály',
-                    'debug' => $debug_info
+                    'message' => 'Nelze vytvořit adresář pro manuály'
                 ));
                 return;
             }
-            error_log("    SUCCESS: Directory created: $manuals_path");
-            $debug_info['directory_created'] = true;
         }
 
         // 5. Validace souboru
@@ -431,71 +373,39 @@ function handle_manuals_upload($input, $config) {
         $targetPath = $manuals_path . '/' . $filename;
         
         // DEBUG - Výpis cest pro frontend
-        $debug_info['target_path'] = $targetPath;
-        $debug_info['directory_writable'] = is_writable($manuals_path);
-        $debug_info['file_already_exists'] = file_exists($targetPath);
-        
-        error_log("  ABSOLUTE PATHS:");
-        error_log("    Manuals directory: '$manuals_path'");
-        error_log("    Target file path: '$targetPath'");
-        error_log("    Directory exists: " . (is_dir($manuals_path) ? 'YES' : 'NO'));
-        error_log("    Directory writable: " . (is_writable($manuals_path) ? 'YES' : 'NO'));
-        error_log("    File exists: " . (file_exists($targetPath) ? 'YES' : 'NO'));
-
         // Kontrola, že soubor už neexistuje
         if (file_exists($targetPath)) {
-            error_log("  ERROR: File already exists at: $targetPath");
             http_response_code(400);
             echo json_encode(array(
                 'status' => 'error', 
-                'message' => 'Soubor s tímto názvem už existuje',
-                'debug' => $debug_info
+                'message' => 'Soubor s tímto názvem už existuje'
             ));
             return;
         }
 
         // 7. Přesun souboru - STANDARD V2
-        $debug_info['temp_file'] = $file['tmp_name'];
-        $debug_info['temp_file_exists'] = file_exists($file['tmp_name']);
-        
-        error_log("  MOVING FILE:");
-        error_log("    From temp: '{$file['tmp_name']}'");
-        error_log("    To target: '$targetPath'");
-        error_log("    Temp file exists: " . (file_exists($file['tmp_name']) ? 'YES' : 'NO'));
-        
         if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
-            error_log("  ERROR: move_uploaded_file() FAILED!");
-            error_log("    Last error: " . error_get_last()['message']);
-            $debug_info['move_file_error'] = error_get_last()['message'];
             http_response_code(500);
             echo json_encode(array(
                 'status' => 'error', 
-                'message' => 'Nelze uložit soubor',
-                'debug' => $debug_info
+                'message' => 'Nelze uložit soubor'
             ));
             return;
         }
-        
-        error_log("  SUCCESS: File moved to: $targetPath");
-        $debug_info['file_moved_successfully'] = true;
-
         // 8. Úspěch - STANDARD V2
         http_response_code(200);
         echo json_encode(array(
             'status' => 'success',
             'success' => true,
             'message' => 'Manuál byl úspěšně nahrán',
-            'filename' => $filename,
-            'debug' => $debug_info
+            'filename' => $filename
         ));
 
     } catch (Exception $e) {
-        $debug_info['exception'] = $e->getMessage();
         http_response_code(500);
         echo json_encode(array(
             'status' => 'error',
-            'message' => 'Chyba při nahrávání manuálu: ' . $e->getMessage(),
-            'debug' => $debug_info
+            'message' => 'Chyba při nahrávání manuálu: ' . $e->getMessage()
         ));
     }
 }
@@ -508,8 +418,6 @@ function handle_manuals_upload($input, $config) {
  */
 function handle_manuals_delete($input, $config) {
     // DEBUG
-    error_log("handle_manuals_delete called - input: " . json_encode($input));
-    
     // 1. Validace požadavku
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
