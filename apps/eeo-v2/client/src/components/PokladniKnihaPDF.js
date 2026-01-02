@@ -10,7 +10,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     backgroundColor: '#FFFFFF',
     padding: 30,
-    paddingBottom: 60, // Více místa pro patičku
+    paddingBottom: 120, // Ochranná zóna pro patičku + podpis (60 + 60)
     fontFamily: 'Roboto',
     fontSize: 9,
   },
@@ -286,6 +286,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Menší text pro rozdělené LP kódy (detailItems)
+  colLpCodeSmall: {
+    width: '7%',
+    textAlign: 'left',
+    fontSize: 6,
+    lineHeight: 1.3,
+  },
+
   colNote: {
     width: '15%',
     textAlign: 'left',
@@ -548,6 +556,8 @@ const PokladniKnihaPDF = ({
           {entries.map((entry, index) => (
             <View
               key={entry.id || index}
+              wrap={false}
+              break={false}
               style={[
                 styles.tableRow,
                 index % 2 === 1 && styles.tableCellAlternate
@@ -577,7 +587,12 @@ const PokladniKnihaPDF = ({
               <Text style={[styles.tableCell, styles.colBalance]}>
                 {formatCurrency(entry.balance)}
               </Text>
-              <Text style={[styles.tableCell, styles.colLpCode]}>
+              <Text style={[
+                styles.tableCell, 
+                entry.detailItems && entry.detailItems.length > 0 
+                  ? styles.colLpCodeSmall 
+                  : styles.colLpCode
+              ]}>
                 {entry.detailItems && entry.detailItems.length > 0 
                   ? entry.detailItems.map((item, idx) => 
                       `${item.lp_kod}: ${formatCurrency(item.castka)}`
