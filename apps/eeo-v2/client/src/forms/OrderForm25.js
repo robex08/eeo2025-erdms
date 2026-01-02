@@ -6303,41 +6303,28 @@ function OrderForm25() {
   const [isConceptSaved, setIsConceptSaved] = useState(false); // Pouze localStorage koncept
   const [isPhase1Unlocked, setIsPhase1Unlocked] = useState(false); // Stav pro odemknutí FÁZE 1
 
-  // 🧹 Cleanup při unmount - uložit draft před unmount
+  // 🧹 Cleanup při unmount - KOMPLETNÍ ČIŠTĚNÍ všech dat formuláře
   useEffect(() => {
     // Žádná logika tady - jen cleanup funkce
     return () => {
       // Cleanup POUZE při unmount komponenty
       // ⚠️ POZOR: Použij REF pro přístup k aktuálním hodnotám - dependencies musí být prázdné!
 
-      // 💾 KRITICKÉ: Uložit draft před unmount (i když autosave ještě neproběhlo)
-      // Scénář: User změní pole → navigace pryč během 3s delay → bez tohoto by se draft neukládal
-      if (isDraftLoaded && user_id && formData) {
-        // ⚠️ OCHRANA: Ukládat POUZE pokud má formData smysluplný obsah
-        // Minimálně 40 klíčů (prázdný formData má ~78 klíčů)
-        const formDataKeys = Object.keys(formData);
-        const hasSignificantData = formDataKeys.length >= 40;
-
-        if (!hasSignificantData) {
-          return;
-        }
-
+      // 🧹 KRITICKÉ: Při zavření formuláře vymazat VŠECHNY data
+      // Draft, faktury, přílohy objednávky, přílohy faktur, cache, UI state
+      if (user_id) {
         try {
-          // 🚫 ZRUŠENO: Ukládání scroll pozice před unmount (na žádost uživatele)
-          // const scrollContainer = scrollableContentRef.current;
-          // const scrollPosition = scrollContainer ? scrollContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop);
-
-          // ✅ Nastavit current user před ukládáním
+          console.log('🧹 OrderForm25 unmount: Spouštím kompletní čištění dat formuláře');
+          
+          // Nastavit current user před čištěním
           draftManager.setCurrentUser(user_id);
-
-          // ✅ Správné API: saveDraft(formData, options)
-          draftManager.saveDraft(formData, {
-            orderId: formData.id || null
-          });
-
-          // 🚫 ZRUŠENO: Ukládání scroll pozice
-          // draftManager.saveMetadata({ scrollPosition });
+          
+          // 🔥 NOVÉ: Kompletní čištění místo ukládání draftu
+          draftManager.deleteAllFormData();
+          
+          console.log('✅ OrderForm25 unmount: Kompletní čištění dokončeno');
         } catch (error) {
+          console.error('❌ OrderForm25 unmount: Chyba při čištění:', error);
         }
       }
     };
@@ -6432,7 +6419,13 @@ function OrderForm25() {
         // 🧹 VYČISTIT objekty ve fa_strediska_kod (pokud tam jsou)
         const cleanedDraftData = { ...draftData.formData };
 
-        if (cleanedDraftData.faktury && Array.isArray(cleanedDraftData.faktury)) {
+        // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), vyčisti faktury!
+        // Faktury z předchozí objednávky by se NIKDY neměly dostat do nové objednávky
+        if (!cleanedDraftData.id) {
+          console.warn('🧹 DRAFT CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku');
+          cleanedDraftData.faktury = [];
+        } else if (cleanedDraftData.faktury && Array.isArray(cleanedDraftData.faktury)) {
+          // Pro existující objednávku pouze vyčisti fa_strediska_kod
           cleanedDraftData.faktury = cleanedDraftData.faktury.map(faktura => {
             if (faktura.fa_strediska_kod && Array.isArray(faktura.fa_strediska_kod)) {
               // Extrahovat jen stringy z objektů
@@ -11734,6 +11727,15 @@ function OrderForm25() {
       // Připrav formData kopii - ukládá se CELÝ formData včetně individualni_schvaleni a pojistna_udalost_cislo
       const draftFormData = { ...formDataToSave };
 
+      // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), NIKDY neukládej faktury do draftu!
+      // Faktury patří pouze k existujícím objednávkám v DB
+      if (!draftFormData.id) {
+        if (draftFormData.faktury && draftFormData.faktury.length > 0) {
+          console.warn('🧹 DRAFT SAVE CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku (bez ID)');
+        }
+        draftFormData.faktury = [];
+      }
+
       if (typeof draftFormData.financovani === 'object' && draftFormData.financovani !== null) {
         addDebugLog('warning', 'DRAFT', 'deprecated-financovani-block', '⚠️ DEPRECATED blok se spustil - měl by být mrtvý kód!');
         const financovaniObj = {
@@ -12020,7 +12022,9 @@ function OrderForm25() {
       // 🔧 KRITICKÁ OPRAVA: Nastavit datumové údaje pro novou objednávku
       temp_datum_objednavky: new Date().toISOString().split('T')[0], // Dočasné datum objednávky
       datum_vytvoreni: '', // Datum vytvoření se nastaví až při prvním uložení do DB
-      datum_splatnosti: '' // Datum splatnosti zatím prázdné
+      datum_splatnosti: '', // Datum splatnosti zatím prázdné
+      // 🔥 KRITICKÉ: Vyčistit faktury při resetu - nesmí se přenést ze staré objednávky!
+      faktury: [] // ✅ PRÁZDNÉ POLE - žádné faktury pro novou objednávku
     });
 
     // Reset stavů uložené objednávky
@@ -12056,13 +12060,16 @@ function OrderForm25() {
           sectionState: {},
           scrollPosition: 0
         });
-        // 🔥 KRITICKÉ: Smazat draft z localStorage, aby se při načtení nenačetl starý
-        draftManager.deleteDraft();
+        // 🔥 KRITICKÉ: Kompletní čištění všech dat formuláře
+        // Smaže draft, faktury, přílohy objednávky i faktur, cache, UI state
+        draftManager.deleteAllFormData();
+        console.log('🧹 resetForm: Kompletní čištění provedeno');
       } catch (error) {
+        console.error('❌ resetForm: Chyba při čištění:', error);
       }
     }
 
-    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu a draft smazán');
+    addDebugLog('info', 'FORM', 'reset', 'Formulář resetován do výchozího stavu a všechna data smazána');
   };
 
   const hasDraft = () => {
@@ -13085,13 +13092,22 @@ function OrderForm25() {
 
   // Funkce pro práci s přílohami - Orders25 API
   const handleFileUpload = (files) => {
+    console.log('🚀 handleFileUpload CALLED', {
+      filesCount: files?.length,
+      isWorkflowCompleted,
+      canUnlockAnything,
+      formDataId: formData.id
+    });
+
     // 🔒 CENTRÁLNÍ ZAMYKÁNÍ: Blokovat upload pokud je objednávka dokončena/zamítnuta/zrušena
     if (isWorkflowCompleted && !canUnlockAnything) {
+      console.log('❌ BLOCKED: Workflow completed');
       showToast && showToast('Nelze nahrát přílohy - objednávka je dokončena/zamítnuta/zrušena', { type: 'warning' });
       return;
     }
 
     if (!files || files.length === 0) {
+      console.log('❌ BLOCKED: No files');
       return;
     }
 
@@ -13189,15 +13205,23 @@ function OrderForm25() {
       };
     }).filter(Boolean); // Odfiltruj nevalidní soubory
 
+    console.log('✅ New files created:', newFiles.length, newFiles);
+
     // Aktualizuj oba state - formData i attachments
     setFormData(prev => ({
       ...prev,
       prilohy_dokumenty: [...(prev.prilohy_dokumenty || []), ...newFiles]
     }));
 
-    setAttachments(prev => [...prev, ...newFiles]);
+    setAttachments(prev => {
+      const updated = [...prev, ...newFiles];
+      console.log('📎 Attachments updated:', updated.length, updated);
+      return updated;
+    });
 
     setUploadingFiles(false);
+    
+    console.log('✨ handleFileUpload COMPLETED - Files should be visible now');
 
     // TOAST ODSTRANĚN - zobrazí se až při skutečném nahrání na server po klasifikaci
     // const duplicateCount = newFiles.filter(f => f.isDuplicate).length;
@@ -13327,11 +13351,13 @@ function OrderForm25() {
   };
 
   const handleFileDrop = (e) => {
+    console.log('🎯 handleFileDrop CALLED');
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
 
     const files = e.dataTransfer.files;
+    console.log('📁 Files from drop:', files?.length);
 
     if (files && files.length > 0) {
       handleFileUpload(files);
@@ -13339,7 +13365,9 @@ function OrderForm25() {
   };
 
   const handleFileSelect = (e) => {
+    console.log('🎯 handleFileSelect CALLED');
     const files = e.target.files;
+    console.log('📁 Files selected:', files?.length);
     if (files.length > 0) {
       handleFileUpload(files);
     }
@@ -24869,7 +24897,14 @@ function OrderForm25() {
                     />
 
                     {/* Seznam nahraných souborů - pouze obj- prefix */}
-                    {attachments && attachments.filter(a => getFilePrefix(a) === 'obj-').length > 0 && (
+                    {(() => {
+                      const objFiles = attachments?.filter(a => getFilePrefix(a) === 'obj-') || [];
+                      console.log('📋 Rendering attachments list:', {
+                        totalAttachments: attachments?.length,
+                        objFiles: objFiles.length,
+                        attachments: attachments
+                      });
+                      return objFiles.length > 0 && (
                       <div style={{ marginTop: '1rem' }}>
                         <div style={{
                           display: 'flex',
@@ -24878,11 +24913,11 @@ function OrderForm25() {
                           marginBottom: '1rem'
                         }}>
                           <Label>
-                            Počet příloh: <strong>{attachments.filter(a => getFilePrefix(a) === 'obj-').length}</strong> |
-                            Nahráno: <span style={{color: '#16a34a'}}><strong>{attachments.filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded').length}</strong></span> |
+                            Počet příloh: <strong>{objFiles.length}</strong> |
+                            Nahráno: <span style={{color: '#16a34a'}}><strong>{objFiles.filter(f => f.status === 'uploaded').length}</strong></span> |
                             Velikost: <strong>{(() => {
-                              const totalSize = attachments
-                                .filter(f => getFilePrefix(f) === 'obj-' && f.status === 'uploaded')
+                              const totalSize = objFiles
+                                .filter(f => f.status === 'uploaded')
                                 .reduce((sum, f) => sum + (f.size || 0), 0);
                               return totalSize > 0 ? `${(totalSize / 1024 / 1024).toFixed(2)} MB` : '0 MB';
                             })()}</strong>
@@ -24974,7 +25009,7 @@ function OrderForm25() {
                             )}
                           </div>
                         </div>
-                        {attachments.filter(a => getFilePrefix(a) === 'obj-').map((file, index) => (
+                        {objFiles.map((file, index) => (
                           <div key={file.id} style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -25230,7 +25265,8 @@ function OrderForm25() {
                           </div>
                         ))}
                       </div>
-                    )}
+                    );
+                    })()}
 
                     {/* Varovná zpráva o okamžitých změnách v přílohách */}
                     <div style={{

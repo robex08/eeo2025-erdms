@@ -28,8 +28,8 @@ define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
 
 require_once __DIR__ . '/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
 
-// Test pro LP ID = 6 (LPIA1)
-$lp_id = 6;
+// Test pro LP ID z CLI argumentu
+$lp_id = isset($argv[1]) ? (int)$argv[1] : 6;
 
 echo "=== Test prepoctu LP ID: $lp_id ===\n\n";
 
