@@ -651,17 +651,25 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         setLoading(true);
         setError(null);
 
-        const response = await getDocxSablonyList({
+        // Příprava parametrů pro načtení šablon
+        const params = {
           token,
           username: user?.username,
           aktivni: 1 // Pouze aktivní šablony
-        });
+        };
+
+        // Pokud máme cenu objednávky, pošleme ji pro filtrování šablon
+        if (order?.cena_bez_dph !== undefined && order?.cena_bez_dph !== null) {
+          params.cena_bez_dph = order.cena_bez_dph;
+        }
+
+        const response = await getDocxSablonyList(params);
 
         const templates = response?.data || [];
         setTemplates(templates);
 
         if (templates.length === 0) {
-          setError('V databázi nejsou k dispozici žádné aktivní DOCX šablony');
+          setError('V databázi nejsou k dispozici žádné aktivní DOCX šablony pro tuto cenovou kategorii');
         } else if (templates.length === 1) {
           // Automaticky vyber první šablonu pokud je jen jedna
           setSelectedTemplate(templates[0]);

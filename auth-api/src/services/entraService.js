@@ -219,7 +219,7 @@ class EntraService {
       // První stránka s $count pro zjištění celkového počtu
       let response = await this.client
         .api('/users')
-        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled,createdDateTime,employeeHireDate')
+        .select('id,userPrincipalName,displayName,givenName,surname,mail,jobTitle,department,officeLocation,accountEnabled,createdDateTime,employeeHireDate,employeeId')
         .top(999)
         .orderby('displayName')
         .header('ConsistencyLevel', 'eventual')

@@ -244,9 +244,10 @@ const Table = styled.table`
   th:nth-of-type(4), td:nth-of-type(4) { width: 135px !important; min-width: 135px !important; max-width: 135px !important; }   /* Verze */
   th:nth-of-type(5), td:nth-of-type(5) { width: 135px !important; min-width: 135px !important; max-width: 135px !important; }   /* Velikost */
   /* Uživatel (6) - žádná pevná šířka, dynamicky zabere zbytek */
-  th:nth-of-type(7), td:nth-of-type(7) { width: 150px !important; min-width: 150px !important; max-width: 150px !important; }   /* Částka */
-  th:nth-of-type(8), td:nth-of-type(8) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Disk */
-  th:nth-of-type(9), td:nth-of-type(9) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Aktivní */
+  th:nth-of-type(7), td:nth-of-type(7) { width: 100px !important; min-width: 100px !important; max-width: 100px !important; }   /* Částka OD */
+  th:nth-of-type(8), td:nth-of-type(8) { width: 100px !important; min-width: 100px !important; max-width: 100px !important; }   /* Částka DO */
+  th:nth-of-type(9), td:nth-of-type(9) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Disk */
+  th:nth-of-type(10), td:nth-of-type(10) { width: 50px !important; min-width: 50px !important; max-width: 50px !important; }   /* Aktivní */
   th:last-child, td:last-child { width: 120px !important; min-width: 120px !important; max-width: 120px !important; }      /* Akce */
 `;
 
@@ -764,7 +765,7 @@ const BottomSection = styled.div`
   margin-top: 0.5rem;
 `;
 
-// JSON Editor - roztáhne se na zbývající prostor
+// JSON Editor - roztáhne se na zbývající prostor s min. výškou
 const FullWidthJsonEditor = styled.div`
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 1px solid #cbd5e1;
@@ -774,6 +775,7 @@ const FullWidthJsonEditor = styled.div`
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 300px; /* Minimální výška pro JSON editor */
 `;
 
 const JsonHeader = styled.div`
@@ -840,6 +842,7 @@ const JsonEditor = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 200px; /* Minimální výška pro inner editor */
 `;
 
 const JsonTextarea = styled.textarea`
@@ -899,7 +902,7 @@ const JsonHighlightContainer = styled.div`
   position: relative;
   width: 100%;
   flex: 1;
-  min-height: 0;
+  min-height: 180px; /* Minimální výška pro scrollovatelnou oblast */
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -2112,9 +2115,8 @@ const defaultUploadForm = {
   verze: '1.0',
   platnost_od: '',
   platnost_do: '',
-  castka: '', // ⭐ NOVÉ POLE: Částka pro šablonu
-  min_cena: '', // ⭐ Minimální cena (od)
-  max_cena: '', // ⭐ Maximální cena (do)
+  castka_od: '', // ⭐ Částka OD (rozsah)
+  castka_do: '', // ⭐ Částka DO (rozsah)
   mapovani_json: '',
   docx_mapping: {}
 };
@@ -2722,23 +2724,45 @@ const DocxSablonyTab = () => {
       }
     },
     {
-      accessorKey: 'castka',
-      size: 150,
-      maxSize: 150,
-      minSize: 150,
-      header: () => <div style={{ textAlign: 'right', paddingRight: '1rem' }}>Částka</div>,
+      accessorKey: 'castka_od',
+      size: 100,
+      maxSize: 100,
+      minSize: 100,
+      header: () => <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Od</div>,
       cell: ({ getValue }) => {
-        const castka = getValue();
-        if (castka === null || castka === undefined) {
-          return <div style={{ textAlign: 'right', paddingRight: '1rem', color: '#9ca3af' }}>—</div>;
+        const castka_od = getValue();
+        if (castka_od === null || castka_od === undefined) {
+          return <div style={{ textAlign: 'right', paddingRight: '0.5rem', color: '#9ca3af' }}>—</div>;
         }
         return (
-          <div style={{ textAlign: 'right', paddingRight: '1rem', fontWeight: '600' }}>
+          <div style={{ textAlign: 'right', paddingRight: '0.5rem', fontWeight: '500' }}>
             {new Intl.NumberFormat('cs-CZ', {
               style: 'currency',
               currency: 'CZK',
               maximumFractionDigits: 0
-            }).format(castka)}
+            }).format(castka_od)}
+          </div>
+        );
+      }
+    },
+    {
+      accessorKey: 'castka_do',
+      size: 100,
+      maxSize: 100,
+      minSize: 100,
+      header: () => <div style={{ textAlign: 'right', paddingRight: '1rem' }}>Do</div>,
+      cell: ({ getValue }) => {
+        const castka_do = getValue();
+        if (castka_do === null || castka_do === undefined) {
+          return <div style={{ textAlign: 'right', paddingRight: '1rem', color: '#9ca3af' }}>—</div>;
+        }
+        return (
+          <div style={{ textAlign: 'right', paddingRight: '1rem', fontWeight: '500' }}>
+            {new Intl.NumberFormat('cs-CZ', {
+              style: 'currency',
+              currency: 'CZK',
+              maximumFractionDigits: 0
+            }).format(castka_do)}
           </div>
         );
       }
@@ -2962,12 +2986,18 @@ const DocxSablonyTab = () => {
         // Formátuj velikost souboru pro vyhledávání
         const velikostKB = item.velikost_souboru ? (item.velikost_souboru / 1024).toFixed(1) + ' KB' : '';
 
-        // Formátuj částku pro vyhledávání (včetně nuly)
-        const castkaStr = (item.castka !== null && item.castka !== undefined) ? new Intl.NumberFormat('cs-CZ', {
+        // Formátuj částky pro vyhledávání
+        const castkaOdStr = (item.castka_od !== null && item.castka_od !== undefined) ? new Intl.NumberFormat('cs-CZ', {
           style: 'currency',
           currency: 'CZK',
           maximumFractionDigits: 0
-        }).format(item.castka) : '';
+        }).format(item.castka_od) : '';
+        
+        const castkaDoStr = (item.castka_do !== null && item.castka_do !== undefined) ? new Intl.NumberFormat('cs-CZ', {
+          style: 'currency',
+          currency: 'CZK',
+          maximumFractionDigits: 0
+        }).format(item.castka_do) : '';
 
         // Status aktivní/neaktivní jako text
         const aktivniText = item.aktivni ? 'aktivní' : 'neaktivní';
@@ -2978,6 +3008,9 @@ const DocxSablonyTab = () => {
           removeDiacritics(item.typ_dokumentu || '').includes(searchNormalized) ||
           removeDiacritics((item.verze || '').toString()).includes(searchNormalized) ||
           removeDiacritics(velikostKB).includes(searchNormalized) ||
+          // Částky
+          removeDiacritics(castkaOdStr).includes(searchNormalized) ||
+          removeDiacritics(castkaDoStr).includes(searchNormalized) ||
           // Uživatelé - ROBUSTNÍ hledání (hledá i v jednotlivých slovech)
           removeDiacritics(vytvorilJmeno).includes(searchNormalized) ||
           removeDiacritics(vytvorilPrijmeni).includes(searchNormalized) ||
@@ -2997,8 +3030,6 @@ const DocxSablonyTab = () => {
           // Datum a čas
           removeDiacritics(dtVytvoreni).includes(searchNormalized) ||
           removeDiacritics(dtVytvoreniCas).includes(searchNormalized) ||
-          // Částka
-          removeDiacritics(castkaStr).includes(searchNormalized) ||
           // Název souboru
           removeDiacritics(item.nazev_souboru || '').includes(searchNormalized) ||
           // Aktivní status
@@ -3042,7 +3073,8 @@ const DocxSablonyTab = () => {
       columnSizing: {
         verze: 50,
         velikost_souboru: 80,
-        castka: 80,
+        castka_od: 100,
+        castka_do: 100,
         dt_vytvoreni: 90,
         dt_aktualizace: 90,
         aktivni: 70
@@ -3100,6 +3132,14 @@ const DocxSablonyTab = () => {
       errors.push('Typ dokumentu je povinný');
     }
 
+    // Validace rozsahu částek (od <= do)
+    const castka_od = parseFloat(uploadForm.castka_od);
+    const castka_do = parseFloat(uploadForm.castka_do);
+    
+    if (!isNaN(castka_od) && !isNaN(castka_do) && castka_od > castka_do) {
+      errors.push('Částka OD nemůže být větší než Částka DO');
+    }
+
     if (errors.length > 0) {
       showToast(`Vyplňte povinná pole:\n${errors.join('\n')}`, 'error');
       return;
@@ -3128,8 +3168,9 @@ const DocxSablonyTab = () => {
           formData.append('typ_dokumentu', uploadForm.typ_dokumentu);
           formData.append('aktivni', uploadForm.aktivni ? '1' : '0');
           formData.append('verze', uploadForm.verze);
-          formData.append('castka', uploadForm.castka || '0'); // ⭐ NOVÉ POLE: Částka
-          console.log('💾 [DOCX Tab] Ukládám částku (s novým souborem):', uploadForm.castka);
+          formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
+          formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
+          console.log('💾 [DOCX Tab] Ukládám částku (s novým souborem) - OD:', uploadForm.castka_od, 'DO:', uploadForm.castka_do);
           formData.append('platnost_od', uploadForm.platnost_od);
           formData.append('platnost_do', uploadForm.platnost_do);
           // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
@@ -3155,13 +3196,14 @@ const DocxSablonyTab = () => {
             typ_dokumentu: uploadForm.typ_dokumentu,
             aktivni: uploadForm.aktivni ? 1 : 0,
             verze: uploadForm.verze,
-            castka: parseFloat(uploadForm.castka) || 0, // ⭐ NOVÉ POLE: Částka
+            castka_od: uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? parseFloat(uploadForm.castka_od) : null,
+            castka_do: uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? parseFloat(uploadForm.castka_do) : null,
             platnost_od: uploadForm.platnost_od,
             platnost_do: uploadForm.platnost_do,
             mapovani_json: uploadForm.mapovani_json
           };
 
-          console.log('💾 [DOCX Tab] Ukládám částku (bez nového souboru):', updateData.castka, 'původní:', uploadForm.castka);
+          console.log('💾 [DOCX Tab] Ukládám částku (bez nového souboru) - OD:', updateData.castka_od, 'DO:', updateData.castka_do);
 
           // Přidáme DOCX mapování pokud existuje
           if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
@@ -3176,7 +3218,6 @@ const DocxSablonyTab = () => {
           }
 
           console.log('📤 Posílám updateData na backend:', updateData);
-          console.log('📤 castka v updateData:', updateData.castka, typeof updateData.castka);
 
           result = await docxApi.update(token, editingTemplate.id, updateData);
         }
@@ -3189,8 +3230,9 @@ const DocxSablonyTab = () => {
         formData.append('typ_dokumentu', uploadForm.typ_dokumentu);
         formData.append('aktivni', uploadForm.aktivni ? '1' : '0');
         formData.append('verze', uploadForm.verze);
-        formData.append('castka', uploadForm.castka || '0'); // ⭐ NOVÉ POLE: Částka
-        console.log('💾 [DOCX Tab] Ukládám částku (při vytvoření):', uploadForm.castka);
+        formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
+        formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
+        console.log('💾 [DOCX Tab] Ukládám částku (při vytvoření) - OD:', uploadForm.castka_od, 'DO:', uploadForm.castka_do);
         formData.append('platnost_od', uploadForm.platnost_od);
         formData.append('platnost_do', uploadForm.platnost_do);
         // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
@@ -3715,7 +3757,8 @@ const DocxSablonyTab = () => {
       typ_dokumentu: template.typ_dokumentu || '',
       aktivni: template.aktivni === 1 || template.aktivni === '1' || template.aktivni === true,
       verze: template.verze || '1.0',
-      castka: template.castka !== undefined && template.castka !== null ? template.castka : '', // ⭐ Správné načítání (0 je validní hodnota!)
+      castka_od: template.castka_od !== undefined && template.castka_od !== null ? template.castka_od : '',
+      castka_do: template.castka_do !== undefined && template.castka_do !== null ? template.castka_do : '',
       platnost_od: template.platnost_od || '',
       platnost_do: template.platnost_do || '',
       mapovani_json: mapovaniJsonString,
@@ -4660,37 +4703,81 @@ const DocxSablonyTab = () => {
                               />
                             </InputWithIcon>
                           </FormGroup>
+                        </div>
 
-                          <FormGroup style={{ flex: '0 0 120px' }}>
-                            <Label>Částka</Label>
+                        {/* Částky na samostatném řádku */}
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                          <FormGroup style={{ flex: '0 0 180px' }}>
+                            <Label>Částka od</Label>
                             <InputWithIcon>
                               <Calculator size={16} />
                               <div style={{ position: 'relative' }}>
                                 <Input
                                   type="text"
                                   className="no-spinner"
-                                  value={uploadForm.castka ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka) : ''}
+                                  value={uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka_od) : ''}
                                   onChange={(e) => {
-                                    // Odstranit formátování a ponechat pouze čísla a tečku
                                     const value = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
-                                    setUploadForm(prev => ({ ...prev, castka: value }));
+                                    setUploadForm(prev => ({ ...prev, castka_od: value }));
                                   }}
                                   onBlur={(e) => {
-                                    // Při opuštění pole pouze vyčistit formátování, ale zachovat číslo
                                     const cleanValue = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
                                     const numValue = parseFloat(cleanValue);
 
                                     if (!isNaN(numValue)) {
-                                      setUploadForm(prev => ({ ...prev, castka: numValue.toString() }));
+                                      setUploadForm(prev => ({ ...prev, castka_od: numValue.toString() }));
                                     } else if (cleanValue === '') {
-                                      setUploadForm(prev => ({ ...prev, castka: '' }));
+                                      setUploadForm(prev => ({ ...prev, castka_od: '' }));
                                     }
-                                    // Jinak ponechej původní hodnotu
                                   }}
-                                  placeholder="např. 25 000"
+                                  placeholder="např. 10 000"
                                   style={{
                                     textAlign: 'right',
-                                    paddingRight: '35px' // Místo pro "Kč"
+                                    paddingRight: '35px'
+                                  }}
+                                />
+                                <span style={{
+                                  position: 'absolute',
+                                  right: '8px',
+                                  top: '50%',
+                                  transform: 'translateY(-50%)',
+                                  color: '#6b7280',
+                                  fontSize: '14px',
+                                  pointerEvents: 'none'
+                                }}>
+                                  Kč
+                                </span>
+                              </div>
+                            </InputWithIcon>
+                          </FormGroup>
+
+                          <FormGroup style={{ flex: '0 0 180px' }}>
+                            <Label>Částka do</Label>
+                            <InputWithIcon>
+                              <Calculator size={16} />
+                              <div style={{ position: 'relative' }}>
+                                <Input
+                                  type="text"
+                                  className="no-spinner"
+                                  value={uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? new Intl.NumberFormat('cs-CZ').format(uploadForm.castka_do) : ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
+                                    setUploadForm(prev => ({ ...prev, castka_do: value }));
+                                  }}
+                                  onBlur={(e) => {
+                                    const cleanValue = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
+                                    const numValue = parseFloat(cleanValue);
+
+                                    if (!isNaN(numValue)) {
+                                      setUploadForm(prev => ({ ...prev, castka_do: numValue.toString() }));
+                                    } else if (cleanValue === '') {
+                                      setUploadForm(prev => ({ ...prev, castka_do: '' }));
+                                    }
+                                  }}
+                                  placeholder="např. 50 000"
+                                  style={{
+                                    textAlign: 'right',
+                                    paddingRight: '35px'
                                   }}
                                 />
                                 <span style={{

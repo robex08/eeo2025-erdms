@@ -31,11 +31,13 @@ function Dashboard() {
   const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [calendarHoverTimeout, setCalendarHoverTimeout] = useState(null);
   
-  // Kontrola zda je admin (u03924 nebo u09721)
+  // Kontrola zda je admin (u03924, u09721 nebo u09694)
   const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
                   user?.upn?.toLowerCase().startsWith('u03924@') ||
                   user?.username?.toLowerCase() === 'u09721' || 
-                  user?.upn?.toLowerCase().startsWith('u09721@');
+                  user?.upn?.toLowerCase().startsWith('u09721@') ||
+                  user?.username?.toLowerCase() === 'u09694' || 
+                  user?.upn?.toLowerCase().startsWith('u09694@');
   
   useEffect(() => {
     loadUser();
@@ -515,7 +517,7 @@ function Dashboard() {
         <div className="header-left">
           <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
           <div className="header-title">
-            <h1>ERDMS Portál <span className="version-badge">v1.74</span></h1>
+            <h1>ERDMS Portál <span className="version-badge">v1.84</span></h1>
             <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</span>
           </div>
         </div>
@@ -1126,7 +1128,7 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Tab: Zaměstnanci (jen pro u03924 a u09721) */}
+        {/* Tab: Zaměstnanci (jen pro u03924, u09721 a u09694) */}
         {activeTab === 'employees' && isAdmin && (
           <div className="employees-section">
             <div className="employees-header">
@@ -1301,9 +1303,21 @@ function Dashboard() {
                         {emp.givenName?.[0]}{emp.surname?.[0]}
                       </div>
                       <div className="employee-info">
-                        <div className="employee-name">{emp.displayName}</div>
+                        <div className="employee-name">
+                          {emp.displayName}
+                          {emp.employeeId && (
+                            <span className="employee-id-badge" title="Osobní číslo">
+                              {emp.employeeId}
+                            </span>
+                          )}
+                        </div>
                         {emp.jobTitle && (
                           <div className="employee-title">{emp.jobTitle}</div>
+                        )}
+                        {emp.userPrincipalName && (
+                          <div className="employee-username">
+                            👤 Uživatelské jméno: <strong>{emp.userPrincipalName.split('@')[0]}</strong>
+                          </div>
                         )}
                         {(emp.createdDateTime || emp.employeeHireDate) && (
                           <div className="employee-dates">

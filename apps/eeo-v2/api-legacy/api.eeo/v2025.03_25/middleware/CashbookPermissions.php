@@ -30,7 +30,7 @@ class CashbookPermissions {
      * - user_id = -1 => právo přiřazené k roli
      * - user_id > 0  => přímé právo uživatele
      */
-    private function hasPermission($permissionCode) {
+    public function hasPermission($permissionCode) {
         if (!isset($this->user['id'])) {
             return false;
         }
@@ -58,6 +58,26 @@ class CashbookPermissions {
             )
         ");
         $stmt->execute(array($permissionCode, $this->user['id'], $this->user['id']));
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $result['count'] > 0;
+    }
+    
+    /**
+     * Kontrola, zda má uživatel roli
+     */
+    public function hasRole($roleCode) {
+        if (!isset($this->user['id'])) {
+            return false;
+        }
+        
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) as count
+            FROM 25_uzivatele_role ur
+            JOIN 25_role r ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = ? AND r.kod_role = ?
+        ");
+        $stmt->execute(array($this->user['id'], $roleCode));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         return $result['count'] > 0;

@@ -182,10 +182,18 @@ const StatValue = styled.div`
 
 const FilterBar = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin-bottom: 2rem;
   align-items: start;
+  
+  @media (max-width: 1400px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const FilterWrapper = styled.div`
@@ -978,6 +986,18 @@ const LimitovanePrislibyManager = () => {
     onConfirm: null
   });
   
+  // State pro filtr roku - dynamicky od 2025 do aktuálního roku + 1 rok do budoucnosti
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: currentYear - 2024 }, (_, i) => 2025 + i);
+  const [selectedYear, setSelectedYear] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`lp_year_filter_${user?.id || 'default'}`);
+      return saved ? parseInt(saved, 10) : currentYear;
+    } catch {
+      return currentYear;
+    }
+  });
+  
   // ===== MAPOVÁNÍ LP KATEGORIÍ S POPISY =====
   const LP_CATEGORY_NAMES = {
     'LPE': 'Energie',
@@ -998,9 +1018,11 @@ const LimitovanePrislibyManager = () => {
   
   // ===== DETEKCE ROLÍ podle nové dokumentace v3.0 =====
   
-  // ADMIN / SUPERADMIN - vidí VŠE
+  // ADMIN / SUPERADMIN / ROZPOCTAR - vidí VŠE
   const isAdmin = userDetail?.roles?.some(role => 
-    role.kod_role === 'ADMINISTRATOR' || role.kod_role === 'SUPERADMIN'
+    role.kod_role === 'ADMINISTRATOR' || 
+    role.kod_role === 'SUPERADMIN' ||
+    role.kod_role === 'ROZPOCTAR'
   );
   
   // APPROVE (Schvalovatel) - vidí svůj úsek + své objednávky
@@ -1016,8 +1038,8 @@ const LimitovanePrislibyManager = () => {
     isAdmin
   );
   
-  // Všichni uživatelé (i bez ORDER_APPROVAL) vidí LP svého úseku
-  // Endpoint /moje-cerpani se nepoužívá pro základní view
+  // Všichni uživatelé vidí LP svého úseku + LP ze kterých čerpali
+  // Backend automaticky přidá LP z jiných úseků pokud z nich uživatel čerpal
   
   // User info
   const userUsekId = user?.usek_id || userDetail?.usek_id;
@@ -1028,11 +1050,10 @@ const LimitovanePrislibyManager = () => {
     setLoading(true);
     try {
       const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-      const currentYear = new Date().getFullYear();
       
       let endpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
       let payload = {
-        rok: currentYear,
+        rok: selectedYear,
         username: username,
         token: token
       };
@@ -1048,9 +1069,13 @@ const LimitovanePrislibyManager = () => {
         payload.user_id = userId;
         
       } else if (userUsekId) {
-        // ===== VŠICHNI OSTATNÍ: LP celého úseku =====
+        // ===== VŠICHNI OSTATNÍ: LP celého úseku + LP ze kterých čerpal =====
         // Platí pro: APPROVE, běžné uživatele, kohokoli s usek_id
         payload.usek_id = userUsekId;
+        // Přidat requesting_user_id pro zobrazení LP z jiných úseků ze kterých čerpal
+        if (userId) {
+          payload.requesting_user_id = userId;
+        }
         
       } else {
         // ===== Fallback: Pokud chybí usek_id =====
@@ -1220,7 +1245,7 @@ const LimitovanePrislibyManager = () => {
           // KROK 1: Načíst GLOBÁLNÍ stav všech LP (pro celkový_limit a celkové čerpání)
           const globalStateEndpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
           const globalStatePayload = {
-            rok: currentYear,
+            rok: selectedYear,
             username: username,
             token: token,
             isAdmin: true  // Načíst všechna LP pro sloučení
@@ -1238,7 +1263,7 @@ const LimitovanePrislibyManager = () => {
           // KROK 2: Načíst MOJE čerpání
           const myUsageEndpoint = `${API_BASE_URL}limitovane-prisliby/moje-cerpani`;
           const myUsagePayload = {
-            rok: currentYear,
+            rok: selectedYear,
             username: username,
             token: token,
             user_id: userId
@@ -1313,7 +1338,7 @@ const LimitovanePrislibyManager = () => {
       setLpData([]);
       setLoading(false);
     }
-  }, [token, username, userId, userDetail, isAdmin, isApprove, isLPManager, userUsekId, showToast]);
+  }, [token, username, userId, userDetail, isAdmin, isApprove, isLPManager, userUsekId, selectedYear, showToast]);
   
   // Načtení dat při změně závislostí
   useEffect(() => {
@@ -1326,11 +1351,11 @@ const LimitovanePrislibyManager = () => {
     // Zobrazit confirm dialog místo window.confirm
     setConfirmDialog({
       isOpen: true,
-      title: 'Inicializace čerpání LP - KRITICKÁ OPERACE',
+      title: `Inicializace čerpání LP pro rok ${selectedYear} - KRITICKÁ OPERACE`,
       message: (
         <div>
           <p style={{ marginBottom: '1rem', fontWeight: '600', fontSize: '1.05rem' }}>
-            Opravdu chcete spustit inicializaci čerpání limitovaných příslibů?
+            Opravdu chcete spustit inicializaci čerpání limitovaných příslibů pro rok <strong>{selectedYear}</strong>?
           </p>
           <div style={{ 
             background: '#fef2f2', 
@@ -1343,8 +1368,9 @@ const LimitovanePrislibyManager = () => {
               ⚠️ VAROVÁNÍ - Tato operace:
             </p>
             <ul style={{ margin: '0', paddingLeft: '1.5rem', color: '#991b1b' }}>
-              <li>Smaže VŠECHNY existující záznamy čerpání pro rok 2025</li>
-              <li>Přepočítá všechna LP od začátku</li>
+              <li>Smaže VŠECHNY existující záznamy čerpání pro rok <strong>{selectedYear}</strong></li>
+              <li>Přepočítá všechna LP pro daný rok od začátku</li>
+              <li>Hledá LP s <code>platne_od</code> v roce <strong>{selectedYear}</strong></li>
               <li>Může trvat 15-30 sekund</li>
               <li>Je určena POUZE pro ADMINISTRÁTORY</li>
             </ul>
@@ -1370,7 +1396,6 @@ const LimitovanePrislibyManager = () => {
     setInitializing(true);
     try {
       const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-      const currentYear = new Date().getFullYear();
       
       const response = await fetch(`${API_BASE_URL}limitovane-prisliby/inicializace`, {
         method: 'POST',
@@ -1380,7 +1405,7 @@ const LimitovanePrislibyManager = () => {
         body: JSON.stringify({ 
           username: username,
           token: token,
-          rok: currentYear,
+          rok: selectedYear,
           isAdmin: isAdmin
         })
       });
@@ -1418,7 +1443,6 @@ const LimitovanePrislibyManager = () => {
     setLoading(true);
     try {
       const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-      const currentYear = new Date().getFullYear();
       
       const response = await fetch(`${API_BASE_URL}limitovane-prisliby/prepocet`, {
         method: 'POST',
@@ -1428,7 +1452,7 @@ const LimitovanePrislibyManager = () => {
         body: JSON.stringify({
           token: token,
           username: username,
-          rok: currentYear
+          rok: selectedYear
           // cislo_lp: 'LPIT1' // volitelné - pokud chceme přepočítat jen jedno LP
         })
       });
@@ -1493,8 +1517,10 @@ const LimitovanePrislibyManager = () => {
     // TŘI TYPY:
     celkove_rezervovano: filteredData.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0),
     celkove_predpokladane: filteredData.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0),
+    // DŮLEŽITĚ: skutecne_cerpano JIŽ ZAHRNUJE POKLADNU (faktury + pokladna)
+    // Pokladna je součást skutečného čerpání, ne zvlášť!
     celkove_skutecne: filteredData.reduce((sum, lp) => sum + (lp.skutecne_cerpano || 0), 0),
-    // Čerpání z pokladny:
+    // Pokladna - jen pro informaci, je již zahrnuta v celkove_skutecne
     celkove_pokladna: filteredData.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0),
     // Zpětná kompatibilita:
     celkove_cerpano: filteredData.reduce((sum, lp) => sum + lp.aktualne_cerpano, 0),
@@ -2038,6 +2064,35 @@ const LimitovanePrislibyManager = () => {
       {/* Filtry - Custom multi-select s vyhledáváním */}
       {isAdmin && (
         <FilterBar>
+          {/* Filtr roku - PRVNÍ NA ŘÁDKU */}
+          <FilterWrapper>
+            <FilterLabel>
+              <FilterLabelLeft>
+                <Calendar size={16} />
+                Rok
+              </FilterLabelLeft>
+            </FilterLabel>
+            <FilterSelect 
+              value={selectedYear}
+              onChange={(e) => {
+                const year = parseInt(e.target.value, 10);
+                setSelectedYear(year);
+                try {
+                  localStorage.setItem(`lp_year_filter_${user?.id || 'default'}`, String(year));
+                } catch (err) {
+                  console.error('Chyba při ukládání roku do localStorage:', err);
+                }
+              }}
+              style={{ maxWidth: '150px' }}
+            >
+              {availableYears.map(year => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </FilterSelect>
+          </FilterWrapper>
+          
           <FilterWrapper>
             <FilterLabel>
               <FilterLabelLeft>
@@ -2295,11 +2350,22 @@ const LimitovanePrislibyManager = () => {
  * Zobrazuje agregované čerpání LP kódů z pokladny včetně multi-LP položek
  */
 const CashbookLPSummary = () => {
-  const { userDetail } = useContext(AuthContext);
+  const { user, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const [loading, setLoading] = useState(false);
   const [lpSummary, setLpSummary] = useState([]);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  
+  // State pro filtr roku - s localStorage persistencí
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: currentYear - 2024 }, (_, i) => 2025 + i);
+  const [selectedYear, setSelectedYear] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`lp_cashbook_year_${user?.id || 'default'}`);
+      return saved ? parseInt(saved, 10) : currentYear;
+    } catch {
+      return currentYear;
+    }
+  });
   const [collapsed, setCollapsed] = useState(false);
   
   const loadLPSummary = useCallback(async () => {
@@ -2356,9 +2422,17 @@ const CashbookLPSummary = () => {
               </label>
               <CashbookYearSelect
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const year = parseInt(e.target.value, 10);
+                  setSelectedYear(year);
+                  try {
+                    localStorage.setItem(`lp_cashbook_year_${user?.id || 'default'}`, String(year));
+                  } catch (err) {
+                    console.error('Chyba při ukládání roku do localStorage:', err);
+                  }
+                }}
               >
-                {[2025, 2024, 2023].map(year => (
+                {availableYears.map(year => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </CashbookYearSelect>
@@ -2413,7 +2487,7 @@ const CashbookLPSummary = () => {
                       const percentColor = lp.procento_cerpani > 100 ? '#dc2626' : lp.procento_cerpani > 80 ? '#f59e0b' : '#10b981';
                       
                       return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <tr key={lp.id || `lp-${idx}`} style={{ borderBottom: '1px solid #f3f4f6' }}>
                           <td style={{ padding: '0.75rem' }}>
                             <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>{lp.lp_kod}</div>
                             {lp.nazev_uctu && (

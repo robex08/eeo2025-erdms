@@ -998,15 +998,42 @@ const DocxMappingExpandableSection = ({
     }
 
     const validation = validateDocxMapping(mapping);
+    
+    // ✅ NOVÁ VALIDACE: Zkontroluj, zda všechna pole v JSON existují v DOCX
+    if (analysisResult?.fields && analysisResult.fields.length > 0) {
+      const docxFieldNames = analysisResult.fields.map(f => f.name);
+      const mappingKeys = Object.keys(mapping);
+      
+      // Najdi pole v JSON mapování, která neexistují v DOCX
+      const orphanFields = mappingKeys.filter(key => !docxFieldNames.includes(key));
+      
+      if (orphanFields.length > 0) {
+        console.warn('⚠️ Pole v JSON mapování, která NEEXISTUJÍ v DOCX souboru:', orphanFields);
+        
+        // Přidej tyto chyby do validace
+        if (!validation.errors) validation.errors = [];
+        orphanFields.forEach(fieldName => {
+          validation.errors.push({
+            type: 'missing_in_docx',
+            docxField: fieldName,
+            apiPath: mapping[fieldName],
+            reason: `Pole "${fieldName}" je v JSON mapování, ale NEEXISTUJE ve Word dokumentu. Možná jste přejmenovali pole ve Wordu, ale aktualizovali jste mapování.`,
+            suggestion: `Klikněte na tlačítko "Obnovit detekci" pro znovu načtení polí z DOCX nebo odstraňte toto pole z mapování.`
+          });
+        });
+        validation.valid = false;
+      }
+    }
+    
     setMappingValidation(validation);
 
     if (validation && !validation.valid) {
       console.log('⚠️ Mapping obsahuje chyby:', {
         errors: validation.errors.length,
-        warnings: validation.warnings.length
+        warnings: validation.warnings?.length || 0
       });
     }
-  }, [mapping]);
+  }, [mapping, analysisResult]);
 
   // Parsuj existující mapování a rozlož složená pole do multi-mapping
   useEffect(() => {
@@ -1089,6 +1116,15 @@ const DocxMappingExpandableSection = ({
     }
   }, [file, expanded]);
 
+  // ✅ AUTOMATICKÁ ANALÝZA při načtení souboru (i když je sekce sbalená) - pro validaci
+  useEffect(() => {
+    if (file && !analysisResult && !analyzing) {
+      // Spusť analýzu i když je sekce sbalená - potřebujeme validaci
+      console.log('🔍 Automaticky analyzuji DOCX pro validaci mapování...');
+      analyzeDocxFile(file);
+    }
+  }, [file]);
+
   // Reset analýzy při změně souboru
   useEffect(() => {
     if (file) {
@@ -1129,8 +1165,27 @@ const DocxMappingExpandableSection = ({
 
   const getStatus = () => {
     if (analyzing) return { status: 'analyzing', text: 'Analyzuji...' };
+    
+    // ✅ Kontrola validace - priorita nad ostatními stavy
+    if (mappingValidation && !mappingValidation.valid && mappingValidation.errors?.length > 0) {
+      const errorCount = mappingValidation.errors.length;
+      return { 
+        status: 'error', 
+        text: `${errorCount} ${errorCount === 1 ? 'chyba' : errorCount < 5 ? 'chyby' : 'chyb'} v mapování` 
+      };
+    }
+    
     if (analysisResult?.success && analysisResult.fields?.length > 0) {
       const mappedCount = Object.keys(mapping).length;
+      
+      // Pokud je validace OK, ukaž to
+      if (mappingValidation?.valid) {
+        return {
+          status: 'ready',
+          text: `✓ ${analysisResult.fields.length} polí, ${mappedCount} namapováno`
+        };
+      }
+      
       return {
         status: 'ready',
         text: `${analysisResult.fields.length} polí, ${mappedCount} namapováno`
@@ -1654,13 +1709,7 @@ const DocxMappingExpandableSection = ({
         </SectionHeaderLeft>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <StatusBadge $status={status.status}>
-            {status.status === 'analyzing' && <FontAwesomeIcon icon={faSpinner} spin />}
-            {status.status === 'ready' && <FontAwesomeIcon icon={faCheck} />}
-            {status.status === 'error' && <FontAwesomeIcon icon={faTimes} />}
-            {status.text}
-          </StatusBadge>
-
+          {/* ODSTRANENO: Status badge s chybami - zobrazuje se pouze u JSON */}
           <ExpandIcon $expanded={expanded}>
             <FontAwesomeIcon icon={faChevronDown} />
           </ExpandIcon>
@@ -1869,8 +1918,19 @@ const DocxMappingExpandableSection = ({
                                 <div style={{ marginTop: '0.25rem' }}>💡 Toto pole neexistuje v enriched API</div>
                               </>
                             )}
+                            {fieldError.type === 'missing_in_docx' && (
+                              <>
+                                🚨 <strong>Pole CHYBÍ v DOCX:</strong> <code>{field.name}</code>
+                                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
+                                  💡 {fieldError.reason}
+                                </div>
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#fef3c7', borderRadius: '4px', fontSize: '0.85rem' }}>
+                                  ✅ <strong>Řešení:</strong> {fieldError.suggestion}
+                                </div>
+                              </>
+                            )}
                           </ValidationWarning>
-                          {fieldError.suggestion && (
+                          {fieldError.suggestion && fieldError.type !== 'missing_in_docx' && (
                             <ValidationSuggestion>
                               ✅ Použijte: <strong>{fieldError.suggestion}</strong>
                             </ValidationSuggestion>
