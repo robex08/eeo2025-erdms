@@ -350,7 +350,7 @@ const EditableCombobox = ({
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => (
               <DropdownItem
-                key={option.code}
+                key={`${option.code}-${index}`}
                 className={`${highlightedIndex === index ? 'highlighted' : ''} ${
                   inputValue === option.code ? 'selected' : ''
                 }`}

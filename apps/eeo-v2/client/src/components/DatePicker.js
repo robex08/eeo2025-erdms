@@ -9,9 +9,19 @@ import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { Calendar } from 'lucide-react';
 
-function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false }) {
+function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false, limitToMonth, limitToYear }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  
+  // 🆕 Inicializace currentMonth na měsíc knihy, pokud je limitToMonth nastaveno
+  const getInitialMonth = () => {
+    if (limitToMonth !== undefined && limitToYear !== undefined) {
+      // Měsíc knihy (např. prosinec 2025)
+      return new Date(limitToYear, limitToMonth - 1, 1);
+    }
+    return new Date(); // Systémové datum jako fallback
+  };
+  
+  const [currentMonth, setCurrentMonth] = useState(getInitialMonth());
   const [openUpwards, setOpenUpwards] = useState(false);
   const [isPositioned, setIsPositioned] = useState(false);
   const wrapperRef = useRef(null);
@@ -68,7 +78,8 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       if (!wrapperRef.current || !calendarRef.current) return;
 
       const buttonRect = wrapperRef.current.getBoundingClientRect();
-      const calendarHeight = 380;
+      // Měřit skutečnou výšku kalendáře místo hardcoded hodnoty
+      const calendarHeight = calendarRef.current.offsetHeight || 380;
       const footerHeight = 54;
       const buffer = 20;
 
@@ -79,15 +90,24 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
 
       // Updateovat pozici přímo v DOM bez state update
       // Použít transform místo top/left pro GPU akceleraci
-      const top = shouldOpenUpward ? buttonRect.top - calendarHeight : buttonRect.bottom + 4;
-      const left = buttonRect.left;
-      const width = Math.max(buttonRect.width, 300);
+      // POZOR: Pro fixed positioning nepřidávat scrollY (fixed je vůči viewportu, ne dokumentu)
+      const top = shouldOpenUpward ? buttonRect.top - calendarHeight - 4 : buttonRect.bottom + 4;
+      let left = buttonRect.left;
       
-      positionRef.current = { top, left, width };
+      // Zajistit, že kalendář se nevejde mimo viewport
+      const calendarWidth = 220; // Fixní šířka kalendáře (200px grid + 2*10px padding)
+      if (left + calendarWidth > window.innerWidth) {
+        left = window.innerWidth - calendarWidth - 10; // 10px margin
+      }
+      if (left < 10) {
+        left = 10; // Minimální 10px zleva
+      }
+      
+      positionRef.current = { top, left, width: calendarWidth };
       
       // Aplikovat přímo do DOM - použít transform pro lepší performance
       calendarRef.current.style.transform = `translate(${left}px, ${top}px)`;
-      calendarRef.current.style.width = `${width}px`;
+      calendarRef.current.style.width = `${calendarWidth}px`;
       
       // Update openUpwards pouze pokud se změnil (kvůli CSS transition)
       if (shouldOpenUpward !== openUpwards) {
@@ -213,7 +233,23 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       e.preventDefault();
       e.stopPropagation();
     }
-    handleDateSelect(new Date());
+    
+    const today = new Date();
+    let dateToSet = today;
+    
+    // Pokud je limitToMonth a limitToYear nastaveno, zkontroluj, zda dnešní datum je v tomto měsíci
+    if (limitToMonth !== undefined && limitToYear !== undefined) {
+      const currentMonthInBook = limitToMonth; // 1-12
+      const currentYearInBook = limitToYear;
+      
+      // Pokud systémové datum není v měsíci knihy, nastav poslední den měsíce knihy
+      if (today.getMonth() + 1 !== currentMonthInBook || today.getFullYear() !== currentYearInBook) {
+        // Poslední den měsíce = new Date(rok, měsíc, 0)
+        dateToSet = new Date(currentYearInBook, currentMonthInBook, 0);
+      }
+    }
+    
+    handleDateSelect(dateToSet);
   };
 
   const handleClear = (e) => {
@@ -233,6 +269,15 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       e.preventDefault();
       e.stopPropagation();
     }
+    
+    // Pokud je limitToMonth nastaveno, zakázat navigaci mimo tento měsíc
+    if (limitToMonth !== undefined && limitToYear !== undefined) {
+      const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1);
+      if (newMonth.getMonth() + 1 !== limitToMonth || newMonth.getFullYear() !== limitToYear) {
+        return; // Zakázat navigaci
+      }
+    }
+    
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
   };
 
@@ -241,6 +286,15 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       e.preventDefault();
       e.stopPropagation();
     }
+    
+    // Pokud je limitToMonth nastaveno, zakázat navigaci mimo tento měsíc
+    if (limitToMonth !== undefined && limitToYear !== undefined) {
+      const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1);
+      if (newMonth.getMonth() + 1 !== limitToMonth || newMonth.getFullYear() !== limitToYear) {
+        return; // Zakázat navigaci
+      }
+    }
+    
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
   };
 
@@ -255,7 +309,29 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
         {!isCompact && <Calendar />}
         <DateInputButton
           type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
+          onClick={() => {
+            if (disabled) return;
+            
+            // Pokud ještě není vyplněné datum a máme limitToMonth/Year, nastav výchozí
+            if (!value && limitToMonth && limitToYear) {
+              const today = new Date();
+              const currentMonthInBook = parseInt(limitToMonth, 10);
+              const currentYearInBook = parseInt(limitToYear, 10);
+              
+              // Pokud jsme ve stejném měsíci, použij dnešní datum
+              if (today.getMonth() + 1 === currentMonthInBook && today.getFullYear() === currentYearInBook) {
+                const formattedDate = formatInputDate(today);
+                onChange(formattedDate);
+              } else {
+                // Jinak poslední den měsíce knihy
+                const lastDay = new Date(currentYearInBook, currentMonthInBook, 0);
+                const formattedDate = formatInputDate(lastDay);
+                onChange(formattedDate);
+              }
+            }
+            
+            setIsOpen(!isOpen);
+          }}
           disabled={disabled}
           hasError={hasError}
           $highlight={highlight}
@@ -266,38 +342,8 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           {displayText}
         </DateInputButton>
 
-        {!isCompact && !disabled && (
-          <DateTodayButton
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const today = new Date();
-              const formattedDate = today.toISOString().split('T')[0];
-              onChange(formattedDate);
-              if (onBlur) {
-                onBlur(formattedDate);
-              }
-            }}
-            title="Dnešní datum"
-          >
-            📅
-          </DateTodayButton>
-        )}
-
-        {!isCompact && value && !disabled && (
-          <DateClearButton
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleClear(e);
-            }}
-            title="Smazat datum"
-          >
-            ✕
-          </DateClearButton>
-        )}
+        {/* Křížek na zrušení data odstraněn - zbytečný */}
+        {/* Tlačítko "Dnes" odstraněno - výchozí hodnota se nastavuje při otevření */}
       </InputWithIcon>
 
       {isOpen && !disabled && createPortal(
@@ -340,50 +386,33 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
             {calendarDays.map((day, index) => {
               const isToday = day.date.toDateString() === today.toDateString();
               const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
+              
+              // Zakázat dny mimo měsíc knihy (pokud je limitToMonth a limitToYear nastaveno)
+              const isDisabled = limitToMonth !== undefined && limitToYear !== undefined && 
+                (day.date.getMonth() + 1 !== limitToMonth || day.date.getFullYear() !== limitToYear);
 
               return (
                 <CalendarDate
                   key={index}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDateSelect(day.date);
+                    if (!isDisabled) {
+                      handleDateSelect(day.date);
+                    }
                   }}
                   isToday={isToday}
                   isSelected={isSelected}
-                  isOtherMonth={day.isOtherMonth}
+                  isOtherMonth={day.isOtherMonth || isDisabled}
+                  style={{ 
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                    opacity: isDisabled ? 0.3 : 1
+                  }}
                 >
                   {day.date.getDate()}
                 </CalendarDate>
               );
             })}
           </CalendarGrid>
-
-          <CalendarFooter>
-            <CalendarButton
-              className="today"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDateSelect(new Date());
-              }}
-            >
-              Dnes
-            </CalendarButton>
-            <CalendarButton
-              className="clear"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onChange('');
-                if (onBlur) {
-                  onBlur('');
-                }
-                setIsOpen(false);
-              }}
-            >
-              Smazat
-            </CalendarButton>
-          </CalendarFooter>
         </DateCalendarPopup>,
         document.body
       )}
@@ -418,9 +447,9 @@ const DateInputButton = styled.button`
   width: 100%;
   display: block;
   height: ${props => props.$variant === 'compact' ? '32px' : '48px'};
-  padding: ${props => props.$variant === 'compact' ? '0.375rem' : '0.5rem 2.75rem'};
-  padding-left: ${props => props.$variant === 'compact' ? '0.75rem' : '2.75rem'};
-  padding-right: ${props => props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem'};
+  padding: ${props => props.$variant === 'compact' ? '0.375rem 0.5rem' : '0.5rem 2.75rem'};
+  padding-left: ${props => props.$variant === 'compact' ? '0.5rem' : '2.75rem'};
+  padding-right: ${props => props.$variant === 'compact' ? '0.5rem' : (props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem')};
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
   border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
@@ -560,6 +589,7 @@ const CalendarGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 1px;
+  width: 200px;
 `;
 
 const CalendarDay = styled.div`

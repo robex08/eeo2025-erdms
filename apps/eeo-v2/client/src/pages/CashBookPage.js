@@ -686,8 +686,8 @@ const Table = styled.table`
   }
 
   .date-cell {
-    width: 130px; /* Zúženo z 220px - datum se nesmí zalamovat */
-    min-width: 130px;
+    width: 65px; /* Zúženo na minimum pro dd.mm.rrrr */
+    min-width: 65px;
     padding: 0.5rem;
     position: relative;
     overflow: visible;
@@ -709,7 +709,7 @@ const Table = styled.table`
   }
 
   .description-cell {
-    width: 360px; /* 60% poměr - Obsah */
+    width: 375px; /* Rozšířeno díky zúženému datu */
     text-align: left;
   }
 
@@ -1100,6 +1100,7 @@ const CashBookPage = () => {
     cashboxVpd: mainAssignment?.ciselna_rada_vpd || null, // 🆕 Číselná řada VPD
     cashboxPpd: mainAssignment?.ciselna_rada_ppd || null, // 🆕 Číselná řada PPD
     month: new Date(currentYear, currentMonth - 1).toLocaleDateString('cs-CZ', { month: 'long' }),
+    monthNumber: currentMonth, // 🆕 Pro validaci data
     year: currentYear
   };
 
@@ -1351,9 +1352,14 @@ const CashBookPage = () => {
             const result = await cashbookAPI.createEntry(transformFrontendEntryToDB(entry, targetBookId));
 
             if (result.status === 'ok' && result.data?.entry) {
-              // Aktualizovat entry s DB ID
+              // Aktualizovat entry s DB ID a číslem dokladu
               entry.db_id = result.data.entry.id;
               entry.documentNumber = result.data.entry.cislo_dokladu;
+              
+              // ✅ FIX: Aktualizovat state ihned, aby další záznamy měly správné číslo
+              setCashBookEntries(prev => prev.map(e => 
+                e.id === entry.id ? { ...e, db_id: entry.db_id, documentNumber: entry.documentNumber } : e
+              ));
             }
           }
 
@@ -2386,6 +2392,21 @@ const CashBookPage = () => {
     const editedEntry = cashBookEntries.find(e => e.id === id);
     if (!editedEntry) return;
 
+    // ✅ VALIDACE DATUMU: Zkontrolovat, zda je datum v rámci měsíce pokladní knihy
+    if (editedEntry.date) {
+      const entryDate = new Date(editedEntry.date);
+      const entryMonth = entryDate.getMonth() + 1;
+      const entryYear = entryDate.getFullYear();
+      
+      if (entryMonth !== organizationInfo.monthNumber || entryYear !== organizationInfo.year) {
+        showToast(
+          `⚠️ UPOZORNĚNÍ: Datum je mimo aktuální zpracovávaný měsíc pokladny (${organizationInfo.month} ${organizationInfo.year})!`,
+          'error'
+        );
+        return; // Zabránit uložení
+      }
+    }
+
     // ✅ VALIDACE LP KÓDU: U výdajů je LP kód povinný
     const hasExpense = editedEntry.expense && editedEntry.expense > 0;
     const hasDetailItems = editedEntry.detailItems && editedEntry.detailItems.length > 0;
@@ -2449,7 +2470,17 @@ const CashBookPage = () => {
         // Vygenerovat nové P číslo
         const currentMonthPNumbers = cashBookEntries
           .filter(e => e.id !== id && e.documentNumber?.startsWith('P'))
-          .map(e => parseInt(e.documentNumber.substring(1)) || 0);
+          .map(e => {
+            // Parsovat číslo - podporovat formáty P001, P499-008, atd.
+            const match = e.documentNumber.match(/^P(\d+)-(\d+)$/);
+            if (match) {
+              // Formát P499-008 → vzít druhé číslo
+              return parseInt(match[2]) || 0;
+            } else {
+              // Formát P001 → vzít celé číslo
+              return parseInt(e.documentNumber.substring(1)) || 0;
+            }
+          });
 
         let nextP;
         if (currentMonthPNumbers.length > 0) {
@@ -2467,7 +2498,17 @@ const CashBookPage = () => {
         // Vygenerovat nové V číslo
         const currentMonthVNumbers = cashBookEntries
           .filter(e => e.id !== id && e.documentNumber?.startsWith('V'))
-          .map(e => parseInt(e.documentNumber.substring(1)) || 0);
+          .map(e => {
+            // Parsovat číslo - podporovat formáty V001, V599-012, atd.
+            const match = e.documentNumber.match(/^V(\d+)-(\d+)$/);
+            if (match) {
+              // Formát V599-012 → vzít druhé číslo
+              return parseInt(match[2]) || 0;
+            } else {
+              // Formát V001 → vzít celé číslo
+              return parseInt(e.documentNumber.substring(1)) || 0;
+            }
+          });
 
         let nextV;
         if (currentMonthVNumbers.length > 0) {
@@ -2495,7 +2536,15 @@ const CashBookPage = () => {
         // 1. Najít nejvyšší P číslo v aktuálním měsíci
         const currentMonthPNumbers = cashBookEntries
           .filter(e => e.id !== id && e.documentNumber?.startsWith('P'))
-          .map(e => parseInt(e.documentNumber.substring(1)) || 0);
+          .map(e => {
+            // Parsovat číslo - podporovat formáty P001, P499-008, atd.
+            const match = e.documentNumber.match(/^P(\d+)-(\d+)$/);
+            if (match) {
+              return parseInt(match[2]) || 0;
+            } else {
+              return parseInt(e.documentNumber.substring(1)) || 0;
+            }
+          });
 
         let nextP;
         if (currentMonthPNumbers.length > 0) {
@@ -2517,7 +2566,15 @@ const CashBookPage = () => {
         // 1. Najít nejvyšší V číslo v aktuálním měsíci
         const currentMonthVNumbers = cashBookEntries
           .filter(e => e.id !== id && e.documentNumber?.startsWith('V'))
-          .map(e => parseInt(e.documentNumber.substring(1)) || 0);
+          .map(e => {
+            // Parsovat číslo - podporovat formáty V001, V599-012, atd.
+            const match = e.documentNumber.match(/^V(\d+)-(\d+)$/);
+            if (match) {
+              return parseInt(match[2]) || 0;
+            } else {
+              return parseInt(e.documentNumber.substring(1)) || 0;
+            }
+          });
 
         let nextV;
         if (currentMonthVNumbers.length > 0) {
@@ -3747,6 +3804,7 @@ const CashBookPage = () => {
                       value={entry.date}
                       onChange={(newDate) => updateEntry(entry.id, 'date', newDate)}
                       placeholder="Vyberte datum"
+                      variant="compact"
                       limitToMonth={currentMonth}
                       limitToYear={currentYear}
                     />
