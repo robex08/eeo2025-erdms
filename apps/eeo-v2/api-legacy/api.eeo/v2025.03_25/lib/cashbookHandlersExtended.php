@@ -670,6 +670,12 @@ function handle_cashbox_update_post($config, $input) {
             return api_error(500, 'Nepodařilo se aktualizovat pokladnu');
         }
         
+        // 🆕 PŘEPOČET LEDNOVÝCH KNIH po změně pocatecni_stav_rok
+        $recalculatedBooks = 0;
+        if (isset($input['pocatecni_stav_rok'])) {
+            $recalculatedBooks = $cashboxModel->recalculateJanuaryBooks($input['pokladna_id']);
+        }
+        
         // Načíst aktualizovanou pokladnu
         $updatedCashbox = $cashboxModel->getCashboxById($input['pokladna_id']);
         
@@ -677,12 +683,18 @@ function handle_cashbox_update_post($config, $input) {
             'message' => 'Pokladna byla aktualizována',
             'pokladna_id' => $input['pokladna_id'],
             'affected_users' => $affectedUsers,
+            'recalculated_january_books' => $recalculatedBooks,
             'pokladna' => $updatedCashbox
         );
         
         // Varování pokud ovlivňuje více uživatelů
         if ($affectedUsers > 1) {
             $response['warning'] = 'Tato změna ovlivnila ' . $affectedUsers . ' uživatelů';
+        }
+        
+        // Info o přepočtu lednových knih
+        if ($recalculatedBooks > 0) {
+            $response['info'] = 'Přepočítáno ' . $recalculatedBooks . ' lednových knih';
         }
         
         return api_ok($response);
