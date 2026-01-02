@@ -1381,7 +1381,9 @@ function handle_order_v2_update($input, $config, $queries) {
         // Přepočítat LP kódy (použít existující PDO spojení)
         if (!empty($lp_codes)) {
             foreach ($lp_codes as $lp_id) {
-                prepocetCerpaniPodleIdLP_PDO($db, $lp_id);
+                // ✅ Přepočítat bez explicitního roku - funkce sama určí primární rok LP
+                // Pro LP přecházející přes roky (2025-12-31 až 2026-12-31) se použije rok 2026
+                prepocetCerpaniPodleIdLP_PDO($db, $lp_id, null);
             }
         }
         

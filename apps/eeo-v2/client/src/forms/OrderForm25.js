@@ -7931,6 +7931,19 @@ function OrderForm25() {
       return;
     }
 
+    // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN v určitých stavech
+    const workflow = Array.isArray(formData.stav_workflow_kod) 
+      ? formData.stav_workflow_kod 
+      : (typeof formData.stav_workflow_kod === 'string' ? JSON.parse(formData.stav_workflow_kod || '[]') : []);
+    
+    const currentState = workflow.length > 0 ? workflow[workflow.length - 1] : null;
+    const allowedStates = ['NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'];
+    
+    if (!currentState || !allowedStates.includes(currentState)) {
+      showToast && showToast('❌ Fakturu lze přidat pouze k objednávce ve stavu: NEUVEŘEJNIT, UVEŘEJNĚNA, FAKTURACE, VĚCNÁ SPRÁVNOST nebo ZKONTROLOVANÁ', { type: 'error' });
+      return;
+    }
+
     // Validace povinných polí
     if (!fakturaFormData.fa_datum_doruceni || (typeof fakturaFormData.fa_datum_doruceni === 'string' && fakturaFormData.fa_datum_doruceni.trim() === '')) {
       showToast && showToast('Datum doručení faktury je povinné', { type: 'error' });
