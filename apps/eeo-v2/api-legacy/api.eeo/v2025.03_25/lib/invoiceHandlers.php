@@ -42,12 +42,7 @@ function handle_invoices25_by_order($input, $config, $queries) {
     if (!$token || !$request_username || $objednavka_id <= 0) {
         http_response_code(400);
         echo json_encode([
-            'err' => 'Chybí povinné parametry',
-            'debug' => [
-                'has_token' => !empty($token),
-                'username' => $request_username,
-                'objednavka_id' => $objednavka_id
-            ]
+            'err' => 'Chybí povinné parametry'
         ]);
         return;
     }

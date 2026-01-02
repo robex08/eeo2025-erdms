@@ -298,7 +298,6 @@ $is_multipart = strpos($content_type, 'multipart/form-data') !== false;
 if ($is_multipart) {
     // Pro multipart použij přímo $_POST (FormData parametry)
     $input = $_POST;
-    error_log("API Input parsing - MULTIPART detected, using \$_POST directly");
 } else {
     // Pro JSON nebo application/x-www-form-urlencoded
     $raw_input = file_get_contents('php://input');
@@ -310,40 +309,17 @@ if ($is_multipart) {
     }
 }
 
-// Debug: log what we received
-error_log("API Input parsing - Content-Type: " . $content_type);
-error_log("API Input data: " . json_encode($input));
-
 // Extrakce endpointu - priorita X-Endpoint header, pak URI
 $endpoint = '';
 if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     $endpoint = $_SERVER['HTTP_X_ENDPOINT'];
-    error_log("Using X-Endpoint header: $endpoint");
 } else {
     // Normalize request_uri - remove duplicate slashes
     $normalized_uri = preg_replace('#/+#', '/', $request_uri);
     
     if (preg_match('~/(dev/)?api\.eeo/(.+?)(?:\?.*)?$~', $normalized_uri, $matches)) {
         $endpoint = rtrim($matches[2], '/');
-        error_log("Using URI endpoint: $endpoint (normalized from: $request_uri)");
     }
-}
-
-// DEBUG: zobrazíme, co se rozpoznává (pouze DEV mode)
-if (defined('DEBUG_MODE') && DEBUG_MODE) {
-    error_log("URI: $request_uri, Endpoint: $endpoint, Method: $request_method, X-Endpoint: " . (isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : 'not set'));
-}
-
-// 🔍 DEBUG pro order attachments download (pouze DEV mode)
-if (defined('DEBUG_MODE') && DEBUG_MODE && strpos($endpoint, 'attachments') !== false && strpos($endpoint, 'download') !== false) {
-    header('X-Debug-Endpoint: ' . $endpoint);
-    header('X-Debug-Method: ' . $request_method);
-    header('X-Debug-Raw-Input-Length: ' . strlen($raw_input));
-    error_log("🔍 ATTACHMENT DOWNLOAD REQUEST DETECTED:");
-    error_log("  Raw endpoint: [$endpoint]");
-    error_log("  Length: " . strlen($endpoint));
-    error_log("  Request method: $request_method");
-    error_log("  Raw input length: " . strlen($raw_input));
 }
 
 // 🔥 SPECIAL DEBUG ENDPOINT - pro testování routingu
