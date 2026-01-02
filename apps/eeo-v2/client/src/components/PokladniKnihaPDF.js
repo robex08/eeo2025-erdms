@@ -530,8 +530,8 @@ const PokladniKnihaPDF = ({
 
         {/* Tabulka */}
         <View style={styles.table}>
-          {/* Hlavička tabulky */}
-          <View style={styles.tableHeaderRow}>
+          {/* Hlavička tabulky - opakuje se na každé stránce */}
+          <View style={styles.tableHeaderRow} fixed>
             <Text style={[styles.tableHeaderCell, styles.colNumber]}>#</Text>
             <Text style={[styles.tableHeaderCell, styles.colDate]}>Datum</Text>
             <Text style={[styles.tableHeaderCell, styles.colDocNumber]}>Doklad č.</Text>
