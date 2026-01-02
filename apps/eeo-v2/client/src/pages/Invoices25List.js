@@ -24,6 +24,7 @@ import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
+import { getInvoiceTypes25 } from '../services/api25orders';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -1527,6 +1528,10 @@ const Invoices25List = () => {
   // State pro attachment viewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
   
+  // Typy faktur z DB (pro filtr a zobrazení)
+  const [invoiceTypes, setInvoiceTypes] = useState([]);
+  const [invoiceTypesLoading, setInvoiceTypesLoading] = useState(false);
+  
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
     // Vymazat localStorage aby se otevřel čistý formulář
@@ -2052,6 +2057,27 @@ const Invoices25List = () => {
     loadData();
   }, [loadData]);
 
+  // Načtení typů faktur z DB (pouze jednou při mount)
+  useEffect(() => {
+    const loadInvoiceTypes = async () => {
+      if (!token || !username || invoiceTypes.length > 0) return;
+      
+      setInvoiceTypesLoading(true);
+      try {
+        const data = await getInvoiceTypes25({ token, username, aktivni: 1 });
+        if (data && Array.isArray(data)) {
+          setInvoiceTypes(data);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání typů faktur:', err);
+      } finally {
+        setInvoiceTypesLoading(false);
+      }
+    };
+
+    loadInvoiceTypes();
+  }, [token, username, invoiceTypes.length]);
+
   // Reset na první stránku při změně filtrů
   useEffect(() => {
     if (currentPage !== 1) {
@@ -2068,6 +2094,32 @@ const Invoices25List = () => {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
+  };
+
+  // Get invoice type display name
+  const getInvoiceTypeName = (invoice) => {
+    // Pokud backend vrací fa_typ_nazev z JOINu, použij ho
+    if (invoice.fa_typ_nazev) {
+      return invoice.fa_typ_nazev.toUpperCase();
+    }
+    
+    // Fallback: najdi typ v načtených typech z DB
+    const foundType = invoiceTypes.find(type => type.id === invoice.fa_typ);
+    if (foundType) {
+      return foundType.nazev.toUpperCase();
+    }
+    
+    // Poslední fallback: hardcoded názvy
+    switch(invoice.fa_typ) {
+      case 'BEZNA': return 'BĚŽNÁ';
+      case 'ZALOHOVA': return 'ZÁLOHOVÁ';
+      case 'OPRAVNA': return 'OPRAVNÁ';
+      case 'PROFORMA': return 'PROFORMA';
+      case 'DOBROPIS': return 'DOBROPIS';
+      case 'VYUCTOVACI': return 'VYÚČTOVACÍ';
+      case 'JINA': return 'JINÁ';
+      default: return invoice.fa_typ || '—';
+    }
   };
 
   // Get status label
@@ -3004,6 +3056,7 @@ const Invoices25List = () => {
                     <select
                       value={columnFilters.fa_typ || ''}
                       onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
+                      disabled={invoiceTypesLoading}
                       style={{
                         width: '100%',
                         padding: '0.375rem 0.625rem',
@@ -3011,15 +3064,16 @@ const Invoices25List = () => {
                         borderRadius: '6px',
                         fontSize: '0.75rem',
                         backgroundColor: 'white',
-                        cursor: 'pointer'
+                        cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1
                       }}
                     >
-                      <option value="">Všechny typy</option>
-                      <option value="BEZNA">BĚŽNÁ</option>
-                      <option value="ZALOHOVA">ZÁLOHOVÁ</option>
-                      <option value="OPRAVNA">OPRAVNÁ</option>
-                      <option value="PROFORMA">PROFORMA</option>
-                      <option value="DOBROPIS">DOBROPIS</option>
+                      <option value="">{invoiceTypesLoading ? 'Načítám...' : 'Všechny typy'}</option>
+                      {invoiceTypes.map(type => (
+                        <option key={type.id} value={type.id}>
+                          {type.nazev.toUpperCase()}
+                        </option>
+                      ))}
                     </select>
                   </TableHeader>
                   <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -3134,7 +3188,8 @@ const Invoices25List = () => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            cursor: 'pointer',
+                            cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                             color: 'white',
                             fontSize: '0.6rem',
                             padding: 0
@@ -3355,12 +3410,7 @@ const Invoices25List = () => {
                                  invoice.fa_typ === 'PROFORMA' ? '#4338ca' : 
                                  invoice.fa_typ === 'DOBROPIS' ? '#166534' : '#475569'
                         }}>
-                          {invoice.fa_typ === 'BEZNA' ? 'BĚŽNÁ' : 
-                           invoice.fa_typ === 'ZALOHOVA' ? 'ZÁLOHOVÁ' : 
-                           invoice.fa_typ === 'OPRAVNA' ? 'OPRAVNÁ' : 
-                           invoice.fa_typ === 'PROFORMA' ? 'PROFORMA' : 
-                           invoice.fa_typ === 'DOBROPIS' ? 'DOBROPIS' : 
-                           invoice.fa_typ || '—'}
+                          {getInvoiceTypeName(invoice)}
                         </span>
                       </span>
                     </TableCell>
@@ -3372,7 +3422,8 @@ const Invoices25List = () => {
                               display: 'flex', 
                               flexDirection: 'column', 
                               gap: '0.25rem',
-                              cursor: 'pointer',
+                              cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                               color: '#3b82f6'
                             }}
                             onClick={() => handleAddInvoiceToEntity(invoice)}
@@ -3393,7 +3444,8 @@ const Invoices25List = () => {
                         ) : invoice.cislo_objednavky ? (
                           <div
                             style={{
-                              cursor: 'pointer',
+                              cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                               color: '#3b82f6',
                               transition: 'opacity 0.2s'
                             }}
@@ -3779,7 +3831,8 @@ const Invoices25List = () => {
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: '0.75rem',
-                          cursor: 'pointer',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                           padding: '0.75rem',
                           border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
                           borderRadius: '6px',
@@ -3793,7 +3846,8 @@ const Invoices25List = () => {
                           value="soft"
                           checked={deleteType === 'soft'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer', pointerEvents: 'none' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1, pointerEvents: 'none' }}
                         />
                         <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
@@ -3811,7 +3865,8 @@ const Invoices25List = () => {
                           display: 'flex',
                           alignItems: 'flex-start',
                           gap: '0.75rem',
-                          cursor: 'pointer',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                           padding: '0.75rem',
                           border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
                           borderRadius: '6px',
@@ -3825,7 +3880,8 @@ const Invoices25List = () => {
                           value="hard"
                           checked={deleteType === 'hard'}
                           onChange={(e) => setDeleteType(e.target.value)}
-                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer', pointerEvents: 'none' }}
+                          style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1, pointerEvents: 'none' }}
                         />
                         <div style={{ pointerEvents: 'none' }}>
                           <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
@@ -4261,7 +4317,7 @@ const Invoices25List = () => {
                               slidePanelInvoice.fa_typ === 'BEZNA' ? '#0369a1' : '#475569'
                             }
                           >
-                            {slidePanelInvoice.fa_typ}
+                            {getInvoiceTypeName(slidePanelInvoice)}
                           </Badge>
                         </InfoValue>
                       </InfoContent>
@@ -5383,6 +5439,7 @@ const Invoices25List = () => {
                     <select
                       value={columnFilters.fa_typ || ''}
                       onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
+                      disabled={invoiceTypesLoading}
                       style={{
                         width: '100%',
                         padding: '0.375rem 0.625rem',
@@ -5390,15 +5447,16 @@ const Invoices25List = () => {
                         borderRadius: '6px',
                         fontSize: '0.75rem',
                         backgroundColor: 'white',
-                        cursor: 'pointer'
+                        cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1
                       }}
                     >
-                      <option value="">Všechny typy</option>
-                      <option value="BEZNA">BĚŽNÁ</option>
-                      <option value="ZALOHOVA">ZÁLOHOVÁ</option>
-                      <option value="OPRAVNA">OPRAVNÁ</option>
-                      <option value="PROFORMA">PROFORMA</option>
-                      <option value="DOBROPIS">DOBROPIS</option>
+                      <option value="">{invoiceTypesLoading ? 'Načítám...' : 'Všechny typy'}</option>
+                      {invoiceTypes.map(type => (
+                        <option key={type.id} value={type.id}>
+                          {type.nazev.toUpperCase()}
+                        </option>
+                      ))}
                     </select>
                   </TableHeader>
                   <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
@@ -5513,7 +5571,8 @@ const Invoices25List = () => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            cursor: 'pointer',
+                            cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                        opacity: invoiceTypesLoading ? 0.7 : 1,
                             color: 'white',
                             fontSize: '0.6rem',
                             padding: 0
