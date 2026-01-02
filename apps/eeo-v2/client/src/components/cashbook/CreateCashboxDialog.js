@@ -228,6 +228,7 @@ const InputWithCurrency = styled.div`
 
 const CurrencyInput = styled(Input)`
   padding-right: 2.5rem;
+  text-align: right;
   
   /* Odstranění spin tlačítek */
   &::-webkit-inner-spin-button,
@@ -1112,7 +1113,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
         nazev: formData.nazev,
         kod_pracoviste: formData.kod_pracoviste || null,
         nazev_pracoviste: formData.nazev_pracoviste || null,
-        pocatecni_stav_rok: formData.pocatecni_stav_rok !== '' ? parseFloat(formData.pocatecni_stav_rok) : null,
+        pocatecni_stav_rok: formData.pocatecni_stav_rok !== '' ? parseFloat(formData.pocatecni_stav_rok.replace(/\s/g, '')) : null,
         ciselna_rada_vpd: formData.ciselna_rada_vpd,
         vpd_od_cislo: parseInt(formData.vpd_od_cislo),
         ciselna_rada_ppd: formData.ciselna_rada_ppd,
@@ -1465,10 +1466,26 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
                 </Label>
                 <InputWithCurrency>
                   <CurrencyInput
-                    type="number"
-                    step="0.01"
+                    type="text"
                     value={formData.pocatecni_stav_rok}
-                    onChange={(e) => handleChange('pocatecni_stav_rok', e.target.value)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw === '' || /^\d*\.?\d{0,2}$/.test(raw)) {
+                        handleChange('pocatecni_stav_rok', raw);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw && !isNaN(raw)) {
+                        const num = parseFloat(raw);
+                        const formatted = num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        handleChange('pocatecni_stav_rok', formatted.replace(/,/g, '.'));
+                      }
+                    }}
+                    onFocus={(e) => {
+                      const val = e.target.value.replace(/\s/g, '');
+                      handleChange('pocatecni_stav_rok', val);
+                    }}
                     placeholder="Ponechte prázdné pro převod z prosince"
                     disabled={loading}
                   />

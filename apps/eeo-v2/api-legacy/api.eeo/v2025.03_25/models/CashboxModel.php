@@ -36,6 +36,7 @@ class CashboxModel {
                 p.nazev,
                 p.kod_pracoviste,
                 p.nazev_pracoviste,
+                p.pocatecni_stav_rok,
                 p.ciselna_rada_vpd,
                 p.vpd_od_cislo,
                 p.ciselna_rada_ppd,
