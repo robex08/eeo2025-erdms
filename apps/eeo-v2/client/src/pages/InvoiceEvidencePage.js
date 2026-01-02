@@ -56,7 +56,7 @@ import { getOrderV2, updateOrderV2, lockOrderV2, unlockOrderV2 } from '../servic
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
 import { fetchAllUsers } from '../services/api2auth';
-import { getStrediska25, getTypyFaktur25 } from '../services/api25orders';
+import { getStrediska25, getTypyFaktur25, getInvoiceTypes25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
 import SmlouvaPreview from '../components/SmlouvaPreview';
@@ -1664,9 +1664,13 @@ export default function InvoiceEvidencePage() {
   const [strediskaOptions, setStrediskaOptions] = useState([]);
   const [strediskaLoading, setStrediskaLoading] = useState(false);
 
-  // Typy faktur (klasifikace příloh)
+  // Typy faktur (klasifikace příloh) - FAKTURA_TYP
   const [typyFakturOptions, setTypyFakturOptions] = useState([]);
   const [typyFakturLoading, setTypyFakturLoading] = useState(false);
+  
+  // Typy faktur pro pole fa_typ - FAKTURA (BEZNA, ZALOHOVA, ...)
+  const [invoiceTypesOptions, setInvoiceTypesOptions] = useState([]);
+  const [invoiceTypesLoading, setInvoiceTypesLoading] = useState(false);
   
   // Zaměstnanci options (pro předání FA)
   const [zamestnanci, setZamestnanci] = useState([]);
@@ -1820,15 +1824,17 @@ export default function InvoiceEvidencePage() {
     
     // 🚀 Paralelní načtení všech číselníků najednou
     setStrediskaLoading(true);
-    setTypyFakturLoading(true);  
+    setTypyFakturLoading(true);
+    setInvoiceTypesLoading(true);
     setZamestnanciLoading(true);
     
     const loadAllCiselniky = async () => {
       try {
         // ⚡ Paralelní volání všech API najednou
-        const [strediskaData, typyFakturData, usersData] = await Promise.all([
+        const [strediskaData, typyFakturData, invoiceTypesData, usersData] = await Promise.all([
           getStrediska25({ token, username }),
           getTypyFaktur25({ token, username, aktivni: 1 }),
+          getInvoiceTypes25({ token, username, aktivni: 1 }),
           fetchAllUsers({ token, username })
         ]);
         
@@ -1837,9 +1843,14 @@ export default function InvoiceEvidencePage() {
           setStrediskaOptions(strediskaData);
         }
         
-        // ✅ Zpracovat typy faktur
+        // ✅ Zpracovat typy faktur (klasifikace příloh - FAKTURA_TYP)
         if (typyFakturData && Array.isArray(typyFakturData)) {
           setTypyFakturOptions(typyFakturData);
+        }
+        
+        // ✅ Zpracovat typy faktur pro fa_typ pole (FAKTURA - BEZNA, ZALOHOVA, ...)
+        if (invoiceTypesData && Array.isArray(invoiceTypesData)) {
+          setInvoiceTypesOptions(invoiceTypesData);
         }
         
         // ✅ Zpracovat zaměstnance
@@ -1859,6 +1870,7 @@ export default function InvoiceEvidencePage() {
       } finally {
         setStrediskaLoading(false);
         setTypyFakturLoading(false);
+        setInvoiceTypesLoading(false);
         setZamestnanciLoading(false);
       }
     };
@@ -4721,15 +4733,9 @@ export default function InvoiceEvidencePage() {
                   onChange={(e) => {
                     setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
                   }}
-                  disabled={!isInvoiceEditable || loading}
-                  options={[
-                    { id: 'BEZNA', nazev: 'Běžná faktura' },
-                    { id: 'ZALOHOVA', nazev: 'Zálohová faktura' },
-                    { id: 'OPRAVNA', nazev: 'Opravná faktura' },
-                    { id: 'PROFORMA', nazev: 'Proforma' },
-                    { id: 'DOBROPIS', nazev: 'Dobropis' }
-                  ]}
-                  placeholder="-- Vyberte typ --"
+                  disabled={!isInvoiceEditable || loading || invoiceTypesLoading}
+                  options={invoiceTypesOptions}
+                  placeholder={invoiceTypesLoading ? "Načítám typy faktur..." : "-- Vyberte typ --"}
                   required={true}
                   selectStates={selectStates}
                   setSelectStates={setSelectStates}
