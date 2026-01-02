@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -3589,6 +3589,14 @@ const Layout = ({ children }) => {
           <span style={{ display: 'block', textAlign: 'center', lineHeight: '1.5' }}>
             © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_VERSION}
             {' | '}
+            <FontAwesomeIcon 
+              icon={faPlug} 
+              style={{ 
+                marginRight: '0.35rem', 
+                color: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '#ff6b6b' : '#94a3b8',
+                fontSize: '0.8em'
+              }} 
+            />
             <span style={{ 
               fontFamily: 'monospace', 
               fontSize: '0.85em',
@@ -3599,6 +3607,23 @@ const Layout = ({ children }) => {
                 const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
                 return apiUrl.includes('/dev/') ? '/dev/api.eeo' : '/api.eeo';
               })()}
+            </span>
+            {' | '}
+            <FontAwesomeIcon 
+              icon={faDatabase} 
+              style={{ 
+                marginRight: '0.35rem', 
+                color: (process.env.REACT_APP_DB_NAME || '').includes('-dev') ? '#22c55e' : '#6366f1',
+                fontSize: '0.8em'
+              }} 
+            />
+            <span style={{ 
+              fontFamily: 'monospace', 
+              fontSize: '0.85em',
+              color: (process.env.REACT_APP_DB_NAME || '').includes('-dev') ? '#22c55e' : '#6366f1',
+              fontWeight: '500'
+            }}>
+              {(process.env.REACT_APP_DB_NAME || 'noDB').toUpperCase()}
             </span>
           </span>
         </FooterCenter>
