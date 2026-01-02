@@ -72,7 +72,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         }
         
         // KROK 2: REZERVACE - Parsovat JSON financovani a dělit částku podle počtu LP
-        // POUZE STATUS = 'SCHVALENA' (velkými písmeny!)
+        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
         $sql_rezervace = "
             SELECT 
                 obj.id,
@@ -82,7 +82,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
         ";
         
@@ -109,6 +109,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         }
         
         // KROK 3: PŘEDPOKLAD - Parsovat JSON a dělit SUM(cena_s_dph) položek
+        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
         $sql_predpoklad = "
             SELECT 
                 obj.id,
@@ -119,7 +120,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani
         ";
@@ -147,6 +148,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         }
         
         // KROK 4: SKUTEČNOST - Parsovat JSON a dělit SUM(fa_castka) z tabulky faktur
+        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
         $sql_fakturovano = "
             SELECT 
                 obj.id,
@@ -157,7 +159,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-            AND obj.stav_workflow_kod LIKE '%SCHVALENA%'
+            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani
         ";

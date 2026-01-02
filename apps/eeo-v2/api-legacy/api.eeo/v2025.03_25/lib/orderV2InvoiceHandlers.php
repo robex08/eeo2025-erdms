@@ -38,6 +38,28 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
     // ✅ order_id může být NULL (standalone faktura) nebo validní ID objednávky
     $order_id = isset($input['order_id']) && (int)$input['order_id'] > 0 ? (int)$input['order_id'] : null;
     
+    // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN pokud byla objednávka odeslána dodavateli
+    if ($order_id !== null) {
+        $db = get_db($config);
+        $sql_check = "SELECT stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->execute(array($order_id));
+        $order = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nenalezena'));
+            return;
+        }
+        
+        $workflow = json_decode($order['stav_workflow_kod'], true);
+        if (!is_array($workflow) || !in_array('ODESLANA', $workflow)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce, která byla odeslána dodavateli (workflow musí obsahovat ODESLANA)'));
+            return;
+        }
+    }
+    
     if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí soubor k nahrání'));
@@ -174,6 +196,27 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
+        
+        // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN pokud byla objednávka odeslána dodavateli
+        if ($order_id !== null) {
+            $sql_check = "SELECT stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
+            $stmt_check = $db->prepare($sql_check);
+            $stmt_check->execute(array($order_id));
+            $order = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$order) {
+                http_response_code(404);
+                echo json_encode(array('status' => 'error', 'message' => 'Objednávka nenalezena'));
+                return;
+            }
+            
+            $workflow = json_decode($order['stav_workflow_kod'], true);
+            if (!is_array($workflow) || !in_array('ODESLANA', $workflow)) {
+                http_response_code(400);
+                echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce, která byla odeslána dodavateli (workflow musí obsahovat ODESLANA)'));
+                return;
+            }
+        }
         
         // Create invoice record
         $sql_insert = "INSERT INTO " . TBL_FAKTURY . " (

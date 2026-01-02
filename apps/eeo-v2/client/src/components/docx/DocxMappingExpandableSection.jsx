@@ -1137,14 +1137,25 @@ const DocxMappingExpandableSection = ({
   const analyzeDocxFile = async (docxFile) => {
     if (!docxFile || analyzing) return;
 
+    console.log('🔍 === DOCX ANALÝZA START ===');
+    console.log('📄 Soubor:', docxFile.name, '| Velikost:', (docxFile.size / 1024).toFixed(2), 'KB');
+
     setAnalyzing(true);
     setAnalysisResult(null);
 
     try {
       const result = await extractDocxFields(docxFile);
+      
+      console.log('✅ DOCX analýza dokončena:');
+      console.log('  - Úspěch:', result.success);
+      console.log('  - Počet polí:', result.fields?.length || 0);
+      console.log('  - Detekovaná pole:', result.fields?.map(f => f.name).sort() || []);
+      console.log('🔍 === DOCX ANALÝZA KONEC ===');
+      
       setAnalysisResult(result);
     } catch (error) {
       console.error('❌ Chyba při analýze DOCX:', error);
+      console.log('🔍 === DOCX ANALÝZA SELHALA ===');
       setAnalysisResult({
         success: false,
         error: error.message || 'Neočekávaná chyba při analýze'
