@@ -322,6 +322,31 @@ const styles = StyleSheet.create({
     borderTopColor: '#e5e7eb',
     paddingTop: 10,
   },
+
+  // Podpisové pole (pouze na poslední stránce)
+  signatureSection: {
+    position: 'absolute',
+    bottom: 60, // Nad patičkou (patička je na bottom: 20)
+    left: 30,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+
+  signatureLine: {
+    width: 200,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f2937',
+    borderBottomStyle: 'solid',
+    marginBottom: 4,
+  },
+
+  signatureLabel: {
+    fontSize: 9,
+    fontWeight: 400,
+    color: '#6b7280',
+    textAlign: 'center',
+    width: 200,
+  },
 });
 
 // Komponenta pro formátování měny
@@ -553,7 +578,12 @@ const PokladniKnihaPDF = ({
                 {formatCurrency(entry.balance)}
               </Text>
               <Text style={[styles.tableCell, styles.colLpCode]}>
-                {entry.lpCode || ''}
+                {entry.detailItems && entry.detailItems.length > 0 
+                  ? entry.detailItems.map((item, idx) => 
+                      `${item.lp_kod}: ${formatCurrency(item.castka)}`
+                    ).join('\n')
+                  : (entry.lpCode || '')
+                }
               </Text>
               <Text style={[styles.tableCell, styles.colNote]}>
                 {entry.note || ''}
@@ -561,6 +591,19 @@ const PokladniKnihaPDF = ({
             </View>
           ))}
         </View>
+
+        {/* Podpisové pole (pouze na poslední stránce) */}
+        <View 
+          style={styles.signatureSection}
+          render={({ pageNumber, totalPages }) => 
+            pageNumber === totalPages ? (
+              <>
+                <View style={styles.signatureLine} />
+                <Text style={styles.signatureLabel}>podpis</Text>
+              </>
+            ) : null
+          }
+        />
 
         {/* Patička */}
         <View style={styles.footer} fixed>
