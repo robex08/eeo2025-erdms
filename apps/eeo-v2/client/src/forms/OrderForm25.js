@@ -5704,13 +5704,11 @@ function OrderForm25() {
       // Priorita: Načíst číslo PŘED nastavením formData, ne asynchronně v useEffect
       if (isNewOrder && !finalData.ev_cislo && token && username) {
         try {
-          console.log('🔢 [OrderForm25/handleDataLoaded] Načítám evidenční číslo synchronně...');
           const orderNumberData = await getNextOrderNumberV2(token, username);
           const nextNumber = orderNumberData.next_order_string || orderNumberData.order_number_string || orderNumberData.next_number;
           
           if (nextNumber) {
             finalData.ev_cislo = nextNumber;
-            console.log('✅ [OrderForm25/handleDataLoaded] Evidenční číslo načteno:', nextNumber);
             
             // Označit že ev_cislo je načteno aby useEffect ho už nenačítal
             if (window.__orderForm_hasLoadedNextNumberRef) {
@@ -5731,8 +5729,6 @@ function OrderForm25() {
           const { loadSettingsFromLocalStorage } = require('../services/userSettingsApi');
           const userSettings = loadSettingsFromLocalStorage(parseInt(user_id, 10));
           
-          console.log('🔍 [OrderForm25/handleDataLoaded] Načítám user settings pro user_id:', user_id, userSettings);
-          
           if (userSettings) {
             // Extrahuj hodnoty garanta
             if (userSettings.vychozi_garant_id && userSettings.vychozi_garant_id !== '' && userSettings.vychozi_garant_id !== null) {
@@ -5742,7 +5738,6 @@ function OrderForm25() {
               
               if (defaultGarantId && defaultGarantId !== '') {
                 finalData.garant_uzivatel_id = String(defaultGarantId);
-                console.log('✅ [OrderForm25/handleDataLoaded] Nastavuji výchozího garanta:', defaultGarantId);
               }
             }
             
@@ -5754,7 +5749,6 @@ function OrderForm25() {
               
               if (defaultPrikazceId && defaultPrikazceId !== '') {
                 finalData.prikazce_id = String(defaultPrikazceId);
-                console.log('✅ [OrderForm25/handleDataLoaded] Nastavuji výchozího příkazce:', defaultPrikazceId);
               }
             }
           } else {
