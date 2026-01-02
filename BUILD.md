@@ -185,7 +185,104 @@ echo "✅ PROD deploy kompletní!"
 
 ---
 
-## 🔍 Verifikace
+## � Změna Verze Aplikace
+
+⚠️ **KRITICKÉ:** Při změně verze aplikace je nutné aktualizovat **VŠECHNY** následující soubory:
+
+### 1️⃣ Frontend Verze
+
+```bash
+# package.json
+/var/www/erdms-dev/apps/eeo-v2/client/package.json
+# Změnit: "version": "1.94"
+
+# .env (runtime DEV)
+/var/www/erdms-dev/apps/eeo-v2/client/.env
+# Změnit: REACT_APP_VERSION=1.94-DEV
+
+# .env.development (⚠️ KRITICKÉ pro DEV build!)
+/var/www/erdms-dev/apps/eeo-v2/client/.env.development
+# Změnit: REACT_APP_VERSION=1.94-DEV
+
+# .env.production (⚠️ KRITICKÉ pro PROD build!)
+/var/www/erdms-dev/apps/eeo-v2/client/.env.production
+# Změnit: REACT_APP_VERSION=1.94
+
+# .env.example (template)
+/var/www/erdms-dev/apps/eeo-v2/client/.env.example
+# Změnit: REACT_APP_VERSION=1.94-DEV / REACT_APP_VERSION=1.94
+```
+
+### 2️⃣ Backend API Verze
+
+```bash
+# DEV API .env
+/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env
+# Změnit: REACT_APP_VERSION=1.94-DEV
+
+# DEV API .env.example
+/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.example
+# Změnit: REACT_APP_VERSION=1.94-DEV / REACT_APP_VERSION=1.94
+
+# PROD API .env (po deployi)
+/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
+# Změnit: REACT_APP_VERSION=1.94
+```
+
+### 3️⃣ Dokumentace
+
+```bash
+# BUILD.md
+/var/www/erdms-dev/BUILD.md
+# Změnit: **Verze:** 1.94
+# Změnit: **Datum:** [aktuální datum]
+# Změnit: REACT_APP_VERSION=1.94 v příkladech
+```
+
+### ⚡ Postup Změny Verze
+
+```bash
+# 1. Najít a nahradit starou verzi
+cd /var/www/erdms-dev/apps/eeo-v2/client
+grep -r "1.93" package.json .env* 
+
+# 2. Aktualizovat všechny soubory
+sed -i 's/"version": "1.93"/"version": "1.94"/' package.json
+sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env
+sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env.development
+sed -i 's/REACT_APP_VERSION=1.93/REACT_APP_VERSION=1.94/' .env.production
+sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env.example
+
+# 3. Aktualizovat API
+cd /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo
+sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env
+sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env.example
+
+# 4. ⚠️ KRITICKÉ: Smazat staré buildy!
+cd /var/www/erdms-dev/apps/eeo-v2/client
+rm -rf build build-prod
+
+# 5. Vytvořit nové buildy
+npm run build:dev:explicit  # Použije .env.development
+npm run build:prod          # Použije .env.production
+
+# 6. Deploy PROD (viz níže)
+```
+
+### ❌ Častá Chyba
+
+**Problém:** Build ukazuje starou verzi i po změně package.json
+
+**Příčina:** React používá `.env.development` a `.env.production` při buildu, ne `.env`!
+
+**Řešení:**
+1. Aktualizovat `.env.development` a `.env.production`
+2. Smazat staré buildy: `rm -rf build build-prod`
+3. Vytvořit nové buildy
+
+---
+
+## �🔍 Verifikace
 
 ### DEV
 
