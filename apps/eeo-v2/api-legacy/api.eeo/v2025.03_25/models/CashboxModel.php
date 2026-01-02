@@ -307,4 +307,105 @@ class CashboxModel {
         $data['cislo_pokladny'] = $cisloPokladny;
         return $this->createCashbox($data, $createdBy);
     }
+    
+    /**
+     * 🆕 Přepočítat počáteční stavy všech lednových knih pro tuto pokladnu
+     * Volá se po změně pocatecni_stav_rok v nastavení pokladny
+     * 
+     * @param int $pokladnaId - ID pokladny
+     * @return int - Počet aktualizovaných lednových knih
+     */
+    public function recalculateJanuaryBooks($pokladnaId) {
+        // Načíst aktuální pocatecni_stav_rok z nastavení pokladny
+        $stmt = $this->db->prepare("
+            SELECT pocatecni_stav_rok 
+            FROM " . TBL_POKLADNY . " 
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute(array($pokladnaId));
+        $pokladna = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$pokladna) {
+            return 0; // Pokladna neexistuje
+        }
+        
+        $pocatecniStavRok = $pokladna['pocatecni_stav_rok'];
+        
+        // Najít všechny lednové knihy pro tuto pokladnu
+        $stmt = $this->db->prepare("
+            SELECT id, uzivatel_id, rok, pocatecni_stav, prevod_z_predchoziho
+            FROM " . TBL_POKLADNI_KNIHY . " 
+            WHERE pokladna_id = ?
+              AND mesic = 1
+            ORDER BY rok, uzivatel_id
+        ");
+        $stmt->execute(array($pokladnaId));
+        $januaryBooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $updated = 0;
+        
+        foreach ($januaryBooks as $book) {
+            // Vypočítat nový počáteční stav
+            $novyPocatecniStav = 0.00;
+            
+            if ($pocatecniStavRok !== null) {
+                // Použít pocatecni_stav_rok z nastavení pokladny
+                $novyPocatecniStav = floatval($pocatecniStavRok);
+            } else {
+                // Použít standardní logiku - převod z prosince předchozího roku
+                $novyPocatecniStav = $this->getPreviousMonthBalance(
+                    $book['uzivatel_id'], 
+                    $pokladnaId, 
+                    $book['rok'], 
+                    1 // leden
+                );
+            }
+            
+            // Přepočítat koncový stav
+            $stmt = $this->db->prepare("
+                SELECT 
+                    COALESCE(SUM(castka_prijem), 0) as total_income,
+                    COALESCE(SUM(castka_vydaj), 0) as total_expense
+                FROM " . TBL_POKLADNI_POLOZKY . " 
+                WHERE pokladni_kniha_id = ?
+            ");
+            $stmt->execute(array($book['id']));
+            $sums = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            $totalIncome = floatval($sums['total_income']);
+            $totalExpense = floatval($sums['total_expense']);
+            $novyKoncovyStav = $novyPocatecniStav + $totalIncome - $totalExpense;
+            
+            // Aktualizovat knihu
+            $stmt = $this->db->prepare("
+                UPDATE " . TBL_POKLADNI_KNIHY . " 
+                SET 
+                    prevod_z_predchoziho = ?,
+                    pocatecni_stav = ?,
+                    koncovy_stav = ?
+                WHERE id = ?
+            ");
+            $result = $stmt->execute(array(
+                $novyPocatecniStav,  // prevod_z_predchoziho
+                $novyPocatecniStav,  // pocatecni_stav
+                $novyKoncovyStav,    // koncovy_stav
+                $book['id']
+            ));
+            
+            if ($result) {
+                $updated++;
+                
+                // Přepočítat všechny následující měsíce pro tohoto uživatele
+                $this->recalculateFollowingMonths(
+                    $book['uzivatel_id'], 
+                    $pokladnaId, 
+                    $book['rok'], 
+                    1  // od ledna
+                );
+            }
+        }
+        
+        return $updated;
+    }
 }
