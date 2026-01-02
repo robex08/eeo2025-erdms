@@ -263,6 +263,7 @@ const InputWithCurrency = styled.div`
 
 const CurrencyInput = styled(Input)`
   padding-right: 2.5rem;
+  text-align: right;
   
   /* Odstranění spin tlačítek */
   &::-webkit-inner-spin-button,
@@ -1307,8 +1308,14 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
       setSaving(true);
       setError('');
 
+      // Příprava dat - odstranění mezer z formátovaných čísel
+      const dataToSend = {
+        ...formData,
+        pocatecni_stav_rok: formData.pocatecni_stav_rok !== '' ? parseFloat(formData.pocatecni_stav_rok.replace(/\s/g, '')) : null
+      };
+
       // 1. Uložit parametry pokladny
-      await cashbookAPI.updateCashbox(cashbox.id, formData);
+      await cashbookAPI.updateCashbox(cashbox.id, dataToSend);
 
       // 2. Synchronizovat uživatele (smazat všechny + přidat jen ty co jsou v users state)
       const usersPayload = users.map(u => ({
@@ -1806,10 +1813,26 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                 </Label>
                 <InputWithCurrency>
                   <CurrencyInput
-                    type="number"
-                    step="0.01"
+                    type="text"
                     value={formData.pocatecni_stav_rok}
-                    onChange={e => handleChange('pocatecni_stav_rok', e.target.value)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw === '' || /^\d*\.?\d{0,2}$/.test(raw)) {
+                        handleChange('pocatecni_stav_rok', raw);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.target.value.replace(/\s/g, '');
+                      if (raw && !isNaN(raw)) {
+                        const num = parseFloat(raw);
+                        const formatted = num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        handleChange('pocatecni_stav_rok', formatted.replace(/,/g, '.'));
+                      }
+                    }}
+                    onFocus={(e) => {
+                      const val = e.target.value.replace(/\s/g, '');
+                      handleChange('pocatecni_stav_rok', val);
+                    }}
                     placeholder="Ponechte prázdné pro převod z prosince"
                   />
                   <CurrencySuffix>Kč</CurrencySuffix>

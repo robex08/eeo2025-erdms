@@ -412,6 +412,26 @@ class CashbookModel {
      * Pro automatický převod do nového měsíce
      */
     public function getPreviousMonthBalance($userId, $pokladnaId, $year, $month) {
+        // 🆕 SPECIÁLNÍ LOGIKA PRO LEDEN - kontrola pocatecni_stav_rok
+        if ($month === 1) {
+            // Načíst nastavení pokladny
+            $stmt = $this->db->prepare("
+                SELECT pocatecni_stav_rok 
+                FROM " . TBL_POKLADNY . " 
+                WHERE id = ?
+                LIMIT 1
+            ");
+            $stmt->execute(array($pokladnaId));
+            $pokladna = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Pokud je pocatecni_stav_rok nastaven (NOT NULL), použít ho
+            if ($pokladna && $pokladna['pocatecni_stav_rok'] !== null) {
+                return floatval($pokladna['pocatecni_stav_rok']);
+            }
+            
+            // Jinak pokračovat normální logikou (převod z prosince předchozího roku)
+        }
+        
         // Vypočítat předchozí měsíc
         $prevMonth = ($month === 1) ? 12 : $month - 1;
         $prevYear = ($month === 1) ? $year - 1 : $year;
