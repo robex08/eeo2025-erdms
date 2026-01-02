@@ -189,16 +189,39 @@ const extractFieldsFromXml = (documentXml) => {
       });
     }
 
+    // ✅ ODSTRANĚNÍ FRAGMENTOVANÝCH ČÁSTÍ
+    // Pokud máme TERMIN_D i TERMIN_DODANI, odstraníme TERMIN_D (je to fragment)
+    // Najdeme všechna fragmentovaná pole (source: 'fragmentedInstrText')
+    const fragmentedFieldNames = fields
+      .filter(f => f.source === 'fragmentedInstrText')
+      .map(f => f.name);
+
+    // Odfiltrujeme pole, která jsou prefixem fragmentovaných polí
+    const filteredFields = fields.filter(field => {
+      // Pokud je to samo fragmentované pole, necháme ho
+      if (field.source === 'fragmentedInstrText') {
+        return true;
+      }
+      
+      // Zkontrolujeme, zda není prefix nějakého fragmentovaného pole
+      const isFragmentOfLongerField = fragmentedFieldNames.some(fragName => 
+        fragName.startsWith(field.name) && fragName !== field.name
+      );
+      
+      // Ponecháme jen pole, které NEJSOU fragmenty
+      return !isFragmentOfLongerField;
+    });
+
     // ✅ Počítání výskytů jednotlivých polí (místo odstranění duplicit)
     // Vytvoříme mapu: název_pole -> počet výskytů
     const fieldCounts = {};
-    fields.forEach(field => {
+    filteredFields.forEach(field => {
       const key = `${field.name}|${field.type}`;
       fieldCounts[key] = (fieldCounts[key] || 0) + 1;
     });
 
     // Vytvoříme unikátní seznam polí s počtem výskytů (1:1 case-sensitive)
-    const uniqueFields = fields.reduce((acc, field) => {
+    const uniqueFields = filteredFields.reduce((acc, field) => {
       const existing = acc.find(f =>
         f.name === field.name &&
         f.type === field.type

@@ -897,6 +897,7 @@ const DocxMappingExpandableSection = ({
   file,
   mapping = {},
   onMappingChange,
+  onValidationChange, // ✅ Callback pro předání validace do parent komponenty
   expanded: controlledExpanded,
   onExpandChange,
   // ✅ NOVÉ: Auth parametry pro načítání enriched dat
@@ -1027,13 +1028,18 @@ const DocxMappingExpandableSection = ({
     
     setMappingValidation(validation);
 
+    // ✅ Předej validaci do parent komponenty
+    if (onValidationChange) {
+      onValidationChange(validation);
+    }
+
     if (validation && !validation.valid) {
       console.log('⚠️ Mapping obsahuje chyby:', {
         errors: validation.errors.length,
         warnings: validation.warnings?.length || 0
       });
     }
-  }, [mapping, analysisResult]);
+  }, [mapping, analysisResult, onValidationChange]);
 
   // Parsuj existující mapování a rozlož složená pole do multi-mapping
   useEffect(() => {
@@ -1177,7 +1183,7 @@ const DocxMappingExpandableSection = ({
   const getStatus = () => {
     if (analyzing) return { status: 'analyzing', text: 'Analyzuji...' };
     
-    // ✅ Kontrola validace - priorita nad ostatními stavy
+    // ✅ KRITICKÁ PRIORITA: Validační chyby mapování (DOCX pole chybí v JSON nebo naopak)
     if (mappingValidation && !mappingValidation.valid && mappingValidation.errors?.length > 0) {
       const errorCount = mappingValidation.errors.length;
       return { 
@@ -1186,6 +1192,7 @@ const DocxMappingExpandableSection = ({
       };
     }
     
+    // ✅ Analýza DOCX a mapování
     if (analysisResult?.success && analysisResult.fields?.length > 0) {
       const mappedCount = Object.keys(mapping).length;
       
@@ -1706,7 +1713,7 @@ const DocxMappingExpandableSection = ({
 
   return (
     <ExpandableSection>
-      <SectionHeader $expanded={expanded} onClick={handleExpand}>
+      <SectionHeader $expanded={true}>
         <SectionHeaderLeft>
           <SectionIcon>
             <FontAwesomeIcon icon={faFileWord} />
@@ -1718,16 +1725,9 @@ const DocxMappingExpandableSection = ({
             </SectionSubtitle>
           </div>
         </SectionHeaderLeft>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* ODSTRANENO: Status badge s chybami - zobrazuje se pouze u JSON */}
-          <ExpandIcon $expanded={expanded}>
-            <FontAwesomeIcon icon={faChevronDown} />
-          </ExpandIcon>
-        </div>
       </SectionHeader>
 
-      <SectionContent $expanded={expanded}>
+      <SectionContent $expanded={true}>
         {!file && (
           <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
             <FontAwesomeIcon icon={faFileWord} style={{ fontSize: '3rem', marginBottom: '1rem' }} />
