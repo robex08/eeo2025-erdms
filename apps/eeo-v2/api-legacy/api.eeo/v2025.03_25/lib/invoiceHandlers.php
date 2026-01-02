@@ -1167,7 +1167,7 @@ function handle_invoices25_list($input, $config, $queries) {
             'stredisko', 'organizace_id', 'usek_id', 'filter_status',
             // Nové filtry pro globální vyhledávání a sloupcové filtry
             'search_term', 'cislo_objednavky', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
-            'filter_stav', 'filter_vytvoril_uzivatel',
+            'filter_stav', 'filter_vytvoril_uzivatel', 'filter_fa_typ',
             // Filtry pro částku a přílohy
             'castka_min', 'castka_max', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
