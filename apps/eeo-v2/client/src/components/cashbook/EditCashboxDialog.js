@@ -1340,7 +1340,6 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
       // isMainUser checkbox znamená "Zástupce", takže musíme invertovat
       // checked (true) = zástupce (0), unchecked (false) = hlavní (1)
       const jeHlavni = isMainUser ? 0 : 1;
-      console.log('Přidávám uživatele:', selectedUser, 'checkbox zástupce:', isMainUser, 'je_hlavni:', jeHlavni);
 
       const result = await cashbookAPI.assignUserToCashbox({
         pokladna_id: cashbox.id,
@@ -1379,11 +1378,9 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
 
   const handleToggleMain = async (assignmentId, currentStatus, userName) => {
     try {
-      console.log('Měním status je_hlavni:', assignmentId, 'current:', currentStatus, 'userName:', userName);
       const newStatus = currentStatus === 1 ? 0 : 1;
 
       const result = await cashbookAPI.updateUserMainStatus(assignmentId, newStatus);
-      console.log('Změna statusu úspěšná');
 
       if (result.status === 'ok') {
         // Reload users list from server
@@ -1407,7 +1404,6 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const handleEditUserClick = (user) => {
-    console.log('📝 Editace platnosti uživatele:', user);
     setEditingUserId(user.uzivatel_id);
     setEditValues({
       platne_od: user.platne_od || new Date().toISOString().split('T')[0],
@@ -1416,8 +1412,6 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const handleSaveUserDates = (userId) => {
-    console.log('💾 Ukládám platnost uživatele:', userId, editValues);
-
     setUsers(prev => prev.map(u => {
       if (u.uzivatel_id === userId) {
         return {
@@ -1447,89 +1441,34 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     const { assignmentId, userName } = confirmRemove;
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
 
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('🗑️  ODEBRÁNÍ UŽIVATELE Z POKLADNY - START');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📋 Assignment ID:', assignmentId);
-    console.log('👤 Uživatel:', userName);
-    console.log('🏦 Pokladna ID:', cashbox?.id);
-    console.log('🏦 Pokladna číslo:', cashbox?.cislo_pokladny);
-
     try {
-      console.log('📡 Volám API: cashbookAPI.unassignUserFromCashbox()');
-      console.log('   Parametry:', { assignmentId });
-
       const result = await cashbookAPI.unassignUserFromCashbox(assignmentId);
-
-      console.log('✅ API Response:', JSON.stringify(result, null, 2));
-      console.log('   Status:', result?.status);
-      console.log('   Message:', result?.message);
-      console.log('   Data:', result?.data);
-      console.log('   Affected rows:', result?.data?.affected_rows);
 
       if (result.status === 'ok') {
         // Kontrola affected_rows - pokud je 0, záznam nebyl aktualizován
         const affectedRows = result?.data?.affected_rows;
 
         if (affectedRows === 0 || affectedRows === '0') {
-          console.warn('⚠️  BE vrátilo affected_rows = 0 (žádná změna v DB)');
-          console.warn('   Možné důvody:');
-          console.warn('   1. Záznam s prirazeni_id =', assignmentId, 'neexistuje');
-          console.warn('   2. Záznam už má platne_do nastavené na dnešní datum');
-          console.warn('   3. SQL WHERE podmínka je špatně');
           showToast(`VAROVÁNÍ: Uživatel "${userName}" nebyl odebrán - záznam už neexistuje nebo byl již deaktivován`, 'warning');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('⚠️  ODEBRÁNÍ UŽIVATELE - WARNING (affected_rows = 0)');
-          console.log('═══════════════════════════════════════════════════════');
-
           // I tak refreshneme data, ať vidíme aktuální stav
-          console.log('🔄 Načítám dostupné uživatele...');
           await loadAvailableUsers();
           return;
         }
 
-        console.log('✅ BE potvrdilo úspěšné odebrání (affected_rows:', affectedRows, ')');
-
         // Reload users - remove from local state
-        const oldUsersCount = users.length;
-        setUsers(prev => {
-          const updated = prev.filter(u => u.prirazeni_id !== assignmentId);
-          console.log('📊 Počet uživatelů PŘED:', oldUsersCount);
-          console.log('📊 Počet uživatelů PO:', updated.length);
-          console.log('📊 Odebraný uživatel byl:', prev.find(u => u.prirazeni_id === assignmentId));
-          console.log('📊 Zůstávající uživatelé:', updated.map(u => ({ id: u.prirazeni_id, name: u.uzivatel_cele_jmeno })));
-          return updated;
-        });
+        setUsers(prev => prev.filter(u => u.prirazeni_id !== assignmentId));
 
         // Reload available users
-        console.log('🔄 Načítám dostupné uživatele...');
         await loadAvailableUsers();
 
         // Show success toast
         showToast(`Uživatel "${userName}" byl úspěšně odebrán z pokladny`, 'success');
-        console.log('✅ Toast zobrazen');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('🗑️  ODEBRÁNÍ UŽIVATELE - SUCCESS');
-        console.log('═══════════════════════════════════════════════════════');
 
       } else {
-        console.error('❌ BE vrátilo neúspěšný status');
-        console.error('   Status:', result?.status);
-        console.error('   Message:', result?.message);
         showToast(result.message || 'Chyba při odebírání uživatele', 'error');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('❌ ODEBRÁNÍ UŽIVATELE - FAILED (BE status != ok)');
-        console.log('═══════════════════════════════════════════════════════');
       }
     } catch (err) {
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('❌ ODEBRÁNÍ UŽIVATELE - ERROR');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('❌ Chyba při odebírání:', err);
-      console.error('   Message:', err?.message);
-      console.error('   Response:', err?.response);
-      console.error('   Response Data:', err?.response?.data);
-      console.error('   Response Status:', err?.response?.status);
+      console.error('Chyba při odebírání:', err);
       
       // Detekce Foreign Key Constraint chyby
       const errorMsg = err?.message || err?.response?.data?.message || '';
