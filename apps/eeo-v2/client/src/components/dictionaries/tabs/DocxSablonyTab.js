@@ -2484,7 +2484,6 @@ const DocxSablonyTab = () => {
 
   // Reset formuláře a otevření upload modalu
   const handleOpenUploadModal = () => {
-    console.log('➕ Otevírám modal pro přidání nové šablony');
 
     // Reset editačního módu
     setIsEditMode(false);
@@ -3105,13 +3104,6 @@ const DocxSablonyTab = () => {
     const isEditing = isEditMode && editingTemplate;
     const action = isEditing ? 'editace' : 'nahrání';
 
-    console.log(`🔧 Zahajuji ${action} šablony:`, {
-      isEditing,
-      templateId: editingTemplate?.id,
-      templateName: editingTemplate?.nazev,
-      diskStatus: diskStatus[editingTemplate?.id],
-      hasNewFile: !!uploadForm.file
-    });
 
     // Validace povinných polí
     const errors = [];
@@ -3153,14 +3145,6 @@ const DocxSablonyTab = () => {
     }
 
     try {
-      console.log(`🔐 DocxSablonyTab ${action.charAt(0).toUpperCase() + action.slice(1)}:`, {
-        username: user?.username || 'system',
-        filename: uploadForm.file?.name,
-        hasToken: !!token,
-        endpoint: isEditing ?
-          `${API_BASE_URL}sablona_docx/update` :
-          `${API_BASE_URL}sablona_docx/create`
-      });
 
       let result;
 
@@ -3177,20 +3161,13 @@ const DocxSablonyTab = () => {
           formData.append('verze', uploadForm.verze);
           formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
           formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
-          console.log('💾 [DOCX Tab] Ukládám částku (s novým souborem) - OD:', uploadForm.castka_od, 'DO:', uploadForm.castka_do);
           formData.append('platnost_od', uploadForm.platnost_od);
           formData.append('platnost_do', uploadForm.platnost_do);
           // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
           if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
             const docxMappingJson = JSON.stringify(uploadForm.docx_mapping);
             formData.append('mapovani_json', docxMappingJson);
-            console.log('💾 Ukládám DOCX mapování (s novým souborem) jako mapovani_json:', {
-              mapping: uploadForm.docx_mapping,
-              jsonString: docxMappingJson,
-              fieldsCount: Object.keys(uploadForm.docx_mapping).length
-            });
           } else {
-            console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (s novým souborem)');
             formData.append('mapovani_json', uploadForm.mapovani_json || '');
           }
 
@@ -3210,21 +3187,13 @@ const DocxSablonyTab = () => {
             mapovani_json: uploadForm.mapovani_json
           };
 
-          console.log('💾 [DOCX Tab] Ukládám částku (bez nového souboru) - OD:', updateData.castka_od, 'DO:', updateData.castka_do);
 
           // Přidáme DOCX mapování pokud existuje
           if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
             updateData.docx_mapping = JSON.stringify(uploadForm.docx_mapping);
-            console.log('💾 Ukládám DOCX mapování (bez souboru):', {
-              mapping: uploadForm.docx_mapping,
-              jsonString: updateData.docx_mapping,
-              fieldsCount: Object.keys(uploadForm.docx_mapping).length
-            });
           } else {
-            console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (bez souboru)');
           }
 
-          console.log('📤 Posílám updateData na backend:', updateData);
 
           result = await docxApi.update(token, editingTemplate.id, updateData);
         }
@@ -3239,27 +3208,19 @@ const DocxSablonyTab = () => {
         formData.append('verze', uploadForm.verze);
         formData.append('castka_od', uploadForm.castka_od !== '' && uploadForm.castka_od !== null && uploadForm.castka_od !== undefined ? uploadForm.castka_od : '');
         formData.append('castka_do', uploadForm.castka_do !== '' && uploadForm.castka_do !== null && uploadForm.castka_do !== undefined ? uploadForm.castka_do : '');
-        console.log('💾 [DOCX Tab] Ukládám částku (při vytvoření) - OD:', uploadForm.castka_od, 'DO:', uploadForm.castka_do);
         formData.append('platnost_od', uploadForm.platnost_od);
         formData.append('platnost_do', uploadForm.platnost_do);
         // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování
         if (uploadForm.docx_mapping && Object.keys(uploadForm.docx_mapping).length > 0) {
           const docxMappingJson = JSON.stringify(uploadForm.docx_mapping);
           formData.append('mapovani_json', docxMappingJson);
-          console.log('💾 Ukládám DOCX mapování (při vytvoření) jako mapovani_json:', {
-            mapping: uploadForm.docx_mapping,
-            jsonString: docxMappingJson,
-            fieldsCount: Object.keys(uploadForm.docx_mapping).length
-          });
         } else {
-          console.log('⚠️ DOCX mapování je prázdné nebo neexistuje (při vytvoření)');
           formData.append('mapovani_json', uploadForm.mapovani_json || '');
         }
 
         result = await docxApi.create(token, formData);
       }
 
-      console.log(`🔥 DOCX ${action.charAt(0).toUpperCase() + action.slice(1)} Result:`, result);
 
       if (result.status === 'ok') {
         showToast(
@@ -3310,13 +3271,6 @@ const DocxSablonyTab = () => {
       const newStatus = !template.aktivni;
       const action = newStatus ? 'aktivace' : 'deaktivace';
 
-      console.log(`🔄 DOCX Template Toggle Status:`, {
-        templateId: template.id,
-        templateName: template.nazev,
-        currentStatus: template.aktivni,
-        newStatus: newStatus,
-        action: action
-      });
 
       // Okamžitá aktualizace lokálního stavu
       setData(prevData =>
@@ -3330,17 +3284,12 @@ const DocxSablonyTab = () => {
       let result;
       if (newStatus) {
         // Aktivace - použij update API
-        console.log(`API CALL: docxApi.update(token, ${template.id}, { aktivni: 1 })`);
         result = await docxApi.update(token, template.id, { aktivni: 1 });
-        console.log(`BE RESPONSE aktivace:`, JSON.stringify(result, null, 2));
       } else {
         // Deaktivace - použij deactivate API
-        console.log(`API CALL: docxApi.deactivate(token, ${template.id})`);
         result = await docxApi.deactivate(token, template.id);
-        console.log(`BE RESPONSE deaktivace:`, JSON.stringify(result, null, 2));
       }
 
-      console.log(`Kontrola vysledku - newStatus: ${newStatus}, result.status: ${result.status}, result.success: ${result.success}`);
 
       if ((newStatus && result.status === 'ok') || (!newStatus && result.success)) {
         showToast(
@@ -3377,11 +3326,6 @@ const DocxSablonyTab = () => {
   // Stažení originální šablony (bez zpracování mapování)
   const handleDownloadOriginal = async (template) => {
     try {
-      console.log('📥 Stahování originální DOCX šablony:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username
-      });
 
       setProgress(true);
       const blob = await docxApi.download(token, template.id);
@@ -3406,12 +3350,6 @@ const DocxSablonyTab = () => {
 
   const handleDownload = async (template) => {
     try {
-      console.log('📥 DOCX Download Request:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username,
-        hasMapping: !!(template.docx_mapping || template.mapovani_json)
-      });
 
       // Zkontroluj, jestli má šablona mapování
       const mappingSource = template.docx_mapping || template.mapovani_json;
@@ -3423,7 +3361,6 @@ const DocxSablonyTab = () => {
 
       if (!hasMapping) {
         // Bez mapování - stáhni přímo
-        console.log('📄 Stahuji šablonu bez mapování (prázdná)');
         const blob = await docxApi.download(token, template.id);
 
         const url = window.URL.createObjectURL(blob);
@@ -3438,7 +3375,6 @@ const DocxSablonyTab = () => {
       }
 
       // S mapováním - stáhni, naplň pole a pak stáhni
-      console.log('📝 Stahuji šablonu s mapováním - budu plnit pole');
       setProgress(true);
 
       // Stáhni šablonu jako File
@@ -3465,9 +3401,6 @@ const DocxSablonyTab = () => {
       // Vytvoř field values s podporou složených polí
       const fieldValues = createFieldValuesFromMapping(enhancedMapping, null);
 
-      console.log('🔧 Zpracovávám DOCX s rozšířenými poli:', fieldValues);
-      console.log('📊 Základní mapování:', mapping);
-      console.log('📊 Rozšířené mapování:', enhancedMapping);
 
       // Zpracuj DOCX - rozbal, nahraď pole, zabal zpět
       const result = await processDocxWithFields({
@@ -3480,7 +3413,6 @@ const DocxSablonyTab = () => {
         throw new Error(result.error);
       }
 
-      console.log('✅ DOCX zpracován:', result.stats);
 
       // Stáhni výsledný soubor
       const url = window.URL.createObjectURL(result.blob);
@@ -3511,11 +3443,6 @@ const DocxSablonyTab = () => {
     }
 
     try {
-      console.log('🎨 Generuji univerzální HTML náhled...', {
-        file: file.name,
-        mappingFields: Object.keys(mapping).length,
-        mapping: mapping
-      });
 
       // Import funkcí pro rozšířené mapování
       const { createEnhancedFieldMapping, createFieldValuesFromMapping, getOrderFieldsForMapping } = await import('../../../utils/docx/docxProcessor.js');
@@ -3530,8 +3457,6 @@ const DocxSablonyTab = () => {
       // Vytvoř field values pro preview (bez skutečných dat)
       const fieldValues = createFieldValuesFromMapping(enhancedMapping, null);
 
-      console.log('📋 Enhanced mapping:', enhancedMapping);
-      console.log('📋 Field values pro náhled:', fieldValues);
 
       // Zpracuj DOCX a nahraď pole - rozbal ZIP, nahraď v XML, zabal zpět
       const result = await processDocxWithFields({
@@ -3544,7 +3469,6 @@ const DocxSablonyTab = () => {
         throw new Error(result.error);
       }
 
-      console.log('📊 Statistiky náhrady:', result.stats);
 
       // Teď konvertuj výsledný DOCX na HTML pomocí mammoth
       const htmlResult = await mammoth.convertToHtml({ arrayBuffer: await result.blob.arrayBuffer() });
@@ -3647,7 +3571,6 @@ const DocxSablonyTab = () => {
       // Uvolni URL po chvíli
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      console.log(`✅ HTML náhled vygenerován: ${result.stats.replacedCount} polí nahrazeno (včetně ${Object.keys(enhancedMapping).length - Object.keys(mapping).length} složených polí)`);
 
       return { success: true, stats: result.stats, enhancedMapping };
 
@@ -3661,7 +3584,6 @@ const DocxSablonyTab = () => {
   // PREVIEW HANDLER - Otevření náhledu DOCX z tabulky (nyní také v nové záložce)
   // ============================================================================
   const handlePreview = async (template) => {
-    console.log('👁️ Zahajuji preview šablony z tabulky:', template);
 
     // Zkontroluj, zda má šablona mapování
     const mappingSource = template.docx_mapping || template.mapovani_json;
@@ -3688,11 +3610,6 @@ const DocxSablonyTab = () => {
         throw new Error('Nepodařilo se stáhnout soubor šablony');
       }
 
-      console.log('📄 Soubor připraven pro preview:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
 
       setProgress(60);
 
@@ -3788,10 +3705,8 @@ const DocxSablonyTab = () => {
       // Pokud existuje mapování, zobrazit sekci i bez souboru
       if (existingDocxMapping && Object.keys(existingDocxMapping).length > 0) {
         setMappingSectionVisible(true);
-        console.log('📝 Zobrazuji mapovací sekci s existujícím mapováním bez DOCX souboru');
       } else {
         setMappingSectionVisible(false);
-        console.log('📝 DOCX soubor není k dispozici na disku, mapování nebude zobrazeno');
       }
     }
   };
@@ -3806,17 +3721,10 @@ const DocxSablonyTab = () => {
 
     try {
       // Trash tlačítko volá vždy jen DICT_MANAGE s deleteAction='delete'
-      console.log('🗑️ DOCX Hard Delete Request:', {
-        templateId: selectedTemplate.id,
-        templateName: selectedTemplate.nazev,
-        username: user?.username,
-        userRole: user?.role
-      });
 
       // Hard delete - skutečné smazání z DB i disku
       const result = await docxApi.delete(token, selectedTemplate.id);
 
-      console.log('🗑️ DOCX Hard Delete Result:', result);
 
       if (result.status === 'ok') {
         showToast('✅ Šablona a soubor byly úspěšně smazány z disku', 'success');
@@ -3838,14 +3746,9 @@ const DocxSablonyTab = () => {
       startProgress();
       setVerifyResult(null);
 
-      console.log('🔍 DOCX Verify Request:', {
-        username: user?.username,
-        endpoint: `${API_BASE_URL}sablona_docx/verify`
-      });
 
       const result = await docxApi.verify(token);
 
-      console.log('🔍 DOCX Verify Result:', result);
 
       if (result.status === 'ok') {
         setVerifyResult(result);
@@ -3876,11 +3779,6 @@ const DocxSablonyTab = () => {
         [template.id]: { status: 'checking' }
       }));
 
-      console.log('🔍 DOCX Template Verify Single:', {
-        templateId: template.id,
-        templateName: template.nazev,
-        username: user?.username
-      });
 
       // Použij nové verifySingle API
       const result = await docxApi.verifySingle(token, template.id);
@@ -3962,12 +3860,10 @@ const DocxSablonyTab = () => {
       setMappingSectionVisible(true);
 
       // Automaticky extrahuj pole z nového souboru
-      console.log('🔄 Automaticky aktualizuji pole po výběru nového souboru v edit módu');
       try {
         // Import DOCX procesoru pro extrakci polí
         import('../../../utils/docx/docxProcessor.js').then(({ extractDocxFields }) => {
           extractDocxFields(file).then(fields => {
-            console.log('🔍 Extrahovaná pole z nového souboru:', fields);
             // Pole se automaticky aktualizují v DocxMappingExpandableSection komponentě
             showToast('✅ Pole úspěšně aktualizována z nového souboru', 'success');
           }).catch(error => {
@@ -3986,7 +3882,6 @@ const DocxSablonyTab = () => {
   // Funkce pro odstranění souboru šablony (zachová záznam v DB)
   const handleRemoveTemplateFile = async (template) => {
     try {
-      console.log('🗑️ Odstraňuji soubor šablony:', template);
 
       await removeDocxSablonaFile({
         token,

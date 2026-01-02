@@ -942,7 +942,6 @@ const DocxMappingExpandableSection = ({
     const loadFields = async () => {
       // ✅ POKUD MÁME AUTH PARAMETRY A SAMPLE ORDER ID - NAČTI ENRICHED DATA
       if (useDynamicFields && token && username && sampleOrderId) {
-        console.log('🔄 Načítám ENRICHED DB pole z API pro sampleOrderId:', sampleOrderId);
         try {
           const enrichedData = await getDocxOrderEnrichedData({ 
             token, 
@@ -953,11 +952,6 @@ const DocxMappingExpandableSection = ({
           const dynamicFields = generateFieldsFromApiData(enrichedData);
           setOrderFields(dynamicFields);
           
-          console.log('✅ ENRICHED DB pole načtena z API:', {
-            pocet_skupin: dynamicFields.length,
-            celkem_poli: dynamicFields.reduce((sum, group) => sum + group.fields.length, 0),
-            skupiny: dynamicFields.map(g => `${g.group} (${g.fields.length})`)
-          });
         } catch (error) {
           console.error('❌ Chyba při načítání enriched dat, fallback na statické pole:', error);
           // Fallback na statické pole z getOrderFieldsForMapping
@@ -966,14 +960,9 @@ const DocxMappingExpandableSection = ({
         }
       } else {
         // ✅ FALLBACK: POUŽIJ STATICKÉ POLE (kompatibilita se starou verzí)
-        console.log('🔄 Načítám STATICKÉ DB pole (fallback - žádné auth parametry)...');
         const staticFields = getOrderFieldsForMapping();
         setOrderFields(staticFields);
         
-        console.log('✅ STATICKÉ DB pole načtena:', {
-          pocet_skupin: staticFields.length,
-          celkem_poli: staticFields.reduce((sum, group) => sum + group.fields.length, 0)
-        });
       }
     };
 
@@ -1034,10 +1023,6 @@ const DocxMappingExpandableSection = ({
     }
 
     if (validation && !validation.valid) {
-      console.log('⚠️ Mapping obsahuje chyby:', {
-        errors: validation.errors.length,
-        warnings: validation.warnings?.length || 0
-      });
     }
   }, [mapping, analysisResult, onValidationChange]);
 
@@ -1126,7 +1111,6 @@ const DocxMappingExpandableSection = ({
   useEffect(() => {
     if (file && !analysisResult && !analyzing) {
       // Spusť analýzu i když je sekce sbalená - potřebujeme validaci
-      console.log('🔍 Automaticky analyzuji DOCX pro validaci mapování...');
       analyzeDocxFile(file);
     }
   }, [file]);
@@ -1143,8 +1127,6 @@ const DocxMappingExpandableSection = ({
   const analyzeDocxFile = async (docxFile) => {
     if (!docxFile || analyzing) return;
 
-    console.log('🔍 === DOCX ANALÝZA START ===');
-    console.log('📄 Soubor:', docxFile.name, '| Velikost:', (docxFile.size / 1024).toFixed(2), 'KB');
 
     setAnalyzing(true);
     setAnalysisResult(null);
@@ -1152,16 +1134,10 @@ const DocxMappingExpandableSection = ({
     try {
       const result = await extractDocxFields(docxFile);
       
-      console.log('✅ DOCX analýza dokončena:');
-      console.log('  - Úspěch:', result.success);
-      console.log('  - Počet polí:', result.fields?.length || 0);
-      console.log('  - Detekovaná pole:', result.fields?.map(f => f.name).sort() || []);
-      console.log('🔍 === DOCX ANALÝZA KONEC ===');
       
       setAnalysisResult(result);
     } catch (error) {
       console.error('❌ Chyba při analýze DOCX:', error);
-      console.log('🔍 === DOCX ANALÝZA SELHALA ===');
       setAnalysisResult({
         success: false,
         error: error.message || 'Neočekávaná chyba při analýze'
@@ -1586,10 +1562,6 @@ const DocxMappingExpandableSection = ({
         };
         onMappingChange?.(newMapping);
 
-        console.log('✅ Namapováno jednoduché pole:', {
-          docxField: docxFieldName,
-          dbField: draggedField.key
-        });
       }
     }
 
