@@ -8,6 +8,7 @@ import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
 import CalendarPanel from './panels/CalendarPanel';
 import NotificationDropdown from './NotificationDropdown';
+import SystemInfoService from '../services/systemInfoService';
 import SmartTooltip from '../styles/SmartTooltip';
 // translation logic moved to utils/translate
 import { setApiDebugEnabled } from '../services/apiv2';
@@ -1530,6 +1531,9 @@ const Layout = ({ children }) => {
   // State pro název databáze (načte se z API)
   const [databaseName, setDatabaseName] = useState(null);
   
+  // State pro systémové informace z API
+  const [systemInfo, setSystemInfo] = useState(null);
+  
   // State pro maintenance mode indikátor
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
 
@@ -1693,25 +1697,46 @@ const Layout = ({ children }) => {
     }
   }, [user_id, toolsVisibilityKey]); // Re-calculate only when user_id or toolsVisibilityKey changes
 
-  // Fetch database name from API version endpoint (only in DEV environment)
+  // Fetch system info from API (database, environment, etc.)
   useEffect(() => {
-    const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-    const isDev = apiUrl.includes('/dev/');
+    const loadSystemInfo = async () => {
+      try {
+        const info = await SystemInfoService.getSystemInfo();
+        setSystemInfo(info);
+        
+        // Backwards compatibility - set database name for existing code
+        if (info?.database?.display_name) {
+          setDatabaseName(info.database.display_name);
+        }
+      } catch (error) {
+        console.warn('Nepodařilo se načíst systémové informace:', error);
+      }
+    };
     
-    if (isDev) {
-      // Only fetch database name in DEV environment
-      fetch(`${apiUrl}version`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.status === 'ok' && data.database) {
-            setDatabaseName(data.database);
-          }
-        })
-        .catch(error => {
-          console.warn('Nepodařilo se načíst název databáze:', error);
-        });
-    }
+    loadSystemInfo();
   }, []); // Run only once on mount
+
+  // Refresh system info after login
+  useEffect(() => {
+    if (isLoggedIn && token) {
+      const refreshSystemInfo = async () => {
+        try {
+          // Clear cache to force fresh load from API
+          SystemInfoService.clearCache();
+          const info = await SystemInfoService.getSystemInfo();
+          setSystemInfo(info);
+          
+          if (info?.database?.display_name) {
+            setDatabaseName(info.database.display_name);
+          }
+        } catch (error) {
+          console.warn('Nepodařilo se aktualizovat systémové informace:', error);
+        }
+      };
+      
+      refreshSystemInfo();
+    }
+  }, [isLoggedIn, token]); // Refresh when user logs in
 
   // Check maintenance mode status periodically
   useEffect(() => {
@@ -3613,17 +3638,17 @@ const Layout = ({ children }) => {
               icon={faDatabase} 
               style={{ 
                 marginRight: '0.35rem', 
-                color: (process.env.REACT_APP_DB_NAME || '').includes('-dev') ? '#22c55e' : '#6366f1',
+                color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
                 fontSize: '0.8em'
               }} 
             />
             <span style={{ 
               fontFamily: 'monospace', 
               fontSize: '0.85em',
-              color: (process.env.REACT_APP_DB_NAME || '').includes('-dev') ? '#22c55e' : '#6366f1',
+              color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
               fontWeight: '500'
             }}>
-              {(process.env.REACT_APP_DB_NAME || 'noDB').toUpperCase()}
+              {systemInfo?.database?.display_name || 'NAČÍTÁ...'}
             </span>
           </span>
         </FooterCenter>
