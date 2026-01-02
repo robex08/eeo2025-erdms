@@ -1467,10 +1467,14 @@ export default function InvoiceEvidencePage() {
     }
 
     // Povolené stavy pro fakturaci
-    // NEUVEREJNIT, UVEREJNENA - před první fakturou (po potvrzení dodavatele)
+    // NEUVEREJNIT - objednávka NEBUDE zveřejněna (nezáznamná objednávka)
+    // UVEREJNENA - objednávka zveřejněna v registru
     // FAKTURACE - první faktura byla přidána
     // VECNA_SPRAVNOST - čeká na kontrolu věcné správnosti
     // ZKONTROLOVANA - věcná správnost byla zkontrolována
+    // ❌ KE_ZVEREJNENI - čeká na úvodní zveřejnění, faktury ještě NELZE přidat
+    // ❌ POTVRZENA - přechází automaticky na NEUVEREJNIT/UVEREJNENA
+    // ❌ DOKONCENA - konečný stav, nelze přidávat faktury
     const allowedStates = ['NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'];
     
     if (!allowedStates.includes(currentState)) {
@@ -2387,7 +2391,16 @@ export default function InvoiceEvidencePage() {
           return false;
         }
         
-        const validStates = ['ODESLANA', 'ODESLANO', 'POTVRZENA', 'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'];
+        // ✅ FAKTURA SE MŮŽE PŘIDAT V TĚCHTO STAVECH (po potvrzení dodavatelem)
+        // NEUVEREJNIT - objednávka NEBUDE zveřejněna (nezáznamná)
+        // UVEREJNENA - objednávka zveřejněna v registru
+        // FAKTURACE - první faktura přidána
+        // VECNA_SPRAVNOST - věcná kontrola
+        // ZKONTROLOVANA - zkontrolována
+        // ❌ KE_ZVEREJNENI - čeká na zveřejnění (Úvodní), faktury NELZE přidávat
+        // ❌ POTVRZENA - přejde automaticky na NEUVEREJNIT/UVEREJNENA
+        // ❌ DOKONCENA - konečný stav
+        const validStates = ['NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'];
         const hasValidState = stavKody.some(stav => validStates.includes(stav));
         
         if (!hasValidState) {

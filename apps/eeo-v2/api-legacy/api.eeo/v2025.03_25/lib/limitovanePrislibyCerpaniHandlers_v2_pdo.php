@@ -41,7 +41,17 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 lp.kategorie,
                 lp.usek_id,
                 lp.user_id,
-                YEAR(MIN(lp.platne_od)) as rok,
+                -- ✅ Rok LP určený podle platnosti:
+                -- Pokud LP přechází přes roky (31.12.2025-31.12.2026), použít rok s DELŠÍ platností
+                -- Pro LP platné většinu roku 2026 → rok = 2026
+                CASE 
+                    WHEN YEAR(MIN(lp.platne_od)) != YEAR(MAX(lp.platne_do)) THEN
+                        -- LP přechází přes roky → použít rok platne_do (primární rok)
+                        YEAR(MAX(lp.platne_do))
+                    ELSE
+                        -- LP v rámci jednoho roku → rok platne_od
+                        YEAR(MIN(lp.platne_od))
+                END as rok,
                 SUM(lp.vyse_financniho_kryti) as celkovy_limit,
                 MIN(lp.cislo_uctu) as cislo_uctu,
                 MIN(lp.nazev_uctu) as nazev_uctu,
@@ -71,29 +81,32 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             $meta['rok'] = $rok;
         }
         
-        // KROK 2: REZERVACE - Parsovat JSON financovani a dělit částku podle počtu LP
+        // KROK 2: PLÁNOVÁNO (předpoklad) - max_cena_s_dph pro objednávky ve stavu žádosti o schválení
         // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
-        $sql_rezervace = "
+        // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
+        $sql_planovano = "
             SELECT 
                 obj.id,
                 obj.max_cena_s_dph,
                 obj.financovani
             FROM " . TBL_OBJEDNAVKY . " obj
+            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
             AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
+            AND fakt.id IS NULL
         ";
         
-        $stmt_rez = $pdo->prepare($sql_rezervace);
-        $stmt_rez->execute([
+        $stmt_plan = $pdo->prepare($sql_planovano);
+        $stmt_plan->execute([
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
-        $rezervovano = 0;
-        while ($row = $stmt_rez->fetch(PDO::FETCH_ASSOC)) {
+        $predpokladane_cerpani = 0;
+        while ($row = $stmt_plan->fetch(PDO::FETCH_ASSOC)) {
             $financovani = json_decode($row['financovani'], true);
             
             if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
@@ -103,36 +116,39 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 if (in_array($lp_id, $lp_ids_int)) {
                     $pocet_lp = count($lp_ids);
                     $podil = $pocet_lp > 0 ? ((float)$row['max_cena_s_dph'] / $pocet_lp) : 0;
-                    $rezervovano += $podil;
+                    $predpokladane_cerpani += $podil;
                 }
             }
         }
         
-        // KROK 3: PŘEDPOKLAD - Parsovat JSON a dělit SUM(cena_s_dph) položek
-        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
-        $sql_predpoklad = "
+        // KROK 3: POŽADOVÁNO (rezervace) - suma položek pro objednávky odeslané dodavateli
+        // STAV: ODESLANA (odeslána dodavateli, potvrzena dodavatelem)
+        // ✅ POUZE objednávky BEZ faktur (pokud má faktury, započítá se do skutečně)
+        $sql_pozadovano = "
             SELECT 
                 obj.id,
                 obj.financovani,
                 SUM(pol.cena_s_dph) as suma_cena
             FROM " . TBL_OBJEDNAVKY . " obj
             INNER JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
+            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
+            AND obj.stav_workflow_kod LIKE '%ODESLANA%'
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
+            AND fakt.id IS NULL
             GROUP BY obj.id, obj.financovani
         ";
         
-        $stmt_pred = $pdo->prepare($sql_predpoklad);
-        $stmt_pred->execute([
+        $stmt_poz = $pdo->prepare($sql_pozadovano);
+        $stmt_poz->execute([
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
-        $predpokladane_cerpani = 0;
-        while ($row = $stmt_pred->fetch(PDO::FETCH_ASSOC)) {
+        $rezervovano = 0;
+        while ($row = $stmt_poz->fetch(PDO::FETCH_ASSOC)) {
             $financovani = json_decode($row['financovani'], true);
             
             if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {
@@ -142,14 +158,15 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 if (in_array($lp_id, $lp_ids_int)) {
                     $pocet_lp = count($lp_ids);
                     $podil = $pocet_lp > 0 ? ((float)$row['suma_cena'] / $pocet_lp) : 0;
-                    $predpokladane_cerpani += $podil;
+                    $rezervovano += $podil;
                 }
             }
         }
         
-        // KROK 4: SKUTEČNOST - Parsovat JSON a dělit SUM(fa_castka) z tabulky faktur
-        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená)
-        $sql_fakturovano = "
+        // KROK 4: SKUTEČNĚ - suma faktur pro VŠECHNY objednávky s fakturami
+        // STAVY: FAKTURACE, VECNA_SPRAVNOST, ZKONTROLOVANA, atd. (všechny stavy kde jsou faktury)
+        // ✅ Započítávají se VŠECHNY objednávky které MAJÍ faktury (bez ohledu na stav)
+        $sql_skutecne = "
             SELECT 
                 obj.id,
                 obj.financovani,
@@ -159,19 +176,18 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-            AND (obj.stav_workflow_kod LIKE '%ODESLANA_KE_SCHVALENI%' OR obj.stav_workflow_kod LIKE '%SCHVALENA%')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani
         ";
         
-        $stmt_fakt = $pdo->prepare($sql_fakturovano);
-        $stmt_fakt->execute([
+        $stmt_skut = $pdo->prepare($sql_skutecne);
+        $stmt_skut->execute([
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
         
         $fakturovano = 0;
-        while ($row = $stmt_fakt->fetch(PDO::FETCH_ASSOC)) {
+        while ($row = $stmt_skut->fetch(PDO::FETCH_ASSOC)) {
             $financovani = json_decode($row['financovani'], true);
             
             if ($financovani && $financovani['typ'] === 'LP' && isset($financovani['lp_kody'])) {

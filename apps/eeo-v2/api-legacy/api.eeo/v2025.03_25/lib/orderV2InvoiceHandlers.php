@@ -38,7 +38,7 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
     // ✅ order_id může být NULL (standalone faktura) nebo validní ID objednávky
     $order_id = isset($input['order_id']) && (int)$input['order_id'] > 0 ? (int)$input['order_id'] : null;
     
-    // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN pokud byla objednávka odeslána dodavateli
+    // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN v určitých stavech
     if ($order_id !== null) {
         $db = get_db($config);
         $sql_check = "SELECT stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
@@ -53,9 +53,19 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         }
         
         $workflow = json_decode($order['stav_workflow_kod'], true);
-        if (!is_array($workflow) || !in_array('ODESLANA', $workflow)) {
+        if (!is_array($workflow) || count($workflow) === 0) {
             http_response_code(400);
-            echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce, která byla odeslána dodavateli (workflow musí obsahovat ODESLANA)'));
+            echo json_encode(array('status' => 'error', 'message' => 'Objednávka nemá definovaný workflow'));
+            return;
+        }
+        
+        // Zkontrolovat POSLEDNÍ stav (aktuální stav objednávky)
+        $currentState = end($workflow);
+        $allowedStates = array('NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA');
+        
+        if (!in_array($currentState, $allowedStates)) {
+            http_response_code(400);
+            echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce ve stavu: NEUVEŘEJNIT, UVEŘEJNĚNA, FAKTURACE, VĚCNÁ SPRÁVNOST nebo ZKONTROLOVANÁ. Aktuální stav: ' . $currentState));
             return;
         }
     }
@@ -197,7 +207,7 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
         
-        // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN pokud byla objednávka odeslána dodavateli
+        // ✅ VALIDACE WORKFLOW STAVU - faktura se může přidat JEN v určitých stavech
         if ($order_id !== null) {
             $sql_check = "SELECT stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
             $stmt_check = $db->prepare($sql_check);
@@ -211,9 +221,19 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
             }
             
             $workflow = json_decode($order['stav_workflow_kod'], true);
-            if (!is_array($workflow) || !in_array('ODESLANA', $workflow)) {
+            if (!is_array($workflow) || count($workflow) === 0) {
                 http_response_code(400);
-                echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce, která byla odeslána dodavateli (workflow musí obsahovat ODESLANA)'));
+                echo json_encode(array('status' => 'error', 'message' => 'Objednávka nemá definovaný workflow'));
+                return;
+            }
+            
+            // Zkontrolovat POSLEDNÍ stav (aktuální stav objednávky)
+            $currentState = end($workflow);
+            $allowedStates = array('NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA');
+            
+            if (!in_array($currentState, $allowedStates)) {
+                http_response_code(400);
+                echo json_encode(array('status' => 'error', 'message' => 'Fakturu lze přidat pouze k objednávce ve stavu: NEUVEŘEJNIT, UVEŘEJNĚNA, FAKTURACE, VĚCNÁ SPRÁVNOST nebo ZKONTROLOVANÁ. Aktuální stav: ' . $currentState));
                 return;
             }
         }
