@@ -3260,7 +3260,6 @@ switch ($endpoint) {
                     $parsed = json_decode($raw_input, true);
                     if (is_array($parsed)) {
                         $input = $parsed;
-                        error_log("  Parsed from raw_input: " . json_encode($input));
                     }
                 }
             }
@@ -3268,8 +3267,6 @@ switch ($endpoint) {
             // Přidat parametry z URL
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             $input['attachment_id'] = (int)$matches[2];
-            
-            error_log("  Final input: " . json_encode($input));
             
             if ($request_method === 'POST' || $request_method === 'GET') {
                 handle_order_v2_download_attachment($input, $config, $queries);
@@ -5658,15 +5655,8 @@ switch ($endpoint) {
         
         // GET/POST /api.eeo/spisovka-zpracovani/list
         if ($endpoint === 'spisovka-zpracovani/list') {
-            error_log("🔵 API.PHP: Matched endpoint spisovka-zpracovani/list");
-            error_log("🔵 API.PHP: Method: $request_method");
-            error_log("🔵 API.PHP: Input: " . json_encode($input));
-            error_log("🔵 API.PHP: Config exists: " . (isset($_config) ? 'YES' : 'NO'));
-            
             if ($request_method === 'GET' || $request_method === 'POST') {
-                error_log("🔵 API.PHP: Calling handle_spisovka_zpracovani_list()");
                 handle_spisovka_zpracovani_list($input, $_config);
-                error_log("🔵 API.PHP: Function returned");
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET or POST.'));
