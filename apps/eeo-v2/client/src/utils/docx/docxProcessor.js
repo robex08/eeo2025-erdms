@@ -1433,8 +1433,8 @@ export const generateFieldsFromApiData = (apiData) => {
       const missingDateFields = staticDateGroup.fields.filter(f => !existingKeys.includes(f.key));
       
       if (missingDateFields.length > 0) {
-        console.log(`⚠️ Doplňuji ${missingDateFields.length} chybějících datumových polí (NULL v API):`, 
-          missingDateFields.map(f => f.key));
+        // console.log(`⚠️ Doplňuji ${missingDateFields.length} chybějících datumových polí (NULL v API):`, 
+        //   missingDateFields.map(f => f.key));
         existingDateGroup.fields.push(...missingDateFields);
       }
     } else {
@@ -1486,13 +1486,13 @@ export const generateFieldsFromApiData = (apiData) => {
       const missingFields = staticUserGroup.fields.filter(f => !existingKeys.includes(f.key));
       
       if (missingFields.length > 0) {
-        console.log(`⚠️ Doplňuji ${missingFields.length} chybějících polí pro "${groupName}" (NULL v API):`,
-          missingFields.map(f => f.key));
+        // console.log(`⚠️ Doplňuji ${missingFields.length} chybějících polí pro "${groupName}" (NULL v API):`,
+        //   missingFields.map(f => f.key));
         existingUserGroup.fields.push(...missingFields);
       }
     } else {
       // Skupina neexistuje vůbec - přidej celou statickou (např. když garant není vyplněný)
-      console.log(`⚠️ Skupina "${groupName}" chybí úplně, přidávám statickou definici`);
+      // console.log(`⚠️ Skupina "${groupName}" chybí úplně, přidávám statickou definici`);
       groups.push(staticUserGroup);
     }
   });
@@ -1506,7 +1506,7 @@ export const generateFieldsFromApiData = (apiData) => {
       seenGroupNames.add(group.group);
       uniqueGroups.push(group);
     } else {
-      console.warn(`⚠️ Odstraněna duplicitní skupina: "${group.group}"`);
+      // console.warn(`⚠️ Odstraněna duplicitní skupina: "${group.group}"`);
     }
   });
 
