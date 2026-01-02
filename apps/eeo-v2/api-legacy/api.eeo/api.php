@@ -3068,7 +3068,6 @@ switch ($endpoint) {
         // ⚠️ MUST be before /order-v2/{id} pattern to avoid matching "unlock" as an ID
         if (preg_match('/^order-v2\/unlock$/', $endpoint, $matches)) {
             if ($request_method === 'POST') {
-                error_log('🔓 [UNLOCK API] Request received - input: ' . json_encode($input));
                 handle_orders25_unlock($input, $config, $queries);
             } else {
                 http_response_code(405);
@@ -3083,7 +3082,6 @@ switch ($endpoint) {
             $order_id = (int)$matches[1];
             
             if ($request_method === 'POST') {
-                error_log('🔒 [LOCK API] Request received for order #' . $order_id);
                 handle_order_v2_lock($input, $config, $queries, $order_id);
             } else {
                 http_response_code(405);
@@ -3098,7 +3096,6 @@ switch ($endpoint) {
             $order_id = (int)$matches[1];
             
             if ($request_method === 'POST') {
-                error_log('🔓 [UNLOCK API] Request received for order #' . $order_id);
                 handle_order_v2_unlock($input, $config, $queries, $order_id);
             } else {
                 http_response_code(405);
@@ -3256,16 +3253,9 @@ switch ($endpoint) {
         
         // POST /api.eeo/order-v2/{id}/attachments/{att_id}/download - download prilohy (explicit endpoint)
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/attachments\/(\d+)\/download$/', $endpoint, $matches)) {
-            // 🔍 DEBUG - endpoint SE MATCHUJE!
-            error_log("🎯 MATCH! order-v2 download endpoint");
-            error_log("  matches[1] = " . $matches[1]);
-            error_log("  matches[2] = " . $matches[2]);
-            error_log("  input before merge: " . json_encode($input));
-            
             // Support both numeric and string IDs for order
             // ⚠️ FIX: Pokud $input je prázdné, použij $raw_input (už načtený na začátku)
             if (empty($input) || (!isset($input['token']) && !isset($input['username']))) {
-                error_log("  input is empty or missing token/username, trying to parse raw_input");
                 if (!empty($raw_input)) {
                     $parsed = json_decode($raw_input, true);
                     if (is_array($parsed)) {
