@@ -1692,11 +1692,17 @@ const CashBookPage = () => {
             income: entry.castka_prijem ? parseFloat(entry.castka_prijem) : null,
             expense: entry.castka_vydaj ? parseFloat(entry.castka_vydaj) : null,
             balance: parseFloat(entry.zustatek_po_operaci || 0),
-            lpCode: entry.lp_kod || '',
+            lpCode: (entry.detail_items && entry.detail_items.length > 0) ? '' : (entry.lp_kod || ''),
             note: entry.poznamka || '',
             isEditing: false,
             changed: false,
-            sync_status: 'synced'
+            sync_status: 'synced',
+            // 🆕 MULTI-LP: Načíst detail položky
+            detailItems: (entry.detail_items || []).map(item => ({
+              lp_kod: item.lp_kod || '',
+              castka: parseFloat(item.castka || 0),
+              popis: item.popis || ''
+            }))
           }));
 
           // 2. Načíst lokální data z localStorage
