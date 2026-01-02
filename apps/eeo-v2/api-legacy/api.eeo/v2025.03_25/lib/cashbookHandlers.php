@@ -1078,23 +1078,47 @@ function handle_cashbook_lp_summary_post($config, $input) {
         }
         
         // Parametry
-        $userId = isset($input['user_id']) ? intval($input['user_id']) : $userData['id'];
         $year = isset($input['year']) ? intval($input['year']) : intval(date('Y'));
         
-        // Kontrola oprávnění - může vidět své LP nebo admin všechny
+        // Zjistit oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if ($userId !== $userData['id'] && !$permissions->canReadCashbook($userId)) {
-            return api_error(403, 'Nedostatečná oprávnění');
+        
+        // Určit režim zobrazení podle oprávnění
+        $viewMode = 'own'; // Default: jen vlastní knihy
+        $filterUserId = $userData['id'];
+        $filterUsekId = null;
+        
+        // 1. ADMIN nebo CASH_BOOK_MANAGE nebo CASH_BOOK_READ_ALL - vidí VŠE
+        $isSuperAdmin = isset($userData['super_admin']) && $userData['super_admin'] == 1;
+        $hasManage = $permissions->hasPermission('CASH_BOOK_MANAGE');
+        $hasReadAll = $permissions->hasPermission('CASH_BOOK_READ_ALL');
+        
+        if ($isSuperAdmin || $hasManage || $hasReadAll) {
+            $viewMode = 'all';
+            $filterUserId = null; // Null = všichni uživatelé
+        }
+        // 2. Příkazce (PRIKAZCE_OPERACE) - vidí všechny LP kódy v rámci svého úseku
+        else if ($permissions->hasRole('PRIKAZCE_OPERACE')) {
+            $viewMode = 'department';
+            $filterUsekId = isset($userData['usek_id']) ? $userData['usek_id'] : null;
+            $filterUserId = null;
+        }
+        // 3. Běžný uživatel - vidí jen své knihy
+        else {
+            $viewMode = 'own';
+            $filterUserId = $userData['id'];
         }
         
         require_once __DIR__ . '/../services/LPCalculationService.php';
         $lpService = new LPCalculationService($db);
         
-        // Získat přehled čerpání LP s limity
-        $summary = $lpService->getLPSummaryWithLimits($userId, $year);
+        // Získat přehled čerpání LP podle režimu
+        $summary = $lpService->getLPSummaryWithLimits($filterUserId, $year, $viewMode, $filterUsekId);
         
         return api_ok([
-            'user_id' => $userId,
+            'view_mode' => $viewMode,
+            'filter_user_id' => $filterUserId,
+            'filter_usek_id' => $filterUsekId,
             'year' => $year,
             'lp_summary' => $summary,
             'count' => count($summary)

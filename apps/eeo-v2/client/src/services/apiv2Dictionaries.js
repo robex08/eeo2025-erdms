@@ -1004,7 +1004,7 @@ export async function bulkUpdateRolePrava({
 /**
  * Seznam všech DOCX šablon
  */
-export async function getDocxSablonyList({ token, username, aktivni = null, typ_dokumentu = null, search = null }) {
+export async function getDocxSablonyList({ token, username, aktivni = null, typ_dokumentu = null, search = null, cena_bez_dph = null }) {
   try {
     const requestData = {
       username,
@@ -1015,6 +1015,7 @@ export async function getDocxSablonyList({ token, username, aktivni = null, typ_
     if (aktivni !== null) requestData.aktivni = aktivni;
     if (typ_dokumentu) requestData.typ_dokumentu = typ_dokumentu;
     if (search) requestData.search = search;
+    if (cena_bez_dph !== null && cena_bez_dph !== undefined) requestData.cena_bez_dph = cena_bez_dph;
 
     const response = await api.post('sablona_docx/list', requestData);
 
@@ -1064,7 +1065,7 @@ export const createDocxSablona = async (token, formData) => {
 /**
  * Aktualizace pouze metadata (bez souboru)
  */
-export async function updateDocxSablona({ token, username, id, nazev, popis, typ_dokumentu, aktivni, verze, castka, platnost_od, platnost_do, mapovani_json, docx_mapping }) {
+export async function updateDocxSablona({ token, username, id, nazev, popis, typ_dokumentu, aktivni, verze, castka_od, castka_do, platnost_od, platnost_do, mapovani_json, docx_mapping }) {
   try {
     const requestData = {
       username,
@@ -1078,7 +1079,8 @@ export async function updateDocxSablona({ token, username, id, nazev, popis, typ
     if (typ_dokumentu !== undefined) requestData.typ_dokumentu = typ_dokumentu;
     if (aktivni !== undefined) requestData.aktivni = aktivni;
     if (verze !== undefined) requestData.verze = verze;
-    if (castka !== undefined) requestData.castka = castka; // ⭐ Přidáno pole castka
+    if (castka_od !== undefined) requestData.castka_od = castka_od;
+    if (castka_do !== undefined) requestData.castka_do = castka_do;
     if (platnost_od !== undefined) requestData.platnost_od = platnost_od;
     if (platnost_do !== undefined) requestData.platnost_do = platnost_do;
     // ⭐ Backend očekává 'mapovani_json' pro DOCX mapování

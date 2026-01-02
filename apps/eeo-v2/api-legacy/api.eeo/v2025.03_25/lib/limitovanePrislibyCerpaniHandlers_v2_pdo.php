@@ -25,10 +25,12 @@
  * 
  * @param PDO $pdo Databázové spojení
  * @param int $lp_id ID LP z tabulky 25_limitovane_prisliby
+ * @param int $rok Rok pro který se má provést přepočet (pokud NULL, užije se rok z platne_od)
  * @return array Result array with status
  */
-function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
+function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
     $lp_id = (int)$lp_id;
+    $rok = $rok !== null ? (int)$rok : null; // Rok může být null - pak se určí z metadata
     
     try {
         // KROK 1: Získat metadata o LP (agregace z master tabulky podle ID)
@@ -62,6 +64,11 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
                 'success' => false,
                 'error' => "LP ID '$lp_id' neexistuje v master tabulce"
             ];
+        }
+        
+        // OPRAVA: Pokud byl rok předán jako parametr (z inicializace), přepsat rok z metadata
+        if ($rok !== null) {
+            $meta['rok'] = $rok;
         }
         
         // KROK 2: REZERVACE - Parsovat JSON financovani a dělit částku podle počtu LP
@@ -207,8 +214,10 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id) {
         $skutecne_cerpano = (float)($skutecne_cerpano ?? 0);
         $cerpano_pokladna = (float)($cerpano_pokladna ?? 0);
         
-        $zbyva_rezervace = $celkovy_limit - $rezervovano;
-        $zbyva_predpoklad = $celkovy_limit - $predpokladane_cerpani;
+        // OPRAVA: Skutečné čerpání snižuje dostupný limit pro VŠECHNY typy čerpání
+        // Protože všechny tři typy (rezervace, předpoklad, skutečně) sdílí JEDEN společný limit
+        $zbyva_rezervace = $celkovy_limit - max($rezervovano, $skutecne_cerpano);
+        $zbyva_predpoklad = $celkovy_limit - max($predpokladane_cerpani, $skutecne_cerpano);
         $zbyva_skutecne = $celkovy_limit - $skutecne_cerpano;
         
         // Omezit procenta na max 999.99 (DECIMAL(5,2) rozsah) a zajistit platnou hodnotu

@@ -4068,9 +4068,9 @@ switch ($endpoint) {
                     // Přepočet jednoho LP podle ID
                     $lp_id = (int)$lp_id;
                     
-                    // Použít PDO handler funkci
+                    // Použít PDO handler funkci - PŘEDAT ROK PARAMETR!
                     require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
-                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id);
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok);
                     
                     if (!$result_handler['success']) {
                         http_response_code(500);
@@ -4102,16 +4102,22 @@ switch ($endpoint) {
                         break;
                     }
                     
+                    // ===== OPRAVA: Kontrolovat interval platnosti [platne_od, platne_do]
+                    // LP je platné v roce, pokud se interval [platne_od, platne_do] PŘEKRÝVÁ s rokem
+                    $rok_start = $rok . '-01-01';
+                    $rok_end = $rok . '-12-31';
+                    
                     $sql_kody = "
                         SELECT DISTINCT id, cislo_lp
                         FROM " . TBL_LP_MASTER . "
-                        WHERE YEAR(platne_od) = :rok
+                        WHERE platne_od <= :rok_end
+                          AND (platne_do IS NULL OR platne_do >= :rok_start)
                         ORDER BY cislo_lp
                     ";
                     
                     try {
                         $stmt_kody = $pdo->prepare($sql_kody);
-                        $stmt_kody->execute([':rok' => $rok]);
+                        $stmt_kody->execute([':rok_start' => $rok_start, ':rok_end' => $rok_end]);
                         $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
                         http_response_code(500);
@@ -4222,14 +4228,28 @@ switch ($endpoint) {
                 require_once __DIR__ . '/v2025.03_25/lib/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
                 
                 try {
+                    // ===== OPRAVA: Kontrolovat interval platnosti [platne_od, platne_do]
+                    // LP je platné v roce, pokud se interval [platne_od, platne_do] PŘEKRÝVÁ s rokem
+                    // - LP s platne_od = 2025-12-31 a platne_do = 2026-01-31 je platné i v 2026
+                    // - LP s platne_od = 2026-01-01 a platne_do = 2026-12-31 je platné v 2026
+                    // - LP s platne_od = 2025-01-01 a platne_do = 2026-12-31 je platné v 2026
+                    
+                    $rok_start = $rok . '-01-01';
+                    $rok_end = $rok . '-12-31';
+                    
                     $stmt_kody = $pdo->prepare("
                         SELECT DISTINCT id, cislo_lp
                         FROM " . TBL_LP_MASTER . "
-                        WHERE YEAR(platne_od) = ?
+                        WHERE platne_od <= ? 
+                          AND (platne_do IS NULL OR platne_do >= ?)
                         ORDER BY cislo_lp
                     ");
-                    $stmt_kody->execute([$rok]);
+                    $stmt_kody->execute([$rok_end, $rok_start]);
                     $lp_list = $stmt_kody->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    // DEBUG: Zaznamenat počet LP k inicializaci
+                    $log[] = "Rok: $rok | Interval: $rok_start až $rok_end | Počet LP k inicializaci: " . count($lp_list);
+                    
                 } catch (PDOException $e) {
                     http_response_code(500);
                     echo json_encode(array('status' => 'error', 'message' => 'Chyba při získávání kódů LP: ' . $e->getMessage()));
@@ -4239,10 +4259,10 @@ switch ($endpoint) {
                 $updated = 0;
                 $failed = 0;
                 
-                // Použít PDO handler funkci pro každé LP
+                // Použít PDO handler funkci pro každé LP - PŘEDAT ROK PARAMETR!
                 foreach ($lp_list as $row) {
                     $lp_id_batch = (int)$row['id'];
-                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch);
+                    $result_handler = prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id_batch, $rok);
                     
                     if ($result_handler['success']) {
                         $updated++;
@@ -4336,11 +4356,12 @@ switch ($endpoint) {
                 $cislo_lp = isset($input['cislo_lp']) ? $input['cislo_lp'] : null;
                 $user_id = isset($input['user_id']) ? (int)$input['user_id'] : null;
                 $usek_id = isset($input['usek_id']) ? (int)$input['usek_id'] : null;
+                $requesting_user_id = isset($input['requesting_user_id']) ? (int)$input['requesting_user_id'] : null;
                 $rok = isset($input['rok']) ? (int)$input['rok'] : (int)date('Y');
                 // Flexibilní kontrola isAdmin (boolean true nebo string "true")
                 $is_admin = isset($input['isAdmin']) && ($input['isAdmin'] === true || $input['isAdmin'] === 'true' || $input['isAdmin'] === 1);
                 
-                // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE bez filtrování
+                // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE s LIVE agregací z pokladny
                 if ($is_admin) {
                     try {
                         $stmt = $pdo->prepare("
@@ -4352,18 +4373,110 @@ switch ($endpoint) {
                                 c.user_id,
                                 c.rok,
                                 c.celkovy_limit,
-                                lp.cislo_uctu,
-                                lp.nazev_uctu,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
-                                c.skutecne_cerpano,
-                                c.cerpano_pokladna,
+                                -- LIVE AGREGACE z pokladny místo stará data z cerpani
+                                COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0) as skutecne_cerpano,
+                                -- LIVE AGREGACE pokladny (stejné jako skutecne_cerpano)
+                                COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0) as cerpano_pokladna,
                                 c.zbyva_rezervace,
                                 c.zbyva_predpoklad,
-                                c.zbyva_skutecne,
+                                (c.celkovy_limit - (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0))) as zbyva_skutecne,
                                 c.procento_rezervace,
                                 c.procento_predpoklad,
-                                c.procento_skutecne,
+                                CASE WHEN (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0)) > 0 THEN (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0)) / c.celkovy_limit * 100 ELSE 0 END as procento_skutecne,
                                 c.pocet_zaznamu,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
@@ -4371,7 +4484,6 @@ switch ($endpoint) {
                                 u.jmeno,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
-                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
                             LEFT JOIN 25_uzivatele u ON c.user_id = u.id
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
                             WHERE c.rok = ?
@@ -4449,8 +4561,8 @@ switch ($endpoint) {
                                 c.user_id,
                                 c.rok,
                                 c.celkovy_limit,
-                                lp.cislo_uctu,
-                                lp.nazev_uctu,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
                                 c.skutecne_cerpano,
@@ -4468,7 +4580,6 @@ switch ($endpoint) {
                                 u.jmeno,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
-                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
                             LEFT JOIN 25_uzivatele u ON c.user_id = u.id
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
                             WHERE c.cislo_lp = ?
@@ -4531,7 +4642,7 @@ switch ($endpoint) {
                     ));
                     
                 } elseif ($user_id) {
-                    // REŽIM 2: Všechna LP pro uživatele
+                    // REŽIM 2: Všechna LP pro uživatele - OPRAVA: Agregovat live z pokladny
                     try {
                         $stmt = $pdo->prepare("
                             SELECT 
@@ -4539,23 +4650,132 @@ switch ($endpoint) {
                                 c.cislo_lp,
                                 c.kategorie,
                                 c.celkovy_limit,
-                                lp.cislo_uctu,
-                                lp.nazev_uctu,
+                                (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
-                                c.skutecne_cerpano,
-                                c.cerpano_pokladna,
+                                -- LIVE AGREGACE z pokladny místo stará data z cerpani
+                                COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0) as skutecne_cerpano,
+                                -- LIVE AGREGACE pokladny (stejné jako skutecne_cerpano)
+                                COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0) as cerpano_pokladna,
+                                (c.celkovy_limit - (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0))) as zbyva_skutecne,
                                 c.zbyva_rezervace,
                                 c.zbyva_predpoklad,
-                                c.zbyva_skutecne,
+                                CASE WHEN (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0)) > 0 THEN (COALESCE((
+                                    SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT SUM(d.castka)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0)) / c.celkovy_limit * 100 ELSE 0 END as procento_skutecne,
                                 c.procento_rezervace,
                                 c.procento_predpoklad,
-                                c.procento_skutecne,
-                                c.pocet_zaznamu,
+                                (COALESCE((
+                                    SELECT COUNT(DISTINCT p.id)
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE p.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                    AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                ), 0) + COALESCE((
+                                    SELECT COUNT(DISTINCT p.id)
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE d.lp_kod = c.cislo_lp
+                                    AND k.rok = c.rok
+                                    AND p.typ_dokladu = 'vydaj'
+                                    AND p.smazano = 0
+                                ), 0)) as pocet_zaznamu,
                                 c.ma_navyseni,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
-                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
                             WHERE c.user_id = ?
                             AND c.rok = ?
@@ -4607,38 +4827,309 @@ switch ($endpoint) {
                     ));
                     
                 } elseif ($usek_id) {
-                    // REŽIM 3: Všechna LP pro úsek
+                    // REŽIM 3: Všechna LP pro úsek + LP ze kterých uživatel čerpal (i z jiných úseků)
                     try {
-                        $stmt = $pdo->prepare("
-                            SELECT 
-                                c.id,
-                                c.cislo_lp,
-                                c.kategorie,
-                                c.celkovy_limit,
-                                lp.cislo_uctu,
-                                lp.nazev_uctu,
-                                c.rezervovano,
-                                c.predpokladane_cerpani,
-                                c.skutecne_cerpano,
-                                c.cerpano_pokladna,
-                                c.zbyva_rezervace,
-                                c.zbyva_predpoklad,
-                                c.zbyva_skutecne,
-                                c.procento_rezervace,
-                                c.procento_predpoklad,
-                                c.procento_skutecne,
-                                c.pocet_zaznamu,
-                                c.ma_navyseni,
-                                u.prijmeni,
-                                u.jmeno
-                            FROM " . TBL_LP_CERPANI . " c
-                            LEFT JOIN " . TBL_LP_MASTER . " lp ON c.cislo_lp = lp.cislo_lp
-                            LEFT JOIN 25_uzivatele u ON c.user_id = u.id
-                            WHERE c.usek_id = ?
-                            AND c.rok = ?
-                            ORDER BY c.kategorie, c.cislo_lp
-                        ");
-                        $stmt->execute([$usek_id, $rok]);
+                        // Pokud je requesting_user_id, přidat UNION s LP ze kterých čerpal
+                        if ($requesting_user_id) {
+                            // LP úseku + LP ze kterých uživatel čerpal
+                            $stmt = $pdo->prepare("
+                                SELECT DISTINCT
+                                    c.id,
+                                    c.cislo_lp,
+                                    c.kategorie,
+                                    c.celkovy_limit,
+                                    (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                    (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    c.rezervovano,
+                                    c.predpokladane_cerpani,
+                                    -- LIVE AGREGACE z pokladny
+                                    COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0) as skutecne_cerpano,
+                                    COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0) as cerpano_pokladna,
+                                    (c.celkovy_limit - (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0))) as zbyva_skutecne,
+                                    c.zbyva_rezervace,
+                                    c.zbyva_predpoklad,
+                                    CASE WHEN (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) > 0 THEN (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) / c.celkovy_limit * 100 ELSE 0 END as procento_skutecne,
+                                    c.procento_rezervace,
+                                    c.procento_predpoklad,
+                                    (COALESCE((
+                                        SELECT COUNT(DISTINCT p.id)
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT COUNT(DISTINCT p.id)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) as pocet_zaznamu,
+                                    c.ma_navyseni,
+                                    u.prijmeni,
+                                    u.jmeno
+                                FROM " . TBL_LP_CERPANI . " c
+                                LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                WHERE (c.usek_id = ? OR c.cislo_lp IN (
+                                    -- LP ze kterých uživatel čerpal z objednávek
+                                    SELECT lp.cislo_lp
+                                    FROM 25a_objednavky o
+                                    JOIN 25a_objednavky_polozky p ON o.id = p.objednavka_id
+                                    JOIN 25_limitovane_prisliby lp ON p.lp_id = lp.id
+                                    WHERE o.uzivatel_id = ?
+                                    
+                                    UNION
+                                    
+                                    -- LP ze kterých uživatel čerpal z pokladny
+                                    SELECT d.lp_kod
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.uzivatel_id = ?
+                                      AND d.lp_kod IS NOT NULL
+                                      AND d.lp_kod != ''
+                                ))
+                                AND c.rok = ?
+                                ORDER BY c.kategorie, c.cislo_lp
+                            ");
+                            $stmt->execute([$usek_id, $requesting_user_id, $requesting_user_id, $rok]);
+                        } else {
+                            // Jen LP úseku (bez requesting_user_id)
+                            $stmt = $pdo->prepare("
+                                SELECT 
+                                    c.id,
+                                    c.cislo_lp,
+                                    c.kategorie,
+                                    c.celkovy_limit,
+                                    (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
+                                    (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
+                                    c.rezervovano,
+                                    c.predpokladane_cerpani,
+                                    -- LIVE AGREGACE z pokladny místo stará data z cerpani
+                                    COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0) as skutecne_cerpano,
+                                    -- LIVE AGREGACE pokladny (stejné jako skutecne_cerpano)
+                                    COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0) as cerpano_pokladna,
+                                    (c.celkovy_limit - (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0))) as zbyva_skutecne,
+                                    c.zbyva_rezervace,
+                                    c.zbyva_predpoklad,
+                                    CASE WHEN (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) > 0 THEN (COALESCE((
+                                        SELECT SUM(COALESCE(p.castka_vydaj, p.castka_celkem))
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT SUM(d.castka)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) / c.celkovy_limit * 100 ELSE 0 END as procento_skutecne,
+                                    c.procento_rezervace,
+                                    c.procento_predpoklad,
+                                    (COALESCE((
+                                        SELECT COUNT(DISTINCT p.id)
+                                        FROM 25a_pokladni_polozky p
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE p.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                        AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                    ), 0) + COALESCE((
+                                        SELECT COUNT(DISTINCT p.id)
+                                        FROM 25a_pokladni_polozky_detail d
+                                        JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                        JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                        WHERE d.lp_kod = c.cislo_lp
+                                        AND k.rok = c.rok
+                                        AND p.typ_dokladu = 'vydaj'
+                                        AND p.smazano = 0
+                                    ), 0)) as pocet_zaznamu,
+                                    c.ma_navyseni,
+                                    u.prijmeni,
+                                    u.jmeno
+                                FROM " . TBL_LP_CERPANI . " c
+                                LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                WHERE c.usek_id = ?
+                                AND c.rok = ?
+                                ORDER BY c.kategorie, c.cislo_lp
+                            ");
+                            $stmt->execute([$usek_id, $rok]);
+                        }
                         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
                         http_response_code(500);
