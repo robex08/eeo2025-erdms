@@ -85,7 +85,8 @@ const ENRICHED_API_STRUCTURE = {
     'fakturant',
     'dodavatel_potvrdil',
     'potvrdil_vecnou_spravnost',
-    'dokoncil'
+    'dokoncil',
+    'dostupni_uzivatele_pro_podpis' // dynamické pole pro výběr uživatele pro podpis při generování
   ],
 
   // Vypočítané hodnoty
@@ -238,43 +239,47 @@ const DEPRECATED_FIELDS_MAP = {
  * Zkontroluje, zda cesta existuje v enriched API struktuře
  */
 function isValidPath(path) {
+  // Normalizuj cestu - odeber array indexy jako [0], [1] atd.
+  // např. dostupni_uzivatele_pro_podpis[0].cele_jmeno -> dostupni_uzivatele_pro_podpis.cele_jmeno
+  const normalizedPath = path.replace(/\[\d+\]/g, '');
+  
   // Top level pole
-  if (ENRICHED_API_STRUCTURE.topLevel.includes(path)) {
+  if (ENRICHED_API_STRUCTURE.topLevel.includes(normalizedPath)) {
     return true;
   }
   
   // Dodavatel pole
-  if (ENRICHED_API_STRUCTURE.dodavatel.includes(path)) {
+  if (ENRICHED_API_STRUCTURE.dodavatel.includes(normalizedPath)) {
     return true;
   }
   
   // Vypočítané hodnoty
-  if (path.startsWith('vypocitane.')) {
-    const fieldName = path.substring('vypocitane.'.length);
+  if (normalizedPath.startsWith('vypocitane.')) {
+    const fieldName = normalizedPath.substring('vypocitane.'.length);
     return ENRICHED_API_STRUCTURE.vypocitane.includes(fieldName);
   }
   
   // Enriched uživatelé
   for (const prefix of ENRICHED_API_STRUCTURE.enrichedUserPrefixes) {
-    if (path.startsWith(prefix + '.')) {
-      const fieldName = path.substring(prefix.length + 1);
+    if (normalizedPath.startsWith(prefix + '.')) {
+      const fieldName = normalizedPath.substring(prefix.length + 1);
       return ENRICHED_API_STRUCTURE.enrichedUserFields.includes(fieldName);
     }
   }
   
   // Vnořené objekty
   // Financování
-  if (path.startsWith('financovani.')) {
-    return ['typ', 'nazev', 'nazev_stavu', 'kod', 'kod_stavu'].includes(path.substring('financovani.'.length));
+  if (normalizedPath.startsWith('financovani.')) {
+    return ['typ', 'nazev', 'nazev_stavu', 'kod', 'kod_stavu'].includes(normalizedPath.substring('financovani.'.length));
   }
   
   // Střediska (může být array)
-  if (path.startsWith('strediska_kod.') || path === 'strediska_kod') {
+  if (normalizedPath.startsWith('strediska_kod.') || normalizedPath === 'strediska_kod') {
     return true;
   }
   
   // Pole v arrays (polozky, prilohy, faktury) - nevalidujeme detailně
-  if (path.startsWith('polozky.') || path.startsWith('prilohy.') || path.startsWith('faktury.')) {
+  if (normalizedPath.startsWith('polozky.') || normalizedPath.startsWith('prilohy.') || normalizedPath.startsWith('faktury.')) {
     return true;
   }
   

@@ -2508,8 +2508,15 @@ const DocxSablonyTab = () => {
     }
   }, [token, loadData, loadTypyDokumentu]);
 
-  // Validace mappingu při změně
+  // Validace mappingu při změně - POUZE pro JSON editaci bez DOCX souboru
+  // (když máme DOCX soubor, validace přichází z DocxMappingExpandableSection)
   useEffect(() => {
+    // Pokud máme načtený DOCX soubor, validaci dostáváme z DocxMappingExpandableSection
+    if (uploadForm.file || downloadedTemplateFile) {
+      return; // Neprovádíme vlastní validaci
+    }
+    
+    // Validace pouze JSON mappingu bez DOCX souboru
     try {
       const mappingToValidate = uploadForm.docx_mapping || JSON.parse(uploadForm.mapovani_json || '{}');
       
@@ -2529,7 +2536,7 @@ const DocxSablonyTab = () => {
         validFields: 0
       });
     }
-  }, [uploadForm.docx_mapping, uploadForm.mapovani_json]);
+  }, [uploadForm.docx_mapping, uploadForm.mapovani_json, uploadForm.file, downloadedTemplateFile]);
 
   // Automatická oprava mappingu
   const handleAutoFixMapping = () => {
@@ -5017,12 +5024,12 @@ const DocxSablonyTab = () => {
                                     {mappingValidation.valid ? (
                                       <>
                                         <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#059669', marginRight: '0.5rem' }} />
-                                        <strong>Mapping je v pořádku</strong> - {mappingValidation.validFields}/{mappingValidation.totalFields} polí validních
+                                        <strong>Mapping je v pořádku</strong> - {mappingValidation.totalFields}/{mappingValidation.totalFields} polí validních
                                       </>
                                     ) : (
                                       <>
                                         <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#dc2626', marginRight: '0.5rem' }} />
-                                        <strong>Nalezeny problémy</strong> - {mappingValidation.errors.length} chyb, {mappingValidation.warnings.length} varování
+                                        <strong>Nalezeny problémy</strong> - {mappingValidation.totalFields - mappingValidation.errors.length} validních, {mappingValidation.errors.length} {mappingValidation.errors.length === 1 ? 'chyba' : mappingValidation.errors.length < 5 ? 'chyby' : 'chyb'}
                                       </>
                                     )}
                                   </div>
@@ -5121,6 +5128,7 @@ const DocxSablonyTab = () => {
                         file={uploadForm.file}
                         mapping={uploadForm.docx_mapping || {}}
                         onMappingChange={handleDocxMappingChange}
+                        onValidationChange={setMappingValidation}
                         expanded={true}
                         onExpandChange={() => {}}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
@@ -5137,6 +5145,7 @@ const DocxSablonyTab = () => {
                         file={downloadedTemplateFile}
                         mapping={uploadForm.docx_mapping || {}}
                         onMappingChange={handleDocxMappingChange}
+                        onValidationChange={setMappingValidation}
                         expanded={mappingSectionVisible}
                         onExpandChange={setMappingSectionVisible}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
