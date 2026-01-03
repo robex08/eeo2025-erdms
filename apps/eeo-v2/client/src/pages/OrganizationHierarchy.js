@@ -1587,7 +1587,7 @@ const OrganizationHierarchy = () => {
   // Detail panel data - rozsirene lokality a notifikace pro vybrany vztah
   const [selectedExtendedLocations, setSelectedExtendedLocations] = useState([]);
   const [selectedNotificationTypes, setSelectedNotificationTypes] = useState([]);
-  const [selectedNotificationEventTypes, setSelectedNotificationEventTypes] = useState([]); // Vybrané event types pro edge
+  // ❌ selectedNotificationEventTypes ODSTRANĚNO - EDGE dědí event types z parent TEMPLATE NODE
 
   // Detail panel data - EDGE notifikace (stejná logika jako u NODE)
   const [edgeScopeFilter, setEdgeScopeFilter] = useState('NONE');
@@ -1703,10 +1703,11 @@ const OrganizationHierarchy = () => {
                   departments: selectedExtendedDepartments,
                   combinations: selectedCombinations
                 },
-                // Notifikace - jen event types (email/inapp/recipientRole se ukládají přímo v onChange)
+                // ❌ Notifikace - types ODSTRANĚNY (EDGE dědí event types z parent TEMPLATE NODE)
+                // Pouze scope_filter, sendEmail, sendInApp, recipientRole se ukládají přímo v onChange handleru
                 notifications: {
-                  ...(e.data?.notifications || {}),
-                  types: selectedNotificationEventTypes
+                  ...(e.data?.notifications || {})
+                  // types: ODSTRANĚNO - nepotřebujeme ukládat, parent template je source of truth
                 }
               }
             };
@@ -1718,8 +1719,7 @@ const OrganizationHierarchy = () => {
   }, [
     selectedExtendedLocations, 
     selectedExtendedDepartments, 
-    selectedCombinations, 
-    selectedNotificationEventTypes,
+    selectedCombinations,
     relationshipType,
     relationshipScope,
     moduleVisibility,
@@ -2264,6 +2264,30 @@ const OrganizationHierarchy = () => {
     const sourceNode = nodes.find(n => n.id === params.source);
     const targetNode = nodes.find(n => n.id === params.target);
     
+    // ✅ VALIDACE: Pokud source je TEMPLATE, zkontrolovat zda má definované event types
+    if (sourceNode?.data?.type === 'template') {
+      const hasEventTypes = sourceNode.data?.eventTypes && sourceNode.data.eventTypes.length > 0;
+      
+      if (!hasEventTypes) {
+        // 🚫 ZAMÍTNOUT spojení - template nemá event types
+        if (window.showToast) {
+          window.showToast(
+            `⚠️ Nelze vytvořit spojení!\n\n` +
+            `Šablona "${sourceNode.data?.label || 'Neznámá'}" nemá definované žádné události (Event Types).\n\n` +
+            `📝 Nejprve klikněte na šablonu a přidejte alespoň jednu událost v sekci "Typy událostí".`,
+            { type: 'warning', timeout: 8000 }
+          );
+        } else {
+          alert(
+            `⚠️ Nelze vytvořit spojení!\n\n` +
+            `Šablona "${sourceNode.data?.label || 'Neznámá'}" nemá definované žádné události (Event Types).\n\n` +
+            `Nejprve klikněte na šablonu a přidejte alespoň jednu událost.`
+          );
+        }
+        return; // ❌ Zrušit vytvoření edge
+      }
+    }
+    
     let relationType = 'user-user';
     if (sourceNode && targetNode) {
       const sourceType = sourceNode.data?.type || 'user';
@@ -2384,7 +2408,7 @@ const OrganizationHierarchy = () => {
     setEdgeSendEmail(edge.data?.sendEmail || false);
     setEdgeSendInApp(edge.data?.sendInApp !== false);
     setEdgeRecipientRole(edge.data?.recipientRole || 'APPROVAL');
-    setSelectedNotificationEventTypes(edge.data?.notifications?.types || []); // Načíst vybrané event types
+    // ❌ selectedNotificationEventTypes ODSTRANĚNO - EDGE dědí event types z parent TEMPLATE NODE
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -7605,45 +7629,77 @@ const OrganizationHierarchy = () => {
                         </div>
                       </FormGroup>
                       
-                      {/* Event Types Multi-select */}
+                      {/* ✅ Event Types - READ-ONLY zobrazení zděděných z parent TEMPLATE */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
                           Typy událostí (Event Types)
-                          <span style={{ color: '#10b981', marginLeft: '4px', fontWeight: 'normal' }}>volitelné</span>
+                          <span style={{ color: '#3b82f6', marginLeft: '4px', fontWeight: 'normal', fontSize: '0.75rem' }}>🔒 zděděno z šablony</span>
                         </Label>
-                        <CustomSelect
-                          multiple
-                          value={selectedNotificationEventTypes}
-                          onChange={(value) => setSelectedNotificationEventTypes(value)}
-                          options={(notificationEventTypes || []).map(eventType => ({
-                            id: eventType.kod || eventType.code,
-                            value: eventType.kod || eventType.code,
-                            label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
-                          }))}
-                          placeholder="Vyberte typy událostí..."
-                          field="selectedNotificationEventTypes"
-                          selectStates={selectStates}
-                          setSelectStates={setSelectStates}
-                          searchStates={searchStates}
-                          setSearchStates={setSearchStates}
-                          touchedSelectFields={touchedSelectFields}
-                          setTouchedSelectFields={setTouchedSelectFields}
-                          toggleSelect={toggleSelect}
-                          filterOptions={filterOptions}
-                          getOptionLabel={getOptionLabel}
-                          hasTriedToSubmit={false}
-                        />
-                        <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: '#64748b', 
-                          marginTop: '6px',
-                          lineHeight: '1.5'
-                        }}>
-                          💡 <strong>Kdy poslat tuto notifikace?</strong> Vyberte události:<br/>
-                          • Např. <strong>ORDER_SENT_FOR_APPROVAL</strong> = když někdo odešle objednávku ke schválení<br/>
-                          • Můžete vybrat více událostí najednou<br/>
-                          ⚠️ Pokud nevyberete žádnou → notifikace se nepoužije automaticky
-                        </div>
+                        {(() => {
+                          // Získat parent TEMPLATE node
+                          const sourceNode = nodes.find(n => n.id === selectedEdge?.source);
+                          const parentEventTypes = sourceNode?.data?.eventTypes || [];
+                          
+                          if (parentEventTypes.length === 0) {
+                            return (
+                              <div style={{
+                                padding: '12px',
+                                background: '#fef2f2',
+                                border: '2px solid #fca5a5',
+                                borderRadius: '8px',
+                                color: '#991b1b',
+                                fontSize: '0.875rem',
+                                lineHeight: '1.5'
+                              }}>
+                                ⚠️ <strong>Šablona nemá definované žádné události!</strong><br/>
+                                Pro aktivaci tohoto spojení musíte nejprve nastavit event types u zdrojové šablony <strong>{sourceNode?.data?.label || 'Neznámá'}</strong>.
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <div style={{
+                              padding: '12px',
+                              background: '#f0f9ff',
+                              border: '2px solid #93c5fd',
+                              borderRadius: '8px'
+                            }}>
+                              <div style={{ marginBottom: '8px', color: '#1e40af', fontWeight: '600', fontSize: '0.875rem' }}>
+                                📋 Události ze šablony "{sourceNode?.data?.label || 'Neznámá'}":
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {parentEventTypes.map((eventCode, idx) => {
+                                  // Najít plný název události
+                                  const eventDetail = notificationEventTypes.find(et => 
+                                    (et.kod || et.code) === eventCode
+                                  );
+                                  return (
+                                    <div key={idx} style={{
+                                      padding: '6px 12px',
+                                      background: '#dbeafe',
+                                      border: '1px solid #3b82f6',
+                                      borderRadius: '6px',
+                                      color: '#1e40af',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600'
+                                    }}>
+                                      {eventDetail?.nazev || eventDetail?.name || eventCode}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ 
+                                marginTop: '10px',
+                                fontSize: '0.7rem', 
+                                color: '#64748b',
+                                lineHeight: '1.4'
+                              }}>
+                                💡 <strong>Tyto události aktivují notifikaci pro příjemce na konci tohoto spojení.</strong><br/>
+                                Pro změnu událostí upravte zdrojovou šablonu (klikněte na uzel šablony).
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </FormGroup>
                       
 
