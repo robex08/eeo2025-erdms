@@ -47,6 +47,7 @@ const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
+const PostLoginModal = lazy(() => import('./components/PostLoginModal'));
 const AppShell = ({ children }) => (
   <div css={css`display:flex; flex-direction:column; min-height:100vh;`}>{children}</div>
 );
@@ -271,6 +272,12 @@ function App() {
   const bgTasksContext = useBgTasksContext();
   const exchangeRatesContext = useExchangeRates(); // ← Nový context pro směnné kurzy
 
+  // 🔔 POST-LOGIN MODAL: State pro modal dialog po přihlášení
+  const [postLoginModal, setPostLoginModal] = React.useState({
+    isOpen: false,
+    config: null
+  });
+
   // ✅ KRITICKÉ: Stabilní reference na bgTasks - vytvoří se POUZE JEDNOU
   const bgTasksConfigRef = useRef({ trackState: false });
   const bgTasks = useBackgroundTasks(bgTasksConfigRef.current);
@@ -347,6 +354,23 @@ function App() {
     window.addEventListener('show-welcome-toast', handleWelcomeToast);
     return () => window.removeEventListener('show-welcome-toast', handleWelcomeToast);
   }, [showToast]);
+
+  // 🔔 Post-login modal handler
+  useEffect(() => {
+    const handlePostLoginModal = (event) => {
+      const modalConfig = event.detail;
+      
+      if (modalConfig && modalConfig.enabled) {
+        setPostLoginModal({
+          isOpen: true,
+          config: modalConfig
+        });
+      }
+    };
+
+    window.addEventListener('show-post-login-modal', handlePostLoginModal);
+    return () => window.removeEventListener('show-post-login-modal', handlePostLoginModal);
+  }, []);
 
   // Registrace background tasks po přihlášení
   useEffect(() => {
@@ -461,6 +485,27 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
+  // 🔔 POST-LOGIN MODAL: Handler funkce
+  const handleClosePostLoginModal = async () => {
+    setPostLoginModal({
+      isOpen: false,
+      config: null
+    });
+  };
+
+  const handleDontShowAgainPostLoginModal = async () => {
+    const { config } = postLoginModal;
+    
+    if (config?.modalGuid && userId) {
+      // Uložit do localStorage, že uživatel nechce modal zobrazovat
+      const { dismissModalForUser } = await import('./services/postLoginModalService');
+      dismissModalForUser(userId, config.modalGuid);
+    }
+    
+    // Zavřít modal
+    handleClosePostLoginModal();
+  };
+
   // NOTE: navigate/useLocation must be called inside Router context. We render
   // a small child component inside the Router below to perform the restore.
   // If auth initialization is still in progress, don't mount the Router/routes.
@@ -536,6 +581,22 @@ function App() {
             </Layout>
           </AppShell>
         </MaintenanceModeWrapper>
+        
+        {/* 🔔 POST-LOGIN MODAL: Zobrazí se po přihlášení podle globální konfigurace */}
+        {postLoginModal.isOpen && postLoginModal.config && (
+          <Suspense fallback={null}>
+            <PostLoginModal
+              isOpen={postLoginModal.isOpen}
+              onClose={handleClosePostLoginModal}
+              onDontShowAgain={handleDontShowAgainPostLoginModal}
+              title={postLoginModal.config.title}
+              htmlContent={postLoginModal.config.htmlContent}
+              validFrom={postLoginModal.config.validFrom}
+              validTo={postLoginModal.config.validTo}
+              modalGuid={postLoginModal.config.modalGuid}
+            />
+          </Suspense>
+        )}
       </Router>
     </ActivityProvider>
   );

@@ -8,6 +8,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
+import DatePicker from '../components/DatePicker';
 
 // ==================== STYLED COMPONENTS ====================
 
@@ -220,6 +221,33 @@ const Select = styled.select`
   }
 `;
 
+const Input = styled.input`
+  padding: 0.75rem;
+  border: 2px solid ${({theme}) => theme.colors.gray300};
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: ${({theme}) => theme.colors.gray700};
+  background: white;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: ${({theme}) => theme.colors.primaryAccent};
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: ${({theme}) => theme.colors.primaryAccent};
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: ${({theme}) => theme.colors.gray100};
+  }
+`;
+
 const ActionButtons = styled.div`
   display: flex;
   gap: 1rem;
@@ -303,7 +331,14 @@ const AppSettings = () => {
     hierarchy_enabled: false,
     hierarchy_profile_id: null,
     maintenance_mode: false,
-    maintenance_message: 'Systém je momentálně v údržbě. Omlouváme se za komplikace.'
+    maintenance_message: 'Systém je momentálně v údržbě. Omlouváme se za komplikace.',
+    post_login_modal_enabled: false,
+    post_login_modal_title: 'Důležité upozornění',
+    post_login_modal_guid: 'modal_init_v1',
+    post_login_modal_message_id: '',
+    post_login_modal_content: '',
+    post_login_modal_valid_from: '',
+    post_login_modal_valid_to: ''
   });
   
   const [loading, setLoading] = useState(true);
@@ -311,6 +346,9 @@ const AppSettings = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [originalSettings, setOriginalSettings] = useState({});
   const [hierarchyProfiles, setHierarchyProfiles] = useState([]);
+  const [availableNotifications, setAvailableNotifications] = useState([]);
+  const [selectedNotificationPreview, setSelectedNotificationPreview] = useState('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
   
   const isSuperAdmin = useMemo(() => {
     return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
@@ -319,6 +357,7 @@ const AppSettings = () => {
   useEffect(() => {
     loadSettings();
     loadHierarchyProfiles();
+    loadAvailableNotifications();
   }, []);
   
   useEffect(() => {
@@ -335,6 +374,20 @@ const AppSettings = () => {
       if (!data.maintenance_message) {
         data.maintenance_message = 'Systém je momentálně v údržbě. Omlouváme se za komplikace.';
       }
+      
+      // Přidat výchozí hodnoty pro post-login modal
+      if (data.post_login_modal_enabled === undefined) {
+        data.post_login_modal_enabled = false;
+      }
+      if (!data.post_login_modal_title) {
+        data.post_login_modal_title = 'Důležité upozornění';
+      }
+      if (!data.post_login_modal_guid) {
+        data.post_login_modal_guid = 'modal_init_v1';
+      }
+      
+      // Převést boolean hodnoty z API (backend posílá 0/1 string)
+      data.post_login_modal_enabled = data.post_login_modal_enabled === '1' || data.post_login_modal_enabled === 1 || data.post_login_modal_enabled === true;
       
       setSettings(data);
       setOriginalSettings(data);
@@ -358,7 +411,106 @@ const AppSettings = () => {
       // Tichá chyba - profily nejsou kritické pro načtení stránky
     }
   };
-  
+
+  const loadAvailableNotifications = async () => {
+    try {
+      // Debug logging - POUŽÍVAT SPRÁVNÝ API_BASE_URL jako ostatní endpointy!
+      const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+      const url = `${API_BASE_URL}/notifications/list-for-select`;
+      const requestBody = {
+        token: token,
+        username: username
+      };
+      
+      console.group('🔔 NOTIFICATIONS API CALL');
+      console.log('URL:', url);
+      console.log('REQUEST:', requestBody);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log('RESPONSE STATUS:', response.status, response.statusText);
+      console.log('RESPONSE HEADERS:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('RESPONSE BODY (ERROR):', text);
+        console.groupEnd();
+        showToast(`Chyba při načítání notifikací: HTTP ${response.status}`, { type: 'error' });
+        return;
+      }
+      
+      const text = await response.text();
+      console.log('RESPONSE BODY (RAW):', text);
+      
+      if (!text || text.trim() === '') {
+        console.error('EMPTY RESPONSE');
+        console.groupEnd();
+        showToast('API vrátilo prázdnou odpověď', { type: 'error' });
+        return;
+      }
+      
+      const data = JSON.parse(text);
+      console.log('RESPONSE BODY (PARSED):', data);
+      console.groupEnd();
+      
+      if (data.status === 'success') {
+        setAvailableNotifications(data.data);
+      } else {
+        console.error('Error loading notifications:', data.message);
+        showToast(data.message || 'Chyba při načítání notifikací', { type: 'error' });
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+      console.groupEnd();
+      showToast('Chyba při načítání notifikací: ' + error.message, { type: 'error' });
+    }
+  };
+
+  const loadNotificationPreview = async (notificationId) => {
+    if (!notificationId) {
+      setSelectedNotificationPreview('');
+      return;
+    }
+
+    setLoadingPreview(true);
+    try {
+      const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+      const response = await fetch(`${API_BASE_URL}/notifications/get-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          token: token,
+          username: username,
+          id: notificationId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'success') {
+          setSelectedNotificationPreview(data.data.zprava || '');
+        } else {
+          setSelectedNotificationPreview('<p style="color: red;">Chyba při načítání: ' + data.message + '</p>');
+        }
+      } else {
+        setSelectedNotificationPreview('<p style="color: red;">HTTP ' + response.status + ': ' + response.statusText + '</p>');
+      }
+    } catch (error) {
+      console.error('Error loading notification preview:', error);
+      setSelectedNotificationPreview('<p style="color: red;">Chyba při načítání náhledu: ' + error.message + '</p>');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const handleSave = async () => {
     // Validace: pokud je hierarchie povolena, musí být vybrán profil
     if (settings.hierarchy_enabled && !settings.hierarchy_profile_id) {
@@ -676,6 +828,270 @@ const AppSettings = () => {
                 <FontAwesomeIcon icon={faExclamationTriangle} />
                 <div>
                   Pouze SUPERADMIN může aktivovat režim údržby.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* POST-LOGIN MODAL */}
+          <SettingCard style={{gridColumn: '1 / -1'}}>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faInfoCircle} />
+              </CardIcon>
+              <div>
+                <CardTitle>Post-Login Modal Dialog</CardTitle>
+                <StatusBadge $active={settings.post_login_modal_enabled}>
+                  {settings.post_login_modal_enabled ? 'Aktivní' : 'Neaktivní'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faInfoCircle} />
+                  Povolit post-login modal
+                </SettingLabel>
+                <SettingDescription>
+                  Zobrazí modal dialog po přihlášení uživatele s důležitými informacemi.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.post_login_modal_enabled}
+                onClick={() => toggleSetting('post_login_modal_enabled')}
+              >
+                <ToggleThumb $active={settings.post_login_modal_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {settings.post_login_modal_enabled && (
+              <>
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faInfoCircle} />
+                      Nadpis modalu
+                    </SettingLabel>
+                    <SettingDescription>
+                      Hlavní nadpis, který se zobrazí v modal dialogu.
+                    </SettingDescription>
+                    <Input
+                      type="text"
+                      value={settings.post_login_modal_title || ''}
+                      onChange={(e) => {
+                        setSettings(prev => ({
+                          ...prev,
+                          post_login_modal_title: e.target.value
+                        }));
+                        setHasChanges(true);
+                      }}
+                      placeholder="Nadpis modalu..."
+                      style={{marginTop: '0.75rem'}}
+                    />
+                  </SettingInfo>
+                </SettingRow>
+                
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faCodeBranch} />
+                      GUID pro resetování
+                    </SettingLabel>
+                    <SettingDescription>
+                      Jedinečný identifikátor. Změnou se obnoví zobrazení pro všechny uživatele, kteří si zvolili "Příště nezobrazovat".
+                    </SettingDescription>
+                    <div style={{display: 'flex', gap: '0.5rem', marginTop: '0.75rem'}}>
+                      <Input
+                        type="text"
+                        value={settings.post_login_modal_guid || ''}
+                        onChange={(e) => {
+                          setSettings(prev => ({
+                            ...prev,
+                            post_login_modal_guid: e.target.value
+                          }));
+                          setHasChanges(true);
+                        }}
+                        placeholder="modal_guid_v1"
+                        style={{flex: 1}}
+                      />
+                      <Button 
+                        type="button"
+                        onClick={() => {
+                          const newGuid = `modal_${Date.now().toString(36)}_${Math.random().toString(36).substring(2)}`;
+                          setSettings(prev => ({
+                            ...prev,
+                            post_login_modal_guid: newGuid
+                          }));
+                          setHasChanges(true);
+                        }}
+                      >
+                        Generovat nový
+                      </Button>
+                    </div>
+                  </SettingInfo>
+                </SettingRow>
+                
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                  <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <SettingInfo>
+                      <SettingLabel>
+                        <FontAwesomeIcon icon={faInfoCircle} />
+                        Platné od
+                      </SettingLabel>
+                      <SettingDescription>
+                        Datum a čas od kdy se modal zobrazuje.<br/>
+                        Pokud není zadáno, platí okamžitě.
+                      </SettingDescription>
+                      <DatePicker
+                        fieldName="post_login_modal_valid_from"
+                        value={settings.post_login_modal_valid_from || ''}
+                        onChange={(value) => {
+                          setSettings(prev => ({
+                            ...prev,
+                            post_login_modal_valid_from: value
+                          }));
+                          setHasChanges(true);
+                        }}
+                        placeholder="Vyberte datum od kdy platí..."
+                        variant="standard"
+                      />
+                    </SettingInfo>
+                  </SettingRow>
+                  
+                  <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                    <SettingInfo>
+                      <SettingLabel>
+                        <FontAwesomeIcon icon={faInfoCircle} />
+                        Platné do
+                      </SettingLabel>
+                      <SettingDescription>
+                        Datum a čas do kdy se modal zobrazuje.<br/>
+                        Pokud není zadáno, platí neomezeně.
+                      </SettingDescription>
+                      <DatePicker
+                        fieldName="post_login_modal_valid_to"
+                        value={settings.post_login_modal_valid_to || ''}
+                        onChange={(value) => {
+                          setSettings(prev => ({
+                            ...prev,
+                            post_login_modal_valid_to: value
+                          }));
+                          setHasChanges(true);
+                        }}
+                        placeholder="Vyberte datum do kdy platí..."
+                        variant="standard"
+                      />
+                    </SettingInfo>
+                  </SettingRow>
+                </div>
+                
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faBell} />
+                      Zpráva z notifikačního systému
+                    </SettingLabel>
+                    <SettingDescription>
+                      Vyberte systémovou notifikaci ze které se načte obsah pro modal. Necháte-li prázdné, použije se fallback obsah níže.
+                    </SettingDescription>
+                    <Select
+                      value={settings.post_login_modal_message_id || ''}
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        setSettings(prev => ({
+                          ...prev,
+                          post_login_modal_message_id: newValue
+                        }));
+                        setHasChanges(true);
+                        loadNotificationPreview(newValue);
+                      }}
+                      style={{marginTop: '0.75rem'}}
+                    >
+                      <option value="">-- Vyberte notifikaci --</option>
+                      {availableNotifications.map(notification => (
+                        <option key={notification.id} value={notification.id}>
+                          {notification.title} (ID: {notification.id})
+                        </option>
+                      ))}
+                    </Select>
+                    
+                    {/* HTML Náhled vybrané notifikace */}
+                    {settings.post_login_modal_message_id && (
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '8px',
+                        backgroundColor: '#f9fafb'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginBottom: '0.5rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                          color: '#374151'
+                        }}>
+                          <FontAwesomeIcon icon={faInfoCircle} style={{marginRight: '0.5rem'}} />
+                          Náhled obsahu notifikace (ID: {settings.post_login_modal_message_id})
+                        </div>
+                        
+                        {loadingPreview ? (
+                          <div style={{padding: '1rem', textAlign: 'center', color: '#6b7280'}}>
+                            Načítám náhled...
+                          </div>
+                        ) : (
+                          <div 
+                            style={{
+                              border: '1px solid #d1d5db',
+                              borderRadius: '4px',
+                              padding: '1rem',
+                              backgroundColor: 'white',
+                              maxHeight: '300px',
+                              overflow: 'auto',
+                              fontSize: '0.875rem',
+                              lineHeight: '1.5'
+                            }}
+                            dangerouslySetInnerHTML={{ __html: selectedNotificationPreview }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </SettingInfo>
+                </SettingRow>
+                
+                <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                  <SettingInfo>
+                    <SettingLabel>
+                      <FontAwesomeIcon icon={faInfoCircle} />
+                      Fallback HTML obsah
+                    </SettingLabel>
+                    <SettingDescription>
+                      HTML obsah, který se použije pokud není zadané ID zprávy nebo se nepodaří načíst z notifikačního systému. Můžete používat HTML tagy.
+                    </SettingDescription>
+                    <TextArea
+                      value={settings.post_login_modal_content || ''}
+                      onChange={(e) => {
+                        setSettings(prev => ({
+                          ...prev,
+                          post_login_modal_content: e.target.value
+                        }));
+                        setHasChanges(true);
+                      }}
+                      placeholder="<h3>Vítejte!</h3><p>Důležité informace...</p>"
+                      style={{marginTop: '0.75rem', minHeight: '120px'}}
+                    />
+                  </SettingInfo>
+                </SettingRow>
+              </>
+            )}
+            
+            {!settings.post_login_modal_enabled && (
+              <WarningBox $type="info">
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  Post-login modal je vypnut. Uživatelé neuvidí žádný dialog po přihlášení.
                 </div>
               </WarningBox>
             )}

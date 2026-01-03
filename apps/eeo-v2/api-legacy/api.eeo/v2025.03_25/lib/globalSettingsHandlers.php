@@ -164,7 +164,15 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'hierarchy_profile_id' => 'hierarchy_profile_id',
             'hierarchy_logic' => 'hierarchy_logic',
             'maintenance_mode' => 'maintenance_mode',
-            'maintenance_message' => 'maintenance_message'
+            'maintenance_message' => 'maintenance_message',
+            // Post-login modal
+            'post_login_modal_enabled' => 'post_login_modal_enabled',
+            'post_login_modal_title' => 'post_login_modal_title',
+            'post_login_modal_guid' => 'post_login_modal_guid',
+            'post_login_modal_valid_from' => 'post_login_modal_valid_from',
+            'post_login_modal_valid_to' => 'post_login_modal_valid_to',
+            'post_login_modal_message_id' => 'post_login_modal_message_id',
+            'post_login_modal_content' => 'post_login_modal_content'
         );
         
         $db->beginTransaction();
@@ -264,7 +272,15 @@ function handle_global_settings_get_OLD($db, $token_user_id) {
             'hierarchy_profile_id' => $allSettings['hierarchy_profile_id']['hodnota'] !== 'NULL' && $allSettings['hierarchy_profile_id']['hodnota'] !== null ? (int)$allSettings['hierarchy_profile_id']['hodnota'] : null,
             'hierarchy_logic' => $allSettings['hierarchy_logic']['hodnota'] ?? 'OR',
             'maintenance_mode' => ($allSettings['maintenance_mode']['hodnota'] ?? '0') === '1',
-            'maintenance_message' => $allSettings['maintenance_message']['hodnota'] ?? 'Systém je momentálně v údržbě. Omlouváme se za komplikace.'
+            'maintenance_message' => $allSettings['maintenance_message']['hodnota'] ?? 'Systém je momentálně v údržbě. Omlouváme se za komplikace.',
+            // Post-login modal
+            'post_login_modal_enabled' => ($allSettings['post_login_modal_enabled']['hodnota'] ?? '0') === '1',
+            'post_login_modal_title' => $allSettings['post_login_modal_title']['hodnota'] ?? 'Důležité upozornění',
+            'post_login_modal_guid' => $allSettings['post_login_modal_guid']['hodnota'] ?? 'modal_init_v1',
+            'post_login_modal_valid_from' => $allSettings['post_login_modal_valid_from']['hodnota'] ?? null,
+            'post_login_modal_valid_to' => $allSettings['post_login_modal_valid_to']['hodnota'] ?? null,
+            'post_login_modal_message_id' => $allSettings['post_login_modal_message_id']['hodnota'] ?? null,
+            'post_login_modal_content' => $allSettings['post_login_modal_content']['hodnota'] ?? ''
         ];
         
         http_response_code(200);

@@ -2304,6 +2304,33 @@ switch ($endpoint) {
         }
         break;
         
+    case 'notifications/get-by-id':
+        if ($request_method === 'POST') {
+            handle_notifications_get_by_id($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    case 'notifications/list-for-select':
+        if ($request_method === 'POST') {
+            handle_notifications_list_for_select($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    case 'notifications/get-content':
+        if ($request_method === 'POST') {
+            handle_notifications_get_content($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
     case 'notifications/unread-count':
         if ($request_method === 'POST') {
             handle_notifications_unread_count($input, $config, $queries);

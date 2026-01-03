@@ -539,6 +539,61 @@ class NotificationService {
       };
     }
   }
+
+  /**
+   * Načte notifikace pro výběr v admin rozhraní (pro post-login modal)
+   * @param {string} token - Auth token
+   * @param {string} username - Username
+   * @returns {Promise<Array>} Seznam notifikací pro select
+   */
+  async getNotificationsForSelect(token, username) {
+    try {
+      const payload = {
+        token,
+        username,
+        for_select: true
+      };
+
+      const response = await api.post('/notifications/list-for-select', payload);
+      
+      if (response.status === 200 && response.data) {
+        return response.data;
+      }
+      
+      return [];
+    } catch (error) {
+      console.warn('Chyba při načítání notifikací pro select:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Načte notifikaci podle ID (pro post-login modal)
+   * @param {number} id - ID notifikace
+   * @param {string} token - Auth token
+   * @param {string} username - Username
+   * @returns {Promise<Object>} Notifikace s obsahem
+   */
+  async getNotificationById(id, token, username) {
+    try {
+      const payload = {
+        token,
+        username,
+        id: id
+      };
+
+      const response = await api.post('/notifications/get-by-id', payload);
+      
+      if (response.status === 200 && response.data) {
+        return response.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Chyba při načítání notifikace ID', id, ':', error);
+      return null;
+    }
+  }
 }
 
 // Singleton instance
