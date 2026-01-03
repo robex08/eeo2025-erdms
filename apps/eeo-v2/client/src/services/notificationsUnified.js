@@ -279,29 +279,6 @@ export const NOTIFICATION_CONFIG = {
     category: 'orders',
     label: 'Objednávka násilně odebrána',
     priority: 'high'
-  },
-
-  // DEPRECATED (ponecháno pro kompatibilitu)
-  order_approved: {
-    icon: '✅',
-    color: '#10b981',
-    category: 'orders',
-    label: 'Objednávka schválena (deprecated)',
-    priority: 'normal'
-  },
-  order_rejected: {
-    icon: '❌',
-    color: '#ef4444',
-    category: 'orders',
-    label: 'Objednávka zamítnuta (deprecated)',
-    priority: 'high'
-  },
-  order_created: {
-    icon: '📝',
-    color: '#3b82f6',
-    category: 'orders',
-    label: 'Nová objednávka (deprecated)',
-    priority: 'high'
   }
 };
 
@@ -777,7 +754,7 @@ class NotificationService {
    * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
    * Backend automaticky najde příjemce v hierarchii podle event typu
    * 
-   * @param {string} eventType - Event type code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, ...)
+   * @param {string} eventType - Event type code (order_status_ke_schvaleni, order_status_schvalena, INVOICE_CREATED, ...)
    * @param {number} objectId - ID objektu (objednávka, faktura, ...)
    * @param {number} triggerUserId - ID uživatele, který akci provedl
    * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)

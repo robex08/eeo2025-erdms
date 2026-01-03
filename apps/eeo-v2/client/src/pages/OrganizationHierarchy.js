@@ -5647,7 +5647,7 @@ const OrganizationHierarchy = () => {
                         <strong>3️⃣ Na šipce nastavte:</strong>
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
                           <li><strong>Scope Filter</strong> - koho zahrnout (všichni/jen účastníci entity...)</li>
-                          <li><strong>Event Types</strong> - kdy poslat (ORDER_SENT_FOR_APPROVAL...)</li>
+                          <li><strong>Event Types</strong> - kdy poslat (order_status_ke_schvaleni...)</li>
                         </ul>
                         <div style={{ 
                           marginTop: '8px', 
@@ -5924,7 +5924,7 @@ const OrganizationHierarchy = () => {
                         lineHeight: '1.5'
                       }}>
                         💡 <strong>Event Types = kdy systém pošle tuto šablonu</strong><br/>
-                        Např. vyberete <strong>ORDER_SENT_FOR_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
+                        Např. vyberete <strong>order_status_ke_schvaleni</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
                         ⚠️ Pokud nevyberete žádný → šablona se nepoužije automaticky
                       </div>
                     </FormGroup>
@@ -7342,7 +7342,7 @@ const OrganizationHierarchy = () => {
                   color: '#92400e'
                 }}>
                   <strong>⚠️ Důležité:</strong> Vztah funguje jen pokud má uživatel globální právo
-                  (např. <code style={{ background: '#fef3c7', padding: '2px 4px', borderRadius: '3px' }}>ORDER_EDIT_OWN</code>).
+                  (např. <code style={{ background: '#fef3c7', padding: '2px 4px', borderRadius: '3px' }}>INVOICE_MANAGE</code>).
                 </div>
               </DetailSection>
               </>

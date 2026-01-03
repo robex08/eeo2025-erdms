@@ -594,6 +594,39 @@ function handle_invoices25_update($input, $config, $queries) {
             } catch (Exception $e) {
                 error_log("⚠️ Notification trigger failed: " . $e->getMessage());
             }
+            
+            // ✅ OPRAVA: Aktualizovat stav objednávky na VECNA_SPRAVNOST
+            // Když se přiřadí faktura z modulu Faktury k objednávce, měl by se stav objednávky změnit
+            $orderId = (int)$input['objednavka_id'];
+            $objednavky_table = get_orders_table_name();
+            
+            // Načíst aktuální stav objednávky
+            $order_check = $db->prepare("SELECT id, stav_workflow_kod FROM `$objednavky_table` WHERE id = ?");
+            $order_check->execute([$orderId]);
+            $order_row = $order_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($order_row) {
+                // Parsovat workflow stavy
+                $workflow_states = json_decode($order_row['stav_workflow_kod'], true);
+                if (!is_array($workflow_states)) {
+                    $workflow_states = [];
+                }
+                
+                // Pokud objednávka je ve stavu FAKTURACE nebo UVEREJNENA a ještě není ve VECNA_SPRAVNOST
+                if ((in_array('FAKTURACE', $workflow_states) || in_array('UVEREJNENA', $workflow_states)) 
+                    && !in_array('VECNA_SPRAVNOST', $workflow_states)) {
+                    
+                    // Přidat stav VECNA_SPRAVNOST
+                    $workflow_states[] = 'VECNA_SPRAVNOST';
+                    $workflow_states = array_unique($workflow_states);
+                    
+                    // Aktualizovat objednávku
+                    $update_order = $db->prepare("UPDATE `$objednavky_table` SET stav_workflow_kod = ?, dt_aktualizace = NOW(), aktualizoval_uzivatel_id = ? WHERE id = ?");
+                    $update_order->execute([json_encode($workflow_states), $currentUserId, $orderId]);
+                    
+                    error_log("✅ Auto změna workflow objednávky #$orderId: přidán stav VECNA_SPRAVNOST (faktura přiřazena z modulu Faktury)");
+                }
+            }
         }
 
         http_response_code(200);

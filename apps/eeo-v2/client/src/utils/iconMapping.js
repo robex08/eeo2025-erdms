@@ -109,14 +109,6 @@ export const getNotificationIcon = (notificationType, priority = 'normal') => {
     case 'order_unlock_forced':
       return faBolt;
 
-    // Obecné notifikace (deprecated, ale ponecháno pro zpětnou kompatibilitu)
-    case 'order_approved':
-      return faCheckCircle;
-    case 'order_rejected':
-      return faBan;
-    case 'order_created':
-      return faPlay;
-
     // Výchozí podle priority
     default:
       return getPriorityIcon(priority);
@@ -194,14 +186,6 @@ export const getNotificationEmoji = (notificationType, priority = 'normal') => {
     // Force unlock
     case 'order_unlock_forced':
       return '⚡';
-
-    // Obecné notifikace (deprecated, ale ponecháno pro zpětnou kompatibilitu)
-    case 'order_approved':
-      return '✅';
-    case 'order_rejected':
-      return '❌';
-    case 'order_created':
-      return '📝';
 
     // Výchozí podle priority
     default:

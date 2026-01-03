@@ -596,12 +596,25 @@ function LPCerpaniEditor({
         };
         setRows([autoRow]);
         autoFilledRef.current = true;
+        
+        // ✅ OPRAVA: Zavolat onChange po auto-fill, aby parent měl správná data
+        if (onChange) {
+          // Použít setTimeout pro volání onChange až po dokončení render cyklu
+          setTimeout(() => {
+            onChange([{
+              lp_cislo: autoRow.lp_cislo,
+              lp_id: autoRow.lp_id,
+              castka: autoRow.castka,
+              poznamka: autoRow.poznamka
+            }]);
+          }, 0);
+        }
       } else {
         // Prázdné lpCerpani a není co auto-fillovat
         setRows([]);
       }
     }
-  }, [faktura?.id, isLPFinancing, filteredLPCodes]);
+  }, [faktura?.id, isLPFinancing, filteredLPCodes, onChange]);
 
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {

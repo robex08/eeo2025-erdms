@@ -10690,7 +10690,6 @@ function OrderForm25() {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena-new', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
             }
           }
-
           // 🆕 Okamžité potvrzení dodavatele při INSERT (velmi rare, ale možné)
           if (hasWorkflowState(workflowKod, 'POTVRZENA')) {
             try {
@@ -11206,7 +11205,17 @@ function OrderForm25() {
           const hasSchvalena = hasWorkflowState(result.stav_workflow_kod, 'SCHVALENA');
           const hadSchvalena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'SCHVALENA') : false;
           
+          console.log('🔍 [NOTIFICATION DEBUG] SCHVALENA check:', {
+            hasSchvalena,
+            hadSchvalena,
+            result_workflow: result.stav_workflow_kod,
+            old_workflow: oldWorkflowKod,
+            formData_id: formData.id,
+            order_number: orderNumber
+          });
+          
           if (hasSchvalena && !hadSchvalena) {
+            console.log('✅ [NOTIFICATION] Posílám notifikaci SCHVALENA pro:', orderNumber);
             try {
               await triggerNotification('order_status_schvalena', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
@@ -11216,6 +11225,8 @@ function OrderForm25() {
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
             }
+          } else {
+            console.log('⏭️ [NOTIFICATION] Přeskakuji SCHVALENA notifikaci - stav se nezměnil nebo již byl schválen');
           }
 
           // 🆕 Zamítnutí objednávky
@@ -23112,7 +23123,7 @@ function OrderForm25() {
                                   fakturaId={formData.faktury[0].id}
                                   objednavkaId={formData.id}
                                   fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
-                                  readOnly={shouldLockFaktury}
+                                  readOnly={!!formData.faktury[0].vecna_spravnost_potvrzeno || currentPhase >= 8}
                                   onISDOCParsed={handleISDOCParsed}
                                   formData={formData}
                                   faktura={formData.faktury[0]}
@@ -24088,7 +24099,7 @@ function OrderForm25() {
                                 fakturaId={faktura.id}
                                 objednavkaId={formData.id}
                                 fakturaTypyPrilohOptions={fakturaTypyPrilohOptions}
-                                readOnly={shouldLockFaktury}
+                                readOnly={!!faktura.vecna_spravnost_potvrzeno || currentPhase >= 8}
                                 onISDOCParsed={handleISDOCParsed}
                                 formData={formData}
                                 faktura={faktura}
@@ -25127,15 +25138,14 @@ function OrderForm25() {
                     {/* Seznam nahraných souborů - pouze obj- prefix */}
                     {(() => {
                       const objFiles = attachments?.filter(a => getFilePrefix(a) === 'obj-') || [];
-                      // Rendering attachments list - objFiles: objFiles.length
                       return objFiles.length > 0 && (
                         <div style={{ marginTop: '1rem' }}>
                           <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '1rem'
-                        }}>
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem'
+                          }}>
                           <Label>
                             Počet příloh: <strong>{objFiles.length}</strong> |
                             Nahráno: <span style={{color: '#16a34a'}}><strong>{objFiles.filter(f => f.status === 'uploaded').length}</strong></span> |

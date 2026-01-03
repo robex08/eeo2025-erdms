@@ -71,14 +71,7 @@ export const NOTIFICATION_TYPES = {
   // ====================================================================
   USER_MENTION: 'user_mention',
   DEADLINE_REMINDER: 'deadline_reminder', // ⚡ HIGH
-  ORDER_UNLOCK_FORCED: 'order_unlock_forced', // ⚡ HIGH
-
-  // ====================================================================
-  // DEPRECATED (pro zpětnou kompatibilitu)
-  // ====================================================================
-  ORDER_APPROVED: 'order_approved', // ❌ DEPRECATED → použij ORDER_STATUS_SCHVALENA
-  ORDER_REJECTED: 'order_rejected', // ❌ DEPRECATED → použij ORDER_STATUS_ZAMITNUTA
-  ORDER_CREATED: 'order_created'    // ❌ DEPRECATED → použij ORDER_STATUS_KE_SCHVALENI
+  ORDER_UNLOCK_FORCED: 'order_unlock_forced' // ⚡ HIGH
 };
 
 /**
