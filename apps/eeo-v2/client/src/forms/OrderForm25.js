@@ -9133,7 +9133,7 @@ function OrderForm25() {
       const hadKeSchvaleni = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA_KE_SCHVALENI') : false;
 
       if (hasKeSchvaleni && !hadKeSchvaleni) {
-        notificationType = 'order_status_ke_schvaleni';
+        notificationType = 'ORDER_PENDING_APPROVAL';
 
 
         if (formData.garant_uzivatel_id) {
@@ -9154,7 +9154,7 @@ function OrderForm25() {
       const hadZamitnuta = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZAMITNUTA') : false;
 
       if ((hasSchvalena && !hadSchvalena) || (hasZamitnuta && !hadZamitnuta)) {
-        notificationType = hasSchvalena ? 'order_status_schvalena' : 'order_status_zamitnuta';
+        notificationType = hasSchvalena ? 'ORDER_APPROVED' : 'ORDER_REJECTED';
 
 
         // Vždy: objednatel a garant
@@ -9175,7 +9175,7 @@ function OrderForm25() {
       const hadCekaSe = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'CEKA_SE') : false;
 
       if (hasCekaSe && !hadCekaSe) {
-        notificationType = 'order_status_ceka_se';
+        notificationType = 'ORDER_AWAITING_CHANGES';
 
         // Pro čeká: objednatel a garant
         if (formData.objednatel_id) {
@@ -9191,7 +9191,7 @@ function OrderForm25() {
       const hadOdeslana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ODESLANA') : false;
 
       if (hasOdeslana && !hadOdeslana) {
-        notificationType = 'order_status_odeslana';
+        notificationType = 'ORDER_SENT_TO_SUPPLIER';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
@@ -9204,7 +9204,7 @@ function OrderForm25() {
       const hadPotvrzena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'POTVRZENA') : false;
 
       if (hasPotvrzena && !hadPotvrzena) {
-        notificationType = 'order_status_potvrzena';
+        notificationType = 'ORDER_CONFIRMED_BY_SUPPLIER';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
@@ -9221,7 +9221,7 @@ function OrderForm25() {
       const hadUverejnena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'UVEREJNENA') : false;
 
       if (hasUverejnena && !hadUverejnena) {
-        notificationType = 'order_status_registr_zverejnena'; // ✅ OPRAVENO: používat správný název z DB
+        notificationType = 'ORDER_REGISTRY_PUBLISHED'; // ✅ OPRAVENO: používat správný název z DB
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
@@ -9233,7 +9233,7 @@ function OrderForm25() {
       const hadNeuverejnena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'NEUVEREJNENA') : false;
 
       if (hasNeuverejnena && !hadNeuverejnena) {
-        notificationType = 'order_status_registr_ceka';
+        notificationType = 'ORDER_REGISTRY_PENDING';
 
 
         // Garant + TODO: uživatelé s právy VEREJNE_ZAKAZKY
@@ -9246,7 +9246,7 @@ function OrderForm25() {
       const hadFakturace = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'FAKTURACE') : false;
 
       if (hasFakturace && !hadFakturace) {
-        notificationType = 'order_status_faktura_ceka'; // ✅ OPRAVENO: čeká na fakturu, ne "fakturace"
+        notificationType = 'ORDER_INVOICE_PENDING'; // ✅ OPRAVENO: čeká na fakturu, ne "fakturace"
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
@@ -9258,7 +9258,7 @@ function OrderForm25() {
       const hadVecnaSpravnost = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'VECNA_SPRAVNOST') : false;
 
       if (hasVecnaSpravnost && !hadVecnaSpravnost) {
-        notificationType = 'order_status_kontrola_ceka';
+        notificationType = 'ORDER_VERIFICATION_PENDING';
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
@@ -9273,7 +9273,7 @@ function OrderForm25() {
       const hadZkontrolovana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZKONTROLOVANA') : false;
 
       if (hasZkontrolovana && !hadZkontrolovana) {
-        notificationType = 'order_status_kontrola_potvrzena'; // ✅ OPRAVENO: věcná správnost potvrzena
+        notificationType = 'ORDER_VERIFICATION_APPROVED'; // ✅ OPRAVENO: věcná správnost potvrzena
 
 
         // Objednatel (pokud není garant - Set zajistí unikátnost)
@@ -9289,7 +9289,7 @@ function OrderForm25() {
       const hadDokoncena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'DOKONCENA') : false;
 
       if (hasDokoncena && !hadDokoncena) {
-        notificationType = 'order_status_dokoncena';
+        notificationType = 'ORDER_COMPLETED';
 
 
         // VŠICHNI zúčastnění (Set zajistí unikátnost)
@@ -9300,7 +9300,7 @@ function OrderForm25() {
       const hadZrusena = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZRUSENA') : false;
 
       if (hasZrusena && !hadZrusena) {
-        notificationType = 'order_status_zrusena';
+        notificationType = 'ORDER_CANCELLED';
       }
 
       // Detekovaný typ notifikace: notificationType
@@ -10625,7 +10625,7 @@ function OrderForm25() {
               
               // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
               await triggerNotification(
-                'order_status_ke_schvaleni',
+                'ORDER_PENDING_APPROVAL',
                 orderId,
                 user_id || formData.objednatel_id,
                 {
@@ -10656,7 +10656,7 @@ function OrderForm25() {
               });
               
               await triggerNotification(
-                'order_status_odeslana',
+                'ORDER_SENT_TO_SUPPLIER',
                 orderId,
                 user_id || formData.objednatel_id,
                 {
@@ -10681,7 +10681,7 @@ function OrderForm25() {
           // 🆕 Okamžité schválení při INSERT (pokud příkazce okamžitě schválí)
           if (hasWorkflowState(workflowKod, 'SCHVALENA')) {
             try {
-              await triggerNotification('order_status_schvalena', orderId, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_APPROVED', orderId, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -10693,7 +10693,7 @@ function OrderForm25() {
           // 🆕 Okamžité potvrzení dodavatele při INSERT (velmi rare, ale možné)
           if (hasWorkflowState(workflowKod, 'POTVRZENA')) {
             try {
-              await triggerNotification('order_status_potvrzena', orderId, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_CONFIRMED_BY_SUPPLIER', orderId, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -10706,7 +10706,7 @@ function OrderForm25() {
           // 🆕 Okamžité dokončení při INSERT (velmi rare, ale možné)
           if (hasWorkflowState(workflowKod, 'DOKONCENA')) {
             try {
-              await triggerNotification('order_status_dokoncena', orderId, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_COMPLETED', orderId, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11145,7 +11145,7 @@ function OrderForm25() {
               });
               
               await triggerNotification(
-                'order_status_ke_schvaleni',
+                'ORDER_PENDING_APPROVAL',
                 formData.id,
                 user_id || formData.objednatel_id,
                 {
@@ -11179,7 +11179,7 @@ function OrderForm25() {
               });
               
               await triggerNotification(
-                'order_status_odeslana',
+                'ORDER_SENT_TO_SUPPLIER',
                 formData.id,
                 user_id || formData.objednatel_id,
                 {
@@ -11217,7 +11217,7 @@ function OrderForm25() {
           if (hasSchvalena && !hadSchvalena) {
             console.log('✅ [NOTIFICATION] Posílám notifikaci SCHVALENA pro:', orderNumber);
             try {
-              await triggerNotification('order_status_schvalena', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_APPROVED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11235,7 +11235,7 @@ function OrderForm25() {
           
           if (hasZamitnuta && !hadZamitnuta) {
             try {
-              await triggerNotification('order_status_zamitnuta', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_REJECTED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11251,7 +11251,7 @@ function OrderForm25() {
           
           if (hasCekaSe && !hadCekaSe) {
             try {
-              await triggerNotification('order_status_ceka_se', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_AWAITING_CHANGES', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11267,7 +11267,7 @@ function OrderForm25() {
           
           if (hasPotvrzena && !hadPotvrzena) {
             try {
-              await triggerNotification('order_status_potvrzena', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_CONFIRMED_BY_SUPPLIER', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11283,7 +11283,7 @@ function OrderForm25() {
           
           if (hasUverejnena && !hadUverejnena) {
             try {
-              await triggerNotification('order_status_registr_zverejnena', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_REGISTRY_PUBLISHED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
@@ -11299,7 +11299,7 @@ function OrderForm25() {
           
           if (hasDokoncena && !hadDokoncena) {
             try {
-              await triggerNotification('order_status_dokoncena', formData.id, user_id || formData.objednatel_id, {
+              await triggerNotification('ORDER_COMPLETED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });

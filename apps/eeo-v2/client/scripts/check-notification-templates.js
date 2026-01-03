@@ -30,25 +30,25 @@ const USERNAME = 'tvuj-username'; // ⚠️ DOPLŇ SVÉ USERNAME
 
 const EXPECTED_TEMPLATES = {
   // OBJEDNÁVKY - Základní stavy (10 typů)
-  'order_status_nova': 'Nová objednávka (draft)',
-  'order_status_ke_schvaleni': 'Čeká na schválení',
-  'order_status_schvalena': 'Schválena',
-  'order_status_zamitnuta': 'Zamítnuta',
-  'order_status_ceka_se': 'Vrácena k přepracování',
+  'ORDER_CREATED': 'Nová objednávka (draft)',
+  'ORDER_PENDING_APPROVAL': 'Čeká na schválení',
+  'ORDER_APPROVED': 'Schválena',
+  'ORDER_REJECTED': 'Zamítnuta',
+  'ORDER_AWAITING_CHANGES': 'Vrácena k přepracování',
   'order_status_odeslana_dodavateli': 'Odeslána dodavateli',
   'order_status_potvrzena_dodavatelem': 'Potvrzena dodavatelem',
   'order_status_realizovana': 'Realizována',
   'order_status_zkontrolovana': 'Zkontrolována',
-  'order_status_dokoncena': 'Dokončena',
+  'ORDER_COMPLETED': 'Dokončena',
   
   // REGISTR SMLUV (2 typy)
-  'order_status_registr_ceka': 'Čeká na registr smluv',
-  'order_status_registr_zverejnena': 'Zveřejněna v registru',
+  'ORDER_REGISTRY_PENDING': 'Čeká na registr smluv',
+  'ORDER_REGISTRY_PUBLISHED': 'Zveřejněna v registru',
   
   // FAKTURACE (4 typy)
-  'order_status_faktura_ceka': 'Čeká na přiřazení faktury',
+  'ORDER_INVOICE_PENDING': 'Čeká na přiřazení faktury',
   'order_status_faktura_prirazena': 'Faktura přiřazena',
-  'order_status_faktura_schvalena': 'Faktura schválena',
+  'ORDER_INVOICE_APPROVED': 'Faktura schválena',
   'order_status_faktura_zaplacena': 'Faktura zaplacena',
   
   // VĚCNÁ SPRÁVNOST (3 typy)

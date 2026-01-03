@@ -106,7 +106,7 @@ function detect_recipient_type($user_id, $order_data) {
  * Příklad použití v notifikačním systému:
  * 
  * // 1. Načti šablonu z DB
- * $template = get_notification_template('order_status_ke_schvaleni');
+ * $template = get_notification_template('ORDER_PENDING_APPROVAL');
  * 
  * // 2. Detekuj typ příjemce
  * $recipient_type = detect_recipient_type($user_id, $order_data);

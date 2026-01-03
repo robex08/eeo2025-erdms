@@ -1053,18 +1053,18 @@ export const NotificationsPage = () => {
     if (activeStatFilter && !['total', 'unread', 'urgent', 'high'].includes(activeStatFilter)) {
       // Mapování filterValue na notification type
       const typeMapping = {
-        'nova': 'order_status_nova',
-        'keSchvaleni': 'order_status_ke_schvaleni',
-        'schvalena': 'order_status_schvalena',
-        'zamitnuta': 'order_status_zamitnuta',
-        'cekaSe': 'order_status_ceka_se',
-        'odeslana': 'order_status_odeslana',
-        'potvrzena': 'order_status_potvrzena',
-        'cekaKontrola': 'order_status_kontrola_ceka',
-        'vecnaSpravnost': 'order_status_kontrola_potvrzena',
-        'registrZverejnena': 'order_status_registr_zverejnena',
-        'dokoncena': 'order_status_dokoncena',
-        'zrusena': 'order_status_zrusena',
+        'nova': 'ORDER_CREATED',
+        'keSchvaleni': 'ORDER_PENDING_APPROVAL',
+        'schvalena': 'ORDER_APPROVED',
+        'zamitnuta': 'ORDER_REJECTED',
+        'cekaSe': 'ORDER_AWAITING_CHANGES',
+        'odeslana': 'ORDER_SENT_TO_SUPPLIER',
+        'potvrzena': 'ORDER_CONFIRMED_BY_SUPPLIER',
+        'cekaKontrola': 'ORDER_VERIFICATION_PENDING',
+        'vecnaSpravnost': 'ORDER_VERIFICATION_APPROVED',
+        'registrZverejnena': 'ORDER_REGISTRY_PUBLISHED',
+        'dokoncena': 'ORDER_COMPLETED',
+        'zrusena': 'ORDER_CANCELLED',
       };
 
       const notificationType = typeMapping[activeStatFilter];
@@ -1205,18 +1205,18 @@ export const NotificationsPage = () => {
     total: notifications.length,
 
     // Statistiky podle stavů objednávek
-    nova: notifications.filter(n => n.typ === 'order_status_nova').length,
-    keSchvaleni: notifications.filter(n => n.typ === 'order_status_ke_schvaleni').length,
-    schvalena: notifications.filter(n => n.typ === 'order_status_schvalena').length,
-    zamitnuta: notifications.filter(n => n.typ === 'order_status_zamitnuta').length,
-    cekaSe: notifications.filter(n => n.typ === 'order_status_ceka_se').length,
-    odeslana: notifications.filter(n => n.typ === 'order_status_odeslana').length,
-    potvrzena: notifications.filter(n => n.typ === 'order_status_potvrzena').length,
-    cekaKontrola: notifications.filter(n => n.typ === 'order_status_kontrola_ceka').length,
-    vecnaSpravnost: notifications.filter(n => n.typ === 'order_status_kontrola_potvrzena').length,
-    registrZverejnena: notifications.filter(n => n.typ === 'order_status_registr_zverejnena').length,
-    dokoncena: notifications.filter(n => n.typ === 'order_status_dokoncena').length,
-    zrusena: notifications.filter(n => n.typ === 'order_status_zrusena').length,
+    nova: notifications.filter(n => n.typ === 'ORDER_CREATED').length,
+    keSchvaleni: notifications.filter(n => n.typ === 'ORDER_PENDING_APPROVAL').length,
+    schvalena: notifications.filter(n => n.typ === 'ORDER_APPROVED').length,
+    zamitnuta: notifications.filter(n => n.typ === 'ORDER_REJECTED').length,
+    cekaSe: notifications.filter(n => n.typ === 'ORDER_AWAITING_CHANGES').length,
+    odeslana: notifications.filter(n => n.typ === 'ORDER_SENT_TO_SUPPLIER').length,
+    potvrzena: notifications.filter(n => n.typ === 'ORDER_CONFIRMED_BY_SUPPLIER').length,
+    cekaKontrola: notifications.filter(n => n.typ === 'ORDER_VERIFICATION_PENDING').length,
+    vecnaSpravnost: notifications.filter(n => n.typ === 'ORDER_VERIFICATION_APPROVED').length,
+    registrZverejnena: notifications.filter(n => n.typ === 'ORDER_REGISTRY_PUBLISHED').length,
+    dokoncena: notifications.filter(n => n.typ === 'ORDER_COMPLETED').length,
+    zrusena: notifications.filter(n => n.typ === 'ORDER_CANCELLED').length,
   };
 
   // ✅ Paginace - výpočet

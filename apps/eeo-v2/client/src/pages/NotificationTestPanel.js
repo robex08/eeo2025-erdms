@@ -480,18 +480,18 @@ const NotificationTestPanel = () => {
 
     const types = [
       // Stavy objednávek (12 typů)
-      'order_status_nova',
-      'order_status_ke_schvaleni',
-      'order_status_schvalena',
-      'order_status_zamitnuta',
-      'order_status_ceka_se',
-      'order_status_odeslana',
-      'order_status_potvrzena',
-      'order_status_dokoncena',
-      'order_status_zrusena',
-      'order_status_ceka_potvrzeni',
-      'order_status_smazana',
-      'order_status_rozpracovana',
+      'ORDER_CREATED',
+      'ORDER_PENDING_APPROVAL',
+      'ORDER_APPROVED',
+      'ORDER_REJECTED',
+      'ORDER_AWAITING_CHANGES',
+      'ORDER_SENT_TO_SUPPLIER',
+      'ORDER_CONFIRMED_BY_SUPPLIER',
+      'ORDER_COMPLETED',
+      'ORDER_CANCELLED',
+      'ORDER_AWAITING_CONFIRMATION',
+      'ORDER_DELETED',
+      'ORDER_DRAFT',
       // Obecné notifikace (6 typů)
       'order_approved',
       'order_rejected',
@@ -735,64 +735,64 @@ const NotificationTestPanel = () => {
           <h2>� STAVY OBJEDNÁVEK (12 typů)</h2>
           <ButtonGrid>
             <TestButton style={{background: 'linear-gradient(135deg, #64748b, #475569)', color: 'white'}}
-                        onClick={() => createNotification('order_status_nova')}>
+                        onClick={() => createNotification('ORDER_CREATED')}>
               <span className="icon">📝</span>
               <span>Nová objednávka</span>
             </TestButton>
 
-            <BtnInfo onClick={() => createNotification('order_status_ke_schvaleni')}>
+            <BtnInfo onClick={() => createNotification('ORDER_PENDING_APPROVAL')}>
               <span className="icon">�📋</span>
               <span>Ke schválení</span>
             </BtnInfo>
 
-            <BtnSuccess onClick={() => createNotification('order_status_schvalena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_APPROVED')}>
               <span className="icon">✅</span>
               <span>Schválena</span>
             </BtnSuccess>
 
-            <BtnDanger onClick={() => createNotification('order_status_zamitnuta')}>
+            <BtnDanger onClick={() => createNotification('ORDER_REJECTED')}>
               <span className="icon">❌</span>
               <span>Zamítnuta</span>
             </BtnDanger>
 
-            <BtnWarning onClick={() => createNotification('order_status_ceka_se')}>
+            <BtnWarning onClick={() => createNotification('ORDER_AWAITING_CHANGES')}>
               <span className="icon">⏸️</span>
               <span>Čeká se</span>
             </BtnWarning>
 
-            <BtnInfo onClick={() => createNotification('order_status_odeslana')}>
+            <BtnInfo onClick={() => createNotification('ORDER_SENT_TO_SUPPLIER')}>
               <span className="icon">📤</span>
               <span>Odeslána</span>
             </BtnInfo>
 
-            <BtnSuccess onClick={() => createNotification('order_status_potvrzena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_CONFIRMED_BY_SUPPLIER')}>
               <span className="icon">✔️</span>
               <span>Potvrzena</span>
             </BtnSuccess>
 
-            <BtnSuccess onClick={() => createNotification('order_status_dokoncena')}>
+            <BtnSuccess onClick={() => createNotification('ORDER_COMPLETED')}>
               <span className="icon">🎉</span>
               <span>Dokončena</span>
             </BtnSuccess>
 
-            <BtnDanger onClick={() => createNotification('order_status_zrusena')}>
+            <BtnDanger onClick={() => createNotification('ORDER_CANCELLED')}>
               <span className="icon">🚫</span>
               <span>Zrušena</span>
             </BtnDanger>
 
-            <BtnWarning onClick={() => createNotification('order_status_ceka_potvrzeni')}>
+            <BtnWarning onClick={() => createNotification('ORDER_AWAITING_CONFIRMATION')}>
               <span className="icon">⏳</span>
               <span>Čeká na potvrzení</span>
             </BtnWarning>
 
             <TestButton style={{background: 'linear-gradient(135deg, #991b1b, #7f1d1d)', color: 'white'}}
-                        onClick={() => createNotification('order_status_smazana')}>
+                        onClick={() => createNotification('ORDER_DELETED')}>
               <span className="icon">🗑️</span>
               <span>Smazána</span>
             </TestButton>
 
             <TestButton style={{background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white'}}
-                        onClick={() => createNotification('order_status_rozpracovana')}>
+                        onClick={() => createNotification('ORDER_DRAFT')}>
               <span className="icon">🔄</span>
               <span>Rozpracována</span>
             </TestButton>

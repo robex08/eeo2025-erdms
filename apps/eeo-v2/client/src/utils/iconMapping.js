@@ -84,7 +84,7 @@ export const getStatusIcon = (status) => {
  * Pro notifikace související s objednávkami se použije ikona podle stavu.
  * Pro ostatní notifikace jsou definovány specifické ikony.
  *
- * @param {string} notificationType - Typ notifikace (např. 'order_status_nova', 'todo_alarm')
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_CREATED', 'todo_alarm')
  * @param {string} priority - Priorita notifikace ('low', 'normal', 'high', 'urgent')
  * @returns {object} FontAwesome ikona
  */
@@ -137,7 +137,7 @@ export const getPriorityIcon = (priority) => {
 /**
  * Helper funkce: Extrahuje stav objednávky z typu notifikace
  *
- * @param {string} notificationType - Typ notifikace (např. 'order_status_schvalena')
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_APPROVED')
  * @returns {string|null} Stav objednávky nebo null
  */
 export const extractOrderStatusFromNotificationType = (notificationType) => {
@@ -162,7 +162,7 @@ export const extractOrderStatusFromNotificationType = (notificationType) => {
  * Pro ostatní notifikace jsou definovány specifické emoji.
  *
  * @deprecated Používá se pouze pro zpětnou kompatibilitu
- * @param {string} notificationType - Typ notifikace (např. 'order_status_nova', 'todo_alarm')
+ * @param {string} notificationType - Typ notifikace (např. 'ORDER_CREATED', 'todo_alarm')
  * @param {string} priority - Priorita notifikace ('low', 'normal', 'high', 'urgent')
  * @returns {string} Emoji ikona
  */

@@ -1564,7 +1564,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
         $eventTypes = array(
             // OBJEDNÁVKY - Fáze 1: Vytvoření
             array(
-                'code' => 'order_status_ke_schvaleni',
+                'code' => 'ORDER_PENDING_APPROVAL',
                 'nazev' => 'Objednávka vytvořena / odeslána ke schválení',
                 'kategorie' => 'orders',
                 'description' => 'Nová objednávka vytvořena a odeslána ke schválení příkazci',
@@ -1574,7 +1574,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 2A: Schválení
             array(
-                'code' => 'order_status_schvalena',
+                'code' => 'ORDER_APPROVED',
                 'nazev' => 'Objednávka schválena',
                 'kategorie' => 'orders',
                 'description' => 'Příkazce schválil objednávku',
@@ -1584,7 +1584,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 2B: Zamítnutí
             array(
-                'code' => 'order_status_zamitnuta',
+                'code' => 'ORDER_REJECTED',
                 'nazev' => 'Objednávka zamítnuta',
                 'kategorie' => 'orders',
                 'description' => 'Příkazce zamítl objednávku',
@@ -1594,7 +1594,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 2C: Vrácení
             array(
-                'code' => 'order_status_ceka_se',
+                'code' => 'ORDER_AWAITING_CHANGES',
                 'nazev' => 'Objednávka vrácena k doplnění',
                 'kategorie' => 'orders',
                 'description' => 'Příkazce vrátil objednávku k doplnění informací',
@@ -1604,7 +1604,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 3: Plnění - ODESLÁNA DODAVATELI
             array(
-                'code' => 'order_status_odeslana',
+                'code' => 'ORDER_SENT_TO_SUPPLIER',
                 'nazev' => 'Objednávka odeslána dodavateli',
                 'kategorie' => 'orders',
                 'description' => 'Schválená objednávka byla odeslána dodavateli',
@@ -1614,7 +1614,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 4: Potvrzení dodavatele
             array(
-                'code' => 'order_status_potvrzena',
+                'code' => 'ORDER_CONFIRMED_BY_SUPPLIER',
                 'nazev' => 'Objednávka potvrzena dodavatelem',
                 'kategorie' => 'orders',
                 'description' => 'Dodavatel potvrdil přijetí objednávky',
@@ -1624,7 +1624,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 5: Registr smluv
             array(
-                'code' => 'order_status_registr_ceka',
+                'code' => 'ORDER_REGISTRY_PENDING',
                 'nazev' => 'Čeká na zveřejnění v registru',
                 'kategorie' => 'orders',
                 'description' => 'Objednávka čeká na schválení a zveřejnění v registru smluv',
@@ -1633,7 +1633,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             ),
             
             array(
-                'code' => 'order_status_registr_zverejnena',
+                'code' => 'ORDER_REGISTRY_PUBLISHED',
                 'nazev' => 'Objednávka zveřejněna v registru',
                 'kategorie' => 'orders',
                 'description' => 'Objednávka byla úspěšně zveřejněna v registru smluv',
@@ -1643,7 +1643,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 6: Fakturace
             array(
-                'code' => 'order_status_faktura_ceka',
+                'code' => 'ORDER_INVOICE_PENDING',
                 'nazev' => 'Čeká na doplnění faktury',
                 'kategorie' => 'orders',
                 'description' => 'Objednávka čeká na doplnění faktury',
@@ -1652,7 +1652,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             ),
             
             array(
-                'code' => 'order_status_faktura_pridana',
+                'code' => 'ORDER_INVOICE_ADDED',
                 'nazev' => 'Faktura přiřazena',
                 'kategorie' => 'orders',
                 'description' => 'K objednávce byla přiřazena faktura',
@@ -1662,7 +1662,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 7: Věcná kontrola
             array(
-                'code' => 'order_status_kontrola_ceka',
+                'code' => 'ORDER_VERIFICATION_PENDING',
                 'nazev' => 'Čeká na věcnou kontrolu',
                 'kategorie' => 'orders',
                 'description' => 'Objednávka čeká na provedení věcné kontroly',
@@ -1671,7 +1671,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             ),
             
             array(
-                'code' => 'order_status_kontrola_potvrzena',
+                'code' => 'ORDER_VERIFICATION_APPROVED',
                 'nazev' => 'Věcná kontrola provedena',
                 'kategorie' => 'orders',
                 'description' => 'Věcná kontrola objednávky byla provedena',
@@ -1681,7 +1681,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
             
             // OBJEDNÁVKY - Fáze 8: Dokončení
             array(
-                'code' => 'order_status_dokoncena',
+                'code' => 'ORDER_COMPLETED',
                 'nazev' => 'Objednávka dokončena',
                 'kategorie' => 'orders',
                 'description' => 'Objednávka byla úspěšně dokončena',
@@ -2529,10 +2529,10 @@ function getEntityApprover($db, $entityType, $entityId) {
 
 /**
  * Hlavní router pro automatické odesílání notifikací při událostech
- * Použití: notificationRouter($db, 'order_status_ke_schvaleni', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
+ * Použití: notificationRouter($db, 'ORDER_PENDING_APPROVAL', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
  * 
  * @param PDO $db - Database connection
- * @param string $eventType - Event typ code (order_status_ke_schvaleni, order_status_schvalena, etc.)
+ * @param string $eventType - Event typ code (ORDER_PENDING_APPROVAL, ORDER_APPROVED, etc.)
  * @param int $objectId - ID objektu (objednávka, faktura, atd.)
  * @param int $triggerUserId - ID uživatele, který akci provedl
  * @param array $placeholderData - Data pro placeholder replacement
@@ -2890,7 +2890,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 7. Vytvořit in-app notifikaci
                 if ($recipient['sendInApp']) {
                     $params = array(
-                        ':typ' => $eventType,  // ✅ OPRAVA: Musí být eventType (order_status_ke_schvaleni), ne 'user'! Frontend filtruje notification.typ.includes('order')
+                        ':typ' => $eventType,  // ✅ OPRAVA: Musí být eventType (ORDER_PENDING_APPROVAL), ne 'user'! Frontend filtruje notification.typ.includes('order')
                         ':nadpis' => $processedTitle,
                         ':zprava' => $processedMessage,
                         ':data_json' => json_encode($notificationData),
@@ -4030,7 +4030,7 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
  * Body: {
  *   token: string,
  *   username: string,
- *   event_type: string (order_status_schvalena, order_status_zamitnuta, ...),
+ *   event_type: string (ORDER_APPROVED, ORDER_REJECTED, ...),
  *   object_id: int (ID objednávky/faktury/...),
  *   trigger_user_id: int (kdo akci provedl)
  * }

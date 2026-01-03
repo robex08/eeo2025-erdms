@@ -18,11 +18,11 @@ $conn->set_charset("utf8mb4");
 echo "✅ Připojeno k DB\n\n";
 
 // 2️⃣ Načtení šablony z DB
-$sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = 'order_status_ke_schvaleni' LIMIT 1";
+$sql = "SELECT * FROM " . TABLE_NOTIFIKACE_SABLONY . " WHERE type = 'ORDER_PENDING_APPROVAL' LIMIT 1";
 $result = $conn->query($sql);
 
 if (!$result || $result->num_rows === 0) {
-    die("❌ Šablona 'order_status_ke_schvaleni' nenalezena v DB\n");
+    die("❌ Šablona 'ORDER_PENDING_APPROVAL' nenalezena v DB\n");
 }
 
 $template = $result->fetch_assoc();

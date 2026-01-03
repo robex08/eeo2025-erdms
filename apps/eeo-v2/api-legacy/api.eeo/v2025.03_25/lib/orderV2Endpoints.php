@@ -1462,10 +1462,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // ODESLANA_KE_SCHVALENI - pokud nově má a dříve neměl
             if ($hasWorkflowState($new_workflow_array, 'ODESLANA_KE_SCHVALENI') && 
                 !$hasWorkflowState($old_workflow_array, 'ODESLANA_KE_SCHVALENI')) {
-                error_log("Order V2 UPDATE: Triggering order_status_ke_schvaleni for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_PENDING_APPROVAL for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_ke_schvaleni', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_ke_schvaleni result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_PENDING_APPROVAL', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_PENDING_APPROVAL result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1475,10 +1475,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // SCHVALENA - pokud nově má a dříve neměl
             if ($hasWorkflowState($new_workflow_array, 'SCHVALENA') && 
                 !$hasWorkflowState($old_workflow_array, 'SCHVALENA')) {
-                error_log("Order V2 UPDATE: Triggering order_status_schvalena for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_APPROVED for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_schvalena', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_schvalena result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_APPROVED', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_APPROVED result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1488,10 +1488,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // ZAMITNUTA - pokud nově má a dříve neměl
             if ($hasWorkflowState($new_workflow_array, 'ZAMITNUTA') && 
                 !$hasWorkflowState($old_workflow_array, 'ZAMITNUTA')) {
-                error_log("Order V2 UPDATE: Triggering order_status_zamitnuta for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_REJECTED for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_zamitnuta', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_zamitnuta result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_REJECTED', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_REJECTED result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1501,10 +1501,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // DOKONCENA - pokud nově má a dříve neměl
             if ($hasWorkflowState($new_workflow_array, 'DOKONCENA') && 
                 !$hasWorkflowState($old_workflow_array, 'DOKONCENA')) {
-                error_log("Order V2 UPDATE: Triggering order_status_dokoncena for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_COMPLETED for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_dokoncena', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_dokoncena result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_COMPLETED', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_COMPLETED result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1514,10 +1514,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // ODESLANA - pokud nově má a dříve neměl (odeslána dodavateli)
             if ($hasWorkflowState($new_workflow_array, 'ODESLANA') && 
                 !$hasWorkflowState($old_workflow_array, 'ODESLANA')) {
-                error_log("Order V2 UPDATE: Triggering order_status_odeslana for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_SENT_TO_SUPPLIER for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_odeslana', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_odeslana result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_SENT_TO_SUPPLIER', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_SENT_TO_SUPPLIER result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1527,10 +1527,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // POTVRZENA - pokud nově má a dříve neměl (potvrzena dodavatelem)
             if ($hasWorkflowState($new_workflow_array, 'POTVRZENA') && 
                 !$hasWorkflowState($old_workflow_array, 'POTVRZENA')) {
-                error_log("Order V2 UPDATE: Triggering order_status_potvrzena for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_CONFIRMED_BY_SUPPLIER for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_potvrzena', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_potvrzena result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_CONFIRMED_BY_SUPPLIER', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_CONFIRMED_BY_SUPPLIER result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
@@ -1540,10 +1540,10 @@ function handle_order_v2_update($input, $config, $queries) {
             // CEKA_SE - pokud nově má a dříve neměl (vrácena k doplnění)
             if ($hasWorkflowState($new_workflow_array, 'CEKA_SE') && 
                 !$hasWorkflowState($old_workflow_array, 'CEKA_SE')) {
-                error_log("Order V2 UPDATE: Triggering order_status_ceka_se for order ID $order_id");
+                error_log("Order V2 UPDATE: Triggering ORDER_AWAITING_CHANGES for order ID $order_id");
                 try {
-                    $notif_result = notificationRouter($db, 'order_status_ceka_se', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: order_status_ceka_se result: " . json_encode($notif_result));
+                    $notif_result = notificationRouter($db, 'ORDER_AWAITING_CHANGES', $order_id, $current_user_id, array());
+                    error_log("Order V2 UPDATE: ORDER_AWAITING_CHANGES result: " . json_encode($notif_result));
                 } catch (Exception $notif_ex) {
                     error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
                     error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
