@@ -5790,6 +5790,43 @@ const OrganizationHierarchy = () => {
                       );
                     })()}
                     
+                    {/* Event Types - kdy se notifikace spustí */}
+                    <FormGroup style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                      <Label>
+                        📅 Kdy poslat notifikaci (Event Types)
+                        <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
+                      </Label>
+                      <CustomSelect
+                        multiple
+                        value={templateEventTypes}
+                        onChange={(value) => setTemplateEventTypes(value)}
+                        options={(notificationEventTypes || []).map(eventType => ({
+                          id: eventType.kod || eventType.code,
+                          value: eventType.kod || eventType.code,
+                          label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
+                        }))}
+                        placeholder="Vyberte event types..."
+                        field="templateEventTypes"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        hasTriedToSubmit={false}
+                      />
+                      <div style={{ 
+                        fontSize: '0.75rem', 
+                        color: '#64748b', 
+                        marginTop: '6px'
+                      }}>
+                        💡 Např. ORDER_PENDING_APPROVAL, ORDER_APPROVED...
+                      </div>
+                    </FormGroup>
+                    
                     {/* Info o routingu */}
                     <div style={{
                       padding: '8px',
@@ -8142,50 +8179,6 @@ const OrganizationHierarchy = () => {
                         </div>
                       </FormGroup>
                       
-                      {/* ✅ Event Types - EDITOVATELNÉ (přesunuto z NODE) */}
-                      <FormGroup style={{ marginBottom: '16px' }}>
-                        <Label>
-                          📅 Kdy poslat notifikaci (Event Types)
-                          <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
-                        </Label>
-                        <CustomSelect
-                          multiple
-                          value={edgeEventTypes}
-                          onChange={(value) => setEdgeEventTypes(value)}
-                          options={(notificationEventTypes || []).map(eventType => ({
-                            id: eventType.kod || eventType.code,
-                            value: eventType.kod || eventType.code,
-                            label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
-                          }))}
-                          placeholder="Vyberte event types..."
-                          field="edgeEventTypes"
-                          selectStates={selectStates}
-                          setSelectStates={setSelectStates}
-                          searchStates={searchStates}
-                          setSearchStates={setSearchStates}
-                          touchedSelectFields={touchedSelectFields}
-                          setTouchedSelectFields={setTouchedSelectFields}
-                          toggleSelect={toggleSelect}
-                          filterOptions={filterOptions}
-                          getOptionLabel={getOptionLabel}
-                          hasTriedToSubmit={false}
-                        />
-                        <div style={{ 
-                          fontSize: '0.75rem', 
-                          color: '#64748b', 
-                          marginTop: '6px',
-                          lineHeight: '1.5'
-                        }}>
-                          💡 <strong>Event Types = kdy systém pošle tuto notifikaci</strong><br/>
-                          Např. vyberete <strong>ORDER_PENDING_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům na konci šipky<br/>
-                          ⚠️ Pokud nevyberete žádný → notifikace se nepouští
-                        </div>
-                      </FormGroup>
-                      
-
-                      
-
-
                       {/* Scope Filter - nový systém pro filtrování příjemců */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <div style={{
