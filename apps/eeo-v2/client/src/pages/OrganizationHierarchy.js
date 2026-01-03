@@ -1605,6 +1605,8 @@ const OrganizationHierarchy = () => {
   const [targetDeliveryEmail, setTargetDeliveryEmail] = useState(true);
   const [targetDeliveryInApp, setTargetDeliveryInApp] = useState(true);
   const [targetDeliverySms, setTargetDeliverySms] = useState(false);
+  const [availableUsersForRole, setAvailableUsersForRole] = useState([]); // Seznam uživatelů pro výběr
+  const [loadingUsers, setLoadingUsers] = useState(false);
   
   // Source INFO recipients configuration
   const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
@@ -1800,6 +1802,44 @@ const OrganizationHierarchy = () => {
       );
     }
   }, [templateNormalVariant, templateUrgentVariant, templateInfoVariant, templatePreviewVariant, templateEventTypes, selectedNode]);
+  
+  // Načíst seznam uživatelů pro SELECTED scope
+  React.useEffect(() => {
+    const loadUsersForNode = async () => {
+      if (!selectedNode || targetScopeType !== 'SELECTED') {
+        setAvailableUsersForRole([]);
+        return;
+      }
+
+      setLoadingUsers(true);
+      try {
+        // Pro ROLE node - filtruj uživatele kteří mají tuto roli
+        if (selectedNode.data.type === 'role' && selectedNode.data.roleId) {
+          const usersWithRole = allUsers.filter(user => 
+            user.roles && Array.isArray(user.roles) && user.roles.includes(selectedNode.data.roleId)
+          );
+          setAvailableUsersForRole(usersWithRole);
+        }
+        // Pro DEPARTMENT node - filtruj uživatele z tohoto úseku
+        else if (selectedNode.data.type === 'department' && selectedNode.data.departmentId) {
+          const usersInDepartment = allUsers.filter(user => 
+            user.usek_id === selectedNode.data.departmentId
+          );
+          setAvailableUsersForRole(usersInDepartment);
+        }
+        // Pro USER node - není třeba seznam
+        else {
+          setAvailableUsersForRole([]);
+        }
+      } catch (error) {
+        console.error('Error filtering users:', error);
+        setAvailableUsersForRole([]);
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+    loadUsersForNode();
+  }, [selectedNode?.data?.roleId, selectedNode?.data?.departmentId, selectedNode?.data?.type, targetScopeType, allUsers]);
   
   // Selection state pro levy panel (checkboxy)
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -2389,6 +2429,17 @@ const OrganizationHierarchy = () => {
         setTemplateInfoVariant(node.data.infoVariant || null);
         setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || null);
         setTemplateEventTypes(node.data.eventTypes || []); // Načíst event types
+      }
+      
+      // Načíst TARGET NODE data (role/úsek/user)
+      if (node.data?.type === 'role' || node.data?.type === 'department' || node.data?.type === 'user') {
+        setTargetScopeType(node.data?.scopeDefinition?.type || 'ALL');
+        setTargetScopeField(node.data?.scopeDefinition?.field || 'prikazce_id');
+        setTargetSelectedIds(node.data?.scopeDefinition?.selectedIds || []);
+        setTargetIncludeSubordinates(node.data?.scopeDefinition?.includeSubordinates || false);
+        setTargetDeliveryEmail(node.data?.delivery?.email !== false);
+        setTargetDeliveryInApp(node.data?.delivery?.inApp !== false);
+        setTargetDeliverySms(node.data?.delivery?.sms === true);
       }
     } else {
       // Multi-select - skrýt detail panel
@@ -6520,17 +6571,18 @@ const OrganizationHierarchy = () => {
                         <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
                           Rozsah příjemců
                         </Label>
-                        <select
-                          className="form-control"
-                          value={selectedNode.data.scopeDefinition?.type || 'ALL_IN_DEPARTMENT'}
+                        <Select
+                          value={targetScopeType}
                           onChange={(e) => {
+                            const newType = e.target.value;
+                            setTargetScopeType(newType);
                             const updatedNode = {
                               ...selectedNode,
                               data: {
                                 ...selectedNode.data,
                                 scopeDefinition: {
                                   ...selectedNode.data.scopeDefinition,
-                                  type: e.target.value
+                                  type: newType
                                 }
                               }
                             };
@@ -6546,26 +6598,97 @@ const OrganizationHierarchy = () => {
                         >
                           <option value="ALL_IN_DEPARTMENT">🏢 Všichni v tomto úseku</option>
                           <option value="ENTITY_PARTICIPANTS">🤝 Účastníci entity (prikazce, garant, objednatel...)</option>
-                          <option value="SELECTED_DEPARTMENTS">✅ Vybrané úseky</option>
-                        </select>
+                          <option value="SELECTED">✅ Vybraní uživatelé z úseku</option>
+                        </Select>
                       </FormGroup>
                       
-                      {/* SELECTED_DEPARTMENTS: Výběr úseků */}
-                      {selectedNode.data.scopeDefinition?.type === 'SELECTED_DEPARTMENTS' && (
+                      {/* SELECTED: Výběr konkrétních uživatelů z úseku */}
+                      {targetScopeType === 'SELECTED' && (
                         <FormGroup>
                           <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
-                            Vyberte úseky
+                            Vyberte uživatele z úseku
                           </Label>
                           <div style={{ 
                             padding: '12px', 
                             background: '#fff', 
                             border: '2px solid #fb7185',
                             borderRadius: '8px',
-                            minHeight: '100px'
+                            maxHeight: '300px',
+                            overflowY: 'auto'
                           }}>
-                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
-                              🚧 UI pro výběr úseků - bude doplněno
-                            </div>
+                            {loadingUsers ? (
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '20px' }}>
+                                ⏳ Načítám uživatele z úseku {selectedNode.data.name}...
+                              </div>
+                            ) : availableUsersForRole.length === 0 ? (
+                              <div style={{ fontSize: '0.85rem', color: '#dc2626', textAlign: 'center', padding: '20px' }}>
+                                ⚠️ Žádní uživatelé v tomto úseku
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '10px', fontStyle: 'italic' }}>
+                                  💡 Zaškrtněte uživatele z úseku, kteří dostanou notifikaci
+                                </div>
+                                {availableUsersForRole.map(user => (
+                                  <label key={user.id} style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    padding: '8px',
+                                    cursor: 'pointer',
+                                    borderRadius: '6px',
+                                    transition: 'background 0.2s',
+                                    background: targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : 'transparent'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : '#f9fafb'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : 'transparent'}>
+                                    <input
+                                      type="checkbox"
+                                      checked={targetSelectedIds.includes(String(user.id))}
+                                      onChange={(e) => {
+                                        const userId = String(user.id);
+                                        let newIds;
+                                        if (e.target.checked) {
+                                          newIds = [...targetSelectedIds, userId];
+                                        } else {
+                                          newIds = targetSelectedIds.filter(id => id !== userId);
+                                        }
+                                        setTargetSelectedIds(newIds);
+                                        const updatedNode = {
+                                          ...selectedNode,
+                                          data: {
+                                            ...selectedNode.data,
+                                            scopeDefinition: {
+                                              ...selectedNode.data.scopeDefinition,
+                                              selectedIds: newIds
+                                            }
+                                          }
+                                        };
+                                        setSelectedNode(updatedNode);
+                                        setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                                      }}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: targetSelectedIds.includes(String(user.id)) ? '600' : '400' }}>
+                                      {user.jmeno && user.prijmeni ? `${user.jmeno} ${user.prijmeni}` : (user.full_name || user.username)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                                      ID: {user.id}
+                                    </span>
+                                  </label>
+                                ))}
+                                <div style={{ 
+                                  marginTop: '12px', 
+                                  paddingTop: '12px', 
+                                  borderTop: '1px dashed #e5e7eb',
+                                  fontSize: '0.75rem',
+                                  color: '#059669',
+                                  fontWeight: '600'
+                                }}>
+                                  ✅ Vybráno: {targetSelectedIds.length} z {availableUsersForRole.length} uživatelů
+                                </div>
+                              </>
+                            )}
                           </div>
                         </FormGroup>
                       )}
@@ -6615,15 +6738,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.email !== false}
+                              checked={targetDeliveryEmail}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliveryEmail(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      email: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      email: checked
                                     }
                                   }
                                 };
@@ -6652,15 +6777,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.inApp !== false}
+                              checked={targetDeliveryInApp}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliveryInApp(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      inApp: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      inApp: checked
                                     }
                                   }
                                 };
@@ -6690,15 +6817,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.sms === true}
+                              checked={targetDeliverySms}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliverySms(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      sms: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      sms: checked
                                     }
                                   }
                                 };
@@ -6911,42 +7040,23 @@ const OrganizationHierarchy = () => {
                         <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
                           Rozsah příjemců
                         </Label>
-                        <select
-                          className="form-control"
-                          value={selectedNode?.data?.scopeDefinition?.type || 'ALL'}
+                        <Select
+                          value={targetScopeType}
                           onChange={(e) => {
-                            const newValue = e.target.value;
-                            console.log('SELECT CHANGE:', newValue);
-                            
-                            setSelectedNode(prevNode => {
-                              const updatedNode = {
-                                ...prevNode,
-                                data: {
-                                  ...prevNode.data,
-                                  scopeDefinition: {
-                                    ...(prevNode.data.scopeDefinition || {}),
-                                    type: newValue
-                                  }
+                            const newType = e.target.value;
+                            setTargetScopeType(newType);
+                            const updatedNode = {
+                              ...selectedNode,
+                              data: {
+                                ...selectedNode.data,
+                                scopeDefinition: {
+                                  ...(selectedNode.data.scopeDefinition || {}),
+                                  type: newType
                                 }
-                              };
-                              console.log('UPDATED NODE:', updatedNode);
-                              return updatedNode;
-                            });
-                            
-                            setNodes(prevNodes => prevNodes.map(n => 
-                              n.id === selectedNode.id 
-                                ? {
-                                    ...n,
-                                    data: {
-                                      ...n.data,
-                                      scopeDefinition: {
-                                        ...(n.data.scopeDefinition || {}),
-                                        type: newValue
-                                      }
-                                    }
-                                  }
-                                : n
-                            ));
+                              }
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes(nodes.map(n => n.id === selectedNode.id ? updatedNode : n));
                           }}
                           style={{ 
                             border: '2px solid #fb7185',
@@ -6957,26 +7067,27 @@ const OrganizationHierarchy = () => {
                           <option value="ALL">🌐 Všichni uživatelé s touto rolí</option>
                           <option value="SELECTED">✅ Jen vybraní uživatelé</option>
                           <option value="DYNAMIC_FROM_ENTITY">⚡ Dynamicky z pole entity</option>
-                        </select>
+                        </Select>
                       </FormGroup>
                       
                       {/* DYNAMIC: Výběr pole */}
-                      {selectedNode.data.scopeDefinition?.type === 'DYNAMIC_FROM_ENTITY' && (
+                      {targetScopeType === 'DYNAMIC_FROM_ENTITY' && (
                         <FormGroup>
                           <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
                             Pole entity (např. prikazce_id)
                           </Label>
-                          <select
-                            className="form-control"
-                            value={selectedNode.data.scopeDefinition?.field || 'prikazce_id'}
+                          <Select
+                            value={targetScopeField}
                             onChange={(e) => {
+                              const newField = e.target.value;
+                              setTargetScopeField(newField);
                               const updatedNode = {
                                 ...selectedNode,
                                 data: {
                                   ...selectedNode.data,
                                   scopeDefinition: {
                                     ...selectedNode.data.scopeDefinition,
-                                    field: e.target.value
+                                    field: newField
                                   }
                                 }
                               };
@@ -6995,7 +7106,7 @@ const OrganizationHierarchy = () => {
                             <option value="objednatel_id">📝 objednatel_id (Objednatel)</option>
                             <option value="uzivatel_id">👨‍💼 uzivatel_id (Uživatel)</option>
                             <option value="prikazce_fakturace_id">💰 prikazce_fakturace_id (Příkazce fakturace)</option>
-                          </select>
+                          </Select>
                           <div style={{ 
                             marginTop: '8px', 
                             fontSize: '0.75rem', 
@@ -7008,7 +7119,7 @@ const OrganizationHierarchy = () => {
                       )}
                       
                       {/* SELECTED: Výběr konkrétních uživatelů */}
-                      {selectedNode.data.scopeDefinition?.type === 'SELECTED' && (
+                      {targetScopeType === 'SELECTED' && (
                         <FormGroup>
                           <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
                             Vyberte konkrétní uživatele
@@ -7018,11 +7129,82 @@ const OrganizationHierarchy = () => {
                             background: '#fff', 
                             border: '2px solid #fb7185',
                             borderRadius: '8px',
-                            minHeight: '100px'
+                            maxHeight: '300px',
+                            overflowY: 'auto'
                           }}>
-                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
-                              🚧 UI pro výběr uživatelů - bude doplněno
-                            </div>
+                            {loadingUsers ? (
+                              <div style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '20px' }}>
+                                ⏳ Načítám uživatele s rolí {selectedNode.data.name}...
+                              </div>
+                            ) : availableUsersForRole.length === 0 ? (
+                              <div style={{ fontSize: '0.85rem', color: '#dc2626', textAlign: 'center', padding: '20px' }}>
+                                ⚠️ Žádní uživatelé s touto rolí
+                              </div>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '10px', fontStyle: 'italic' }}>
+                                  💡 Zaškrtněte uživatele, kteří dostanou notifikaci
+                                </div>
+                                {availableUsersForRole.map(user => (
+                                  <label key={user.id} style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    padding: '8px',
+                                    cursor: 'pointer',
+                                    borderRadius: '6px',
+                                    transition: 'background 0.2s',
+                                    background: targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : 'transparent'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : '#f9fafb'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = targetSelectedIds.includes(String(user.id)) ? '#fef3c7' : 'transparent'}>
+                                    <input
+                                      type="checkbox"
+                                      checked={targetSelectedIds.includes(String(user.id))}
+                                      onChange={(e) => {
+                                        const userId = String(user.id);
+                                        let newIds;
+                                        if (e.target.checked) {
+                                          newIds = [...targetSelectedIds, userId];
+                                        } else {
+                                          newIds = targetSelectedIds.filter(id => id !== userId);
+                                        }
+                                        setTargetSelectedIds(newIds);
+                                        const updatedNode = {
+                                          ...selectedNode,
+                                          data: {
+                                            ...selectedNode.data,
+                                            scopeDefinition: {
+                                              ...selectedNode.data.scopeDefinition,
+                                              selectedIds: newIds
+                                            }
+                                          }
+                                        };
+                                        setSelectedNode(updatedNode);
+                                        setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                                      }}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: targetSelectedIds.includes(String(user.id)) ? '600' : '400' }}>
+                                      {user.jmeno && user.prijmeni ? `${user.jmeno} ${user.prijmeni}` : (user.full_name || user.username)}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                                      ID: {user.id}
+                                    </span>
+                                  </label>
+                                ))}
+                                <div style={{ 
+                                  marginTop: '12px', 
+                                  paddingTop: '12px', 
+                                  borderTop: '1px dashed #e5e7eb',
+                                  fontSize: '0.75rem',
+                                  color: '#059669',
+                                  fontWeight: '600'
+                                }}>
+                                  ✅ Vybráno: {targetSelectedIds.length} z {availableUsersForRole.length} uživatelů
+                                </div>
+                              </>
+                            )}
                           </div>
                         </FormGroup>
                       )}
@@ -7052,15 +7234,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.email !== false}
+                              checked={targetDeliveryEmail}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliveryEmail(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      email: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      email: checked
                                     }
                                   }
                                 };
@@ -7089,15 +7273,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.inApp !== false}
+                              checked={targetDeliveryInApp}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliveryInApp(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      inApp: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      inApp: checked
                                     }
                                   }
                                 };
@@ -7127,15 +7313,17 @@ const OrganizationHierarchy = () => {
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                             <input
                               type="checkbox"
-                              checked={selectedNode.data.delivery?.sms === true}
+                              checked={targetDeliverySms}
                               onChange={(e) => {
+                                const checked = e.target.checked;
+                                setTargetDeliverySms(checked);
                                 const updatedNode = {
                                   ...selectedNode,
                                   data: {
                                     ...selectedNode.data,
                                     delivery: {
-                                      ...selectedNode.data.delivery,
-                                      sms: e.target.checked
+                                      ...(selectedNode.data.delivery || {}),
+                                      sms: checked
                                     }
                                   }
                                 };
@@ -7242,15 +7430,17 @@ const OrganizationHierarchy = () => {
                         onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                           <input
                             type="checkbox"
-                            checked={selectedNode.data.delivery?.email !== false}
+                            checked={targetDeliveryEmail}
                             onChange={(e) => {
+                              const checked = e.target.checked;
+                              setTargetDeliveryEmail(checked);
                               const updatedNode = {
                                 ...selectedNode,
                                 data: {
                                   ...selectedNode.data,
                                   delivery: {
-                                    ...selectedNode.data.delivery,
-                                    email: e.target.checked
+                                    ...(selectedNode.data.delivery || {}),
+                                    email: checked
                                   }
                                 }
                               };
@@ -7279,15 +7469,17 @@ const OrganizationHierarchy = () => {
                         onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                           <input
                             type="checkbox"
-                            checked={selectedNode.data.delivery?.inApp !== false}
+                            checked={targetDeliveryInApp}
                             onChange={(e) => {
+                              const checked = e.target.checked;
+                              setTargetDeliveryInApp(checked);
                               const updatedNode = {
                                 ...selectedNode,
                                 data: {
                                   ...selectedNode.data,
                                   delivery: {
-                                    ...selectedNode.data.delivery,
-                                    inApp: e.target.checked
+                                    ...(selectedNode.data.delivery || {}),
+                                    inApp: checked
                                   }
                                 }
                               };
@@ -7317,15 +7509,17 @@ const OrganizationHierarchy = () => {
                         onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
                           <input
                             type="checkbox"
-                            checked={selectedNode.data.delivery?.sms === true}
+                            checked={targetDeliverySms}
                             onChange={(e) => {
+                              const checked = e.target.checked;
+                              setTargetDeliverySms(checked);
                               const updatedNode = {
                                 ...selectedNode,
                                 data: {
                                   ...selectedNode.data,
                                   delivery: {
-                                    ...selectedNode.data.delivery,
-                                    sms: e.target.checked
+                                    ...(selectedNode.data.delivery || {}),
+                                    sms: checked
                                   }
                                 }
                               };

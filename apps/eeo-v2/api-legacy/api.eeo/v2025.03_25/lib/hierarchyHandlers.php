@@ -596,6 +596,7 @@ function handle_hierarchy_users_list($data, $pdo) {
                 u.prijmeni,
                 u.email,
                 u.pozice_id,
+                u.usek_id,
                 p.nazev_pozice as pozice,
                 l.nazev as lokalita,
                 us.usek_nazev as usek,
@@ -632,6 +633,8 @@ function handle_hierarchy_users_list($data, $pdo) {
             
             $users[] = array(
                 'id' => (string)$row['id'],
+                'jmeno' => $row['jmeno'] ?: '',
+                'prijmeni' => $row['prijmeni'] ?: '',
                 'name' => trim($row['jmeno'] . ' ' . $row['prijmeni']),
                 'position' => $row['pozice'] ?: 'Neuvedeno',
                 'location' => $row['lokalita'] ?: 'Neuvedeno',
@@ -639,7 +642,8 @@ function handle_hierarchy_users_list($data, $pdo) {
                 'departmentCode' => $row['usek_zkr'] ?: '',
                 'initials' => $initials ?: '?',
                 'email' => $row['email'],
-                'roles' => array_map('intval', $userRoles) // Pole ID rolí
+                'roles' => array_map('intval', $userRoles), // Pole ID rolí
+                'usek_id' => (int)$row['usek_id'] // Pro filtrování v SELECTED scope
             );
         }
         
