@@ -9093,8 +9093,8 @@ function OrderForm25() {
 
         // 3. Počkej 50ms, aby se broadcast propagoval
         setTimeout(() => {
-          // 4. Přepnout na seznam objednávek
-          navigate('/orders25-list', { replace: true });
+          // 4. Přepnout na seznam objednávek s forceReload (vynutit načtení z DB)
+          navigate('/orders25-list', { state: { forceReload: true }, replace: true });
           
           // 5. Skrýt progress a ukončit ukládání
           setShowSaveProgress(false);
@@ -10646,6 +10646,76 @@ function OrderForm25() {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-new', `Chyba při trigger notifikaci: ${triggerError.message}`);
             }
           }
+
+          // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání dodavateli (INSERT - okamžité odeslání)
+          if (hasWorkflowState(workflowKod, 'ODESLANA')) {
+            try {
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
+              });
+              
+              await triggerNotification(
+                'order_status_odeslana',
+                orderId,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  commander_id: formData.prikazce_id,
+                  garant_id: formData.garant_uzivatel_id,
+                  creator_id: formData.objednatel_id,
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
+                  strediska_names: strediskaNazvy,
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  is_urgent: formData.mimoradna_udalost || false
+                }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana-new', `Org-hierarchy notifikace triggernuta pro nově odeslanou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana-new', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Okamžité schválení při INSERT (pokud příkazce okamžitě schválí)
+          if (hasWorkflowState(workflowKod, 'SCHVALENA')) {
+            try {
+              await triggerNotification('order_status_schvalena', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena-new', `Notifikace odeslána: nová objednávka okamžitě schválena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena-new', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Okamžité potvrzení dodavatele při INSERT (velmi rare, ale možné)
+          if (hasWorkflowState(workflowKod, 'POTVRZENA')) {
+            try {
+              await triggerNotification('order_status_potvrzena', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena-new', `Notifikace odeslána: nová objednávka potvrzena dodavatelem ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena-new', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Okamžité dokončení při INSERT (velmi rare, ale možné)
+          if (hasWorkflowState(workflowKod, 'DOKONCENA')) {
+            try {
+              await triggerNotification('order_status_dokoncena', orderId, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-dokoncena-new', `Notifikace odeslána: nová objednávka okamžitě dokončena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-dokoncena-new', `Chyba při notifikaci DOKONCENA: ${triggerError.message}`);
+            }
+          }
         } catch (notifError) {
           // Nezastavuj workflow kvůli chybě notifikace
           addDebugLog('warning', 'SAVE', 'notification-error', `Chyba při odesílání notifikace: ${notifError.message}`);
@@ -11095,6 +11165,136 @@ function OrderForm25() {
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent', `Org-hierarchy notifikace triggernuta pro objednávku ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error', `Chyba při trigger notifikaci: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání dodavateli (NAVÍC k zvonečku)
+          const hasOdeslana = hasWorkflowState(result.stav_workflow_kod, 'ODESLANA');
+          const hadOdeslana = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA') : false;
+          
+          if (hasOdeslana && !hadOdeslana) {
+            try {
+              const strediskaNazvy = (formData.strediska_kod || []).map(kod => {
+                const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                return stredisko ? stredisko.label : kod;
+              });
+              
+              await triggerNotification(
+                'order_status_odeslana',
+                formData.id,
+                user_id || formData.objednatel_id,
+                {
+                  order_number: orderNumber,
+                  order_subject: formData.predmet || '',
+                  commander_id: formData.prikazce_id,
+                  garant_id: formData.garant_uzivatel_id,
+                  creator_id: formData.objednatel_id,
+                  supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
+                  financovani_json: JSON.stringify(orderData.financovani || {}),
+                  strediska_names: strediskaNazvy,
+                  max_price_with_dph: formData.max_cena_s_dph || 0,
+                  is_urgent: formData.mimoradna_udalost || false
+                }
+              );
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana', `Org-hierarchy notifikace triggernuta pro odeslanou objednávku ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Schválení objednávky
+          const hasSchvalena = hasWorkflowState(result.stav_workflow_kod, 'SCHVALENA');
+          const hadSchvalena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'SCHVALENA') : false;
+          
+          if (hasSchvalena && !hadSchvalena) {
+            try {
+              await triggerNotification('order_status_schvalena', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena', `Notifikace odeslána: objednávka schválena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Zamítnutí objednávky
+          const hasZamitnuta = hasWorkflowState(result.stav_workflow_kod, 'ZAMITNUTA');
+          const hadZamitnuta = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ZAMITNUTA') : false;
+          
+          if (hasZamitnuta && !hadZamitnuta) {
+            try {
+              await triggerNotification('order_status_zamitnuta', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zamitnuta', `Notifikace odeslána: objednávka zamítnuta ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zamitnuta', `Chyba při notifikaci ZAMITNUTA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Vrácení k doplnění
+          const hasCekaSe = hasWorkflowState(result.stav_workflow_kod, 'CEKA_SE');
+          const hadCekaSe = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'CEKA_SE') : false;
+          
+          if (hasCekaSe && !hadCekaSe) {
+            try {
+              await triggerNotification('order_status_ceka_se', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-ceka-se', `Notifikace odeslána: objednávka vrácena k doplnění ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-ceka-se', `Chyba při notifikaci CEKA_SE: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Potvrzení dodavatele
+          const hasPotvrzena = hasWorkflowState(result.stav_workflow_kod, 'POTVRZENA');
+          const hadPotvrzena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'POTVRZENA') : false;
+          
+          if (hasPotvrzena && !hadPotvrzena) {
+            try {
+              await triggerNotification('order_status_potvrzena', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena', `Notifikace odeslána: objednávka potvrzena dodavatelem ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Zveřejnění v registru
+          const hasUverejnena = hasWorkflowState(result.stav_workflow_kod, 'UVEREJNENA');
+          const hadUverejnena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'UVEREJNENA') : false;
+          
+          if (hasUverejnena && !hadUverejnena) {
+            try {
+              await triggerNotification('order_status_registr_zverejnena', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-uverejnena', `Notifikace odeslána: objednávka zveřejněna v registru ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-uverejnena', `Chyba při notifikaci UVEREJNENA: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Dokončení objednávky
+          const hasDokoncena = hasWorkflowState(result.stav_workflow_kod, 'DOKONCENA');
+          const hadDokoncena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'DOKONCENA') : false;
+          
+          if (hasDokoncena && !hadDokoncena) {
+            try {
+              await triggerNotification('order_status_dokoncena', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-dokoncena', `Notifikace odeslána: objednávka dokončena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-dokoncena', `Chyba při notifikaci DOKONCENA: ${triggerError.message}`);
             }
           }
         } catch (notifError) {

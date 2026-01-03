@@ -1,31 +1,32 @@
-USE `eeo2025-dev`;
-
--- ============================================================================
--- POST-LOGIN MODAL NOTIFIKACE: Základní vstupní informace (EEO v2 © 2026)
--- ============================================================================
--- Vytvořeno: 2026-01-03
--- Popis: Moderní clean design post-login notifikace s důležitými informacemi
---        pro uživatele při prvním přihlášení do EEO 2026
--- ============================================================================
-
--- Smazat starou notifikaci pokud existuje
-DELETE FROM 25_notifikace WHERE id = 977;
-
--- Vložit novou notifikaci
-INSERT INTO 25_notifikace (
-    id,
-    typ,
-    nadpis,
-    zprava,
-    priorita,
-    kategorie,
-    aktivni,
-    dt_created
-) VALUES (
-    977,
-    'system_announcement',
-    '📋 Základní vstupní informace',
-    '<div class="eeo-notification" style="font-family: -apple-system, BlinkMacSystemFont, ''Segoe UI'', Roboto, Oxygen, Ubuntu, Cantarell, ''Helvetica Neue'', sans-serif; color: #374151; font-size: 15px; line-height: 1.7; max-width: 800px; margin: 0 auto;">
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Základní vstupní informace - EEO 2025/2026</title>
+    <style>
+        /* Toto CSS je jen pro náhled, v produkci se použije pouze HTML níže */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- ==========================================
+         HTML PRO POST-LOGIN MODAL NOTIFIKACI
+         Zkopíruj obsah <div class="eeo-notification"> níže do databáze
+         ========================================== -->
+    <div class="eeo-notification" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif; color: #374151; font-size: 15px; line-height: 1.7; max-width: 800px; margin: 0 auto;">
         
         <!-- Hlavní nadpis -->
         <div style="text-align: center; margin-bottom: 40px;">
@@ -64,7 +65,7 @@ INSERT INTO 25_notifikace (
             </p>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 14px; border-radius: 6px;">
                 <p style="margin: 0; font-size: 14px; color: #6b7280;">
-                    📝 <strong style="font-weight: 600; color: #374151;">Vše popsáno v návodu:</strong> <a href="#" onclick="event.preventDefault(); window.location.href=''help''; return false;" style="color: #2563eb; font-weight: 500; text-decoration: none; border-bottom: 1px solid #93c5fd; cursor: pointer;">Jak poprvé pracovat s Pokladnou</a>
+                    📝 <strong style="font-weight: 600; color: #374151;">Vše popsáno v návodu:</strong> <a href="#" onclick="event.preventDefault(); window.location.href='help'; return false;" style="color: #2563eb; font-weight: 500; text-decoration: none; border-bottom: 1px solid #93c5fd; cursor: pointer;">Jak poprvé pracovat s Pokladnou</a>
                 </p>
             </div>
         </div>
@@ -119,7 +120,7 @@ INSERT INTO 25_notifikace (
         <!-- Nápověda -->
         <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
             <p style="margin: 0; font-size: 15px; color: #78350f; line-height: 1.7;">
-                💡 <strong style="font-weight: 600;">Prosím prostudujte si návody</strong>, naleznete je v&nbsp;pravém horním rohu aplikace pod ikonou otazníku <a href="help" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #374151; color: white; border-radius: 50%; font-size: 13px; vertical-align: middle; text-decoration: none; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background=''#1f2937''" onmouseout="this.style.background=''#374151''">?</a>
+                💡 <strong style="font-weight: 600;">Prosím prostudujte si návody</strong>, naleznete je v&nbsp;pravém horním rohu aplikace pod ikonou otazníku <a href="help" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #374151; color: white; border-radius: 50%; font-size: 13px; vertical-align: middle; text-decoration: none; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='#374151'">?</a>
             </p>
         </div>
 
@@ -135,45 +136,6 @@ INSERT INTO 25_notifikace (
             </div>
         </div>
 
-    </div>',
-    5,
-    'system',
-    1,
-    NOW()
-);
-
--- ============================================================================
--- KONFIGURACE POST-LOGIN MODALU
--- ============================================================================
--- Nastavení globálního systému pro zobrazení modalu po přihlášení
-
-UPDATE 25a_nastaveni_globalni 
-SET hodnota = '977'
-WHERE klic = 'post_login_modal_message_id';
-
-UPDATE 25a_nastaveni_globalni 
-SET hodnota = 'modal_eeo2026_info_v2_clean'
-WHERE klic = 'post_login_modal_guid';
-
-UPDATE 25a_nastaveni_globalni 
-SET hodnota = '2026-01-31'
-WHERE klic = 'post_login_modal_valid_to';
-
-UPDATE 25a_nastaveni_globalni 
-SET hodnota = '1'
-WHERE klic = 'post_login_modal_enabled';
-
--- ============================================================================
--- KONTROLA
--- ============================================================================
-SELECT 
-    klic AS 'Nastavení',
-    hodnota AS 'Hodnota'
-FROM 25a_nastaveni_globalni 
-WHERE klic IN (
-    'post_login_modal_message_id',
-    'post_login_modal_guid',
-    'post_login_modal_valid_to',
-    'post_login_modal_enabled'
-)
-ORDER BY klic;
+    </div>
+</body>
+</html>

@@ -24,12 +24,6 @@ export const checkPostLoginModal = async (userId, token, username) => {
     const { getGlobalSettingsForDisplay } = await import('./globalSettingsApi');
     const globalSettings = await getGlobalSettingsForDisplay(token, username);
     
-    console.log('🔥 POST-LOGIN MODAL - LOADED SETTINGS:', {
-      message_id: globalSettings.post_login_modal_message_id,
-      content_length: globalSettings.post_login_modal_content?.length,
-      content_preview: globalSettings.post_login_modal_content?.substring(0, 100)
-    });
-    
     // KRITICKÉ: Kontrola, zda je modal povolen (priorita #1)
     const enabledValue = globalSettings.post_login_modal_enabled?.hodnota || globalSettings.post_login_modal_enabled;
     const enabled = enabledValue === '1' || enabledValue === 1 || enabledValue === true;
@@ -256,29 +250,31 @@ export const getModalDismissalCount = (modalGuid) => {
  * Debug funkce pro testování localStorage (volat z konzole)
  * @param {number} userId - ID uživatele
  * @param {string} modalGuid - GUID modalu
+ * @returns {Object} Debug informace o dismiss stavu
+ * @example window.debugModalDismiss(123, 'some-guid')
  */
 export const debugModalDismiss = (userId, modalGuid) => {
-  console.group('🔧 DEBUG MODAL DISMISS');
-  
   const key = getModalDismissKey(userId, modalGuid);
   const value = localStorage.getItem(key);
   const isDismissed = isModalDismissedByUser(userId, modalGuid);
   
-  console.log('Input:', { userId, modalGuid, userIdType: typeof userId, modalGuidType: typeof modalGuid });
-  console.log('Key:', key);
-  console.log('Value:', value);
-  console.log('Is dismissed:', isDismissed);
+  const result = {
+    input: { userId, modalGuid, userIdType: typeof userId, modalGuidType: typeof modalGuid },
+    key,
+    value,
+    isDismissed,
+    allDismissKeys: []
+  };
   
-  // Ukázka všech localStorage klíčů s modal_dismissed
-  console.log('\nVšechny modal dismiss klíče:');
+  // Najít všechny localStorage klíče s modal_dismissed
   for (let i = 0; i < localStorage.length; i++) {
     const localKey = localStorage.key(i);
     if (localKey && localKey.includes('post_login_modal_dismissed_')) {
-      console.log(`${localKey}: ${localStorage.getItem(localKey)}`);
+      result.allDismissKeys.push({ key: localKey, value: localStorage.getItem(localKey) });
     }
   }
   
-  console.groupEnd();
+  return result;
 };
 
 // Přidat funkci do window pro snadný přístup z konzole

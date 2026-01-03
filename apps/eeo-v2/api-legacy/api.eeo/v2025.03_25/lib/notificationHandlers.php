@@ -1564,90 +1564,127 @@ function handle_notifications_event_types_list($input, $config, $queries) {
         $eventTypes = array(
             // OBJEDNÁVKY - Fáze 1: Vytvoření
             array(
-                'code' => 'ORDER_SENT_FOR_APPROVAL',
-                'nazev' => 'Objednávka vytvořena',
+                'code' => 'order_status_ke_schvaleni',
+                'nazev' => 'Objednávka vytvořena / odeslána ke schválení',
                 'kategorie' => 'orders',
-                'description' => 'Robert vytvoří objednávku → notifikace příkazci ke schválení',
+                'description' => 'Nová objednávka vytvořena a odeslána ke schválení příkazci',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'APPROVAL', 'INFO')
             ),
             
             // OBJEDNÁVKY - Fáze 2A: Schválení
             array(
-                'code' => 'ORDER_APPROVED',
+                'code' => 'order_status_schvalena',
                 'nazev' => 'Objednávka schválena',
                 'kategorie' => 'orders',
-                'description' => 'Příkazce schválil → notifikace Robertovi, že může pokračovat',
+                'description' => 'Příkazce schválil objednávku',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             
             // OBJEDNÁVKY - Fáze 2B: Zamítnutí
             array(
-                'code' => 'ORDER_REJECTED',
+                'code' => 'order_status_zamitnuta',
                 'nazev' => 'Objednávka zamítnuta',
                 'kategorie' => 'orders',
-                'description' => 'Příkazce zamítl → proces končí',
+                'description' => 'Příkazce zamítl objednávku',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
             ),
             
             // OBJEDNÁVKY - Fáze 2C: Vrácení
             array(
-                'code' => 'ORDER_WAITING_FOR_CHANGES',
+                'code' => 'order_status_ceka_se',
                 'nazev' => 'Objednávka vrácena k doplnění',
                 'kategorie' => 'orders',
-                'description' => 'Příkazce vrátil → Robert doplní a znovu odešle',
+                'description' => 'Příkazce vrátil objednávku k doplnění informací',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             
-            // OBJEDNÁVKY - Fáze 3: Plnění
+            // OBJEDNÁVKY - Fáze 3: Plnění - ODESLÁNA DODAVATELI
             array(
-                'code' => 'ORDER_SENT_TO_SUPPLIER',
+                'code' => 'order_status_odeslana',
                 'nazev' => 'Objednávka odeslána dodavateli',
                 'kategorie' => 'orders',
-                'description' => 'Robert odeslal dodavateli → notifikace nákupčímu a ostatním',
+                'description' => 'Schválená objednávka byla odeslána dodavateli',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             
-            // OBJEDNÁVKY - Fáze 4: Registr
+            // OBJEDNÁVKY - Fáze 4: Potvrzení dodavatele
             array(
-                'code' => 'ORDER_REGISTRY_APPROVAL_REQUESTED',
-                'nazev' => 'Žádost o schválení v registru',
+                'code' => 'order_status_potvrzena',
+                'nazev' => 'Objednávka potvrzena dodavatelem',
                 'kategorie' => 'orders',
-                'description' => 'Robert žádá o registr → notifikace registru (role/úsek)',
+                'description' => 'Dodavatel potvrdil přijetí objednávky',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 5: Registr smluv
+            array(
+                'code' => 'order_status_registr_ceka',
+                'nazev' => 'Čeká na zveřejnění v registru',
+                'kategorie' => 'orders',
+                'description' => 'Objednávka čeká na schválení a zveřejnění v registru smluv',
                 'urgencyLevel' => 'EXCEPTIONAL',
                 'recipientRoles' => array('EXCEPTIONAL', 'INFO')
             ),
             
-            // OBJEDNÁVKY - Fáze 5: Faktura
             array(
-                'code' => 'ORDER_INVOICE_ADDED',
-                'nazev' => 'Faktura doplněna',
+                'code' => 'order_status_registr_zverejnena',
+                'nazev' => 'Objednávka zveřejněna v registru',
                 'kategorie' => 'orders',
-                'description' => 'Registr doplnil fakturu → Robert musí provést věcnou kontrolu',
+                'description' => 'Objednávka byla úspěšně zveřejněna v registru smluv',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             
-            // OBJEDNÁVKY - Fáze 6: Kontrola
+            // OBJEDNÁVKY - Fáze 6: Fakturace
             array(
-                'code' => 'ORDER_MATERIAL_CHECK_COMPLETED',
+                'code' => 'order_status_faktura_ceka',
+                'nazev' => 'Čeká na doplnění faktury',
+                'kategorie' => 'orders',
+                'description' => 'Objednávka čeká na doplnění faktury',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            array(
+                'code' => 'order_status_faktura_pridana',
+                'nazev' => 'Faktura přiřazena',
+                'kategorie' => 'orders',
+                'description' => 'K objednávce byla přiřazena faktura',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            // OBJEDNÁVKY - Fáze 7: Věcná kontrola
+            array(
+                'code' => 'order_status_kontrola_ceka',
+                'nazev' => 'Čeká na věcnou kontrolu',
+                'kategorie' => 'orders',
+                'description' => 'Objednávka čeká na provedení věcné kontroly',
+                'urgencyLevel' => 'NORMAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            
+            array(
+                'code' => 'order_status_kontrola_potvrzena',
                 'nazev' => 'Věcná kontrola provedena',
                 'kategorie' => 'orders',
-                'description' => 'Robert provedl kontrolu → registr může dokončit',
+                'description' => 'Věcná kontrola objednávky byla provedena',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('APPROVAL', 'INFO')
             ),
             
-            // OBJEDNÁVKY - Fáze 7: Dokončení
+            // OBJEDNÁVKY - Fáze 8: Dokončení
             array(
-                'code' => 'ORDER_COMPLETED',
+                'code' => 'order_status_dokoncena',
                 'nazev' => 'Objednávka dokončena',
                 'kategorie' => 'orders',
-                'description' => 'Registr dokončil → notifikace všem zúčastněným',
+                'description' => 'Objednávka byla úspěšně dokončena',
                 'urgencyLevel' => 'NORMAL',
                 'recipientRoles' => array('INFO')
             ),

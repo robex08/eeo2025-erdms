@@ -18,6 +18,18 @@ window.addEventListener('error', e => {
   }
 });
 
+// Suppress React DevTools console message in development
+if (process.env.NODE_ENV === 'development') {
+  const originalConsoleLog = console.log;
+  console.log = (...args) => {
+    const message = args[0];
+    if (typeof message === 'string' && message.includes('Download the React DevTools')) {
+      return; // Skip React DevTools message
+    }
+    originalConsoleLog.apply(console, args);
+  };
+}
+
 // Create MUI theme
 const muiTheme = createTheme({
   palette: {
