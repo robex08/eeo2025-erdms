@@ -135,7 +135,7 @@ class SystemInfoService {
                 type: isDev ? 'development' : 'production'
             },
             api: {
-                version: '1.94',
+                version: '1.95',
                 host: window.location.hostname
             }
         };
