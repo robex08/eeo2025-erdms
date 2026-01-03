@@ -90,8 +90,8 @@ export const getStatusIcon = (status) => {
  */
 export const getNotificationIcon = (notificationType, priority = 'normal') => {
   // Pokud je to notifikace o změně stavu objednávky, použij ikonu podle stavu
-  if (notificationType?.startsWith('order_status_')) {
-    const status = notificationType.replace('order_status_', '');
+  if (notificationType?.startsWith('ORDER_')) {
+    const status = notificationType.replace('ORDER_', '');
     return getStatusIcon(status);
   }
 
@@ -141,10 +141,10 @@ export const getPriorityIcon = (priority) => {
  * @returns {string|null} Stav objednávky nebo null
  */
 export const extractOrderStatusFromNotificationType = (notificationType) => {
-  if (!notificationType?.startsWith('order_status_')) {
+  if (!notificationType?.startsWith('ORDER_')) {
     return null;
   }
-  return notificationType.replace('order_status_', '');
+  return notificationType.replace('ORDER_', '');
 };
 
 /**
@@ -168,8 +168,8 @@ export const extractOrderStatusFromNotificationType = (notificationType) => {
  */
 export const getNotificationEmoji = (notificationType, priority = 'normal') => {
   // Pokud je to notifikace o změně stavu objednávky, použij emoji podle stavu
-  if (notificationType?.startsWith('order_status_')) {
-    const status = notificationType.replace('order_status_', '');
+  if (notificationType?.startsWith('ORDER_')) {
+    const status = notificationType.replace('ORDER_', '');
     return getStatusEmoji(status);
   }
 
