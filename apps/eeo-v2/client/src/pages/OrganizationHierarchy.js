@@ -51,25 +51,38 @@ import {
 const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
 
 // Potlačit neškodnou ResizeObserver chybu (běžné u ReactFlow)
-const resizeObserverErr = window.console.error;
+// Tato chyba je známá React Flow issue a je neškodná - jen informuje o resize operacích
+const originalConsoleError = window.console.error;
 window.console.error = (...args) => {
   const errorMsg = typeof args[0] === 'string' ? args[0] : args[0]?.message || '';
-  if (errorMsg.includes('ResizeObserver loop completed') || 
-      errorMsg.includes('ResizeObserver loop limit exceeded')) {
-    return; // Ignorovat tuto konkrétní chybu
+  // Ignorovat všechny ResizeObserver related errors
+  if (errorMsg.includes('ResizeObserver') || 
+      errorMsg.includes('undelivered notifications')) {
+    return;
   }
-  resizeObserverErr(...args);
+  originalConsoleError.call(window.console, ...args);
 };
 
-// Potlačit ResizeObserver error i v error handleru
+// Potlačit ResizeObserver error v global error handleru
 window.addEventListener('error', (e) => {
-  if (e.message?.includes?.('ResizeObserver loop completed') ||
-      e.message?.includes?.('ResizeObserver loop limit exceeded') ||
-      e.message?.includes?.('undelivered notifications')) {
+  const msg = e.message || '';
+  if (msg.includes('ResizeObserver') || 
+      msg.includes('undelivered notifications')) {
     e.stopImmediatePropagation();
     e.preventDefault();
+    return false;
   }
 }, true);
+
+// Potlačit i v unhandledrejection
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = e.reason?.message || e.reason || '';
+  if (typeof msg === 'string' && (msg.includes('ResizeObserver') || 
+      msg.includes('undelivered notifications'))) {
+    e.preventDefault();
+    return false;
+  }
+});
 
 // Styled Components
 const Container = styled.div`
@@ -1594,7 +1607,7 @@ const OrganizationHierarchy = () => {
   const [edgeScopeFilter, setEdgeScopeFilter] = useState('NONE');
   const [edgeSendEmail, setEdgeSendEmail] = useState(false);
   const [edgeSendInApp, setEdgeSendInApp] = useState(true);
-  const [edgeRecipientRole, setEdgeRecipientRole] = useState('APPROVAL');
+  const [edgeRecipientRole, setEdgeRecipientRole] = useState('WARNING'); // Default WARNING (standard)
   const [edgeEventTypes, setEdgeEventTypes] = useState([]); // Event types na EDGE (přesunuto z NODE)
   
   // TARGET NODE: scopeDefinition a delivery options (Varianta B)
@@ -1761,7 +1774,7 @@ const OrganizationHierarchy = () => {
                 scope_filter: edgeScopeFilter,
                 sendEmail: edgeSendEmail,
                 sendInApp: edgeSendInApp,
-                recipientRole: edgeRecipientRole,
+                priority: edgeRecipientRole, // NOVÉ: priority místo recipientRole
                 eventTypes: edgeEventTypes, // ✅ NOVÉ: Event types na EDGE
                 source_info_recipients: {
                   enabled: sourceInfoEnabled,
@@ -2470,7 +2483,7 @@ const OrganizationHierarchy = () => {
     setEdgeScopeFilter(edge.data?.scope_filter || 'NONE');
     setEdgeSendEmail(edge.data?.sendEmail || false);
     setEdgeSendInApp(edge.data?.sendInApp !== false);
-    setEdgeRecipientRole(edge.data?.recipientRole || 'APPROVAL');
+    setEdgeRecipientRole(edge.data?.priority || edge.data?.recipientRole || 'APPROVAL'); // NOVÉ: priority (fallback na recipientRole pro staré data)
     setEdgeEventTypes(edge.data?.eventTypes || []); // ✅ Event types na EDGE (přesunuto z NODE)
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
@@ -8367,13 +8380,13 @@ const OrganizationHierarchy = () => {
                           title="Určuje, jakou variantu emailu použít"
                           style={{
                             border: edgeRecipientRole === 'AUTO' ? '2px solid #8b5cf6' :
-                                   edgeRecipientRole === 'EXCEPTIONAL' ? '2px solid #dc2626' : 
+                                   edgeRecipientRole === 'URGENT' ? '2px solid #dc2626' : 
                                    edgeRecipientRole === 'INFO' ? '2px solid #10b981' : '2px solid #3b82f6'
                           }}
                         >
                           <option value="AUTO">🔮 AUTO - dle mimoradna_udalost pole</option>
-                          <option value="EXCEPTIONAL">🔴 URGENT - vždy urgentní</option>
-                          <option value="APPROVAL">🟡 WARNING - vždy standardní</option>
+                          <option value="URGENT">🔴 URGENT - vždy urgentní</option>
+                          <option value="WARNING">🟡 WARNING - vždy standardní</option>
                           <option value="INFO">🔵 INFO - vždy informační</option>
                         </Select>
                         <div style={{ 
