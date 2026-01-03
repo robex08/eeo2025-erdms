@@ -5734,115 +5734,18 @@ const OrganizationHierarchy = () => {
                       
                       return (
                         <>
-                          {/* VÝBĚR VARIANTY PRO STANDARDNÍ PRIORITU (WARNING) */}
+                          {/* Kompaktní výběr variant */}
                           <FormGroup>
-                            <Label>
-                              🟡 Email varianta pro WARNING prioritu
-                              <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
-                            </Label>
+                            <Label>Varianta pro náhled</Label>
                             <select
-                              value={templateNormalVariant || defaultVariant}
-                              onChange={(e) => setTemplateNormalVariant(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                border: '2px solid #3b82f6',
-                                borderRadius: '6px',
-                                fontSize: '0.9rem',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: '500'
-                              }}
-                            >
-                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
-                                <option key={variant.type} value={variant.type}>
-                                  {variant.icon} {variant.name}
-                                </option>
-                              ))}
-                            </select>
-                            <div style={{ 
-                              fontSize: '0.75rem', 
-                              color: '#64748b', 
-                              marginTop: '4px',
-                              lineHeight: '1.5'
-                            }}>
-                              💡 <strong>NORMAL priorita</strong> = standardní události (ORDER_APPROVED, ORDER_SENT_TO_SUPPLIER...)<br/>
-                              📊 Použije se pro většinu notifikací dle org. hierarchie<br/>
-                              Doporučeno: <strong>📧 RECIPIENT</strong> varianta
-                            </div>
-                          </FormGroup>
-                          
-                          {/* VÝBĚR VARIANTY PRO URGENT PRIORITU */}
-                          <FormGroup>
-                            <Label>🔴 URGENT varianta</Label>
-                            <select
-                              value={templateUrgentVariant || defaultVariant}
-                              onChange={(e) => setTemplateUrgentVariant(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                fontSize: '0.9rem'
-                              }}
-                            >
-                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
-                                <option key={variant.type} value={variant.type}>
-                                  {variant.icon} {variant.name}
-                                </option>
-                              ))}
-                            </select>
-                          </FormGroup>
-                          
-                          <FormGroup>
-                            <Label>🔵 INFO varianta</Label>
-                            <select
-                              value={templateInfoVariant || defaultVariant}
-                              onChange={(e) => setTemplateInfoVariant(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                fontSize: '0.9rem'
-                              }}
-                            >
-                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
-                                <option key={variant.type} value={variant.type}>
-                                  {variant.icon} {variant.name}
-                                </option>
-                              ))}
-                            </select>
-                          </FormGroup>
-                          
-                          <div style={{
-                            padding: '10px',
-                            background: '#f0f9ff',
-                            border: '1px solid #bae6fd',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            color: '#0369a1',
-                            marginTop: '12px'
-                          }}>
-                            💡 Routing (kdy a komu poslat) definujete na <strong>šipce (EDGE)</strong>
-                          </div>
-                          
-                          {/* VÝBĚR PRO NÁHLED */}
-                          <FormGroup style={{ marginTop: '16px' }}>
-                            <Label>
-                              Varianta pro náhled níže
-                            </Label>
-                            <select
-                              value={templatePreviewVariant || templateNormalVariant || defaultVariant}
+                              value={templatePreviewVariant || defaultVariant}
                               onChange={(e) => setTemplatePreviewVariant(e.target.value)}
                               style={{
                                 width: '100%',
-                                padding: '10px 12px',
-                                border: '2px solid #cbd5e1',
+                                padding: '8px',
+                                border: '1px solid #cbd5e1',
                                 borderRadius: '6px',
-                                fontSize: '0.85rem',
-                                background: '#f8fafc',
-                                cursor: 'pointer'
+                                fontSize: '0.9rem'
                               }}
                             >
                               {availableVariants.map(variant => (
@@ -5851,34 +5754,22 @@ const OrganizationHierarchy = () => {
                                 </option>
                               ))}
                             </select>
-                            <div style={{ 
-                              fontSize: '0.7rem', 
-                              color: '#64748b', 
-                              marginTop: '4px',
-                              fontStyle: 'italic'
-                            }}>
-                              ⚙️ Toto ovládá pouze náhled emailu níže (nemá vliv na odesílání)
-                            </div>
                           </FormGroup>
                         </>
                       );
                     })()}
                     
-                    {/* INFO BOX - Event Types definujete na EDGE (šipce) */}
+                    {/* Krátké info */}
                     <div style={{
-                      padding: '12px',
+                      padding: '8px',
                       background: '#f0f9ff',
                       border: '1px solid #bae6fd',
                       borderRadius: '6px',
-                      fontSize: '0.8rem',
+                      fontSize: '0.75rem',
                       color: '#0369a1',
-                      marginTop: '16px'
+                      marginTop: '12px'
                     }}>
-                      <strong>ℹ️ Event Types definujete na EDGE (šipce):</strong><br/>
-                      Táhněte šipku z této šablony na příjemce (roli/uživatele) a tam nastavte:<br/>
-                      • <strong>Event Types</strong> = kdy poslat (ORDER_PENDING_APPROVAL, ORDER_APPROVED...)<br/>
-                      • <strong>Priority</strong> = která varianta šablony se použije (WARNING/URGENT/INFO)<br/>
-                      • <strong>Scope Filter</strong> = komu přesně poslat (všem/jen účastníkům...)
+                      💡 Routing (kdy/komu) nastavte na <strong>šipce (EDGE)</strong>
                     </div>
                     
                     {/* PREVIEW NOTIFIKACE */}
