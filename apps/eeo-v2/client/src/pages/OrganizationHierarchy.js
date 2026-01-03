@@ -1594,6 +1594,7 @@ const OrganizationHierarchy = () => {
   const [edgeSendEmail, setEdgeSendEmail] = useState(false);
   const [edgeSendInApp, setEdgeSendInApp] = useState(true);
   const [edgeRecipientRole, setEdgeRecipientRole] = useState('APPROVAL');
+  const [edgeEventTypes, setEdgeEventTypes] = useState([]); // Event types na EDGE (přesunuto z NODE)
   
   // Source INFO recipients configuration
   const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
@@ -1608,7 +1609,7 @@ const OrganizationHierarchy = () => {
   const [templateUrgentVariant, setTemplateUrgentVariant] = useState('');
   const [templateInfoVariant, setTemplateInfoVariant] = useState('');
   const [templatePreviewVariant, setTemplatePreviewVariant] = useState('');
-  const [templateEventTypes, setTemplateEventTypes] = useState([]); // Event types pro template NODE
+  const [templateEventTypes, setTemplateEventTypes] = useState([]); // ⚠️ DEPRECATED: Bude odstraněno po DB migraci (event types jsou teď na EDGE)
   
   // Detail panel data - úroveň práv pro nadřízeného
   const [permissionLevel, setPermissionLevel] = useState({
@@ -1749,6 +1750,7 @@ const OrganizationHierarchy = () => {
                 sendEmail: edgeSendEmail,
                 sendInApp: edgeSendInApp,
                 recipientRole: edgeRecipientRole,
+                eventTypes: edgeEventTypes, // ✅ NOVÉ: Event types na EDGE
                 source_info_recipients: {
                   enabled: sourceInfoEnabled,
                   fields: sourceInfoFields
@@ -1762,7 +1764,7 @@ const OrganizationHierarchy = () => {
     } else {
       prevSelectedEdgeId.current = null;
     }
-  }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, sourceInfoEnabled, sourceInfoFields, selectedEdge]);
+  }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, edgeEventTypes, sourceInfoEnabled, sourceInfoFields, selectedEdge]);
   
   // Auto-save template variant do node
   React.useEffect(() => {
@@ -2408,7 +2410,7 @@ const OrganizationHierarchy = () => {
     setEdgeSendEmail(edge.data?.sendEmail || false);
     setEdgeSendInApp(edge.data?.sendInApp !== false);
     setEdgeRecipientRole(edge.data?.recipientRole || 'APPROVAL');
-    // ❌ selectedNotificationEventTypes ODSTRANĚNO - EDGE dědí event types z parent TEMPLATE NODE
+    setEdgeEventTypes(edge.data?.eventTypes || []); // ✅ Event types na EDGE (přesunuto z NODE)
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -7586,21 +7588,21 @@ const OrganizationHierarchy = () => {
                       {/* Priorita notifikace pro příjemce - NOVÝ SYSTÉM */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
-                          📊 Priorita notifikace pro příjemce
+                          ⚡ Která varianta šablony se použije?
                           <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
                         </Label>
                         <Select 
                           value={edgeRecipientRole}
                           onChange={(e) => setEdgeRecipientRole(e.target.value)}
-                          title="Určuje, jakou variantu emailu použít (RECIPIENT vs SUBMITTER)"
+                          title="Určuje, jakou variantu emailu použít (WARNING/URGENT/INFO)"
                           style={{
                             border: edgeRecipientRole === 'EXCEPTIONAL' ? '2px solid #dc2626' : 
                                    edgeRecipientRole === 'INFO' ? '2px solid #10b981' : '2px solid #3b82f6'
                           }}
                         >
-                          <option value="EXCEPTIONAL">🚨 EXCEPTIONAL - urgentní, vyžaduje akci</option>
-                          <option value="APPROVAL">📧 NORMAL - standardní notifikace</option>
-                          <option value="INFO">✅ SUBMITTER - potvrzení pro autora akce</option>
+                          <option value="EXCEPTIONAL">🔴 URGENT - urgentní varianta</option>
+                          <option value="APPROVAL">🟡 WARNING - standardní varianta</option>
+                          <option value="INFO">🔵 INFO - informační varianta</option>
                         </Select>
                         <div style={{ 
                           fontSize: '0.75rem', 
@@ -7613,84 +7615,51 @@ const OrganizationHierarchy = () => {
                           lineHeight: '1.6'
                         }}>
                           <strong>🎯 Generic Recipient systém:</strong><br/>
-                          • <strong>EXCEPTIONAL</strong> = backend použije RECIPIENT variantu s urgentním obsahem<br/>
-                          • <strong>NORMAL</strong> = backend použije RECIPIENT variantu se standardním obsahem<br/>
-                          • <strong>SUBMITTER</strong> = backend použije SUBMITTER variantu (potvrzení pro autora)<br/><br/>
-                          💡 Varianta se automaticky vybírá podle <strong>event type priority</strong> (ORDER_PENDING_APPROVAL = EXCEPTIONAL, ORDER_APPROVED = NORMAL)
+                          • <strong>URGENT</strong> = backend použije RECIPIENT variantu s urgentním obsahem<br/>
+                          • <strong>WARNING</strong> = backend použije RECIPIENT variantu se standardním obsahem<br/>
+                          • <strong>INFO</strong> = backend použije SUBMITTER variantu (potvrzení pro autora)<br/><br/>
+                          💡 Backend automaticky vybere odpovídající variantu z šablony
                         </div>
                       </FormGroup>
                       
-                      {/* ✅ Event Types - READ-ONLY zobrazení zděděných z parent TEMPLATE */}
+                      {/* ✅ Event Types - EDITOVATELNÉ (přesunuto z NODE) */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
-                          Typy událostí (Event Types)
-                          <span style={{ color: '#3b82f6', marginLeft: '4px', fontWeight: 'normal', fontSize: '0.75rem' }}>🔒 zděděno z šablony</span>
+                          📅 Kdy poslat notifikaci (Event Types)
+                          <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
                         </Label>
-                        {(() => {
-                          // Získat parent TEMPLATE node
-                          const sourceNode = nodes.find(n => n.id === selectedEdge?.source);
-                          const parentEventTypes = sourceNode?.data?.eventTypes || [];
-                          
-                          if (parentEventTypes.length === 0) {
-                            return (
-                              <div style={{
-                                padding: '12px',
-                                background: '#fef2f2',
-                                border: '2px solid #fca5a5',
-                                borderRadius: '8px',
-                                color: '#991b1b',
-                                fontSize: '0.875rem',
-                                lineHeight: '1.5'
-                              }}>
-                                ⚠️ <strong>Šablona nemá definované žádné události!</strong><br/>
-                                Pro aktivaci tohoto spojení musíte nejprve nastavit event types u zdrojové šablony <strong>{sourceNode?.data?.label || 'Neznámá'}</strong>.
-                              </div>
-                            );
-                          }
-                          
-                          return (
-                            <div style={{
-                              padding: '12px',
-                              background: '#f0f9ff',
-                              border: '2px solid #93c5fd',
-                              borderRadius: '8px'
-                            }}>
-                              <div style={{ marginBottom: '8px', color: '#1e40af', fontWeight: '600', fontSize: '0.875rem' }}>
-                                📋 Události ze šablony "{sourceNode?.data?.label || 'Neznámá'}":
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {parentEventTypes.map((eventCode, idx) => {
-                                  // Najít plný název události
-                                  const eventDetail = notificationEventTypes.find(et => 
-                                    (et.kod || et.code) === eventCode
-                                  );
-                                  return (
-                                    <div key={idx} style={{
-                                      padding: '6px 12px',
-                                      background: '#dbeafe',
-                                      border: '1px solid #3b82f6',
-                                      borderRadius: '6px',
-                                      color: '#1e40af',
-                                      fontSize: '0.75rem',
-                                      fontWeight: '600'
-                                    }}>
-                                      {eventDetail?.nazev || eventDetail?.name || eventCode}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div style={{ 
-                                marginTop: '10px',
-                                fontSize: '0.7rem', 
-                                color: '#64748b',
-                                lineHeight: '1.4'
-                              }}>
-                                💡 <strong>Tyto události aktivují notifikaci pro příjemce na konci tohoto spojení.</strong><br/>
-                                Pro změnu událostí upravte zdrojovou šablonu (klikněte na uzel šablony).
-                              </div>
-                            </div>
-                          );
-                        })()}
+                        <CustomSelect
+                          multiple
+                          value={edgeEventTypes}
+                          onChange={(value) => setEdgeEventTypes(value)}
+                          options={(notificationEventTypes || []).map(eventType => ({
+                            id: eventType.kod || eventType.code,
+                            value: eventType.kod || eventType.code,
+                            label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
+                          }))}
+                          placeholder="Vyberte event types..."
+                          field="edgeEventTypes"
+                          selectStates={selectStates}
+                          setSelectStates={setSelectStates}
+                          searchStates={searchStates}
+                          setSearchStates={setSearchStates}
+                          touchedSelectFields={touchedSelectFields}
+                          setTouchedSelectFields={setTouchedSelectFields}
+                          toggleSelect={toggleSelect}
+                          filterOptions={filterOptions}
+                          getOptionLabel={getOptionLabel}
+                          hasTriedToSubmit={false}
+                        />
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: '#64748b', 
+                          marginTop: '6px',
+                          lineHeight: '1.5'
+                        }}>
+                          💡 <strong>Event Types = kdy systém pošle tuto notifikaci</strong><br/>
+                          Např. vyberete <strong>ORDER_PENDING_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům na konci šipky<br/>
+                          ⚠️ Pokud nevyberete žádný → notifikace se nepouští
+                        </div>
                       </FormGroup>
                       
 
