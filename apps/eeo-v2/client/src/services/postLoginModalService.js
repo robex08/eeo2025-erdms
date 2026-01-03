@@ -23,20 +23,11 @@ export const checkPostLoginModal = async (userId, token, username) => {
     // Načíst globální nastavení
     const globalSettings = await getGlobalSettings(token, username);
     
-    if (process.env.NODE_ENV === 'development') {
-      console.group('🔔 POST-LOGIN MODAL CHECK');
-      console.log('Global settings:', globalSettings);
-    }
-    
     // KRITICKÉ: Kontrola, zda je modal povolen (priorita #1)
     const enabledValue = globalSettings.post_login_modal_enabled?.hodnota || globalSettings.post_login_modal_enabled;
     const enabled = enabledValue === '1' || enabledValue === 1 || enabledValue === true;
     
     if (!enabled) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('❌ Modal zakázán v globálním nastavení (post_login_modal_enabled =', enabledValue, ')');
-        console.groupEnd();
-      }
       return null;
     }
     
@@ -55,15 +46,8 @@ export const checkPostLoginModal = async (userId, token, username) => {
     const messageId = getSettingValue('post_login_modal_message_id') || null;
     const title = getSettingValue('post_login_modal_title') || 'Upozornění';
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Modal config:', {
-        modalGuid,
-        validFrom,
-        validTo,
-        messageId,
-        title
-      });
-    }
+    // HTML obsah je už načtený v globalSettings z backendu (z tabulky 25_notifikace)
+    const htmlContent = getSettingValue('post_login_modal_content') || 'Obsah není k dispozici.';
     
     // Kontrola časové platnosti
     const now = new Date();
@@ -72,10 +56,6 @@ export const checkPostLoginModal = async (userId, token, username) => {
     if (validFrom) {
       const fromDate = new Date(validFrom);
       if (!isNaN(fromDate.getTime()) && now < fromDate) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('❌ Modal ještě není platný (od:', validFrom, ', nyní:', now.toISOString(), ')');
-          console.groupEnd();
-        }
         return null;
       }
     }
@@ -84,42 +64,13 @@ export const checkPostLoginModal = async (userId, token, username) => {
     if (validTo) {
       const toDate = new Date(validTo);
       if (!isNaN(toDate.getTime()) && now > toDate) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('❌ Modal už není platný (do:', validTo, ', nyní:', now.toISOString(), ')');
-          console.groupEnd();
-        }
         return null;
       }
     }
     
     // Kontrola localStorage - zda uživatel nezvolil "Příště nezobrazovat"
     if (modalGuid && isModalDismissedByUser(userId, modalGuid)) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('❌ Modal skrytý uživatelem pro GUID:', modalGuid);
-        console.groupEnd();
-      }
       return null;
-    }
-    
-    // Načíst HTML obsah z notifikace (pokud je specifikováno)
-    let htmlContent = getSettingValue('post_login_modal_content') || '';
-    
-    if (messageId) {
-      try {
-        // Načíst obsah ze systému notifikací
-        const notificationContent = await getNotificationContent(messageId, token, username);
-        if (notificationContent) {
-          htmlContent = notificationContent;
-        }
-      } catch (error) {
-        console.warn('⚠️ Chyba při načítání obsahu notifikace:', error);
-        // Použít fallback obsah z global settings
-      }
-    }
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ Modal se má zobrazit');
-      console.groupEnd();
     }
     
     return {
@@ -134,9 +85,6 @@ export const checkPostLoginModal = async (userId, token, username) => {
     
   } catch (error) {
     console.error('Chyba při kontrole post-login modal:', error);
-    if (process.env.NODE_ENV === 'development') {
-      console.groupEnd();
-    }
     return null;
   }
 };
@@ -147,15 +95,14 @@ export const checkPostLoginModal = async (userId, token, username) => {
  * @param {string} modalGuid - GUID modalu
  */
 export const dismissModalForUser = (userId, modalGuid) => {
-  if (!modalGuid) return;
+  if (!modalGuid) {
+    console.warn('⚠️ dismissModalForUser: chybí modalGuid');
+    return;
+  }
   
   try {
     const key = getModalDismissKey(userId, modalGuid);
     localStorage.setItem(key, 'true');
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('👤 Modal označen jako skrytý:', { userId, modalGuid, key });
-    }
   } catch (error) {
     console.warn('⚠️ Chyba při ukládání dismissal stavu:', error);
   }
@@ -172,7 +119,10 @@ export const isModalDismissedByUser = (userId, modalGuid) => {
   
   try {
     const key = getModalDismissKey(userId, modalGuid);
-    return localStorage.getItem(key) === 'true';
+    const value = localStorage.getItem(key);
+    const isDismissed = value === 'true';
+    
+    return isDismissed;
   } catch (error) {
     return false;
   }
@@ -197,10 +147,6 @@ export const clearAllModalDismissals = (userId) => {
     
     // Smazat klíče
     keysToRemove.forEach(key => localStorage.removeItem(key));
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🧹 Vymazány modal dismissal stavy:', { userId, count: keysToRemove.length });
-    }
   } catch (error) {
     console.warn('⚠️ Chyba při mazání dismissal stavů:', error);
   }
@@ -227,10 +173,6 @@ export const clearModalDismissalForAllUsers = (modalGuid) => {
     
     // Smazat klíče
     keysToRemove.forEach(key => localStorage.removeItem(key));
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🧹 Vymazány modal dismissal stavy pro GUID:', { modalGuid, count: keysToRemove.length });
-    }
   } catch (error) {
     console.warn('⚠️ Chyba při mazání dismissal stavů pro GUID:', error);
   }
@@ -303,6 +245,40 @@ export const getModalDismissalCount = (modalGuid) => {
   }
 };
 
+/**
+ * Debug funkce pro testování localStorage (volat z konzole)
+ * @param {number} userId - ID uživatele
+ * @param {string} modalGuid - GUID modalu
+ */
+export const debugModalDismiss = (userId, modalGuid) => {
+  console.group('🔧 DEBUG MODAL DISMISS');
+  
+  const key = getModalDismissKey(userId, modalGuid);
+  const value = localStorage.getItem(key);
+  const isDismissed = isModalDismissedByUser(userId, modalGuid);
+  
+  console.log('Input:', { userId, modalGuid, userIdType: typeof userId, modalGuidType: typeof modalGuid });
+  console.log('Key:', key);
+  console.log('Value:', value);
+  console.log('Is dismissed:', isDismissed);
+  
+  // Ukázka všech localStorage klíčů s modal_dismissed
+  console.log('\nVšechny modal dismiss klíče:');
+  for (let i = 0; i < localStorage.length; i++) {
+    const localKey = localStorage.key(i);
+    if (localKey && localKey.includes('post_login_modal_dismissed_')) {
+      console.log(`${localKey}: ${localStorage.getItem(localKey)}`);
+    }
+  }
+  
+  console.groupEnd();
+};
+
+// Přidat funkci do window pro snadný přístup z konzole
+if (typeof window !== 'undefined') {
+  window.debugModalDismiss = debugModalDismiss;
+}
+
 export default {
   checkPostLoginModal,
   dismissModalForUser,
@@ -310,5 +286,6 @@ export default {
   clearAllModalDismissals,
   clearModalDismissalForAllUsers,
   generateModalGuid,
-  getModalDismissalCount
+  getModalDismissalCount,
+  debugModalDismiss
 };

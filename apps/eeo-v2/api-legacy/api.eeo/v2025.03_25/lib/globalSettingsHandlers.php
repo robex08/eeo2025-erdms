@@ -116,6 +116,30 @@ function handle_get_settings($db) {
         }
         
         // Převod na boolean kde je potřeba
+        
+        // Načíst HTML obsah z tabulky 25_notifikace podle message_id
+        $modalContent = '';
+        $messageId = isset($settings['post_login_modal_message_id']) ? $settings['post_login_modal_message_id'] : null;
+        
+        if ($messageId && $messageId !== 'NULL' && $messageId !== '' && !is_null($messageId)) {
+            try {
+                $stmt2 = $db->prepare("SELECT zprava FROM 25_notifikace WHERE id = ? AND aktivni = 1 LIMIT 1");
+                $stmt2->execute([(int)$messageId]);
+                $notification = $stmt2->fetch(PDO::FETCH_ASSOC);
+                
+                if ($notification && !empty($notification['zprava'])) {
+                    $modalContent = $notification['zprava'];
+                }
+            } catch (Exception $e) {
+                error_log('Chyba při načítání obsahu notifikace ID ' . $messageId . ': ' . $e->getMessage());
+            }
+        }
+        
+        // Fallback na post_login_modal_content z global settings
+        if (empty($modalContent)) {
+            $modalContent = $settings['post_login_modal_content'] ?? '';
+        }
+        
         $result = array(
             'notifications_enabled' => ($settings['notifications_enabled'] ?? '1') === '1',
             'notifications_bell_enabled' => ($settings['notifications_inapp_enabled'] ?? '1') === '1',
@@ -124,7 +148,16 @@ function handle_get_settings($db) {
             'hierarchy_profile_id' => isset($settings['hierarchy_profile_id']) && $settings['hierarchy_profile_id'] !== 'NULL' && $settings['hierarchy_profile_id'] !== null ? (int)$settings['hierarchy_profile_id'] : null,
             'hierarchy_logic' => $settings['hierarchy_logic'] ?? 'OR',
             'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
-            'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.'
+            'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.',
+            
+            // Post-login modal settings
+            'post_login_modal_enabled' => ($settings['post_login_modal_enabled'] ?? '0') === '1',
+            'post_login_modal_guid' => $settings['post_login_modal_guid'] ?? 'modal_init_v1',
+            'post_login_modal_title' => $settings['post_login_modal_title'] ?? 'Informace',
+            'post_login_modal_valid_from' => $settings['post_login_modal_valid_from'] ?? null,
+            'post_login_modal_valid_to' => $settings['post_login_modal_valid_to'] ?? null,
+            'post_login_modal_message_id' => isset($settings['post_login_modal_message_id']) && $settings['post_login_modal_message_id'] !== 'NULL' && $settings['post_login_modal_message_id'] !== null ? (int)$settings['post_login_modal_message_id'] : null,
+            'post_login_modal_content' => $modalContent
         );
         
         http_response_code(200);
@@ -263,6 +296,40 @@ function handle_global_settings_get_OLD($db, $token_user_id) {
         $settingsModel = new GlobalSettingsModel($db);
         $allSettings = $settingsModel->getAllSettings();
         
+        // Načíst HTML obsah z tabulky 25_notifikace podle message_id
+        $modalContent = '';
+        $messageId = $allSettings['post_login_modal_message_id']['hodnota'] ?? null;
+        
+        error_log('=== POST LOGIN MODAL DEBUG ===');
+        error_log('Message ID from settings: ' . var_export($messageId, true));
+        
+        if ($messageId && $messageId !== 'NULL' && $messageId !== '' && !is_null($messageId)) {
+            try {
+                error_log('Načítám notifikaci ID: ' . $messageId);
+                $stmt = $db->prepare("SELECT zprava FROM 25_notifikace WHERE id = ? AND aktivni = 1 LIMIT 1");
+                $stmt->execute([(int)$messageId]);
+                $notification = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                error_log('Notification result: ' . var_export($notification ? 'FOUND' : 'NOT FOUND', true));
+                
+                if ($notification && !empty($notification['zprava'])) {
+                    $modalContent = $notification['zprava'];
+                    error_log('Modal content loaded from 25_notifikace, length: ' . strlen($modalContent));
+                }
+            } catch (Exception $e) {
+                error_log('CHYBA při načítání obsahu notifikace ID ' . $messageId . ': ' . $e->getMessage());
+            }
+        }
+        
+        // Fallback na post_login_modal_content z global settings, pokud není načteno z notifikace
+        if (empty($modalContent)) {
+            $modalContent = $allSettings['post_login_modal_content']['hodnota'] ?? '';
+            error_log('Using fallback from global settings, length: ' . strlen($modalContent));
+        }
+        
+        error_log('Final modal content length: ' . strlen($modalContent));
+        error_log('=== END DEBUG ===');
+        
         // Převést na strukturu pro frontend
         $settings = [
             'notifications_enabled' => ($allSettings['notifications_enabled']['hodnota'] ?? '1') === '1',
@@ -273,14 +340,14 @@ function handle_global_settings_get_OLD($db, $token_user_id) {
             'hierarchy_logic' => $allSettings['hierarchy_logic']['hodnota'] ?? 'OR',
             'maintenance_mode' => ($allSettings['maintenance_mode']['hodnota'] ?? '0') === '1',
             'maintenance_message' => $allSettings['maintenance_message']['hodnota'] ?? 'Systém je momentálně v údržbě. Omlouváme se za komplikace.',
-            // Post-login modal
+            // Post-login modal - obsah se načítá z 25_notifikace
             'post_login_modal_enabled' => ($allSettings['post_login_modal_enabled']['hodnota'] ?? '0') === '1',
             'post_login_modal_title' => $allSettings['post_login_modal_title']['hodnota'] ?? 'Důležité upozornění',
             'post_login_modal_guid' => $allSettings['post_login_modal_guid']['hodnota'] ?? 'modal_init_v1',
             'post_login_modal_valid_from' => $allSettings['post_login_modal_valid_from']['hodnota'] ?? null,
             'post_login_modal_valid_to' => $allSettings['post_login_modal_valid_to']['hodnota'] ?? null,
-            'post_login_modal_message_id' => $allSettings['post_login_modal_message_id']['hodnota'] ?? null,
-            'post_login_modal_content' => $allSettings['post_login_modal_content']['hodnota'] ?? ''
+            'post_login_modal_message_id' => $messageId && $messageId !== 'NULL' ? (int)$messageId : null,
+            'post_login_modal_content' => $modalContent
         ];
         
         http_response_code(200);

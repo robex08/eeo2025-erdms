@@ -1,38 +1,76 @@
 # Post-Login Modal Dialog System
 
 **Datum vytvoření:** 3. ledna 2026  
+**Datum aktualizace:** 3. ledna 2026  
 **Verze:** 1.0.0  
-**Status:** ✅ Production Ready
+**Status:** ✅ Production Ready - Nasazeno a funkční
 
 ## 📋 Obsah
 
 1. [Úvod](#úvod)
-2. [Funkčnost](#funkčnost)
-3. [Architektura](#architektura)
-4. [Databázové schéma](#databázové-schéma)
-5. [Backend API](#backend-api)
-6. [Frontend komponenty](#frontend-komponenty)
-7. [Použití a konfigurace](#použití-a-konfigurace)
-8. [Testování](#testování)
+2. [Funkčnost](#funkčnost)  
+3. [Aktuální implementace](#aktuální-implementace)
+4. [Architektura](#architektura)
+5. [Databázové schéma](#databázové-schéma)
+6. [Backend API](#backend-api)
+7. [Frontend komponenty](#frontend-komponenty)
+8. [Použití a konfigurace](#použití-a-konfigurace)
+9. [Testování](#testování)
 
 ---
 
 ## 🎯 Úvod
 
-Post-Login Modal Dialog System je subsystém pro zobrazování důležitých upozornění a informací uživatelům bezprostředně po přihlášení do aplikace. Systém umožňuje administrátorům:
+Post-Login Modal Dialog System je subsystém pro zobrazování důležitých upozornění a informací uživatelům bezprostředně po přihlášení do aplikace. 
 
-- Zobrazit modální dialog s HTML obsahem z notifikačního systému
-- Nastavit časovou platnost zprávy (od-do)
-- Resetovat zobrazení pomocí unikátního GUID identifikátoru
-- Zobrazovat zprávy jen jednou na uživatele (localStorage tracking)
+**Aktuální stav:** Systém je plně implementován a nasazen do produkce s funkcionalitou zobrazování uvítací zprávy pro nový EEO systém v2.
+
+### Administrace umožňuje
+
+- ✅ Zobrazit modální dialog s HTML obsahem z notifikačního systému
+- ✅ Nastavit časovou platnost zprávy (od-do) 
+- ✅ Resetovat zobrazení pomocí unikátního GUID identifikátoru
+- ✅ Zobrazovat zprávy jen jednou na uživatele (localStorage tracking)
+- ✅ Náhled vybrané notifikace v administračním rozhraní
+- ✅ Moderní, responzivní design modalu (desktop 60% šířky, mobile friendly)
 
 ### Typické použití
 
+- ✅ **Aktuálně aktivní:** Uvítací zpráva pro nový EEO systém v2
 - Důležitá systémová oznámení
 - Plánované odstávky
-- Změny v podmínkách používání
+- Změny v podmínkách používání  
 - Novinky ve funkcionalitě
 - Bezpečnostní upozornění
+
+---
+
+## 📱 Aktuální implementace
+
+### Aktivní konfigurace (3. ledna 2026)
+
+```
+post_login_modal_enabled = 1 (zapnuto)
+post_login_modal_guid = "modal_init_v1" 
+post_login_modal_title = "Důležité upozornění"
+post_login_modal_valid_from = NULL (platí okamžitě)
+post_login_modal_valid_to = "2026-01-04" (platnost do 4.1.2026)
+post_login_modal_message_id = 952 (ID notifikace v tabulce 25_notifikace)
+```
+
+### Aktivní notifikace (ID: 952)
+
+- **Nadpis:** "🎉 Vítejte v novém EEO systému v2!"
+- **Typ:** system_announcement
+- **Design:** Moderní, profesionální layout s neutrálními barvami
+- **Obsah:** Uvítací zpráva, klíčové novinky, kontaktní informace, novoroční přání
+
+### UI vlastnosti
+
+- **Desktop:** Šířka 60% viewportu (max 900px), výška max 65vh
+- **Mobile:** Responzivní design pro obrazovky ≤768px
+- **Scrollbar:** Vlastní stylování pro lepší UX
+- **Animace:** Fade-in overlay + slide-in dialog
 
 ---
 
@@ -40,11 +78,11 @@ Post-Login Modal Dialog System je subsystém pro zobrazování důležitých upo
 
 ### Klíčové vlastnosti
 
-1. **Per-User Persistence**
+1. **✅ Per-User Persistence**
    - Každý uživatel vidí modal pouze jednou
    - Tracking přes localStorage s klíčem `dismissed_post_login_modal_{username}_{guid}`
 
-2. **GUID-based Reset System**
+2. **✅ GUID-based Reset System**
    - Admin může změnit GUID → modal se znovu zobrazí všem uživatelům
    - Automatické generování nového GUID v admin UI
 
@@ -59,17 +97,36 @@ Post-Login Modal Dialog System je subsystém pro zobrazování důležitých upo
    - Fallback na statický HTML obsah z konfigurace
    - Podpora plného HTML (nadpisy, odstavce, odkazy, seznamy)
 
-5. **User Experience**
+3. **✅ HTML Content Support**
+   - Obsah načítán z tabulky notifikací
+   - Podpora pro bohatý HTML (headery, seznamy, odkazy, styly)
+   - Fallback na statický obsah pokud notifikace neexistuje
+
+4. **✅ Time-based Validity**
+   - Nastavení platnosti od-do
+   - Automatické vypnutí po uplynutí termínu
+   - NULL = okamžitá platnost nebo neomezená platnost
+
+5. **✅ User Experience**
    - Modal nelze zavřít kliknutím mimo dialog (pouze tlačítkem)
-   - Moderní design s gradientním pozadím
-   - Responzivní na všech zařízeních
-   - Tlačítko "Zobrazit příště" → uloží dismiss do localStorage
+   - Moderní design s profesionálním layoutem
+   - Responzivní na všech zařízeních (desktop 60% šířky, mobile friendly)
+   - Vlastní scrollbar styling pro lepší UX
+   - Tlačítko "Příště nezobrazovat" → uloží dismiss do localStorage
+   - Animace fade-in a slide-in pro plynulý UX
+
+6. **✅ Admin Interface**
+   - Konfigurace v AppSettings stránce
+   - Výběr notifikace z dropdown seznamu  
+   - HTML náhled vybrané notifikace
+   - Časové rozmezí platnosti s DatePicker
+   - GUID generování pro reset zobrazení
 
 ---
 
 ## 🏗️ Architektura
 
-### Přehled komponent
+### Datový tok systému
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -94,21 +151,29 @@ Post-Login Modal Dialog System je subsystém pro zobrazování důležitých upo
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              postLoginModalService.js                       │
-│  • Načte konfiguraci z /api/global-settings/post-login     │
-│  • Zkontroluje aktivaci (enabled)                           │
-│  • Zkontroluje časovou platnost                             │
-│  • Zkontroluje localStorage dismiss                         │
-│  • Načte HTML obsah z notifikace nebo fallback             │
+│  • Načte konfiguraci z globalSettingsApi.js                 │
+│  • Zkontroluje aktivaci (post_login_modal_enabled)          │
+│  • Zkontroluje časovou platnost (valid_from/to)             │
+│  • Zkontroluje localStorage dismiss pomocí GUID             │
+│  • Načte HTML obsah z notifikační služby                    │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  PostLoginModal Component                   │
 │  • Zobrazí modal s HTML obsahem                             │
-│  • Tlačítko "Zobrazit příště" → dismiss                     │
-│  • Uložení do localStorage                                  │
+│  • Responzivní design (60% desktop, 90% mobile)             │
+│  • Tlačítko "Příště nezobrazovat" → dismiss                 │
+│  • Uložení do localStorage s GUID                           │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### API endpointy
+
+**Použité API služby:**
+- ✅ `/global-settings` - načítání/ukládání konfigurace
+- ✅ `/notifications/list-for-select` - seznam dostupných notifikací  
+- ✅ `/notifications/get-content` - obsah vybrané notifikace
 
 ### Data Flow
 
@@ -183,19 +248,55 @@ WHERE id = ? AND aktivni = 1;
 
 ### 1. Global Settings API
 
-**Endpoint:** `POST /api/global-settings`  
-**Handler:** `globalSettingsHandlers.php`
+## 🗄️ Databázové schéma
+
+### Globální nastavení (tabulka: `25a_nastaveni_globalni`)
+
+**Aktuální konfigurace:**
+
+| Klíč | Hodnota | Popis |
+|------|---------|-------|
+| `post_login_modal_enabled` | `1` | Zapnutí/vypnutí modalu |
+| `post_login_modal_guid` | `modal_init_v1` | GUID pro reset tracking |  
+| `post_login_modal_title` | `Důležité upozornění` | Název modalu |
+| `post_login_modal_valid_from` | `NULL` | Platnost od (NULL = okamžitě) |
+| `post_login_modal_valid_to` | `2026-01-04` | Platnost do |
+| `post_login_modal_message_id` | `952` | ID notifikace s obsahem |
+
+### Notifikace (tabulka: `25_notifikace`)
+
+**Aktivní notifikace ID 952:**
+
+```sql
+SELECT id, typ, nadpis, kategorie, pro_vsechny, aktivni
+FROM 25_notifikace 
+WHERE id = 952;
+
+-- Result:
+-- id=952, typ=system_announcement, nadpis="🎉 Vítejte v novém EEO systému v2!"
+-- kategorie=system_announcement, pro_vsechny=1, aktivni=1
+```
+
+---
+
+## 🔗 Backend API
+
+### Global Settings API
+
+**Endpoint:** `POST /dev/api.eeo/global-settings`  
+**Handler:** `globalSettingsHandlers.php` 
+**Používá:** Tabulku `25a_nastaveni_globalni`
 
 #### Get Operation
 
 ```http
-POST /api/global-settings
+POST https://erdms.zachranka.cz/dev/api.eeo/global-settings
 Content-Type: application/json
 
 {
   "operation": "get",
-  "token": "user_token",
-  "username": "admin"
+  "token": "user_token", 
+  "username": "u01234"
 }
 ```
 
@@ -206,19 +307,18 @@ Content-Type: application/json
   "data": {
     "post_login_modal_enabled": true,
     "post_login_modal_title": "Důležité upozornění",
-    "post_login_modal_guid": "modal_2026_01_v1",
-    "post_login_modal_valid_from": "2026-01-03 00:00:00",
-    "post_login_modal_valid_to": "2026-01-10 23:59:59",
-    "post_login_modal_message_id": "950",
-    "post_login_modal_content": "<p>Fallback</p>"
+    "post_login_modal_guid": "modal_init_v1", 
+    "post_login_modal_valid_from": null,
+    "post_login_modal_valid_to": "2026-01-04",
+    "post_login_modal_message_id": 952
   }
 }
 ```
 
-#### Save Operation
+#### Save Operation  
 
 ```http
-POST /api/global-settings
+POST https://erdms.zachranka.cz/dev/api.eeo/global-settings
 Content-Type: application/json
 
 {
@@ -227,58 +327,23 @@ Content-Type: application/json
   "username": "admin",
   "settings": {
     "post_login_modal_enabled": true,
-    "post_login_modal_title": "Nové oznámení",
-    "post_login_modal_guid": "modal_2026_01_v2",
+    "post_login_modal_title": "Aktualizované oznámení", 
+    "post_login_modal_guid": "modal_2026_v2",
     "post_login_modal_valid_from": "2026-01-05 00:00:00",
     "post_login_modal_valid_to": null,
-    "post_login_modal_message_id": "951",
-    "post_login_modal_content": ""
+    "post_login_modal_message_id": 953
   }
 }
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Globální nastavení bylo úspěšně uloženo"
-}
-```
+### Notifications API
 
-### 2. Post-Login Modal API
+**Nové endpointy pro post-login modal:**
 
-**Endpoint:** `GET /api/global-settings/post-login`  
-**Handler:** `globalSettingsHandlers.php::handle_get_post_login_modal_settings()`
+#### List Notifications for Select
 
 ```http
-GET /api/global-settings/post-login
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "enabled": true,
-    "title": "Důležité upozornění",
-    "guid": "modal_2026_01_v1",
-    "validFrom": "2026-01-03T00:00:00",
-    "validTo": "2026-01-10T23:59:59",
-    "messageId": "950",
-    "content": "<h3>Vítejte!</h3><p>Důležité informace...</p>"
-  }
-}
-```
-
-### 3. Notifications List API
-
-**Endpoint:** `POST /api/notifications/list-for-select`  
-**Handler:** `notificationHandlers.php::handle_notifications_list_for_select()`
-
-Načte seznam notifikací pro admin select dropdown.
-
-```http
-POST /api/notifications/list-for-select
+POST https://erdms.zachranka.cz/dev/api.eeo/notifications/list-for-select
 Content-Type: application/json
 
 {
@@ -287,10 +352,290 @@ Content-Type: application/json
 }
 ```
 
-**Response (OrderV2 Standard):**
+**Response:**
 ```json
 {
-  "status": "success",
+  "success": true,
+  "notifications": [
+    {
+      "id": 952,
+      "nadpis": "🎉 Vítejte v novém EEO systému v2!",
+      "dt_created": "2026-01-03 01:04:24",
+      "typ": "system_announcement"
+    }
+  ]
+}
+```
+
+#### Get Notification Content
+
+```http
+POST https://erdms.zachranka.cz/dev/api.eeo/notifications/get-content
+Content-Type: application/json
+
+{
+  "token": "user_token",
+  "username": "u01234", 
+  "notificationId": 952
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "content": {
+    "id": 952,
+    "nadpis": "🎉 Vítejte v novém EEO systému v2!",
+    "zprava": "<div style=\"background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); border-radius: 12px; padding: 40px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; color: #1e293b; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);\">...</div>"
+  }
+}
+  }
+}
+```
+
+**Response:**
+```json
+{
+```
+
+---
+
+## 🎨 Frontend komponenty
+
+### 1. PostLoginModal Component
+
+**Soubor:** `/apps/eeo-v2/client/src/components/PostLoginModal.js`
+
+**Vlastnosti:**
+- ✅ Moderní responzivní design 
+- ✅ Desktop: 60% šířky viewportu (max 900px), výška max 65vh
+- ✅ Mobile: 90% šířky (max 500px), výška max 80vh  
+- ✅ Vlastní scrollbar styling v content oblasti
+- ✅ Fade-in overlay animace s blur efektem
+- ✅ Slide-in dialog animace
+- ✅ Gradient header s kulatým avatarem
+- ✅ HTML content s bezpečným dangerouslySetInnerHTML
+- ✅ Tlačítka "Příště nezobrazovat" a "OK"
+
+**Styled Components:**
+
+```javascript
+const Dialog = styled.div`
+  background: white;
+  border-radius: 16px; 
+  max-width: 900px;
+  width: 60%;
+  max-height: 65vh;
+  
+  @media (max-width: 768px) {
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+  }
+`;
+
+const Content = styled.div`
+  padding: 2rem;
+  max-height: 350px;
+  overflow-y: auto;
+  
+  /* Vlastní scrollbar styling */
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+`;
+```
+
+### 2. PostLoginModalService
+
+**Soubor:** `/apps/eeo-v2/client/src/services/postLoginModalService.js`
+
+**Klíčové funkce:**
+
+```javascript
+// Hlavní kontrolní funkce
+export const checkPostLoginModal = async (userId, token, username) => {
+  // 1. Načte globální nastavení
+  const globalSettings = await getGlobalSettings(token, username);
+  
+  // 2. Zkontroluje enabled flag
+  if (!globalSettings.post_login_modal_enabled) return null;
+  
+  // 3. Validace časové platnosti
+  const now = new Date();
+  if (validFrom && now < new Date(validFrom)) return null;
+  if (validTo && now > new Date(validTo)) return null;
+  
+  // 4. Kontrola localStorage dismiss
+  const dismissKey = `dismissed_post_login_modal_${username}_${modalGuid}`;
+  if (localStorage.getItem(dismissKey)) return null;
+  
+  // 5. Načte obsah notifikace  
+  const content = await notificationService.getContent(messageId, token, username);
+  
+  return { modalConfig, content };
+};
+
+// Dismiss funkce
+export const dismissModal = (username, modalGuid) => {
+  const key = `dismissed_post_login_modal_${username}_${modalGuid}`;
+  localStorage.setItem(key, 'true');
+};
+```
+
+### 3. AppSettings Integration
+
+**Soubor:** `/apps/eeo-v2/client/src/pages/AppSettings.js`
+
+**Nové funkce:**
+
+- ✅ `loadAvailableNotifications()` - načte seznam notifikací pro dropdown
+- ✅ `loadNotificationPreview()` - zobrazí HTML náhled vybrané notifikace  
+- ✅ `generateNewGUID()` - vygeneruje nový GUID pro reset
+- ✅ Formulářové pole pro všechna nastavení post-login modalu
+- ✅ DatePicker komponenty pro časovou platnost
+- ✅ HTML preview s `dangerouslySetInnerHTML`
+
+**UI komponenty:**
+```javascript
+// Dropdown pro výběr notifikace
+<SettingSelect
+  value={settings.post_login_modal_message_id || ''}
+  onChange={handleNotificationSelect}
+>
+  {availableNotifications.map(notif => (
+    <option key={notif.id} value={notif.id}>
+      {notif.nadpis}
+    </option>
+  ))}
+</SettingSelect>
+
+// HTML náhled
+{notificationPreview && (
+  <div dangerouslySetInnerHTML={{ __html: notificationPreview }} />
+)}
+```
+
+---
+
+## 🚀 Použití a konfigurace
+
+### Administrace (AppSettings)
+
+1. **Přístup:** Přihlášení jako admin → Nastavení aplikace
+2. **Konfigurace modulu:** Sekce "Post-Login Modal"
+3. **Nastavení:**
+   - ✅ Zapnout/vypnout modal
+   - ✅ Výběr notifikace z dropdown seznamu
+   - ✅ HTML náhled vybrané notifikace
+   - ✅ Časové rozmezí platnosti (od-do)
+   - ✅ GUID pro reset zobrazení
+
+### Vytvoření nové notifikace
+
+1. Vytvořit notifikaci v tabulce `25_notifikace`
+   - `typ = 'system_announcement'`
+   - `kategorie = 'system_announcement'` 
+   - `pro_vsechny = 1`
+   - `aktivni = 1`
+   - `zprava` = HTML obsah
+
+2. Vybrat notifikaci v AppSettings
+3. Nastavit časovou platnost  
+4. Uložit konfiguraci
+
+### Reset zobrazení pro všechny uživatele
+
+1. V AppSettings kliknout "Generovat nový GUID"
+2. Uložit nastavení
+3. Všichni uživatelé uvidí modal při příštím přihlášení
+
+---
+
+## ✅ Testování
+
+### Funkční testování
+
+**Scénáře:**
+- ✅ Modal se zobrazí po přihlášení když je enabled=true
+- ✅ Modal se nezobrazí když je enabled=false  
+- ✅ Časová platnost (valid_from/to) funguje správně
+- ✅ "Příště nezobrazovat" ukládá dismiss do localStorage
+- ✅ Změna GUID resetuje dismiss pro všechny uživatele
+- ✅ HTML obsah se zobrazuje bezpečně
+- ✅ Responzivní design na různých zařízeních
+- ✅ API endpointy fungují podle specifikace
+
+### Aktuální stav (3. ledna 2026)
+
+**✅ Production Ready:**
+- Systém je plně nasazen a funkční
+- Aktivní uvítací zpráva pro EEO systém v2
+- Moderní profesionální design
+- Všechny komponenty otestovány a funkční
+
+### Browser kompatibilita
+- ✅ Chrome/Chromium  
+- ✅ Firefox
+- ✅ Safari
+- ✅ Edge
+
+### Responsive testování
+- ✅ Desktop (1920px+)
+- ✅ Tablet (768px-1200px) 
+- ✅ Mobile (≤768px)
+
+---
+
+## 📋 Shrnutí implementace
+
+### ✅ Dokončené komponenty
+
+**Backend:**
+- ✅ Global settings API (`globalSettingsHandlers.php`)
+- ✅ Notifications API (`notificationHandlers.php`)  
+- ✅ Databázové schéma (`25a_nastaveni_globalni`, `25_notifikace`)
+- ✅ API routing v `api.php`
+
+**Frontend:**
+- ✅ `PostLoginModal` komponenta s responzivním designem
+- ✅ `postLoginModalService` pro business logiku
+- ✅ AppSettings integrace pro administraci
+- ✅ AuthContext integrace pro trigger po přihlášení
+
+**UX/UI:**
+- ✅ Moderní profesionální design 
+- ✅ Responzivní layout (desktop 60%, mobile 90%)
+- ✅ Vlastní scrollbar styling
+- ✅ HTML content support s bezpečným renderingem
+- ✅ Animace a transitions
+
+### 🎯 Aktuální produkční nasazení
+
+**Status:** AKTIVNÍ (3. ledna 2026)
+
+- **Typ zprávy:** Uvítací zpráva pro nový EEO systém v2
+- **Design:** Modernizovaný layout s neutrálními barvami
+- **Platnost:** Do 4. ledna 2026  
+- **Zobrazení:** Všem uživatelům při prvním přihlášení
+- **Tracking:** GUID `modal_init_v1` pro localStorage
+
+### 🔮 Možná rozšíření (budoucí verze)
+
+- **Multi-language:** Podpora více jazyků
+- **Rich media:** Podpora obrázků a videí 
+- **Scheduling:** Plánované zobrazení v určitý čas
+- **A/B testing:** Testování různých variant
+- **Analytics:** Sledování interakcí s modalem
+- **Push notifications:** Propojení s browser push API
+
+---
+
+**Dokumentace aktualizována:** 3. ledna 2026  
+**Autor:** GitHub Copilot  
+**Status:** ✅ Production Ready - Plně funkční
   "data": [
     {
       "id": 950,

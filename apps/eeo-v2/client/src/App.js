@@ -267,7 +267,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
 
 function App() {
   const { isMobile } = useDevice();
-  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, userId, user } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, userId, user from AuthContext
+  const { isLoggedIn, loading, hasPermission, hasAdminRole, token, username, logout, setToken, userDetail, user_id, user } = useContext(AuthContext); // Use isLoggedIn, loading, hasPermission, hasAdminRole, token, username, setToken, userDetail, user_id, user from AuthContext
   const { showToast } = useContext(ToastContext) || {};
   const bgTasksContext = useBgTasksContext();
   const exchangeRatesContext = useExchangeRates(); // ← Nový context pro směnné kurzy
@@ -496,11 +496,35 @@ function App() {
   const handleDontShowAgainPostLoginModal = async () => {
     const { config } = postLoginModal;
     
-    if (config?.modalGuid && userId) {
+    console.group('🔧 DISMISS MODAL DEBUG');
+    console.log('Config:', config);
+    console.log('user_id:', user_id);
+    console.log('user_id type:', typeof user_id);
+    console.log('ModalGuid:', config?.modalGuid);
+    console.log('ModalGuid type:', typeof config?.modalGuid);
+    
+    if (config?.modalGuid && user_id) {
+      console.log('✅ Podmínky splněny, volám dismissModalForUser...');
+      
       // Uložit do localStorage, že uživatel nechce modal zobrazovat
       const { dismissModalForUser } = await import('./services/postLoginModalService');
-      dismissModalForUser(userId, config.modalGuid);
+      dismissModalForUser(user_id, config.modalGuid);
+      
+      // Test okamžitého načtení
+      const { isModalDismissedByUser } = await import('./services/postLoginModalService');
+      const isDismissed = isModalDismissedByUser(user_id, config.modalGuid);
+      console.log('🧪 Okamžitý test dismissed:', isDismissed);
+    } else {
+      console.warn('❌ Chybí modalGuid nebo user_id!', { 
+        modalGuid: config?.modalGuid, 
+        user_id: user_id,
+        hasConfig: !!config,
+        hasModalGuid: !!(config?.modalGuid),
+        hasUserId: !!user_id
+      });
     }
+    
+    console.groupEnd();
     
     // Zavřít modal
     handleClosePostLoginModal();
@@ -541,7 +565,7 @@ function App() {
               {/* Logout redirect listener */}
               <LogoutRedirectListener isLoggedIn={isLoggedIn} />
               {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
-              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={userId} user={user} hasPermission={hasPermission} userDetail={userDetail} />
+              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} />
               <Suspense fallback={<div style={{display:'none'}}></div>}>
                 <Routes>
                   {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}

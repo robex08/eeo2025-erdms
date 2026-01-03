@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faInfoCircle, faTimes, faEyeSlash, faCheck } from '@fortawesome/free-solid-svg-icons';
+import { faInfoCircle, faEyeSlash, faCheck } from '@fortawesome/free-solid-svg-icons';
 
 /**
  * PostLoginModal - Modal dialog zobrazený po přihlášení
@@ -42,8 +42,8 @@ const Overlay = styled.div`
 const Dialog = styled.div`
   background: white;
   border-radius: 16px;
-  max-width: 600px;
-  width: 90%;
+  max-width: 1200px;
+  width: 70%;
   max-height: 80vh;
   overflow: hidden;
   box-shadow: 
@@ -51,6 +51,49 @@ const Dialog = styled.div`
     0 10px 10px -5px rgba(0, 0, 0, 0.04),
     0 0 0 1px rgba(0, 0, 0, 0.05);
   animation: slideIn 0.3s ease-out;
+  
+  /* Extra velké obrazovky (1600px+) */
+  @media (min-width: 1600px) {
+    width: 65%;
+    max-width: 1400px;
+    max-height: 86vh;
+  }
+  
+  /* Velké obrazovky (1400px-1599px) */
+  @media (min-width: 1400px) and (max-width: 1599px) {
+    width: 70%;
+    max-width: 1200px;
+    max-height: 80vh;
+  }
+  
+  /* Střední obrazovky (1024px-1399px) */
+  @media (min-width: 1024px) and (max-width: 1399px) {
+    width: 75%;
+    max-width: 1000px;
+    max-height: 78vh;
+  }
+  
+  /* Malé desktop (768px-1023px) */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    width: 85%;
+    max-width: 800px;
+    max-height: 86vh;
+  }
+  
+  /* Tablet (481px-767px) */
+  @media (min-width: 481px) and (max-width: 767px) {
+    width: 90%;
+    max-width: 600px;
+    max-height: 92vh;
+  }
+  
+  /* Mobile (≤480px) */
+  @media (max-width: 480px) {
+    width: 95%;
+    max-width: 420px;
+    max-height: 98vh;
+    border-radius: 12px;
+  }
   
   @keyframes slideIn {
     from { 
@@ -66,11 +109,32 @@ const Dialog = styled.div`
 
 const Header = styled.div`
   background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  padding: 1.5rem 2rem;
+  padding: 0.9rem 1.2rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   position: relative;
+  
+  /* Responzivní padding */
+  @media (min-width: 1600px) {
+    padding: 1.2rem 1.5rem;
+    gap: 1.5rem;
+  }
+  
+  @media (min-width: 1024px) and (max-width: 1599px) {
+    padding: 1.05rem 1.35rem;
+    gap: 1.25rem;
+  }
+  
+  @media (max-width: 767px) {
+    padding: 0.75rem 0.9rem;
+    gap: 0.75rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0.6rem;
+    gap: 0.5rem;
+  }
 `;
 
 const IconContainer = styled.div`
@@ -88,37 +152,85 @@ const IconContainer = styled.div`
 const Title = styled.h2`
   margin: 0;
   color: white;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-`;
-
-const CloseButton = styled.button`
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  line-height: 1.3;
   
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: scale(1.05);
+  /* Responzivní velikost */
+  @media (min-width: 1600px) {
+    font-size: 1.4rem;
+  }
+  
+  @media (min-width: 768px) and (max-width: 1023px) {
+    font-size: 1.2rem;
+  }
+  
+  @media (max-width: 767px) {
+    font-size: 1.1rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1rem;
   }
 `;
 
+
+
 const Content = styled.div`
   padding: 2rem;
-  max-height: 400px;
+  max-height: 460px;
   overflow-y: auto;
+  
+  /* Responzivní padding a výška podle velikosti obrazovky */
+  @media (min-width: 1600px) {
+    padding: 2.5rem;
+    max-height: 575px;
+  }
+  
+  @media (min-width: 1024px) and (max-width: 1599px) {
+    padding: 2.25rem;
+    max-height: 518px;
+  }
+  
+  @media (min-width: 768px) and (max-width: 1023px) {
+    padding: 2rem;
+    max-height: 460px;
+  }
+  
+  @media (max-width: 767px) {
+    padding: 1.5rem;
+    max-height: 403px;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 1rem;
+    max-height: 345px;
+  }
+  
+  /* Vlastní scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+    
+    &:hover {
+      background: #94a3b8;
+    }
+  }
+  
+  &::-webkit-scrollbar-thumb:active {
+    background: #64748b;
+  }
   
   /* Styling pro HTML obsah */
   h1, h2, h3, h4, h5, h6 {
@@ -181,7 +293,29 @@ const Actions = styled.div`
   border-top: 1px solid #e5e7eb;
   display: flex;
   gap: 1rem;
-  justify-content: flex-end;
+  justify-content: space-between;
+  
+  /* Responzivní padding a layout */
+  @media (min-width: 1600px) {
+    padding: 2rem 2.5rem;
+    gap: 1.5rem;
+  }
+  
+  @media (min-width: 1024px) and (max-width: 1599px) {
+    padding: 1.75rem 2.25rem;
+    gap: 1.25rem;
+  }
+  
+  @media (max-width: 767px) {
+    padding: 1.25rem 1.5rem;
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 1rem;
+    gap: 0.5rem;
+  }
 `;
 
 const Button = styled.button`
@@ -300,9 +434,6 @@ const PostLoginModal = ({
             <FontAwesomeIcon icon={faInfoCircle} />
           </IconContainer>
           <Title>{title}</Title>
-          <CloseButton onClick={onClose}>
-            <FontAwesomeIcon icon={faTimes} />
-          </CloseButton>
         </Header>
         
         <Content>
@@ -326,20 +457,6 @@ const PostLoginModal = ({
           <div 
             dangerouslySetInnerHTML={{ __html: htmlContent }}
           />
-          
-          {modalGuid && process.env.NODE_ENV === 'development' && (
-            <div style={{ 
-              marginTop: '1.5rem', 
-              padding: '0.5rem', 
-              background: '#f3f4f6', 
-              borderRadius: '4px', 
-              fontSize: '0.75rem', 
-              color: '#6b7280',
-              fontFamily: 'monospace'
-            }}>
-              Debug: GUID {modalGuid}
-            </div>
-          )}
         </Content>
         
         <Actions>

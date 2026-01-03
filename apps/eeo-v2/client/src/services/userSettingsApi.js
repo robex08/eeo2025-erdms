@@ -196,7 +196,7 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       
       // Pokud je nastavení null nebo prázdné, použij výchozí z localStorage nebo výchozí default
       if (!settings || Object.keys(settings).length === 0) {
-        console.warn('[UserSettings] ⚠️ Backend vrátil prázdné nastavení - použijí se výchozí');
+        console.debug('[UserSettings] Backend vrátil prázdné nastavení - použijí se výchozí');
         const localSettings = loadSettingsFromLocalStorage(userId);
         if (localSettings) {
           return localSettings;
