@@ -6416,8 +6416,8 @@ const OrganizationHierarchy = () => {
                         <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
                           Rozsah příjemců
                         </Label>
-                        <Input
-                          type="select"
+                        <select
+                          className="form-control"
                           value={selectedNode.data.scopeDefinition?.type || 'ALL_IN_DEPARTMENT'}
                           onChange={(e) => {
                             const updatedNode = {
@@ -6443,7 +6443,7 @@ const OrganizationHierarchy = () => {
                           <option value="ALL_IN_DEPARTMENT">🏢 Všichni v tomto úseku</option>
                           <option value="ENTITY_PARTICIPANTS">🤝 Účastníci entity (prikazce, garant, objednatel...)</option>
                           <option value="SELECTED_DEPARTMENTS">✅ Vybrané úseky</option>
-                        </Input>
+                        </select>
                       </FormGroup>
                       
                       {/* SELECTED_DEPARTMENTS: Výběr úseků */}
@@ -6807,8 +6807,8 @@ const OrganizationHierarchy = () => {
                         <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
                           Rozsah příjemců
                         </Label>
-                        <Input
-                          type="select"
+                        <select
+                          className="form-control"
                           value={selectedNode.data.scopeDefinition?.type || 'ALL'}
                           onChange={(e) => {
                             const updatedNode = {
@@ -6834,7 +6834,7 @@ const OrganizationHierarchy = () => {
                           <option value="ALL">🌐 Všichni uživatelé s touto rolí</option>
                           <option value="SELECTED">✅ Jen vybraní uživatelé</option>
                           <option value="DYNAMIC_FROM_ENTITY">⚡ Dynamicky z pole entity</option>
-                        </Input>
+                        </select>
                       </FormGroup>
                       
                       {/* DYNAMIC: Výběr pole */}
@@ -6843,8 +6843,8 @@ const OrganizationHierarchy = () => {
                           <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
                             Pole entity (např. prikazce_id)
                           </Label>
-                          <Input
-                            type="select"
+                          <select
+                            className="form-control"
                             value={selectedNode.data.scopeDefinition?.field || 'prikazce_id'}
                             onChange={(e) => {
                               const updatedNode = {
@@ -6872,7 +6872,7 @@ const OrganizationHierarchy = () => {
                             <option value="objednatel_id">📝 objednatel_id (Objednatel)</option>
                             <option value="uzivatel_id">👨‍💼 uzivatel_id (Uživatel)</option>
                             <option value="prikazce_fakturace_id">💰 prikazce_fakturace_id (Příkazce fakturace)</option>
-                          </Input>
+                          </select>
                           <div style={{ 
                             marginTop: '8px', 
                             fontSize: '0.75rem', 
