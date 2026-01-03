@@ -5722,10 +5722,10 @@ const OrganizationHierarchy = () => {
                       
                       return (
                         <>
-                          {/* VÝBĚR VARIANTY PRO STANDARDNÍ PRIORITU (NORMAL) */}
+                          {/* VÝBĚR VARIANTY PRO STANDARDNÍ PRIORITU (WARNING) */}
                           <FormGroup>
                             <Label>
-                              📧 Email varianta pro NORMAL prioritu
+                              🟡 Email varianta pro WARNING prioritu
                               <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
                             </Label>
                             <select
@@ -5792,8 +5792,8 @@ const OrganizationHierarchy = () => {
                               marginTop: '4px',
                               lineHeight: '1.5'
                             }}>
-                              💡 <strong>EXCEPTIONAL priorita</strong> = urgentní události (ORDER_PENDING_APPROVAL, ORDER_REJECTED...)<br/>
-                              🚨 Backend automaticky vybere tuto variantu pro EXCEPTIONAL event types<br/>
+                              💡 <strong>URGENT priorita</strong> = urgentní události (ORDER_PENDING_APPROVAL, ORDER_REJECTED...)<br/>
+                              🚨 Backend automaticky vybere tuto variantu pro URGENT event types<br/>
                               Doporučeno: <strong>📧 RECIPIENT</strong> varianta (stejná šablona, jen urgentní obsah)
                             </div>
                           </FormGroup>
@@ -5846,14 +5846,14 @@ const OrganizationHierarchy = () => {
                             color: '#1e40af',
                             marginTop: '12px'
                           }}>
-                            <strong>🎯 Nový Generic Recipient systém:</strong>
+                            <strong>🎯 Generic Recipient systém:</strong>
                             <ul style={{ margin: '8px 0 0 0', paddingLeft: '18px', lineHeight: '1.7' }}>
-                              <li><strong>RECIPIENT</strong> = univerzální příjemce (dle org. hierarchie)</li>
-                              <li><strong>NORMAL</strong> = běžné události (schváleno, odesláno...)</li>
-                              <li><strong>EXCEPTIONAL</strong> = urgentní události (vyžaduje akci, problém...)</li>
-                              <li><strong>SUBMITTER</strong> = autor akce dostane potvrzení</li>
-                              <li><strong>Backend automaticky vybírá</strong> správnou variantu dle event type priority</li>
-                              <li><strong>Příjemce určíte šipkou</strong> (uživatel, role, dynamic recipient)</li>
+                              <li><strong>RECIPIENT</strong> = univerzální příjemce (dle org. hierarchie/role)</li>
+                              <li><strong>WARNING</strong> = běžné události (schváleno, odesláno...)</li>
+                              <li><strong>URGENT</strong> = urgentní události (vyžaduje akci, problém...)</li>
+                              <li><strong>INFO</strong> = potvrzení pro autora akce (SUBMITTER)</li>
+                              <li><strong>Prioritu určíte na šipce (EDGE)</strong> - která varianta se použije</li>
+                              <li><strong>Event Types také na šipce</strong> - kdy se notifikace pošle</li>
                             </ul>
                           </div>
                           
@@ -5894,45 +5894,22 @@ const OrganizationHierarchy = () => {
                       );
                     })()}
                     
-                    {/* EVENT TYPES PRO TEMPLATE */}
-                    <FormGroup style={{ marginTop: '16px' }}>
-                      <Label>
-                        Event Types (kdy se šablona použije)
-                        <span style={{ color: '#10b981', marginLeft: '4px', fontWeight: 'normal' }}>volitelné</span>
-                      </Label>
-                      <CustomSelect
-                        multiple
-                        value={templateEventTypes}
-                        onChange={(value) => setTemplateEventTypes(value)}
-                        options={(notificationEventTypes || []).map(eventType => ({
-                          id: eventType.kod || eventType.code,
-                          value: eventType.kod || eventType.code,
-                          label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
-                        }))}
-                        placeholder="Vyberte event types..."
-                        field="templateEventTypes"
-                        selectStates={selectStates}
-                        setSelectStates={setSelectStates}
-                        searchStates={searchStates}
-                        setSearchStates={setSearchStates}
-                        touchedSelectFields={touchedSelectFields}
-                        setTouchedSelectFields={setTouchedSelectFields}
-                        toggleSelect={toggleSelect}
-                        filterOptions={filterOptions}
-                        getOptionLabel={getOptionLabel}
-                        hasTriedToSubmit={false}
-                      />
-                      <div style={{ 
-                        fontSize: '0.75rem', 
-                        color: '#64748b', 
-                        marginTop: '6px',
-                        lineHeight: '1.5'
-                      }}>
-                        💡 <strong>Event Types = kdy systém pošle tuto šablonu</strong><br/>
-                        Např. vyberete <strong>ORDER_PENDING_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
-                        ⚠️ Pokud nevyberete žádný → šablona se nepoužije automaticky
-                      </div>
-                    </FormGroup>
+                    {/* INFO BOX - Event Types definujete na EDGE (šipce) */}
+                    <div style={{
+                      padding: '12px',
+                      background: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      color: '#0369a1',
+                      marginTop: '16px'
+                    }}>
+                      <strong>ℹ️ Event Types definujete na EDGE (šipce):</strong><br/>
+                      Táhněte šipku z této šablony na příjemce (roli/uživatele) a tam nastavte:<br/>
+                      • <strong>Event Types</strong> = kdy poslat (ORDER_PENDING_APPROVAL, ORDER_APPROVED...)<br/>
+                      • <strong>Priority</strong> = která varianta šablony se použije (WARNING/URGENT/INFO)<br/>
+                      • <strong>Scope Filter</strong> = komu přesně poslat (všem/jen účastníkům...)
+                    </div>
                     
                     {/* PREVIEW NOTIFIKACE */}
                     {(() => {
