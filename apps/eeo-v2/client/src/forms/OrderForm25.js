@@ -5042,6 +5042,10 @@ function OrderForm25() {
   // 🚨 KRITICKÝ FLAG: Globální blokování VŠECH save operací při zavírání
   const isClosingRef = useRef(false);
 
+  // 💾 REFS pro unmount autosave - udržují aktuální hodnoty pro cleanup funkci
+  const formDataRef = useRef(formData);
+  const attachmentsRef = useRef(attachments);
+
   // 🎯 CENTRALIZOVANÝ AUTOSAVE s debounce logikou (3 sekundy neaktivity)
   const autosaveCallbackRef = useRef(null);
 
@@ -6231,10 +6235,33 @@ function OrderForm25() {
     setIsDraftLoaded(false);
     
     if (isNewOrder && user_id) {
-      setIsDraftLoaded(true);
-
-      // ✅ KRITICKÉ: Povolit autosave v DraftManageru!
-      draftManager.setAutosaveEnabled(true, 'NEW order initialization');
+      // 🔍 KRITICKÉ: Pro novou objednávku zkontrolovat zda existuje draft
+      // Pokud ano, nechat useEffect níže ho načíst
+      // Pokud ne, okamžitě nastavit isDraftLoaded=true
+      const checkDraftAndInit = async () => {
+        try {
+          draftManager.setCurrentUser(user_id);
+          const hasDraft = await draftManager.hasDraft();
+          
+          if (hasDraft) {
+            // ✅ Existuje draft - načte se v useEffect níže
+            console.log('🔍 Detekován existující draft, čekám na načtení...');
+            setIsDraftLoaded(true); // Povolit načtení
+          } else {
+            // ✅ Neexistuje draft - nová čistá objednávka
+            setIsDraftLoaded(true);
+            // ✅ KRITICKÉ: Povolit autosave v DraftManageru!
+            draftManager.setAutosaveEnabled(true, 'NEW order initialization');
+          }
+        } catch (error) {
+          console.error('Chyba při kontrole draftu:', error);
+          // Fallback - nastavit jako novou objednávku
+          setIsDraftLoaded(true);
+          draftManager.setAutosaveEnabled(true, 'NEW order initialization (fallback)');
+        }
+      };
+      
+      checkDraftAndInit();
     } else {
     }
   }, [editOrderId, user_id]); // Spustí se při změně editOrderId
@@ -6302,34 +6329,6 @@ function OrderForm25() {
   // JEDNODUCHÉ WORKFLOW - přímo z DB stavu bez mapování
   const [isConceptSaved, setIsConceptSaved] = useState(false); // Pouze localStorage koncept
   const [isPhase1Unlocked, setIsPhase1Unlocked] = useState(false); // Stav pro odemknutí FÁZE 1
-
-  // 🧹 Cleanup při unmount - KOMPLETNÍ ČIŠTĚNÍ všech dat formuláře
-  useEffect(() => {
-    // Žádná logika tady - jen cleanup funkce
-    return () => {
-      // Cleanup POUZE při unmount komponenty
-      // ⚠️ POZOR: Použij REF pro přístup k aktuálním hodnotám - dependencies musí být prázdné!
-
-      // 🧹 KRITICKÉ: Při zavření formuláře vymazat VŠECHNY data
-      // Draft, faktury, přílohy objednávky, přílohy faktur, cache, UI state
-      if (user_id) {
-        try {
-          console.log('🧹 OrderForm25 unmount: Spouštím kompletní čištění dat formuláře');
-          
-          // Nastavit current user před čištěním
-          draftManager.setCurrentUser(user_id);
-          
-          // 🔥 NOVÉ: Kompletní čištění místo ukládání draftu
-          draftManager.deleteAllFormData();
-          
-          console.log('✅ OrderForm25 unmount: Kompletní čištění dokončeno');
-        } catch (error) {
-          console.error('❌ OrderForm25 unmount: Chyba při čištění:', error);
-        }
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 🎯 PRÁZDNÉ dependencies - spustí se JEN při mount/unmount!
 
   // 🎯 CENTRÁLNÍ NAČÍTÁNÍ DRAFTU při obnovení stránky (F5)
   // Tento useEffect se spustí když isDraftLoaded=true a není editOrderId v URL
@@ -7368,6 +7367,12 @@ function OrderForm25() {
     }
   }, [isNewOrder, isDraftLoaded, formData.jmeno, userDetail, user_id]);
 
+  // 💾 Aktualizace refs pro unmount autosave - musí být vždy aktuální
+  useEffect(() => {
+    formDataRef.current = formData;
+    attachmentsRef.current = attachments;
+  }, [formData, attachments]);
+
   // Cleanup se spustí POUZE při skutečném unmount (prázdné dependencies)
   useEffect(() => {
     return () => {
@@ -7375,6 +7380,34 @@ function OrderForm25() {
       // Zámek se uvolní POUZE explicitně přes handleCancelOrder (tlačítko ZAVŘÍT)
       // nebo při otevření jiné objednávky
       // Tím zajistíme, že i ADMIN/SUPERADMIN drží zámek při Save a zůstávají na formuláři
+
+      // 💾 AUTOSAVE PŘI UNMOUNT: Uložit koncept při opuštění formuláře
+      // Spustí se při:
+      // - Přepnutí na jinou objednávku (z notifikace, universal search, seznamu)
+      // - Navigaci na jinou stránku (dashboard, jiný modul)
+      // - Zavření tabu/okna prohlížeče
+      // NESPUSTÍ SE při:
+      // - Explicitním zavření tlačítkem "Zavřít" (isClosingRef.current = true)
+      if (!isClosingRef.current && user_id && isDraftLoaded) {
+        // Použít aktuální hodnoty z refs (vždy aktuální díky useEffect výše)
+        const currentFormData = formDataRef.current;
+        const currentAttachments = attachmentsRef.current;
+        
+        // Synchronní save přes DraftManager
+        draftManager.setCurrentUser(user_id);
+        draftManager.saveDraft(currentFormData, {
+          orderId: currentFormData.id || null,
+          attachments: currentAttachments || [],
+          metadata: {
+            isChanged: true, // Označit jako změněné aby se v seznamu zobrazilo
+            isEditMode: !!currentFormData.id,
+            isOrderSavedToDB: !!currentFormData.id
+          }
+        }).catch(err => {
+          // Tichá chyba - nemůžeme zobrazit toast při unmount
+          console.error('Chyba při autosave během unmount:', err);
+        });
+      }
     };
   }, []); // ✅ Prázdné dependencies = cleanup POUZE při unmount
 

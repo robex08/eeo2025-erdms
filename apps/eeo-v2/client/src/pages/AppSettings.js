@@ -422,10 +422,6 @@ const AppSettings = () => {
         username: username
       };
       
-      console.group('🔔 NOTIFICATIONS API CALL');
-      console.log('URL:', url);
-      console.log('REQUEST:', requestBody);
-      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -434,30 +430,20 @@ const AppSettings = () => {
         body: JSON.stringify(requestBody)
       });
       
-      console.log('RESPONSE STATUS:', response.status, response.statusText);
-      console.log('RESPONSE HEADERS:', Object.fromEntries(response.headers.entries()));
-      
       if (!response.ok) {
         const text = await response.text();
-        console.error('RESPONSE BODY (ERROR):', text);
-        console.groupEnd();
         showToast(`Chyba při načítání notifikací: HTTP ${response.status}`, { type: 'error' });
         return;
       }
       
       const text = await response.text();
-      console.log('RESPONSE BODY (RAW):', text);
       
       if (!text || text.trim() === '') {
-        console.error('EMPTY RESPONSE');
-        console.groupEnd();
         showToast('API vrátilo prázdnou odpověď', { type: 'error' });
         return;
       }
       
       const data = JSON.parse(text);
-      console.log('RESPONSE BODY (PARSED):', data);
-      console.groupEnd();
       
       if (data.status === 'success') {
         setAvailableNotifications(data.data);
@@ -467,7 +453,6 @@ const AppSettings = () => {
       }
     } catch (error) {
       console.error('Error loading notifications:', error);
-      console.groupEnd();
       showToast('Chyba při načítání notifikací: ' + error.message, { type: 'error' });
     }
   };
