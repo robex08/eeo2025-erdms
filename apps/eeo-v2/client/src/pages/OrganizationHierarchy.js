@@ -43,7 +43,8 @@ import {
   faEyeSlash,
   faLayerGroup,
   faInfoCircle,
-  faExpand
+  faExpand,
+  faBullseye
 } from '@fortawesome/free-solid-svg-icons';
 
 // API Configuration
@@ -1595,6 +1596,15 @@ const OrganizationHierarchy = () => {
   const [edgeSendInApp, setEdgeSendInApp] = useState(true);
   const [edgeRecipientRole, setEdgeRecipientRole] = useState('APPROVAL');
   const [edgeEventTypes, setEdgeEventTypes] = useState([]); // Event types na EDGE (přesunuto z NODE)
+  
+  // TARGET NODE: scopeDefinition a delivery options (Varianta B)
+  const [targetScopeType, setTargetScopeType] = useState('ALL'); // ALL / SELECTED / DYNAMIC_FROM_ENTITY
+  const [targetScopeField, setTargetScopeField] = useState('prikazce_id'); // pro DYNAMIC_FROM_ENTITY
+  const [targetSelectedIds, setTargetSelectedIds] = useState([]); // pro SELECTED
+  const [targetIncludeSubordinates, setTargetIncludeSubordinates] = useState(false);
+  const [targetDeliveryEmail, setTargetDeliveryEmail] = useState(true);
+  const [targetDeliveryInApp, setTargetDeliveryInApp] = useState(true);
+  const [targetDeliverySms, setTargetDeliverySms] = useState(false);
   
   // Source INFO recipients configuration
   const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
@@ -6521,6 +6531,230 @@ const OrganizationHierarchy = () => {
                         <li>Může mít dodatečná <strong>práva</strong> vázaná na úsek</li>
                       </ul>
                     </div>
+                    
+                    {/* TARGET NODE konfigurace - scope a delivery */}
+                    <div style={{ 
+                      marginTop: '20px', 
+                      padding: '16px', 
+                      background: 'linear-gradient(135deg, #fff5f5 0%, #ffe4e6 100%)', 
+                      border: '3px solid #f43f5e',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 12px rgba(244, 63, 94, 0.15)'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        marginBottom: '16px',
+                        fontWeight: '700',
+                        color: '#be123c',
+                        fontSize: '1rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        <FontAwesomeIcon icon={faBullseye} style={{ fontSize: '1.2rem' }} />
+                        🎯 TARGET: Komu se pošle notifikace
+                      </div>
+                      
+                      {/* Scope Type pro ÚSEK */}
+                      <FormGroup>
+                        <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
+                          Rozsah příjemců
+                        </Label>
+                        <Input
+                          type="select"
+                          value={selectedNode.data.scopeDefinition?.type || 'ALL_IN_DEPARTMENT'}
+                          onChange={(e) => {
+                            const updatedNode = {
+                              ...selectedNode,
+                              data: {
+                                ...selectedNode.data,
+                                scopeDefinition: {
+                                  ...selectedNode.data.scopeDefinition,
+                                  type: e.target.value
+                                }
+                              }
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          style={{ 
+                            background: 'white', 
+                            border: '2px solid #fb7185',
+                            fontWeight: '500',
+                            color: '#881337'
+                          }}
+                        >
+                          <option value="ALL_IN_DEPARTMENT">🏢 Všichni v tomto úseku</option>
+                          <option value="ENTITY_PARTICIPANTS">🤝 Účastníci entity (prikazce, garant, objednatel...)</option>
+                          <option value="SELECTED_DEPARTMENTS">✅ Vybrané úseky</option>
+                        </Input>
+                      </FormGroup>
+                      
+                      {/* SELECTED_DEPARTMENTS: Výběr úseků */}
+                      {selectedNode.data.scopeDefinition?.type === 'SELECTED_DEPARTMENTS' && (
+                        <FormGroup>
+                          <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
+                            Vyberte úseky
+                          </Label>
+                          <div style={{ 
+                            padding: '12px', 
+                            background: '#fff', 
+                            border: '2px solid #fb7185',
+                            borderRadius: '8px',
+                            minHeight: '100px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              🚧 UI pro výběr úseků - bude doplněno
+                            </div>
+                          </div>
+                        </FormGroup>
+                      )}
+                      
+                      {/* ENTITY_PARTICIPANTS: Info */}
+                      {selectedNode.data.scopeDefinition?.type === 'ENTITY_PARTICIPANTS' && (
+                        <div style={{ 
+                          marginTop: '10px',
+                          padding: '12px',
+                          background: '#fef3c7',
+                          border: '2px solid #f59e0b',
+                          borderRadius: '8px',
+                          fontSize: '0.8rem',
+                          color: '#78350f'
+                        }}>
+                          <strong>💡 Jak to funguje:</strong>
+                          <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                            <li>Systém načte <strong>všechny účastníky entity</strong> (prikazce_id, garant_uzivatel_id, objednatel_id, uzivatel_id...)</li>
+                            <li>Pokud je některý z nich <strong>z tohoto úseku</strong>, dostane notifikaci</li>
+                            <li>Funguje jako <strong>filtr "úsek"</strong> na seznam účastníků</li>
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Delivery Options */}
+                      <div style={{ 
+                        marginTop: '16px', 
+                        paddingTop: '16px', 
+                        borderTop: '2px dashed #fda4af'
+                      }}>
+                        <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem', marginBottom: '12px' }}>
+                          Způsob doručení
+                        </Label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.email !== false}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      email: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              📧 Email
+                            </span>
+                          </label>
+                          
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.inApp !== false}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      inApp: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              🔔 In-app notifikace (zvoneček)
+                            </span>
+                          </label>
+                          
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s',
+                            opacity: 0.6
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.sms === true}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      sms: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              📱 SMS (zatím nedostupné)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                   </>
                 )}
                 
@@ -6688,6 +6922,257 @@ const OrganizationHierarchy = () => {
                         })()}
                       </div>
                     </div>
+                    
+                    {/* TARGET NODE konfigurace - scope a delivery */}
+                    <div style={{ 
+                      marginTop: '20px', 
+                      padding: '16px', 
+                      background: 'linear-gradient(135deg, #fff5f5 0%, #ffe4e6 100%)', 
+                      border: '3px solid #f43f5e',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 12px rgba(244, 63, 94, 0.15)'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        marginBottom: '16px',
+                        fontWeight: '700',
+                        color: '#be123c',
+                        fontSize: '1rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        <FontAwesomeIcon icon={faBullseye} style={{ fontSize: '1.2rem' }} />
+                        🎯 TARGET: Komu se pošle notifikace
+                      </div>
+                      
+                      {/* Scope Type */}
+                      <FormGroup>
+                        <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
+                          Rozsah příjemců
+                        </Label>
+                        <Input
+                          type="select"
+                          value={selectedNode.data.scopeDefinition?.type || 'ALL'}
+                          onChange={(e) => {
+                            const updatedNode = {
+                              ...selectedNode,
+                              data: {
+                                ...selectedNode.data,
+                                scopeDefinition: {
+                                  ...selectedNode.data.scopeDefinition,
+                                  type: e.target.value
+                                }
+                              }
+                            };
+                            setSelectedNode(updatedNode);
+                            setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                          }}
+                          style={{ 
+                            background: 'white', 
+                            border: '2px solid #fb7185',
+                            fontWeight: '500',
+                            color: '#881337'
+                          }}
+                        >
+                          <option value="ALL">🌐 Všichni uživatelé s touto rolí</option>
+                          <option value="SELECTED">✅ Jen vybraní uživatelé</option>
+                          <option value="DYNAMIC_FROM_ENTITY">⚡ Dynamicky z pole entity</option>
+                        </Input>
+                      </FormGroup>
+                      
+                      {/* DYNAMIC: Výběr pole */}
+                      {selectedNode.data.scopeDefinition?.type === 'DYNAMIC_FROM_ENTITY' && (
+                        <FormGroup>
+                          <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
+                            Pole entity (např. prikazce_id)
+                          </Label>
+                          <Input
+                            type="select"
+                            value={selectedNode.data.scopeDefinition?.field || 'prikazce_id'}
+                            onChange={(e) => {
+                              const updatedNode = {
+                                ...selectedNode,
+                                data: {
+                                  ...selectedNode.data,
+                                  scopeDefinition: {
+                                    ...selectedNode.data.scopeDefinition,
+                                    field: e.target.value
+                                  }
+                                }
+                              };
+                              setSelectedNode(updatedNode);
+                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            style={{ 
+                              background: 'white', 
+                              border: '2px solid #fb7185',
+                              fontWeight: '500',
+                              fontSize: '0.85rem'
+                            }}
+                          >
+                            <option value="prikazce_id">👤 prikazce_id (Příkazce)</option>
+                            <option value="garant_uzivatel_id">🛡️ garant_uzivatel_id (Garant)</option>
+                            <option value="objednatel_id">📝 objednatel_id (Objednatel)</option>
+                            <option value="uzivatel_id">👨‍💼 uzivatel_id (Uživatel)</option>
+                            <option value="prikazce_fakturace_id">💰 prikazce_fakturace_id (Příkazce fakturace)</option>
+                          </Input>
+                          <div style={{ 
+                            marginTop: '8px', 
+                            fontSize: '0.75rem', 
+                            color: '#9f1239',
+                            fontStyle: 'italic'
+                          }}>
+                            💡 Systém načte uzivatel_id z tohoto pole entity a pošle notifikaci jen těm, kdo mají tuto roli
+                          </div>
+                        </FormGroup>
+                      )}
+                      
+                      {/* SELECTED: Výběr konkrétních uživatelů */}
+                      {selectedNode.data.scopeDefinition?.type === 'SELECTED' && (
+                        <FormGroup>
+                          <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
+                            Vyberte konkrétní uživatele
+                          </Label>
+                          <div style={{ 
+                            padding: '12px', 
+                            background: '#fff', 
+                            border: '2px solid #fb7185',
+                            borderRadius: '8px',
+                            minHeight: '100px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              🚧 UI pro výběr uživatelů - bude doplněno
+                            </div>
+                          </div>
+                        </FormGroup>
+                      )}
+                      
+                      {/* Delivery Options */}
+                      <div style={{ 
+                        marginTop: '16px', 
+                        paddingTop: '16px', 
+                        borderTop: '2px dashed #fda4af'
+                      }}>
+                        <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem', marginBottom: '12px' }}>
+                          Způsob doručení
+                        </Label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.email !== false}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      email: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              📧 Email
+                            </span>
+                          </label>
+                          
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.inApp !== false}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      inApp: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              🔔 In-app notifikace (zvoneček)
+                            </span>
+                          </label>
+                          
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '10px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #fda4af',
+                            transition: 'all 0.2s',
+                            opacity: 0.6
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                            <input
+                              type="checkbox"
+                              checked={selectedNode.data.delivery?.sms === true}
+                              onChange={(e) => {
+                                const updatedNode = {
+                                  ...selectedNode,
+                                  data: {
+                                    ...selectedNode.data,
+                                    delivery: {
+                                      ...selectedNode.data.delivery,
+                                      sms: e.target.checked
+                                    }
+                                  }
+                                };
+                                setSelectedNode(updatedNode);
+                                setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                              📱 SMS (zatím nedostupné)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                   </>
                 )}
                 
@@ -6722,6 +7207,161 @@ const OrganizationHierarchy = () => {
                         style={{ background: '#f0fdf4', fontWeight: '500', border: '1px solid #86efac' }}
                       />
                     </FormGroup>
+                    
+                    {/* TARGET NODE konfigurace - pouze delivery (scope není potřeba, uživatel je už konkrétní) */}
+                    <div style={{ 
+                      marginTop: '20px', 
+                      padding: '16px', 
+                      background: 'linear-gradient(135deg, #fff5f5 0%, #ffe4e6 100%)', 
+                      border: '3px solid #f43f5e',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 12px rgba(244, 63, 94, 0.15)'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        marginBottom: '16px',
+                        fontWeight: '700',
+                        color: '#be123c',
+                        fontSize: '1rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        <FontAwesomeIcon icon={faBullseye} style={{ fontSize: '1.2rem' }} />
+                        🎯 TARGET: Způsob doručení
+                      </div>
+                      
+                      <div style={{ 
+                        padding: '12px',
+                        background: '#fef3c7',
+                        border: '2px solid #f59e0b',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        color: '#78350f',
+                        marginBottom: '16px'
+                      }}>
+                        💡 <strong>Rozsah:</strong> U konkrétního uživatele není třeba definovat scope - notifikace půjde přímo tomuto uživateli.
+                      </div>
+                      
+                      {/* Delivery Options */}
+                      <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem', marginBottom: '12px' }}>
+                        Způsob doručení
+                      </Label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <label style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px',
+                          cursor: 'pointer',
+                          padding: '10px',
+                          background: 'white',
+                          borderRadius: '8px',
+                          border: '2px solid #fda4af',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                          <input
+                            type="checkbox"
+                            checked={selectedNode.data.delivery?.email !== false}
+                            onChange={(e) => {
+                              const updatedNode = {
+                                ...selectedNode,
+                                data: {
+                                  ...selectedNode.data,
+                                  delivery: {
+                                    ...selectedNode.data.delivery,
+                                    email: e.target.checked
+                                  }
+                                }
+                              };
+                              setSelectedNode(updatedNode);
+                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                            📧 Email
+                          </span>
+                        </label>
+                        
+                        <label style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px',
+                          cursor: 'pointer',
+                          padding: '10px',
+                          background: 'white',
+                          borderRadius: '8px',
+                          border: '2px solid #fda4af',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                          <input
+                            type="checkbox"
+                            checked={selectedNode.data.delivery?.inApp !== false}
+                            onChange={(e) => {
+                              const updatedNode = {
+                                ...selectedNode,
+                                data: {
+                                  ...selectedNode.data,
+                                  delivery: {
+                                    ...selectedNode.data.delivery,
+                                    inApp: e.target.checked
+                                  }
+                                }
+                              };
+                              setSelectedNode(updatedNode);
+                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                            🔔 In-app notifikace (zvoneček)
+                          </span>
+                        </label>
+                        
+                        <label style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px',
+                          cursor: 'pointer',
+                          padding: '10px',
+                          background: 'white',
+                          borderRadius: '8px',
+                          border: '2px solid #fda4af',
+                          transition: 'all 0.2s',
+                          opacity: 0.6
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
+                          <input
+                            type="checkbox"
+                            checked={selectedNode.data.delivery?.sms === true}
+                            onChange={(e) => {
+                              const updatedNode = {
+                                ...selectedNode,
+                                data: {
+                                  ...selectedNode.data,
+                                  delivery: {
+                                    ...selectedNode.data.delivery,
+                                    sms: e.target.checked
+                                  }
+                                }
+                              };
+                              setSelectedNode(updatedNode);
+                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                            }}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
+                            📱 SMS (zatím nedostupné)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </>
                 )}
                 
