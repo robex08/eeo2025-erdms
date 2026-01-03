@@ -48,27 +48,27 @@ import { loadAuthData } from '../utils/authStorage';
 
 export const NOTIFICATION_TYPES = {
   // STAVY OBJEDNÁVEK (NOVÉ - podle DB)
-  ORDER_STATUS_NOVA: 'order_status_nova',
-  ORDER_STATUS_KE_SCHVALENI: 'order_status_ke_schvaleni',
-  ORDER_STATUS_SCHVALENA: 'order_status_schvalena',
-  ORDER_STATUS_ZAMITNUTA: 'order_status_zamitnuta',
-  ORDER_STATUS_CEKA_SE: 'order_status_ceka_se',
-  ORDER_STATUS_ODESLANA: 'order_status_odeslana',
-  ORDER_STATUS_POTVRZENA: 'order_status_potvrzena',
-  ORDER_STATUS_DOKONCENA: 'order_status_dokoncena',
-  ORDER_STATUS_ZRUSENA: 'order_status_zrusena',
-  ORDER_STATUS_CEKA_POTVRZENI: 'order_status_ceka_potvrzeni',
-  ORDER_STATUS_SMAZANA: 'order_status_smazana',
-  ORDER_STATUS_ROZPRACOVANA: 'order_status_rozpracovana',
+  ORDER_STATUS_NOVA: 'ORDER_CREATED',
+  ORDER_STATUS_KE_SCHVALENI: 'ORDER_PENDING_APPROVAL',
+  ORDER_STATUS_SCHVALENA: 'ORDER_APPROVED',
+  ORDER_STATUS_ZAMITNUTA: 'ORDER_REJECTED',
+  ORDER_STATUS_CEKA_SE: 'ORDER_AWAITING_CHANGES',
+  ORDER_STATUS_ODESLANA: 'ORDER_SENT_TO_SUPPLIER',
+  ORDER_STATUS_POTVRZENA: 'ORDER_CONFIRMED_BY_SUPPLIER',
+  ORDER_STATUS_DOKONCENA: 'ORDER_COMPLETED',
+  ORDER_STATUS_ZRUSENA: 'ORDER_CANCELLED',
+  ORDER_STATUS_CEKA_POTVRZENI: 'ORDER_AWAITING_CONFIRMATION',
+  ORDER_STATUS_SMAZANA: 'ORDER_DELETED',
+  ORDER_STATUS_ROZPRACOVANA: 'ORDER_DRAFT',
 
   // REGISTR SMLUV + FINALIZACE (NOVÉ - 2025-11-04)
   // Používáme existující názvy z DB (25_notification_templates)
-  ORDER_STATUS_UVEREJNIT: 'order_status_registr_ceka',        // Má být zveřejněna (DB: id 13)
-  ORDER_STATUS_UVEREJNENA: 'order_status_registr_zverejnena', // Byla zveřejněna (DB: id 14)
+  ORDER_STATUS_UVEREJNIT: 'ORDER_REGISTRY_PENDING',        // Má být zveřejněna (DB: id 13)
+  ORDER_STATUS_UVEREJNENA: 'ORDER_REGISTRY_PUBLISHED', // Byla zveřejněna (DB: id 14)
   ORDER_STATUS_NEUVEREJNIT: 'order_status_neuverejnit',       // Nebude zveřejňovat (TODO: přidat do DB)
   ORDER_STATUS_FAKTURACE: 'order_status_faktura_prirazena',   // Fáze fakturace (DB: id 60)
   ORDER_STATUS_VECNA_SPRAVNOST: 'order_status_zkontrolovana', // Kontrola věcné správnosti (TODO: ověřit)
-  ORDER_STATUS_ZKONTROLOVANA: 'order_status_kontrola_ceka',   // Zkontrolována (DB: id 19)
+  ORDER_STATUS_ZKONTROLOVANA: 'ORDER_VERIFICATION_PENDING',   // Zkontrolována (DB: id 19)
 
   // OBECNÉ
   SYSTEM_MAINTENANCE: 'system_maintenance',
@@ -703,7 +703,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro konkrétního uživatele
  * await createNotification({
- *   type: 'order_status_schvalena',
+ *   type: 'ORDER_APPROVED',
  *   title: 'Objednávka schválena',
  *   message: 'Objednávka č. 2025-001 byla schválena',
  *   to_user_id: 5,
@@ -715,7 +715,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro skupinu uživatelů (GARANT + PŘÍKAZCE)
  * await createNotification({
- *   type: 'order_status_ke_schvaleni',
+ *   type: 'ORDER_PENDING_APPROVAL',
  *   title: 'Nová objednávka k schválení',
  *   message: 'Objednávka č. 2025-002 čeká na schválení',
  *   to_users: [3, 5, 8],

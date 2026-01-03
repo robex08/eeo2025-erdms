@@ -8,7 +8,7 @@ import { NOTIFICATION_TYPES, getNotificationTypeName, getNotificationIcon } from
  */
 const NotificationTester = ({ token, username, userId }) => {
   const [orderId, setOrderId] = useState('');
-  const [selectedType, setSelectedType] = useState('order_status_schvalena');
+  const [selectedType, setSelectedType] = useState('ORDER_APPROVED');
   const [recipientId, setRecipientId] = useState('');
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
@@ -16,17 +16,17 @@ const NotificationTester = ({ token, username, userId }) => {
 
   // Typy notifikací pro objednávky (nejpoužívanější)
   const orderNotificationTypes = [
-    'order_status_ke_schvaleni',
-    'order_status_schvalena',
-    'order_status_zamitnuta',
-    'order_status_ceka_se',
-    'order_status_odeslana',
-    'order_status_potvrzena',
-    'order_status_registr_zverejnena',
-    'order_status_faktura_pridana',
-    'order_status_faktura_uhrazena',
-    'order_status_kontrola_potvrzena',
-    'order_status_kontrola_zamitnuta'
+    'ORDER_PENDING_APPROVAL',
+    'ORDER_APPROVED',
+    'ORDER_REJECTED',
+    'ORDER_AWAITING_CHANGES',
+    'ORDER_SENT_TO_SUPPLIER',
+    'ORDER_CONFIRMED_BY_SUPPLIER',
+    'ORDER_REGISTRY_PUBLISHED',
+    'ORDER_INVOICE_ADDED',
+    'ORDER_INVOICE_PAID',
+    'ORDER_VERIFICATION_APPROVED',
+    'ORDER_VERIFICATION_REJECTED'
   ];
 
   const handlePreview = async () => {

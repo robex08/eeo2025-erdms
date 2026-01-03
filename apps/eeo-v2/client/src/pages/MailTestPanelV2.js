@@ -830,7 +830,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'APPROVER_NORMAL',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '📋 APPROVER_NORMAL (Oranžová - z DB)',
                   email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_APPROVER_NORMAL,
@@ -871,7 +871,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'APPROVER_URGENT',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '⚠️ APPROVER_URGENT (Červená - z DB)',
                   email_subject: 'EEO: Nová objednávka ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_APPROVER_URGENT,
@@ -912,7 +912,7 @@ const MailTestPanel = () => {
                 });
                 setRawTemplate({
                   id: 'SUBMITTER',
-                  type: 'order_status_ke_schvaleni',
+                  type: 'ORDER_PENDING_APPROVAL',
                   name: '✅ SUBMITTER (Zelená - z DB)',
                   email_subject: 'EEO: Vaše objednávka byla odeslána ke schválení #{order_number}',
                   email_body: DB_TEMPLATE_SUBMITTER,
@@ -951,7 +951,7 @@ const MailTestPanel = () => {
               {/* SCHVÁLENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_schvalena');
+                  const template = templates.find(t => t.type === 'ORDER_APPROVED');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -989,7 +989,7 @@ const MailTestPanel = () => {
               {/* SCHVÁLENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_schvalena');
+                  const template = templates.find(t => t.type === 'ORDER_APPROVED');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -1027,7 +1027,7 @@ const MailTestPanel = () => {
               {/* ZAMÍTNUTA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_zamitnuta');
+                  const template = templates.find(t => t.type === 'ORDER_REJECTED');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -1064,7 +1064,7 @@ const MailTestPanel = () => {
               {/* ZAMÍTNUTA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_zamitnuta');
+                  const template = templates.find(t => t.type === 'ORDER_REJECTED');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -1101,7 +1101,7 @@ const MailTestPanel = () => {
               {/* VRÁCENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_ceka_se');
+                  const template = templates.find(t => t.type === 'ORDER_AWAITING_CHANGES');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -1138,7 +1138,7 @@ const MailTestPanel = () => {
               {/* VRÁCENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_ceka_se');
+                  const template = templates.find(t => t.type === 'ORDER_AWAITING_CHANGES');
                   if (template) {
                     const demoData = {
                       '{creator_name}': username || 'Jan Novák',
@@ -1212,7 +1212,7 @@ const MailTestPanel = () => {
               {/* ODESLÁNA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_odeslana');
+                  const template = templates.find(t => t.type === 'ORDER_SENT_TO_SUPPLIER');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1246,7 +1246,7 @@ const MailTestPanel = () => {
               {/* ODESLÁNA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_odeslana');
+                  const template = templates.find(t => t.type === 'ORDER_SENT_TO_SUPPLIER');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1280,7 +1280,7 @@ const MailTestPanel = () => {
               {/* POTVRZENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_potvrzena');
+                  const template = templates.find(t => t.type === 'ORDER_CONFIRMED_BY_SUPPLIER');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1316,7 +1316,7 @@ const MailTestPanel = () => {
               {/* POTVRZENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_potvrzena');
+                  const template = templates.find(t => t.type === 'ORDER_CONFIRMED_BY_SUPPLIER');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1388,7 +1388,7 @@ const MailTestPanel = () => {
               {/* FAKTURA SCHVÁLENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_faktura_schvalena');
+                  const template = templates.find(t => t.type === 'ORDER_INVOICE_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1424,7 +1424,7 @@ const MailTestPanel = () => {
               {/* FAKTURA SCHVÁLENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_faktura_schvalena');
+                  const template = templates.find(t => t.type === 'ORDER_INVOICE_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1497,7 +1497,7 @@ const MailTestPanel = () => {
               {/* KONTROLA POTVRZENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_kontrola_potvrzena');
+                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1531,7 +1531,7 @@ const MailTestPanel = () => {
               {/* KONTROLA POTVRZENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_kontrola_potvrzena');
+                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1565,7 +1565,7 @@ const MailTestPanel = () => {
               {/* KONTROLA ZAMÍTNUTA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_kontrola_zamitnuta');
+                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_REJECTED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1599,7 +1599,7 @@ const MailTestPanel = () => {
               {/* KONTROLA ZAMÍTNUTA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'order_status_kontrola_zamitnuta');
+                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_REJECTED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',

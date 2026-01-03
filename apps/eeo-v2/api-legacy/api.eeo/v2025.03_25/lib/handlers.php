@@ -1129,10 +1129,10 @@ function handle_notifications_send_dual($input, $config, $queries) {
         return;
     }
     
-    // Načtení šablony z DB (typ = order_status_ke_schvaleni)
+    // Načtení šablony z DB (typ = ORDER_PENDING_APPROVAL)
     try {
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "🔍 Querying template...\n", FILE_APPEND);
-        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = 'order_status_ke_schvaleni' AND aktivni = 1 LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE typ = 'ORDER_PENDING_APPROVAL' AND aktivni = 1 LIMIT 1");
         $stmt->execute();
         $template = $stmt->fetch();
         file_put_contents('/tmp/dual-notification-debug.log', date('[Y-m-d H:i:s] ') . "✅ Template fetched: " . ($template ? "YES" : "NO") . "\n", FILE_APPEND);

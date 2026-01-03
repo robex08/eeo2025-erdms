@@ -193,7 +193,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_schvalena',
+      type: 'ORDER_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -215,7 +215,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_zamitnuta',
+      type: 'ORDER_REJECTED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -240,7 +240,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ke_schvaleni',
+      type: 'ORDER_PENDING_APPROVAL',
       order_id,
       action_user_id,
       to_user_id: garant_id,
@@ -263,7 +263,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_ceka_se',
+      type: 'ORDER_AWAITING_CHANGES',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -288,7 +288,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_odeslana',
+      type: 'ORDER_SENT_TO_SUPPLIER',
       order_id,
       action_user_id,
       recipients,
@@ -309,7 +309,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_potvrzena',
+      type: 'ORDER_CONFIRMED_BY_SUPPLIER',
       order_id,
       action_user_id,
       recipients,
@@ -330,7 +330,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_registr_zverejnena',
+      type: 'ORDER_REGISTRY_PUBLISHED',
       order_id,
       action_user_id,
       recipients,
@@ -351,7 +351,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_pridana',
+      type: 'ORDER_INVOICE_ADDED',
       order_id,
       action_user_id,
       to_user_id: garant_id,
@@ -372,7 +372,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'order_status_faktura_schvalena',
+      type: 'ORDER_INVOICE_APPROVED',
       order_id,
       action_user_id,
       to_user_id: creator_id,
@@ -393,7 +393,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_faktura_uhrazena',
+      type: 'ORDER_INVOICE_PAID',
       order_id,
       action_user_id,
       recipients,
@@ -414,7 +414,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_kontrola_potvrzena',
+      type: 'ORDER_VERIFICATION_APPROVED',
       order_id,
       action_user_id,
       recipients,
@@ -436,7 +436,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'order_status_kontrola_zamitnuta',
+      type: 'ORDER_VERIFICATION_REJECTED',
       order_id,
       action_user_id,
       recipients,

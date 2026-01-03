@@ -6,7 +6,7 @@
 -- Bezpečnost: Vytváří backup před migrací
 -- ═══════════════════════════════════════════════════════════════════
 
-USE eeo2025_dev;
+-- Odstraněno USE - databáze se vybírá přes CLI
 
 -- ═══════════════════════════════════════════════════════════════════
 -- 1. BACKUP TABULEK

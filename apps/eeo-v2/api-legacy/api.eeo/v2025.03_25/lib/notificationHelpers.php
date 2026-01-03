@@ -77,27 +77,27 @@ function formatTime($datetime) {
  */
 function getActionLabel($notificationType) {
     $labels = array(
-        'order_status_nova' => 'Vytvořil',
-        'order_status_rozpracovana' => 'Rozpracoval',
-        'order_status_ke_schvaleni' => 'Odeslal ke schválení',
-        'order_status_schvalena' => 'Schválil', // ✅ FÁZE 1 - Template ready
-        'order_status_zamitnuta' => 'Zamítl', // ✅ FÁZE 1 - Template ready
-        'order_status_ceka_se' => 'Vrátil k doplnění', // ✅ FÁZE 1 - Template ready
-        'order_status_odeslana' => 'Odeslal dodavateli',
-        'order_status_ceka_potvrzeni' => 'Čeká na potvrzení',
-        'order_status_potvrzena' => 'Potvrdil',
-        'order_status_registr_ceka' => 'Čeká na registr',
-        'order_status_registr_zverejnena' => 'Zveřejnil v registru',
-        'order_status_faktura_ceka' => 'Čeká na fakturu',
-        'order_status_faktura_pridana' => 'Přidal fakturu',
-        'order_status_faktura_schvalena' => 'Schválil fakturu',
-        'order_status_faktura_uhrazena' => 'Uhradil fakturu',
-        'order_status_kontrola_ceka' => 'Čeká na kontrolu',
-        'order_status_kontrola_potvrzena' => 'Potvrdil věcnou správnost',
-        'order_status_kontrola_zamitnuta' => 'Zamítl věcnou správnost',
-        'order_status_dokoncena' => 'Dokončil',
-        'order_status_zrusena' => 'Zrušil',
-        'order_status_smazana' => 'Smazal'
+        'ORDER_CREATED' => 'Vytvořil',
+        'ORDER_DRAFT' => 'Rozpracoval',
+        'ORDER_PENDING_APPROVAL' => 'Odeslal ke schválení',
+        'ORDER_APPROVED' => 'Schválil', // ✅ FÁZE 1 - Template ready
+        'ORDER_REJECTED' => 'Zamítl', // ✅ FÁZE 1 - Template ready
+        'ORDER_AWAITING_CHANGES' => 'Vrátil k doplnění', // ✅ FÁZE 1 - Template ready
+        'ORDER_SENT_TO_SUPPLIER' => 'Odeslal dodavateli',
+        'ORDER_AWAITING_CONFIRMATION' => 'Čeká na potvrzení',
+        'ORDER_CONFIRMED_BY_SUPPLIER' => 'Potvrdil',
+        'ORDER_REGISTRY_PENDING' => 'Čeká na registr',
+        'ORDER_REGISTRY_PUBLISHED' => 'Zveřejnil v registru',
+        'ORDER_INVOICE_PENDING' => 'Čeká na fakturu',
+        'ORDER_INVOICE_ADDED' => 'Přidal fakturu',
+        'ORDER_INVOICE_APPROVED' => 'Schválil fakturu',
+        'ORDER_INVOICE_PAID' => 'Uhradil fakturu',
+        'ORDER_VERIFICATION_PENDING' => 'Čeká na kontrolu',
+        'ORDER_VERIFICATION_APPROVED' => 'Potvrdil věcnou správnost',
+        'ORDER_VERIFICATION_REJECTED' => 'Zamítl věcnou správnost',
+        'ORDER_COMPLETED' => 'Dokončil',
+        'ORDER_CANCELLED' => 'Zrušil',
+        'ORDER_DELETED' => 'Smazal'
     );
     
     return isset($labels[$notificationType]) ? $labels[$notificationType] : 'Provedl akci';
@@ -111,27 +111,27 @@ function getActionLabel($notificationType) {
 function getActionIcon($notificationType) {
     // Emoji ikony pro notifikace (zobrazitelné v aplikaci i emailu)
     $icons = array(
-        'order_status_nova' => '📄',
-        'order_status_rozpracovana' => '✏️',
-        'order_status_ke_schvaleni' => '⬆️',
-        'order_status_schvalena' => '✅', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
-        'order_status_zamitnuta' => '❌', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
-        'order_status_ceka_se' => '⏸️', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
-        'order_status_odeslana' => '📤',
-        'order_status_ceka_potvrzeni' => '⏳',
-        'order_status_potvrzena' => '✔️',
-        'order_status_registr_ceka' => '📋',
-        'order_status_registr_zverejnena' => '✅✅',
-        'order_status_faktura_ceka' => '💵',
-        'order_status_faktura_pridana' => '💲',
-        'order_status_faktura_schvalena' => '☑️',
-        'order_status_faktura_uhrazena' => '💳',
-        'order_status_kontrola_ceka' => '🔍',
-        'order_status_kontrola_potvrzena' => '✅',
-        'order_status_kontrola_zamitnuta' => '🚫',
-        'order_status_dokoncena' => '🏆',
-        'order_status_zrusena' => '⊖',
-        'order_status_smazana' => '🗑️'
+        'ORDER_CREATED' => '📄',
+        'ORDER_DRAFT' => '✏️',
+        'ORDER_PENDING_APPROVAL' => '⬆️',
+        'ORDER_APPROVED' => '✅', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
+        'ORDER_REJECTED' => '❌', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
+        'ORDER_AWAITING_CHANGES' => '⏸️', // ✅ FÁZE 1 - 2 varianty (RECIPIENT/SUBMITTER)
+        'ORDER_SENT_TO_SUPPLIER' => '📤',
+        'ORDER_AWAITING_CONFIRMATION' => '⏳',
+        'ORDER_CONFIRMED_BY_SUPPLIER' => '✔️',
+        'ORDER_REGISTRY_PENDING' => '📋',
+        'ORDER_REGISTRY_PUBLISHED' => '✅✅',
+        'ORDER_INVOICE_PENDING' => '💵',
+        'ORDER_INVOICE_ADDED' => '💲',
+        'ORDER_INVOICE_APPROVED' => '☑️',
+        'ORDER_INVOICE_PAID' => '💳',
+        'ORDER_VERIFICATION_PENDING' => '🔍',
+        'ORDER_VERIFICATION_APPROVED' => '✅',
+        'ORDER_VERIFICATION_REJECTED' => '🚫',
+        'ORDER_COMPLETED' => '🏆',
+        'ORDER_CANCELLED' => '⊖',
+        'ORDER_DELETED' => '🗑️'
     );
     
     return isset($icons[$notificationType]) ? $icons[$notificationType] : '🔔';
