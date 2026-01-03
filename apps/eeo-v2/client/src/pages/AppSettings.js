@@ -364,6 +364,13 @@ const AppSettings = () => {
     const changed = JSON.stringify(settings) !== JSON.stringify(originalSettings);
     setHasChanges(changed);
   }, [settings, originalSettings]);
+
+  // 🔔 Automatické načtení náhledu notifikace při mount nebo změně message_id
+  useEffect(() => {
+    if (settings.post_login_modal_message_id) {
+      loadNotificationPreview(settings.post_login_modal_message_id);
+    }
+  }, [settings.post_login_modal_message_id]);
   
   const loadSettings = async () => {
     setLoading(true);

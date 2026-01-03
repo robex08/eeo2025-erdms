@@ -19,7 +19,7 @@ INSERT INTO 25_notifikace (
     aktivni,
     dt_created
 ) VALUES (
-    953,  -- Nové ID (952 už existuje)
+    977,  -- Nové ID (auto-increment nebo ruční)
     'system_announcement',
     '📋 Základní vstupní informace',
     -- HTML obsah - KOMPLETNÍ Z VYTVOŘENÉHO SOUBORU
@@ -36,27 +36,19 @@ INSERT INTO 25_notifikace (
         </div>
 
         <!-- Alert box - Červený WARNING -->
-        <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-left: 5px solid #dc2626; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);">
-            <div style="display: flex; align-items: flex-start; gap: 14px;">
-                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">⚠️</div>
-                <div style="flex: 1;">
-                    <h3 style="font-size: 17px; font-weight: 700; color: #991b1b; margin: 0 0 12px 0;">
-                        Upozornění: Práce s objednávkami roku 2025
-                    </h3>
-                    <p style="margin: 0 0 12px 0; color: #7f1d1d; font-size: 15px; line-height: 1.6;">
-                        Pokud potřebujete dokončit nebo vložit objednávky ještě do roku 2025, 
-                        zašlete Objednávkový formulář s&nbsp;přílohami a&nbsp;informacemi na 
-                        <a href="mailto:faktury@zachranaci.cz" style="color: #b91c1c; font-weight: 600; text-decoration: none; border-bottom: 2px solid #f87171;">faktury@zachranaci.cz</a>.
-                    </p>
-                    <div style="background: rgba(127, 29, 29, 0.08); padding: 14px 18px; border-radius: 8px; border: 2px solid #f87171;">
-                        <p style="margin: 0; font-size: 16px; font-weight: 700; color: #7f1d1d;">
-                            ⛔ V žádném případě <span style="background: #fee2e2; padding: 2px 8px; border-radius: 4px; border: 1px solid #dc2626;">NEZADÁVEJTE objednávky roku 2025 do nového EEO 2026!</span>
-                        </p>
-                        <p style="margin: 8px 0 0 0; font-size: 14px; color: #991b1b;">
-                            Čerpali by jste tím špatné finanční prostředky.
-                        </p>
-                    </div>
-                </div>
+        <div style="margin-bottom: 28px;">
+            <p style="margin: 0 0 8px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                Pokud potřebujete dokončit nebo vložit objednávky ještě do roku 2025, 
+                zašlete Objednávkový formulář s&nbsp;přílohami a&nbsp;informacemi na 
+                <a href="mailto:faktury@zachranaci.cz" style="color: #2563eb; font-weight: 600; text-decoration: none; border-bottom: 2px solid #93c5fd;">faktury@zachranaci.cz</a>.
+            </p>
+            <div style="background: rgba(220, 38, 38, 0.08); padding: 16px 20px; border-radius: 8px; border-left: 5px solid #dc2626; margin-top: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+                <p style="margin: 0; font-size: 16px; font-weight: 700; color: #7f1d1d;">
+                    ⛔ V žádném případě <span style="background: #fee2e2; padding: 2px 8px; border-radius: 4px; border: 1px solid #dc2626;">NEZADÁVEJTE objednávky roku 2025 do nového EEO 2026!</span>
+                </p>
+                <p style="margin: 8px 0 0 0; font-size: 14px; color: #991b1b;">
+                    Čerpali by jste tím špatné finanční prostředky.
+                </p>
             </div>
         </div>
 
@@ -188,7 +180,7 @@ INSERT INTO 25_notifikace (
 
 -- 2. Aktualizovat globální nastavení pro post-login modal
 UPDATE 25a_nastaveni_globalni
-SET hodnota = '953'
+SET hodnota = '977'
 WHERE klic = 'post_login_modal_message_id';
 
 -- 3. Změnit GUID pro reset "Příště nezobrazovat" u všech uživatelů
