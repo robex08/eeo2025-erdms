@@ -1,4 +1,4 @@
-USE `eeo2025-dev`;
+USE `eeo2025`;
 
 -- ============================================================================
 -- POST-LOGIN MODAL NOTIFIKACE: Základní vstupní informace (EEO v2 © 2026)
