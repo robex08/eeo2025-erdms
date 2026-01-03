@@ -7606,31 +7606,40 @@ const OrganizationHierarchy = () => {
                         </div>
                       </div>
                       
-                      {/* Typ notifikace pro příjemce */}
+                      {/* Priorita notifikace pro příjemce - NOVÝ SYSTÉM */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>
-                          🎯 Jak důležitá je tato notifikace?
-                          <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                          📊 Priorita notifikace pro příjemce
+                          <span style={{ color: '#3b82f6', marginLeft: '4px' }}>*</span>
                         </Label>
                         <Select 
                           value={edgeRecipientRole}
                           onChange={(e) => setEdgeRecipientRole(e.target.value)}
-                          title="Určuje, kterou barvu emailu použít"
+                          title="Určuje, jakou variantu emailu použít (RECIPIENT vs SUBMITTER)"
+                          style={{
+                            border: edgeRecipientRole === 'EXCEPTIONAL' ? '2px solid #dc2626' : 
+                                   edgeRecipientRole === 'INFO' ? '2px solid #10b981' : '2px solid #3b82f6'
+                          }}
                         >
-                          <option value="EXCEPTIONAL">🔴 URGENTNÍ - kritické, vyžaduje rychlou akci</option>
-                          <option value="APPROVAL">🟠 NORMÁLNÍ - standardní notifikace</option>
-                          <option value="INFO">🟢 INFORMACE - jen pro vědomí, nic nedělat</option>
+                          <option value="EXCEPTIONAL">🚨 EXCEPTIONAL - urgentní, vyžaduje akci</option>
+                          <option value="APPROVAL">📧 NORMAL - standardní notifikace</option>
+                          <option value="INFO">✅ SUBMITTER - potvrzení pro autora akce</option>
                         </Select>
                         <div style={{ 
                           fontSize: '0.75rem', 
-                          color: '#64748b', 
-                          marginTop: '6px',
-                          lineHeight: '1.5'
+                          color: '#1e40af', 
+                          marginTop: '8px',
+                          padding: '10px',
+                          background: '#eff6ff',
+                          border: '1px solid #93c5fd',
+                          borderRadius: '6px',
+                          lineHeight: '1.6'
                         }}>
-                          💡 <strong>Toto určuje, kterou BARVU emailu použít</strong> (z nastavení šablony):<br/>
-                          • <strong>URGENTNÍ</strong> = použije se 🔴 červená varianta emailu<br/>
-                          • <strong>NORMÁLNÍ</strong> = použije se 🟠 oranžová varianta emailu<br/>
-                          • <strong>INFORMACE</strong> = použije se 🟢 zelená varianta emailu
+                          <strong>🎯 Generic Recipient systém:</strong><br/>
+                          • <strong>EXCEPTIONAL</strong> = backend použije RECIPIENT variantu s urgentním obsahem<br/>
+                          • <strong>NORMAL</strong> = backend použije RECIPIENT variantu se standardním obsahem<br/>
+                          • <strong>SUBMITTER</strong> = backend použije SUBMITTER variantu (potvrzení pro autora)<br/><br/>
+                          💡 Varianta se automaticky vybírá podle <strong>event type priority</strong> (ORDER_PENDING_APPROVAL = EXCEPTIONAL, ORDER_APPROVED = NORMAL)
                         </div>
                       </FormGroup>
                       
