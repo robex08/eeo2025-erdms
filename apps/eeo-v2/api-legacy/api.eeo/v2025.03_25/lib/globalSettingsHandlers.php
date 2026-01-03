@@ -98,14 +98,17 @@ function handle_global_settings($input, $db) {
         handle_save_settings($db, isset($input['settings']) ? $input['settings'] : array(), $isSuperAdmin, $hasMaintenanceAdmin);
     } else {
         // Načíst nastavení - dostupné pro všechny přihlášené uživatele
-        handle_get_settings($db);
+        $forDisplay = isset($input['for_display']) && $input['for_display'] === true;
+        handle_get_settings($db, $forDisplay);
     }
 }
 
 /**
  * Načte nastavení z DB
+ * @param PDO $db - databázové připojení
+ * @param bool $forDisplay - true = načíst obsah z notifikace pro zobrazení, false = čistý fallback pro admin
  */
-function handle_get_settings($db) {
+function handle_get_settings($db, $forDisplay = false) {
     try {
         $stmt = $db->prepare("SELECT klic, hodnota FROM " . TBL_NASTAVENI_GLOBALNI . "");
         $stmt->execute();
@@ -117,11 +120,11 @@ function handle_get_settings($db) {
         
         // Převod na boolean kde je potřeba
         
-        // Načíst HTML obsah z tabulky 25_notifikace podle message_id
+        // Načíst HTML obsah z tabulky 25_notifikace podle message_id (POUZE pro display)
         $modalContent = '';
         $messageId = isset($settings['post_login_modal_message_id']) ? $settings['post_login_modal_message_id'] : null;
         
-        if ($messageId && $messageId !== 'NULL' && $messageId !== '' && !is_null($messageId)) {
+        if ($forDisplay && $messageId && $messageId !== 'NULL' && $messageId !== '' && !is_null($messageId)) {
             try {
                 $stmt2 = $db->prepare("SELECT zprava FROM 25_notifikace WHERE id = ? AND aktivni = 1 LIMIT 1");
                 $stmt2->execute([(int)$messageId]);
@@ -150,7 +153,7 @@ function handle_get_settings($db) {
             'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
             'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.',
             
-            // Post-login modal settings
+            // Post-login modal settings - obsah se načítá z 25_notifikace, fallback z DB
             'post_login_modal_enabled' => ($settings['post_login_modal_enabled'] ?? '0') === '1',
             'post_login_modal_guid' => $settings['post_login_modal_guid'] ?? 'modal_init_v1',
             'post_login_modal_title' => $settings['post_login_modal_title'] ?? 'Informace',
