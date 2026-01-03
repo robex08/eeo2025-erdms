@@ -5637,42 +5637,6 @@ const OrganizationHierarchy = () => {
                       <Input value={selectedNode.data.label || selectedNode.data.name} readOnly />
                     </FormGroup>
                     
-                    {/* INFO BOX - JAK FUNGUJE NOVÝ SYSTÉM */}
-                    <div style={{
-                      padding: '14px',
-                      background: 'linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%)',
-                      border: '2px solid #3b82f6',
-                      borderRadius: '8px',
-                      marginBottom: '16px'
-                    }}>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#1e40af', marginBottom: '8px' }}>
-                        🎯 Jak funguje nový notifikační systém
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: '#1e3a8a', lineHeight: '1.6' }}>
-                        <strong>1️⃣ Šablona obsahuje text a design emailu</strong><br/>
-                        <strong>2️⃣ Propojte šablonu se šipkou na příjemce:</strong>
-                        <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
-                          <li><strong>👤 Konkrétní uživatel</strong> - např. Jan Novák</li>
-                          <li><strong>🎭 Role</strong> - např. všichni s rolí "Schvalovatel"</li>
-                          <li><strong>🎯 Dynamický příjemce</strong> - např. Spouštěč akce, Objednatel, Příkazce</li>
-                        </ul>
-                        <strong>3️⃣ Na šipce nastavte:</strong>
-                        <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
-                          <li><strong>Scope Filter</strong> - koho zahrnout (všichni/jen účastníci entity...)</li>
-                          <li><strong>Event Types</strong> - kdy poslat (ORDER_PENDING_APPROVAL...)</li>
-                        </ul>
-                        <div style={{ 
-                          marginTop: '8px', 
-                          paddingTop: '8px', 
-                          borderTop: '1px solid #93c5fd',
-                          fontStyle: 'italic',
-                          fontSize: '0.75rem'
-                        }}>
-                          💡 <strong>Tip:</strong> Klikněte na <strong>šipku</strong> pro nastavení routingu, nebo skrolujte dolů pro přehled všech připojených příjemců
-                        </div>
-                      </div>
-                    </div>
-                    
                     {/* NASTAVENÍ HTML ŠABLON PRO NORMÁLNÍ A MIMOŘÁDNÝ STAV */}
                     {(() => {
                       const template = allNotificationTemplates.find(t => t.id === selectedNode.data.templateId);
