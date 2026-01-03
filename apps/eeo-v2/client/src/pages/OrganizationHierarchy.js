@@ -5698,18 +5698,85 @@ const OrganizationHierarchy = () => {
                       
                       return (
                         <>
-                          {/* Kompaktní výběr variant */}
+                          {/* Výběr varianty pro WARNING */}
                           <FormGroup>
+                            <Label>🟡 WARNING varianta</Label>
+                            <select
+                              value={templateNormalVariant || defaultVariant}
+                              onChange={(e) => setTemplateNormalVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem'
+                              }}
+                            >
+                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                          </FormGroup>
+                          
+                          {/* Výběr varianty pro URGENT */}
+                          <FormGroup>
+                            <Label>🔴 URGENT varianta</Label>
+                            <select
+                              value={templateUrgentVariant || defaultVariant}
+                              onChange={(e) => setTemplateUrgentVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem'
+                              }}
+                            >
+                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                          </FormGroup>
+                          
+                          {/* Výběr varianty pro INFO */}
+                          <FormGroup>
+                            <Label>🔵 INFO varianta</Label>
+                            <select
+                              value={templateInfoVariant || defaultVariant}
+                              onChange={(e) => setTemplateInfoVariant(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '6px',
+                                fontSize: '0.9rem'
+                              }}
+                            >
+                              {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
+                                <option key={variant.type} value={variant.type}>
+                                  {variant.icon} {variant.name}
+                                </option>
+                              ))}
+                            </select>
+                          </FormGroup>
+                          
+                          {/* Výběr pro náhled */}
+                          <FormGroup style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
                             <Label>Varianta pro náhled</Label>
                             <select
-                              value={templatePreviewVariant || defaultVariant}
+                              value={templatePreviewVariant || templateNormalVariant || defaultVariant}
                               onChange={(e) => setTemplatePreviewVariant(e.target.value)}
                               style={{
                                 width: '100%',
                                 padding: '8px',
                                 border: '1px solid #cbd5e1',
                                 borderRadius: '6px',
-                                fontSize: '0.9rem'
+                                fontSize: '0.85rem',
+                                background: '#f8fafc'
                               }}
                             >
                               {availableVariants.map(variant => (
@@ -5723,7 +5790,7 @@ const OrganizationHierarchy = () => {
                       );
                     })()}
                     
-                    {/* Krátké info */}
+                    {/* Info o routingu */}
                     <div style={{
                       padding: '8px',
                       background: '#f0f9ff',
@@ -5733,7 +5800,7 @@ const OrganizationHierarchy = () => {
                       color: '#0369a1',
                       marginTop: '12px'
                     }}>
-                      💡 Routing (kdy/komu) nastavte na <strong>šipce (EDGE)</strong>
+                      💡 Na <strong>EDGE</strong> vyberete kterou variantu poslat (WARN/URGENT/INFO)
                     </div>
                     
                     {/* PREVIEW NOTIFIKACE */}
