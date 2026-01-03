@@ -236,6 +236,7 @@ function updateOrderByIdQuery() {
         vecna_spravnost_umisteni_majetku = :vecna_spravnost_umisteni_majetku,
         vecna_spravnost_poznamka = :vecna_spravnost_poznamka,
         potvrzeni_vecne_spravnosti = :potvrzeni_vecne_spravnosti,
+        uzivatel_akt_id = :uzivatel_akt_id,
         dt_aktualizace = NOW()
     WHERE id = :id";
 }

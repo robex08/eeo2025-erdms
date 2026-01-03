@@ -624,7 +624,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
             druh_objednavky_kod = :druh_objednavky_kod,
             stav_workflow_kod = :stav_workflow_kod,
             stav_objednavky = :stav_objednavky,
-            uzivatel_id = :uzivatel_id,
+            -- uzivatel_id PROTECTED: Do not change original creator during import  
             uzivatel_akt_id = :uzivatel_akt_id,
             garant_uzivatel_id = :garant_uzivatel_id,
             objednatel_id = :objednatel_id,
@@ -656,7 +656,7 @@ function updateImportedOrder($db, $existing_id, $oldOrder, $uzivatel_id) {
         $old_user_id = isset($oldOrder['user_id']) ? intval($oldOrder['user_id']) : $uzivatel_id;
         $old_upd_user_id = isset($oldOrder['upd_user_id']) ? intval($oldOrder['upd_user_id']) : $uzivatel_id;
         
-        $stmt->bindParam(':uzivatel_id', $old_user_id, PDO::PARAM_INT);
+        // $stmt->bindParam(':uzivatel_id', $old_user_id, PDO::PARAM_INT); // REMOVED: uzivatel_id is protected
         $stmt->bindParam(':uzivatel_akt_id', $old_upd_user_id, PDO::PARAM_INT);
         $stmt->bindParam(':garant_uzivatel_id', $old_user_id, PDO::PARAM_INT);  // garant_id = user_id
         $stmt->bindParam(':objednatel_id', $old_user_id, PDO::PARAM_INT);       // objednatel_id = user_id

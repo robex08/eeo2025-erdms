@@ -839,8 +839,8 @@ function handle_orders_create($input, $config, $queries) {
                 if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
                     $kod = strtoupper($stavRow['kod_stavu']);
                     if (in_array($kod, array('SCHVALENA','ZAMITNUTA','CEKA_SE'))) {
-                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u WHERE id = :oid LIMIT 1");
-                        $stmtUpdSchv->execute([':u' => $params[':objednatel_id'], ':oid' => $order_id]);
+                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u, uzivatel_akt_id = :akt_id, dt_aktualizace = NOW() WHERE id = :oid LIMIT 1");
+                        $stmtUpdSchv->execute([':u' => $token_data['id'], ':akt_id' => $token_data['id'], ':oid' => $order_id]); // ✅ FIXED: Also set uzivatel_akt_id
                     }
                 }
             } catch (Exception $e) {
@@ -4375,9 +4375,11 @@ function handle_update_order($input, $config, $queries) {
         }
     }
 
-    // Always set updated_by_uzivatel_id and dt_aktualizace = NOW()
+    // Always set update tracking fields and dt_aktualizace = NOW()
     $setParts[] = 'updated_by_uzivatel_id = :updated_by_uzivatel_id';
     $params[':updated_by_uzivatel_id'] = $token_data['id'];
+    $setParts[] = 'uzivatel_akt_id = :uzivatel_akt_id';  // ✅ ADDED: Also set new field for consistency
+    $params[':uzivatel_akt_id'] = $token_data['id'];
     $setParts[] = 'dt_aktualizace = NOW()';
 
     $sql = 'UPDATE '.TBL_OBJEDNAVKY.' SET '.implode(', ', $setParts).' WHERE id = :id LIMIT 1';

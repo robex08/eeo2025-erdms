@@ -1774,10 +1774,11 @@ const OrganizationHierarchy = () => {
               ...n,
               data: {
                 ...n.data,
-                normalVariant: templateNormalVariant,
-                urgentVariant: templateUrgentVariant,
-                infoVariant: templateInfoVariant,
-                previewVariant: templatePreviewVariant,
+                // ✅ FIX: Uložit null místo prázdného stringu pro lepší fallback handling
+                normalVariant: templateNormalVariant || null,
+                urgentVariant: templateUrgentVariant || null,
+                infoVariant: templateInfoVariant || null,
+                previewVariant: templatePreviewVariant || null,
                 eventTypes: templateEventTypes // Uložit event types do node data
               }
             };
@@ -2346,10 +2347,11 @@ const OrganizationHierarchy = () => {
       
       // Načíst template varianty pokud je to template node
       if (node.data?.type === 'template') {
-        setTemplateNormalVariant(node.data.normalVariant || '');
-        setTemplateUrgentVariant(node.data.urgentVariant || '');
-        setTemplateInfoVariant(node.data.infoVariant || '');
-        setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || '');
+        // ✅ FIX: Pokud je normalVariant prázdný, nastavit na null místo prázdného stringu
+        setTemplateNormalVariant(node.data.normalVariant || null);
+        setTemplateUrgentVariant(node.data.urgentVariant || null);
+        setTemplateInfoVariant(node.data.infoVariant || null);
+        setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || null);
         setTemplateEventTypes(node.data.eventTypes || []); // Načíst event types
       }
     } else {

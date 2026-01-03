@@ -2706,7 +2706,21 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 6. Nahradit placeholdery v šabloně
                 $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderDataWithUser);
                 $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderDataWithUser);
+                
+                // 🔍 DEBUG: Před extrakcí varianty
+                error_log("   🔍 DEBUG BEFORE extractVariantFromEmailBody:");
+                error_log("      Variant to extract: '$variant'");
+                error_log("      Email body length: " . strlen($template['email_telo']));
+                error_log("      Email body starts with: " . substr($template['email_telo'], 0, 100));
+                error_log("      Looking for marker: '<!-- RECIPIENT: $variant -->'");
+                
                 $processedEmailBody = extractVariantFromEmailBody($template['email_telo'], $variant);
+                
+                // 🔍 DEBUG: Po extrakci varianty
+                error_log("   🔍 DEBUG AFTER extractVariantFromEmailBody:");
+                error_log("      Extracted length: " . strlen($processedEmailBody));
+                error_log("      Extracted starts with: " . substr($processedEmailBody, 0, 100));
+                
                 $processedEmailBody = replacePlaceholders($processedEmailBody, $placeholderDataWithUser);
                 
                 // 🔍 DEBUG: Zkontrolovat jestli se financování nahradilo
@@ -3014,11 +3028,14 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                 $variant = 'APPROVER_NORMAL'; // default
                 
                 if ($recipientRole === 'EXCEPTIONAL') {
-                    $variant = isset($node['data']['urgentVariant']) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
+                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
+                    $variant = (!empty($node['data']['urgentVariant'])) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
                 } elseif ($recipientRole === 'INFO' || $recipientRole === 'AUTHOR_INFO' || $recipientRole === 'GUARANTOR_INFO') {
-                    $variant = isset($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
+                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
+                    $variant = (!empty($node['data']['infoVariant'])) ? $node['data']['infoVariant'] : 'SUBMITTER';
                 } else {
-                    $variant = isset($node['data']['normalVariant']) ? $node['data']['normalVariant'] : 'APPROVER_NORMAL';
+                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
+                    $variant = (!empty($node['data']['normalVariant'])) ? $node['data']['normalVariant'] : 'APPROVER_NORMAL';
                 }
                 
                 error_log("         → Template variant: $variant");
@@ -3312,6 +3329,20 @@ function extractVariantFromEmailBody($emailBody, $variant) {
     }
     
     $marker = "<!-- RECIPIENT: $variant -->";
+    
+    // 🔍 DEBUG: Vypsat co hledáme a co máme
+    error_log("[extractVariantFromEmailBody] 🔍 Searching for variant: '$variant'");
+    error_log("[extractVariantFromEmailBody]    Marker: '$marker'");
+    error_log("[extractVariantFromEmailBody]    Email body length: " . strlen($emailBody));
+    error_log("[extractVariantFromEmailBody]    First 150 chars: " . substr($emailBody, 0, 150));
+    
+    // Zkontrolovat všechny markery v emailBody
+    preg_match_all('/<!-- RECIPIENT: ([A-Z_]+) -->/', $emailBody, $matches);
+    if (!empty($matches[1])) {
+        error_log("[extractVariantFromEmailBody]    Found markers in body: " . implode(', ', $matches[1]));
+    } else {
+        error_log("[extractVariantFromEmailBody]    ⚠️ NO markers found in body!");
+    }
     
     // ✅ OPRAVENO: Správná kontrola - strpos() vrací 0 pokud je marker na začátku!
     if (strpos($emailBody, $marker) === false) {
