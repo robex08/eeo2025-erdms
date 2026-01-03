@@ -24896,8 +24896,8 @@ function OrderForm25() {
                       const objFiles = attachments?.filter(a => getFilePrefix(a) === 'obj-') || [];
                       // Rendering attachments list - objFiles: objFiles.length
                       return objFiles.length > 0 && (
-                      <div style={{ marginTop: '1rem' }}>
-                        <div style={{
+                        <div style={{ marginTop: '1rem' }}>
+                          <div style={{
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
