@@ -6915,20 +6915,38 @@ const OrganizationHierarchy = () => {
                           className="form-control"
                           value={selectedNode?.data?.scopeDefinition?.type || 'ALL'}
                           onChange={(e) => {
-                            console.log('SELECT CHANGE:', e.target.value);
-                            const updatedNode = {
-                              ...selectedNode,
-                              data: {
-                                ...selectedNode.data,
-                                scopeDefinition: {
-                                  ...(selectedNode.data.scopeDefinition || {}),
-                                  type: e.target.value
+                            const newValue = e.target.value;
+                            console.log('SELECT CHANGE:', newValue);
+                            
+                            setSelectedNode(prevNode => {
+                              const updatedNode = {
+                                ...prevNode,
+                                data: {
+                                  ...prevNode.data,
+                                  scopeDefinition: {
+                                    ...(prevNode.data.scopeDefinition || {}),
+                                    type: newValue
+                                  }
                                 }
-                              }
-                            };
-                            console.log('UPDATED NODE:', updatedNode);
-                            setSelectedNode(updatedNode);
-                            setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                              };
+                              console.log('UPDATED NODE:', updatedNode);
+                              return updatedNode;
+                            });
+                            
+                            setNodes(prevNodes => prevNodes.map(n => 
+                              n.id === selectedNode.id 
+                                ? {
+                                    ...n,
+                                    data: {
+                                      ...n.data,
+                                      scopeDefinition: {
+                                        ...(n.data.scopeDefinition || {}),
+                                        type: newValue
+                                      }
+                                    }
+                                  }
+                                : n
+                            ));
                           }}
                           style={{ 
                             border: '2px solid #fb7185',
