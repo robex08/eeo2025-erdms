@@ -3084,16 +3084,49 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId) 
                         continue;
                     }
                     
+                    // ✅ OPRAVA: Určit roli podle KONKRÉTNÍHO přiřazení v objednávce
+                    // Pokud má org hierarchie roli APPROVAL/EXCEPTIONAL (schvalovatel),
+                    // ale v TÉTO objednávce je garant/objednatel (ne schvalovatel),
+                    // změnit na INFO (zelená) místo APPROVER (oranžová)
+                    $finalRecipientRole = $recipientRole;
+                    $finalVariant = $variant;
+                    
+                    if ($objectType === 'orders' && !empty($entityData)) {
+                        $isActualApprover = false;
+                        
+                        // Je tento user OPRAVDU schvalovatel TÉTO objednávky?
+                        if (!empty($entityData['schvalovatel_id']) && $entityData['schvalovatel_id'] == $userId) {
+                            $isActualApprover = true;
+                        } elseif (!empty($entityData['prikazce_id']) && $entityData['prikazce_id'] == $userId) {
+                            $isActualApprover = true;
+                        }
+                        
+                        // Je garant nebo objednatel TÉTO objednávky?
+                        $isGarant = !empty($entityData['garant_uzivatel_id']) && $entityData['garant_uzivatel_id'] == $userId;
+                        $isObjednatel = !empty($entityData['objednatel_id']) && $entityData['objednatel_id'] == $userId;
+                        $isAuthor = !empty($entityData['uzivatel_id']) && $entityData['uzivatel_id'] == $userId;
+                        
+                        // Pokud má být APPROVER, ale není skutečný schvalovatel této objednávky
+                        if (($recipientRole === 'APPROVAL' || $recipientRole === 'EXCEPTIONAL') && !$isActualApprover) {
+                            // Pokud je garant/objednatel/autor → změnit na INFO
+                            if ($isGarant || $isObjednatel || $isAuthor) {
+                                $finalRecipientRole = 'INFO';
+                                $finalVariant = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
+                                error_log("         🔄 User $userId: Changed from $recipientRole to INFO (is garant/objednatel in THIS order, not actual approver)");
+                            }
+                        }
+                    }
+                    
                     $recipients[] = array(
                         'uzivatel_id' => $userId,
-                        'recipientRole' => $recipientRole,
+                        'recipientRole' => $finalRecipientRole,
                         'sendEmail' => $sendEmailFinal,
                         'sendInApp' => $sendInAppFinal,
                         'templateId' => $templateId,
-                        'templateVariant' => $variant
+                        'templateVariant' => $finalVariant
                     );
                     
-                    error_log("         ✅ User $userId: Added to recipients (email=" . ($sendEmailFinal ? 'YES' : 'NO') . ", inapp=" . ($sendInAppFinal ? 'YES' : 'NO') . ")");
+                    error_log("         ✅ User $userId: Added to recipients (role=$finalRecipientRole, email=" . ($sendEmailFinal ? 'YES' : 'NO') . ", inapp=" . ($sendInAppFinal ? 'YES' : 'NO') . ")");
                     
                     // DEBUG do DB
                     try {
