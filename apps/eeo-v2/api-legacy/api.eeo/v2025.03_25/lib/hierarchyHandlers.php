@@ -1604,6 +1604,9 @@ function handle_hierarchy_profiles_load_structure($data, $pdo) {
         return array('success' => false, 'error' => 'Chybny JSON format struktury');
     }
     
+    // MIGRACE starých struktur na novou architekturu
+    $structure = migrateHierarchyStructureToV2($structure);
+    
     return array(
         'success' => true,
         'data' => array(
@@ -1612,6 +1615,96 @@ function handle_hierarchy_profiles_load_structure($data, $pdo) {
             'edges' => isset($structure['edges']) ? $structure['edges'] : []
         )
     );
+}
+
+/**
+ * Migrace starých hierarchických struktur na novou architekturu
+ * 
+ * ZMĚNY v2:
+ * - NODES: normalVariant → warningVariant
+ * - NODES: Přidány scopeDefinition a delivery u role/department/user
+ * - EDGES: recipientRole → priority (EXCEPTIONAL→URGENT, APPROVAL→WARNING)
+ * 
+ * @param array $structure Původní struktura
+ * @return array Migrovaná struktura
+ */
+function migrateHierarchyStructureToV2($structure) {
+    $migrated = false;
+    
+    // MIGRACE NODES
+    if (isset($structure['nodes'])) {
+        foreach ($structure['nodes'] as &$node) {
+            // TEMPLATE nodes - přejmenování variant
+            if ($node['type'] === 'template') {
+                // normalVariant → warningVariant
+                if (isset($node['data']['normalVariant'])) {
+                    $node['data']['warningVariant'] = $node['data']['normalVariant'];
+                    unset($node['data']['normalVariant']);
+                    $migrated = true;
+                }
+                
+                // Ensure eventTypes array exists
+                if (!isset($node['data']['eventTypes'])) {
+                    $node['data']['eventTypes'] = [];
+                }
+            }
+            
+            // TARGET nodes (role/department/user) - přidat scopeDefinition a delivery
+            if (in_array($node['type'], ['role', 'department', 'user'])) {
+                // Přidat defaultní scopeDefinition pokud chybí
+                if (!isset($node['data']['scopeDefinition'])) {
+                    $node['data']['scopeDefinition'] = ['type' => 'ALL'];
+                    $migrated = true;
+                }
+                
+                // Přidat defaultní delivery pokud chybí
+                if (!isset($node['data']['delivery'])) {
+                    $node['data']['delivery'] = [
+                        'email' => true,
+                        'inApp' => true,
+                        'sms' => false
+                    ];
+                    $migrated = true;
+                }
+            }
+        }
+    }
+    
+    // MIGRACE EDGES
+    if (isset($structure['edges'])) {
+        foreach ($structure['edges'] as &$edge) {
+            // recipientRole → priority mapping
+            if (isset($edge['data']['recipientRole'])) {
+                $roleMapping = [
+                    'EXCEPTIONAL' => 'URGENT',
+                    'APPROVAL' => 'WARNING',
+                    'INFO' => 'INFO'
+                ];
+                
+                $oldRole = $edge['data']['recipientRole'];
+                $edge['data']['priority'] = $roleMapping[$oldRole] ?? 'WARNING';
+                unset($edge['data']['recipientRole']);
+                $migrated = true;
+            }
+            
+            // Přidat defaultní priority pokud chybí
+            if (!isset($edge['data']['priority'])) {
+                $edge['data']['priority'] = 'WARNING';
+                $migrated = true;
+            }
+            
+            // Ensure eventTypes array exists (subset of template eventTypes)
+            if (!isset($edge['data']['eventTypes'])) {
+                $edge['data']['eventTypes'] = [];
+            }
+        }
+    }
+    
+    if ($migrated) {
+        error_log("HIERARCHY MIGRATION: Structure migrated to v2 architecture");
+    }
+    
+    return $structure;
 }
 
 ?>

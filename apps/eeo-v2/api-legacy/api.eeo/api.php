@@ -242,6 +242,7 @@ require_once __DIR__ . '/v2025.03_25/lib/sablonaDocxHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/docxOrderDataHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/importHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
