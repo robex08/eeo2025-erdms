@@ -605,6 +605,278 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
 }
 
 /**
+ * Načte notifikaci podle ID (pro post-login modal systém)
+ * POST /notifications/get-by-id
+ */
+function handle_notifications_get_by_id($input, $config, $queries) {
+    // Ověření tokenu
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $notification_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($notification_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID notifikace']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $result = getNotificationByIdHandler($db, $notification_id);
+        
+        if ($result['status'] === 'success') {
+            echo json_encode($result['data']);
+        } else {
+            http_response_code(404);
+            echo json_encode(['err' => $result['message']]);
+        }
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['err' => 'Chyba při načítání notifikace: ' . $e->getMessage()]);
+        error_log("[Notifications] Exception in handle_notifications_get_by_id: " . $e->getMessage());
+    }
+}
+
+/**
+ * Načte seznam notifikací pro select v admin rozhraní
+ * POST /notifications/list-for-select
+ */
+/**
+ * POST /notifications/list-for-select
+ * Načte seznam notifikací pro admin select dropdown
+ * OrderV2 Standard
+ */
+function handle_notifications_list_for_select($input, $config, $queries) {
+    // 1. Parametry z POST body
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    
+    if (!$token || !$request_username) {
+        http_response_code(400);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chybí token nebo username'
+        ));
+        return;
+    }
+
+    // 2. Ověření tokenu
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Neplatný nebo chybějící token'
+        ));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Username z tokenu neodpovídá username z požadavku'
+        ));
+        return;
+    }
+
+    // 3. Kontrola admin oprávnění
+    $uzivatel_id = $token_data['id'];
+    
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        
+        // 5. Kontrola admin role
+        $sql = "SELECT COUNT(*) as count FROM " . TBL_ROLE . " r
+                JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
+                WHERE ur.uzivatel_id = :uzivatel_id 
+                AND r.kod_role IN ('ADMINISTRATOR', 'SUPERADMIN')";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':uzivatel_id', $uzivatel_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result['count'] == 0) {
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Přístup odepřen - vyžaduje se role Admin nebo SuperAdmin'
+            ));
+            return;
+        }
+
+        // 6. Načíst pouze systémové notifikace pro post-login modal
+        $sql = "SELECT id, nadpis, zprava, dt_created, typ, kategorie
+                FROM " . TBL_NOTIFIKACE . "
+                WHERE aktivni = 1 
+                AND (
+                    (typ LIKE 'system_%' AND kategorie = 'system')
+                    OR typ = 'system_announcement'
+                    OR typ = 'system_notification'
+                )
+                ORDER BY dt_created DESC
+                LIMIT 50";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 7. Formátovat pro select
+        $result = array();
+        foreach ($notifications as $notif) {
+            $result[] = array(
+                'id' => (int)$notif['id'],
+                'title' => $notif['nadpis'] . ' (' . $notif['typ'] . ')',
+                'preview' => substr(strip_tags($notif['zprava']), 0, 100) . '...'
+            );
+        }
+
+        // 8. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => $result,
+            'message' => 'Notifikace načteny úspěšně',
+            'count' => count($result)
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání notifikací: ' . $e->getMessage()
+        ));
+        error_log("[Notifications] Exception in handle_notifications_list_for_select: " . $e->getMessage());
+    }
+}
+
+/**
+ * POST /notifications/get-content
+ * Načte konkrétní notifikaci pro náhled v admin UI
+ * OrderV2 Standard
+ */
+function handle_notifications_get_content($input, $config, $queries) {
+    // 1. Parametry z POST body
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $notification_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    if (!$token || !$request_username || !$notification_id) {
+        http_response_code(400);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chybí token, username nebo ID notifikace'
+        ));
+        return;
+    }
+
+    // 2. Ověření tokenu
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Neplatný nebo chybějící token'
+        ));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Username z tokenu neodpovídá username z požadavku'
+        ));
+        return;
+    }
+
+    // 3. Kontrola admin oprávnění
+    $uzivatel_id = $token_data['id'];
+    
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        
+        // 5. Kontrola admin role
+        $sql = "SELECT COUNT(*) as count FROM " . TBL_ROLE . " r
+                JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
+                WHERE ur.uzivatel_id = :uzivatel_id 
+                AND r.kod_role IN ('ADMINISTRATOR', 'SUPERADMIN')";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':uzivatel_id', $uzivatel_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result['count'] == 0) {
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Přístup odepřen - vyžaduje se role Admin nebo SuperAdmin'
+            ));
+            return;
+        }
+
+        // 6. Načíst konkrétní notifikaci
+        $sql = "SELECT id, nadpis, zprava, typ, kategorie, dt_created
+                FROM " . TBL_NOTIFIKACE . "
+                WHERE id = :id AND aktivni = 1";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':id', $notification_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $notification = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$notification) {
+            http_response_code(404);
+            echo json_encode(array(
+                'status' => 'error',
+                'message' => 'Notifikace s ID ' . $notification_id . ' nebyla nalezena nebo není aktivní'
+            ));
+            return;
+        }
+
+        // 7. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => $notification,
+            'message' => 'Notifikace načtena úspěšně'
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání notifikace: ' . $e->getMessage()
+        ));
+        error_log("[Notifications] Exception in handle_notifications_get_content: " . $e->getMessage());
+    }
+}
+
+/**
  * Počet nepřečtených notifikací podle 2-tabulkové struktury FE
  * POST /notifications/unread-count
  */
@@ -3744,5 +4016,43 @@ function triggerNotification($db, $eventType, $objectId, $triggerUserId, $custom
         error_log("❌ [triggerNotification] Error for $eventType: " . $e->getMessage());
         // Neblokujeme business logiku kvůli chybě notifikace
         return array('status' => 'error', 'message' => $e->getMessage());
+    }
+}
+
+/**
+ * Načte notifikaci podle ID (pro post-login modal systém)
+ */
+function getNotificationByIdHandler($db, $notification_id) {
+    try {
+        $sql = "SELECT id, typ, nadpis, zprava, data_json, priorita, kategorie, 
+                       objekt_typ, objekt_id, dt_created, dt_expires, aktivni
+                FROM " . TBL_NOTIFIKACE . " 
+                WHERE id = :notification_id AND aktivni = 1
+                LIMIT 1";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':notification_id', $notification_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $notification = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$notification) {
+            return array(
+                'status' => 'error',
+                'message' => 'Notifikace nebyla nalezena nebo není aktivní'
+            );
+        }
+        
+        return array(
+            'status' => 'success',
+            'data' => $notification
+        );
+        
+    } catch (Exception $e) {
+        error_log("❌ [getNotificationByIdHandler] Error: " . $e->getMessage());
+        return array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání notifikace: ' . $e->getMessage()
+        );
     }
 }

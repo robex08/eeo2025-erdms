@@ -132,6 +132,31 @@ export const AuthProvider = ({ children }) => {
       // 🔐 TRIGGER LOGIN STATE: Nastavit isLoggedIn = true AŽ PO načtení userSettings
       // Tím zajistíme, že App.js useEffect najde aktuální data v localStorage
       setIsLoggedIn(true);
+      
+      // 🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
+      // Spustit až po dokončení login workflow (setTimeout)
+      setTimeout(async () => {
+        try {
+          const { checkPostLoginModal } = await import('../services/postLoginModalService');
+          const modalConfig = await checkPostLoginModal(
+            loginData.id,
+            loginData.token,
+            loginData.username
+          );
+          
+          if (modalConfig && modalConfig.enabled) {
+            // Vyvolat custom event - App.js ho zachytí a zobrazí modal
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('show-post-login-modal', {
+                detail: modalConfig
+              }));
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Chyba při kontrole post-login modal:', error);
+          // Tiše ignorovat - modal není kritický pro přihlášení
+        }
+      }, 1000); // 1 sekundu po přihlášení - dát čas na dokončení UI
 
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
