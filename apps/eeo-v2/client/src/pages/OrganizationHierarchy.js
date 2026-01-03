@@ -6913,14 +6913,14 @@ const OrganizationHierarchy = () => {
                         </Label>
                         <select
                           className="form-control"
-                          value={selectedNode.data.scopeDefinition?.type || 'ALL'}
+                          value={selectedNode?.data?.scopeDefinition?.type || 'ALL'}
                           onChange={(e) => {
                             const updatedNode = {
                               ...selectedNode,
                               data: {
                                 ...selectedNode.data,
                                 scopeDefinition: {
-                                  ...selectedNode.data.scopeDefinition,
+                                  ...(selectedNode.data.scopeDefinition || {}),
                                   type: e.target.value
                                 }
                               }
@@ -6932,7 +6932,8 @@ const OrganizationHierarchy = () => {
                             background: 'white', 
                             border: '2px solid #fb7185',
                             fontWeight: '500',
-                            color: '#881337'
+                            color: '#881337',
+                            cursor: 'pointer'
                           }}
                         >
                           <option value="ALL">🌐 Všichni uživatelé s touto rolí</option>
