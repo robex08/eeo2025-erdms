@@ -6911,8 +6911,8 @@ const OrganizationHierarchy = () => {
                         <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem' }}>
                           Rozsah příjemců
                         </Label>
-                        <Input
-                          type="select"
+                        <select
+                          className="form-control"
                           value={selectedNode?.data?.scopeDefinition?.type || 'ALL'}
                           onChange={(e) => {
                             console.log('SELECT CHANGE:', e.target.value);
@@ -6939,7 +6939,7 @@ const OrganizationHierarchy = () => {
                           <option value="ALL">🌐 Všichni uživatelé s touto rolí</option>
                           <option value="SELECTED">✅ Jen vybraní uživatelé</option>
                           <option value="DYNAMIC_FROM_ENTITY">⚡ Dynamicky z pole entity</option>
-                        </Input>
+                        </select>
                       </FormGroup>
                       
                       {/* DYNAMIC: Výběr pole */}
