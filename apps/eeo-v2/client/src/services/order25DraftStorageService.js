@@ -397,7 +397,7 @@ class Order25DraftStorageService {
         return false;
       }
 
-      console.log(`🧹 KOMPLETNÍ ČIŠTĚNÍ dat formuláře pro userId: ${userIdStr}`);
+      // KOMPLETNÍ ČIŠTĚNÍ dat formuláře pro userId: ${userIdStr}
 
       // 1. 📋 Draft klíče (všechny varianty)
       const draftKeys = [
@@ -472,7 +472,7 @@ class Order25DraftStorageService {
         if (localStorage.getItem(key) !== null) {
           localStorage.removeItem(key);
           removedCount++;
-          console.log(`  ✅ Vymazán klíč: ${key}`);
+          // Vymazán klíč: ${key}
         }
       });
 
@@ -489,7 +489,7 @@ class Order25DraftStorageService {
         detail: { hasDraft: false }
       }));
 
-      console.log(`🧹 Vyčištěno celkem ${removedCount} klíčů z localStorage`);
+      // Vyčištěno celkem ${removedCount} klíčů z localStorage
       return true;
 
     } catch (error) {

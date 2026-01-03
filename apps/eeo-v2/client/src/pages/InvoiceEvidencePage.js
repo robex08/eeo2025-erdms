@@ -2251,7 +2251,7 @@ export default function InvoiceEvidencePage() {
       // 🧹 CLEANUP při unmount - kompletní čištění localStorage
       if (user_id) {
         try {
-          console.log('🧹 InvoiceEvidencePage unmount: Čištění localStorage');
+          // InvoiceEvidencePage unmount: Čištění localStorage
           
           // 1. 📋 Invoice form data
           localStorage.removeItem(`invoiceForm_${user_id}`);
@@ -3670,7 +3670,7 @@ export default function InvoiceEvidencePage() {
                 stavKody.push('VECNA_SPRAVNOST');
               }
               needsUpdate = true;
-              console.log('⚠️ EDITACE FAKTURY: Objednávka vrácena na věcnou správnost');
+              // EDITACE FAKTURY: Objednávka vrácena na věcnou správnost
             }
             // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
           } else {

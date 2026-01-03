@@ -380,10 +380,8 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
   const mappedData = {};
   const missingFields = [];
 
-  console.log('📋 DEBUG: createFieldMappingForDocx START');
-  console.log('📋 DEBUG: Template mapping:', templateMapping);
-  console.log('📋 DEBUG: API Data klíče:', Object.keys(apiData));
-  console.log('📋 DEBUG: Selected User ID:', selectedUserId);
+  // DEBUG: createFieldMappingForDocx START
+  // DEBUG: Template mapping, API Data klíče, Selected User ID
 
   // PROCHÁZÍME MAPOVÁNÍ ZE ŠABLONY - každé pole mapujeme podle definice
   Object.entries(templateMapping).forEach(([docxField, dbPath]) => {
@@ -402,7 +400,7 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
           finalPath = dbPath.replace('[0]', `[${realIndex}]`);
           console.log(`  🔄 Dynamický index: ${dbPath} -> ${finalPath} (user ID ${selectedUserId})`);
         } else {
-          console.log(`  ⚠️ Uživatel ID ${selectedUserId} nenalezen v dostupni_uzivatele_pro_podpis, použije se [0]`);
+          // Uživatel ID ${selectedUserId} nenalezen v dostupni_uzivatele_pro_podpis, použije se [0]
         }
       }
 
@@ -425,7 +423,7 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
 
         if (value === undefined || value === null) {
           missingFields.push({ docxField, dbPath: finalPath });
-          console.log(`  ⚠️ Chybějící pole: ${docxField} (${finalPath})`);
+          // Chybějící pole: ${docxField} (${finalPath})
           value = '';
         } else {
           // Formátuj datum pokud to vypadá jako datum
@@ -440,8 +438,7 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
     mappedData[docxField] = String(value || '');
   });
 
-  console.log('📋 DEBUG: Chybějící pole:', missingFields);
-  console.log('📋 DEBUG: Výsledné mappedData:', mappedData);
+  // DEBUG: Chybějící pole, Výsledné mappedData
 
   return mappedData;
 }
@@ -532,7 +529,7 @@ function getValueFromPath(obj, path) {
 function fillXmlWithFieldData(xmlContent, fieldValues) {
 
   console.log('🔧 fillXmlWithFieldData START');
-  console.log('📋 Field values k vyplnění:', fieldValues);
+  // Field values k vyplnění: fieldValues
   console.log('📄 XML délka:', xmlContent.length);
 
   try {
@@ -600,7 +597,7 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
                   foundFields.push({ fieldName, instr: cleanInstr, beginIdx, endIdx });
                   console.log(`  🔍 Nalezeno pole: ${fieldName} (instr: "${cleanInstr}")`);
                 } else {
-                  console.log(`  ⚠️ Nepodařilo se parsovat pole z instrText: "${cleanInstr}"`);
+                  // Nepodařilo se parsovat pole z instrText: "${cleanInstr}"
                 }
                 break;
               }
@@ -666,15 +663,8 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
     processNode(xmlDoc.documentElement);
 
-    console.log('🔧 fillXmlWithFieldData KONEC');
-    console.log('📊 Statistiky:', {
-      nalezenoPoli: foundFields.length,
-      nahrazenoPoli: replacedFields.length,
-      odstranenoPoli: removedFields.length,
-      foundFields: foundFields.map(f => f.fieldName),
-      replacedFields: replacedFields.map(f => `${f.fieldName}="${f.value}"`),
-      removedFields
-    });
+    // fillXmlWithFieldData KONEC
+    // Statistiky: nalezenoPoli, nahrazenoPoli, odstranenoPoli
     
     // 🔍 DIAGNOSTIKA: Porovnej nalezená pole s mapováním
     const mappingKeys = Object.keys(fieldValues);
