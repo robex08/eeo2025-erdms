@@ -41,6 +41,42 @@ export const getGlobalSettings = async (token, username) => {
 };
 
 /**
+ * Načte všechna globální nastavení PRO ZOBRAZENÍ (s obsahem z notifikace)
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Objekt s nastaveními
+ */
+export const getGlobalSettingsForDisplay = async (token, username) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/global-settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        token,
+        username,
+        operation: 'get',
+        for_display: true
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    const data = result.data || result;
+    
+    return data;
+    
+  } catch (error) {
+    console.error('Chyba při načítání globálního nastavení pro zobrazení:', error);
+    throw error;
+  }
+};
+
+/**
  * Uloží globální nastavení
  * @param {Object} settings - Objekt s nastaveními k uložení
  * @param {string} token - Auth token
