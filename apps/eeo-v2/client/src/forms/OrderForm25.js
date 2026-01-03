@@ -6422,7 +6422,7 @@ function OrderForm25() {
         // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), vyčisti faktury!
         // Faktury z předchozí objednávky by se NIKDY neměly dostat do nové objednávky
         if (!cleanedDraftData.id) {
-          console.warn('🧹 DRAFT CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku');
+          // DRAFT CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku
           cleanedDraftData.faktury = [];
         } else if (cleanedDraftData.faktury && Array.isArray(cleanedDraftData.faktury)) {
           // Pro existující objednávku pouze vyčisti fa_strediska_kod
@@ -9083,7 +9083,7 @@ function OrderForm25() {
     try {
       // Pokud se stav nezměnil, nic neposílej
       if (oldWorkflowState && newWorkflowState === oldWorkflowState) {
-        console.log('⚠️ [sendOrderNotifications] Stav se nezměnil, notifikace se neodešlou');
+        // Stav se nezměnil, notifikace se neodešlou
         return;
       }
 
@@ -9270,19 +9270,19 @@ function OrderForm25() {
         notificationType = 'order_status_zrusena';
       }
 
-      console.log('📊 [sendOrderNotifications] Detekovaný typ notifikace:', notificationType);
+      // Detekovaný typ notifikace: notificationType
 
       // Pokud nebyl detekován žádný typ notifikace, skonči
       if (!notificationType) {
-        console.log('⚠️ [sendOrderNotifications] Žádný typ notifikace nebyl detekován, končím');
+        // Žádný typ notifikace nebyl detekován, končím
         return;
       }
 
-      console.log('🚀 [sendOrderNotifications] Odesílám notifikace přes NOVÝ org-hierarchy systém...');
-      console.log('   → Event Type:', notificationType);
-      console.log('   → Order ID:', orderId);
-      console.log('   → Trigger User ID:', user_id);
-      console.log('   → Backend najde příjemce v org hierarchii automaticky!');
+      // Odesílám notifikace přes org-hierarchy systém
+      // Event Type: notificationType
+      // Order ID: orderId  
+      // Trigger User ID: user_id
+      // Backend najde příjemce v org hierarchii automaticky
 
       // ⚠️ DEPRECATED: Tato funkce už není potřeba - notifikace se odesílají přímo v saveOrderToAPI
       // pomocí triggerNotification() s plnými placeholder daty
@@ -11731,7 +11731,7 @@ function OrderForm25() {
       // Faktury patří pouze k existujícím objednávkám v DB
       if (!draftFormData.id) {
         if (draftFormData.faktury && draftFormData.faktury.length > 0) {
-          console.warn('🧹 DRAFT SAVE CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku (bez ID)');
+          // DRAFT SAVE CLEANUP: Odstraňuji faktury z draftu pro NOVOU objednávku (bez ID)
         }
         draftFormData.faktury = [];
       }
@@ -12063,7 +12063,7 @@ function OrderForm25() {
         // 🔥 KRITICKÉ: Kompletní čištění všech dat formuláře
         // Smaže draft, faktury, přílohy objednávky i faktur, cache, UI state
         draftManager.deleteAllFormData();
-        console.log('🧹 resetForm: Kompletní čištění provedeno');
+        // resetForm: Kompletní čištění provedeno
       } catch (error) {
         console.error('❌ resetForm: Chyba při čištění:', error);
       }
@@ -13092,12 +13092,7 @@ function OrderForm25() {
 
   // Funkce pro práci s přílohami - Orders25 API
   const handleFileUpload = (files) => {
-    console.log('🚀 handleFileUpload CALLED', {
-      filesCount: files?.length,
-      isWorkflowCompleted,
-      canUnlockAnything,
-      formDataId: formData.id
-    });
+    // handleFileUpload CALLED - files count: files?.length
 
     // 🔒 CENTRÁLNÍ ZAMYKÁNÍ: Blokovat upload pokud je objednávka dokončena/zamítnuta/zrušena
     if (isWorkflowCompleted && !canUnlockAnything) {
@@ -24899,11 +24894,7 @@ function OrderForm25() {
                     {/* Seznam nahraných souborů - pouze obj- prefix */}
                     {(() => {
                       const objFiles = attachments?.filter(a => getFilePrefix(a) === 'obj-') || [];
-                      console.log('📋 Rendering attachments list:', {
-                        totalAttachments: attachments?.length,
-                        objFiles: objFiles.length,
-                        attachments: attachments
-                      });
+                      // Rendering attachments list - objFiles: objFiles.length
                       return objFiles.length > 0 && (
                       <div style={{ marginTop: '1rem' }}>
                         <div style={{

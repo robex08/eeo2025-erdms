@@ -1462,7 +1462,7 @@ export const generateFieldsFromApiData = (apiData) => {
       }
     } else {
       // Datumová sekce vůbec neexistuje - přidej celou statickou
-      console.log('⚠️ Datumová sekce chybí úplně, přidávám statickou definici');
+      // Datumová sekce chybí úplně, přidávám statickou definici
       groups.unshift(staticDateGroup);
     }
   }
