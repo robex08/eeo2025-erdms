@@ -1,0 +1,235 @@
+-- ============================================================
+-- SQL Skript pro vytvoření post-login notifikace
+-- Základní vstupní informace pro EEO 2025/2026
+-- Datum: 3. ledna 2026
+-- ============================================================
+
+-- Pro DEV použij: eeo2025-dev
+-- Pro PROD použij: eeo2025
+USE `eeo2025-dev`;
+
+-- 1. Vložit nebo aktualizovat notifikaci v tabulce 25_notifikace
+INSERT INTO 25_notifikace (
+    id,
+    typ,
+    nadpis,
+    zprava,
+    priorita,
+    kategorie,
+    aktivni,
+    dt_created
+) VALUES (
+    953,  -- Nové ID (952 už existuje)
+    'system_announcement',
+    '📋 Základní vstupní informace',
+    -- HTML obsah - KOMPLETNÍ Z VYTVOŘENÉHO SOUBORU
+    '<div class="eeo-notification" style="font-family: -apple-system, BlinkMacSystemFont, ''Segoe UI'', Roboto, Oxygen, Ubuntu, Cantarell, ''Helvetica Neue'', sans-serif; color: #1f2937; font-size: 15px; line-height: 1.65;">
+        
+        <!-- Hlavní nadpis -->
+        <div style="text-align: center; margin-bottom: 32px;">
+            <h1 style="font-size: 28px; font-weight: 700; color: #1e40af; margin: 0 0 8px 0; letter-spacing: -0.5px;">
+                📋 Základní vstupní informace
+            </h1>
+            <p style="font-size: 16px; color: #6b7280; margin: 0; font-weight: 500;">
+                Důležité informace pro práci s EEO systémem
+            </p>
+        </div>
+
+        <!-- Alert box - Červený WARNING -->
+        <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-left: 5px solid #dc2626; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">⚠️</div>
+                <div style="flex: 1;">
+                    <h3 style="font-size: 17px; font-weight: 700; color: #991b1b; margin: 0 0 12px 0;">
+                        Upozornění: Práce s objednávkami roku 2025
+                    </h3>
+                    <p style="margin: 0 0 12px 0; color: #7f1d1d; font-size: 15px; line-height: 1.6;">
+                        Pokud potřebujete dokončit nebo vložit objednávky ještě do roku 2025, 
+                        zašlete Objednávkový formulář s&nbsp;přílohami a&nbsp;informacemi na 
+                        <a href="mailto:faktury@zachranaci.cz" style="color: #b91c1c; font-weight: 600; text-decoration: none; border-bottom: 2px solid #f87171;">faktury@zachranaci.cz</a>.
+                    </p>
+                    <div style="background: rgba(127, 29, 29, 0.08); padding: 14px 18px; border-radius: 8px; border: 2px solid #f87171;">
+                        <p style="margin: 0; font-size: 16px; font-weight: 700; color: #7f1d1d;">
+                            ⛔ V žádném případě <span style="background: #fee2e2; padding: 2px 8px; border-radius: 4px; border: 1px solid #dc2626;">NEZADÁVEJTE objednávky roku 2025 do nového EEO 2026!</span>
+                        </p>
+                        <p style="margin: 8px 0 0 0; font-size: 14px; color: #991b1b;">
+                            Čerpali by jste tím špatné finanční prostředky.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pokladníci -->
+        <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-left: 5px solid #2563eb; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">💰</div>
+                <div style="flex: 1;">
+                    <h3 style="font-size: 17px; font-weight: 700; color: #1e40af; margin: 0 0 12px 0;">
+                        Pokladníci
+                    </h3>
+                    <p style="margin: 0 0 10px 0; color: #1e3a8a; font-size: 15px; line-height: 1.6;">
+                        Pro uzavření inventarizace roku 2025 a&nbsp;vložení počátečního stavu z&nbsp;oddělení účetnictví, bude <strong style="font-weight: 700;">EEO Pokladna ukazovat minusový konečný stav</strong>.
+                    </p>
+                    <div style="background: rgba(30, 64, 175, 0.1); padding: 14px 18px; border-radius: 8px; margin-top: 12px; border: 1px solid #93c5fd;">
+                        <p style="margin: 0; font-size: 15px; color: #1e3a8a;">
+                            <strong style="font-weight: 700;">📝 Podrobný postup:</strong> Jak poprvé pracovat s Pokladnou
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Důležité informace -->
+        <div style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border-left: 5px solid #6b7280; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(107, 114, 128, 0.12);">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">📌</div>
+                <div style="flex: 1;">
+                    <h3 style="font-size: 17px; font-weight: 700; color: #374151; margin: 0 0 16px 0;">
+                        Nezapomeňte
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <div style="background: #6b7280; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">✓</div>
+                            <p style="margin: 0; color: #4b5563; flex: 1;">
+                                <strong>objednávky</strong>, které <strong>již jsou v základech nového</strong>, tedy jejich čerpání je z&nbsp;<span style="background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-weight: 600; color: #78350f;">Limitovaného příslíbu</span> nebo z&nbsp;<span style="background: #ddd6fe; padding: 2px 8px; border-radius: 4px; font-weight: 600; color: #4c1d95;">Individuálního schválení</span>
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <div style="background: #6b7280; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">✓</div>
+                            <p style="margin: 0; color: #4b5563; flex: 1;">
+                                <strong>nové objednávky</strong> z&nbsp;<span style="background: #dcfce7; padding: 2px 8px; border-radius: 4px; font-weight: 600; color: #166534;">rámcových smluv</span>, které <strong>mají postupné čerpání</strong>
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: flex-start; gap: 10px;">
+                            <div style="background: #6b7280; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">✓</div>
+                            <p style="margin: 0; color: #4b5563; flex: 1;">
+                                <strong>požadavky</strong> na externí vzdělávací kurzy
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info pro tvorbu objednávky -->
+        <div style="background: #fffbeb; border: 2px dashed #f59e0b; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px;">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">💡</div>
+                <div style="flex: 1;">
+                    <h3 style="font-size: 17px; font-weight: 700; color: #92400e; margin: 0 0 12px 0;">
+                        V případě, že nedisponujete výšším oprávněním
+                    </h3>
+                    <p style="margin: 0; color: #78350f; font-size: 15px; line-height: 1.6;">
+                        ...za úsek či oblast, je možné, že do vytvoření své první objednávky uvidíte přehled naprostě prázdný.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teams podpora -->
+        <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left: 5px solid #16a34a; padding: 20px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.15);">
+            <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <div style="font-size: 26px; line-height: 1; margin-top: 2px;">💬</div>
+                <div style="flex: 1;">
+                    <h3 style="font-size: 17px; font-weight: 700; color: #166534; margin: 0 0 12px 0;">
+                        Online Teams podpora
+                    </h3>
+                    <p style="margin: 0 0 12px 0; color: #14532d; font-size: 15px; line-height: 1.6;">
+                        V první měsíci bude <strong style="font-weight: 700; background: #bbf7d0; padding: 2px 8px; border-radius: 4px;">pravidelně k&nbsp;dispozici</strong> pro hromadné dotazy nebo i&nbsp;podrobné školení.
+                    </p>
+                    <p style="margin: 0; color: #14532d; font-size: 15px;">
+                        O termínech budete informováni.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nápověda -->
+        <div style="background: linear-gradient(to right, #fef3c7, #fde68a); border: 2px solid #fbbf24; padding: 18px 24px; border-radius: 10px; margin-bottom: 28px; box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 32px; line-height: 1;">❓</div>
+                <div style="flex: 1;">
+                    <p style="margin: 0; font-size: 15px; color: #78350f; line-height: 1.6;">
+                        <strong style="font-weight: 700;">Prosím prostudujte si návody</strong>, naleznete je v&nbsp;pravém horním rohu aplikace pod ikonou otazníku 
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #1e40af; color: white; border-radius: 50%; font-size: 16px; font-weight: 700; vertical-align: middle; margin: 0 4px;">?</span>.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kontakt -->
+        <div style="background: white; border: 2px solid #e5e7eb; padding: 24px; border-radius: 12px; margin-bottom: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
+            <div style="text-align: center; margin-bottom: 18px;">
+                <h3 style="font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 4px 0;">
+                    📞 Potřebujete pomoc?
+                </h3>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 12px 20px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <span style="font-size: 20px;">📧</span>
+                    <a href="mailto:helpdesk@zachranaci.cz" style="color: #2563eb; font-weight: 600; text-decoration: none; font-size: 15px;">helpdesk@zachranaci.cz</a>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; padding: 12px 20px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <span style="font-size: 20px;">☎️</span>
+                    <span style="color: #1f2937; font-weight: 600; font-size: 15px;">731 137 030</span>
+                </div>
+            </div>
+        </div>
+
+    </div>',
+    'high',
+    'system',
+    1,  -- aktivní
+    NOW()
+) ON DUPLICATE KEY UPDATE
+    zprava = VALUES(zprava),
+    aktivni = 1;
+
+-- 2. Aktualizovat globální nastavení pro post-login modal
+UPDATE 25a_nastaveni_globalni
+SET hodnota = '953'
+WHERE klic = 'post_login_modal_message_id';
+
+-- 3. Změnit GUID pro reset "Příště nezobrazovat" u všech uživatelů
+UPDATE 25a_nastaveni_globalni
+SET hodnota = 'modal_eeo2025_info_v1'
+WHERE klic = 'post_login_modal_guid';
+
+-- 4. Nastavit časovou platnost (volitelné - upravit podle potřeby)
+UPDATE 25a_nastaveni_globalni
+SET hodnota = NULL
+WHERE klic = 'post_login_modal_valid_from';
+
+UPDATE 25a_nastaveni_globalni
+SET hodnota = '2026-01-31'  -- Zobrazovat do konce ledna 2026
+WHERE klic = 'post_login_modal_valid_to';
+
+-- 5. Změnit nadpis modalu
+UPDATE 25a_nastaveni_globalni
+SET hodnota = 'Základní vstupní informace'
+WHERE klic = 'post_login_modal_title';
+
+-- 6. Ujistit se, že je modal zapnutý
+UPDATE 25a_nastaveni_globalni
+SET hodnota = '1'
+WHERE klic = 'post_login_modal_enabled';
+
+-- ============================================================
+-- KONTROLA: Ověření nastavení
+-- ============================================================
+SELECT 
+    klic,
+    hodnota,
+    popis
+FROM 25a_nastaveni_globalni
+WHERE klic LIKE 'post_login_modal%'
+ORDER BY klic;
+
+-- ============================================================
+-- VÝSLEDEK: Modal se zobrazí všem uživatelům po přihlášení
+-- - ID notifikace: 953
+-- - GUID: modal_eeo2025_info_v1 (nový → resetuje všechna "Příště nezobrazovat")
+-- - Platnost: do 31.1.2026
+-- - Moderní design podle obrázku
+-- ============================================================
