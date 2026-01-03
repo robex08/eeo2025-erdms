@@ -8151,31 +8151,41 @@ const OrganizationHierarchy = () => {
                         <Select 
                           value={edgeRecipientRole}
                           onChange={(e) => setEdgeRecipientRole(e.target.value)}
-                          title="Určuje, jakou variantu emailu použít (WARNING/URGENT/INFO)"
+                          title="Určuje, jakou variantu emailu použít"
                           style={{
-                            border: edgeRecipientRole === 'EXCEPTIONAL' ? '2px solid #dc2626' : 
+                            border: edgeRecipientRole === 'AUTO' ? '2px solid #8b5cf6' :
+                                   edgeRecipientRole === 'EXCEPTIONAL' ? '2px solid #dc2626' : 
                                    edgeRecipientRole === 'INFO' ? '2px solid #10b981' : '2px solid #3b82f6'
                           }}
                         >
-                          <option value="EXCEPTIONAL">🔴 URGENT - urgentní varianta</option>
-                          <option value="APPROVAL">🟡 WARNING - standardní varianta</option>
-                          <option value="INFO">🔵 INFO - informační varianta</option>
+                          <option value="AUTO">🔮 AUTO - dle mimoradna_udalost pole</option>
+                          <option value="EXCEPTIONAL">🔴 URGENT - vždy urgentní</option>
+                          <option value="APPROVAL">🟡 WARNING - vždy standardní</option>
+                          <option value="INFO">🔵 INFO - vždy informační</option>
                         </Select>
                         <div style={{ 
                           fontSize: '0.75rem', 
-                          color: '#1e40af', 
+                          color: edgeRecipientRole === 'AUTO' ? '#6b21a8' : '#1e40af', 
                           marginTop: '8px',
                           padding: '10px',
-                          background: '#eff6ff',
-                          border: '1px solid #93c5fd',
+                          background: edgeRecipientRole === 'AUTO' ? '#f5f3ff' : '#eff6ff',
+                          border: edgeRecipientRole === 'AUTO' ? '1px solid #c4b5fd' : '1px solid #93c5fd',
                           borderRadius: '6px',
                           lineHeight: '1.6'
                         }}>
-                          <strong>🎯 Generic Recipient systém:</strong><br/>
-                          • <strong>URGENT</strong> = backend použije RECIPIENT variantu s urgentním obsahem<br/>
-                          • <strong>WARNING</strong> = backend použije RECIPIENT variantu se standardním obsahem<br/>
-                          • <strong>INFO</strong> = backend použije SUBMITTER variantu (potvrzení pro autora)<br/><br/>
-                          💡 Backend automaticky vybere odpovídající variantu z šablony
+                          {edgeRecipientRole === 'AUTO' ? (
+                            <>
+                              <strong>🔮 AUTO režim:</strong><br/>
+                              • Pokud <code>mimoradna_udalost = 1</code> → použije <strong>URGENT</strong> variantu<br/>
+                              • Pokud <code>mimoradna_udalost = 0</code> → použije <strong>WARNING</strong> variantu<br/>
+                              • Ideální pro ORDER_STATUS_* události
+                            </>
+                          ) : (
+                            <>
+                              <strong>Manuální režim:</strong><br/>
+                              Vždy se použije vybraná varianta bez ohledu na stav entity
+                            </>
+                          )}
                         </div>
                       </FormGroup>
                     </DetailSection>
