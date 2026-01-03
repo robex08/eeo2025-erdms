@@ -469,7 +469,7 @@ class NotificationService {
     console.error('⚠️ DEPRECATED: sendOrderApprovalNotifications()');
     console.error('   This function bypasses organizational hierarchy');
     console.error('   Use: triggerNotification() from notificationsApi.js');
-    console.error('   Event: ORDER_SENT_FOR_APPROVAL');
+    console.error('   Event: order_status_ke_schvaleni');
     console.error('════════════════════════════════════════════════════════════════');
     
     try {

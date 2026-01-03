@@ -34,9 +34,6 @@
  * - order_status_zkontrolovana - Zkontrolována (NOVÉ 2025-11-04)
  *
  * OBECNÉ:
- * - order_approved - Objednávka schválena (starý typ - deprecated)
- * - order_rejected - Objednávka zamítnuta (starý typ - deprecated)
- * - order_created - Nová objednávka k schválení (starý typ - deprecated)
  * - system_maintenance - Systémová údržba
  * - user_mention - Zmínka v komentáři
  * - deadline_reminder - Upozornění na termín
@@ -73,10 +70,7 @@ export const NOTIFICATION_TYPES = {
   ORDER_STATUS_VECNA_SPRAVNOST: 'order_status_zkontrolovana', // Kontrola věcné správnosti (TODO: ověřit)
   ORDER_STATUS_ZKONTROLOVANA: 'order_status_kontrola_ceka',   // Zkontrolována (DB: id 19)
 
-  // OBECNÉ (STARÉ - deprecated, ale ponecháno pro kompatibilitu)
-  ORDER_APPROVED: 'order_approved',
-  ORDER_REJECTED: 'order_rejected',
-  ORDER_CREATED: 'order_created',
+  // OBECNÉ
   SYSTEM_MAINTENANCE: 'system_maintenance',
   USER_MENTION: 'user_mention',
   DEADLINE_REMINDER: 'deadline_reminder',
@@ -192,25 +186,7 @@ export const NOTIFICATION_CONFIG = {
     priority: 'low'
   },
 
-  // OBECNÉ (STARÉ - deprecated)
-  [NOTIFICATION_TYPES.ORDER_APPROVED]: {
-    icon: '✅',
-    color: '#16a34a',
-    category: 'orders',
-    label: 'Objednávka schválena'
-  },
-  [NOTIFICATION_TYPES.ORDER_REJECTED]: {
-    icon: '❌',
-    color: '#dc2626',
-    category: 'orders',
-    label: 'Objednávka zamítnuta'
-  },
-  [NOTIFICATION_TYPES.ORDER_CREATED]: {
-    icon: '📋',
-    color: '#3b82f6',
-    category: 'orders',
-    label: 'Nová objednávka k schválení'
-  },
+  // OBECNÉ SYSTÉMOVÉ
   [NOTIFICATION_TYPES.SYSTEM_MAINTENANCE]: {
     icon: '🔧',
     color: '#f59e0b',
@@ -727,7 +703,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro konkrétního uživatele
  * await createNotification({
- *   type: 'order_approved',
+ *   type: 'order_status_schvalena',
  *   title: 'Objednávka schválena',
  *   message: 'Objednávka č. 2025-001 byla schválena',
  *   to_user_id: 5,
@@ -739,7 +715,7 @@ export const clearHiddenNotificationsInDropdown = (userId) => {
  * @example
  * // Notifikace pro skupinu uživatelů (GARANT + PŘÍKAZCE)
  * await createNotification({
- *   type: 'order_created',
+ *   type: 'order_status_ke_schvaleni',
  *   title: 'Nová objednávka k schválení',
  *   message: 'Objednávka č. 2025-002 čeká na schválení',
  *   to_users: [3, 5, 8],
@@ -782,7 +758,7 @@ export const createNotification = async (notificationData) => {
  * 🆕 NOVÝ: Trigger notifikace podle organizational hierarchy
  * Backend automaticky najde příjemce v hierarchii podle event typu
  * 
- * @param {string} eventType - Event type code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, ...)
+ * @param {string} eventType - Event type code (order_status_ke_schvaleni, order_status_schvalena, INVOICE_CREATED, ...)
  * @param {number} objectId - ID objektu (objednávka, faktura, ...)
  * @param {number} triggerUserId - ID uživatele, který akci provedl
  * @param {Object} placeholderData - Volitelná placeholder data (backend je načte automaticky z object_id)

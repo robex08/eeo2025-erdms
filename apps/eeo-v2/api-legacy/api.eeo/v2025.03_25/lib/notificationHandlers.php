@@ -1767,111 +1767,13 @@ function handle_notifications_event_types_list($input, $config, $queries) {
  * Vrací asociativní pole s klíči: code, nazev, kategorie, description, urgencyLevel, recipientRoles
  */
 function getEventDefinition($eventTypeCode) {
-    // Načíst všechny event definitions
-    $eventTypes = array(
-        // OBJEDNÁVKY - Fáze 1: Vytvoření
-        array(
-            'code' => 'ORDER_SENT_FOR_APPROVAL',
-            'nazev' => 'Objednávka vytvořena',
-            'kategorie' => 'orders',
-            'description' => 'Robert vytvoří objednávku → notifikace příkazci ke schválení',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL', 'APPROVAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_APPROVED',
-            'nazev' => 'Objednávka schválena',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('APPROVAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_REJECTED',
-            'nazev' => 'Objednávka zamítnuta',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_WAITING_FOR_CHANGES',
-            'nazev' => 'Objednávka vrácena k doplnění',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_SENT_TO_SUPPLIER',
-            'nazev' => 'Objednávka odeslána dodavateli',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('APPROVAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_CONFIRMED_BY_SUPPLIER',
-            'nazev' => 'Objednávka potvrzena dodavatelem',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('APPROVAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_FULFILLED',
-            'nazev' => 'Objednávka splněna',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL', 'INFO')
-        ),
-        array(
-            'code' => 'ORDER_CANCELLED',
-            'nazev' => 'Objednávka zrušena',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL')
-        ),
-        array(
-            'code' => 'ORDER_ARCHIVED',
-            'nazev' => 'Objednávka archivována',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('INFO')
-        ),
-        array(
-            'code' => 'ORDER_WAITING',
-            'nazev' => 'Objednávka pozastavena',
-            'kategorie' => 'orders',
-            'urgencyLevel' => 'EXCEPTIONAL',
-            'recipientRoles' => array('EXCEPTIONAL', 'INFO')
-        ),
-        array(
-            'code' => 'INVOICE_RECEIVED',
-            'nazev' => 'Faktura přijata',
-            'kategorie' => 'invoices',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('APPROVAL', 'INFO')
-        ),
-        array(
-            'code' => 'INVOICE_APPROVED',
-            'nazev' => 'Faktura schválena',
-            'kategorie' => 'invoices',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('INFO')
-        ),
-        array(
-            'code' => 'CASHBOOK_ENTRY_CREATED',
-            'nazev' => 'Záznam v pokladně vytvořen',
-            'kategorie' => 'cashbook',
-            'urgencyLevel' => 'NORMAL',
-            'recipientRoles' => array('INFO')
-        )
-    );
+    // ❌ STARÉ ANGLICKÉ EVENT TYPES ODSTRANĚNY
+    // Nyní používáme POUZE české lowercase názvy (order_status_*, INVOICE_*, atd.)
+    // Viz řádky 1565-1690 pro kompletní seznam aktivních event types
     
-    // Najít event podle code
-    foreach ($eventTypes as $event) {
-        if ($event['code'] === $eventTypeCode) {
-            return $event;
-        }
-    }
-    
-    return null; // Event nenalezen
+    // Event definitions jsou nyní v databázi (25_notifikace_event_types)
+    // Tato funkce už není potřeba, ale ponecháváme pro zpětnou kompatibilitu
+    return null;
 }
 
 /**
@@ -2627,10 +2529,10 @@ function getEntityApprover($db, $entityType, $entityId) {
 
 /**
  * Hlavní router pro automatické odesílání notifikací při událostech
- * Použití: notificationRouter($db, 'ORDER_SENT_FOR_APPROVAL', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
+ * Použití: notificationRouter($db, 'order_status_ke_schvaleni', $orderId, $userId, ['order_number' => 'O-2025-142', ...])
  * 
  * @param PDO $db - Database connection
- * @param string $eventType - Event typ code (ORDER_SENT_FOR_APPROVAL, ORDER_APPROVED, etc.)
+ * @param string $eventType - Event typ code (order_status_ke_schvaleni, order_status_schvalena, etc.)
  * @param int $objectId - ID objektu (objednávka, faktura, atd.)
  * @param int $triggerUserId - ID uživatele, který akci provedl
  * @param array $placeholderData - Data pro placeholder replacement
@@ -2768,6 +2670,55 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         foreach ($recipients as $idx => $r) {
             error_log("   Příjemce #" . ($idx+1) . ": User ID={$r['uzivatel_id']}, Role={$r['recipientRole']}, Email=" . ($r['sendEmail'] ? 'ANO' : 'NE') . ", InApp=" . ($r['sendInApp'] ? 'ANO' : 'NE'));
         }
+        
+        // 🔥 DEDUPLICATION: Odstranit duplicitní notifikace pro stejného uživatele
+        // Priorita variant: INFO (garant) > APPROVAL (schvalovatel) > default
+        error_log("🔍 [NotificationRouter] Deduplication START - původní počet: " . count($recipients));
+        
+        // Funkce pro získání priority varianty
+        $getVariantPriority = function($variant) {
+            if (stripos($variant, 'info') !== false) return 3; // INFO má nejvyšší prioritu (garant)
+            if (stripos($variant, 'approval') !== false) return 2; // APPROVAL má střední prioritu
+            return 1; // default má nejnižší prioritu
+        };
+        
+        // Seskupit příjemce podle user_id + event_type
+        $groupedRecipients = array();
+        foreach ($recipients as $recipient) {
+            $dedupKey = $recipient['uzivatel_id'] . '|' . $eventType;
+            if (!isset($groupedRecipients[$dedupKey])) {
+                $groupedRecipients[$dedupKey] = array();
+            }
+            $groupedRecipients[$dedupKey][] = $recipient;
+        }
+        
+        // Pro každou skupinu vybrat příjemce s nejvyšší prioritou varianty
+        $deduplicatedRecipients = array();
+        foreach ($groupedRecipients as $dedupKey => $group) {
+            if (count($group) === 1) {
+                // Jeden příjemce - prostě přidat
+                $deduplicatedRecipients[] = $group[0];
+                error_log("   ✅ Příjemce přidán: User ID={$group[0]['uzivatel_id']}, Role={$group[0]['recipientRole']}, Template={$group[0]['templateId']}, Variant=" . ($group[0]['templateVariant'] ?? 'default'));
+            } else {
+                // Více příjemců pro stejného uživatele - vybrat ten s nejvyšší prioritou
+                usort($group, function($a, $b) use ($getVariantPriority) {
+                    return $getVariantPriority($b['templateVariant'] ?? 'default') - $getVariantPriority($a['templateVariant'] ?? 'default');
+                });
+                $selectedRecipient = $group[0]; // První je s nejvyšší prioritou
+                $deduplicatedRecipients[] = $selectedRecipient;
+                
+                error_log("   🎯 VÍCE VARIANT pro User ID={$selectedRecipient['uzivatel_id']} - vybrána PRIORITNÍ:");
+                error_log("      ✅ ZVOLENA: Role={$selectedRecipient['recipientRole']}, Template={$selectedRecipient['templateId']}, Variant=" . ($selectedRecipient['templateVariant'] ?? 'default') . " (priorita: " . $getVariantPriority($selectedRecipient['templateVariant'] ?? 'default') . ")");
+                
+                for ($i = 1; $i < count($group); $i++) {
+                    error_log("      ⚠️ PŘESKOČENA: Role={$group[$i]['recipientRole']}, Template={$group[$i]['templateId']}, Variant=" . ($group[$i]['templateVariant'] ?? 'default') . " (priorita: " . $getVariantPriority($group[$i]['templateVariant'] ?? 'default') . ")");
+                }
+            }
+        }
+        
+        $recipients = $deduplicatedRecipients;
+        $removedCount = array_sum(array_map('count', $groupedRecipients)) - count($recipients);
+        error_log("✅ [NotificationRouter] Deduplication DONE - finální počet: " . count($recipients) . ($removedCount > 0 ? " (odstraněno $removedCount duplikátů)" : " (žádné duplikáty)"));
         
         // 2. Pro každého příjemce najít template a odeslat notifikaci
         foreach ($recipients as $recipient) {
@@ -3137,19 +3088,70 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                 // GENERIC RECIPIENT SYSTEM - NOVÁ LOGIKA
                 // ════════════════════════════════════════════════════════════
                 
-                // Načíst recipient_type a scope_filter z edge.data
-                $recipientType = isset($edge['data']['recipient_type']) ? $edge['data']['recipient_type'] : 'USER';
-                $scopeFilter = isset($edge['data']['scope_filter']) ? $edge['data']['scope_filter'] : 'NONE';
-                $recipientRole = isset($edge['data']['recipientRole']) ? $edge['data']['recipientRole'] : 'INFO';
-                $sendEmail = isset($edge['data']['sendEmail']) ? (bool)$edge['data']['sendEmail'] : false;
-                $sendInApp = isset($edge['data']['sendInApp']) ? (bool)$edge['data']['sendInApp'] : true;
-                
-                // ✅ URGENTNÍ UDÁLOSTI: Pokud má objednávka zaškrtnutou mimořádnou událost (is_urgent=true) a recipientRole=APPROVAL → změnit na EXCEPTIONAL
-                $isUrgent = isset($placeholderData['is_urgent']) ? (bool)$placeholderData['is_urgent'] : false;
-                if ($isUrgent && $recipientRole === 'APPROVAL') {
-                    $recipientRole = 'EXCEPTIONAL';
-                    error_log("         🚨 Objednávka má mimořádnou událost (is_urgent=true) → změna role APPROVAL → EXCEPTIONAL");
+                // DEBUG: Vypsat strukturu edge.data
+                error_log("         DEBUG edge.data keys: " . implode(', ', array_keys($edge['data'] ?? [])));
+                if (isset($edge['data']['template'])) {
+                    error_log("         DEBUG template keys: " . implode(', ', array_keys($edge['data']['template'])));
+                    error_log("         DEBUG template.recipient_type: " . ($edge['data']['template']['recipient_type'] ?? 'N/A'));
                 }
+                
+                // Načíst recipient_type a scope_filter z edge.data (nebo fallback z edge.data.template)
+                $recipientType = isset($edge['data']['recipient_type']) ? $edge['data']['recipient_type'] : 
+                                 (isset($edge['data']['template']['recipient_type']) ? $edge['data']['template']['recipient_type'] : 
+                                 null); // Bude odvozeno z target node typu
+                
+                // ✅ AUTOMATICKÉ ODVOZENÍ recipient_type z target node typu (pokud není explicitně zadáno)
+                if ($recipientType === null) {
+                    $targetNodeId = $edge['target'];
+                    $targetNode = null;
+                    foreach ($structure['nodes'] as $n) {
+                        if ($n['id'] === $targetNodeId) {
+                            $targetNode = $n;
+                            break;
+                        }
+                    }
+                    
+                    if ($targetNode) {
+                        $nodeType = isset($targetNode['typ']) ? $targetNode['typ'] : (isset($targetNode['data']['type']) ? $targetNode['data']['type'] : 'user');
+                        
+                        // Mapování node typu na recipient_type
+                        switch ($nodeType) {
+                            case 'role':
+                                $recipientType = 'ROLE';
+                                break;
+                            case 'group':
+                                $recipientType = 'GROUP';
+                                break;
+                            case 'genericRecipient':
+                                $genericType = isset($targetNode['data']['genericType']) ? $targetNode['data']['genericType'] : 'TRIGGER_USER';
+                                $recipientType = $genericType;
+                                break;
+                            case 'user':
+                            default:
+                                $recipientType = 'USER';
+                                break;
+                        }
+                        error_log("         → Auto-detected recipient_type=$recipientType from target node type=$nodeType");
+                    } else {
+                        $recipientType = 'USER'; // Fallback
+                    }
+                }
+                
+                $scopeFilter = isset($edge['data']['scope_filter']) ? $edge['data']['scope_filter'] : 
+                               (isset($edge['data']['template']['scope_filter']) ? $edge['data']['template']['scope_filter'] : 
+                               'NONE');
+                
+                $recipientRole = isset($edge['data']['recipientRole']) ? $edge['data']['recipientRole'] : 
+                                 (isset($edge['data']['template']['recipientRole']) ? $edge['data']['template']['recipientRole'] : 
+                                 'INFO');
+                
+                $sendEmail = isset($edge['data']['sendEmail']) ? (bool)$edge['data']['sendEmail'] : 
+                             (isset($edge['data']['template']['sendEmail']) ? (bool)$edge['data']['template']['sendEmail'] : 
+                             false);
+                
+                $sendInApp = isset($edge['data']['sendInApp']) ? (bool)$edge['data']['sendInApp'] : 
+                             (isset($edge['data']['template']['sendInApp']) ? (bool)$edge['data']['template']['sendInApp'] : 
+                             true);
                 
                 error_log("         → recipient_type=$recipientType, scope_filter=$scopeFilter, recipientRole=$recipientRole");
                 error_log("         → sendEmail=" . ($sendEmail ? 'ANO' : 'NE') . ", sendInApp=" . ($sendInApp ? 'ANO' : 'NE'));
@@ -3370,18 +3372,20 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                         $infoVariantName = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
                         
                         foreach ($sourceParticipants as $sourceUserId) {
-                            // Zkontrolovat, zda už není v seznamu (z NODE filtru)
+                            // ✅ OPRAVA: Zkontrolovat, zda už není v seznamu s JAKOUKOLIV rolí
+                            // (protože může být přidán z NODE filtru jako APPROVAL, pak by se přidal znovu jako INFO)
                             $alreadyAdded = false;
                             foreach ($recipients as $existingRecipient) {
                                 if ($existingRecipient['uzivatel_id'] == $sourceUserId &&
                                     $existingRecipient['templateId'] == $templateId) {
+                                    // User už je v seznamu (nezáleží na roli)
                                     $alreadyAdded = true;
+                                    error_log("         → User $sourceUserId už je v seznamu s rolí {$existingRecipient['recipientRole']} - skip source_info");
                                     break;
                                 }
                             }
                             
                             if ($alreadyAdded) {
-                                error_log("         → User $sourceUserId už je v seznamu (z NODE filtru)");
                                 continue;
                             }
                             
@@ -3603,7 +3607,7 @@ function extractVariantFromEmailBody($emailBody, $variant) {
  * Určí object typ podle event typ
  */
 function getObjectTypeFromEvent($eventType) {
-    // Podporuj jak uppercase (ORDER_SENT_FOR_APPROVAL) tak lowercase (order_status_ke_schvaleni)
+    // Podporuj jak uppercase (INVOICE_*) tak lowercase (order_status_*, invoice_*) event types
     if (strpos($eventType, 'ORDER_') === 0 || strpos($eventType, 'order_') === 0) return 'orders';
     if (strpos($eventType, 'INVOICE_') === 0 || strpos($eventType, 'invoice_') === 0) return 'invoices';
     if (strpos($eventType, 'CONTRACT_') === 0 || strpos($eventType, 'contract_') === 0) return 'contracts';
@@ -3943,7 +3947,7 @@ function sendNotificationEmail($db, $userId, $subject, $htmlBody) {
  * Body: {
  *   token: string,
  *   username: string,
- *   event_type: string (ORDER_APPROVED, ORDER_REJECTED, ...),
+ *   event_type: string (order_status_schvalena, order_status_zamitnuta, ...),
  *   object_id: int (ID objednávky/faktury/...),
  *   trigger_user_id: int (kdo akci provedl)
  * }
@@ -4260,6 +4264,17 @@ function triggerNotification($db, $eventType, $objectId, $triggerUserId, $custom
     error_log("║  Event Type:   " . str_pad($eventType, 47) . "║");
     error_log("║  Object ID:    " . str_pad($objectId, 47) . "║");
     error_log("║  Trigger User: " . str_pad($triggerUserId, 47) . "║");
+    error_log("║  Call Stack (first 3 frames):                                  ║");
+    
+    // 🔍 DEBUG: Zobraz call stack pro identifikaci duplikátů
+    $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5);
+    foreach (array_slice($backtrace, 1, 3) as $idx => $trace) {
+        $function = isset($trace['function']) ? $trace['function'] : 'unknown';
+        $file = isset($trace['file']) ? basename($trace['file']) : 'unknown';
+        $line = isset($trace['line']) ? $trace['line'] : 'unknown';
+        error_log("║  #" . ($idx + 1) . " {$file}:{$line} -> {$function}()");
+    }
+    
     error_log("║                                                                  ║");
     error_log("╚══════════════════════════════════════════════════════════════════╝");
     

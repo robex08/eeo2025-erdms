@@ -558,22 +558,35 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   const komentar = order?.schvaleni_komentar || '';
   const schvalenoDne = order?.dt_schvaleni || MISSING;
   
-  // Financování - OrderForm25 transformuje financovani do flat struktury
-  // Takže očekáváme: zpusob_financovani, lp_kod, cislo_smlouvy, individualni_schvaleni atd.
-  const financovani = order?.zpusob_financovani || MISSING;
+  // Financování - Backend posílá enriched data v order.financovani (vnořený objekt)
+  // OPRAVA: Používej order.financovani místo flat struktury
+  const financovani = order?.financovani?.typ_nazev || order?.financovani?.typ || order?.zpusob_financovani || MISSING;
   
-  // Rekonstruovat financovaniData pro detaily
-  const financovaniData = order?.zpusob_financovani ? {
-    typ: order.zpusob_financovani,
-    lp_kody: order.lp_kod,
-    lp_kod: order.lp_kod,
-    cislo_smlouvy: order.cislo_smlouvy,
-    smlouva_poznamka: order.smlouva_poznamka,
-    individualni_schvaleni: order.individualni_schvaleni,
-    individualni_poznamka: order.individualni_poznamka,
-    pojistna_udalost_cislo: order.pojistna_udalost_cislo,
-    pojistna_udalost_poznamka: order.pojistna_udalost_poznamka
+  // Použít data přímo z order.financovani (backend již obohatil)
+  const financovaniData = order?.financovani ? {
+    typ: order.financovani.typ,
+    lp_kody: order.financovani.lp_kody,
+    lp_kod: order.financovani.lp_kody,
+    lp_nazvy: order.financovani.lp_nazvy, // ✨ Už enriched!
+    cislo_smlouvy: order.financovani.cislo_smlouvy || order.cislo_smlouvy,
+    smlouva_poznamka: order.financovani.smlouva_poznamka || order.smlouva_poznamka,
+    individualni_schvaleni: order.financovani.individualni_schvaleni || order.individualni_schvaleni,
+    individualni_poznamka: order.financovani.individualni_poznamka || order.individualni_poznamka,
+    pojistna_udalost_cislo: order.financovani.pojistna_udalost_cislo || order.pojistna_udalost_cislo,
+    pojistna_udalost_poznamka: order.financovani.pojistna_udalost_poznamka || order.pojistna_udalost_poznamka
   } : null;
+  
+  // 🔍 DEBUG: Zkontroluj, co backend poslal
+  console.log('🔍 [FinancialControlPDF] order.financovani:', order?.financovani);
+  console.log('🔍 [FinancialControlPDF] order.lp_kod:', order?.lp_kod);
+  console.log('🔍 [FinancialControlPDF] financovaniData:', financovaniData);
+  
+  // 🎯 Helper: Najít název LP kódu podle ID z enriched dat
+  const getLPNazevById = (lpId) => {
+    if (!lpId || !financovaniData?.lp_nazvy) return lpId; // Fallback: zobrazit ID
+    const lp = financovaniData.lp_nazvy.find(item => item.id === lpId);
+    return lp ? `${lp.cislo_lp || lpId} - ${lp.nazev || '---'}` : lpId;
+  };
   
   // 💰 Maximální cena s DPH (z objednávky)
   const maxCenaSvDph = order?.max_cena_s_dph ? parseFloat(order.max_cena_s_dph) : null;
@@ -787,16 +800,18 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
           {/* Detaily financování podle typu */}
           {financovaniData && (
             <>
-              {/* LP kódy - POUZE pokud je typ financování LP */}
-              {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && (financovaniData.lp_kody || financovaniData.lp_kod) && (
+              {/* LP kódy - zobrazit NÁZVY místo ID! */}
+              {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && (
                 <View style={styles.controlRow}>
                   <Text style={styles.controlLabel}>LP kódy:</Text>
                   <Text style={styles.controlValue}>
-                    {Array.isArray(financovaniData.lp_kody) 
-                      ? financovaniData.lp_kody.join(', ') 
-                      : Array.isArray(financovaniData.lp_kod)
-                        ? financovaniData.lp_kod.join(', ')
-                        : (financovaniData.lp_kody || financovaniData.lp_kod)}
+                    {financovaniData.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0
+                      ? financovaniData.lp_nazvy.map(lp => `${lp.cislo_lp || lp.id} - ${lp.nazev || '---'}`).join(', ')
+                      : (Array.isArray(financovaniData.lp_kody) 
+                          ? financovaniData.lp_kody.join(', ') 
+                          : Array.isArray(financovaniData.lp_kod)
+                            ? financovaniData.lp_kod.join(', ')
+                            : (financovaniData.lp_kody || financovaniData.lp_kod || '---'))}
                   </Text>
                 </View>
               )}
@@ -881,7 +896,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
               
               {order.polozky.map((polozka, index) => {
                 // LP ID zobrazit JEN když je financování typu LP (limitovaný příslib)
-                const jeFinancovaniLP = order.zpusob_financovani === 'LP' || order.zpusob_financovani === 'LIMITOVANY_PRISLIB';
+                const jeFinancovaniLP = financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB';
                 
                 return (
                   <View key={polozka.id || index} style={{
@@ -903,9 +918,9 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                     </View>
                     {jeFinancovaniLP && polozka.lp_id && (
                       <View style={styles.controlRow}>
-                        <Text style={[styles.controlLabel, { width: '30%' }]}>LP ID:</Text>
+                        <Text style={[styles.controlLabel, { width: '30%' }]}>LP kód:</Text>
                         <Text style={[styles.controlValue, { width: '70%' }]}>
-                          {polozka.lp_id}
+                          {getLPNazevById(polozka.lp_id)}
                         </Text>
                       </View>
                     )}
@@ -931,7 +946,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
               <View key={faktura.id || index} style={{ marginBottom: index < order.faktury.length - 1 ? 8 : 0 }}>
                 {/* Titulek faktury s variabilním symbolem a pořadovým číslem */}
                 <Text style={[styles.controlLabel, { fontSize: 11, fontWeight: 700, marginBottom: 8, color: '#059669' }]}>
-                  Faktura {faktura.fa_cislo_vema || 'N/A'}#{index + 1}
+                  Faktura č. {index + 1} - VS: {faktura.fa_cislo_vema || 'N/A'}
                 </Text>
 
                 {/* Faktura variabilní symbol */}

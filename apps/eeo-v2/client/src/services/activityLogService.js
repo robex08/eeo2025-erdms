@@ -14,11 +14,11 @@ const MAX_AGE_HOURS = 24; // Historie pouze z posledních 24 hodin
  * Typy aktivit
  */
 export const ACTIVITY_TYPES = {
-  // Objednávky
-  ORDER_APPROVED: 'order_approved',
-  ORDER_REJECTED: 'order_rejected',
-  ORDER_WAITING: 'order_waiting',
-  ORDER_CREATED: 'order_created',
+  // Objednávky - používáme nové české názvy
+  ORDER_APPROVED: 'order_status_schvalena',
+  ORDER_REJECTED: 'order_status_zamitnuta',
+  ORDER_WAITING: 'order_status_ceka_se',
+  ORDER_CREATED: 'order_status_ke_schvaleni',
   ORDER_UPDATED: 'order_updated',
   ORDER_DELETED: 'order_deleted',
   

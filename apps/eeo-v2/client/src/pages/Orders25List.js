@@ -5938,10 +5938,19 @@ const Orders25List = () => {
   // permissions změny jsou zachyceny přes ref který je vždy aktuální
 
   // Load data on mount - s kontrolou forceReload z navigation state
+  // ✅ OPRAVA: Počkat na inicializaci permissions před prvním loadem
+  // Problém: Běžní uživatelé (jen OWN permissions) viděli prázdný seznam po přihlášení,
+  // protože loadData se volal dřív než se načetla oprávnění/hierarchie
   useEffect(() => {
+    // Počkat, až jsou permissions inicializované (hasPermission funkce je k dispozici)
+    if (!hasPermission || !token || !user?.username) {
+      console.log('⏳ [Orders25List] Čekám na inicializaci permissions/token/user...');
+      return;
+    }
+    
     const shouldForceReload = location.state?.forceReload === true;
     loadData(shouldForceReload);
-  }, [loadData, location.state?.forceReload]);
+  }, [loadData, location.state?.forceReload, hasPermission, token, user?.username]);
 
   // Listen for ORDER_SAVED broadcasts from other tabs/windows
   // 🔥 PERFORMANCE: Debounce loadData to prevent message handler violations
