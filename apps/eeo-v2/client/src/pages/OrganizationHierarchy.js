@@ -5647,7 +5647,7 @@ const OrganizationHierarchy = () => {
                         <strong>3️⃣ Na šipce nastavte:</strong>
                         <ul style={{ margin: '4px 0 4px 20px', padding: 0 }}>
                           <li><strong>Scope Filter</strong> - koho zahrnout (všichni/jen účastníci entity...)</li>
-                          <li><strong>Event Types</strong> - kdy poslat (order_status_ke_schvaleni...)</li>
+                          <li><strong>Event Types</strong> - kdy poslat (ORDER_PENDING_APPROVAL...)</li>
                         </ul>
                         <div style={{ 
                           marginTop: '8px', 
@@ -5675,10 +5675,10 @@ const OrganizationHierarchy = () => {
                         
                         // Definice všech možných variant
                         const variantTypes = [
-                          // ⭐ NOVÝ FORMÁT (Fáze 1: order_status_schvalena, zamitnuta, ceka_se)
+                          // ⭐ AKTUÁLNÍ FORMÁT (ORDER_APPROVED, ORDER_REJECTED, ORDER_AWAITING_CHANGES)
                           { type: 'RECIPIENT', icon: '🟠', name: 'Příjemce (oranžová - normální)' },
                           
-                          // 🔧 STARÝ FORMÁT (order_status_ke_schvaleni)
+                          // 🔧 LEGACY FORMÁT (stále podporováno pro zpětnou kompatibilitu)
                           { type: 'APPROVER_NORMAL', icon: '🟠', name: 'Schvalovatel (oranžová - normální)' },
                           { type: 'APPROVER_URGENT', icon: '🔴', name: 'Schvalovatel (červená - urgentní)' },
                           
@@ -5924,7 +5924,7 @@ const OrganizationHierarchy = () => {
                         lineHeight: '1.5'
                       }}>
                         💡 <strong>Event Types = kdy systém pošle tuto šablonu</strong><br/>
-                        Např. vyberete <strong>order_status_ke_schvaleni</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
+                        Např. vyberete <strong>ORDER_PENDING_APPROVAL</strong> → když někdo odešle objednávku ke schválení, systém automaticky pošle tento email příjemcům (kteří jsou propojeni šipkou)<br/>
                         ⚠️ Pokud nevyberete žádný → šablona se nepoužije automaticky
                       </div>
                     </FormGroup>
