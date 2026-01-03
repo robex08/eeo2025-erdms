@@ -58,84 +58,84 @@ export {
  */
 export const NOTIFICATION_CONFIG = {
   // STAVY OBJEDNÁVEK (NOVÉ)
-  order_status_nova: {
+  ORDER_CREATED: {
     icon: '📝',
     color: '#64748b',
     category: 'orders',
     label: 'Objednávka vytvořena',
     priority: 'low'
   },
-  order_status_rozpracovana: {
+  ORDER_DRAFT: {
     icon: '✏️',
     color: '#f59e0b',
     category: 'orders',
     label: 'Objednávka rozpracována',
     priority: 'low'
   },
-  order_status_ke_schvaleni: {
+  ORDER_PENDING_APPROVAL: {
     icon: '📋',
     color: '#3b82f6',
     category: 'orders',
     label: 'Objednávka ke schválení',
     priority: 'high'
   },
-  order_status_schvalena: {
+  ORDER_APPROVED: {
     icon: '👍',
     color: '#16a34a',
     category: 'orders',
     label: 'Objednávka schválena',
     priority: 'normal'
   },
-  order_status_zamitnuta: {
+  ORDER_REJECTED: {
     icon: '❌',
     color: '#dc2626',
     category: 'orders',
     label: 'Objednávka zamítnuta',
     priority: 'high'
   },
-  order_status_ceka_se: {
+  ORDER_AWAITING_CHANGES: {
     icon: '⏸️',
     color: '#f59e0b',
     category: 'orders',
     label: 'Objednávka čeká',
     priority: 'normal'
   },
-  order_status_odeslana: {
+  ORDER_SENT_TO_SUPPLIER: {
     icon: '📤',
     color: '#3b82f6',
     category: 'orders',
     label: 'Objednávka odeslána',
     priority: 'normal'
   },
-  order_status_ceka_potvrzeni: {
+  ORDER_AWAITING_CONFIRMATION: {
     icon: '⏳',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na potvrzení dodavatele',
     priority: 'normal'
   },
-  order_status_potvrzena: {
+  ORDER_CONFIRMED_BY_SUPPLIER: {
     icon: '✔️',
     color: '#8b5cf6',
     category: 'orders',
     label: 'Objednávka potvrzena',
     priority: 'normal'
   },
-  order_status_dokoncena: {
+  ORDER_COMPLETED: {
     icon: '🎯',
     color: '#059669',
     category: 'orders',
     label: 'Objednávka dokončena',
     priority: 'normal'
   },
-  order_status_zrusena: {
+  ORDER_CANCELLED: {
     icon: '🚫',
     color: '#6b7280',
     category: 'orders',
     label: 'Objednávka zrušena',
     priority: 'normal'
   },
-  order_status_smazana: {
+  ORDER_DELETED: {
     icon: '🗑️',
     color: '#6b7280',
     category: 'orders',
@@ -144,14 +144,14 @@ export const NOTIFICATION_CONFIG = {
   },
 
   // NOVÉ FÁZE - REGISTR SMLUV
-  order_status_registr_ceka: {
+  ORDER_REGISTRY_PENDING: {
     icon: '📋',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na registr smluv',
     priority: 'normal'
   },
-  order_status_registr_zverejnena: {
+  ORDER_REGISTRY_PUBLISHED: {
     icon: '📢',
     color: '#10b981',
     category: 'orders',
@@ -160,28 +160,28 @@ export const NOTIFICATION_CONFIG = {
   },
 
   // NOVÉ FÁZE - FAKTURACE
-  order_status_faktura_ceka: {
+  ORDER_INVOICE_PENDING: {
     icon: '💰',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na fakturu',
     priority: 'normal'
   },
-  order_status_faktura_pridana: {
+  ORDER_INVOICE_ADDED: {
     icon: '📄',
     color: '#3b82f6',
     category: 'orders',
     label: 'Faktura přidána',
     priority: 'normal'
   },
-  order_status_faktura_schvalena: {
+  ORDER_INVOICE_APPROVED: {
     icon: '✅',
     color: '#10b981',
     category: 'orders',
     label: 'Faktura schválena',
     priority: 'normal'
   },
-  order_status_faktura_uhrazena: {
+  ORDER_INVOICE_PAID: {
     icon: '💳',
     color: '#10b981',
     category: 'orders',
@@ -190,21 +190,21 @@ export const NOTIFICATION_CONFIG = {
   },
 
   // NOVÉ FÁZE - VĚCNÁ SPRÁVNOST
-  order_status_kontrola_ceka: {
+  ORDER_VERIFICATION_PENDING: {
     icon: '🔍',
     color: '#f59e0b',
     category: 'orders',
     label: 'Čeká na kontrolu',
     priority: 'high'
   },
-  order_status_kontrola_potvrzena: {
+  ORDER_VERIFICATION_APPROVED: {
     icon: '✅',
     color: '#10b981',
     category: 'orders',
     label: 'Věcná správnost OK',
     priority: 'normal'
   },
-  order_status_kontrola_zamitnuta: {
+  ORDER_VERIFICATION_REJECTED: {
     icon: '⚠️',
     color: '#ef4444',
     category: 'orders',
