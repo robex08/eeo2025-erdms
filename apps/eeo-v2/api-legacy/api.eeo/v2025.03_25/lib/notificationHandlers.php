@@ -2673,19 +2673,27 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         
         // 🔥 DEDUPLICATION: Odstranit duplicitní notifikace pro stejného uživatele
         // Priorita variant: INFO (garant) > APPROVAL (schvalovatel) > default
+        // ✅ NOVÁ LOGIKA: Deduplikace podle user_id + event_type + VARIANTA
+        // => Umožňuje poslat WARNING + INFO stejnému uživateli!
         error_log("🔍 [NotificationRouter] Deduplication START - původní počet: " . count($recipients));
         
         // Funkce pro získání priority varianty
-        $getVariantPriority = function($variant) {
-            if (stripos($variant, 'info') !== false) return 3; // INFO má nejvyšší prioritu (garant)
-            if (stripos($variant, 'approval') !== false) return 2; // APPROVAL má střední prioritu
+        $getVariantPriority = function($variantKey) {
+            if (stripos($variantKey, 'info') !== false || $variantKey === 'INFO') return 3; // INFO má nejvyšší prioritu (garant)
+            if (stripos($variantKey, 'approval') !== false || $variantKey === 'URGENT') return 2; // URGENT má střední prioritu
+            if ($variantKey === 'WARNING') return 4; // WARNING má nejvyšší prioritu (kritická)
             return 1; // default má nejnižší prioritu
         };
         
-        // Seskupit příjemce podle user_id + event_type
+        // Seskupit příjemce podle user_id + event_type + VARIANTA
+        // => Klíč = user_id|event_type|variantKey
+        // => Pokud user dostane 2x WARNING → odstraní duplicitu
+        // => Pokud user dostane WARNING + INFO → NECHÁ OBĚ!
         $groupedRecipients = array();
         foreach ($recipients as $recipient) {
-            $dedupKey = $recipient['uzivatel_id'] . '|' . $eventType;
+            $variantKey = isset($recipient['templateVariantKey']) ? $recipient['templateVariantKey'] : 'INFO';
+            $dedupKey = $recipient['uzivatel_id'] . '|' . $eventType . '|' . $variantKey;
+            
             if (!isset($groupedRecipients[$dedupKey])) {
                 $groupedRecipients[$dedupKey] = array();
             }
@@ -2693,25 +2701,32 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         }
         
         // Pro každou skupinu vybrat příjemce s nejvyšší prioritou varianty
+        // (v případě že je více stejných variant pro stejného uživatele)
         $deduplicatedRecipients = array();
         foreach ($groupedRecipients as $dedupKey => $group) {
             if (count($group) === 1) {
                 // Jeden příjemce - prostě přidat
-                $deduplicatedRecipients[] = $group[0];
-                error_log("   ✅ Příjemce přidán: User ID={$group[0]['uzivatel_id']}, Role={$group[0]['recipientRole']}, Template={$group[0]['templateId']}, Variant=" . ($group[0]['templateVariant'] ?? 'default'));
+                $recipient = $group[0];
+                $deduplicatedRecipients[] = $recipient;
+                $variantKey = isset($recipient['templateVariantKey']) ? $recipient['templateVariantKey'] : 'N/A';
+                error_log("   ✅ Příjemce přidán: User ID={$recipient['uzivatel_id']}, Variant=$variantKey, Role={$recipient['recipientRole']}, Template={$recipient['templateId']}");
             } else {
-                // Více příjemců pro stejného uživatele - vybrat ten s nejvyšší prioritou
+                // Více příjemců pro stejného uživatele + event + variantu → vybrat ten s nejvyšší prioritou
                 usort($group, function($a, $b) use ($getVariantPriority) {
-                    return $getVariantPriority($b['templateVariant'] ?? 'default') - $getVariantPriority($a['templateVariant'] ?? 'default');
+                    $aVariant = isset($a['templateVariantKey']) ? $a['templateVariantKey'] : 'INFO';
+                    $bVariant = isset($b['templateVariantKey']) ? $b['templateVariantKey'] : 'INFO';
+                    return $getVariantPriority($bVariant) - $getVariantPriority($aVariant);
                 });
                 $selectedRecipient = $group[0]; // První je s nejvyšší prioritou
                 $deduplicatedRecipients[] = $selectedRecipient;
                 
-                error_log("   🎯 VÍCE VARIANT pro User ID={$selectedRecipient['uzivatel_id']} - vybrána PRIORITNÍ:");
-                error_log("      ✅ ZVOLENA: Role={$selectedRecipient['recipientRole']}, Template={$selectedRecipient['templateId']}, Variant=" . ($selectedRecipient['templateVariant'] ?? 'default') . " (priorita: " . $getVariantPriority($selectedRecipient['templateVariant'] ?? 'default') . ")");
+                $variantKey = isset($selectedRecipient['templateVariantKey']) ? $selectedRecipient['templateVariantKey'] : 'N/A';
+                error_log("   🎯 VÍCE STEJNÝCH VARIANT pro User ID={$selectedRecipient['uzivatel_id']} - vybrána PRIORITNÍ:");
+                error_log("      ✅ ZVOLENA: Variant=$variantKey, Role={$selectedRecipient['recipientRole']}, Template={$selectedRecipient['templateId']} (priorita: " . $getVariantPriority($variantKey) . ")");
                 
                 for ($i = 1; $i < count($group); $i++) {
-                    error_log("      ⚠️ PŘESKOČENA: Role={$group[$i]['recipientRole']}, Template={$group[$i]['templateId']}, Variant=" . ($group[$i]['templateVariant'] ?? 'default') . " (priorita: " . $getVariantPriority($group[$i]['templateVariant'] ?? 'default') . ")");
+                    $skipVariant = isset($group[$i]['templateVariantKey']) ? $group[$i]['templateVariantKey'] : 'N/A';
+                    error_log("      ⚠️ PŘESKOČENA: Variant=$skipVariant, Role={$group[$i]['recipientRole']}, Template={$group[$i]['templateId']} (priorita: " . $getVariantPriority($skipVariant) . ")");
                 }
             }
         }
@@ -3202,28 +3217,85 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
                 
-                // 8. Určit variantu šablony podle recipientRole (OPRAVENO: názvy variant odpovídají HTML markerům)
-                $variant = 'APPROVER_NORMAL'; // default
+                // ═══════════════════════════════════════════════════════════════════
+                // 8. NOVÁ LOGIKA: Určit variantu šablony podle EDGE, ne recipientRole
+                // ═══════════════════════════════════════════════════════════════════
                 
-                if ($recipientRole === 'EXCEPTIONAL') {
-                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
-                    $variant = (!empty($node['data']['urgentVariant'])) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
-                } elseif ($recipientRole === 'INFO' || $recipientRole === 'AUTHOR_INFO' || $recipientRole === 'GUARANTOR_INFO') {
-                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
-                    $variant = (!empty($node['data']['infoVariant'])) ? $node['data']['infoVariant'] : 'SUBMITTER';
-                } else {
-                    // ✅ OPRAVA: Zkontrolovat že není prázdný string!
-                    $variant = (!empty($node['data']['normalVariant'])) ? $node['data']['normalVariant'] : 'APPROVER_NORMAL';
+                // Načíst variantu z EDGE (nová struktura)
+                $variantKey = isset($edge['data']['variant']) ? $edge['data']['variant'] : null;
+                
+                // FALLBACK: Pokud není definována varianta na EDGE, použij starou logiku (recipientRole)
+                if ($variantKey === null) {
+                    error_log("         ⚠️ FALLBACK: variant not set on EDGE, using recipientRole");
+                    
+                    // Stará logika - mapování recipientRole na variantu
+                    if ($recipientRole === 'EXCEPTIONAL') {
+                        $variantKey = 'WARNING';
+                    } elseif ($recipientRole === 'APPROVAL') {
+                        $variantKey = 'URGENT';
+                    } else {
+                        $variantKey = 'INFO';
+                    }
                 }
                 
-                error_log("         → Template variant: $variant");
+                error_log("         → Variant key: $variantKey");
                 
-                // ✅ VALIDACE: Zkontrolovat že template node má templateId
-                $templateId = isset($node['data']['templateId']) ? $node['data']['templateId'] : null;
+                // Načíst konfiguraci varianty z NODE
+                $variantConfig = null;
+                $templateId = null;
+                $htmlVariant = null;
                 
+                // NOVÁ STRUKTURA: node.data.variants
+                if (isset($node['data']['variants']) && is_array($node['data']['variants'])) {
+                    error_log("         ✅ NEW STRUCTURE: Using node.data.variants");
+                    
+                    // Zkusit najít požadovanou variantu
+                    if (isset($node['data']['variants'][$variantKey])) {
+                        $variantConfig = $node['data']['variants'][$variantKey];
+                        error_log("         ✅ Found variant: $variantKey");
+                    } else {
+                        // Fallback na defaultVariant
+                        $defaultVariantKey = isset($node['data']['defaultVariant']) ? $node['data']['defaultVariant'] : 'INFO';
+                        if (isset($node['data']['variants'][$defaultVariantKey])) {
+                            $variantConfig = $node['data']['variants'][$defaultVariantKey];
+                            $variantKey = $defaultVariantKey;
+                            error_log("         ⚠️ Variant $variantKey not found, using default: $defaultVariantKey");
+                        }
+                    }
+                    
+                    if ($variantConfig) {
+                        $templateId = isset($variantConfig['templateId']) ? $variantConfig['templateId'] : null;
+                        $htmlVariant = isset($variantConfig['htmlVariant']) ? $variantConfig['htmlVariant'] : null;
+                        
+                        error_log("         → templateId: $templateId, htmlVariant: $htmlVariant");
+                    }
+                } 
+                // STARÁ STRUKTURA: node.data.normalVariant, urgentVariant, infoVariant
+                else {
+                    error_log("         ⚠️ OLD STRUCTURE: Fallback to old normalVariant/urgentVariant/infoVariant");
+                    
+                    // Mapování variantKey na staré názvy
+                    if ($variantKey === 'WARNING' || $variantKey === 'URGENT') {
+                        $htmlVariant = (!empty($node['data']['urgentVariant'])) ? $node['data']['urgentVariant'] : 'APPROVER_URGENT';
+                    } elseif ($variantKey === 'INFO') {
+                        $htmlVariant = (!empty($node['data']['infoVariant'])) ? $node['data']['infoVariant'] : 'SUBMITTER';
+                    } else {
+                        $htmlVariant = (!empty($node['data']['normalVariant'])) ? $node['data']['normalVariant'] : 'APPROVER_NORMAL';
+                    }
+                    
+                    // Template ID ze staré struktury
+                    $templateId = isset($node['data']['templateId']) ? $node['data']['templateId'] : null;
+                }
+                
+                // VALIDACE
                 if (!$templateId) {
                     error_log("         ❌ Template node '{$node['data']['name']}' has NO templateId! Skipping edge.");
                     continue;
+                }
+                
+                if (!$htmlVariant) {
+                    $htmlVariant = 'APPROVER_NORMAL'; // Fallback
+                    error_log("         ⚠️ No htmlVariant found, using fallback: $htmlVariant");
                 }
                 
                 // 8. Přidat každého target user do seznamu příjemců
@@ -3267,7 +3339,8 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                     // ale v TÉTO objednávce je garant/objednatel (ne schvalovatel),
                     // změnit na INFO (zelená) místo APPROVER (oranžová)
                     $finalRecipientRole = $recipientRole;
-                    $finalVariant = $variant;
+                    $finalVariantKey = $variantKey;
+                    $finalHtmlVariant = $htmlVariant;
                     
                     if ($objectType === 'orders' && !empty($entityData)) {
                         $isActualApprover = false;
@@ -3284,33 +3357,41 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                         $isObjednatel = !empty($entityData['objednatel_id']) && $entityData['objednatel_id'] == $userId;
                         $isAuthor = !empty($entityData['uzivatel_id']) && $entityData['uzivatel_id'] == $userId;
                         
-                        // Pokud má být APPROVER, ale není skutečný schvalovatel této objednávky
-                        if (($recipientRole === 'APPROVAL' || $recipientRole === 'EXCEPTIONAL') && !$isActualApprover) {
+                        // Pokud má být APPROVER/WARNING/URGENT, ale není skutečný schvalovatel této objednávky
+                        if (($variantKey === 'WARNING' || $variantKey === 'URGENT' || $recipientRole === 'APPROVAL' || $recipientRole === 'EXCEPTIONAL') && !$isActualApprover) {
                             // Pokud je garant/objednatel/autor → změnit na INFO
                             if ($isGarant || $isObjednatel || $isAuthor) {
                                 $finalRecipientRole = 'INFO';
-                                $finalVariant = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
-                                error_log("         🔄 User $userId: Changed from $recipientRole to INFO (is garant/objednatel in THIS order, not actual approver)");
+                                $finalVariantKey = 'INFO';
+                                
+                                // Načíst INFO variantu
+                                if (isset($node['data']['variants']['INFO'])) {
+                                    $infoVariantConfig = $node['data']['variants']['INFO'];
+                                    $finalHtmlVariant = isset($infoVariantConfig['htmlVariant']) ? $infoVariantConfig['htmlVariant'] : 'SUBMITTER';
+                                } else {
+                                    $finalHtmlVariant = !empty($node['data']['infoVariant']) ? $node['data']['infoVariant'] : 'SUBMITTER';
+                                }
+                                
+                                error_log("         🔄 User $userId: Changed from $variantKey to INFO (is garant/objednatel in THIS order, not actual approver)");
                             }
                         }
                     }
                     
-                    // ✅ DEDUPLIKACE: Zkontrolovat, zda už není v seznamu se STEJNOU rolí
-                    // Pokud je už přidán se STEJNOU rolí → přeskočit (duplicita)
-                    // Pokud je přidán s JINOU rolí → přidat (např. INFO + APPROVER)
+                    // ✅ DEDUPLIKACE: Zkontrolovat, zda už není v seznamu se STEJNOU variantou
+                    // NOVÁ LOGIKA: Deduplikace podle user_id + event_type + VARIANTA
+                    // => Umožní poslat WARNING + INFO stejnému uživateli!
                     $isDuplicate = false;
                     foreach ($recipients as $existingRecipient) {
                         if ($existingRecipient['uzivatel_id'] == $userId &&
-                            $existingRecipient['templateId'] == $templateId &&
-                            $existingRecipient['recipientRole'] == $finalRecipientRole) {
+                            $existingRecipient['templateVariantKey'] == $finalVariantKey) {
                             $isDuplicate = true;
-                            error_log("         ⚠️ User $userId: Already in recipients with same role ($finalRecipientRole) - skipping duplicate");
+                            error_log("         ⚠️ User $userId: Already in recipients with same variant ($finalVariantKey) - skipping duplicate");
                             break;
                         }
                     }
                     
                     if ($isDuplicate) {
-                        continue; // Přeskočit duplicitu se stejnou rolí
+                        continue; // Přeskočit duplicitu se stejnou variantou
                     }
                     
                     $recipients[] = array(
@@ -3319,21 +3400,23 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                         'sendEmail' => $sendEmailFinal,
                         'sendInApp' => $sendInAppFinal,
                         'templateId' => $templateId,
-                        'templateVariant' => $finalVariant
+                        'templateVariant' => $finalHtmlVariant,  // HTML varianta pro rendering
+                        'templateVariantKey' => $finalVariantKey // Klíč varianty (WARNING/URGENT/INFO)
                     );
                     
-                    error_log("         ✅ User $userId: Added to recipients (role=$finalRecipientRole, email=" . ($sendEmailFinal ? 'YES' : 'NO') . ", inapp=" . ($sendInAppFinal ? 'YES' : 'NO') . ")");
+                    error_log("         ✅ User $userId: Added to recipients (variant=$finalVariantKey, role=$finalRecipientRole, email=" . ($sendEmailFinal ? 'YES' : 'NO') . ", inapp=" . ($sendInAppFinal ? 'YES' : 'NO') . ")");
                     
                     // DEBUG do DB
                     try {
                         $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
                         $stmt_debug->execute(['Recipient added', json_encode([
                             'user_id' => $userId,
-                            'role' => $recipientRole,
+                            'variantKey' => $finalVariantKey,
+                            'htmlVariant' => $finalHtmlVariant,
+                            'role' => $finalRecipientRole,
                             'sendEmail' => $sendEmailFinal,
                             'sendInApp' => $sendInAppFinal,
-                            'templateId' => $templateId,
-                            'variant' => $variant
+                            'templateId' => $templateId
                         ])]);
                     } catch (Exception $e) {}
                 }
