@@ -5762,24 +5762,18 @@ const OrganizationHierarchy = () => {
                             </div>
                           </FormGroup>
                           
-                          {/* VÝBĚR VARIANTY PRO EXCEPTIONAL PRIORITU */}
+                          {/* VÝBĚR VARIANTY PRO URGENT PRIORITU */}
                           <FormGroup>
-                            <Label>
-                              🚨 Email varianta pro EXCEPTIONAL prioritu
-                              <span style={{ color: '#dc2626', marginLeft: '4px' }}>*</span>
-                            </Label>
+                            <Label>🔴 URGENT varianta</Label>
                             <select
                               value={templateUrgentVariant || defaultVariant}
                               onChange={(e) => setTemplateUrgentVariant(e.target.value)}
                               style={{
                                 width: '100%',
-                                padding: '10px 12px',
-                                border: '2px solid #dc2626',
+                                padding: '8px',
+                                border: '1px solid #e5e7eb',
                                 borderRadius: '6px',
-                                fontSize: '0.9rem',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: '500'
+                                fontSize: '0.9rem'
                               }}
                             >
                               {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
@@ -5788,36 +5782,19 @@ const OrganizationHierarchy = () => {
                                 </option>
                               ))}
                             </select>
-                            <div style={{ 
-                              fontSize: '0.75rem', 
-                              color: '#64748b', 
-                              marginTop: '4px',
-                              lineHeight: '1.5'
-                            }}>
-                              💡 <strong>URGENT priorita</strong> = urgentní události (ORDER_PENDING_APPROVAL, ORDER_REJECTED...)<br/>
-                              🚨 Backend automaticky vybere tuto variantu pro URGENT event types<br/>
-                              Doporučeno: <strong>📧 RECIPIENT</strong> varianta (stejná šablona, jen urgentní obsah)
-                            </div>
                           </FormGroup>
                           
-                          {/* VÝBĚR VARIANTY PRO AUTORA/SPOUŠTĚČE (SUBMITTER) */}
                           <FormGroup>
-                            <Label>
-                              ✅ Email varianta pro AUTORA akce (submitter)
-                              <span style={{ color: '#10b981', marginLeft: '4px' }}>*</span>
-                            </Label>
+                            <Label>🔵 INFO varianta</Label>
                             <select
                               value={templateInfoVariant || defaultVariant}
                               onChange={(e) => setTemplateInfoVariant(e.target.value)}
                               style={{
                                 width: '100%',
-                                padding: '10px 12px',
-                                border: '2px solid #10b981',
+                                padding: '8px',
+                                border: '1px solid #e5e7eb',
                                 borderRadius: '6px',
-                                fontSize: '0.9rem',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: '500'
+                                fontSize: '0.9rem'
                               }}
                             >
                               {availableVariants.filter(v => v.priority !== 'legacy').map(variant => (
@@ -5826,37 +5803,18 @@ const OrganizationHierarchy = () => {
                                 </option>
                               ))}
                             </select>
-                            <div style={{ 
-                              fontSize: '0.75rem', 
-                              color: '#64748b', 
-                              marginTop: '4px',
-                              lineHeight: '1.5'
-                            }}>
-                              💡 <strong>SUBMITTER</strong> = osoba, která spustila akci (vytvořil objednávku, schválil...)<br/>
-                              ✅ Potvrzovací email typu "Vaše objednávka byla schválena"<br/>
-                              Doporučeno: <strong>✅ SUBMITTER</strong> varianta (info styl)
-                            </div>
                           </FormGroup>
                           
-                          {/* INFO BOX - NOVÝ SYSTÉM */}
                           <div style={{
-                            padding: '14px',
-                            background: 'linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%)',
-                            border: '2px solid #3b82f6',
-                            borderRadius: '8px',
-                            fontSize: '0.8rem',
-                            color: '#1e40af',
+                            padding: '10px',
+                            background: '#f0f9ff',
+                            border: '1px solid #bae6fd',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            color: '#0369a1',
                             marginTop: '12px'
                           }}>
-                            <strong>🎯 Generic Recipient systém:</strong>
-                            <ul style={{ margin: '8px 0 0 0', paddingLeft: '18px', lineHeight: '1.7' }}>
-                              <li><strong>RECIPIENT</strong> = univerzální příjemce (dle org. hierarchie/role)</li>
-                              <li><strong>WARNING</strong> = běžné události (schváleno, odesláno...)</li>
-                              <li><strong>URGENT</strong> = urgentní události (vyžaduje akci, problém...)</li>
-                              <li><strong>INFO</strong> = potvrzení pro autora akce (SUBMITTER)</li>
-                              <li><strong>Prioritu určíte na šipce (EDGE)</strong> - která varianta se použije</li>
-                              <li><strong>Event Types také na šipce</strong> - kdy se notifikace pošle</li>
-                            </ul>
+                            💡 Routing (kdy a komu poslat) definujete na <strong>šipce (EDGE)</strong>
                           </div>
                           
                           {/* VÝBĚR PRO NÁHLED */}
