@@ -157,7 +157,6 @@ export const AuthProvider = ({ children }) => {
           // Tiše ignorovat - modal není kritický pro přihlášení
         }
       }, 1000); // 1 sekundu po přihlášení - dát čas na dokončení UI
-
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
         const { getHierarchyConfig } = await import('../services/hierarchyService');
@@ -428,6 +427,7 @@ export const AuthProvider = ({ children }) => {
             k.startsWith('order_templates') ||
             k.startsWith('ui_') ||
             k.startsWith('suppliers_cache') ||
+            k.startsWith('post_login_modal_dismissed_') ||
             k === 'lastVisitedSection' ||
             k === 'activeSection' ||
             k === 'last_location'
