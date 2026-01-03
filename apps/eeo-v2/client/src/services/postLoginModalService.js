@@ -24,6 +24,12 @@ export const checkPostLoginModal = async (userId, token, username) => {
     const { getGlobalSettingsForDisplay } = await import('./globalSettingsApi');
     const globalSettings = await getGlobalSettingsForDisplay(token, username);
     
+    console.log('🔥 POST-LOGIN MODAL - LOADED SETTINGS:', {
+      message_id: globalSettings.post_login_modal_message_id,
+      content_length: globalSettings.post_login_modal_content?.length,
+      content_preview: globalSettings.post_login_modal_content?.substring(0, 100)
+    });
+    
     // KRITICKÉ: Kontrola, zda je modal povolen (priorita #1)
     const enabledValue = globalSettings.post_login_modal_enabled?.hodnota || globalSettings.post_login_modal_enabled;
     const enabled = enabledValue === '1' || enabledValue === 1 || enabledValue === true;
