@@ -215,7 +215,7 @@ class OrderV2Handler {
      * @param array $standardData Standardizovaná data z FE
      * @return array Data připravená pro INSERT/UPDATE do DB
      */
-    public function transformToDB($standardData) {
+    public function transformToDB($standardData, $isUpdate = false) {
         if (!$standardData) {
             return array();
         }
@@ -235,6 +235,12 @@ class OrderV2Handler {
             'items',                // Alias pro polozky
             'attachments'           // Alias pro prilohy
         );
+        
+        // 🔒 ONLY during UPDATE: Block core IDs from being changed
+        if ($isUpdate) {
+            $blacklistedFields[] = 'uzivatel_id';   // Technical creator - never update from frontend
+            $blacklistedFields[] = 'objednatel_id'; // Business orderer - never update from frontend  
+        }
         
         $result = array();
         foreach ($standardData as $key => $value) {

@@ -931,6 +931,7 @@ function handle_order_v2_create($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         $dbData['dt_vytvoreni'] = TimezoneHelper::getCzechDateTime();
         $dbData['aktivni'] = 1;
+        $dbData['uzivatel_id'] = $auth_result['id']; // ✅ CRITICAL FIX: Set creator ID from auth
         
         // OPRAVA: Pokud není nastaveno dt_objednavky, použij aktuální datum a čas
         if (!isset($dbData['dt_objednavky']) || $dbData['dt_objednavky'] === '' || $dbData['dt_objednavky'] === null) {
@@ -1076,7 +1077,7 @@ function handle_order_v2_update($input, $config, $queries) {
         }
         
         // Transformace dat pro DB
-        $dbData = $handler->transformToDB($input);
+        $dbData = $handler->transformToDB($input, true); // ✅ isUpdate = true
         
         $db = get_db($config);
         $db->beginTransaction();
@@ -1084,7 +1085,7 @@ function handle_order_v2_update($input, $config, $queries) {
         // Automatické nastavení - timezone handling PO inicializaci DB
         TimezoneHelper::setMysqlTimezone($db);
         $dbData['dt_aktualizace'] = TimezoneHelper::getCzechDateTime();
-        // $dbData['uzivatel_akt_id'] = $current_user_id; // Commented out - sloupec možná neexistuje v produkci
+        $dbData['uzivatel_akt_id'] = $current_user_id; // ✅ FIXED: Set user who updated the order
         
         // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu na SCHVALENA
         if (isset($dbData['stav_workflow_kod'])) {
@@ -1108,7 +1109,8 @@ function handle_order_v2_update($input, $config, $queries) {
             $values = array();
             
             foreach ($dbData as $key => $value) {
-                if ($key !== 'id') { // ID neměníme
+                // ✅ CRITICAL FIX: Never update core IDs (creator/orderer) or id
+                if ($key !== 'id' && $key !== 'uzivatel_id' && $key !== 'objednatel_id') {
                     $setParts[] = "`{$key}` = :{$key}";
                     $values[$key] = $value;
                 }
@@ -1320,8 +1322,8 @@ function handle_order_v2_update($input, $config, $queries) {
                         if (!empty($update_fields)) {
                             // Automatické pole
                             $update_fields[] = 'dt_aktualizace = NOW()';
-                            // $update_fields[] = 'uzivatel_akt_id = ?'; // Commented out - sloupec možná neexistuje v produkci
-                            // $update_values[] = $current_user_id;
+                            $update_fields[] = 'uzivatel_akt_id = ?'; // ✅ ENABLED: Track who updated invoice
+                            $update_values[] = $current_user_id;
                             
                             // ID faktury na konec
                             $update_values[] = $faktura_id;

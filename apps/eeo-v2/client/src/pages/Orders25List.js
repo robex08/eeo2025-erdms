@@ -11234,8 +11234,8 @@ const Orders25List = () => {
               Workflow kroky
             </InfoCardTitle>
 
-            {/* Vytvořil */}
-            {order.uzivatel && (
+            {/* Vytvořil/Objednatel */}
+            {(order.objednatel || order.uzivatel) && (
               <div style={{
                 marginBottom: '0.75rem',
                 paddingBottom: '0.75rem',
@@ -11248,19 +11248,19 @@ const Orders25List = () => {
                   marginBottom: '2px'
                 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#3b82f6' }}>
-                    1. Vytvořil
+                    1. {order.objednatel ? 'Objednatel' : 'Vytvořil'}
                   </div>
                   <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                    {order.uzivatel.cele_jmeno}
+                    {order.objednatel?.cele_jmeno || order.uzivatel?.cele_jmeno}
                   </div>
                 </div>
-                {order.uzivatel.datum && (
+                {(order.objednatel?.datum || order.uzivatel?.datum) && (
                   <div style={{
                     fontSize: '0.75em',
                     color: '#64748b',
                     textAlign: 'right'
                   }}>
-                    {prettyDate(order.uzivatel.datum)}
+                    {prettyDate(order.objednatel?.datum || order.uzivatel?.datum)}
                   </div>
                 )}
               </div>
