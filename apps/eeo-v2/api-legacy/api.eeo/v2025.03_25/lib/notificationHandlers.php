@@ -2633,14 +2633,32 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         // DEBUG do DB
         try {
             $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
-            $stmt->execute(['Before findNotificationRecipients', json_encode([
+            $stmt->execute(['Before NEW hierarchyTriggers resolution', json_encode([
                 'event' => $eventType,
                 'object_id' => $objectId,
                 'trigger_user' => $triggerUserId
             ])]);
         } catch (Exception $e) {}
         
-        $recipients = findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, $placeholderData);
+        // ✅ NOVÝ SYSTÉM: Použít hierarchyTriggers.php místo starého findNotificationRecipients
+        require_once(__DIR__ . '/hierarchyTriggers.php');
+        $hierarchyResult = resolveHierarchyNotificationRecipients($eventType, $placeholderData, $db);
+        
+        // Konverze výstupu z hierarchyTriggers na formát očekávaný notificationRouter
+        $recipients = array();
+        if ($hierarchyResult && isset($hierarchyResult['recipients'])) {
+            foreach ($hierarchyResult['recipients'] as $recipient) {
+                $recipients[] = array(
+                    'uzivatel_id' => $recipient['user_id'],
+                    'recipientRole' => $hierarchyResult['priority'] ?? 'INFO',
+                    'templateVariantKey' => $hierarchyResult['variant_id'] ?? 'INFO',
+                    'sendEmail' => $recipient['delivery']['email'] ?? false,
+                    'sendInApp' => $recipient['delivery']['inApp'] ?? true
+                );
+            }
+        }
+        
+        error_log("✅ [NotificationRouter] NEW SYSTEM: hierarchyTriggers returned " . count($recipients) . " recipients");
         
         // DEBUG do DB
         try {

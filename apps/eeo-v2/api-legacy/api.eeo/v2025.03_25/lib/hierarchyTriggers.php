@@ -99,7 +99,17 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
             $nodeType = $node['type'] ?? $node['typ'] ?? null;
             if ($nodeType === 'template' && isset($node['data']['eventTypes'])) {
                 $nodeEventTypes = $node['data']['eventTypes'];
-                if (in_array($eventTypeId, $nodeEventTypes)) {
+                
+                // ✅ SUPPORT: Both ID (1) and STRING ("ORDER_PENDING_APPROVAL") formats
+                $hasEventType = false;
+                foreach ($nodeEventTypes as $nodeEventType) {
+                    if ($nodeEventType === $eventTypeId || $nodeEventType === $eventType) {
+                        $hasEventType = true;
+                        break;
+                    }
+                }
+                
+                if ($hasEventType) {
                     $templateNodes[] = $node;
                 }
             }
