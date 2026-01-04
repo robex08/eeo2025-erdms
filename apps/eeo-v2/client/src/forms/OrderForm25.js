@@ -10633,7 +10633,8 @@ function OrderForm25() {
                   order_subject: formData.predmet || '',
                   prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu pro backend
                   garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu pro backend
-                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu pro backend
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback na user_id
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -10665,7 +10666,8 @@ function OrderForm25() {
                   order_subject: formData.predmet || '',
                   prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
                   garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
-                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -11158,7 +11160,8 @@ function OrderForm25() {
                   order_subject: formData.predmet || '',
                   prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
                   garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
-                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -11193,7 +11196,8 @@ function OrderForm25() {
                   order_subject: formData.predmet || '',
                   prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
                   garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
-                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Přidat fallback
+                  uzivatel_id: formData.objednatel_id || user_id,  // ✅ OPRAVA: Pro hierarchii která používá uzivatel_id
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,

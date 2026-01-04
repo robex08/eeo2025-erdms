@@ -839,7 +839,7 @@ function handle_orders_create($input, $config, $queries) {
                 if ($stavRow && strtoupper($stavRow['typ_objektu']) === 'OBJEDNAVKA') {
                     $kod = strtoupper($stavRow['kod_stavu']);
                     if (in_array($kod, array('SCHVALENA','ZAMITNUTA','CEKA_SE'))) {
-                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalil_uzivatel_id = :u, uzivatel_akt_id = :akt_id, dt_aktualizace = NOW() WHERE id = :oid LIMIT 1");
+                        $stmtUpdSchv = $db->prepare("UPDATE ".TBL_OBJEDNAVKY." SET datum_schvaleni = NOW(), schvalovatel_id = :u, uzivatel_akt_id = :akt_id, dt_aktualizace = NOW() WHERE id = :oid LIMIT 1");
                         $stmtUpdSchv->execute([':u' => $token_data['id'], ':akt_id' => $token_data['id'], ':oid' => $order_id]); // ✅ FIXED: Also set uzivatel_akt_id
                     }
                 }
@@ -4098,9 +4098,10 @@ function handle_create_order($input, $config, $queries) {
         $params = [
             ':cislo_objednavky' => $orderNumber,
             ':datum_objednavky' => $datum_objednavky,
-            ':objednatel_id' => $objednatel_id,
-            ':created_by_uzivatel_id' => $objednatel_id,
-            ':updated_by_uzivatel_id' => $objednatel_id,
+            ':uzivatel_id' => $token_data['id'],  // Kdo vytvořil objednávku
+            ':objednatel_id' => $objednatel_id,  // Kdo objednává (obvykle = uzivatel_id)
+            ':created_by_uzivatel_id' => $token_data['id'],
+            ':updated_by_uzivatel_id' => $token_data['id'],
             ':garant_uzivatel_id' => $garant_uzivatel_id,
             ':predmet' => $predmet,
             ':prikazce_id' => $prikazce_id,
@@ -4364,8 +4365,8 @@ function handle_update_order($input, $config, $queries) {
                 $kod = strtoupper($stavRow['kod_stavu']);
                 if (in_array($kod, ['SCHVALENA','ZAMITNUTA','CEKA_SE'])) {
                     $setParts[] = 'datum_schvaleni = NOW()';
-                    $setParts[] = 'schvalil_uzivatel_id = :schvalil_uzivatel_id';
-                    $params[':schvalil_uzivatel_id'] = $token_data['id'];
+                    $setParts[] = 'schvalovatel_id = :schvalovatel_id';
+                    $params[':schvalovatel_id'] = $token_data['id'];
                 }
                 // stav_datum vždy při změně stavu
                 $setParts[] = 'stav_datum = NOW()';

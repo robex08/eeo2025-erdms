@@ -294,8 +294,8 @@ $queries['objednavky_insert'] = "INSERT INTO ".TBL_OBJEDNAVKY."
     VALUES (:uzivatel_id, :dodavatel_id, :lokalita_id, :stav_id, :nazev_objednavky, :popis, :poznamka, NOW(), NOW())";
 
 $queries['objednavky_insert_full'] = "INSERT INTO ".TBL_OBJEDNAVKY." 
-    (cislo_objednavky, datum_objednavky, objednatel_id, created_by_uzivatel_id, updated_by_uzivatel_id, garant_uzivatel_id, predmet, prikazce_id, max_cena_s_dph, stav_id, strediska, financovani_dodatek, stav_komentar, dt_vytvoreni, dt_aktualizace) 
-    VALUES (:cislo_objednavky, :datum_objednavky, :objednatel_id, :created_by_uzivatel_id, :updated_by_uzivatel_id, :garant_uzivatel_id, :predmet, :prikazce_id, :max_cena_s_dph, :stav_id, :strediska, :financovani_dodatek, :stav_komentar, NOW(), NOW())";
+    (cislo_objednavky, datum_objednavky, uzivatel_id, objednatel_id, created_by_uzivatel_id, updated_by_uzivatel_id, garant_uzivatel_id, predmet, prikazce_id, max_cena_s_dph, stav_id, strediska, financovani_dodatek, stav_komentar, dt_vytvoreni, dt_aktualizace) 
+    VALUES (:cislo_objednavky, :datum_objednavky, :uzivatel_id, :objednatel_id, :created_by_uzivatel_id, :updated_by_uzivatel_id, :garant_uzivatel_id, :predmet, :prikazce_id, :max_cena_s_dph, :stav_id, :strediska, :financovani_dodatek, :stav_komentar, NOW(), NOW())";
 
 $queries['objednavky_polozky_insert'] = "INSERT INTO ".TBL_OBJEDNAVKY_POLOZKY."
     (objednavka_id, popis, cena_bez_dph, sazba_dph, cena_s_dph, dt_vytvoreni)

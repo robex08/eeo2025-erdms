@@ -144,13 +144,18 @@ function getActionIcon($notificationType) {
  */
 function getPriorityIcon($priorita) {
     $icons = array(
-        'urgent' => '🔴',
-        'high' => '🟠',
-        'normal' => '🟢',
-        'low' => '⚪'
+        'INFO' => 'ℹ️',           // zelená ikona I
+        'APPROVAL' => 'ℹ️',       // zelená ikona I
+        'WARNING' => '⚠️',        // oranžová ikona výkřičník
+        'normal' => '⚠️',         // oranžová ikona výkřičník
+        'URGENT' => '🚨',         // červená ikona alarm
+        'high' => '🚨',           // červená ikona alarm
+        'urgent' => '🚨',         // červená ikona alarm
+        'EXCEPTIONAL' => '🚨',    // červená ikona alarm
+        'low' => '🟢'            // zelená
     );
     
-    return isset($icons[$priorita]) ? $icons[$priorita] : '🟢';
+    return isset($icons[$priorita]) ? $icons[$priorita] : 'ℹ️';
 }
 
 // ==========================================
