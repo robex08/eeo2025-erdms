@@ -6725,7 +6725,7 @@ function OrderForm25() {
     const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
     const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
     const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
-    const hasFaktury = formData.faktury && formData.faktury.length > 0;
+    const hasFaktury = !!(formData.faktury && formData.faktury.length > 0); // ✅ OPRAVA: Vždy boolean
     
     if (states.fakturace) {
       states.fakturace = {
@@ -10638,7 +10638,7 @@ function OrderForm25() {
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
               console.log('📧 ORDER_PENDING_APPROVAL notification response:', notifResponse);
@@ -10670,7 +10670,7 @@ function OrderForm25() {
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
               console.log('📧 ORDER_SENT_TO_SUPPLIER notification response:', notifResponse2);
@@ -11163,7 +11163,7 @@ function OrderForm25() {
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
               console.log('📧 ORDER_PENDING_APPROVAL (UPDATE) notification response:', notifResponseUpd1);
@@ -11198,7 +11198,7 @@ function OrderForm25() {
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
                   max_price_with_dph: formData.max_cena_s_dph || 0,
-                  is_urgent: formData.mimoradna_udalost || false
+                  mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
               console.log('📧 ORDER_SENT_TO_SUPPLIER (UPDATE) notification response:', notifResponseUpd2);
@@ -22979,30 +22979,15 @@ function OrderForm25() {
                   4. 🆕 Pokud platba = 'faktura' → "Fakturace" s plným blokem faktur
               */}
               {(() => {
-                // 🆕 Určit typ platby: pokladna nebo faktura
-                // Kontroluje platbu z financování objednávky A z potvrzení dodavatele
-                const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
-                const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
-                const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
-
-                // ❌ SKRÝT sekci Fakturace když je pokladna
-                // 🔒 PRÁVA: 
-                // - Uživatelé S právem INVOICE_MANAGE vidí sekci od FÁZE 6 (mohou přidávat faktury)
-                // - Uživatelé BEZ práva vidí sekci když:
-                //   a) jsou ve FÁZI 7+ (aktivní fáze po fakturaci)
-                //   b) existují faktury (sekce je již vyplněná)
-                const hasFaktury = formData.faktury && formData.faktury.length > 0;
-                const shouldShow = !isPokladna && (
-                  canManageInvoices 
-                    ? currentPhase >= 6  // S právem: vidí od FÁZE 6
-                    : (currentPhase >= 7 || hasFaktury)  // Bez práva: vidí od FÁZE 7 nebo když jsou faktury
-                );
+                // ✅ POUŽÍT CENTRALIZOVANÉ SECTION STATES místo duplicitní logiky
+                const fakturaceVisible = extendedSectionStates.fakturace?.visible;
+                if (!fakturaceVisible) return null;
 
                 // Pokud není určen typ platby, zobrazit jako fakturu (default)
                 const sectionTitle = 'Fakturace k objednávce';
                 const sectionDescription = `(počet: ${formData.faktury?.length || 0})`;
 
-                return shouldShow ? (
+                return (
                 <FormSection data-section="fakturace">
                   <SectionHeader
                     sectionTheme="section-invoice"
@@ -24253,7 +24238,7 @@ function OrderForm25() {
                     </div>
                   </SectionContent>
                 </FormSection>
-              ) : null;
+              );
               })()}
 
               {/* 📝 INFO BOX PRO UŽIVATELE BEZ PRÁV INVOICE_MANAGE - čeká se na doplnění faktur */}
