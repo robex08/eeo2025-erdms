@@ -548,9 +548,9 @@ const styles = css`
     min-width: 250px;
   }
 
-  .filter-input {
+  input.filter-input {
     width: 100%;
-    height: 56px;
+    height: 56px !important;
     padding: 0 2.5rem;
     border: 2px solid #e2e8f0;
     border-radius: 8px;
@@ -563,13 +563,13 @@ const styles = css`
     line-height: 56px;
   }
 
-  .filter-input:focus {
+  input.filter-input:focus {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
-  .filter-input::placeholder {
+  input.filter-input::placeholder {
     color: #9ca3af;
     font-weight: 400;
   }
