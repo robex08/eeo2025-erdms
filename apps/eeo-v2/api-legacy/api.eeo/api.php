@@ -183,6 +183,7 @@ define('TBL_UZIVATEL_NASTAVENI', '25_uzivatel_nastaveni');
 // DATABASE TABLE NAMES - ČÍSELNÍKY
 define('TBL_POZICE', '25_pozice');
 define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
+// define('TBL_STREDISKA', '25_strediska'); // ❌ TABULKA NEEXISTUJE V DB!
 define('TBL_USEKY', '25_useky');
 define('TBL_LOKALITY', '25_lokality');
 

@@ -1518,10 +1518,92 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
         return array('success' => false, 'error' => 'Neplatne profile_id');
     }
     
-    // Sestavit structure JSON
+    // VALIDACE A NORMALIZACE MULTI-FIELD STRUKTURY
+    $normalizedNodes = array();
+    foreach ($nodes as $node) {
+        $normalizedNode = $node;
+        
+        // VALIDACE TARGET NODE - DYNAMIC_FROM_ENTITY s multi-field podporou
+        if (isset($node['data']['scopeDefinition'])) {
+            $scopeDef = $node['data']['scopeDefinition'];
+            
+            // Migrace starého formátu field -> fields
+            if (isset($scopeDef['field']) && !isset($scopeDef['fields'])) {
+                $normalizedNode['data']['scopeDefinition']['fields'] = array($scopeDef['field']);
+                unset($normalizedNode['data']['scopeDefinition']['field']);
+                error_log("HIERARCHY SAVE: Migrated single field '{$scopeDef['field']}' to multi-field format for node {$node['id']}");
+            }
+            
+            // Validace fields array
+            if (isset($scopeDef['fields'])) {
+                $validFields = array(
+                    'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id', 
+                    'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id', 
+                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+                );
+                
+                if (is_array($scopeDef['fields'])) {
+                    $cleanedFields = array();
+                    foreach ($scopeDef['fields'] as $field) {
+                        if (in_array($field, $validFields)) {
+                            $cleanedFields[] = $field;
+                        } else {
+                            error_log("HIERARCHY SAVE: Invalid field '{$field}' removed from node {$node['id']}");
+                        }
+                    }
+                    $normalizedNode['data']['scopeDefinition']['fields'] = array_values(array_unique($cleanedFields));
+                } else {
+                    error_log("HIERARCHY SAVE: Invalid fields format in node {$node['id']}, using default");
+                    $normalizedNode['data']['scopeDefinition']['fields'] = array('prikazce_id');
+                }
+            }
+        }
+        
+        $normalizedNodes[] = $normalizedNode;
+    }
+    
+    // VALIDACE EDGES - source_info_recipients s multi-field
+    $normalizedEdges = array();
+    foreach ($edges as $edge) {
+        $normalizedEdge = $edge;
+        
+        if (isset($edge['data']['source_info_recipients'])) {
+            $sourceInfo = $edge['data']['source_info_recipients'];
+            
+            // Migrace starého formátu field -> fields pro edge
+            if (isset($sourceInfo['field']) && !isset($sourceInfo['fields'])) {
+                $normalizedEdge['data']['source_info_recipients']['fields'] = array($sourceInfo['field']);
+                unset($normalizedEdge['data']['source_info_recipients']['field']);
+                error_log("HIERARCHY SAVE: Migrated edge single field '{$sourceInfo['field']}' to multi-field for edge {$edge['id']}");
+            }
+            
+            // Validace fields v edges
+            if (isset($sourceInfo['fields']) && is_array($sourceInfo['fields'])) {
+                $validFields = array(
+                    'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id', 
+                    'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id', 
+                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+                );
+                
+                $cleanedFields = array();
+                foreach ($sourceInfo['fields'] as $field) {
+                    if (in_array($field, $validFields)) {
+                        $cleanedFields[] = $field;
+                    }
+                }
+                $normalizedEdge['data']['source_info_recipients']['fields'] = array_values(array_unique($cleanedFields));
+            }
+        }
+        
+        $normalizedEdges[] = $normalizedEdge;
+    }
+    
+    // Sestavit structure JSON s normalizovanými daty
     $structure = array(
-        'nodes' => $nodes,
-        'edges' => $edges
+        'nodes' => $normalizedNodes,
+        'edges' => $normalizedEdges,
+        'version' => '1.1',  // Verze pro multi-field support
+        'saved_at' => date('Y-m-d H:i:s')
     );
     
     $structureJson = json_encode($structure, JSON_UNESCAPED_UNICODE);

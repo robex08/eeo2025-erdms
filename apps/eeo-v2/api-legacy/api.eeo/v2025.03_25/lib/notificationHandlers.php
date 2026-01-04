@@ -31,6 +31,9 @@ require_once __DIR__ . '/queries.php';
  * Vytvoří novou notifikaci s MySQL 5.5 kompatibilitou
  */
 function createNotification($db, $params) {
+    // ✅ TIMEZONE: Nastavit MySQL session timezone na českou časovou zónu
+    TimezoneHelper::setMysqlTimezone($db);
+    
     // Přidáme dt_created pro MySQL 5.5 kompatibilitu
     if (!isset($params[':dt_created'])) {
         $params[':dt_created'] = TimezoneHelper::getCzechDateTime();
@@ -2627,6 +2630,12 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         $placeholderData = array_merge($dbPlaceholders, $placeholderData);
         error_log("✅ [NotificationRouter] Merged placeholders: " . count($placeholderData) . " keys total");
         
+        // ✅ ENSURE: Přidat mimoradna_udalost pro AUTO priority resolution (hierarchyTriggers očekává 0/1, ne boolean)
+        if (isset($placeholderData['is_urgent']) && !isset($placeholderData['mimoradna_udalost'])) {
+            $placeholderData['mimoradna_udalost'] = $placeholderData['is_urgent'] ? 1 : 0;
+            error_log("📌 [NotificationRouter] Mapped is_urgent=" . ($placeholderData['is_urgent'] ? 'true' : 'false') . " → mimoradna_udalost=" . $placeholderData['mimoradna_udalost']);
+        }
+        
         // 1. Najít příjemce podle organizational hierarchy
         error_log("🔍 [NotificationRouter] Hledám příjemce v org. hierarchii...");
         
@@ -2650,8 +2659,8 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             foreach ($hierarchyResult['recipients'] as $recipient) {
                 $recipients[] = array(
                     'uzivatel_id' => $recipient['user_id'],
-                    'recipientRole' => $hierarchyResult['priority'] ?? 'INFO',
-                    'templateVariantKey' => $hierarchyResult['variant_id'] ?? 'INFO',
+                    'recipientRole' => $recipient['priority'] ?? 'INFO',
+                    'templateVariantKey' => $recipient['priority'] ?? 'INFO',
                     'sendEmail' => $recipient['delivery']['email'] ?? false,
                     'sendInApp' => $recipient['delivery']['inApp'] ?? true
                 );
@@ -4239,6 +4248,12 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
     
     try {
         // Načti fakturu s joiny
+        // ✅ OPRAVA: Používám konstanty tabulek místo hardcoded názvů
+        $invoices_table = TBL_FAKTURY; // 25a_objednavky_faktury
+        $orders_table = TBL_OBJEDNAVKY; // 25a_objednavky
+        $suppliers_table = TBL_DODAVATELE; // 25_dodavatele
+        $users_table = TBL_UZIVATELE; // 25_uzivatele
+        
         $sql = "
             SELECT f.*, 
                    o.cislo_objednavky as order_number,
@@ -4246,10 +4261,10 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
                    o.nazev_objednavky as order_name,
                    d.nazev as supplier_name,
                    CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name
-            FROM 25_faktury f
-            LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
-            LEFT JOIN 25_dodavatele d ON f.dodavatel_id = d.id
-            LEFT JOIN 25_uzivatele u ON f.uzivatel_id = u.id
+            FROM $invoices_table f
+            LEFT JOIN $orders_table o ON f.objednavka_id = o.id
+            LEFT JOIN $suppliers_table d ON f.dodavatel_id = d.id
+            LEFT JOIN $users_table u ON f.uzivatel_id = u.id
             WHERE f.id = :invoice_id
         ";
         
@@ -4299,14 +4314,16 @@ function loadCashbookPlaceholders($db, $cashbookId, $triggerUserId = null) {
     
     try {
         // Načti pokladní záznam
+        // ✅ OPRAVA: Používám konstanty tabulek místo hardcoded názvů
+        $cashbook_table = TBL_POKLADNI_KNIHY; // 25a_pokladni_knihy
+        $users_table = TBL_UZIVATELE; // 25_uzivatele
+        // ❌ TABULKA STŘEDISEK NEEXISTUJE V DB - odstraněno z kódu
+        
         $sql = "
             SELECT p.*, 
-                   CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name,
-                   s.kod as stredisko_kod,
-                   s.nazev as stredisko_nazev
-            FROM 25_pokladna p
-            LEFT JOIN 25_uzivatele u ON p.uzivatel_id = u.id
-            LEFT JOIN 25_strediska s ON p.stredisko_id = s.id
+                   CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name
+            FROM $cashbook_table p
+            LEFT JOIN $users_table u ON p.uzivatel_id = u.id
             WHERE p.id = :cashbook_id
         ";
         
