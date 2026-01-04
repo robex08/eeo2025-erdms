@@ -512,11 +512,11 @@ const styles = css`
 
   .filter-input {
     width: 100%;
-    height: 42px;
-    padding: 0.5rem 2.5rem;
+    height: 48px;
+    padding: 1px 2.5rem;
     border: 2px solid #e5e7eb;
     border-radius: 8px;
-    font-size: 0.875rem;
+    font-size: 0.95rem;
     box-sizing: border-box;
     background: #ffffff;
     transition: all 0.2s ease;
