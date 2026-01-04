@@ -401,6 +401,12 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
                     
                     $userId = (int)$eventData[$field];
                     
+                    // ✅ NULL CHECK: Přeskočit pokud je jakékoli *_id null nebo 0
+                    if ($userId === 0 || $eventData[$field] === null) {
+                        error_log("HIERARCHY TRIGGER: DYNAMIC - field '$field' is null/0, skipping notifications as requested");
+                        continue;
+                    }
+                    
                     // Přeskočit pokud už byl zpracován (v rámci tohoto nodu)
                     if (in_array($userId, $processedUserIds)) {
                         error_log("HIERARCHY TRIGGER: DYNAMIC - userId=$userId from field='$field' already processed, skipping");
@@ -493,6 +499,13 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
                 }
                 
                 $userId = (int)$eventData[$field];
+                
+                // ✅ NULL CHECK: Přeskočit pokud je jakékoli *_id null nebo 0
+                if ($userId === 0 || $eventData[$field] === null) {
+                    error_log("HIERARCHY TRIGGER: DYNAMIC - field '$field' is null/0, skipping notifications as requested");
+                    return [];
+                }
+                
                 if ($userId > 0) {
                     $stmt = $pdo->prepare("
                         SELECT id as user_id, email, username
