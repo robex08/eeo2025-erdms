@@ -5309,8 +5309,6 @@ const Orders25List = () => {
       case 'pageSize':
         return option.label || String(option.value || option);
       // OrderForm25 field typy
-      case 'zpusob_financovani':
-        return option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
       case 'lp_kod':
         return `${option.kod || option.id || option} - ${option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
@@ -9841,17 +9839,7 @@ const Orders25List = () => {
       zpusobFinancovani = String(zpusobFinancovani || '');
 
       // 🎯 DYNAMICKÉ SLOUPCE PODLE NASTAVENÍ V PROFILU
-      
-      // DEBUG: Co je v csvColumnsFromDB?
-      console.log('🔍 csvColumnsFromDB:', csvColumnsFromDB);
-      console.log('🔍 order sample:', { 
-        id: order.id, 
-        financovani: typeof order.financovani === 'string' 
-          ? order.financovani.substring(0,100) + '...' 
-          : order.financovani,
-        financovani_parsed: order.financovani_parsed 
-      });
-      
+
       // Základní identifikace
       if (csvColumnsFromDB.id) row['ID'] = safeGet(order.id);
       if (csvColumnsFromDB.cislo_objednavky) row['Číslo objednávky'] = safeGet(order.cislo_objednavky);
@@ -9886,22 +9874,12 @@ const Orders25List = () => {
       
       // Finanční údaje - ošetření NaN hodnot
       if (csvColumnsFromDB.max_cena_s_dph) row['Max. cena s DPH'] = parseFloat(order.max_cena_s_dph) || 0;
-      if (csvColumnsFromDB.zpusob_financovani) row['Způsob financování'] = zpusobFinancovani;
+
       
       // LP kódy a názvy z financovani JSON
       if (csvColumnsFromDB.financovani_lp_kody) {
         // Skutečné názvy polí: lp_kody (ne lp_kod!) nebo doplnujici_data.lp_kod
         const lpKody = finData?.lp_kody || finData?.doplnujici_data?.lp_kod;
-        
-        // DEBUG pro LP kódy
-        if (finData) {
-          console.log('🔍 LP DEBUG:', { 
-            finData, 
-            lpKody, 
-            'finData.lp_kody': finData.lp_kody,
-            'finData.doplnujici_data': finData.doplnujici_data 
-          });
-        }
         
         row['LP kódy'] = lpKody 
           ? (Array.isArray(lpKody) ? lpKody.join(listSeparator) : String(lpKody)) 

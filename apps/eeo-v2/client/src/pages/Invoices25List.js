@@ -2607,10 +2607,13 @@ const Invoices25List = () => {
             </TooltipWrapper>
           )}
           
-          <ActionButton onClick={handleRefresh}>
-            <FontAwesomeIcon icon={faDownload} />
-            Export
-          </ActionButton>
+          {/* Export button - TEMPORARILY HIDDEN */}
+          {false && (
+            <ActionButton onClick={handleRefresh}>
+              <FontAwesomeIcon icon={faDownload} />
+              Export
+            </ActionButton>
+          )}
         </ActionBar>
 
         {/* Dashboard Cards - podmíneněně viditelný */}
@@ -3639,8 +3642,8 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       <ActionMenu>
-                        {/* Ikona "Zaplaceno" - jen pro INVOICE_MANAGE nebo ADMIN */}
-                        {(canManageInvoices || isAdmin) && (
+                        {/* Ikona "Zaplaceno" - jen pro INVOICE_MANAGE nebo ADMIN - TEMPORARILY HIDDEN */}
+                        {false && (canManageInvoices || isAdmin) && (
                           <TooltipWrapper text={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "Označit jako nezaplacenou" : "Označit jako zaplacenou"} preferredPosition="left">
                             <ActionMenuButton
                               className={(invoice.zaplacena || invoice.stav === 'ZAPLACENO') ? "paid" : "unpaid"}

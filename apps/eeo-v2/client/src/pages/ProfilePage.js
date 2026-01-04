@@ -1439,7 +1439,7 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       
       // Finanční údaje
       max_cena_s_dph: true,
-      zpusob_financovani: true, // zpracované financování jako text
+
       financovani_lp_kody: true, // LP kódy z financovani JSON
       financovani_lp_nazvy: false, // LP názvy (pokud jsou dostupné)
       financovani_lp_cisla: false, // LP čísla (pokud jsou dostupné)
@@ -4282,13 +4282,6 @@ const ProfilePage = () => {
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Max. cena s DPH</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} max_cena_s_dph {'}'} = 75000.00</span>
-                        </span>
-                      </TileCheckbox>
-                      <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_financovani} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zpusob_financovani' } })} />
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Způsob financování (parsovaný)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Lidsky čitelný text z JSON financovani</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
