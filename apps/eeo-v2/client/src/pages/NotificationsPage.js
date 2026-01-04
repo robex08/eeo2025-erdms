@@ -1735,22 +1735,69 @@ export const NotificationsPage = () => {
   // 🎯 getPriorityIcon je nyní importován z utils/iconMapping.js
   // Odstraněna lokální implementace pro zajištění konzistence ikon
 
-  // 🎯 Helper pro ikonu podle priority (místo emoji)
-  const getPriorityIconComponent = (priority) => {
+  // 🎯 Helper pro ikonu podle priority (místo emoji) - větší velikost
+  const getPriorityIconComponent = (priority, nadpis = '') => {
     const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    const iconStyle = { 
+      fontSize: '18px' // Zvětšená ikona
+    };
+    
+    // Určíme prioritu podle emoji v nadpisu, pokud priority není specifická
+    if (nadpis.includes('🚨')) {
+      return <FontAwesomeIcon icon={faBolt} style={{ ...iconStyle, color: '#dc2626' }} />; // URGENT - červený blesk
+    }
+    if (nadpis.includes('⚠️')) {
+      return <FontAwesomeIcon icon={faExclamationTriangle} style={{ ...iconStyle, color: '#ea580c' }} />; // WARNING - oranžový trojúhelník
+    }
+    if (nadpis.includes('ℹ️')) {
+      return <FontAwesomeIcon icon={faInfoCircle} style={{ ...iconStyle, color: '#2563eb' }} />; // INFO - modrý kruh
+    }
     
     switch (normalizedPriority) {
       case 'EXCEPTIONAL':
       case 'URGENT':
-        return <FontAwesomeIcon icon={faBolt} />;
+        return <FontAwesomeIcon icon={faBolt} style={{ ...iconStyle, color: '#dc2626' }} />;
       case 'APPROVAL':
       case 'HIGH':
-        return <FontAwesomeIcon icon={faExclamation} />;
+        return <FontAwesomeIcon icon={faExclamationTriangle} style={{ ...iconStyle, color: '#ea580c' }} />;
+      case 'WARNING':
+        return <FontAwesomeIcon icon={faExclamationTriangle} style={{ ...iconStyle, color: '#ea580c' }} />;
       case 'INFO':
       case 'NORMAL':
+      case 'LOW':
       default:
-        return <FontAwesomeIcon icon={faInfoCircle} />;
+        return <FontAwesomeIcon icon={faInfoCircle} style={{ ...iconStyle, color: '#2563eb' }} />;
     }
+  };
+
+  // 🎯 Funkce pro odstranění ikon z nadpisu (eliminuje duplicity)
+  const cleanNotificationTitle = (title) => {
+    if (!title) return title;
+    
+    const originalTitle = title;
+    // Odstraní emoji ikony na začátku včetně variation selectors (\uFE0F)
+    const cleanedTitle = title
+      .replace(/^ℹ️\s*/, '')     // Info emoji s variation selector
+      .replace(/^ℹ\uFE0F\s*/, '') // Info emoji s explicit variation selector  
+      .replace(/^⚠️\s*/, '')     // Warning emoji s variation selector
+      .replace(/^⚠\uFE0F\s*/, '') // Warning emoji s explicit variation selector
+      .replace(/^🚨\s*/, '')     // Emergency emoji
+      .replace(/^✅\s*/, '')     // Check mark
+      .replace(/^❌\s*/, '')     // Cross mark
+      .replace(/^⏸️\s*/, '')     // Pause button
+      .replace(/^⏸\uFE0F\s*/, '') // Pause s explicit variation selector
+      .replace(/^📧\s*/, '')     // Email
+      .replace(/^🎯\s*/, '')     // Target
+      .replace(/^📦\s*/, '')     // Package
+      .replace(/^[ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
+    
+    // Debug log pro testování
+    if (originalTitle !== cleanedTitle) {
+      console.log('🧹 Title cleaned:', { original: originalTitle, cleaned: cleanedTitle });
+    }
+    
+    return cleanedTitle;
   };
 
   return (
@@ -2162,18 +2209,19 @@ export const NotificationsPage = () => {
                       }}
                     >
                       <NotificationIcon $priority={priority}>
-                        {getPriorityIconComponent(priority)}
+                        {getPriorityIconComponent(priority, mainNotification.nadpis)}
                       </NotificationIcon>
                       <NotificationContent>
                         <NotificationHeader>
                           <NotificationTitle $isUnread={isUnread}>
                             {(() => {
                               if (mainNotification.typ?.includes('order') && mainNotification.data?.order_id && mainNotification.nadpis) {
-                                const evCisloMatch = mainNotification.nadpis.match(/(O-[^\s:]+)/);
+                                const cleanedTitle = cleanNotificationTitle(mainNotification.nadpis);
+                                const evCisloMatch = cleanedTitle.match(/(O-[^\s:]+)/);
                                 if (evCisloMatch) {
                                   const evCislo = evCisloMatch[1];
-                                  const textBefore = mainNotification.nadpis.substring(0, evCisloMatch.index);
-                                  const textAfter = mainNotification.nadpis.substring(evCisloMatch.index + evCislo.length);
+                                  const textBefore = cleanedTitle.substring(0, evCisloMatch.index);
+                                  const textAfter = cleanedTitle.substring(evCisloMatch.index + evCislo.length);
 
                                   return (
                                     <>
@@ -2213,7 +2261,7 @@ export const NotificationsPage = () => {
                               }
                               return (
                                 <>
-                                  {mainNotification.nadpis}
+                                  {cleanNotificationTitle(mainNotification.nadpis)}
                                   {!detailMode && (
                                     <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                       | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
@@ -2567,22 +2615,21 @@ export const NotificationsPage = () => {
                   $priority={priority}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  {detailMode && (
-                    <NotificationIcon $priority={priority}>
-                      {getPriorityIconComponent(priority)}
-                    </NotificationIcon>
-                  )}
-                  <NotificationContent style={!detailMode ? { marginLeft: '0' } : undefined}>
+                  <NotificationIcon $priority={priority}>
+                    {getPriorityIconComponent(priority, notification.nadpis)}
+                  </NotificationIcon>
+                  <NotificationContent>
                     <NotificationHeader>
                       <NotificationTitle $isUnread={isUnread}>
                         {(() => {
                           // Parsing ev. čísla začínajícího na "O-" a vytvoření odkazu
                           if (notification.typ?.includes('order') && notification.data?.order_id && notification.nadpis) {
-                            const evCisloMatch = notification.nadpis.match(/(O-[^\s:]+)/);
+                            const cleanedTitle = cleanNotificationTitle(notification.nadpis);
+                            const evCisloMatch = cleanedTitle.match(/(O-[^\s:]+)/);
                             if (evCisloMatch) {
                               const evCislo = evCisloMatch[1];
-                              const textBefore = notification.nadpis.substring(0, evCisloMatch.index);
-                              const textAfter = notification.nadpis.substring(evCisloMatch.index + evCislo.length);
+                              const textBefore = cleanedTitle.substring(0, evCisloMatch.index);
+                              const textAfter = cleanedTitle.substring(evCisloMatch.index + evCislo.length);
 
                               return (
                                 <>
@@ -2622,7 +2669,7 @@ export const NotificationsPage = () => {
                           }
                           return (
                             <>
-                              {notification.nadpis}
+                              {cleanNotificationTitle(notification.nadpis)}
                               {!detailMode && (
                                 <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                   | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />

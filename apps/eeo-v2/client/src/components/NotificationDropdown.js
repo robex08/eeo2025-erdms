@@ -14,7 +14,8 @@ import {
   faInfoCircle,
   faEyeSlash,
   faBolt,
-  faExclamation
+  faExclamation,
+  faExclamationTriangle
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -540,8 +541,43 @@ export const NotificationDropdown = ({
     });
   };
 
-  const getPriorityIcon = (priority) => {
+  // 🎯 Funkce pro odstranění ikon z nadpisu (eliminuje duplicity)
+  const cleanNotificationTitle = (title) => {
+    if (!title) return title;
+    
+    const originalTitle = title;
+    // Odstraní emoji ikony na začátku včetně variation selectors (\uFE0F)
+    const cleanedTitle = title
+      .replace(/^ℹ️\s*/, '')     // Info emoji s variation selector
+      .replace(/^ℹ\uFE0F\s*/, '') // Info emoji s explicit variation selector  
+      .replace(/^⚠️\s*/, '')     // Warning emoji s variation selector
+      .replace(/^⚠\uFE0F\s*/, '') // Warning emoji s explicit variation selector
+      .replace(/^🚨\s*/, '')     // Emergency emoji
+      .replace(/^✅\s*/, '')     // Check mark
+      .replace(/^❌\s*/, '')     // Cross mark
+      .replace(/^⏸️\s*/, '')     // Pause button
+      .replace(/^⏸\uFE0F\s*/, '') // Pause s explicit variation selector
+      .replace(/^📧\s*/, '')     // Email
+      .replace(/^🎯\s*/, '')     // Target
+      .replace(/^📦\s*/, '')     // Package
+      .replace(/^[ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
+    
+    return cleanedTitle;
+  };
+
+  const getPriorityIcon = (priority, nadpis = '') => {
     const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    // Určíme prioritu podle emoji v nadpisu, pokud priority není specifická
+    if (nadpis.includes('🚨')) {
+      return faBolt; // URGENT - blesk
+    }
+    if (nadpis.includes('⚠️')) {
+      return faExclamationTriangle; // WARNING - trojúhelník
+    }
+    if (nadpis.includes('ℹ️')) {
+      return faInfoCircle; // INFO - kruh
+    }
     
     switch (normalizedPriority) {
       case 'EXCEPTIONAL':
@@ -549,7 +585,9 @@ export const NotificationDropdown = ({
         return faBolt;  // ⚡ Blesk - červená
       case 'APPROVAL':
       case 'HIGH':
-        return faExclamation;  // ❗ Vykřičník - oranžová
+        return faExclamationTriangle;  // ⚠️ Trojúhelník - oranžová
+      case 'WARNING':
+        return faExclamationTriangle;  // ⚠️ Trojúhelník - oranžová
       case 'INFO':
       case 'NORMAL':
       default:
@@ -638,11 +676,11 @@ export const NotificationDropdown = ({
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <NotificationIcon $priority={priority}>
-                    <FontAwesomeIcon icon={getPriorityIcon(priority)} />
+                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis)} />
                   </NotificationIcon>
                   <NotificationContent>
                     <NotificationTitle $isUnread={isUnread}>
-                      {notification.nadpis || notification.app_title || 'Bez názvu'}
+                      {cleanNotificationTitle(notification.nadpis) || notification.app_title || 'Bez názvu'}
                     </NotificationTitle>
                     {(notification.zprava || notification.app_message) && (
                       <NotificationMessage>
