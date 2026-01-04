@@ -23,8 +23,11 @@
  * - Soft/hard delete s kontrolou oprávnění
  */
 
-// Include TimezoneHelper for consistent timezone handling
+// Include všechny potřebné závislosti
 require_once __DIR__ . '/TimezoneHelper.php';
+require_once __DIR__ . '/handlers.php'; // Pro get_db a verify_token* funkce  
+require_once __DIR__ . '/orderHandlers.php';
+require_once __DIR__ . '/orderWorkflowHelpers.php';
 
 function handle_order_v2_create_invoice_with_attachment($input, $config, $queries) {
     // Token verification for production - V2 enhanced
@@ -155,6 +158,17 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         ));
         
         $attachment_id = $db->lastInsertId();
+        
+        // 🆕 WORKFLOW UPDATE - automatická aktualizace workflow po přidání faktury
+        // Replika logiky z OrderForm25.js - přidá FAKTURACE + VECNA_SPRAVNOST
+        if ($order_id !== null && $order_id > 0) {
+            $workflowSuccess = handleInvoiceWorkflowUpdate($db, $order_id);
+            if (!$workflowSuccess) {
+                error_log("[WORKFLOW] Varování: Nepodařilo se aktualizovat workflow pro objednávku ID {$order_id} po přidání faktury");
+                // Pokračujeme - workflow update není kritická chyba pro vytvoření faktury
+            }
+        }
+        
         $db->commit();
         
         echo json_encode(array(
@@ -276,6 +290,16 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         ));
         
         $invoice_id = $db->lastInsertId();
+        
+        // 🆕 WORKFLOW UPDATE - automatická aktualizace workflow po přidání faktury
+        // Replika logiky z OrderForm25.js - přidá FAKTURACE + VECNA_SPRAVNOST
+        if ($order_id !== null && $order_id > 0) {
+            $workflowSuccess = handleInvoiceWorkflowUpdate($db, $order_id);
+            if (!$workflowSuccess) {
+                error_log("[WORKFLOW] Varování: Nepodařilo se aktualizovat workflow pro objednávku ID {$order_id} po přidání faktury");
+                // Pokračujeme - workflow update není kritická chyba pro vytvoření faktury
+            }
+        }
         
         echo json_encode(array(
             'status' => 'ok',
