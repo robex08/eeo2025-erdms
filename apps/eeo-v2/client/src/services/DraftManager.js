@@ -227,7 +227,6 @@ class DraftManager {
 
       if (result) {
         this._notifyDraftChange();
-        console.log('✅ DraftManager: Kompletní čištění dokončeno');
       }
 
       return result;

@@ -321,7 +321,7 @@ export function validateDataFormat(data, type) {
  * @param {string} label - Label pro log
  */
 export function debugDataFormat(data, label = 'Data') {
-  console.log(`🔍 [DEBUG] ${label}:`, {
+  console.log(`[DEBUG] ${label}:`, {
     type: typeof data,
     isArray: Array.isArray(data),
     isString: typeof data === 'string',

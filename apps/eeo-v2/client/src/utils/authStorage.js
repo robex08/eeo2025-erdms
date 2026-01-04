@@ -61,7 +61,6 @@ export const saveAuthData = {
       // Fallback na nešifrované uložení
       localStorage.setItem(PERSISTENT_KEYS.TOKEN, dataString);
       if (process.env.NODE_ENV === 'development') {
-        // console.log('⚠️ Token uložen NEŠIFROVANĚ s expirací 24h (fallback)');
       }
     } catch (error) {
       // Fallback na nešifrované uložení
@@ -90,7 +89,6 @@ export const saveAuthData = {
       // Fallback na nešifrované uložení
       localStorage.setItem(PERSISTENT_KEYS.USER, jsonData);
       if (process.env.NODE_ENV === 'development') {
-        // console.log('⚠️ User data uložena NEŠIFROVANĚ (fallback)');
       }
       // Uložit username samostatně pro snadný přístup
       if (userData.username) {

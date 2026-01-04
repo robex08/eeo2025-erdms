@@ -8403,12 +8403,21 @@ const Orders25List = () => {
 
   /**
    * ✅ Kontrola zda lze evidovat fakturu k objednávce
-   * Od stavu ROZPRACOVANA výše
+   * Od stavu ROZPRACOVANA výše + kontrola práv (pouze ADMINI, Invoice_manage, Invoice_add)
    */
   const canCreateInvoice = (order) => {
     if (!order) return false;
 
-    // ✅ POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
+    // 🔒 KROK 1: Kontrola práv - POUZE pro správce faktur
+    if (!hasPermission) return false;
+    
+    const hasInvoicePermission = hasPermission('ADMINI') || 
+                                  hasPermission('INVOICE_MANAGE') || 
+                                  hasPermission('INVOICE_ADD');
+    
+    if (!hasInvoicePermission) return false;
+
+    // ✅ KROK 2: POVOLENÉ STAVY: Od ROZPRACOVANA až do DOKONCENA
     // FÁZE 3-8 dle WorkflowManager
     const allowedStates = [
       'ROZPRACOVANA',     // ✅ FÁZE 3 - začalo se vyplňovat
@@ -9255,13 +9264,32 @@ const Orders25List = () => {
   
   // Handler: Evidovat fakturu
   const handleCreateInvoice = useCallback((order) => {
-    // ✅ Kontrola zda je objednávka ve správném stavu
+    // ✅ Kontrola zda je objednávka ve správném stavu a má práva
     if (!canCreateInvoice(order)) {
-      showToast('Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ', { type: 'warning' });
+      // Rozlišit důvod zamítnutí
+      const hasInvoicePermission = hasPermission && (hasPermission('ADMINI') || 
+                                     hasPermission('INVOICE_MANAGE') || 
+                                     hasPermission('INVOICE_ADD'));
+      
+      if (!hasInvoicePermission) {
+        showToast('Nemáte oprávnění pro evidování faktur', { type: 'error' });
+      } else {
+        showToast('Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ', { type: 'warning' });
+      }
       return;
     }
-    navigate(`/invoice-evidence/${order.id}`);
-  }, [navigate, showToast]);
+    
+    // 🎯 Získat číslo objednávky pro prefill v našeptávači
+    const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
+    
+    // Navigace do modulu faktur s číslem objednávky v searchTerm
+    navigate('/invoice-evidence', { 
+      state: { 
+        prefillSearchTerm: orderNumber,
+        orderIdForLoad: order.id
+      } 
+    });
+  }, [navigate, showToast, hasPermission]);
 
   // 🔥 PERFORMANCE: Populate handlers ref for handleActionClick
   // Direct assignment (not useEffect) - happens on every render
@@ -11161,29 +11189,69 @@ const Orders25List = () => {
               </>
             )}
 
-            {/* Fakturant */}
-            {order.fakturant && (
-              <>
-                <InfoRow>
-                  <InfoLabel>Fakturant:</InfoLabel>
-                  <InfoValue style={{ fontWeight: 500, color: '#7c3aed' }}>
-                    {order.fakturant.cele_jmeno || '---'}
-                  </InfoValue>
-                </InfoRow>
-                {order.fakturant.email && (
-                  <div style={{
-                    textAlign: 'right',
-                    fontSize: '0.85em',
-                    color: '#6b7280',
-                    marginTop: '-0.3rem',
-                    marginBottom: '0.5rem',
-                    wordBreak: 'break-all'
-                  }}>
-                    {order.fakturant.email}
-                  </div>
-                )}
-              </>
-            )}
+            {/* Fakturant(i) - unikátní seznam */}
+            {(() => {
+              // Získat všechny unikátní fakturanty z faktur
+              const uniqueFakturanti = [];
+              const seenIds = new Set();
+              
+              // Přidat primárního fakturanta (pokud existuje)
+              if (order.fakturant?.id && !seenIds.has(order.fakturant.id)) {
+                seenIds.add(order.fakturant.id);
+                uniqueFakturanti.push({
+                  ...order.fakturant,
+                  isPrimary: true
+                });
+              }
+              
+              // Přidat všechny další fakturanty z jednotlivých faktur
+              if (order.faktury && order.faktury.length > 0) {
+                order.faktury.forEach(faktura => {
+                  const creator = faktura.vytvoril_uzivatel || faktura.vytvoril;
+                  if (creator?.id && !seenIds.has(creator.id)) {
+                    seenIds.add(creator.id);
+                    uniqueFakturanti.push({
+                      ...creator,
+                      isPrimary: false
+                    });
+                  }
+                });
+              }
+              
+              // Pokud jsou fakturanti, zobrazit je
+              if (uniqueFakturanti.length === 0) return null;
+              
+              return (
+                <>
+                  <InfoRow>
+                    <InfoLabel>
+                      {uniqueFakturanti.length === 1 ? 'Fakturant:' : 'Fakturanti:'}
+                    </InfoLabel>
+                    <InfoValue style={{ fontWeight: 500, color: '#7c3aed' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                        {uniqueFakturanti.map((fakturant, idx) => (
+                          <div key={fakturant.id || idx} style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: fakturant.isPrimary ? 600 : 500 }}>
+                              {fakturant.cele_jmeno || '---'}
+                            </div>
+                            {fakturant.email && (
+                              <div style={{
+                                fontSize: '0.85em',
+                                color: '#6b7280',
+                                marginTop: '2px',
+                                wordBreak: 'break-all'
+                              }}>
+                                {fakturant.email}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </InfoValue>
+                  </InfoRow>
+                </>
+              );
+            })()}
 
             {/* Potvrdil věcnou správnost */}
             {order.potvrdil_vecnou_spravnost && (
@@ -11403,44 +11471,59 @@ const Orders25List = () => {
               </div>
             )}
 
-            {/* Přidal fakturu */}
-            {order.fakturant && order.faktury && order.faktury.length > 0 && (() => {
-              // Najdeme poslední přidanou fakturu (s nejnovějším dt_vytvoreni)
-              const fakturaSejtimem = order.faktury
-                .filter(f => f.dt_vytvoreni)
-                .sort((a, b) => new Date(b.dt_vytvoreni) - new Date(a.dt_vytvoreni))[0];
-              
-              if (!fakturaSejtimem) return null;
-              
-              return (
-                <div style={{
-                  marginBottom: '0.75rem',
-                  paddingBottom: '0.75rem',
-                  borderBottom: '1px dashed #e2e8f0'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '2px'
-                  }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c' }}>
-                      6. Přidal fakturu
-                    </div>
-                    <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                      {order.fakturant.cele_jmeno}
-                    </div>
-                  </div>
-                  <div style={{
-                    fontSize: '0.75em',
-                    color: '#64748b',
-                    textAlign: 'right'
-                  }}>
-                    {prettyDate(fakturaSejtimem.dt_vytvoreni)}
-                  </div>
+            {/* Přidal fakturu / faktury */}
+            {order.faktury && order.faktury.length > 0 && (
+              <div style={{
+                marginBottom: '0.75rem',
+                paddingBottom: '0.75rem',
+                borderBottom: '1px dashed #e2e8f0'
+              }}>
+                <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c', marginBottom: '0.5rem' }}>
+                  6. Přidání faktur
                 </div>
-              );
-            })()}
+                
+                {/* Seznam všech faktur */}
+                {order.faktury
+                  .filter(f => f.dt_vytvoreni) // Pouze faktury s datem vytvoření
+                  .sort((a, b) => new Date(a.dt_vytvoreni) - new Date(b.dt_vytvoreni)) // Seřadit od nejstarší
+                  .map((faktura, index) => (
+                    <div 
+                      key={faktura.id || index}
+                      style={{
+                        marginBottom: index < order.faktury.length - 1 ? '0.5rem' : '0',
+                        paddingLeft: '0.5rem',
+                        borderLeft: '2px solid #ea580c',
+                        paddingTop: '0.25rem',
+                        paddingBottom: '0.25rem'
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1px'
+                      }}>
+                        <div style={{ fontSize: '0.85em', color: '#374151', fontWeight: 500 }}>
+                          FA#{faktura.fa_cislo_vema || 'N/A'}
+                        </div>
+                        <div style={{ fontSize: '0.85em', fontWeight: 500 }}>
+                          {faktura.vytvoril_uzivatel?.cele_jmeno || 
+                           faktura.vytvoril?.cele_jmeno || 
+                           order.fakturant?.cele_jmeno || 
+                           'Neznámý'}
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: '0.75em',
+                        color: '#64748b',
+                        textAlign: 'right'
+                      }}>
+                        {prettyDate(faktura.dt_vytvoreni)}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
 
             {/* Potvrdil věcnou správnost */}
             {order.potvrdil_vecnou_spravnost && (
@@ -12385,55 +12468,57 @@ const Orders25List = () => {
             )}
           </MonthDropdownContainer>
 
-          {/* Checkbox pro zobrazení archivovaných objednávek */}
-          <div style={{
-            position: 'relative',
-            minWidth: '180px',
-            marginLeft: '1rem'
-          }}>
-            <MonthDropdownButton
-              as="label"
-              htmlFor="showArchived"
-              style={{
-                padding: '0.75rem 1rem',
-                cursor: 'pointer',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '0.75rem'
-              }}
-            >
-              <input
-                type="checkbox"
-                id="showArchived"
-                checked={showArchived}
-                onChange={handleShowArchivedChange}
+          {/* Checkbox pro zobrazení archivovaných objednávek - POUZE PRO UŽIVATELE S PRÁVEM */}
+          {hasPermission && hasPermission('ORDER_SHOW_ARCHIVE') && (
+            <div style={{
+              position: 'relative',
+              minWidth: '180px',
+              marginLeft: '1rem'
+            }}>
+              <MonthDropdownButton
+                as="label"
+                htmlFor="showArchived"
                 style={{
-                  width: '20px',
-                  height: '20px',
+                  padding: '0.75rem 1rem',
                   cursor: 'pointer',
-                  accentColor: 'rgba(255, 255, 255, 0.9)',
-                  margin: 0,
-                  flexShrink: 0
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '0.75rem'
                 }}
-              />
-              <span style={{
-                flex: 1,
-                fontWeight: 600,
-                fontSize: '1rem',
-                textAlign: 'center'
-              }}>
-                ARCHIV
-              </span>
-              <FontAwesomeIcon
-                icon={faArchive}
-                style={{
-                  fontSize: '1.1rem',
-                  flexShrink: 0
-                }}
-              />
-            </MonthDropdownButton>
-          </div>
+              >
+                <input
+                  type="checkbox"
+                  id="showArchived"
+                  checked={showArchived}
+                  onChange={handleShowArchivedChange}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    cursor: 'pointer',
+                    accentColor: 'rgba(255, 255, 255, 0.9)',
+                    margin: 0,
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{
+                  flex: 1,
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  textAlign: 'center'
+                }}>
+                  ARCHIV
+                </span>
+                <FontAwesomeIcon
+                  icon={faArchive}
+                  style={{
+                    fontSize: '1.1rem',
+                    flexShrink: 0
+                  }}
+                />
+              </MonthDropdownButton>
+            </div>
+          )}
 
           {/* Tlačítko Obnovit */}
           <div style={{ display: 'flex', alignItems: 'center' }}>

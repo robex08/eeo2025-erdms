@@ -128,7 +128,6 @@ export const uploadManual = async (file, token, username) => {
       }
     });
     
-    console.log('✅ Upload SUCCESS:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ Upload ERROR:', error);

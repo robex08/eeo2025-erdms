@@ -46,10 +46,8 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 		const user_id = userDetail?.user_id;
 
 		console.log('🔔 [KROK 2/7] Extrakce user_id a konverze ID');
-		console.log('📊 Data:', { targetOrderId, user_id, 'userDetail exists': !!userDetail });
 
 		if (!user_id) {
-			console.log('⚠️ [KROK 2/7] Bez user_id - přímá navigace bez kontroly draftu');
 			console.log('🔗 Navigate URL:', `/order-form-25?edit=${targetOrderId}`);
 			navigate(`/order-form-25?edit=${targetOrderId}`);
 			return;
@@ -62,7 +60,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 			
 			console.log('📦 DraftManager.hasDraft() - volám...');
 			const hasDraft = await draftManager.hasDraft();
-			console.log('✅ [KROK 3/7] DraftManager.hasDraft() vrátil:', hasDraft);
 
 			let shouldShowConfirmDialog = false;
 			let draftDataToStore = null;
@@ -72,9 +69,7 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 				console.log('\n🔔 [KROK 4/7] Draft existuje - načítám data');
 				try {
 					console.log('📦 DraftManager.loadDraft() - volám...');
-					const draftData = await draftManager.loadDraft();
-					console.log('✅ [KROK 4/7] Draft načten:', {
-						'má formData': !!draftData?.formData,
+					const draftData = await draftManager.loadDraft();			console.log('Draft data loaded:', {						'má formData': !!draftData?.formData,
 						'má savedOrderId': !!draftData?.savedOrderId,
 						'savedOrderId': draftData?.savedOrderId,
 						'formData.id': draftData?.formData?.id
@@ -84,8 +79,7 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 					const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
 					const currentOrderId = targetOrderId;
 
-					console.log('\n🔔 [KROK 5/7] Porovnání ownership draftu');
-					console.log('📊 POROVNÁNÍ ID:', {
+					console.log('\n🔔 [KROK 5/7] Porovnání ownership draftu', {
 						draftOrderId,
 						currentOrderId,
 						'String(draftOrderId)': String(draftOrderId),
@@ -95,8 +89,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 
 					// ✅ Pokud draft patří k TÉTO objednávce, NEPTAT SE!
 					if (draftOrderId && currentOrderId && String(draftOrderId) === String(currentOrderId)) {
-						console.log('✅ [KROK 5/7] Draft patří k TÉTO objednávce - naviguju bez ptaní');
-						console.log('🎯 Rozhodnutí: Přímá navigace (draft pro tuto objednávku)');
 						shouldShowConfirmDialog = false;
 						isDraftForThisOrder = true;
 					} else {
@@ -104,14 +96,11 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 						console.log('❌ [KROK 5/7] Draft patří k JINÉ objednávce - kontroluji změny');
 						const hasNewConcept = isValidConcept(draftData);
 						const hasDbChanges = hasDraftChanges(draftData);
-						console.log('📊 Analýza změn v draftu:', { hasNewConcept, hasDbChanges });
 						shouldShowConfirmDialog = hasNewConcept || hasDbChanges;
 
 					if (shouldShowConfirmDialog) {
-						console.log('⚠️ [KROK 5/7] Mám neuložené změny - budu zobrazovat dialog');
 						draftDataToStore = draftData;
 					} else {
-						console.log('✅ [KROK 5/7] Žádné změny v draftu - naviguju bez ptaní');
 					}
 					}
 				} catch (error) {
@@ -119,7 +108,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 					shouldShowConfirmDialog = false;
 				}
 			} else {
-				console.log('✅ [KROK 4/7] Draft NEexistuje - přímá navigace');
 			}			// 🎯 OPTIMALIZACE: Pokud draft patří k TÉTO objednávce, rovnou naviguj
 			if (isDraftForThisOrder) {
 				console.log('\n🔔 [KROK 6/7] Draft pro TUTO objednávku - navigace BEZ dialogu');
@@ -131,7 +119,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 
 			// 🎯 Pokud existuje draft pro JINOU objednávku, zobraz confirm dialog
 			console.log('\n🔔 [KROK 6/7] Kontrola, zda zobrazit confirm dialog');
-			console.log('📊 Před zobrazením dialogu:', { shouldShowConfirmDialog, 'má draftDataToStore?': !!draftDataToStore });
 			
 			if (shouldShowConfirmDialog && draftDataToStore) {
 				const formData = draftDataToStore.formData || draftDataToStore;
@@ -140,7 +127,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 
 				console.log('🚨 [KROK 6/7] ZOBRAZUJI CONFIRM DIALOG');
 				console.log('📋 Dialog data:', { draftTitle, hasNewConcept });
-				console.log('⏸️  Čekám na rozhodnutí uživatele...');
 
 				const confirmResult = window.confirm(
 					`⚠️ POZOR - Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\n` +
@@ -148,7 +134,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 					`Chcete pokračovat a zahodit neuložené změny?`
 				);
 
-				console.log('\n🔔 [KROK 7/7] Rozhodnutí uživatele:', confirmResult ? '✅ ANO (pokračovat)' : '❌ NE (zrušit)');
 
 				if (!confirmResult) {
 					// Uživatel zrušil - zůstaneme na stránce
@@ -158,23 +143,19 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 				}
 
 				// Uživatel potvrdil - vyčisti koncept a pokračuj
-				console.log('✅ [KROK 7/7] Uživatel potvrdil - mažu draft');
 				await draftManager.deleteAllDraftKeys();
-				console.log('✅ Draft smazán');
 			}
 
 			// ✅ Naviguj na objednávku v EDIT módu
 			console.log('\n🔔 [KROK 7/7] FINÁLNÍ NAVIGACE');
 			console.log('🔗 Navigate URL:', `/order-form-25?edit=${targetOrderId}`);
 			navigate(`/order-form-25?edit=${targetOrderId}`);
-			console.log('✅ Navigate zavoláno - předávám kontrolu React Routeru');
 			console.log('════════════════════════════════════════════════════════════════\n');
 
 		} catch (error) {
 			console.error('\n❌❌❌ KRITICKÁ CHYBA v handleOrderClick ❌❌❌');
 			console.error('📛 Error:', error);
 			console.error('📛 Stack:', error.stack);
-			console.log('🔄 FALLBACK: Navigace bez kontroly draftu');
 			// V případě chyby naviguj bez kontroly (fallback)
 			navigate(`/order-form-25?edit=${targetOrderId}`);
 			console.log('════════════════════════════════════════════════════════════════\n');

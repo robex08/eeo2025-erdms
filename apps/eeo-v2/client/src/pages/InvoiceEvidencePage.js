@@ -2271,7 +2271,6 @@ export default function InvoiceEvidencePage() {
           localStorage.removeItem(`invoice_order_cache_${user_id}`);
           localStorage.removeItem(`invoice_smlouva_cache_${user_id}`);
           
-          console.log('✅ InvoiceEvidencePage unmount: Čištění dokončeno');
         } catch (error) {
           console.error('❌ InvoiceEvidencePage unmount: Chyba při čištění:', error);
         }
@@ -2295,6 +2294,16 @@ export default function InvoiceEvidencePage() {
     const orderIdForLoad = location.state?.orderIdForLoad;
     const smlouvaIdForLoad = location.state?.smlouvaIdForLoad;
     const openMaterialCorrectness = location.state?.openMaterialCorrectness;
+    const prefillSearchTerm = location.state?.prefillSearchTerm;
+
+    // 🎯 Pokud přišlo prefillSearchTerm (číslo objednávky z Orders25List), předvyplnit ho
+    if (prefillSearchTerm) {
+      setSearchTerm(prefillSearchTerm);
+      // Po krátkém delay otevřít našeptávač
+      setTimeout(() => {
+        setShowSuggestions(true);
+      }, 300);
+    }
 
     // 🎯 Pokud je příznak openMaterialCorrectness, otevři sekci věcné kontroly a scrollni na ni
     if (openMaterialCorrectness) {

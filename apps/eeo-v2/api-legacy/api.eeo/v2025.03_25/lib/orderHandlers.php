@@ -424,7 +424,7 @@ function loadOrderInvoices($db, $order_id) {
     $states_table = get_states_table_name();
     $users_table = get_users_table_name();
     
-    // JOIN s číselníkem stavů pro získání názvu typu faktury + uživatel věcné kontroly
+    // JOIN s číselníkem stavů pro získání názvu typu faktury + uživatel věcné kontroly + uživatel který vytvořil fakturu
     $stmt = $db->prepare("
         SELECT 
             f.*,
@@ -434,15 +434,45 @@ function loadOrderInvoices($db, $order_id) {
             u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
             u_vecna.email as potvrdil_vecnou_spravnost_email,
             u_vecna.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
-            u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za
+            u_vecna.titul_za as potvrdil_vecnou_spravnost_titul_za,
+            u_vytvoril.id as vytvoril_uzivatel_id,
+            u_vytvoril.jmeno as vytvoril_uzivatel_jmeno,
+            u_vytvoril.prijmeni as vytvoril_uzivatel_prijmeni,
+            u_vytvoril.email as vytvoril_uzivatel_email,
+            u_vytvoril.titul_pred as vytvoril_uzivatel_titul_pred,
+            u_vytvoril.titul_za as vytvoril_uzivatel_titul_za,
+            CONCAT_WS(' ', 
+                NULLIF(u_vytvoril.titul_pred, ''),
+                u_vytvoril.jmeno, 
+                u_vytvoril.prijmeni,
+                NULLIF(u_vytvoril.titul_za, '')
+            ) as vytvoril_uzivatel_cele_jmeno
         FROM `$faktury_table` f
         LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
+        LEFT JOIN `$users_table` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
         WHERE f.objednavka_id = ? 
         ORDER BY f.id ASC
     ");
     $stmt->execute([$order_id]);
     $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // ✅ STRUKTURACE UŽIVATELSKÝCH DAT: Převést flat data na nested objekty
+    foreach ($invoices as &$invoice) {
+        // Pokud existují data o uživateli který vytvořil fakturu, vytvořit objekt
+        if (!empty($invoice['vytvoril_uzivatel_id'])) {
+            $invoice['vytvoril_uzivatel'] = [
+                'id' => $invoice['vytvoril_uzivatel_id'],
+                'jmeno' => $invoice['vytvoril_uzivatel_jmeno'],
+                'prijmeni' => $invoice['vytvoril_uzivatel_prijmeni'],
+                'email' => $invoice['vytvoril_uzivatel_email'],
+                'titul_pred' => $invoice['vytvoril_uzivatel_titul_pred'],
+                'titul_za' => $invoice['vytvoril_uzivatel_titul_za'],
+                'cele_jmeno' => $invoice['vytvoril_uzivatel_cele_jmeno']
+            ];
+        }
+    }
+    unset($invoice); // Break reference
     
     // ✅ NORMALIZACE: fa_strediska_kod → array stringů (BEZ MODIFIKACE)
     foreach ($invoices as &$invoice) {
@@ -2615,6 +2645,27 @@ function handle_orders25_update($input, $config, $queries) {
                         $current_user_id
                     ));
                     
+                    // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                    // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                    $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                    $stmt_check->execute(array($order_id));
+                    $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order_data['fakturant_id']) {
+                        // První faktura - nastav fakturanta a datum přidání první faktury
+                        $stmt_update_order = $db->prepare("
+                            UPDATE `25a_objednavky` 
+                            SET fakturant_id = ?,
+                                dt_faktura_pridana = NOW(),
+                                dt_aktualizace = NOW(),
+                                uzivatel_akt_id = ?
+                            WHERE id = ?
+                        ");
+                        $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                        
+                        error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                    }
+                    
                 } else {
                     // ========== UPDATE existující faktura ==========
                     $update_fields = array();
@@ -3452,6 +3503,27 @@ function handle_orders25_partial_update($input, $config, $queries) {
                     
                     $invoices_processed++;
                     $invoices_updated = true;
+                    
+                    // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                    // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                    $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                    $stmt_check->execute(array($order_id));
+                    $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$order_data['fakturant_id']) {
+                        // První faktura - nastav fakturanta a datum přidání první faktury
+                        $stmt_update_order = $db->prepare("
+                            UPDATE `25a_objednavky` 
+                            SET fakturant_id = ?,
+                                dt_faktura_pridana = NOW(),
+                                dt_aktualizace = NOW(),
+                                uzivatel_akt_id = ?
+                            WHERE id = ?
+                        ");
+                        $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                        
+                        error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                    }
                     
                 } else {
                     // ========== UPDATE existující faktura ==========

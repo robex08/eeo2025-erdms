@@ -413,7 +413,6 @@ const CustomSelect = ({
 
   // Pro production můžeme debug vypnout
   // if (field.includes('_id') && field !== 'lp_kod' && value) {
-  //   console.log(`🎯 CustomSelect[${field}] selectedOption:`, selectedOption, 'z options.length=', options.length);
   // }
 
   const displayValue = multiple

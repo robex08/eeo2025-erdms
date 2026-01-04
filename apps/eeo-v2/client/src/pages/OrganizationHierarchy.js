@@ -1834,7 +1834,6 @@ const OrganizationHierarchy = () => {
       });
       
       if (cleanedFields.length !== targetScopeFields.length) {
-        console.log(`🧹 Cleaned targetScopeFields: ${targetScopeFields.length} -> ${cleanedFields.length}`);
         setTargetScopeFields(cleanedFields);
         return; // Zabráníme nekonečné smyčce
       }
@@ -1857,7 +1856,6 @@ const OrganizationHierarchy = () => {
             };
             delete updatedNode.data.scopeDefinition.field;
             
-            console.log(`🔄 [Multi-field] Updated node ${node.id} scopeDefinition.fields:`, cleanedFields);
             return updatedNode;
           }
           return node;
@@ -1897,7 +1895,6 @@ const OrganizationHierarchy = () => {
               }
             };
             
-            console.log(`🔄 [Multi-field] Updated edge ${edge.id} source_info_recipients.fields:`, cleanedFields);
             return updatedEdge;
           }
           return edge;
@@ -2060,13 +2057,10 @@ const OrganizationHierarchy = () => {
             if (!scope.type) {
               if (scope.fields && scope.fields.length > 0) {
                 normalized.data.scopeDefinition.type = 'DYNAMIC_FROM_ENTITY';
-                console.log(`🔧 [Auto-fix] Added missing type 'DYNAMIC_FROM_ENTITY' to node ${node.id} (has fields)`);
               } else if (scope.selectedIds && scope.selectedIds.length > 0) {
                 normalized.data.scopeDefinition.type = 'SELECTED';
-                console.log(`🔧 [Auto-fix] Added missing type 'SELECTED' to node ${node.id} (has selectedIds)`);
               } else {
                 normalized.data.scopeDefinition.type = 'ALL_IN_ROLE';
-                console.log(`🔧 [Auto-fix] Added missing type 'ALL_IN_ROLE' to node ${node.id} (default)`);
               }
             }
             
@@ -2074,7 +2068,6 @@ const OrganizationHierarchy = () => {
             if (scope.field && !scope.fields) {
               normalized.data.scopeDefinition.fields = [scope.field];
               delete normalized.data.scopeDefinition.field;
-              console.log(`🔄 [localStorage] Migrated node ${node.id} field '${scope.field}' to fields array`);
             }
             
             // Validace fields array
@@ -2108,7 +2101,6 @@ const OrganizationHierarchy = () => {
             if (sourceInfo.field && !sourceInfo.fields) {
               normalized.data.source_info_recipients.fields = [sourceInfo.field];
               delete normalized.data.source_info_recipients.field;
-              console.log(`🔄 [localStorage] Migrated edge ${edge.id} source_info field to fields array`);
             }
             
             // Validace edge fields
@@ -2143,7 +2135,7 @@ const OrganizationHierarchy = () => {
         }));
         
         setHasDraft(true);
-        console.log('💾 [localStorage] Saved hierarchy with multi-field validation:', {
+        console.log('Normalized data:', {
           nodes: normalizedNodes.length,
           edges: normalizedEdges.length,
           multiFieldNodes: normalizedNodes.filter(n => n.data?.scopeDefinition?.fields).length
@@ -2192,7 +2184,6 @@ const OrganizationHierarchy = () => {
         }
         
         setDialog({ ...dialog, show: false });
-        console.log(`✅ Deleted ${selectedNodes.length} nodes and ${selectedEdges.length} edges`);
       },
       onCancel: () => {
         setDialog({ ...dialog, show: false });
@@ -2281,12 +2272,10 @@ const OrganizationHierarchy = () => {
               const isOldFormat = !parsedMetadata || !parsedMetadata.multiFieldSupport;
               
               if (isOldFormat) {
-                console.log('🔄 [localStorage] Migrating old format to multi-field...');
                 
                 // MIGRACE NODES: field -> fields
                 parsedNodes = parsedNodes.map(node => {
                   if (node.data?.scopeDefinition?.field && !node.data.scopeDefinition.fields) {
-                    console.log(`🔄 Migrating node ${node.id} field '${node.data.scopeDefinition.field}' to fields`);
                     return {
                       ...node,
                       data: {
@@ -2305,7 +2294,6 @@ const OrganizationHierarchy = () => {
                 // MIGRACE EDGES: source_info field -> fields
                 parsedEdges = parsedEdges.map(edge => {
                   if (edge.data?.source_info_recipients?.field && !edge.data.source_info_recipients.fields) {
-                    console.log(`🔄 Migrating edge ${edge.id} source_info field to fields`);
                     return {
                       ...edge,
                       data: {
@@ -2332,7 +2320,6 @@ const OrganizationHierarchy = () => {
                 
                 // Aktualizovat localStorage s migrovanými daty
                 if (needsUpdate) {
-                  console.log('💾 [localStorage] Saving migrated multi-field format');
                   localStorage.setItem(LS_NODES_KEY, JSON.stringify(parsedNodes));
                   localStorage.setItem(LS_EDGES_KEY, JSON.stringify(parsedEdges));
                   localStorage.setItem(`${LS_NODES_KEY}_metadata`, JSON.stringify({
@@ -2430,7 +2417,6 @@ const OrganizationHierarchy = () => {
         if (savedProfileId) {
           selectedProfile = profilesList.find(p => p.id === parseInt(savedProfileId));
           if (selectedProfile) {
-            console.log('✅ Loaded profile from localStorage:', selectedProfile.name);
           }
         }
         
@@ -2443,7 +2429,6 @@ const OrganizationHierarchy = () => {
             if (globalSettings.hierarchy_profile_id) {
               selectedProfile = profilesList.find(p => p.id === parseInt(globalSettings.hierarchy_profile_id));
               if (selectedProfile) {
-                console.log('✅ Loaded profile from Global Settings:', selectedProfile.name);
               }
             }
           } catch (err) {
@@ -2454,7 +2439,6 @@ const OrganizationHierarchy = () => {
         // 3. Fallback: Použít aktivní profil
         if (!selectedProfile) {
           selectedProfile = profilesList.find(p => p.isActive) || profilesList[0];
-          console.log('⚠️ Using fallback profile (active or first):', selectedProfile?.name);
         }
         
         setCurrentProfile(selectedProfile || null);
@@ -2470,24 +2454,19 @@ const OrganizationHierarchy = () => {
           }).then(r => r.json());
         }
         
-        console.log('🔍 Loaded structure from DB:', structureData);
         
         // Preferovat API data před draftem z localStorage
         const shouldLoadFromApi = structureData.success && structureData.data && (
           (structureData.data.nodes && structureData.data.nodes.length > 0) ||
           (structureData.data.edges && structureData.data.edges.length > 0)
         );
-        
-        console.log('📊 Should load from API?', shouldLoadFromApi, {
+        console.log('Structure data loaded:', {
           nodes: structureData.data?.nodes?.length || 0,
           edges: structureData.data?.edges?.length || 0
         });
 
         // 4. Nastavit hierarchickou strukturu z API (preferovat API před draftem)
         if (shouldLoadFromApi) {
-          console.log('✅ Loading structure from API...');
-          console.log('🔍 Structure data.data.nodes:', structureData?.data?.nodes);
-          console.log('🔍 Structure data.data.edges:', structureData?.data?.edges);
           
           // Nové API vrací { nodes, edges } přímo ze structure_json
           const apiNodes = Array.isArray(structureData?.data?.nodes) ? structureData.data.nodes : [];
@@ -2502,7 +2481,6 @@ const OrganizationHierarchy = () => {
             return;
           }
 
-          console.log(`📊 Converting ${apiNodes.length} nodes and ${apiEdges.length} edges from API`);
           
           // API nodes jsou už ve správném formátu (id, typ, pozice, data)
           const flowNodes = apiNodes.map(node => ({
@@ -2522,7 +2500,7 @@ const OrganizationHierarchy = () => {
             data: edge.data || {}
           }));
           
-          console.log('✅ Loaded from API:', {
+          console.log('ReactFlow data prepared:', {
             nodes: flowNodes.length,
             edges: flowEdges.length
           });
@@ -2538,18 +2516,15 @@ const OrganizationHierarchy = () => {
           
         } else {
           // Fallback: Načíst draft z localStorage
-          console.log('⚠️ No API data, checking localStorage draft...');
           
           const savedNodes = localStorage.getItem(LS_NODES_KEY);
           const savedEdges = localStorage.getItem(LS_EDGES_KEY);
           
           if (savedNodes && savedEdges) {
-            console.log('✅ Loading draft from localStorage');
             setNodes(JSON.parse(savedNodes));
             setEdges(JSON.parse(savedEdges));
             setHasDraft(true);
           } else {
-            console.log('ℹ️ No draft found - empty canvas');
             setNodes([]);
             setEdges([]);
             setHasDraft(false);
@@ -3006,13 +2981,12 @@ const OrganizationHierarchy = () => {
 
   // Handler pro automatické uložení layout pozic po přetažení uzlu
   const onNodeDragStop = useCallback(async (event, node) => {
-    console.log('🎯 Node drag stopped:', node.id, 'Position:', node.position);
     
     // Aktualizovat pozici uzlu v state (už je hotovo přes onNodesChange)
     // Nyní jen zalogovat pro debug
     const updatedNode = nodes.find(n => n.id === node.id);
     if (updatedNode) {
-      console.log('📍 Updated node position saved to local state:', {
+      console.log('Updated node:', {
         id: updatedNode.id,
         userId: updatedNode.data?.userId,
         position: updatedNode.position
@@ -3224,7 +3198,6 @@ const OrganizationHierarchy = () => {
 
     if (newNodes.length > 0) {
       setNodes(prevNodes => [...prevNodes, ...newNodes]);
-      console.log(`✅ Added ${newNodes.length} nodes to canvas`);
       
       // Vymazat výběr
       setSelectedUsers(new Set());
@@ -3240,12 +3213,10 @@ const OrganizationHierarchy = () => {
     event.preventDefault();
     
     if (!draggedItem) {
-      console.log('⚠️ No dragged item');
       return;
     }
     
     if (!reactFlowInstance) {
-      console.log('⚠️ ReactFlow instance not ready');
       return;
     }
     
@@ -3270,7 +3241,7 @@ const OrganizationHierarchy = () => {
       y: event.clientY - nodeHeight / 2,
     });
     
-    console.log('📦 Drop:', { 
+    console.log('Drop event details:', {
       dragId, 
       position, 
       clientX: event.clientX, 
@@ -3305,7 +3276,6 @@ const OrganizationHierarchy = () => {
         };
         
         setNodes((nds) => [...nds, newNode]);
-        console.log(`✅ Added notification template node: ${template.nazev || template.name}`);
       }
       return;
     }
@@ -3338,7 +3308,6 @@ const OrganizationHierarchy = () => {
         };
         
         setNodes((nds) => [...nds, newNode]);
-        console.log(`✅ Added role node: ${role.nazev_role}`, newNode);
       }
       return;
     }
@@ -3376,7 +3345,6 @@ const OrganizationHierarchy = () => {
     // Zpracovani lokality - prida samotnou lokalitu jako node
     if (dragId.startsWith('loc-')) {
       const locationId = dragId.replace('loc-', '');
-      console.log('📍 LOCATION DROP - ID:', locationId);
       const location = allLocations.find(l => l.id === locationId);
       
       if (!location) {
@@ -3404,14 +3372,12 @@ const OrganizationHierarchy = () => {
       };
       
       setNodes((nds) => [...nds, newNode]);
-      console.log(`✅ Added location node: ${location.name}`);
       return;
     }
     
     // Zpracovani utvaru - prida samotny utvar jako node
     if (dragId.startsWith('dept-')) {
       const deptId = dragId.replace('dept-', '');
-      console.log('🏢 DEPARTMENT DROP - ID:', deptId);
       const department = allDepartments.find(d => d.id === deptId);
       
       if (!department) {
@@ -3439,7 +3405,6 @@ const OrganizationHierarchy = () => {
       };
       
       setNodes((nds) => [...nds, newNode]);
-      console.log(`✅ Added department node: ${department.name}`);
       return;
     }
   };
@@ -3559,7 +3524,6 @@ const OrganizationHierarchy = () => {
   };
 
   const generateHierarchyFromSelected = () => {
-    console.log('🤖 AI: Generating hierarchy from SELECTED items only...');
 
     // Získat všechny vybrané uživatele
     let selectedUsersList = [];
@@ -3610,7 +3574,6 @@ const OrganizationHierarchy = () => {
       return;
     }
 
-    console.log(`🤖 AI: Working with ${selectedUsersList.length} selected users`);
 
     // Analyzovat role z vybraných uživatelů
     const director = selectedUsersList.find(u => {
@@ -3852,7 +3815,6 @@ const OrganizationHierarchy = () => {
 
   // Nová funkce pro práci s vybranými nody na ploše
   const generateHierarchyFromSelectedNodes = (selectedNodes) => {
-    console.log('🤖 AI: Reorganizing hierarchy from SELECTED NODES on canvas...', selectedNodes.length);
 
     if (selectedNodes.length === 0) return;
 
@@ -3950,11 +3912,9 @@ const OrganizationHierarchy = () => {
 
   const generateHierarchy = () => {
 
-    console.log('🤖 AI: Generating hierarchy from positions...');
 
     // Pokud už existují vztahy (načtené z DB), použít je a jen aplikovat layout
     if (edges.length > 0) {
-      console.log('✅ Using existing relationships from DB:', edges.length);
       
       // Vytvořit nodes ze všech uživatelů
       const existingNodes = allUsers.map((user) => ({
@@ -3996,7 +3956,6 @@ const OrganizationHierarchy = () => {
     }
 
     // Pokud neexistují vztahy, vygenerovat nové ze STÁVAJÍCÍCH PŘIŘAZENÍ v DB
-    console.log('🤖 No existing relationships, generating from DB assignments...');
 
     // 1. Seskupení podle útvarů a pozic (používáme REÁLNÁ přiřazení z 25_uzivatele)
     // Ředitel = přesně "Ředitel" (ne vedoucí, ne náměstek)
@@ -4032,7 +3991,7 @@ const OrganizationHierarchy = () => {
              !pos.includes('vedoucí');
     });
 
-    console.log('🤖 AI: Structure from DB assignments:', { 
+    console.log('Organization hierarchy summary:', {
       director: director ? `${director.name} (${director.department}, ${director.location})` : 'None',
       deputies: deputies.map(d => ({ name: d.name, dept: d.department, code: d.departmentCode })),
       directorHeads: directorHeads.map(h => ({ name: h.name, dept: h.department })),
@@ -4205,7 +4164,6 @@ const OrganizationHierarchy = () => {
         // Debug: zobrazit skóre shody
         if (bestMatch) {
           const score = getDepartmentMatchScore(user.departmentCode, bestMatch.departmentCode);
-          console.log(`🔗 ${user.name} (${user.departmentCode}) → ${bestMatch.name} (${bestMatch.departmentCode}) [score: ${score}]`);
         }
         
         if (parent) {
@@ -4229,7 +4187,7 @@ const OrganizationHierarchy = () => {
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
 
-    console.log('✅ AI: Generated hierarchy with auto-layout:', {
+    console.log('Layout completed:', {
       nodes: layoutedNodes.length,
       edges: layoutedEdges.length
     });
@@ -4378,7 +4336,6 @@ const OrganizationHierarchy = () => {
       setCurrentProfile({ ...currentProfile, isActive: newActiveState });
       
       const statusText = newActiveState ? 'aktivován (viditelný v AppSettings)' : 'deaktivován (skrytý v AppSettings)';
-      console.log(`✅ Profil "${currentProfile.name}" byl ${statusText}`);
     } catch (error) {
       console.error(`Chyba při pokusu ${action} profil:`, error);
       alert(`Nepodařilo se ${action} profil: ${error.message}`);
@@ -4386,11 +4343,8 @@ const OrganizationHierarchy = () => {
   };
   
   const handleProfileChange = async (profileId) => {
-    console.log('🔄 handleProfileChange called with profileId:', profileId);
     const profile = profiles.find(p => p.id === parseInt(profileId));
-    console.log('🔍 Found profile:', profile);
     if (!profile) {
-      console.log('❌ Profile not found!');
       return;
     }
     
@@ -4406,7 +4360,6 @@ const OrganizationHierarchy = () => {
     // Uložit vybraný profil do LocalStorage
     localStorage.setItem(LS_PROFILE_KEY, profileId.toString());
     
-    console.log('📂 Loading profile:', profile.name, 'ID:', profileId);
     
     // Nacist strukturu pro vybrany profil (NOVÉ API)
     try {
@@ -4422,7 +4375,6 @@ const OrganizationHierarchy = () => {
       });
       
       const result = await response.json();
-      console.log('📥 Profile structure response:', result);
       
       if (result.success && result.data) {
         // API vrací structure_json formát s nodes a edges
@@ -4432,9 +4384,7 @@ const OrganizationHierarchy = () => {
         if (apiNodes.length === 0 && apiEdges.length === 0) {
           setNodes([]);
           setEdges([]);
-          console.log('📭 Empty profile loaded');
         } else {
-          console.log('📦 Received nodes:', apiNodes.length, 'edges:', apiEdges.length);
           
           // Zajistit, že všechny nodes mají position
           const validNodes = apiNodes.map((node, index) => ({
@@ -4445,14 +4395,12 @@ const OrganizationHierarchy = () => {
           setNodes(validNodes);
           setEdges(apiEdges);
           
-          console.log('✅ Profile loaded:', validNodes.length, 'nodes,', apiEdges.length, 'edges');
           
           // 🆕 FORCE RE-RENDER: Po načtení profilu znovu vyfituj viewport
           // Malé zpoždění aby se ReactFlow stihl inicializovat
           setTimeout(() => {
             if (reactFlowInstance) {
               reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
-              console.log('🔄 ReactFlow viewport refitted after profile load');
             }
           }, 100);
         }
@@ -4531,7 +4479,7 @@ const OrganizationHierarchy = () => {
       
       const profileId = targetProfileId || currentProfile?.id || 1;
       
-      console.log('📊 HIERARCHY SAVE START - Current state:', {
+      console.log('Saving hierarchy for profile:', {
         profileId,
         totalNodes: nodes.length,
         totalEdges: edges.length
@@ -4557,7 +4505,6 @@ const OrganizationHierarchy = () => {
         }))
       };
       
-      console.log('💾 HIERARCHY SAVE - Payload:', JSON.stringify(payload, null, 2));
       
       const response = await fetch(`${apiBase}/hierarchy/profiles/save-structure`, {
         method: 'POST',
@@ -4567,7 +4514,6 @@ const OrganizationHierarchy = () => {
         body: JSON.stringify(payload)
       });
 
-      console.log('📡 SAVE Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -4576,7 +4522,6 @@ const OrganizationHierarchy = () => {
       }
 
       const result = await response.json();
-      console.log('✅ SAVE Result:', result);
       if (result.success) {
         localStorage.removeItem(LS_NODES_KEY);
         localStorage.removeItem(LS_EDGES_KEY);
@@ -4589,7 +4534,6 @@ const OrganizationHierarchy = () => {
           if (savedProfile) {
             setCurrentProfile(savedProfile);
             localStorage.setItem(LS_PROFILE_KEY, savedProfile.id.toString());
-            console.log('🔄 Automaticky přepnuto na profil:', savedProfile.name);
           }
         }
         
@@ -4619,7 +4563,6 @@ const OrganizationHierarchy = () => {
 
   const handleDeleteNode = async () => {
     if (selectedNode) {
-      console.log('🗑️ Deleting node:', selectedNode.id);
       
       // Odstranit node a všechny související hrany z UI (optimistic update)
       setNodes((nds) => nds.filter(n => n.id !== selectedNode.id));
@@ -4629,13 +4572,11 @@ const OrganizationHierarchy = () => {
       
       // Poznámka: Skutečné mazání z DB proběhne při dalším uložení (handleSave)
       // V2 systém ukládá celou hierarchii najednou, ne jednotlivé nodes
-      console.log('✅ Node removed from UI (will be deleted from DB on next save)');
     }
   };
 
   const handleDeleteEdge = async () => {
     if (selectedEdge) {
-      console.log('🗑️ Deleting edge:', selectedEdge);
       
       // Odstranit z UI okamžitě (optimistic update)
       setEdges((eds) => eds.filter(e => e.id !== selectedEdge.id));
@@ -4644,7 +4585,6 @@ const OrganizationHierarchy = () => {
       
       // Poznámka: Skutečné mazání z DB proběhne při dalším uložení (handleSave)
       // V2 systém ukládá celou hierarchii najednou, ne jednotlivé vztahy
-      console.log('✅ Edge removed from UI (will be deleted from DB on next save)');
     }
   };
 
@@ -4873,7 +4813,6 @@ const OrganizationHierarchy = () => {
                 const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges, 'TB');
                 setNodes(layoutedNodes);
                 setEdges(layoutedEdges);
-                console.log('📐 Manual layout applied');
               }
             }}
             disabled={nodes.length === 0}
@@ -5045,11 +4984,9 @@ const OrganizationHierarchy = () => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('application/reactflow', user.id);
                           setDraggedItem(user.id);
-                          console.log('👉 Drag start:', user.id, user.name);
                         }}
                         onDragEnd={() => {
                           setDraggedItem(null);
-                          console.log('🚩 Drag end');
                         }}
                         style={{
                           background: selectedUsers.has(user.id) ? '#ede9fe' : 'white',
@@ -5268,11 +5205,9 @@ const OrganizationHierarchy = () => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('application/reactflow', `loc-${loc.id}`);
                           setDraggedItem(`loc-${loc.id}`);
-                          console.log('📍 Drag start location:', loc.id, loc.name);
                         }}
                         onDragEnd={() => {
                           setDraggedItem(null);
-                          console.log('🏁 Drag end');
                         }}
                         style={{
                           background: selectedLocations.has(loc.id) ? '#fef3c7' : 'white',
@@ -5383,11 +5318,9 @@ const OrganizationHierarchy = () => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('application/reactflow', `dept-${dept.id}`);
                           setDraggedItem(`dept-${dept.id}`);
-                          console.log('🏢 Drag start department:', dept.id, dept.name);
                         }}
                         onDragEnd={() => {
                           setDraggedItem(null);
-                          console.log('🏁 Drag end');
                         }}
                         style={{
                           background: selectedDepartments.has(dept.id) ? '#dbeafe' : 'white',
@@ -5499,11 +5432,9 @@ const OrganizationHierarchy = () => {
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('application/reactflow', `notif-${template.id}`);
                           setDraggedItem(`notif-${template.id}`);
-                          console.log('🔔 Drag start notification template:', template.id, template.nazev || template.name);
                         }}
                         onDragEnd={() => {
                           setDraggedItem(null);
-                          console.log('🏁 Drag end');
                         }}
                         style={{
                           padding: '12px',
@@ -5738,7 +5669,6 @@ const OrganizationHierarchy = () => {
                 // 🆕 Fit view hned po inicializaci (opraví zobrazení po F5)
                 setTimeout(() => {
                   instance.fitView({ padding: 0.2, duration: 800 });
-                  console.log('🔄 ReactFlow fitted on init');
                 }, 100);
               }}
               nodeTypes={nodeTypes}

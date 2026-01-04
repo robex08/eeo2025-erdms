@@ -1082,7 +1082,6 @@ const CashBookPage = () => {
 
   // 🔍 DEBUG: Sledovat změny mainAssignment (zakomentováno - způsobovalo spam v konzoli)
   // useEffect(() => {
-  //   console.log('🔄 mainAssignment ZMĚNA:', {
   //     id: mainAssignment?.id,
   //     cislo_pokladny: mainAssignment?.cislo_pokladny,
   //     uzivatel_id: mainAssignment?.uzivatel_id,
@@ -1134,14 +1133,12 @@ const CashBookPage = () => {
           
           keysToRemove.forEach(key => {
             localStorage.removeItem(key);
-            console.log(`  ✅ Vymazán klíč: ${key}`);
           });
           
           // 2. 🎯 Selector states
           localStorage.removeItem('cashbook_selector_period');
           localStorage.removeItem('cashbook_selector_cashbox');
           
-          console.log(`✅ CashBookPage unmount: Vyčištěno ${keysToRemove.length} klíčů pokladny`);
         } catch (error) {
           console.error('❌ CashBookPage unmount: Chyba při čištění:', error);
         }
@@ -2594,7 +2591,6 @@ const CashBookPage = () => {
 
         documentNumber = `P${String(nextP).padStart(3, '0')}`;
         typeChanged = true;
-        console.log(`🔄 Změna typu: V → P, nové číslo: ${documentNumber}`);
         showToast(`Změna typu dokladu: výdaj → příjem. Nové číslo: ${documentNumber}`, 'info');
 
       } else if (shouldBeV && currentPrefix !== 'V') {
@@ -2624,7 +2620,6 @@ const CashBookPage = () => {
 
         documentNumber = `V${String(nextV).padStart(3, '0')}`;
         typeChanged = true;
-        console.log(`🔄 Změna typu: P → V, nové číslo: ${documentNumber}`);
         showToast(`Změna typu dokladu: příjem → výdaj. Nové číslo: ${documentNumber}`, 'info');
       }
     }
@@ -3193,7 +3188,6 @@ const CashBookPage = () => {
 
           // Pokud se číslo změnilo, aktualizovat v DB
           if (newNumber && newNumber !== entry.cislo_dokladu) {
-            console.log(`  🔄 ${entry.cislo_dokladu} → ${newNumber}`);
             // ✅ FIX: RAW data z API mají 'id', ne 'db_id'
             await cashbookAPI.updateEntry(entry.id, {
               cislo_dokladu: newNumber

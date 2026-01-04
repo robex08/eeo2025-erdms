@@ -138,7 +138,6 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       // Detekce změny floating header stavu během scrollu
       const currentFloatingState = window.__floatingHeaderVisible || false;
       if (currentFloatingState !== previousFloatingState) {
-        console.log('🔄 [DatePicker] Detekována změna floating header při scrollu -> zavírám dropdown');
         setIsOpen(false);
         previousFloatingState = currentFloatingState;
         return;

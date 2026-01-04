@@ -175,7 +175,6 @@ export function useGlobalVoiceRecognition({
     if (!actualTarget) {
       const activeElement = document.activeElement;
 
-      // console.log(`🔍 DEBUG activeElement:`, {
       //   tagName: activeElement?.tagName,
       //   type: activeElement?.type,
       //   id: activeElement?.id,
@@ -241,7 +240,6 @@ export function useGlobalVoiceRecognition({
       const isStableSelect = actualTarget.hasAttribute('data-stable-select');
 
       // DEBUG: Co je actualTarget?
-      // console.log(`🔍 DEBUG actualTarget:`, {
       //   tagName: actualTarget.tagName,
       //   hasDataCustomSelect: actualTarget.hasAttribute('data-custom-select'),
       //   hasDataStableSelect: actualTarget.hasAttribute('data-stable-select'),
@@ -303,12 +301,8 @@ export function useGlobalVoiceRecognition({
         }
       }
 
-      // console.log(`🔍 [${fieldName}] Dropdown nalezen:`, !!dropdown, dropdown ? `(${dropdown.children.length} children)` : '(null)');
-      // console.log(`🔍 [${fieldName}] Hledám dropdown v:`, actualTarget.tagName, actualTarget.className);
-      // console.log(`🔍 [${fieldName}] actualTarget.children.length:`, actualTarget.children.length);
       // if (actualTarget.children.length > 0) {
       //   Array.from(actualTarget.children).forEach((child, idx) => {
-      //     console.log(`🔍 [${fieldName}] Child ${idx}:`, {
       //       tag: child.tagName,
       //       style: child.getAttribute('style'),
       //       className: child.className,
@@ -321,7 +315,6 @@ export function useGlobalVoiceRecognition({
       if (dropdown) {
         // Dropdown je otevřený - najdi search input a vyplň ho HNED
         const searchInput = actualTarget.querySelector('input[type="text"]');
-        // console.log(`🔍 [${fieldName}] Search input nalezen:`, !!searchInput);
 
         if (searchInput) {
           // NEJDŘÍV vyplň search input
@@ -355,23 +348,17 @@ export function useGlobalVoiceRecognition({
               return true;
             });
 
-            // console.log(`🔍 [${fieldName}] Po filtrování nalezeno ${optionElements.length} option elementů`);
             // if (optionElements.length > 0) {
-            //   console.log(`🔍 [${fieldName}] První 3 options:`, optionElements.slice(0, 3).map(el => el.textContent.trim()));
             // }
 
             // 🎙️ KLÍČOVÁ LOGIKA: Pokud je HLASOVÝ VSTUP a jen 1 SHODA → automaticky vyber
             const isVoiceInput = actualTarget.getAttribute('data-voice-input') === 'true';
-            // console.log(`🔍 [${fieldName}] isVoiceInput=${isVoiceInput}, count=${optionElements.length}`);
 
             if (isVoiceInput && optionElements.length === 1) {
-              // console.log(`✅ [${fieldName}] HLASOVÝ VSTUP + 1 SHODA → automaticky vybírám:`, optionElements[0].textContent.trim());
               optionElements[0].click();
               actualTarget.removeAttribute('data-voice-input');
             } else if (optionElements.length === 0) {
-              // console.log(`⚠️ [${fieldName}] Žádné výsledky po filtrování`);
             } else {
-              // console.log(`ℹ️ [${fieldName}] ${isVoiceInput ? 'Hlasový vstup, více shod' : 'Ruční vstup'} (${optionElements.length} výsledků)`);
             }
           }, 100); // Počkat 100ms na React filtrování
         }
@@ -438,24 +425,18 @@ export function useGlobalVoiceRecognition({
               if (optionElements.length > 0) {
                 // 🎙️ KLÍČOVÁ LOGIKA: Pokud je HLASOVÝ VSTUP a jen 1 SHODA → automaticky vyber
                 const isVoiceInput = actualTarget.getAttribute('data-voice-input') === 'true';
-                // console.log(`🔍 [${fieldName}] (delayed) Debug atribut data-voice-input="${actualTarget.getAttribute('data-voice-input')}" (isVoiceInput=${isVoiceInput})`);
-                // console.log(`🔍 [${fieldName}] (delayed) Podmínky: isVoiceInput=${isVoiceInput}, optionElements.length=${optionElements.length}`);
 
                 if (isVoiceInput && optionElements.length === 1) {
-                  // console.log(`✅ [${fieldName}] (delayed) HLASOVÝ VSTUP + 1 SHODA po filtrování → automaticky vybírám`);
-                  // console.log(`🖱️ [${fieldName}] (delayed) Klikám na option:`, optionElements[0].textContent.trim());
                   optionElements[0].click();
                   // Odstranit atribut po použití
                   actualTarget.removeAttribute('data-voice-input');
                   // console.log(`🧹 [${fieldName}] (delayed) Odstraněn atribut data-voice-input`);
                 } else {
                   // JINAK: Nech focus na search inputu (pro ruční výběr nebo více shod)
-                  // console.log(`ℹ️ [${fieldName}] (delayed) ${isVoiceInput ? 'Hlasový vstup, více shod' : 'Ruční vstup'} (${optionElements.length} výsledků) → ponechávám v search inputu`);
                   searchInput.focus();
                 }
               } else {
                 // Pokud nejsou žádné výsledky, nech focus na search inputu pro manuální úpravu a korekci
-                // console.log(`⚠️ [${fieldName}] Žádné výsledky po filtrování, nechávám search input pro korekci`);
                 searchInput.focus();
               }
             }
@@ -512,10 +493,8 @@ export function useGlobalVoiceRecognition({
         const inputEvent = new Event('input', { bubbles: true, cancelable: false });
         actualTarget.dispatchEvent(inputEvent);
 
-        // console.log('✅ SELECT: Automaticky vybráno:', bestOption.text, '(value:', bestOption.value, ')');
       } else {
         // Nižší shoda - jen upozornění
-        // console.log('⚠️ SELECT: Nízká shoda, hodnota nebyla vybrána. Mluvený text:', text);
       }
 
       return; // Hotovo pro SELECT
@@ -583,14 +562,12 @@ export function useGlobalVoiceRecognition({
         // 3. Focus element - ujisti se, že je aktivní
         actualTarget.focus();
 
-        // console.log('✅ Text vložen do input:', actualTarget.name || actualTarget.id, 'value:', newValue.substring(0, 50) + (newValue.length > 50 ? '...' : ''));
       }
     } else {
       // Vložit do NotesPanel (HTML s možným zvýrazněním)
       // console.log('🎤 Trying to insert to NotesPanel via callback');
       if (onInsertToNotes) {
         onInsertToNotes(highlightedText);
-        // console.log('✅ Text vložen do NotesPanel');
       } else {
       }
     }

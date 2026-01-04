@@ -936,7 +936,6 @@ export const AuthProvider = ({ children }) => {
         newPassword
       });
       
-      console.log('✅ changePasswordApi2 result:', result);
 
       // Backend vrátil potvrzení o změně hesla
       if (result.success || result.token) {
@@ -946,9 +945,7 @@ export const AuthProvider = ({ children }) => {
         // 🔄 KOMPLETNÍ RELOGIN: Zavolat login() s novým heslem
         // Tím se načte všechno stejně jako při běžném přihlášení
         // DŮLEŽITÉ: login() automaticky nastaví needsPasswordChange = false pokud backend nevrátí forcePasswordChange
-        console.log('🔄 Spouštím kompletní relogin s novým heslem...');
         await login(username, newPassword);
-        console.log('✅ Relogin dokončen úspěšně - proběhne full reload stránky');
         
         // 🔄 FULL RELOAD: Zajistit čistý start aplikace po změně hesla
         // Tím se zaručí, že všechny komponenty a state se správně inicializují

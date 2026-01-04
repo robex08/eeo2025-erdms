@@ -106,5 +106,4 @@ export function exportCsv(rows, filename = 'export', options = {}) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
   
-  console.log(`✅ CSV Export: ${rows.length} řádků, ${columns.length} sloupců, separátor: "${separator}"`);
 }

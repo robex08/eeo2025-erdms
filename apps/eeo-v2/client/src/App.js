@@ -504,7 +504,6 @@ function App() {
     console.log('ModalGuid type:', typeof config?.modalGuid);
     
     if (config?.modalGuid && user_id) {
-      console.log('✅ Podmínky splněny, volám dismissModalForUser...');
       
       // Uložit do localStorage, že uživatel nechce modal zobrazovat
       const { dismissModalForUser } = await import('./services/postLoginModalService');

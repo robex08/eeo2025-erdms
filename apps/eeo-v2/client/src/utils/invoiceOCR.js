@@ -39,7 +39,6 @@ async function pdfToCanvas(arrayBuffer) {
   });
   
   await renderTask.promise;
-  console.log(`✅ PDF rendered to canvas`);
   
   return canvas;
 }
@@ -83,13 +82,11 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
           setTimeout(() => reject(new Error('Timeout při konverzi PDF (30s)')), 30000)
         )
       ]);
-      console.log(`✅ PDF converted to canvas: ${canvas.width}x${canvas.height}px`);
     } catch (conversionError) {
       console.error('❌ PDF conversion error:', conversionError);
       
       // Retry logic
       if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 Retrying PDF conversion (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         onProgress(5, `Opakuji pokus ${retryCount + 2}/${MAX_RETRIES + 1}...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
@@ -130,7 +127,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       console.error('❌ Worker creation error:', workerError);
       
       if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 Retrying OCR init (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         onProgress(5, `Opakuji pokus ${retryCount + 2}/${MAX_RETRIES + 1}...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
@@ -154,7 +150,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       text = result?.data?.text || '';
       const confidence = result?.data?.confidence || 0;
       
-      console.log(`✅ OCR completed: ${text.length} characters, confidence: ${confidence.toFixed(1)}%`);
       
       if (!text || text.trim().length === 0) {
         throw new Error('PDF neobsahuje rozpoznatelný text. Dokument může být prázdný nebo ve špatné kvalitě.');
@@ -163,7 +158,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       console.error('❌ Recognition error:', recognizeError);
       
       if (retryCount < MAX_RETRIES && !recognizeError.message.includes('Timeout')) {
-        console.log(`🔄 Retrying recognition (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`);
         await worker.terminate();
         return extractTextFromPDF(arrayBuffer, onProgress, retryCount + 1);
       }
@@ -381,7 +375,6 @@ export function extractInvoiceData(text) {
   }
   
   result.datumVystaveni = bestIssueDate;
-  console.log(`✅ Best datum vystavení: ${bestIssueDate} (score: ${bestIssueScore}) - ${bestIssueDebug}`);
   
   // ========== ROBUSTNÍ Hledání Datumu splatnosti ==========
   // Více variant klíčových slov (včetně OCR chyb)
@@ -477,7 +470,6 @@ export function extractInvoiceData(text) {
   }
   
   result.datumSplatnosti = bestDueDate;
-  console.log(`✅ Best datum splatnosti: ${bestDueDate} (score: ${bestDueScore}) - ${bestDueDebug}`);
 
   // ========== Hledání Částky vč. DPH ==========
   // Hledáme částku s označením různých variant

@@ -702,7 +702,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
     const selectedUser = availableUsers[selectedUserIndex];
     const selectedUserId = selectedUser.id;
 
-    console.log('🎯 DEBUG DOCX GENEROVÁNÍ START');
     console.log('📋 Vybraná šablona:', selectedTemplate);
     console.log('👤 Vybraný uživatel pro podpis:', {
       index: selectedUserIndex,
@@ -747,7 +746,7 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         selectedUserId: selectedUserId // ✅ ID vybraného uživatele pro podpis
       });
 
-      console.log('✅ DOCX vygenerován:', {
+      console.log('Generated docx metadata:', {
         size: generatedDocx.size,
         type: generatedDocx.type
       });

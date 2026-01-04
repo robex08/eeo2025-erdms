@@ -807,8 +807,7 @@ const InvoiceAttachmentsTestPanel = () => {
                   {selectedOrder.faktury.map((faktura, index) => {
                     const editedFaktura = editingFaktura[faktura.id] || {};
                     const currentValues = { ...faktura, ...editedFaktura };
-                    
-                    console.log('🔍 Rendering faktura:', { 
+                    console.log('Faktura metadata:', {
                       id: faktura.id, 
                       isTemp: String(faktura.id).startsWith('temp-'),
                       attachmentsCount: faktura.attachments?.length 
@@ -963,10 +962,8 @@ const InvoiceAttachmentsTestPanel = () => {
                           handleInvoiceAttachmentUploaded(faktura.id, uploadedAttachment);
                         }}
                         onCreateInvoiceInDB={async (tempFakturaId) => {
-                          console.log('🎯 onCreateInvoiceInDB called:', { tempFakturaId, currentValues });
                           // Vytvoř fakturu v DB a vrať její reálné ID
                           const created = await handleCreateFaktura(currentValues);
-                          console.log('✅ handleCreateFaktura result:', created);
                           return created?.id || null;
                         }}
                       />
