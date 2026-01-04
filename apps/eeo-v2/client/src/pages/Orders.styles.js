@@ -513,8 +513,8 @@ const styles = css`
   .filter-input {
     width: 100%;
     height: 48px;
-    padding: 1px 2.5rem;
-    border: 2px solid #e5e7eb;
+    padding: 1px 2.5rem 1px 2.5rem;
+    border: 2px solid #e2e8f0;
     border-radius: 8px;
     font-size: 0.95rem;
     box-sizing: border-box;
