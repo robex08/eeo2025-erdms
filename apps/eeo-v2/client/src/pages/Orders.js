@@ -1132,6 +1132,25 @@ const Orders = () => {
   const [selectStates, setSelectStates] = useState({});
   const [searchStates, setSearchStates] = useState({});
 
+  // Helper funkce pro CustomSelect
+  const toggleSelect = useCallback((field) => {
+    setSelectStates(prev => ({ ...prev, [field]: !prev[field] }));
+  }, []);
+
+  const filterOptions = useCallback((options, searchTerm, fieldName) => {
+    if (!searchTerm) return options;
+    const normalized = searchTerm.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return options.filter(option => {
+      const label = option.nazev || option.label || option.name || String(option.id || option);
+      const normalizedLabel = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return normalizedLabel.includes(normalized);
+    });
+  }, []);
+
+  const getOptionLabel = useCallback((option, fieldName) => {
+    return option.nazev || option.label || option.name || String(option.id || option);
+  }, []);
+
   // Get the current year
   const currentYear = new Date().getFullYear();
 
@@ -3128,6 +3147,9 @@ return (
             setSearchStates={setSearchStates}
             selectStates={selectStates}
             searchStates={searchStates}
+            toggleSelect={toggleSelect}
+            filterOptions={filterOptions}
+            getOptionLabel={getOptionLabel}
           />
         </div>
         
@@ -3147,6 +3169,9 @@ return (
             setSearchStates={setSearchStates}
             selectStates={selectStates}
             searchStates={searchStates}
+            toggleSelect={toggleSelect}
+            filterOptions={filterOptions}
+            getOptionLabel={getOptionLabel}
           />
         </div>
       </div>
