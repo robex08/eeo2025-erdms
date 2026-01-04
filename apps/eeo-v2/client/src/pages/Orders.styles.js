@@ -598,24 +598,31 @@ const styles = css`
   }
 
   .filter-button {
-    padding: 10px 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-    color: #333;
-    font-size: 14px;
+    height: 48px;
+    padding: 0 15px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1f2937;
+    font-size: 0.95rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .filter-button:hover {
-    background-color: #e0e0e0;
+    background-color: #f3f4f6;
+    border-color: #d1d5db;
   }
 
   .filter-button.active {
-    background-color: #202d65;
+    background-color: #3b82f6;
     color: white;
-    border-color: #170d79;
+    border-color: #2563eb;
   }
 
   .orders-boxes {
