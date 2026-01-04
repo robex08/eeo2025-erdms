@@ -4491,6 +4491,7 @@ const Orders25List = () => {
     // Načti stav z localStorage s user izolací, výchozí je false (skryto)
     return getUserStorage('orders25List_showDebug', false);
   });
+
   // User settings - načíst z localStorage (bez transformace - používáme české klíče přímo)
   const userSettings = useMemo(() => {
     if (!currentUserId) return null;
@@ -9693,21 +9694,81 @@ const Orders25List = () => {
     return [...numericYears, 'all']; // "Všechny roky" na konci
   };
 
-  const handleExport = () => {
-    // Načti nastavení sloupců z profilu uživatele
-    const csvColumns = userSettings?.export_csv_sloupce || {};
-    
-    // Načti nastavení multiline/list oddělovače z profilu
-    const listDelimiterMap = {
-      'pipe': '|',
-      'comma': ',',
-      'semicolon': ';',
-      'custom': userSettings?.exportCsvListCustomDelimiter || '|'
-    };
-    const listSeparator = listDelimiterMap[userSettings?.exportCsvListDelimiter || 'pipe'] || '|';
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      
+      // Načti aktuální nastavení sloupců z databáze
+      const { fetchUserSettings } = await import('../services/userSettingsApi');
+      const userSettingsFromDB = await fetchUserSettings({ 
+        token, 
+        username, 
+        userId: currentUserId 
+      });
+      
+      const csvColumns = userSettingsFromDB?.export_csv_sloupce || {};
+      
+      // Načti nastavení multiline/list oddělovače z profilu
+      const listDelimiterMap = {
+        'pipe': '|',
+        'comma': ',',
+        'semicolon': ';',
+        'custom': userSettingsFromDB?.exportCsvListCustomDelimiter || '|'
+      };
+      const listSeparator = listDelimiterMap[userSettingsFromDB?.exportCsvListDelimiter || 'pipe'] || '|';
+      
+      // Připrav aktuální filtry pro backend (jen filtrovaná data)
+      const currentFilters = {
+        columnFilters,
+        multiselectFilters,
+        globalFilter,
+        statusFilter,
+        userFilter,
+        dateFromFilter,
+        dateToFilter,
+        amountFromFilter,
+        amountToFilter,
+        filterMaBytZverejneno,
+        filterByloZverejneno,
+        filterMimoradneObjednavky,
+        filterWithInvoices,
+        filterWithAttachments,
+        showOnlyMyOrders,
+        selectedYear,
+        selectedMonth,
+        showArchived
+      };
+      
+      // Připrav payload s nastavením pro backend
+      const exportPayload = {
+        token,
+        username,
+        filters: currentFilters,
+        export_settings: {
+          csv_columns: csvColumns,
+          list_delimiter: listSeparator
+        }
+      };
+      
+      // TODO: Volání na backend endpoint pro export s nastavením
+      // const exportResponse = await api25orders.post('orders25/export', exportPayload);
+      // Pro nyní zachovám stávající logiku s načtenými nastavením z DB
+      
+      const csvColumnsFromDB = csvColumns;
     
     //  Helper: Bezpečné získání hodnoty s fallbackem
-    const safeGet = (value, fallback = '') => value !== null && value !== undefined ? value : fallback;
+    const safeGet = (value, fallback = '') => {
+      if (value === null || value === undefined) return fallback;
+      if (typeof value === 'object') {
+        // Objekt konvertovat na JSON string (nebezpečné pro React rendering)
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
     
     //  Helper: Formátování jména uživatele z enriched dat
     const formatUserName = (user) => {
@@ -9735,12 +9796,16 @@ const Orders25List = () => {
       let zpusobFinancovani = '';
       let finData = null;
 
-      if (order.financovani_parsed && typeof order.financovani_parsed === 'object') {
+      // OPRAVA: order.financovani už je objekt (ne JSON string!)
+      if (order.financovani && typeof order.financovani === 'object') {
+        finData = order.financovani;
+      } else if (order.financovani_parsed && typeof order.financovani_parsed === 'object') {
         finData = order.financovani_parsed;
       } else if (order.financovani && typeof order.financovani === 'string') {
         try {
           finData = JSON.parse(order.financovani);
         } catch {
+          // Pokud není JSON, je to jen string hodnota
           zpusobFinancovani = order.financovani;
         }
       } else if (order.zpusob_financovani) {
@@ -9755,167 +9820,347 @@ const Orders25List = () => {
         }
       }
 
+      // DEBUG: Console log pro debugging (dočasné)
+      if (order.id === 1) {
+        console.log('🔍 DEBUG objednávka 1:', { 
+          financovani: order.financovani, 
+          finData, 
+          zpusobFinancovani 
+        });
+      }
+
       // Pokud máme parsovaná data, extrahujeme nazev_stavu nebo mapujeme kod_stavu
       if (finData && typeof finData === 'object') {
-        zpusobFinancovani = finData.nazev_stavu ||
-                           (finData.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null) ||
-                           finData.nazev || finData.label || '';
+        const financovaniValue = finData.nazev_stavu ||
+                               (finData.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null) ||
+                               finData.nazev || finData.label || '';
+        zpusobFinancovani = String(financovaniValue || ''); // Zajisti, že je to vždy string
       }
+      
+      // Zajisti, že zpusobFinancovani je vždy string
+      zpusobFinancovani = String(zpusobFinancovani || '');
 
       // 🎯 DYNAMICKÉ SLOUPCE PODLE NASTAVENÍ V PROFILU
       
+      // DEBUG: Co je v csvColumnsFromDB?
+      console.log('🔍 csvColumnsFromDB:', csvColumnsFromDB);
+      console.log('🔍 order sample:', { 
+        id: order.id, 
+        financovani: typeof order.financovani === 'string' 
+          ? order.financovani.substring(0,100) + '...' 
+          : order.financovani,
+        financovani_parsed: order.financovani_parsed 
+      });
+      
       // Základní identifikace
-      if (csvColumns.id) row['ID'] = safeGet(order.id);
-      if (csvColumns.cislo_objednavky) row['Číslo objednávky'] = safeGet(order.cislo_objednavky);
+      if (csvColumnsFromDB.id) row['ID'] = safeGet(order.id);
+      if (csvColumnsFromDB.cislo_objednavky) row['Číslo objednávky'] = safeGet(order.cislo_objednavky);
       
       // Předmět a popis
-      if (csvColumns.predmet) row['Předmět'] = safeGet(order.predmet);
-      if (csvColumns.poznamka) row['Poznámka'] = safeGet(order.poznamka);
+      if (csvColumnsFromDB.predmet) row['Předmět'] = safeGet(order.predmet);
+      if (csvColumnsFromDB.poznamka) row['Poznámka'] = safeGet(order.poznamka);
       
       // Stavy
-      if (csvColumns.stav_objednavky) {
+      if (csvColumnsFromDB.stav_objednavky) {
         // Použij přímo stav_objednavky z order (obsahuje český název)
         row['Stav objednávky'] = safeGet(order.stav_objednavky) || getOrderDisplayStatus(order);
       }
-      if (csvColumns.stav_workflow) {
+      if (csvColumnsFromDB.stav_workflow) {
         row['Workflow stavy'] = enriched.stav_workflow 
           ? (Array.isArray(enriched.stav_workflow) 
               ? enriched.stav_workflow.map(s => s.nazev_stavu || s.nazev || '').filter(Boolean).join(listSeparator)
               : (enriched.stav_workflow.nazev_stavu || enriched.stav_workflow.nazev || ''))
           : '';
       }
-      if (csvColumns.stav_komentar) row['Komentář ke stavu'] = safeGet(order.stav_komentar);
+      if (csvColumnsFromDB.stav_komentar) row['Komentář ke stavu'] = safeGet(order.stav_komentar);
       
       // Datumy - použití formatDateOnly pro konzistentní formátování
-      if (csvColumns.dt_objednavky) row['Datum objednávky'] = getOrderDate(order) ? formatDateOnly(getOrderDate(order)) : '';
-      if (csvColumns.dt_vytvoreni) row['Datum vytvoření'] = order.dt_vytvoreni ? formatDateOnly(order.dt_vytvoreni) : '';
-      if (csvColumns.dt_schvaleni) row['Datum schválení'] = order.dt_schvaleni ? formatDateOnly(order.dt_schvaleni) : '';
-      if (csvColumns.dt_odeslani) row['Datum odeslání'] = order.dt_odeslani ? formatDateOnly(order.dt_odeslani) : '';
-      if (csvColumns.dt_akceptace) row['Datum akceptace'] = order.dt_akceptace ? formatDateOnly(order.dt_akceptace) : '';
-      if (csvColumns.dt_zverejneni) row['Datum zveřejnění'] = order.dt_zverejneni ? formatDateOnly(order.dt_zverejneni) : '';
-      if (csvColumns.dt_predpokladany_termin_dodani) row['Předpokl. termín dodání'] = order.predpokladany_termin_dodani ? formatDateOnly(order.predpokladany_termin_dodani) : '';
-      if (csvColumns.dt_aktualizace) row['Datum aktualizace'] = order.dt_aktualizace ? formatDateOnly(order.dt_aktualizace) : '';
+      if (csvColumnsFromDB.dt_objednavky) row['Datum objednávky'] = getOrderDate(order) ? formatDateOnly(getOrderDate(order)) : '';
+      if (csvColumnsFromDB.dt_vytvoreni) row['Datum vytvoření'] = order.dt_vytvoreni ? formatDateOnly(order.dt_vytvoreni) : '';
+      if (csvColumnsFromDB.dt_schvaleni) row['Datum schválení'] = order.dt_schvaleni ? formatDateOnly(order.dt_schvaleni) : '';
+      if (csvColumnsFromDB.dt_odeslani) row['Datum odeslání'] = order.dt_odeslani ? formatDateOnly(order.dt_odeslani) : '';
+      if (csvColumnsFromDB.dt_akceptace) row['Datum akceptace'] = order.dt_akceptace ? formatDateOnly(order.dt_akceptace) : '';
+      if (csvColumnsFromDB.dt_zverejneni) row['Datum zveřejnění'] = order.dt_zverejneni ? formatDateOnly(order.dt_zverejneni) : '';
+      if (csvColumnsFromDB.dt_predpokladany_termin_dodani) row['Předpokl. termín dodání'] = order.predpokladany_termin_dodani ? formatDateOnly(order.predpokladany_termin_dodani) : '';
+      if (csvColumnsFromDB.dt_aktualizace) row['Datum aktualizace'] = order.dt_aktualizace ? formatDateOnly(order.dt_aktualizace) : '';
       
       // Finanční údaje - ošetření NaN hodnot
-      if (csvColumns.max_cena_s_dph) row['Max. cena s DPH'] = parseFloat(order.max_cena_s_dph) || 0;
-      if (csvColumns.celkova_cena_bez_dph) row['Celková cena bez DPH'] = parseFloat(order.celkova_cena_bez_dph) || 0;
-      if (csvColumns.celkova_cena_s_dph) row['Celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
-      if (csvColumns.financovani_typ) row['Typ financování'] = safeGet(finData?.typ);
-      if (csvColumns.financovani_typ_nazev) row['Název typu financování'] = zpusobFinancovani;
-      if (csvColumns.financovani_lp_kody) {
-        row['LP kódy'] = finData?.lp_kody 
-          ? (Array.isArray(finData.lp_kody) ? finData.lp_kody.join(listSeparator) : String(finData.lp_kody)) 
+      if (csvColumnsFromDB.max_cena_s_dph) row['Max. cena s DPH'] = parseFloat(order.max_cena_s_dph) || 0;
+      if (csvColumnsFromDB.zpusob_financovani) row['Způsob financování'] = zpusobFinancovani;
+      
+      // LP kódy a názvy z financovani JSON
+      if (csvColumnsFromDB.financovani_lp_kody) {
+        // Skutečné názvy polí: lp_kody (ne lp_kod!) nebo doplnujici_data.lp_kod
+        const lpKody = finData?.lp_kody || finData?.doplnujici_data?.lp_kod;
+        
+        // DEBUG pro LP kódy
+        if (finData) {
+          console.log('🔍 LP DEBUG:', { 
+            finData, 
+            lpKody, 
+            'finData.lp_kody': finData.lp_kody,
+            'finData.doplnujici_data': finData.doplnujici_data 
+          });
+        }
+        
+        row['LP kódy'] = lpKody 
+          ? (Array.isArray(lpKody) ? lpKody.join(listSeparator) : String(lpKody)) 
           : '';
       }
-      if (csvColumns.financovani_lp_nazvy) {
-        row['LP názvy'] = finData?.lp_nazvy && Array.isArray(finData.lp_nazvy)
-          ? finData.lp_nazvy.map(lp => lp.nazev || '').filter(Boolean).join(listSeparator)
+      if (csvColumnsFromDB.financovani_lp_nazvy) {
+        // Extrahuj lp_nazvy z financovani objektu
+        const lpNazvy = finData?.lp_nazvy;
+        
+        if (lpNazvy && Array.isArray(lpNazvy)) {
+          // lp_nazvy je array objektů s názvem
+          const nazvy = lpNazvy.map(nazev => 
+            typeof nazev === 'object' && nazev.nazev ? nazev.nazev : String(nazev)
+          );
+          row['LP názvy'] = nazvy.join(listSeparator);
+        } else {
+          row['LP názvy'] = '';
+        }
+      }
+      if (csvColumnsFromDB.financovani_lp_cisla) {
+        // lp_kody obsahují přímo čísla LP
+        const lpKody = finData?.lp_kody || finData?.doplnujici_data?.lp_kod;
+        row['LP čísla'] = lpKody 
+          ? (Array.isArray(lpKody) ? lpKody.join(listSeparator) : String(lpKody)) 
           : '';
       }
-      if (csvColumns.financovani_lp_cisla) {
-        row['LP čísla'] = finData?.lp_nazvy && Array.isArray(finData.lp_nazvy)
-          ? finData.lp_nazvy.map(lp => lp.cislo_lp || '').filter(Boolean).join(listSeparator)
-          : '';
+      if (csvColumnsFromDB.financovani_typ) {
+        // Skutečné pole: typ (ne .typ!) nebo kod_stavu
+        const typValue = finData?.typ || finData?.kod_stavu;
+        row['Typ financování'] = String(typValue || '');
+      }
+      if (csvColumnsFromDB.financovani_typ_nazev) {
+        // Přímý název typu z financovani objektu
+        const nazevValue = finData?.typ_nazev || finData?.nazev_stavu || 
+                          (finData?.kod_stavu ? financovaniKodyMap[finData.kod_stavu] : null);
+        row['Název typu financování'] = String(nazevValue || zpusobFinancovani || '');
       }
       
-      // Lidé - použití enriched dat s formátovacím helperem
-      if (csvColumns.objednatel) {
+      // Pojišťovací údaje - z root objektu i z financovani JSON
+      if (csvColumnsFromDB.pojistna_udalost_cislo) {
+        row['Číslo pojistné události'] = safeGet(order.pojistna_udalost_cislo) || safeGet(finData?.pojistna_udalost_cislo) || '';
+      }
+      if (csvColumnsFromDB.pojistna_udalost_poznamka) {
+        row['Poznámka k pojišťovacím údajům'] = safeGet(order.pojistna_udalost_poznamka) || safeGet(finData?.pojistna_udalost_poznamka) || '';
+      }
+      
+      // Smlouvy a individuální schválení
+      if (csvColumnsFromDB.cislo_smlouvy) {
+        row['Číslo smlouvy'] = safeGet(order.cislo_smlouvy) || safeGet(finData?.cislo_smlouvy) || '';
+      }
+      if (csvColumnsFromDB.individualni_schvaleni) {
+        const individualniSchvaleni = order.individualni_schvaleni || finData?.individualni_schvaleni;
+        row['Individuální schválení'] = (individualniSchvaleni === 1 || individualniSchvaleni === '1' || individualniSchvaleni === true) ? 'Ano' : 'Ne';
+      }
+      if (csvColumnsFromDB.individualni_poznamka) {
+        row['Poznámka k individuálnímu schválení'] = safeGet(order.individualni_poznamka) || safeGet(finData?.individualni_poznamka) || '';
+      }
+      if (csvColumnsFromDB.financovani_raw) {
+        const rawValue = order.financovani;
+        row['Financování (raw JSON)'] = typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue || '');
+      }
+      
+      // Odpovědné osoby - použití enriched dat s formátovacím helperem
+      if (csvColumnsFromDB.uzivatel) {
         row['Objednatel'] = enriched.uzivatel
           ? formatUserName(enriched.uzivatel)
           : getUserDisplayName(order.uzivatel_id);
       }
-      if (csvColumns.objednatel_email) row['Objednatel email'] = safeGet(enriched.uzivatel?.email);
-      if (csvColumns.objednatel_telefon) row['Objednatel telefon'] = safeGet(enriched.uzivatel?.telefon);
-      if (csvColumns.garant) row['Garant'] = enriched.garant_uzivatel ? formatUserName(enriched.garant_uzivatel) : '';
-      if (csvColumns.garant_email) row['Garant email'] = safeGet(enriched.garant_uzivatel?.email);
-      if (csvColumns.garant_telefon) row['Garant telefon'] = safeGet(enriched.garant_uzivatel?.telefon);
-      if (csvColumns.prikazce) row['Příkazce'] = enriched.prikazce_po ? formatUserName(enriched.prikazce_po) : '';
-      if (csvColumns.schvalovatel) row['Schvalovatel'] = enriched.schvalovatel ? formatUserName(enriched.schvalovatel) : '';
-      if (csvColumns.vytvoril_uzivatel) row['Vytvořil'] = enriched.vytvoril_uzivatel ? formatUserName(enriched.vytvoril_uzivatel) : '';
+      if (csvColumnsFromDB.uzivatel_email) row['Objednatel email'] = safeGet(enriched.uzivatel?.email);
+      if (csvColumnsFromDB.uzivatel_telefon) row['Objednatel telefon'] = safeGet(enriched.uzivatel?.telefon);
+      if (csvColumnsFromDB.garant_uzivatel) row['Garant'] = enriched.garant_uzivatel ? formatUserName(enriched.garant_uzivatel) : '';
+      if (csvColumnsFromDB.garant_uzivatel_email) row['Garant email'] = safeGet(enriched.garant_uzivatel?.email);
+      if (csvColumnsFromDB.garant_uzivatel_telefon) row['Garant telefon'] = safeGet(enriched.garant_uzivatel?.telefon);
+      if (csvColumnsFromDB.schvalovatel) row['Schvalovatel'] = enriched.schvalovatel ? formatUserName(enriched.schvalovatel) : '';
+      if (csvColumnsFromDB.schvalovatel_email) row['Schvalovatel email'] = safeGet(enriched.schvalovatel?.email);
+      if (csvColumnsFromDB.schvalovatel_telefon) row['Schvalovatel telefon'] = safeGet(enriched.schvalovatel?.telefon);
+      if (csvColumnsFromDB.prikazce) row['Příkazce'] = enriched.prikazce_po ? formatUserName(enriched.prikazce_po) : '';
+      if (csvColumnsFromDB.prikazce_email) row['Příkazce email'] = safeGet(enriched.prikazce_po?.email);
+      if (csvColumnsFromDB.prikazce_telefon) row['Příkazce telefon'] = safeGet(enriched.prikazce_po?.telefon);
+      if (csvColumnsFromDB.vytvoril_uzivatel) row['Vytvořil'] = enriched.vytvoril_uzivatel ? formatUserName(enriched.vytvoril_uzivatel) : '';
+      if (csvColumnsFromDB.odesilatel) row['Odesílatel'] = enriched.odesilatel ? formatUserName(enriched.odesilatel) : '';
+      if (csvColumnsFromDB.dokoncil) row['Dokončil'] = enriched.dokoncil ? formatUserName(enriched.dokoncil) : '';
+      if (csvColumnsFromDB.fakturant) row['Fakturant'] = enriched.fakturant ? formatUserName(enriched.fakturant) : '';
+      if (csvColumnsFromDB.zverejnil_uzivatel) row['Zveřejnil'] = enriched.zverejnil_uzivatel ? formatUserName(enriched.zverejnil_uzivatel) : '';
       
       // Dodavatel
-      if (csvColumns.dodavatel_nazev) row['Dodavatel'] = safeGet(order.dodavatel_nazev);
-      if (csvColumns.dodavatel_ico) row['Dodavatel IČO'] = safeGet(order.dodavatel_ico);
-      if (csvColumns.dodavatel_dic) row['Dodavatel DIČ'] = safeGet(order.dodavatel_dic);
-      if (csvColumns.dodavatel_adresa) row['Dodavatel adresa'] = safeGet(order.dodavatel_adresa);
-      if (csvColumns.dodavatel_zastoupeny) row['Dodavatel zastoupený'] = safeGet(order.dodavatel_zastoupeny);
-      if (csvColumns.dodavatel_kontakt_jmeno) row['Dodavatel kontakt jméno'] = safeGet(order.dodavatel_kontakt_jmeno);
-      if (csvColumns.dodavatel_kontakt_email) row['Dodavatel kontakt email'] = safeGet(order.dodavatel_kontakt_email);
-      if (csvColumns.dodavatel_kontakt_telefon) row['Dodavatel kontakt telefon'] = safeGet(order.dodavatel_kontakt_telefon);
+      if (csvColumnsFromDB.dodavatel_nazev) row['Dodavatel'] = safeGet(order.dodavatel_nazev);
+      if (csvColumnsFromDB.dodavatel_ico) row['Dodavatel IČO'] = safeGet(order.dodavatel_ico);
+      if (csvColumnsFromDB.dodavatel_dic) row['Dodavatel DIČ'] = safeGet(order.dodavatel_dic);
+      if (csvColumnsFromDB.dodavatel_adresa) row['Dodavatel adresa'] = safeGet(order.dodavatel_adresa);
+      if (csvColumnsFromDB.dodavatel_zastoupeny) row['Dodavatel zastoupený'] = safeGet(order.dodavatel_zastoupeny);
+      if (csvColumnsFromDB.dodavatel_kontakt_jmeno) row['Dodavatel kontakt jméno'] = safeGet(order.dodavatel_kontakt_jmeno);
+      if (csvColumnsFromDB.dodavatel_kontakt_email) row['Dodavatel kontakt email'] = safeGet(order.dodavatel_kontakt_email);
+      if (csvColumnsFromDB.dodavatel_kontakt_telefon) row['Dodavatel kontakt telefon'] = safeGet(order.dodavatel_kontakt_telefon);
       
       // Střediska - ošetření různých zdrojů dat (exportuje NÁZVY, ne kódy)
-      if (csvColumns.strediska) {
-        row['Střediska'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
-          ? enriched.strediska.map(s => s.nazev || s.kod || '').filter(Boolean).join(listSeparator)
-          : (Array.isArray(order.strediska_kod) ? order.strediska_kod.map(kod => getStrediskoNazev(kod) || kod).filter(Boolean).join(listSeparator) : safeGet(order.strediska_kod));
+      if (csvColumnsFromDB.strediska_kod) {
+        row['Střediska (kódy)'] = safeGet(order.strediska_kod);
       }
-      if (csvColumns.strediska_nazvy) {
-        row['Střediska názvy'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
+      if (csvColumnsFromDB.strediska_nazvy) {
+        row['Střediska (názvy)'] = enriched.strediska && Array.isArray(enriched.strediska) && enriched.strediska.length > 0
           ? enriched.strediska.map(s => s.nazev || s.kod || '').filter(Boolean).join(listSeparator)
           : (Array.isArray(order.strediska_kod) ? order.strediska_kod.map(kod => getStrediskoNazev(kod) || kod).filter(Boolean).join(listSeparator) : '');
       }
-      if (csvColumns.druh_objednavky_kod) row['Druh objednávky'] = safeGet(enriched.druh_objednavky?.nazev || order.druh_objednavky);
-      if (csvColumns.stav_workflow_kod) row['Stav workflow kód'] = safeGet(order.stav_workflow_kod);
+      if (csvColumnsFromDB.druh_objednavky_kod) row['Druh objednávky'] = safeGet(enriched.druh_objednavky?.nazev || order.druh_objednavky_kod);
+      if (csvColumnsFromDB.stav_workflow_kod) row['Stav workflow kód'] = safeGet(order.stav_workflow_kod);
+      if (csvColumnsFromDB.mimoradna_udalost) row['Mimořádná událost'] = (order.mimoradna_udalost === 1 || order.mimoradna_udalost === true) ? 'Ano' : 'Ne';
       
       // Položky - bezpečné zpracování arrays
-      if (csvColumns.pocet_polozek) row['Počet položek'] = (order.polozky && Array.isArray(order.polozky)) ? order.polozky.length : 0;
-      if (csvColumns.polozky_celkova_cena_s_dph) row['Položky celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
-      if (csvColumns.polozky_popis) {
+      if (csvColumnsFromDB.pocet_polozek) row['Počet položek'] = (order.polozky && Array.isArray(order.polozky)) ? order.polozky.length : 0;
+      if (csvColumnsFromDB.polozky_celkova_cena_s_dph) row['Položky celková cena s DPH'] = getOrderTotalPriceWithDPH(order);
+      if (csvColumnsFromDB.polozky_popis) {
         row['Položky popis'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => safeGet(p.popis)).filter(Boolean).join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_cena_bez_dph) {
+      if (csvColumnsFromDB.polozky_cena_bez_dph) {
         row['Položky cena bez DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => parseFloat(p.cena_bez_dph) || 0).join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_sazba_dph) {
+      if (csvColumnsFromDB.polozky_sazba_dph) {
         row['Položky sazba DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => (p.sazba_dph || 0) + '%').join(listSeparator)
           : '';
       }
-      if (csvColumns.polozky_cena_s_dph) {
+      if (csvColumnsFromDB.polozky_cena_s_dph) {
         row['Položky cena s DPH'] = (order.polozky && Array.isArray(order.polozky))
           ? order.polozky.map(p => parseFloat(p.cena_s_dph) || 0).join(listSeparator)
           : '';
       }
+      if (csvColumnsFromDB.polozky_usek_kod) {
+        row['Položky úsek kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.usek_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_budova_kod) {
+        row['Položky budova kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.budova_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_mistnost_kod) {
+        row['Položky místnost kód'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.mistnost_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_poznamka) {
+        row['Položky poznámka'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.poznamka)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.polozky_poznamka_umisteni) {
+        row['Položky poznámka umístění'] = (order.polozky && Array.isArray(order.polozky))
+          ? order.polozky.map(p => safeGet(p.poznamka_umisteni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
       
       // Přílohy
-      if (csvColumns.prilohy_count) {
+      if (csvColumnsFromDB.prilohy_count) {
         row['Počet příloh'] = (order.prilohy && Array.isArray(order.prilohy)) ? order.prilohy.length : 0;
       }
-      if (csvColumns.prilohy_nazvy) {
+      if (csvColumnsFromDB.prilohy_guid) {
+        row['Přílohy GUID'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.guid)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_typ) {
+        row['Přílohy typ'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.typ_prilohy)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_nazvy) {
         row['Přílohy názvy'] = (order.prilohy && Array.isArray(order.prilohy))
-          ? order.prilohy.map(p => safeGet(p.nazev || p.originalni_nazev)).filter(Boolean).join(listSeparator)
+          ? order.prilohy.map(p => safeGet(p.nazev || p.originalni_nazev || p.originalni_nazev_souboru)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_velikosti) {
+        row['Přílohy velikosti'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.velikost_souboru_b) || 0).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_nahrano_uzivatel) {
+        row['Přílohy nahráno uživatel'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.nahrano_uzivatel_celne_jmeno)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.prilohy_dt_vytvoreni) {
+        row['Přílohy datum vytvoření'] = (order.prilohy && Array.isArray(order.prilohy))
+          ? order.prilohy.map(p => safeGet(p.dt_vytvoreni)).filter(Boolean).join(listSeparator)
           : '';
       }
       
       // Faktury - bezpečné zpracování
-      if (csvColumns.faktury_count) {
+      if (csvColumnsFromDB.faktury_count) {
         row['Počet faktur'] = (order.faktury && Array.isArray(order.faktury)) ? order.faktury.length : 0;
       }
-      if (csvColumns.faktury_celkova_castka_s_dph) {
+      if (csvColumnsFromDB.faktury_celkova_castka) {
         const totalInvoices = (order.faktury && Array.isArray(order.faktury))
           ? order.faktury.reduce((sum, f) => sum + (parseFloat(f.fa_castka) || 0), 0)
           : 0;
         row['Faktury celková částka'] = totalInvoices;
       }
-      if (csvColumns.faktury_cisla_vema) {
+      if (csvColumnsFromDB.faktury_cisla_vema) {
         row['Faktury čísla VEMA'] = (order.faktury && Array.isArray(order.faktury))
           ? order.faktury.map(f => safeGet(f.fa_cislo_vema)).filter(Boolean).join(listSeparator)
           : '';
       }
+      if (csvColumnsFromDB.faktury_stav) {
+        row['Faktury stav'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.stav)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_vystaveni) {
+        row['Faktury datum vystavení'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_vystaveni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_splatnosti) {
+        row['Faktury datum splatnosti'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_splatnosti)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_datum_doruceni) {
+        row['Faktury datum doručení'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_datum_doruceni)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_strediska_kod) {
+        row['Faktury střediska'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => Array.isArray(f.fa_strediska_kod) ? f.fa_strediska_kod.join(',') : safeGet(f.fa_strediska_kod)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_poznamka) {
+        row['Faktury poznámka'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => safeGet(f.fa_poznamka)).filter(Boolean).join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_dorucena) {
+        row['Faktury doručena'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => (f.fa_dorucena === 1 || f.fa_dorucena === '1' || f.fa_dorucena === true) ? 'Ano' : 'Ne').join(listSeparator)
+          : '';
+      }
+      if (csvColumnsFromDB.faktury_zaplacena) {
+        row['Faktury zaplacena'] = (order.faktury && Array.isArray(order.faktury))
+          ? order.faktury.map(f => (f.fa_zaplacena === 1 || f.fa_zaplacena === '1' || f.fa_zaplacena === true) ? 'Ano' : 'Ne').join(listSeparator)
+          : '';
+      }
       
-      // Ostatní - boolean převod na Ano/Ne
-      if (csvColumns.stav_odeslano) row['Stav odeslání'] = (order.stav_odeslano === 1 || order.stav_odeslano === '1' || order.stav_odeslano === true) ? 'Ano' : 'Ne';
-      if (csvColumns.potvrzeno_dodavatelem) row['Potvrzeno dodavatelem'] = (order.potvrzeno_dodavatelem === 1 || order.potvrzeno_dodavatelem === true) ? 'Ano' : 'Ne';
-      if (csvColumns.zpusob_potvrzeni) row['Způsob potvrzení'] = safeGet(order.zpusob_potvrzeni);
-      if (csvColumns.zpusob_platby) row['Způsob platby'] = safeGet(order.zpusob_platby);
-      if (csvColumns.zverejnit_registr_smluv) row['Zveřejnit v registru'] = (order.zverejnit_registr_smluv === 1 || order.zverejnit_registr_smluv === true) ? 'Ano' : 'Ne';
-      if (csvColumns.registr_iddt) row['Registr IDDT'] = safeGet(order.registr_iddt);
-      if (csvColumns.zaruka) row['Záruka'] = safeGet(order.zaruka);
-      if (csvColumns.misto_dodani) row['Místo dodání'] = safeGet(order.misto_dodani);
+      // Registr smluv a ostatní
+      if (csvColumnsFromDB.zverejnit) row['Zveřejnit v registru'] = safeGet(order.zverejnit);
+      if (csvColumnsFromDB.registr_iddt) row['Registr IDDT'] = safeGet(order.registr_iddt);
+      if (csvColumnsFromDB.zaruka) row['Záruka'] = safeGet(order.zaruka);
+      if (csvColumnsFromDB.misto_dodani) row['Místo dodání'] = safeGet(order.misto_dodani);
+      if (csvColumnsFromDB.schvaleni_komentar) row['Schválení komentář'] = safeGet(order.schvaleni_komentar);
+      if (csvColumnsFromDB.dokonceni_poznamka) row['Dokončení poznámka'] = safeGet(order.dokonceni_poznamka);
+      if (csvColumnsFromDB.potvrzeni_dokonceni_objednavky) row['Potvrzení dokončení objednávky'] = (order.potvrzeni_dokonceni_objednavky === 1 || order.potvrzeni_dokonceni_objednavky === true) ? 'Ano' : 'Ne';
+      if (csvColumnsFromDB.potvrzeni_vecne_spravnosti) row['Potvrzení věcné správnosti'] = (order.potvrzeni_vecne_spravnosti === 1 || order.potvrzeni_vecne_spravnosti === true) ? 'Ano' : 'Ne';
+      if (csvColumnsFromDB.vecna_spravnost_poznamka) row['Věcná správnost poznámka'] = safeGet(order.vecna_spravnost_poznamka);
+      if (csvColumnsFromDB.dt_dokonceni) row['Datum dokončení'] = order.dt_dokonceni ? formatDateOnly(order.dt_dokonceni) : '';
 
       return row;
     });
@@ -9925,24 +10170,27 @@ const Orders25List = () => {
       'semicolon': ';',
       'tab': '\t',
       'pipe': '|',
-      'custom': userSettings?.exportCsvCustomDelimiter || ';'
+      'custom': userSettingsFromDB?.exportCsvCustomDelimiter || ';'
     };
     
-    const separator = delimiterMap[userSettings?.exportCsvDelimiter || 'semicolon'] || ';';
+    const separator = delimiterMap[userSettingsFromDB?.exportCsvDelimiter || 'semicolon'] || ';';
     
     // Připrav data pro náhled a zobraz modal
     const columnCount = Object.keys(exportData[0] || {}).length;
-    const separatorName = userSettings?.exportCsvDelimiter === 'tab' ? 'Tabulátor' : 
-                          userSettings?.exportCsvDelimiter === 'pipe' ? 'Svislítko (|)' :
-                          userSettings?.exportCsvDelimiter === 'custom' ? `Vlastní (${userSettings?.exportCsvCustomDelimiter || ';'})` :
+    const separatorName = userSettingsFromDB?.exportCsvDelimiter === 'tab' ? 'Tabulátor' : 
+                          userSettingsFromDB?.exportCsvDelimiter === 'pipe' ? 'Svislítko (|)' :
+                          userSettingsFromDB?.exportCsvDelimiter === 'custom' ? `Vlastní (${userSettingsFromDB?.exportCsvCustomDelimiter || ';'})` :
                           'Středník (;)';
     
     // Multiline/list oddělovač z nastavení (už načteno výše v handleExport)
     const multilineSeparator = listSeparator;
-    const multilineSeparatorName = userSettings?.exportCsvListDelimiter === 'comma' ? 'Čárka (,)' :
-                                    userSettings?.exportCsvListDelimiter === 'semicolon' ? 'Středník (;)' :
-                                    userSettings?.exportCsvListDelimiter === 'custom' ? `Vlastní (${userSettings?.exportCsvListCustomDelimiter || '|'})` :
+    const multilineSeparatorName = userSettingsFromDB?.exportCsvListDelimiter === 'comma' ? 'Čárka (,)' :
+                                    userSettingsFromDB?.exportCsvListDelimiter === 'semicolon' ? 'Středník (;)' :
+                                    userSettingsFromDB?.exportCsvListDelimiter === 'custom' ? `Vlastní (${userSettingsFromDB?.exportCsvListCustomDelimiter || '|'})` :
                                     'Svislítko (|)';
+    
+    // Spočítej jen aktivní sloupce pro preview
+    const activeColumnCount = Object.values(csvColumnsFromDB).filter(Boolean).length;
     
     setExportPreviewData({
       data: exportData,
@@ -9950,10 +10198,18 @@ const Orders25List = () => {
       separatorName,
       multilineSeparator,
       multilineSeparatorName,
-      columnCount,
-      rowCount: exportData.length
+      columnCount: activeColumnCount,
+      rowCount: exportData.length,
+      csvColumnsFromDB // Přidej nastavení pro preview modal
     });
     setShowExportPreview(true);
+    
+    } catch (error) {
+      console.error('Chyba při exportu:', error);
+      showToast('Chyba při načítání nastavení exportu: ' + (error.message || error), 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Funkce pro finální export (volána z preview modalu)
@@ -16881,7 +17137,35 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
               <ExportPreviewTable>
                 <ExportPreviewTableHeader>
-                  {Object.keys(exportPreviewData.data[0] || {}).map((column, idx) => {
+                  {Object.keys(exportPreviewData.data[0] || {})
+                    .filter(column => {
+                      // Zobraz jen sloupce, které má uživatel aktivní v nastavení
+                      // Převeď český název sloupce zpět na databázový klíč
+                      const dbKey = Object.entries({
+                        'ID': 'id',
+                        'Číslo objednávky': 'cislo_objednavky',
+                        'Předmět': 'predmet',
+                        'Poznámka': 'poznamka',
+                        'Stav objednávky': 'stav_objednavky',
+                        'Datum objednávky': 'dt_objednavky',
+                        'Datum schválení': 'dt_schvaleni',
+                        'Datum dokončení': 'dt_dokonceni',
+                        'Celková cena s DPH': 'celkova_cena_s_dph',
+                        'Dodavatel': 'dodavatel_nazev',
+                        'Objednatel': 'objednatel',
+                        'Garant': 'garant',
+                        'Střediska': 'strediska',
+                        'LP kódy': 'financovani_lp_kody',
+                        'LP názvy': 'financovani_lp_nazvy',
+                        'LP čísla': 'financovani_lp_cisla',
+                        'Typ financování': 'financovani_typ',
+                        'Název typu financování': 'financovani_typ_nazev',
+                        'Financování (raw JSON)': 'financovani_raw'
+                      }).find(([czech, db]) => czech === column)?.[1];
+                      
+                      return dbKey ? (exportPreviewData.csvColumnsFromDB[dbKey] || false) : true;
+                    })
+                    .map((column, idx) => {
                     // Vypočítej maximální šířku sloupce (hlavička + všechny hodnoty)
                     const headerLength = column.length;
                     const maxValueLength = Math.max(
@@ -16902,7 +17186,34 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 </ExportPreviewTableHeader>
                 {exportPreviewData.data.slice(0, 5).map((row, rowIdx) => (
                   <ExportPreviewTableRow key={rowIdx}>
-                    {Object.entries(row).map(([column, value], cellIdx) => {
+                    {Object.entries(row)
+                      .filter(([column]) => {
+                        // Stejný filtr jako pro hlavičky
+                        const dbKey = Object.entries({
+                          'ID': 'id',
+                          'Číslo objednávky': 'cislo_objednavky',
+                          'Předmět': 'predmet',
+                          'Poznámka': 'poznamka',
+                          'Stav objednávky': 'stav_objednavky',
+                          'Datum objednávky': 'dt_objednavky',
+                          'Datum schválení': 'dt_schvaleni',
+                          'Datum dokončení': 'dt_dokonceni',
+                          'Celková cena s DPH': 'celkova_cena_s_dph',
+                          'Dodavatel': 'dodavatel_nazev',
+                          'Objednatel': 'objednatel',
+                          'Garant': 'garant',
+                          'Střediska': 'strediska',
+                          'LP kódy': 'financovani_lp_kody',
+                          'LP názvy': 'financovani_lp_nazvy',
+                          'LP čísla': 'financovani_lp_cisla',
+                          'Typ financování': 'financovani_typ',
+                          'Název typu financování': 'financovani_typ_nazev',
+                          'Financování (raw JSON)': 'financovani_raw'
+                        }).find(([czech, db]) => czech === column)?.[1];
+                        
+                        return dbKey ? (exportPreviewData.csvColumnsFromDB[dbKey] || false) : true;
+                      })
+                      .map(([column, value], cellIdx) => {
                       // Stejný výpočet šířky jako u hlavičky
                       const headerLength = column.length;
                       const maxValueLength = Math.max(

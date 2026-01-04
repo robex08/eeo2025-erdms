@@ -1413,15 +1413,20 @@ const getDefaultSettings = (hasPermission, userDetail) => {
     // Export nastavení
     export_pokladna_format: 'xlsx',
     
-    // Export CSV sloupce
+    // Export CSV sloupce - optimalizovaná verze podle DB 25a_objednavky
     export_csv_sloupce: {
+      // Základní identifikace
       id: true,
       cislo_objednavky: true,
       predmet: true,
       poznamka: false,
+      
+      // Stavy a workflow
       stav_objednavky: true,
       stav_workflow: false,
-      stav_komentar: false,
+      stav_workflow_kod: false,
+      
+      // Datumy
       dt_objednavky: true,
       dt_vytvoreni: true,
       dt_schvaleni: false,
@@ -1430,23 +1435,42 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       dt_zverejneni: false,
       dt_predpokladany_termin_dodani: false,
       dt_aktualizace: false,
+      dt_dokonceni: false,
+      
+      // Finanční údaje
       max_cena_s_dph: true,
-      celkova_cena_bez_dph: false,
-      celkova_cena_s_dph: true,
-      financovani_typ: false,
-      financovani_typ_nazev: false,
-      financovani_lp_kody: false,
-      financovani_lp_nazvy: false,
-      financovani_lp_cisla: false,
-      objednatel: true,
-      objednatel_email: false,
-      objednatel_telefon: false,
-      garant: false,
-      garant_email: false,
-      garant_telefon: false,
-      prikazce: false,
-      schvalovatel: false,
-      vytvoril_uzivatel: false,
+      zpusob_financovani: true, // zpracované financování jako text
+      financovani_lp_kody: true, // LP kódy z financovani JSON
+      financovani_lp_nazvy: false, // LP názvy (pokud jsou dostupné)
+      financovani_lp_cisla: false, // LP čísla (pokud jsou dostupné)
+      financovani_typ: false, // typ z financovani JSON
+      financovani_typ_nazev: false, // název typu
+      pojistna_udalost_cislo: false, // číslo pojistné události
+      pojistna_udalost_poznamka: false, // poznámka k pojisťovacím údajům
+      cislo_smlouvy: false, // číslo smlouvy (pro individuální schválení)
+      individualni_schvaleni: false, // individuální schválení
+      individualni_poznamka: false, // poznámka k individuálnímu schválení
+      financovani_raw: false, // raw JSON financovani pole z DB
+      
+      // Odpovědné osoby (enriched z JOINů)
+      uzivatel: true, // objednatel (uzivatel_id)
+      uzivatel_email: false,
+      uzivatel_telefon: false,
+      garant_uzivatel: false, // (garant_uzivatel_id)
+      garant_uzivatel_email: false,
+      garant_uzivatel_telefon: false,
+      schvalovatel: false, // (schvalovatel_id)
+      schvalovatel_email: false,
+      schvalovatel_telefon: false,
+      prikazce: false, // (prikazce_id)
+      prikazce_email: false,
+      prikazce_telefon: false,
+      vytvoril_uzivatel: false, // CREATE audit
+      odesilatel: false, // (odesilatel_id)
+      dokoncil: false, // (dokoncil_id)
+      fakturant: false, // (fakturant_id)
+      
+      // Dodavatel
       dodavatel_nazev: true,
       dodavatel_ico: false,
       dodavatel_dic: false,
@@ -1455,10 +1479,14 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       dodavatel_kontakt_jmeno: false,
       dodavatel_kontakt_email: false,
       dodavatel_kontakt_telefon: false,
-      strediska: true,
-      strediska_nazvy: false,
+      
+      // Střediska a struktura
+      strediska_kod: true, // raw kódy z DB
+      strediska_nazvy: false, // enriched názvy
       druh_objednavky_kod: false,
-      stav_workflow_kod: false,
+      mimoradna_udalost: false,
+      
+      // Položky objednávky (z 25a_objednavky_polozky)
       pocet_polozek: true,
       polozky_celkova_cena_s_dph: true,
       polozky_popis: false,
@@ -1469,7 +1497,8 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       polozky_budova_kod: false,
       polozky_mistnost_kod: false,
       polozky_poznamka: false,
-      polozky_poznamka_umisteni: false,
+      
+      // Přílohy (z 25a_objednavky_prilohy)
       prilohy_count: false,
       prilohy_guid: false,
       prilohy_typ: false,
@@ -1477,25 +1506,33 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       prilohy_velikosti: false,
       prilohy_nahrano_uzivatel: false,
       prilohy_dt_vytvoreni: false,
+      
+      // Faktury (z 25a_objednavky_faktury)
       faktury_count: false,
-      faktury_celkova_castka_s_dph: false,
+      faktury_celkova_castka: false,
       faktury_cisla_vema: false,
-      faktury_castky: false,
+      faktury_stav: false,
       faktury_datum_vystaveni: false,
       faktury_datum_splatnosti: false,
       faktury_datum_doruceni: false,
-      faktury_strediska: false,
+      faktury_strediska_kod: false,
       faktury_poznamka: false,
-      faktury_pocet_priloh: false,
       faktury_dorucena: false,
-      stav_odeslano: false,
-      potvrzeno_dodavatelem: false,
-      zpusob_potvrzeni: false,
-      zpusob_platby: false,
-      zverejnit_registr_smluv: false,
+      faktury_zaplacena: false,
+      
+      // Registr smluv
+      zverejnit: false, // DB: zverejnit (tinytext)
       registr_iddt: false,
+      zverejnil_uzivatel: false, // (zverejnil_id)
+      
+      // Ostatní
       zaruka: false,
-      misto_dodani: false
+      misto_dodani: false,
+      schvaleni_komentar: false,
+      dokonceni_poznamka: false,
+      potvrzeni_dokonceni_objednavky: false,
+      potvrzeni_vecne_spravnosti: false,
+      vecna_spravnost_poznamka: false
     },
     
     // Notifikace
@@ -1586,12 +1623,14 @@ const userSettingsReducer = (state, action) => {
       }
       
     case SETTINGS_ACTIONS.UPDATE_CSV_COLUMN:
-      // Aktualizace CSV sloupce
+      // Aktualizace CSV sloupce - pokud není hodnota zadaná, toggle aktuální hodnotu
+      const currentValue = state.export_csv_sloupce[action.payload.column];
+      const newValue = action.payload.value !== undefined ? action.payload.value : !currentValue;
       return {
         ...state,
         export_csv_sloupce: {
           ...state.export_csv_sloupce,
-          [action.payload.column]: action.payload.value
+          [action.payload.column]: newValue
         }
       };
       
@@ -4235,7 +4274,7 @@ const ProfilePage = () => {
                       💰 Finanční údaje
                     </div>
                     <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
-                      Příklad financování: <code style={{ background: '#e2e8f0', padding: '0.1rem 0.3rem', borderRadius: '3px' }}>Typ: LP (Limitovaný příslib), Kódy: 1, 4, Názvy: "LPIT1 - Spotreba materialu", "LPIT4 - Zakonne socialni naklady"</code>
+                      DB pole: max_cena_s_dph, financovani (JSON), pojistna_udalost_cislo, cislo_smlouvy. Zahrnuje LP kódy, pojisťovací údaje a smlouvy.
                     </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
@@ -4246,124 +4285,218 @@ const ProfilePage = () => {
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.celkova_cena_bez_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'celkova_cena_bez_dph' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zpusob_financovani} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zpusob_financovani' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Celková cena bez DPH</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} celkova_cena_bez_dph {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Způsob financování (parsovaný)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Lidsky čitelný text z JSON financovani</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.celkova_cena_s_dph} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'celkova_cena_s_dph' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_kody} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_kody' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Celková cena s DPH</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} celkova_cena_s_dph {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>LP kódy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Kódy limitovaných příslibů z JSON</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_nazvy' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>LP názvy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Názvy limitovaných příslibů</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_cisla} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_cisla' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>LP čísla</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Čísla limitovaných příslibů</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_typ' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Typ financování</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.typ {'}'} = "LP"</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Typ z financovani JSON (LP, IT, atd.)</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_typ_nazev} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_typ_nazev' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Název typu financování</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.typ_nazev {'}'} = "Limitovaný příslib"</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Lidsky čitelný název typu</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_kody} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_kody' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pojistna_udalost_cislo} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'pojistna_udalost_cislo' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Kódy LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_kody[] {'}'} = ["1", "4"]</span>
+                          <span style={{ fontWeight: '500' }}>Číslo pojistné události</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Číslo pojistné události - PU-456</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_nazvy' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.pojistna_udalost_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'pojistna_udalost_poznamka' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Názvy LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_nazvy[].nazev {'}'} = ["Spotreba materialu", "Zakonne socialni naklady"]</span>
+                          <span style={{ fontWeight: '500' }}>Poznámka k pojisťovacím údajům</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Poznámka k pojistné události</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_lp_cisla} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_lp_cisla' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.cislo_smlouvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'cislo_smlouvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Čísla LP (seznam)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani.lp_nazvy[].cislo_lp {'}'} = ["LPIT1", "LPIT4"]</span>
+                          <span style={{ fontWeight: '500' }}>Číslo smlouvy</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Číslo smlouvy pro individuální schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.individualni_schvaleni} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'individualni_schvaleni' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Individuální schválení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Ano/Ne - individuální schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.individualni_poznamka} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'individualni_poznamka' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Poznámka k individuálnímu schválení</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>Poznámka k individualizovanému schválení</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.financovani_raw} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'financovani_raw' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Financování (raw JSON)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} financovani {'}'} - původní JSON z DB</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
                   </div>
 
-                  {/* Lidé */}
+                  {/* Odpovědné osoby - podle DB foreign keys */}
                   <div style={{ marginBottom: '1.5rem' }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.75rem', paddingLeft: '0.5rem', borderLeft: '3px solid #06b6d4' }}>
-                      👥 Lidé (enriched data)
+                      👥 Odpovědné osoby (enriched z JOINů na 25_uzivatele)
                     </div>
+                    <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
+                      DB foreign keys: uzivatel_id, garant_uzivatel_id, schvalovatel_id, prikazce_id, odesilatel_id, dokoncil_id, fakturant_id, zverejnil_id
+                    </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'objednatel' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (jméno)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.jmeno {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel (hlavní uživatel)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} uzivatel_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'objednatel_email' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel_email' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (email)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.email {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.uzivatel.email {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.objednatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'objednatel_telefon' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.uzivatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'uzivatel_telefon' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Objednatel (telefon)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.objednatel.telefon {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Objednatel telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.uzivatel.telefon {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (jméno)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.jmeno {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} garant_uzivatel_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_email' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel_email' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (email)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.email {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.garant_uzivatel.email {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_telefon' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.garant_uzivatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'garant_uzivatel_telefon' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Garant (telefon)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.garant_uzivatel.telefon {'}'}</span>
-                        </span>
-                      </TileCheckbox>
-                      <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce' } })} />
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Příkazce</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.prikazce.jmeno {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Garant telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.garant_uzivatel.telefon {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Schvalovatel</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.schvalovatel.jmeno {'}'}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} schvalovatel_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel_email' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Schvalovatel email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.schvalovatel.email {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.schvalovatel_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'schvalovatel_telefon' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Schvalovatel telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.schvalovatel.telefon {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} prikazce_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce_email} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce_email' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce email</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.prikazce.email {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.prikazce_telefon} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'prikazce_telefon' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Příkazce telefon</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.prikazce.telefon {'}'}</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.vytvoril_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'vytvoril_uzivatel' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ fontWeight: '500' }}>Vytvořil uživatel</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.uzivatel.jmeno {'}'}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} enriched.vytvoril_uzivatel.jmeno {'}'} (CREATE audit)</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.odesilatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'odesilatel' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Odesílatel</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} odesilatel_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.dokoncil} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'dokoncil' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Dokončil</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} dokoncil_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.fakturant} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'fakturant' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Fakturant</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} fakturant_id → 25_uzivatele {'}'}</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.zverejnil_uzivatel} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'zverejnil_uzivatel' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Zveřejnil</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} zverejnil_id → 25_uzivatele {'}'}</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
@@ -4439,33 +4572,43 @@ const ProfilePage = () => {
                     <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.75rem', paddingLeft: '0.5rem', borderLeft: '3px solid #84cc16' }}>
                       🏛️ Střediska a struktura
                     </div>
+                    <SettingDescription style={{ marginBottom: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
+                      DB pole: strediska_kod (text), druh_objednavky_kod, stav_workflow_kod, mimoradna_udalost
+                    </SettingDescription>
                     <TilesGrid>
                       <TileCheckbox>
-                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'strediska' } })} />
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'strediska_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Střediska (kódy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} strediska_kod[] {'}'} = ["100", "400"]</span>
+                          <span style={{ fontWeight: '500' }}>Střediska (kódy z DB)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} strediska_kod {'}'} = "[100,400]"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.strediska_nazvy} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'strediska_nazvy' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Střediska (názvy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} _enriched.strediska[].nazev {'}'}</span>
+                          <span style={{ fontWeight: '500' }}>Střediska (enriched názvy)</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>JOIN s 25_useky pro lidsky čitelné názvy</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.druh_objednavky_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'druh_objednavky_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Druh objednávky (kód)</span>
+                          <span style={{ fontWeight: '500' }}>Druh objednávky kód</span>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} druh_objednavky_kod {'}'} = "DODAVKA_ZBOZI"</span>
                         </span>
                       </TileCheckbox>
                       <TileCheckbox>
                         <input type="checkbox" checked={userSettings.export_csv_sloupce.stav_workflow_kod} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'stav_workflow_kod' } })} />
                         <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <span style={{ fontWeight: '500' }}>Workflow stavy (kódy)</span>
-                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_workflow_kod[] {'}'} = ["SCHVALENA", "ODESLANA", "POTVRZENA", ...]</span>
+                          <span style={{ fontWeight: '500' }}>Workflow stav kód</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} stav_workflow_kod {'}'} = "SCHVALENA"</span>
+                        </span>
+                      </TileCheckbox>
+                      <TileCheckbox>
+                        <input type="checkbox" checked={userSettings.export_csv_sloupce.mimoradna_udalost} onChange={() => dispatch({ type: SETTINGS_ACTIONS.UPDATE_CSV_COLUMN, payload: { column: 'mimoradna_udalost' } })} />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span style={{ fontWeight: '500' }}>Mimořádná událost</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', wordBreak: 'break-all' }}>{'{'} mimoradna_udalost {'}'} (tinyint) = Ano/Ne</span>
                         </span>
                       </TileCheckbox>
                     </TilesGrid>
