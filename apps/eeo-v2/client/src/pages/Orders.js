@@ -7,6 +7,7 @@ import { fetchOrderAttachmentsOld } from '../services/api2auth';
 import { importOldOrders25, importOldOrders25Streaming } from '../services/api25orders'; // Import service (classic + streaming)
 import ImportOldOrdersModal from '../components/ImportOldOrdersModal'; // Import modal component
 import ordersCacheService from '../services/ordersCacheService'; // 🚀 CACHE: Cache service pro staré objednávky
+import { CustomSelect } from '../components/CustomSelect'; // Custom select s multi-výběrem
 import {
   useReactTable,
   getCoreRowModel,
@@ -1101,8 +1102,8 @@ const Orders = () => {
 
   // Retrieve initial states from user-specific localStorage or set defaults
   const [globalFilter, setGlobalFilter] = useState(() => getUserStorage('orders_globalFilter', ''));
-  const [garantFilter, setGarantFilter] = useState(() => getUserStorage('orders_garantFilter', ''));
-  const [druhFilter, setDruhFilter] = useState(() => getUserStorage('orders_druhFilter', ''));
+  const [garantFilter, setGarantFilter] = useState(() => getUserStorage('orders_garantFilter', [])); // ZMĚNA: multiselect - pole
+  const [druhFilter, setDruhFilter] = useState(() => getUserStorage('orders_druhFilter', [])); // ZMĚNA: multiselect - pole
   const [isCollapsed, setIsCollapsed] = useState(() => getUserStorage('orders_isCollapsed', false));
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(() => getUserStorage('orders_isStatsCollapsed', true));
   const [isFilterCollapsed, setIsFilterCollapsed] = useState(() => getUserStorage('orders_isFilterCollapsed', false));
@@ -1126,6 +1127,10 @@ const Orders = () => {
   const toggleFakturaFilter = () => setFakturaFilter((prev) => !prev);
   const togglePokladniDokFilter = () => setPokladniDokFilter((prev) => !prev);
   const toggleZverejnitFilter = () => setZverejnitFilter((prev) => !prev);
+
+  // State management pro CustomSelect (multiselect)
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
 
   // Get the current year
   const currentYear = new Date().getFullYear();
@@ -1319,8 +1324,8 @@ const Orders = () => {
   // Function to detect if any filters are active
   const hasActiveFilters = useMemo(() => {
     return globalFilter !== '' ||
-           garantFilter !== '' ||
-           druhFilter !== '' ||
+           (Array.isArray(garantFilter) && garantFilter.length > 0) ||
+           (Array.isArray(druhFilter) && druhFilter.length > 0) ||
            yearFilter !== currentYear.toString() ||
            fakturaFilter ||
            pokladniDokFilter ||
@@ -1330,8 +1335,8 @@ const Orders = () => {
   // Enhanced clear all filters function
   const clearAllFilters = () => {
     setGlobalFilter('');
-    setGarantFilter('');
-    setDruhFilter('');
+    setGarantFilter([]);
+    setDruhFilter([]);
     setYearFilter(currentYear.toString()); // Reset to current year
     setFakturaFilter(false);
     setPokladniDokFilter(false);
@@ -1339,8 +1344,8 @@ const Orders = () => {
 
     // Clear from user-specific localStorage
     setUserStorage('orders_globalFilter', '');
-    setUserStorage('orders_garantFilter', '');
-    setUserStorage('orders_druhFilter', '');
+    setUserStorage('orders_garantFilter', []);
+    setUserStorage('orders_druhFilter', []);
     setUserStorage('orders_yearFilter', currentYear.toString());
 
     // Also clear calendar-related localStorage keys that might affect OrdersListNew
@@ -1772,13 +1777,15 @@ const Orders = () => {
   };
 
   const handleGarantFilterChange = (value) => {
-    setGarantFilter(value);
-    setUserStorage('orders_garantFilter', value);
+    const newValue = Array.isArray(value) ? value : [];
+    setGarantFilter(newValue);
+    setUserStorage('orders_garantFilter', newValue);
   };
 
   const handleDruhFilterChange = (value) => {
-    setDruhFilter(value);
-    setUserStorage('orders_druhFilter', value);
+    const newValue = Array.isArray(value) ? value : [];
+    setDruhFilter(newValue);
+    setUserStorage('orders_druhFilter', newValue);
   };
 
   const normalizeString = useCallback((str) => {
@@ -1817,12 +1824,13 @@ const Orders = () => {
         )
       );
 
-      const matchesGarantFilter = garantFilter
-        ? normalizeString(row.garant) === normalizeString(garantFilter)
+      // Multiselect filtrování - pokud je pole prázdné, zobrazit vše
+      const matchesGarantFilter = (Array.isArray(garantFilter) && garantFilter.length > 0)
+        ? garantFilter.some(g => normalizeString(row.garant) === normalizeString(g))
         : true;
 
-      const matchesDruhFilter = druhFilter
-        ? normalizeString(row.druh_sml) === normalizeString(druhFilter)
+      const matchesDruhFilter = (Array.isArray(druhFilter) && druhFilter.length > 0)
+        ? druhFilter.some(d => normalizeString(row.druh_sml) === normalizeString(d))
         : true;
 
       const matchesFakturaFilter = fakturaFilter ? row.faktura === 'Ano' : true;
@@ -3104,30 +3112,43 @@ return (
         {globalFilter && <button className="clear-filter-button" onClick={() => handleGlobalFilterChange('')} aria-label="Vyčistit">×</button>}
       </div>
       <div className="filter-group">
-        <select
-          value={garantFilter}
-          onChange={(e) => handleGarantFilterChange(e.target.value)}
-          className="filter-select select-with-arrow"
-        >
-          <option value="">Všechny úseky</option>
-          {[...new Set(orders.map((order) => order.garant))].map((garant) => (
-            <option key={garant} value={garant}>
-              {garant}
-            </option>
-          ))}
-        </select>
-        <select
-          value={druhFilter}
-          onChange={(e) => handleDruhFilterChange(e.target.value)}
-          className="filter-select select-with-arrow"
-        >
-          <option value="">Všechny druhy</option>
-          {[...new Set(orders.map((order) => order.druh_sml))].map((druh) => (
-            <option key={druh} value={druh}>
-              {druh}
-            </option>
-          ))}
-        </select>
+        {/* Garant Filter - Custom Multi-Select */}
+        <div style={{ flex: 1 }}>
+          <CustomSelect
+            value={garantFilter}
+            onChange={handleGarantFilterChange}
+            options={[...new Set(orders.map((order) => order.garant))].filter(Boolean).map(garant => ({
+              id: garant,
+              nazev: garant
+            }))}
+            field="garantFilter"
+            placeholder="Všechny úseky"
+            multiple={true}
+            setSelectStates={setSelectStates}
+            setSearchStates={setSearchStates}
+            selectStates={selectStates}
+            searchStates={searchStates}
+          />
+        </div>
+        
+        {/* Druh Filter - Custom Multi-Select */}
+        <div style={{ flex: 1 }}>
+          <CustomSelect
+            value={druhFilter}
+            onChange={handleDruhFilterChange}
+            options={[...new Set(orders.map((order) => order.druh_sml))].filter(Boolean).map(druh => ({
+              id: druh,
+              nazev: druh
+            }))}
+            field="druhFilter"
+            placeholder="Všechny druhy"
+            multiple={true}
+            setSelectStates={setSelectStates}
+            setSearchStates={setSearchStates}
+            selectStates={selectStates}
+            searchStates={searchStates}
+          />
+        </div>
       </div>
     </div>
     <div className="collapse-line" style={{ marginTop: '0.5rem', marginBottom: '2.5rem' }}>
