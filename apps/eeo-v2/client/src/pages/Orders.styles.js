@@ -550,7 +550,7 @@ const styles = css`
 
   .filter-input {
     width: 100%;
-    height: 48px;
+    height: 56px;
     padding: 0 2.5rem;
     border: 2px solid #e2e8f0;
     border-radius: 8px;
@@ -560,7 +560,7 @@ const styles = css`
     transition: all 0.2s ease;
     font-weight: 400;
     color: #1f2937;
-    line-height: 48px;
+    line-height: 56px;
   }
 
   .filter-input:focus {
