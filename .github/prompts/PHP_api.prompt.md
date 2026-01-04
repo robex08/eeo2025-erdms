@@ -1,7 +1,6 @@
 ---
 agent: agent
 name: PHPAPI
-model: Claude Sonnet 4.5 (copilot)
 description: PHP legacy API coding
 priority: high
 version: 1.0

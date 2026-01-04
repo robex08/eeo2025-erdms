@@ -2052,9 +2052,23 @@ const OrganizationHierarchy = () => {
         const normalizedNodes = nodes.map(node => {
           const normalized = { ...node };
           
-          // MIGRACE: field -> fields pro DYNAMIC_FROM_ENTITY
+          // MIGRACE A VALIDACE scopeDefinition
           if (normalized.data?.scopeDefinition) {
             const scope = normalized.data.scopeDefinition;
+            
+            // ✅ AUTO-FIX: Doplnit chybějící type podle obsahu
+            if (!scope.type) {
+              if (scope.fields && scope.fields.length > 0) {
+                normalized.data.scopeDefinition.type = 'DYNAMIC_FROM_ENTITY';
+                console.log(`🔧 [Auto-fix] Added missing type 'DYNAMIC_FROM_ENTITY' to node ${node.id} (has fields)`);
+              } else if (scope.selectedIds && scope.selectedIds.length > 0) {
+                normalized.data.scopeDefinition.type = 'SELECTED';
+                console.log(`🔧 [Auto-fix] Added missing type 'SELECTED' to node ${node.id} (has selectedIds)`);
+              } else {
+                normalized.data.scopeDefinition.type = 'ALL_IN_ROLE';
+                console.log(`🔧 [Auto-fix] Added missing type 'ALL_IN_ROLE' to node ${node.id} (default)`);
+              }
+            }
             
             // Převést starý formát field na nový fields
             if (scope.field && !scope.fields) {

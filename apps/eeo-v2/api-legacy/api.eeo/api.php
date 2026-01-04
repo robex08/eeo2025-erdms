@@ -3181,10 +3181,14 @@ switch ($endpoint) {
         
         // PUT /api.eeo/order-v2/{id}/update - update objednavky
         if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
+            // 🔥 DEBUG: Force immediate debug info
+            file_put_contents('/tmp/debug_order_routing.log', date('Y-m-d H:i:s') . " - ROUTING MATCH: order-v2/{$matches[1]}/update | Method: $request_method\n", FILE_APPEND);
+            
             // Support both numeric and string IDs
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             
             if ($request_method === 'POST' || $request_method === 'PUT') {
+                file_put_contents('/tmp/debug_order_routing.log', date('Y-m-d H:i:s') . " - CALLING handle_order_v2_update for ID: {$input['id']}\n", FILE_APPEND);
                 handle_order_v2_update($input, $config, $queries);
             } else {
                 http_response_code(405);
