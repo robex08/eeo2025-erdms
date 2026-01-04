@@ -2799,8 +2799,8 @@ return (
             />
           </HeaderActionButton>
 
-          {/* Import tlačítko - pouze pro uživatele s oprávněním ORDER_MANAGE nebo ORDER_IMPORT */}
-          {hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_IMPORT')) && (
+          {/* Import tlačítko - pouze pro uživatele se VŠEMI třemi oprávněními: ORDER_MANAGE AND ORDER_IMPORT AND ORDER_SHOW_ARCHIV */}
+          {hasPermission && hasPermission('ORDER_MANAGE') && hasPermission('ORDER_IMPORT') && hasPermission('ORDER_SHOW_ARCHIV') && (
             <HeaderActionButton
               onClick={handleMigrateOrders}
               disabled={selectedOrders.size === 0}
