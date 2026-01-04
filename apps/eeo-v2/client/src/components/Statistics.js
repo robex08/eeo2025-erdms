@@ -74,37 +74,46 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
   const pieChartOptions = useMemo(() => ({
     plugins: {
       legend: {
-        display: false, // Disable the native legend
+        display: true,
+        position: 'bottom',
+        labels: {
+          padding: 15,
+          font: {
+            size: 12,
+            weight: 500,
+          },
+          color: '#374151',
+          usePointStyle: true,
+          pointStyle: 'circle',
+        },
       },
       tooltip: {
         callbacks: {
           label: (context) => {
             const value = context.raw;
             const percentage = ((value / totalPrice) * 100).toFixed(2);
-            const formattedValue = value.toLocaleString('cs-CZ'); // Format the value as currency
-            return `${percentage}% (${formattedValue} Kč)`; // Display percentage and total price
+            const formattedValue = value.toLocaleString('cs-CZ');
+            return `${percentage}% (${formattedValue} Kč)`;
           },
         },
       },
       datalabels: {
         display: (context) => {
-          const value = context.dataset.data[context.dataIndex]; // Access the correct value
+          const value = context.dataset.data[context.dataIndex];
           const percentage = (value / totalPrice) * 100;
-          return percentage >= 6; // Only display labels for percentages >= 6%
+          return percentage >= 6;
         },
-        formatter: (value, context) => {
-          const percentage = ((value / totalPrice) * 100).toFixed(2);
-          return `${percentage}%`; // Display percentage on the slice
+        formatter: (value) => {
+          const percentage = ((value / totalPrice) * 100).toFixed(1);
+          return `${percentage}%`;
         },
         color: '#fff',
         font: {
           weight: 'bold',
-          size: 14, // Adjust font size for better visibility
+          size: 14,
         },
-
-        align: 'end', // Align labels towards the edge
-        offset: 12, // Offset labels from the edge
-
+        align: 'center',
+        anchor: 'center',
       },
     },
   }), [totalPrice]);
@@ -299,113 +308,209 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
     getRowCanExpand: (row) => row.original.subRows?.length > 0,
   });
 
+  // Process data for the "Přehled dle druhů" (by contract type)
+  const typeData = useMemo(() => {
+    const typeMap = filteredOrders.reduce((acc, order) => {
+      const type = order.druh_sml || 'neuvedeno';
+      if (!acc[type]) {
+        acc[type] = { count: 0, totalPrice: 0 };
+      }
+      acc[type].count += 1;
+      acc[type].totalPrice += parseFloat(order.cena_rok) || 0;
+      return acc;
+    }, {});
+
+    return Object.entries(typeMap).map(([type, data]) => ({
+      type,
+      count: data.count,
+      totalPrice: data.totalPrice,
+      percentage: ((data.totalPrice / totalPrice) * 100).toFixed(2),
+    }));
+  }, [filteredOrders, totalPrice]);
+
+  // Prepare data for the type pie chart
+  const typeChartData = useMemo(() => {
+    const labels = typeData.map((item) => item.type);
+    const data = typeData.map((item) => item.totalPrice);
+    const backgroundColors = [
+      '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
+    ];
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: backgroundColors.slice(0, labels.length),
+        },
+      ],
+    };
+  }, [typeData]);
+
+  const typeChartOptions = useMemo(() => ({
+    plugins: {
+      legend: {
+        display: true,
+        position: 'bottom',
+        labels: {
+          padding: 15,
+          font: {
+            size: 12,
+            weight: 500,
+          },
+          color: '#374151',
+          usePointStyle: true,
+          pointStyle: 'circle',
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const value = context.raw;
+            const percentage = ((value / totalPrice) * 100).toFixed(2);
+            const formattedValue = value.toLocaleString('cs-CZ');
+            return `${percentage}% (${formattedValue} Kč)`;
+          },
+        },
+      },
+      datalabels: {
+        display: (context) => {
+          const value = context.dataset.data[context.dataIndex];
+          const percentage = (value / totalPrice) * 100;
+          return percentage >= 6;
+        },
+        formatter: (value) => {
+          const percentage = ((value / totalPrice) * 100).toFixed(1);
+          return `${percentage}%`;
+        },
+        color: '#fff',
+        font: {
+          weight: 'bold',
+          size: 14,
+        },
+        align: 'center',
+        anchor: 'center',
+      },
+    },
+  }), [totalPrice]);
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
         return (
-          <div className="legend-chart-container">
-            <div className="legend-container">
-              {sectionData.map((item, index) => (
-                <div key={index} className="legend-item">
-                  <span
-                    className="legend-color"
-                    style={{ backgroundColor: pieChartData.datasets[0].backgroundColor[index] }}
-                  ></span>
-                  <span className="legend-text">
-                    {item.section}: {item.count} Ks : {item.totalPrice.toLocaleString('cs-CZ')} Kč ({item.percentage}%)
-                  </span>
-                </div>
-              ))}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+            gap: '2rem',
+            padding: '1rem'
+          }}>
+            {/* Graf podle Úseků */}
+            <div style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            }}>
+              <h3 style={{
+                margin: '0 0 1.5rem 0',
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#1f2937',
+                textAlign: 'center',
+                borderBottom: '2px solid #e5e7eb',
+                paddingBottom: '0.75rem'
+              }}>
+                Přehled dle úseků
+              </h3>
+              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+                <Pie data={pieChartData} options={pieChartOptions} />
+              </div>
             </div>
-            <div className="chart-wrapper">
-              <Pie data={pieChartData} options={pieChartOptions} />
+
+            {/* Graf podle Druhů */}
+            <div style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            }}>
+              <h3 style={{
+                margin: '0 0 1.5rem 0',
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#1f2937',
+                textAlign: 'center',
+                borderBottom: '2px solid #e5e7eb',
+                paddingBottom: '0.75rem'
+              }}>
+                Přehled dle druhů
+              </h3>
+              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+                <Pie data={typeChartData} options={typeChartOptions} />
+              </div>
             </div>
-          </div>
-        );
-      case 'limitedPromises':
-        return (
-          <div className="limited-promises-table-wrapper">
-            <table className="limited-promises-table">
-              <thead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <th
-                        key={header.id}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <React.Fragment key={row.id}>
-                    <tr className="lp-main-row">
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                      ))}
-                    </tr>
-                    {row.getIsExpanded() && (
-                      <>
-                        {row.original.subRows.map((subRow, index) => {
-                          const diff = subRow.budget - subRow.ordersPrice;
-                          return (
-                            <tr className="lp-sub-row" key={index}>
-                              {/* expander placeholder */}
-                              <td className="lp-sub-empty" />
-                              {/* Příkazce placeholder */}
-                              <td className="lp-sub-empty" />
-                              {/* Úsek placeholder */}
-                              <td className="lp-sub-empty" />
-                              {/* LP column actual content */}
-                              <td className="lp-sub-lp">
-                                <span className="lp-code">{subRow.cisloLP}</span>{' '}
-                                <span className="lp-account">({subRow.cisloUctu})</span>
-                                <br />
-                                <span className="lp-account">{subRow.nazevUctu}</span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>{subRow.budget.toLocaleString('cs-CZ')} Kč</td>
-                              <td style={{ textAlign: 'center' }}>{subRow.ordersCount}</td>
-                              <td style={{ textAlign: 'right' }}>{subRow.ordersPrice.toLocaleString('cs-CZ')} Kč</td>
-                              <td style={{ textAlign: 'right' }}>
-                                <span className={diff > 0 ? 'value-positive' : 'value-negative'}>
-                                  {diff.toLocaleString('cs-CZ')} Kč
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
           </div>
         );
       default:
-        return <p>Obsah zatím není k dispozici.</p>;
+        return (
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+            gap: '2rem',
+            padding: '1rem'
+          }}>
+            {/* Graf podle Úseků */}
+            <div style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            }}>
+              <h3 style={{
+                margin: '0 0 1.5rem 0',
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#1f2937',
+                textAlign: 'center',
+                borderBottom: '2px solid #e5e7eb',
+                paddingBottom: '0.75rem'
+              }}>
+                Přehled dle úseků
+              </h3>
+              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+                <Pie data={pieChartData} options={pieChartOptions} />
+              </div>
+            </div>
+
+            {/* Graf podle Druhů */}
+            <div style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            }}>
+              <h3 style={{
+                margin: '0 0 1.5rem 0',
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#1f2937',
+                textAlign: 'center',
+                borderBottom: '2px solid #e5e7eb',
+                paddingBottom: '0.75rem'
+              }}>
+                Přehled dle druhů
+              </h3>
+              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+                <Pie data={typeChartData} options={typeChartOptions} />
+              </div>
+            </div>
+          </div>
+        );
     }
   };
 
   return (
     <div className="statistics-container">
-      <div className="tabs">
-        <button
-          className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          Přehled dle úseků
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'limitedPromises' ? 'active' : ''}`}
-          onClick={() => setActiveTab('limitedPromises')}
-        >
-          Limitované přísliby
-        </button>
-      </div>
       <div className="tab-content">
         {renderTabContent()}
       </div>

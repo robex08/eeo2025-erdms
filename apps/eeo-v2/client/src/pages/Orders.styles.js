@@ -512,21 +512,38 @@ const styles = css`
 
   .filter-input {
     width: 100%;
-    padding: 10px 10px 10px 36px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 19.32px;
+    height: 48px;
+    padding: 1px 40px 1px 40px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
     box-sizing: border-box;
+    background: #ffffff;
+    transition: all 0.2s ease;
+    font-weight: 400;
+    color: #1f2937;
+  }
+
+  .filter-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .filter-input::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
   }
 
   .search-icon {
     position: absolute;
-    left: 10px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
-    color: #6b7280;
+    color: #9ca3af;
     pointer-events: none;
     font-size: 16px;
+    z-index: 1;
   }
 
   .clear-filter-button {
@@ -536,14 +553,20 @@ const styles = css`
     transform: translateY(-50%);
     background: none;
     border: none;
-    font-size: 16px;
-    color: #666;
+    font-size: 18px;
+    font-weight: 600;
+    color: #9ca3af;
     cursor: pointer;
-    padding: 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    line-height: 1;
+    z-index: 1;
   }
 
   .clear-filter-button:hover {
-    color: #000;
+    color: #374151;
+    background: #f3f4f6;
   }
 
   .filter-group {
