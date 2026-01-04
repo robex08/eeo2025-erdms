@@ -577,9 +577,6 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   } : null;
   
   // 🔍 DEBUG: Zkontroluj, co backend poslal
-  console.log('🔍 [FinancialControlPDF] order.financovani:', order?.financovani);
-  console.log('🔍 [FinancialControlPDF] order.lp_kod:', order?.lp_kod);
-  console.log('🔍 [FinancialControlPDF] financovaniData:', financovaniData);
   
   // 🎯 Helper: Najít název LP kódu podle ID z enriched dat
   const getLPNazevById = (lpId) => {

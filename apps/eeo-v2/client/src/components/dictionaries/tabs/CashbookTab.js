@@ -887,7 +887,6 @@ const CashbookTab = () => {
     setSettingsSaving(true);
     try {
       const valueToSave = usePrefixSetting ? '1' : '0';
-      console.log('🔍 Saving cashbook_use_prefix:', valueToSave);
 
       const result = await cashbookAPI.updateSetting(
         'cashbook_use_prefix',
@@ -895,7 +894,6 @@ const CashbookTab = () => {
         'Používat prefixovaná čísla dokladů (V599-001)'
       );
 
-      console.log('🔍 Save result:', result);
 
       if (result.status === 'ok') {
         showToast?.('Nastavení uloženo', { type: 'success' });
@@ -991,7 +989,6 @@ const CashbookTab = () => {
 
       // ✅ SMAZAT LOCALSTORAGE pro všechny uživatele + měsíce dané pokladny v daném roce
       if (result && result.status === 'ok') {
-        console.log('🗑️ FORCE RENUMBER ÚSPĚŠNÝ - mažu localStorage pro pokladnu:', pokladnaId, 'rok:', year);
 
         // Projít všechny localStorage klíče a smazat ty, které patří k této pokladně a roku
         const keysToRemove = [];
@@ -1004,7 +1001,6 @@ const CashbookTab = () => {
           }
         }
 
-        console.log('🗑️ Mažu localStorage klíče:', keysToRemove);
         keysToRemove.forEach(key => localStorage.removeItem(key));
 
         // Zobrazit toast
@@ -1128,7 +1124,6 @@ const CashbookTab = () => {
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
 
     console.log('═══════════════════════════════════════════════════════');
-    console.log('🗑️  CASHBOOK TAB - ODEBRÁNÍ UŽIVATELE Z PODŘÁDKU');
     console.log('═══════════════════════════════════════════════════════');
     console.log('📋 Assignment ID:', assignmentId);
     console.log('👤 Uživatel:', userName);
@@ -1137,7 +1132,6 @@ const CashbookTab = () => {
       console.log('📡 Volám API: cashbookAPI.unassignUserFromCashbox()');
       const result = await cashbookAPI.unassignUserFromCashbox(assignmentId);
 
-      console.log('✅ API Response:', JSON.stringify(result, null, 2));
       console.log('   Status:', result?.status);
       console.log('   Message:', result?.message);
       console.log('   Affected rows:', result?.data?.affected_rows);
@@ -1154,25 +1148,19 @@ const CashbookTab = () => {
           console.warn('   3. SQL WHERE podmínka je špatně');
           showToast(`VAROVÁNÍ: Uživatel "${userName}" nebyl odebrán - záznam už neexistuje nebo byl již deaktivován`, 'warning');
           console.log('═══════════════════════════════════════════════════════');
-          console.log('⚠️  CASHBOOK TAB - WARNING (affected_rows = 0)');
           console.log('═══════════════════════════════════════════════════════');
 
           // I tak refreshneme data, ať vidíme aktuální stav
-          console.log('🔄 Volám loadData() pro refresh...');
           loadData();
           invalidateCache?.('cashbook');
           return;
         }
 
-        console.log('✅ BE potvrdilo úspěšné odebrání (affected_rows:', affectedRows, ')');
         showToast(`Uživatel "${userName}" byl úspěšně odebrán z pokladny`, 'success');
 
-        console.log('🔄 Volám loadData() pro refresh...');
         loadData(); // Reload data to reflect changes
         invalidateCache?.('cashbook');
-        console.log('✅ loadData() zavoláno');
         console.log('═══════════════════════════════════════════════════════');
-        console.log('🗑️  CASHBOOK TAB - SUCCESS');
         console.log('═══════════════════════════════════════════════════════');
       } else {
         console.error('❌ BE vrátilo neúspěšný status:', result?.status);

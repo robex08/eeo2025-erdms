@@ -152,7 +152,6 @@ export const generateTestPDF = async () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    console.log('✅ PDF úspěšně vygenerováno!');
     return true;
   } catch (error) {
     console.error('❌ Chyba při generování PDF:', error);
@@ -177,7 +176,6 @@ export const previewTestPDF = async () => {
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
 
-    console.log('✅ Náhled PDF otevřen v novém okně!');
     return true;
   } catch (error) {
     console.error('❌ Chyba při náhledu PDF:', error);
@@ -224,7 +222,6 @@ export const generateLargePDF = async () => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    console.log('✅ Velké PDF úspěšně vygenerováno (50 záznamů)!');
     return true;
   } catch (error) {
     console.error('❌ Chyba při generování velkého PDF:', error);
@@ -293,9 +290,6 @@ export const testDiacritics = async () => {
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
 
-    console.log('✅ Test diakritiky dokončen - zkontrolujte PDF!');
-    console.log('ℹ️ Měly by být vidět všechny české znaky včetně: á č ď é ě í ň ó ř š ť ú ů ý ž');
-    console.log('ℹ️ Symbol měny by měl být "Kč" (ne "K  ")');
     return true;
   } catch (error) {
     console.error('❌ Chyba při testu diakritiky:', error);

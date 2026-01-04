@@ -1210,6 +1210,28 @@ function handle_order_v2_update($input, $config, $queries) {
                         $invoices_processed++;
                         $invoices_updated = true;
                         
+                        // ✅ AKTUALIZACE: Pokud je to první faktura, nastav fakturant_id v objednávce
+                        // Kontrola, zda objednávka už nemá nastaveného fakturanta
+                        $stmt_check = $db->prepare("SELECT fakturant_id FROM `25a_objednavky` WHERE id = ?");
+                        $stmt_check->execute(array($order_id));
+                        $order_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                        
+                        if (!$order_data['fakturant_id']) {
+                            // První faktura - nastav fakturanta a datum přidání první faktury
+                            $orders_table = get_orders_table_name();
+                            $stmt_update_order = $db->prepare("
+                                UPDATE `{$orders_table}` 
+                                SET fakturant_id = ?,
+                                    dt_faktura_pridana = NOW(),
+                                    dt_aktualizace = NOW(),
+                                    uzivatel_akt_id = ?
+                                WHERE id = ?
+                            ");
+                            $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                            
+                            error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
+                        }
+                        
                     } else {
                         // ========== UPDATE existující faktura ==========
                         $update_fields = array();

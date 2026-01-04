@@ -298,7 +298,7 @@ export async function generateDocxDocument({
     }
     
     // === KROK 4b: Vybraný uživatel pro podpis ===
-    console.log('🔍 DEBUG: Vybraný uživatel pro podpis:', {
+    console.log('Selected user for signature:', {
       selectedUserId,
       dostupniUzivatele: apiData.dostupni_uzivatele_pro_podpis,
       pocetDostupnych: apiData.dostupni_uzivatele_pro_podpis?.length || 0
@@ -309,7 +309,6 @@ export async function generateDocxDocument({
         u => parseInt(u.id) === parseInt(selectedUserId)
       );
       
-      console.log('🔍 DEBUG: Nalezený uživatel:', vybranyUzivatel);
       
       if (vybranyUzivatel) {
         
@@ -318,7 +317,7 @@ export async function generateDocxDocument({
         apiData.vypocitane.vybrany_uzivatel_role = vybranyUzivatel.role;
         apiData.vypocitane.vybrany_uzivatel_lokalita = vybranyUzivatel.lokalita_nazev;
         
-        console.log('✅ DEBUG: Přidány vypočítané hodnoty pro vybraného uživatele:', {
+        console.log('Selected user data:', {
           vybrany_uzivatel_cele_jmeno: apiData.vypocitane.vybrany_uzivatel_cele_jmeno,
           vybrany_uzivatel_role: apiData.vypocitane.vybrany_uzivatel_role,
           vybrany_uzivatel_lokalita: apiData.vypocitane.vybrany_uzivatel_lokalita
@@ -331,8 +330,7 @@ export async function generateDocxDocument({
 
     // === KROK 5: DYNAMICKÉ MAPOVÁNÍ polí ===
 
-    console.log('🔍 DEBUG: Template mapping ze šablony:', templateMapping);
-    console.log('🔍 DEBUG: Dodavatel data z API:', {
+    console.log('Supplier data:', {
       dodavatel_nazev: apiData.dodavatel_nazev,
       dodavatel_kontakt_jmeno: apiData.dodavatel_kontakt_jmeno,
       dodavatel_kontakt_email: apiData.dodavatel_kontakt_email,
@@ -344,7 +342,6 @@ export async function generateDocxDocument({
 
     const fieldMapping = createFieldMappingForDocx(apiData, templateMapping, selectedUserId);
     
-    console.log('🔍 DEBUG: Výsledné field mapping:', fieldMapping);
 
     // === KROK 6: Vyplnění XML dat ===
 
@@ -398,7 +395,6 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
         if (realIndex !== -1) {
           // Nahraď [0] skutečným indexem
           finalPath = dbPath.replace('[0]', `[${realIndex}]`);
-          console.log(`  🔄 Dynamický index: ${dbPath} -> ${finalPath} (user ID ${selectedUserId})`);
         } else {
           // Uživatel ID ${selectedUserId} nenalezen v dostupni_uzivatele_pro_podpis, použije se [0]
         }
@@ -419,7 +415,6 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
         // Standardní mapování pomocí tečkové notace
         value = getValueFromPath(apiData, finalPath);
         
-        console.log(`  🔍 Mapuji: ${docxField} <- ${finalPath} = "${value}"`);
 
         if (value === undefined || value === null) {
           missingFields.push({ docxField, dbPath: finalPath });
@@ -595,7 +590,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
                 if (m) {
                   fieldName = m[2].replace(/\s+/g, '');
                   foundFields.push({ fieldName, instr: cleanInstr, beginIdx, endIdx });
-                  console.log(`  🔍 Nalezeno pole: ${fieldName} (instr: "${cleanInstr}")`);
                 } else {
                   // Nepodařilo se parsovat pole z instrText: "${cleanInstr}"
                 }
@@ -612,7 +606,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
           // KONTROLA: Pokud pole NENÍ v mapování, ODSTRANÍME ho
           if (!(fieldName in fieldValues)) {
-            console.log(`  🗑️ Odstraňuji nemapované pole: ${fieldName}`);
             removedFields.push(fieldName);
 
             // Smaž všechny runs včetně begin a end
@@ -629,7 +622,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
 
           // Pokud máme hodnotu (i když je prázdná), vyplníme ji
           if (val !== undefined && val !== null) {
-            console.log(`  ✅ Nahrazuji pole: ${fieldName} = "${val}"`);
             replacedFields.push({ fieldName, value: val });
 
             // Nahraď první run hodnotou
@@ -694,7 +686,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
           if (xmlString.includes(pattern)) {
             xmlString = xmlString.replace(new RegExp(escapeRegExp(pattern), 'g'), String(value));
             textReplacements++;
-            console.log(`  ✅ Nahrazeno textové pole: ${fieldName} = "${value}"`);
           }
         });
       });

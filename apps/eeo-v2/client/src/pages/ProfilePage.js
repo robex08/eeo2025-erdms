@@ -1843,7 +1843,6 @@ const ProfilePage = () => {
             // Ulož do localStorage
             saveSettingsToLocalStorage(parseInt(user_id, 10), defaultSettings);
             
-            console.log('✅ Výchozí nastavení bylo uloženo do DB');
           } catch (saveError) {
             console.error('⚠️ Chyba při ukládání výchozích nastavení:', saveError);
             // Pokračuj dál - použijeme výchozí hodnoty lokálně

@@ -2242,7 +2242,7 @@ const Users = () => {
     const currentValue = user.vynucena_zmena_hesla === 1;
     const newValue = !currentValue;
     
-    console.log('🔄 Toggle force password change:', {
+    console.log('User edit debug:', {
       userId: user.id,
       currentValue,
       newValue,
@@ -2261,7 +2261,6 @@ const Users = () => {
         vynucena_zmena_hesla: newValue ? 1 : 0
       });
 
-      console.log('✅ Toggle API result:', result);
 
       setGlobalProgress(70);
 

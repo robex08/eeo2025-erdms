@@ -779,7 +779,6 @@ const InvoiceAttachmentsCompact = ({
       );
       
       if (hasPendingUploads && serverAttachments.length === 0) {
-        console.log('⚠️ Přeskakuji prázdnou odpověď ze serveru - máme pending uploads');
         return; // Nepřepisovat lokální pending attachments
       }
       
@@ -996,13 +995,11 @@ const InvoiceAttachmentsCompact = ({
       const firstFile = newFiles[0];
       if (firstFile?.spisovka_dokument_id) {
         localStorage.setItem('spisovka_active_dokument', firstFile.spisovka_dokument_id);
-        console.log('🎯 Aktivní Spisovka dokument uložen do LS:', firstFile.spisovka_dokument_id);
       }
       
       // ✅ NEJDŘÍV přidat soubory do UI
       updateAttachments(prev => {
         const updated = [...prev, ...newFiles];
-        console.log('📊 Celkový počet příloh po přidání:', updated.length);
         return updated;
       });
 
@@ -1230,7 +1227,6 @@ const InvoiceAttachmentsCompact = ({
 
         // Update s server ID
         updateAttachments(prev => {
-          console.log('🔄 UPDATE ATTACHMENTS (temp faktura) - PŘED:', prev.length, 'příloh');
           const updated = prev.map(f =>
             f.id === fileId ? {
               ...f,
@@ -1244,7 +1240,6 @@ const InvoiceAttachmentsCompact = ({
               ...(f.spisovka_file_id && { spisovka_file_id: f.spisovka_file_id })
             } : f
           );
-          console.log('🔄 UPDATE ATTACHMENTS (temp faktura) - PO:', updated.length, 'příloh');
           console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
           return updated;
         });
@@ -1384,7 +1379,6 @@ const InvoiceAttachmentsCompact = ({
 
       // Update s server ID a 100% progress
       updateAttachments(prev => {
-        console.log('🔄 UPDATE ATTACHMENTS (reálná faktura) - PŘED:', prev.length, 'příloh');
         const updated = prev.map(f =>
           f.id === fileId ? {
             ...f,
@@ -1396,7 +1390,6 @@ const InvoiceAttachmentsCompact = ({
             file: undefined // Odstraň File object
           } : f
         );
-        console.log('🔄 UPDATE ATTACHMENTS (reálná faktura) - PO:', updated.length, 'příloh');
         console.log('📎 Nalezena příloha s ID:', attachmentId, 'pro soubor:', file.file.name);
         return updated;
       });

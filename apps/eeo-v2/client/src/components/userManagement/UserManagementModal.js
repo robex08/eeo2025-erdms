@@ -999,7 +999,6 @@ const UserManagementModal = ({
     // Při edit mode rovnou inicializuj formData z userData (CustomSelect si najde hodnoty sám)
     if (isOpen && mode === 'edit' && userData) {
       // Debug pouze pokud jsou problémy
-      // console.log('🔍 UserManagementModal - userData:', userData);
 
       // EXTRAHUJ ID z různých formátů dat - CustomSelect potřebuje NUMBER pro strict comparison!
       const extractedIds = {
@@ -1154,8 +1153,6 @@ const UserManagementModal = ({
 
       // DEBUG: Zjistit jestli role obsahují práva
       // if (roleData && roleData.length > 0) {
-      //   console.log('🔍 První role (kontrola struktury):', roleData[0]);
-      //   console.log('🔍 Má role práva?', roleData[0]?.rights ? 'ANO' : 'NE');
       // }
 
       // Vytvoření hierarchické struktury lokalit (okres -> stanoviště)
@@ -1287,12 +1284,10 @@ const UserManagementModal = ({
   // Funkce pro načtení práv ze všech vybraných rolí
   const loadRightsFromRoles = async (roleIds) => {
     if (!roleIds || roleIds.length === 0) {
-      // console.log('⚠️ Žádné role k načtení');
       setRightsFromRoles(new Set());
       return;
     }
 
-    // console.log('🔍 Začínám načítat práva pro role:', roleIds);
 
     try {
       const allRights = new Set();
@@ -1314,11 +1309,9 @@ const UserManagementModal = ({
             }
           });
         } else {
-          // console.log(`  ⚠️ Role ${roleId} nemá práva nebo špatná struktura`);
         }
       }
 
-      // console.log(`✅ Načteno celkem ${allRights.size} unikátních práv z ${roleIds.length} rolí`);
       setRightsFromRoles(allRights);
     } catch (error) {
       setRightsFromRoles(new Set());
@@ -1328,10 +1321,8 @@ const UserManagementModal = ({
   // Při změně rolí přenačíst jejich práva
   useEffect(() => {
     if (isOpen && formData.roles && formData.roles.length > 0 && token && user?.username) {
-      // console.log('🔄 Načítám práva pro role:', formData.roles);
       loadRightsFromRoles(formData.roles);
     } else if (isOpen) {
-      // console.log('🔄 Žádné role, vynulování práv');
       setRightsFromRoles(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

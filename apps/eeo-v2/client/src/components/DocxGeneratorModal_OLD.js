@@ -309,7 +309,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         throw new Error('Chybí ID objednávky. Dostupná pole: ' + Object.keys(order).join(', '));
       }
 
-      console.log('📊 Detected order_id:', {
         order_id: orderId,
         cislo_objednavky: order.cislo_objednavky,
         availableFields: Object.keys(order)
@@ -326,7 +325,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
           objednavka_id: orderId
         });
 
-        console.log('✅ DOCX Order Data Response:', {
           struktura: 'vnořené objekty s tečkovou notací',
           cislo_objednavky: fullOrderData.cislo_objednavky,
           predmet: fullOrderData.predmet,

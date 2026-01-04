@@ -22,7 +22,6 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
-      console.log('✅ Event.preventDefault() a stopPropagation() zavolány');
     }
 
     // ✅ Reset všech stavů (včetně předchozí chyby)
@@ -43,7 +42,6 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
       const result = await onConfirm(pokladnaId, year);
 
       console.log('🔧 Force přepočet RESPONSE:', result);
-      console.log('🔍 FULL RESPONSE (včetně debug):', JSON.stringify(result, null, 2));
 
       if (result && result.status === 'ok') {
         // Úspěch - zobraz finální progress

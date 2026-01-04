@@ -637,7 +637,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       
       // DŮLEŽITÉ: Počkáme na kompletní stažení jako ArrayBuffer
       const arrayBuffer = await response.arrayBuffer();
-      console.log(`✅ PDF completely downloaded: ${arrayBuffer.byteLength} bytes`);
       
       // Validace stažených dat
       if (arrayBuffer.byteLength === 0) {
@@ -656,7 +655,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         throw new Error('Stažený soubor není platné PDF (chybí PDF header).');
       }
       
-      console.log(`✅ PDF validated: header="${headerStr}", size=${arrayBuffer.byteLength} bytes`);
       
       setOcrProgress({ visible: true, progress: 5, message: 'PDF staženo, připravuji OCR...' });
 
@@ -935,7 +933,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   // Background refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('🔄 Spisovka auto-refresh (5 minut)');
       fetchFaktury();
     }, 5 * 60 * 1000); // 5 minutes
 
@@ -975,7 +972,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             inline: 'nearest'
           });
         } else {
-          console.log('⚠️ Active document element not found:', activeDokumentId);
         }
       }, 300); // Delay pro zajištění renderování
       

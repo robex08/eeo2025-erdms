@@ -1380,7 +1380,7 @@ export const NotificationsPage = () => {
               const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
               const currentOrderId = targetOrderId;
 
-              console.log('🔍 NotificationsPage - DEBUG POROVNÁNÍ ID:', {
+              console.log('Draft order comparison:', {
                 draftOrderId,
                 currentOrderId,
                 'draftData.savedOrderId': draftData.savedOrderId,
@@ -1394,7 +1394,6 @@ export const NotificationsPage = () => {
 
               // ✅ Pokud draft patří k TÉTO objednávce, NEPTAT SE!
               if (draftOrderId && currentOrderId && String(draftOrderId) === String(currentOrderId)) {
-                console.log('✅ Draft patří k TÉTO objednávce - naviguju bez ptaní');
                 shouldShowConfirmDialog = false;
                 isDraftForThisOrder = true;
               } else {
@@ -1402,14 +1401,11 @@ export const NotificationsPage = () => {
                 console.log('❌ Draft patří k JINÉ objednávce - kontroluji změny');
                 const hasNewConcept = isValidConcept(draftData);
                 const hasDbChanges = hasDraftChanges(draftData);
-                console.log('📊 Změny v draftu:', { hasNewConcept, hasDbChanges });
                 shouldShowConfirmDialog = hasNewConcept || hasDbChanges;
 
                 if (shouldShowConfirmDialog) {
-                  console.log('⚠️ ZOBRAZUJI CONFIRM DIALOG');
                   draftDataToStore = draftData;
                 } else {
-                  console.log('✅ Žádné změny - naviguju bez ptaní');
                 }
               }
             } catch (error) {

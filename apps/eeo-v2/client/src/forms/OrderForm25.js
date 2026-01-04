@@ -4431,7 +4431,6 @@ function OrderForm25() {
       //     const scrollContainer = scrollableContentRef.current;
       //     const scrollPosition = scrollContainer ? scrollContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop);
       //     draftManager.saveMetadata({ scrollPosition });
-      //     // console.log('📊 [Scroll] Uložena pozice:', scrollPosition);
       //   } catch (error) {
       //     console.error('⚠️ [Scroll] Chyba při ukládání pozice:', error);
       //   }
@@ -5596,7 +5595,6 @@ function OrderForm25() {
       // KRITICKÉ: Nastavit formData s načtenými daty
 
       // 🔍 DEBUG: RAW CELÉ OBJEDNÁVKY z backendu
-      // console.log('🔍 RAW CELÁ OBJEDNÁVKA z DB:', loadedData);
 
       // 🛡️ OCHRANA: Zabránit opakovanému volání onDataLoaded PRO STEJNOU objednávku
       // ✅ FIX: Kontroluj současný editOrderId, ne jen flag
@@ -5756,7 +5754,6 @@ function OrderForm25() {
               }
             }
           } else {
-            console.log('⚠️ [OrderForm25/handleDataLoaded] User settings nejsou v localStorage');
           }
         } catch (error) {
           console.error('❌ [OrderForm25/handleDataLoaded] Chyba při načítání výchozích hodnot garanta/příkazce:', error);
@@ -6245,7 +6242,6 @@ function OrderForm25() {
           
           if (hasDraft) {
             // ✅ Existuje draft - načte se v useEffect níže
-            console.log('🔍 Detekován existující draft, čekám na načtení...');
             setIsDraftLoaded(true); // Povolit načtení
           } else {
             // ✅ Neexistuje draft - nová čistá objednávka
@@ -6862,7 +6858,6 @@ function OrderForm25() {
   useEffect(() => {
     // ✅ Tento useEffect je teď záložní - použije se jen pokud initializeForm() selhal
     if (editOrderId && token && username && !isDraftLoaded && areDictionariesReady) {
-      // // console.log(`⚠️ ZÁLOŽNÍ načítání objednávky #${editOrderId} (initializeForm() neproběhl správně)`);
       // Nechť původní kód zůstane jako fallback...
     }
   }, [editOrderId, token, username, isDraftLoaded, areDictionariesReady]);
@@ -6881,13 +6876,11 @@ function OrderForm25() {
           if (existingDraft && existingDraft.formData && existingDraft.formData.id == editOrderId) {
             // ✅ Máme čerstvý draft z Orders25List - použij ho!
             
-            console.log(`🔍 [OrderForm25 LOAD DRAFT] Draft faktury:`, existingDraft.formData.faktury);
             
             // 📎 NAČÍST PŘÍLOHY PRO FAKTURY Z DRAFTU (draft neobsahuje attachments)
             if (existingDraft.formData.faktury && Array.isArray(existingDraft.formData.faktury)) {
               const fakturyWithAttachments = await Promise.all(
                 existingDraft.formData.faktury.map(async faktura => {
-                  console.log(`🔍 [OrderForm25 LOAD DRAFT] Načítám přílohy pro fakturu ID=${faktura.id}`);
                   let attachments = [];
                   if (faktura.id && !String(faktura.id).startsWith('temp-')) {
                     try {
@@ -6907,7 +6900,6 @@ function OrderForm25() {
                         klasifikace: att.typ_prilohy,
                         uploadDate: att.dt_vytvoreni
                       }));
-                      console.log(`🔍 [OrderForm25 LOAD DRAFT] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
                     } catch (err) {
                       console.error(`❌ [OrderForm25 LOAD DRAFT] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
                     }
@@ -6917,7 +6909,6 @@ function OrderForm25() {
               );
               
               existingDraft.formData.faktury = fakturyWithAttachments;
-              console.log(`🔍 [OrderForm25 LOAD DRAFT] Faktury s přílohami:`, fakturyWithAttachments);
             }
 
             // Aplikuj draft data na formData
@@ -7037,10 +7028,8 @@ function OrderForm25() {
           }
 
           // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (PŘED vytvořením draft objektu)
-          console.log(`🔍 [OrderForm25 LOAD] dbOrder.faktury:`, dbOrder.faktury);
           const fakturyWithAttachments = dbOrder.faktury && Array.isArray(dbOrder.faktury)
             ? await Promise.all(dbOrder.faktury.map(async faktura => {
-                console.log(`🔍 [OrderForm25 LOAD] Načítám přílohy pro fakturu ID=${faktura.id}`);
                 // Načti přílohy
                 let attachments = [];
                 if (faktura.id && !String(faktura.id).startsWith('temp-')) {
@@ -7061,7 +7050,6 @@ function OrderForm25() {
                       klasifikace: att.typ_prilohy,
                       uploadDate: att.dt_vytvoreni
                     }));
-                    console.log(`🔍 [OrderForm25 LOAD] Načteny přílohy faktury ID=${faktura.id}:`, attachments);
                   } catch (err) {
                     console.error(`❌ [OrderForm25 LOAD] Chyba při načítání příloh faktury ID=${faktura.id}:`, err);
                   }
@@ -7071,7 +7059,6 @@ function OrderForm25() {
               }))
             : [];
           
-          console.log(`🔍 [OrderForm25 LOAD] fakturyWithAttachments:`, fakturyWithAttachments);
 
           // Vytvoř údaje objednatele
           let objednatelData = {
@@ -7248,11 +7235,9 @@ function OrderForm25() {
                     attachments: faktura.attachments || []
                     };
 
-                    console.log(`🔍 [OrderForm25 LOAD] Mapovaná faktura:`, { id: mappedFaktura.id, attachments: mappedFaktura.attachments });
                     return mappedFaktura;
                   });
                 } else {
-                  console.log(`🔍 [OrderForm25 LOAD] Žádné faktury k mapování`);
                   return []; // Žádné faktury
                 }
               })()
@@ -11443,7 +11428,6 @@ function OrderForm25() {
                   klasifikace: att.typ_prilohy,
                   uploadDate: att.dt_vytvoreni
                 }));
-                console.log(`🔍 [OrderForm25] Načteny přílohy faktury ID=${fakturaFromDB.id}:`, attachments);
               } catch (err) {
                 console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
               }
@@ -13437,7 +13421,6 @@ function OrderForm25() {
       };
     }).filter(Boolean); // Odfiltruj nevalidní soubory
 
-    console.log('✅ New files created:', newFiles.length, newFiles);
 
     // Aktualizuj oba state - formData i attachments
     setFormData(prev => ({
@@ -13583,7 +13566,6 @@ function OrderForm25() {
   };
 
   const handleFileDrop = (e) => {
-    console.log('🎯 handleFileDrop CALLED');
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
@@ -13597,7 +13579,6 @@ function OrderForm25() {
   };
 
   const handleFileSelect = (e) => {
-    console.log('🎯 handleFileSelect CALLED');
     const files = e.target.files;
     console.log('📁 Files selected:', files?.length);
     if (files.length > 0) {
@@ -14801,16 +14782,6 @@ function OrderForm25() {
   const handleAddSupplierToDirectory = async () => {
     // DEBUG: Add to directory button click - logging removed
     // DEBUG: ADD TO DIRECTORY logging removed for performance
-    /*// console.log('📊 [ADD TO DIRECTORY] formData dodavatele:', {
-      nazev: formData.dodavatel_nazev,
-      adresa: formData.dodavatel_adresa,
-      ico: formData.dodavatel_ico,
-      dic: formData.dodavatel_dic,
-      zastoupeny: formData.dodavatel_zastoupeny,
-      kontakt_jmeno: formData.dodavatel_kontakt_jmeno,
-      kontakt_email: formData.dodavatel_kontakt_email,
-      kontakt_telefon: formData.dodavatel_kontakt_telefon
-    });*/
 
     if (!checkSupplierRequiredFields()) {
       showToast?.('Vyplňte všechny povinné údaje dodavatele (název, adresa, IČO)', 'warning');
@@ -14922,9 +14893,6 @@ function OrderForm25() {
   // 🎯 Handler pro uložení dodavatele do adresáře
   const handleSaveSupplierToDirectory = async (supplierData, scope, useky = null) => {
     // DEBUG: SAVE TO DIRECTORY logging removed for performance
-    /*// console.log('💾 [SAVE TO DIRECTORY] Začátek ukládání');
-    // console.log('📊 [SAVE TO DIRECTORY] Příchozí supplierData:', supplierData);
-    // console.log('🎯 [SAVE TO DIRECTORY] Scope:', scope, 'Úseky:', useky);*/
 
     try {
       // Určení user_id a usek_zkr podle scope
@@ -14964,7 +14932,6 @@ function OrderForm25() {
 
       if (existingSupplierCheck?.exists && scope === existingSupplierCheck.scope) {
         // Aktualizace existujícího dodavatele ve stejném scope
-        // console.log('🔄 [SAVE TO DIRECTORY] Aktualizace existujícího dodavatele');
         /*console.log('📤 [SAVE TO DIRECTORY] Parametry pro updateSupplierByIco:', {
           ico: dataToSave.ico,
           nazev: dataToSave.nazev,
@@ -14988,7 +14955,6 @@ function OrderForm25() {
           kontakt_telefon: dataToSave.kontakt_telefon
         });
 
-        // console.log('✅ [SAVE TO DIRECTORY] Update úspěšný, odpověď:', result);
         showToast?.('Dodavatel byl úspěšně aktualizován v adresáři', 'success');
       } else {
         // Vytvoření nového dodavatele (nebo přidání do jiného scope)
@@ -15020,7 +14986,6 @@ function OrderForm25() {
           kontakt_telefon: dataToSave.kontakt_telefon
         });
 
-        // console.log('✅ [SAVE TO DIRECTORY] Create úspěšný, odpověď:', result);
         showToast?.('Dodavatel byl úspěšně přidán do adresáře', 'success');
       }
 
@@ -16534,7 +16499,6 @@ function OrderForm25() {
         try {
           console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (zavření formuláře)');
           await unlockOrderV2({ token, username, orderId: unlockOrderId });
-          console.log('✅ UNLOCK OrderForm25: OK - obj #' + unlockOrderId);
           addDebugLog('success', 'CANCEL', 'unlock', `Objednávka ${unlockOrderId} byla odemknuta`);
         } catch (error) {
           console.warn('⚠️ UNLOCK OrderForm25: FAILED - obj #' + unlockOrderId, error.message);
@@ -23110,11 +23074,9 @@ function OrderForm25() {
                                   allUsers={allUsers}
                                   attachments={(() => {
                                     const atts = formData.faktury[0].attachments || [];
-                                    console.log(`🔍 [OrderForm25] Předávám přílohy do InvoiceAttachmentsCompact (fakturaId=${formData.faktury[0].id}):`, atts);
                                     return atts;
                                   })()}
                                   onAttachmentsChange={(newAttachments) => {
-                                    console.log(`🔍 [OrderForm25] onAttachmentsChange volán s:`, newAttachments);
                                     handleInvoiceAttachmentsChange(formData.faktury[0].id, newAttachments);
                                   }}
                                   onAttachmentUploaded={(uploadedAttachment) => {
@@ -23972,7 +23934,6 @@ function OrderForm25() {
                                                     return; // Nepovolí zaškrtnutí
                                                   }
                                                   
-                                                  console.log('✅ [LP Validace] LP čerpání je platné');
                                                 }
                                               } catch (e) {
                                                 console.error('❌ Chyba při validaci LP čerpání:', e);

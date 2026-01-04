@@ -169,7 +169,6 @@ export const registerFontsWithFallback = async () => {
   try {
     // Pokus o načtení z Google Fonts
     registerRobotoFromGoogle();
-    console.log('✅ Fonty úspěšně načteny z Google Fonts');
   } catch (error) {
     console.error('❌ Nepodařilo se načíst fonty. PDF bude používat výchozí font.', error);
     // V tomto případě @react-pdf/renderer použije výchozí Helvetica

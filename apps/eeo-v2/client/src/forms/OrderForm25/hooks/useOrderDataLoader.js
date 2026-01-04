@@ -490,7 +490,6 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
                        transformedData.stav_objednavky === 'Archivováno';
 
     if (isArchived) {
-      console.log('🏛️ Detekována ARCHIVOVANÁ objednávka - aplikuji speciální pravidla');
 
       // 1. Nastav workflow stav pouze na ARCHIVOVANO (NESMÍ SE PŘEPSAT!)
       transformedData.stav_workflow_kod = ['ARCHIVOVANO'];
@@ -600,10 +599,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
     setError(null);
 
     try {
-      // console.log('🔍 [useOrderDataLoader] Volám getOrderV2 pro orderId:', orderId);
       // ✨ V2 API: Use getOrderV2() - returns standardized data with enriched=true
       const dbOrder = await getOrderV2(orderId, token, username, true); // ✅ enriched=true pro financovani.lp_nazvy
-      // console.log('🔍 [useOrderDataLoader] Obdržel jsem dbOrder:', dbOrder);
 
       if (!dbOrder) {
         console.error('❌ [useOrderDataLoader] dbOrder is null!');
@@ -645,7 +642,6 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       }
 
       const transformedData = transformOrderData(dbOrder, dictionaries);
-      // console.log('🔍 [useOrderDataLoader] Transformovaná data:', transformedData);
       return transformedData;
     } catch (err) {
       console.error('❌ [useOrderDataLoader] Error in loadOrderForEdit:', err);

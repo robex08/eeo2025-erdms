@@ -1558,7 +1558,6 @@ const Invoices25List = () => {
   const handleAddInvoiceToEntity = async (invoice) => {
     // ⚠️ Zabránit vícenásobnému kliknutí
     if (isCheckingLock) {
-      console.log('⚠️ Už probíhá kontrola LOCK, ignoruji další klik');
       return;
     }
     
@@ -2207,11 +2206,7 @@ const Invoices25List = () => {
   };
 
   const handleViewInvoice = async (invoice) => {
-    console.log('🔍 [Invoices25List] Opening slide panel for invoice:', invoice);
-    console.log('🔍 [Invoices25List] ALL invoice keys:', Object.keys(invoice));
-    console.log('🔍 [Invoices25List] Keys containing "vecn":', Object.keys(invoice).filter(k => k.toLowerCase().includes('vecn')));
-    console.log('🔍 [Invoices25List] Keys containing "potvrd":', Object.keys(invoice).filter(k => k.toLowerCase().includes('potvrd')));
-    console.log('🔍 [Invoices25List] Věcná správnost data:', {
+    console.log('Invoice data:', {
       potvrdil_vecnou_spravnost_jmeno: invoice.potvrdil_vecnou_spravnost_jmeno,
       vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno,
       dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti,
@@ -2277,7 +2272,6 @@ const Invoices25List = () => {
     }
     
     // ✅ Není zamčená nebo nemá objednávku - pokračuj s editací
-    console.log('✅ LOCK Invoices25List: Obj ' + (invoice.objednavka_id ? '#' + invoice.objednavka_id : 'bez obj') + ' OK - otevírám FA');
     navigate('/invoice-evidence', { 
       state: { 
         editInvoiceId: invoice.id,

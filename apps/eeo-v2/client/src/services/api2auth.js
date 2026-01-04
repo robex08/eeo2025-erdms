@@ -2709,7 +2709,6 @@ export async function fetchLimitovanePrisliby({ token, username }) {
       // Data v response.data.data
       return response.data.data;
     } else if (response.data && Array.isArray(response.data)) {
-      console.log('🔍 [fetchLimitovanePrisliby] Direct LP data:', response.data.slice(0, 2));
       return response.data;
     } else {
       console.warn('🚨 [fetchLimitovanePrisliby] Neočekávaná struktura dat:', response.data);
@@ -2720,7 +2719,6 @@ export async function fetchLimitovanePrisliby({ token, username }) {
     // 🔧 FIX: Pokud nemá uživatel oprávnění (403), vrátíme prázdné pole místo chyby
     // LP kódy se tak načtou pouze pro uživatele s oprávněním, ostatní dostanou prázdný seznam
     if (error.response?.status === 403) {
-      console.log('ℹ️ Uživatel nemá oprávnění k LP kódům - vráceno prázdné pole');
       return [];
     }
 
@@ -2768,14 +2766,12 @@ export async function fetchLPDetail({ token, username, cislo_lp }) {
       console.error('💰 LP API Error:', { status: response.status, statusText: response.statusText, body: errorText });
       
       if (response.status === 403) {
-        console.log('ℹ️ Uživatel nemá oprávnění k detailu LP');
         return null;
       }
       if (response.status === 401) {
         throw new Error('Chyba autentizace při načítání detailu LP');
       }
       if (response.status === 404) {
-        console.log(`ℹ️ LP ${cislo_lp} nebylo nalezeno nebo nemá definovaný stav`);
         return null;
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
