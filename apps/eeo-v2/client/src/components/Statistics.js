@@ -408,33 +408,34 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
         return (
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', 
+            gridTemplateColumns: 'repeat(2, 1fr)', 
             gap: '2rem',
-            padding: '1rem',
-            width: '100%'
+            width: '100%',
+            height: 'calc(100vh - 250px)',
+            minHeight: '600px'
           }}>
             {/* Graf podle Úseků */}
             <div style={{
               background: 'white',
               borderRadius: '12px',
-              padding: '1.5rem',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-              minHeight: '500px',
+              padding: '2rem',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              border: '1px solid #e5e7eb',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              height: '100%'
             }}>
               <h3 style={{
-                margin: '0 0 1.5rem 0',
-                fontSize: '1.25rem',
-                fontWeight: 600,
-                color: '#1f2937',
-                textAlign: 'center',
-                borderBottom: '2px solid #e5e7eb',
-                paddingBottom: '0.75rem'
+                margin: '0 0 2rem 0',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                color: '#111827',
+                textAlign: 'left',
+                letterSpacing: '-0.025em'
               }}>
                 Přehled dle úseků
               </h3>
-              <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
                 <Pie data={pieChartData} options={pieChartOptions} />
               </div>
             </div>
@@ -443,24 +444,24 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
             <div style={{
               background: 'white',
               borderRadius: '12px',
-              padding: '1.5rem',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-              minHeight: '500px',
+              padding: '2rem',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+              border: '1px solid #e5e7eb',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              height: '100%'
             }}>
               <h3 style={{
-                margin: '0 0 1.5rem 0',
-                fontSize: '1.25rem',
-                fontWeight: 600,
-                color: '#1f2937',
-                textAlign: 'center',
-                borderBottom: '2px solid #e5e7eb',
-                paddingBottom: '0.75rem'
+                margin: '0 0 2rem 0',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                color: '#111827',
+                textAlign: 'left',
+                letterSpacing: '-0.025em'
               }}>
                 Přehled dle druhů
               </h3>
-              <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
                 <Pie data={typeChartData} options={typeChartOptions} />
               </div>
             </div>
