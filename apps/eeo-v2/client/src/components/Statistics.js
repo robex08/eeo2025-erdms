@@ -72,19 +72,23 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
   }, [sectionData]);
 
   const pieChartOptions = useMemo(() => ({
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         display: true,
-        position: 'bottom',
+        position: 'left',
+        align: 'start',
         labels: {
-          padding: 15,
+          padding: 12,
           font: {
-            size: 12,
+            size: 11,
             weight: 500,
           },
           color: '#374151',
           usePointStyle: true,
           pointStyle: 'circle',
+          boxWidth: 12,
+          boxHeight: 12,
         },
       },
       tooltip: {
@@ -348,19 +352,23 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
   }, [typeData]);
 
   const typeChartOptions = useMemo(() => ({
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         display: true,
-        position: 'bottom',
+        position: 'left',
+        align: 'start',
         labels: {
-          padding: 15,
+          padding: 12,
           font: {
-            size: 12,
+            size: 11,
             weight: 500,
           },
           color: '#374151',
           usePointStyle: true,
           pointStyle: 'circle',
+          boxWidth: 12,
+          boxHeight: 12,
         },
       },
       tooltip: {
@@ -400,9 +408,10 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
         return (
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', 
             gap: '2rem',
-            padding: '1rem'
+            padding: '1rem',
+            width: '100%'
           }}>
             {/* Graf podle Úseků */}
             <div style={{
@@ -410,6 +419,9 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
               borderRadius: '12px',
               padding: '1.5rem',
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+              minHeight: '500px',
+              display: 'flex',
+              flexDirection: 'column'
             }}>
               <h3 style={{
                 margin: '0 0 1.5rem 0',
@@ -422,7 +434,7 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
               }}>
                 Přehled dle úseků
               </h3>
-              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+              <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
                 <Pie data={pieChartData} options={pieChartOptions} />
               </div>
             </div>
@@ -433,6 +445,9 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
               borderRadius: '12px',
               padding: '1.5rem',
               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+              minHeight: '500px',
+              display: 'flex',
+              flexDirection: 'column'
             }}>
               <h3 style={{
                 margin: '0 0 1.5rem 0',
@@ -445,7 +460,7 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
               }}>
                 Přehled dle druhů
               </h3>
-              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+              <div style={{ flex: 1, minHeight: '400px', position: 'relative' }}>
                 <Pie data={typeChartData} options={typeChartOptions} />
               </div>
             </div>
