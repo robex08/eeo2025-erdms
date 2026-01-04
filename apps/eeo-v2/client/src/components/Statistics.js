@@ -73,22 +73,23 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
 
   const pieChartOptions = useMemo(() => ({
     maintainAspectRatio: false,
+    responsive: true,
     plugins: {
       legend: {
         display: true,
-        position: 'left',
-        align: 'start',
+        position: 'bottom',
+        align: 'center',
         labels: {
-          padding: 12,
+          padding: 16,
           font: {
-            size: 11,
+            size: 13,
             weight: 500,
           },
           color: '#374151',
           usePointStyle: true,
           pointStyle: 'circle',
-          boxWidth: 12,
-          boxHeight: 12,
+          boxWidth: 14,
+          boxHeight: 14,
         },
       },
       tooltip: {
@@ -353,22 +354,23 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
 
   const typeChartOptions = useMemo(() => ({
     maintainAspectRatio: false,
+    responsive: true,
     plugins: {
       legend: {
         display: true,
-        position: 'left',
-        align: 'start',
+        position: 'bottom',
+        align: 'center',
         labels: {
-          padding: 12,
+          padding: 16,
           font: {
-            size: 11,
+            size: 13,
             weight: 500,
           },
           color: '#374151',
           usePointStyle: true,
           pointStyle: 'circle',
-          boxWidth: 12,
-          boxHeight: 12,
+          boxWidth: 14,
+          boxHeight: 14,
         },
       },
       tooltip: {
@@ -408,64 +410,46 @@ const Statistics = ({ filteredOrders, selectedYear, lpsData }) => {
         return (
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(2, 1fr)', 
-            gap: '2rem',
-            width: '100%',
-            padding: '0',
-            margin: '0'
+            gridTemplateColumns: '1fr 1fr', 
+            gap: '24px',
+            width: '100%'
           }}>
             {/* Graf podle Úseků */}
             <div style={{
-              background: 'white',
-              borderRadius: '16px',
-              padding: '2.5rem',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #e5e7eb',
-              display: 'flex',
-              flexDirection: 'column'
+              background: '#ffffff',
+              borderRadius: '12px',
+              padding: '24px',
+              border: '1px solid #e5e7eb'
             }}>
               <h3 style={{
-                margin: '0 0 2rem 0',
-                fontSize: '1.5rem',
-                fontWeight: 700,
-                color: '#111827',
-                letterSpacing: '-0.025em'
+                margin: '0 0 24px 0',
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#111827'
               }}>
                 Přehled dle úseků
               </h3>
-              <div style={{ 
-                width: '100%',
-                height: '500px',
-                position: 'relative'
-              }}>
+              <div style={{ width: '100%', height: '600px', position: 'relative' }}>
                 <Pie data={pieChartData} options={pieChartOptions} />
               </div>
             </div>
 
             {/* Graf podle Druhů */}
             <div style={{
-              background: 'white',
-              borderRadius: '16px',
-              padding: '2.5rem',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #e5e7eb',
-              display: 'flex',
-              flexDirection: 'column'
+              background: '#ffffff',
+              borderRadius: '12px',
+              padding: '24px',
+              border: '1px solid #e5e7eb'
             }}>
               <h3 style={{
-                margin: '0 0 2rem 0',
-                fontSize: '1.5rem',
-                fontWeight: 700,
-                color: '#111827',
-                letterSpacing: '-0.025em'
+                margin: '0 0 24px 0',
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#111827'
               }}>
                 Přehled dle druhů
               </h3>
-              <div style={{ 
-                width: '100%',
-                height: '500px',
-                position: 'relative'
-              }}>
+              <div style={{ width: '100%', height: '600px', position: 'relative' }}>
                 <Pie data={typeChartData} options={typeChartOptions} />
               </div>
             </div>
