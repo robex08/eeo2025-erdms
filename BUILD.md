@@ -1,7 +1,7 @@
 # EEO v2 - Build & Deploy
 
-**Datum:** 3. ledna 2026  
-**Verze:** 1.95e  
+**Datum:** 4. ledna 2026  
+**Verze:** 1.96  
 **Autor:** Robert Holovský
 
 ---
@@ -242,12 +242,34 @@ echo "✅ PROD deploy kompletní!"
 ### ⚡ Postup Změny Verze
 
 ```bash
-# 1. Najít a nahradit starou verzi
-cd /var/www/erdms-dev/apps/eeo-v2/client
-grep -r "1.93" package.json .env* 
+# 🎯 KRITICKÉ soubory pro aktualizaci verze (všechny povinné!):
 
-# 2. Aktualizovat všechny soubory
-sed -i 's/"version": "1.93"/"version": "1.94"/' package.json
+# 1. Frontend package.json (základní verze)
+/var/www/erdms-dev/apps/eeo-v2/client/package.json
+# Změnit: "version": "1.96"
+
+# 2. DEV build environment 
+/var/www/erdms-dev/apps/eeo-v2/client/.env.development
+# Změnit: REACT_APP_VERSION=1.96-DEV
+
+# 3. PROD build environment
+/var/www/erdms-dev/apps/eeo-v2/client/.env.production  
+# Změnit: REACT_APP_VERSION=1.96
+
+# 4. API template (dokumentace)
+/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.example
+# Změnit: REACT_APP_VERSION=1.96-DEV / REACT_APP_VERSION=1.96
+
+# 5. BUILD.md (tento soubor)
+/var/www/erdms-dev/BUILD.md
+# Změnit: **Verze:** 1.96 + datum
+
+# 🔍 Vyhledání všech míst s verzí:
+cd /var/www/erdms-dev
+grep -r "1.95" --include="*.json" --include="*.env*" --include="*.md" apps/
+```
+
+**⚠️ POZOR:** Verze se NEMĚNI v runtime .env souborech (.env), pouze v template souborech (.env.example, .env.development, .env.production)!
 sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env
 sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.94-DEV/' .env.development
 sed -i 's/REACT_APP_VERSION=1.93/REACT_APP_VERSION=1.94/' .env.production
