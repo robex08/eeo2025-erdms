@@ -948,6 +948,16 @@ switch ($endpoint) {
         }
         break;
         
+    case 'users/delete':
+        require_once 'v2025.03_25/lib/userHandlers.php';
+        if ($request_method === 'POST') {
+            handle_users_delete($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
     case 'users/generate-temp-password':
         require_once 'v2025.03_25/lib/userHandlers.php';
         if ($request_method === 'POST') {

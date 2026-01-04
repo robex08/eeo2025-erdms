@@ -5,6 +5,7 @@ import { keyframes } from '@emotion/react';
 import { X, Save, AlertTriangle, User, Calendar, Hash, Building, Plus, Trash2, ChevronDown, Search, DollarSign } from 'lucide-react';
 import cashbookAPI from '../../services/cashbookService';
 import { getUsekyList } from '../../services/apiv2Dictionaries';
+import { fetchAllUsers } from '../../services/api2auth';
 import { AuthContext } from '../../context/AuthContext';
 import { ToastContext } from '../../context/ToastContext';
 import DatePicker from '../DatePicker';
@@ -1248,14 +1249,18 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
   };
 
   const loadAvailableUsers = async () => {
-    if (!cashbox?.id) return;
+    if (!token || !user?.username) return;
 
     try {
       setLoading(true);
-      const result = await cashbookAPI.getAvailableUsers(cashbox.id);
-      setAvailableUsers(result.data.uzivatele || []);
+      const result = await fetchAllUsers({
+        token: token,
+        username: user.username,
+        show_inactive: false // Pouze aktivní uživatelé
+      });
+      setAvailableUsers(result || []);
     } catch (err) {
-      // Error handling
+      console.error('Chyba při načítání uživatelů:', err);
     } finally {
       setLoading(false);
     }
@@ -1346,7 +1351,40 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     try {
       // isMainUser checkbox znamená "Zástupce", takže musíme invertovat
       // checked (true) = zástupce (0), unchecked (false) = hlavní (1)
-      const jeHlavni = isMainUser ? 0 : 1;
+      let jeHlavni = isMainUser ? 0 : 1;
+
+      // Kontrola, jestli uživatel už není hlavním správcem jiné pokladny
+      if (jeHlavni === 1) {
+        try {
+          const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(selectedUser), true);
+          const existingMain = allAssignmentsResult.data.assignments.find(
+            a => parseInt(a.je_hlavni) === 1 && parseInt(a.pokladna_id) !== parseInt(cashbox.id)
+          );
+          
+          if (existingMain) {
+            const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+            const addedUser = availableUsers.find(u => u.id === parseInt(selectedUser));
+            const userName = addedUser?.name || 'Uživatel';
+            
+            const confirmed = window.confirm(
+              `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+              `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+              `Chcete jej přidat jako zástupce?`
+            );
+            
+            if (!confirmed) {
+              return;
+            }
+            
+            jeHlavni = 0;
+            showToast('Uživatel bude přidán jako zástupce', 'info');
+          }
+        } catch (checkError) {
+          console.error('Chyba při kontrole přiřazení:', checkError);
+          showToast('Chyba při kontrole přiřazení uživatele', 'error');
+          return;
+        }
+      }
 
       const result = await cashbookAPI.assignUserToCashbox({
         pokladna_id: cashbox.id,
@@ -1383,9 +1421,37 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
     }
   };
 
-  const handleToggleMain = async (assignmentId, currentStatus, userName) => {
+  const handleToggleMain = async (assignmentId, currentStatus, userName, uzivatelId) => {
     try {
       const newStatus = currentStatus === 1 ? 0 : 1;
+
+      // Pokud nastavujeme jako hlavní (newStatus = 1), zkontrolovat, jestli uživatel už není hlavním jinde
+      if (newStatus === 1) {
+        try {
+          const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(uzivatelId), true);
+          const existingMain = allAssignmentsResult.data.assignments.find(
+            a => parseInt(a.je_hlavni) === 1 && parseInt(a.pokladna_id) !== parseInt(cashbox.id)
+          );
+          
+          if (existingMain) {
+            const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+            const confirmed = window.confirm(
+              `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+              `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+              `Pokud potvrdíte, bude automaticky odebrán jako hlavní z "${cashboxName}" a nastaven jako hlavní zde.\n\n` +
+              `Pokračovat?`
+            );
+            
+            if (!confirmed) {
+              return;
+            }
+          }
+        } catch (checkError) {
+          console.error('Chyba při kontrole přiřazení:', checkError);
+          showToast('Chyba při kontrole přiřazení uživatele', 'error');
+          return;
+        }
+      }
 
       const result = await cashbookAPI.updateUserMainStatus(assignmentId, newStatus);
 
@@ -1711,7 +1777,7 @@ const EditCashboxDialog = ({ isOpen, onClose, onSuccess, cashbox }) => {
                   onChange={(val) => setSelectedUser(val)}
                   options={availableUsers.map(user => ({
                     value: user.id,
-                    label: `${user.cele_jmeno} (${user.username})`
+                    label: `${user.displayName || [user.jmeno, user.prijmeni].filter(Boolean).join(' ') || user.username} (${user.username})`
                   }))}
                   placeholder="Vyberte uživatele..."
                   disabled={loading}

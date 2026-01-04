@@ -1321,6 +1321,7 @@ const Users = () => {
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [dialogAction, setDialogAction] = useState(null);
+  const [deleteType, setDeleteType] = useState('soft'); // 'soft' nebo 'hard'
   const [activeUsers, setActiveUsers] = useState([]);
 
   // Debug panel - user-specific
@@ -2427,6 +2428,7 @@ const Users = () => {
     }
     setSelectedUser(user);
     setDialogAction('delete');
+    setDeleteType('soft'); // Reset na soft delete
     setIsDialogOpen(true);
   };
 
@@ -2439,12 +2441,13 @@ const Users = () => {
 
       switch (dialogAction) {
         case 'delete': {
-          // Kontrola práv - pokud má USER_DELETE, skutečně smazat, jinak jen deaktivovat
+          // Kontrola práv - pokud má USER_DELETE a vybral hard delete, skutečně smazat
           const canHardDelete = hasPermission && hasPermission('USER_DELETE');
           const fullName = selectedUser.fullName || selectedUser.username;
+          const isHardDelete = deleteType === 'hard' && canHardDelete;
 
-          if (canHardDelete) {
-            // Hard delete
+          if (isHardDelete) {
+            // Hard delete - trvalé smazání
             await deleteUser({
               token,
               username,
@@ -2608,8 +2611,86 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
+        // Pro adminy s právem USER_DELETE zobrazíme volbu typu mazání
         if (canHardDelete) {
-          return `Opravdu chcete trvale smazat uživatele?\n\n${userName}\n\nTato akce je nevratná a všechna data uživatele budou trvale odstraněna z databáze.`;
+          return (
+            <div>
+              <p style={{ marginBottom: '1.5rem' }}>
+                Opravdu chcete odstranit uživatele <strong>{userName}</strong>?
+              </p>
+              
+              <div style={{
+                background: '#f8fafc',
+                border: '2px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1rem'
+              }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                  🔧 Vyberte typ odstranění:
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'soft' ? '#3b82f6' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'soft' ? '#eff6ff' : 'white',
+                    transition: 'all 0.2s'
+                  }}>
+                    <input
+                      type="radio"
+                      name="deleteType"
+                      value="soft"
+                      checked={deleteType === 'soft'}
+                      onChange={(e) => setDeleteType(e.target.value)}
+                      style={{ marginTop: '0.25rem', accentColor: '#3b82f6', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>
+                        Deaktivace (SOFT DELETE)
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                        Uživatel bude deaktivován. Data zůstanou zachována, lze později obnovit.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.75rem',
+                    cursor: 'pointer',
+                    padding: '0.75rem',
+                    border: `2px solid ${deleteType === 'hard' ? '#dc2626' : '#e2e8f0'}`,
+                    borderRadius: '6px',
+                    background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                    transition: 'all 0.2s'
+                  }}>
+                    <input
+                      type="radio"
+                      name="deleteType"
+                      value="hard"
+                      checked={deleteType === 'hard'}
+                      onChange={(e) => setDeleteType(e.target.value)}
+                      style={{ marginTop: '0.25rem', accentColor: '#dc2626', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem' }}>
+                        ⚠️ Trvalé smazání (HARD DELETE)
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#991b1b' }}>
+                        <strong>NEVRATNÉ!</strong> Uživatel bude trvale smazán z databáze včetně všech vazeb.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          );
         } else {
           return `Opravdu chcete deaktivovat uživatele?\n\n${userName}\n\nNemáte oprávnění USER_DELETE, proto bude uživatel pouze deaktivován (soft delete). Jeho data zůstanou zachována, ale nebude se moci přihlásit do systému.`;
         }
@@ -2627,7 +2708,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? 'Smazat trvale' : 'Deaktivovat';
+        if (!canHardDelete) return 'Deaktivovat';
+        return deleteType === 'hard' ? '⚠️ Smazat trvale' : 'Deaktivovat';
       case 'toggle':
         return selectedUser?.active ? 'Deaktivovat' : 'Aktivovat';
       default:
@@ -2640,7 +2722,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? 'danger' : 'warning';
+        if (!canHardDelete) return 'warning';
+        return deleteType === 'hard' ? 'danger' : 'warning';
       case 'toggle':
         return selectedUser?.active ? 'warning' : 'primary';
       default:
@@ -2653,7 +2736,8 @@ const Users = () => {
 
     switch (dialogAction) {
       case 'delete':
-        return canHardDelete ? faTrash : faExclamationTriangle;
+        if (!canHardDelete) return faExclamationTriangle;
+        return deleteType === 'hard' ? faTrash : faExclamationTriangle;
       case 'toggle':
         return selectedUser?.active ? faUserSlash : faUserCheck;
       default:

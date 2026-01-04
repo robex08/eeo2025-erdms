@@ -1,0 +1,62 @@
+Titul	Prijmeni	Jmeno	Titul_Za	Pozice	Lokalita	Osobni_cislo	Role	nesoulad
+MUDr.	Rusý	Pavel		Ředitel	Kladno 	u00147	Příkazce operace	
+Bc.	Nováková	Monika		Vedoucí tiskového referátu	Kladno 	u08279	Příkazce operace	
+	Kvapilová	Denisa		Vedoucí kanceláře ředitele	Kladno 	u08834	THP/PES	
+	Lungerová	Leona		Referent	Kladno 	u02754	THP/PES	
+	Nováková	Michaela		Pověřenec pro ochranu osobních údajů a interní audit	Kladno 	u02107	Příkazce operace	
+	Konopásková	Nikola		Vedoucí pracoviště krizové připravenosti	Kladno 	u08184	Příkazce operace	
+Bc.	Tlustý	Pavel		Hlavní inspektor provozu	Kladno 	u00156	THP/PES	
+MUDr.	Sedláček	Jan		Lékařský náměstek	Kladno 	u08258	Příkazce operace	u08534
+	Menšíková	Alice		Vedoucí vzdělávacího a výcvikového střediska	Kladno 	u07176	Příkazce operace	u08892
+	Procházková	Michaela		Administrativní pracovník	Kladno 	u09763	THP/PES	
+Mgr.	Dvořák	Vít		Náměstek pro nelékařská zdravotnická povolání	Kladno 	u03754	Příkazce operace	
+	Tůmová	Marie		Odborný referent	Kladno 	u02651	THP/PES	
+Bc.	Kachlířová	Štěpánka		Odborný referent	Kladno 	u00251	THP/PES	
+Mgr. Bc.	Čižmírik	Ján	MPH	Vedoucí KZOS	Kladno 	u09641	Příkazce operace	
+Mgr.	Pávková	Kateřina		Personální náměstek	Kladno 	u09281	Příkazce operace	
+Mgr.	Poláčková	Lucie		Vedoucí zaměstnaneckého oddělení	Kladno 	u08777	Příkazce operace	
+Ing.	Balousová	Tereza	MBA	Ekonomický náměstek	Kladno 	u08240	Správce rozpočtu	
+Ing. 	Bezoušková	Tereza	MBA	Vedoucí oddělení pojišťoven	Kladno 	u09694	Příkazce operace	
+	Brodecká	Tereza		Administrativní pracovník	Kladno 	u09753	Účetní	
+	Voštinka	Vojtěch		Rozpočtář	Kladno 	u09801	Rozpočtář	
+	Jirotková	Nela		Účetní	Kladno 	u09968	Účetní	
+	Slezáčková	Martina		Hlavní účetní	Kladno 	u09628	Hlavní účetní	
+	Kosprtová	Zdena		Účetní	Kladno 	u00008	Účetní	
+	Veselá	Kateřina		Účetní	Kladno 	u09731	Účetní	
+	Broučková	Hana		Majetková účetní	Kladno 	u08281	Účetní	
+	Zahrádková	Jaroslava		Účetní	Kladno 	u09658	Účetní	
+	Jirotková	Nela		Účetní	Kladno 	u09659	Účetní	Nová
+Ing.	Steklá	Michaela		Vedoucí oddělení veřejných zakázek	Kladno 	u09671	Příkazce operace	
+	Wlachová	Karolína		Administrativní pracovník	Kladno 	u09729	Veřejné zakázky	
+Ing.	Fajka	Jindřich		Provozně technický náměstek	Kladno 	u09343	Příkazce operace	
+	Šulgán	Štefan		Vedoucí dopravního střediska	Kladno 	u02071	Vedoucí oddělení	
+Ing.	Grossmannová	Renata		Vedoucí stavebně investičního referátu	Kladno 	u09832	Vedoucí oddělení	
+	Vacinová	Radka		Odborný referent	Kladno 	u09933	THP/PES	
+Ing.	Černohorský	Jan		Vedoucí IT	Kladno 	u09764	Příkazce operace	
+	Ondrák	Jan		Zástupce vedoucího IT	Kladno 	u02748	Příkazce operace	
+Bc.	Jonášová	Hana		Odborný referent	Kladno 	u09605	THP/PES	
+	Chocholová	Jitka		Vrchní sestra oblastního střediska	Kladno 	u00082	Vrchní	
+MUDr.	Beranová	Klára		Vedoucí lékař oblastního střediska	Kladno 	u08132	Primář	
+	Holeňa	Jakub		Vrchní sestra oblastního střediska	Mělník	u08200	Vrchní	
+MUDr.	Rechová	Alena		Vedoucí lékař oblastního střediska	Mělník	u04009	Primář	
+	Stejskalová	Radka		Vrchní sestra oblastního střediska	Rakovník	u00165	Vrchní	
+MUDr.	Klik	Leoš		Vedoucí lékař oblastního střediska	Rakovník	u00157	Primář	
+	Mach	Ondřej		Vrchní sestra oblastního střediska	Kutná Hora	u02146	Vrchní	
+MUDr.	Dizon	Jose Mauricio		Vedoucí lékař oblastního střediska	Kutná Hora	u01190	Primář	
+	Tymeš	Jiří		Vrchní sestra oblastního střediska	Příbram	u00945	Vrchní	
+MUDr.	Machovský	Jaroslav		Vedoucí lékař oblastního střediska	Příbram	u00976	Primář	
+	Veselý	Jan		Vrchní sestra oblastního střediska	Nymburk	u02450	Vrchní	Jan nebo Jaroslav
+MUDr.	Pěnička	Petr		Vedoucí lékař oblastního střediska	Nymburk	u01624	Primář	
+	Nováková	Iveta		Vrchní sestra oblastního střediska	Beroun	u00996	Vrchní	
+MUDr.	Maloch	Marek		Vedoucí lékař oblastního střediska	Beroun	u00729	Primář	
+	Kolinský	Petr		Vrchní sestra oblastního střediska	Mladá Boleslav	u00379	Vrchní	
+MUDr.	Poslíšil	Jiří		Vedoucí lékař oblastního střediska	Mladá Boleslav	u08474	Primář	
+	Svoboda	Adam		Vrchní sestra oblastního střediska	Benešov	u02225	Vrchní	
+MUDr.	Bednářová	Markéta		Vedoucí lékař oblastního střediska	Benešov	u08121	Primář	
+	Bartoněk	Jaroslav		Vrchní sestra oblastního střediska	Praha - Východ	u01112	Vrchní	
+MUDr.	Začalová	Barbora		Vedoucí lékař oblastního střediska	Praha - Východ	u07939	Primář	
+	Věříš	Miroslav		Vrchní sestra oblastního střediska	Kolín	u06832	Vrchní	
+MUDr.	Kolář	Ivo		Vedoucí lékař oblastního střediska	Kolín	u08275	Primář	
+	Staš	Jiří		Vrchní sestra oblastního střediska	Praha -Západ	u04174	Vrchní	
+MUDr.	Sosnová	Eva		Vedoucí lékař oblastního střediska	Praha -Západ	u08194	Primář	
+	Kvasničková 	Markéta		THP/PES	Nymburk	u08195	THP/PES	Nová

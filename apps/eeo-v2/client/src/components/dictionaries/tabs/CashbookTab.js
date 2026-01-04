@@ -845,9 +845,10 @@ const CashbookTab = () => {
     setLoading(true);
     try {
       // 🆕 ZMĚNA: Načíst seznam pokladen (místo assignments)
+      // 🔧 OPRAVA: V číselníkách zobrazit VŠECHNY pokladny (i neaktivní)
       const cashboxResult = await cashbookAPI.getCashboxList(
-        true,  // activeOnly = true (jen aktivní pokladny)
-        true   // includeUsers = true (načíst i uživatele)
+        false,  // activeOnly = false (načíst i neaktivní pokladny)
+        true    // includeUsers = true (načíst i uživatele)
       );
 
       if (cashboxResult.status === 'ok') {

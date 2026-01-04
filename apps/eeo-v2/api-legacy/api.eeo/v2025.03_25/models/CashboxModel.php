@@ -238,6 +238,7 @@ class CashboxModel {
         ";
         
         $stmt = $this->db->prepare($sql);
+        // OPRAVA: Parametry musí být v pořadí podle SQL: aktualizoval (SET), id (WHERE)
         return $stmt->execute(array($updatedBy, $cashboxId));
     }
     
