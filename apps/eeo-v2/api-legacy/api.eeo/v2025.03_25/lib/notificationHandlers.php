@@ -2564,17 +2564,6 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
     error_log("║  Object:    " . str_pad($objectId, 50) . "║");
     error_log("║  User:      " . str_pad($triggerUserId, 50) . "║");
     error_log("║  Frontend:  " . str_pad(count($placeholderData) . " placeholders", 50) . "║");
-    
-    // ✅ DEBUG: Kdo volal notificationRouter?
-    $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-    $caller = 'UNKNOWN';
-    if (isset($backtrace[1])) {
-        $callerFile = basename($backtrace[1]['file'] ?? 'unknown');
-        $callerFunction = $backtrace[1]['function'] ?? 'unknown';
-        $caller = $callerFile . '::' . $callerFunction;
-    }
-    error_log("║  Caller:    " . str_pad($caller, 50) . "║");
-    
     error_log("╚════════════════════════════════════════════════════════════════╝");
     error_log("");
     
@@ -2585,8 +2574,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             'event' => $eventType,
             'object_id' => $objectId,
             'trigger_user' => $triggerUserId,
-            'placeholder_count' => count($placeholderData),
-            'called_by' => $caller
+            'placeholder_count' => count($placeholderData)
         ])]);
     } catch (Exception $e) {
         error_log("DEBUG LOG FAILED: " . $e->getMessage());
