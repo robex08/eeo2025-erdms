@@ -675,12 +675,11 @@ const styles = css`
 
   .stats-box {
     position: relative;
-    padding: 12px;
+    padding: 24px;
     border: none;
     border-radius: 10px;
     background-color: #fff;
     box-shadow: none;
-    min-height: 210px;
   }
 
   .stats-box canvas,
