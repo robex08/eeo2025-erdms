@@ -10642,7 +10642,6 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
-              console.log('📧 ORDER_PENDING_APPROVAL notification response:', notifResponse);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-new', `Org-hierarchy notifikace triggernuta pro novou objednávku ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-new', `Chyba při trigger notifikaci: ${triggerError.message}`);
@@ -10675,7 +10674,6 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
-              console.log('📧 ORDER_SENT_TO_SUPPLIER notification response:', notifResponse2);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana-new', `Org-hierarchy notifikace triggernuta pro nově odeslanou objednávku ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana-new', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
@@ -10689,7 +10687,6 @@ function OrderForm25() {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_APPROVED notification response:', notifResponse3);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena-new', `Notifikace odeslána: nová objednávka okamžitě schválena ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena-new', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
@@ -10702,7 +10699,6 @@ function OrderForm25() {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_CONFIRMED_BY_SUPPLIER notification response:', notifResponse4);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-potvrzena-new', `Notifikace odeslána: nová objednávka potvrzena dodavatelem ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-potvrzena-new', `Chyba při notifikaci POTVRZENA: ${triggerError.message}`);
@@ -10716,7 +10712,6 @@ function OrderForm25() {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_COMPLETED notification response:', notifResponse5);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-dokoncena-new', `Notifikace odeslána: nová objednávka okamžitě dokončena ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-dokoncena-new', `Chyba při notifikaci DOKONCENA: ${triggerError.message}`);
@@ -11169,7 +11164,6 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
-              console.log('📧 ORDER_PENDING_APPROVAL (UPDATE) notification response:', notifResponseUpd1);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent', `Org-hierarchy notifikace triggernuta pro objednávku ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error', `Chyba při trigger notifikaci: ${triggerError.message}`);
@@ -11205,7 +11199,6 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
-              console.log('📧 ORDER_SENT_TO_SUPPLIER (UPDATE) notification response:', notifResponseUpd2);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana', `Org-hierarchy notifikace triggernuta pro odeslanou objednávku ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
@@ -11216,29 +11209,17 @@ function OrderForm25() {
           const hasSchvalena = hasWorkflowState(result.stav_workflow_kod, 'SCHVALENA');
           const hadSchvalena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'SCHVALENA') : false;
           
-          console.log('🔍 [NOTIFICATION DEBUG] SCHVALENA check:', {
-            hasSchvalena,
-            hadSchvalena,
-            result_workflow: result.stav_workflow_kod,
-            old_workflow: oldWorkflowKod,
-            formData_id: formData.id,
-            order_number: orderNumber
-          });
-          
           if (hasSchvalena && !hadSchvalena) {
-            console.log('✅ [NOTIFICATION] Posílám notifikaci SCHVALENA pro:', orderNumber);
             try {
               const notifResponseUpd3 = await triggerNotification('ORDER_APPROVED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_APPROVED (SCHVALENA) notification response:', notifResponseUpd3);
+
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena', `Notifikace odeslána: objednávka schválena ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-schvalena', `Chyba při notifikaci SCHVALENA: ${triggerError.message}`);
             }
-          } else {
-            console.log('⏭️ [NOTIFICATION] Přeskakuji SCHVALENA notifikaci - stav se nezměnil nebo již byl schválen');
           }
 
           // 🆕 Zamítnutí objednávky
@@ -11251,7 +11232,6 @@ function OrderForm25() {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_REJECTED notification response:', notifResponseUpd4);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zamitnuta', `Notifikace odeslána: objednávka zamítnuta ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zamitnuta', `Chyba při notifikaci ZAMITNUTA: ${triggerError.message}`);
@@ -11268,7 +11248,6 @@ function OrderForm25() {
                 order_number: orderNumber,
                 order_subject: formData.predmet || ''
               });
-              console.log('📧 ORDER_AWAITING_CHANGES notification response:', notifResponseUpd5);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-ceka-se', `Notifikace odeslána: objednávka vrácena k doplnění ${orderNumber}`);
             } catch (triggerError) {
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-ceka-se', `Chyba při notifikaci CEKA_SE: ${triggerError.message}`);
