@@ -10631,9 +10631,9 @@ function OrderForm25() {
                 {
                   order_number: orderNumber,
                   order_subject: formData.predmet || '',
-                  commander_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  creator_id: formData.objednatel_id,
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu pro backend
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu pro backend
+                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu pro backend
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -10663,9 +10663,9 @@ function OrderForm25() {
                 {
                   order_number: orderNumber,
                   order_subject: formData.predmet || '',
-                  commander_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  creator_id: formData.objednatel_id,
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -11156,9 +11156,9 @@ function OrderForm25() {
                 {
                   order_number: orderNumber,
                   order_subject: formData.predmet || '',
-                  commander_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  creator_id: formData.objednatel_id,
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,
@@ -11191,9 +11191,9 @@ function OrderForm25() {
                 {
                   order_number: orderNumber,
                   order_subject: formData.predmet || '',
-                  commander_id: formData.prikazce_id,
-                  garant_id: formData.garant_uzivatel_id,
-                  creator_id: formData.objednatel_id,
+                  prikazce_id: formData.prikazce_id,  // ✅ OPRAVA: Správný název fieldu
+                  garant_uzivatel_id: formData.garant_uzivatel_id,  // ✅ OPRAVA: Správný název fieldu
+                  objednatel_id: formData.objednatel_id,  // ✅ OPRAVA: Správný název fieldu
                   supplier_name: formData.dodavatel_nazev || 'Neuvedeno',
                   financovani_json: JSON.stringify(orderData.financovani || {}),
                   strediska_names: strediskaNazvy,

@@ -28,6 +28,17 @@
  */
 function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
     try {
+        // 🔍 DEBUG: Log incoming event data
+        error_log("🔍 HIERARCHY TRIGGER DEBUG - Event Data Received:");
+        error_log("   eventType: $eventType");
+        error_log("   eventData keys: " . implode(', ', array_keys($eventData)));
+        error_log("   prikazce_id: " . ($eventData['prikazce_id'] ?? 'NOT SET'));
+        error_log("   garant_uzivatel_id: " . ($eventData['garant_uzivatel_id'] ?? 'NOT SET'));
+        error_log("   garant_id: " . ($eventData['garant_id'] ?? 'NOT SET'));
+        error_log("   objednatel_id: " . ($eventData['objednatel_id'] ?? 'NOT SET'));
+        error_log("   creator_id: " . ($eventData['creator_id'] ?? 'NOT SET'));
+        error_log("   commander_id: " . ($eventData['commander_id'] ?? 'NOT SET'));
+        
         // 1. ZKONTROLOVAT GLOBAL SETTINGS - je hierarchie zapnutá?
         $settingsStmt = $pdo->query("
             SELECT klic, hodnota 
@@ -318,7 +329,21 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
     if (!isset($scopeDef['roleId']) && isset($nodeData['roleId'])) {
         $scopeDef['roleId'] = $nodeData['roleId'];
     }
-    $scopeType = $scopeDef['type'];
+    
+    // ✅ OPRAVA: Fallback pro scope type pokud chybí (pravděpodobně chyba při ukládání z editoru)
+    $scopeType = $scopeDef['type'] ?? null;
+    
+    // Pokud type chybí, ale jsou definované fields → DYNAMIC_FROM_ENTITY
+    if (!$scopeType && (isset($scopeDef['fields']) || isset($scopeDef['field']))) {
+        $scopeType = 'DYNAMIC_FROM_ENTITY';
+        error_log("HIERARCHY TRIGGER: Auto-detected scope type as DYNAMIC_FROM_ENTITY (fields present)");
+    }
+    
+    // Pokud stále chybí → default ALL
+    if (!$scopeType) {
+        $scopeType = 'ALL_IN_ROLE';
+        error_log("HIERARCHY TRIGGER: Missing scope type, defaulting to ALL_IN_ROLE");
+    }
     
     try {
         if ($nodeType === 'role') {

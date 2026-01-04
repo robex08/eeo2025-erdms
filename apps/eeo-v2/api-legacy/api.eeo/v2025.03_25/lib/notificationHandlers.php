@@ -2017,7 +2017,7 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             'items_count' => $items['items_count'] ?? 0,
             'items_total_s_dph' => number_format($items['items_total_s_dph'] ?? 0, 0, ',', ' ') . ' Kč',
             
-            // Účastníci
+            // Účastníci - JMÉNA
             'creator_name' => $order['creator_name'] ?? 'Neznámý',
             'objednatel_name' => $order['objednatel_name'] ?? 'Nepřiřazen',
             'prikazce_name' => $order['prikazce_name'] ?? 'Nepřiřazen',
@@ -2027,6 +2027,14 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             'approval_date' => !empty($order['dt_schvaleni']) ? date('d.m.Y', strtotime($order['dt_schvaleni'])) : '-',
             'trigger_user_name' => $trigger_user_name,  // Ten kdo akci vykonal (schvalovatel/zamítač)
             'action_performed_by' => $trigger_user_name,  // ✅ OPRAVENO: Stejný jako trigger_user_name pro frontend (NotificationDropdown.js řádek 663)
+            
+            // ✅ NOVÉ: Účastníci - ID pro hierarchii
+            'objednavka_id' => $order['id'] ?? null,
+            'uzivatel_id' => $order['uzivatel_id'] ?? null,           // Vytvořil
+            'objednatel_id' => $order['objednatel_id'] ?? null,       // Objednatel
+            'prikazce_id' => $order['prikazce_id'] ?? null,           // Příkazce
+            'garant_uzivatel_id' => $order['garant_uzivatel_id'] ?? null, // Garant
+            'schvalovatel_id' => $order['schvalovatel_id'] ?? null,   // Schvalovatel
             
             // Střediska a financování
             'strediska' => $strediska_text,
@@ -2556,6 +2564,17 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
     error_log("║  Object:    " . str_pad($objectId, 50) . "║");
     error_log("║  User:      " . str_pad($triggerUserId, 50) . "║");
     error_log("║  Frontend:  " . str_pad(count($placeholderData) . " placeholders", 50) . "║");
+    
+    // ✅ DEBUG: Kdo volal notificationRouter?
+    $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+    $caller = 'UNKNOWN';
+    if (isset($backtrace[1])) {
+        $callerFile = basename($backtrace[1]['file'] ?? 'unknown');
+        $callerFunction = $backtrace[1]['function'] ?? 'unknown';
+        $caller = $callerFile . '::' . $callerFunction;
+    }
+    error_log("║  Caller:    " . str_pad($caller, 50) . "║");
+    
     error_log("╚════════════════════════════════════════════════════════════════╝");
     error_log("");
     
@@ -2566,7 +2585,8 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             'event' => $eventType,
             'object_id' => $objectId,
             'trigger_user' => $triggerUserId,
-            'placeholder_count' => count($placeholderData)
+            'placeholder_count' => count($placeholderData),
+            'called_by' => $caller
         ])]);
     } catch (Exception $e) {
         error_log("DEBUG LOG FAILED: " . $e->getMessage());
@@ -2656,11 +2676,14 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         // Konverze výstupu z hierarchyTriggers na formát očekávaný notificationRouter
         $recipients = array();
         if ($hierarchyResult && isset($hierarchyResult['recipients'])) {
+            $variantId = $hierarchyResult['variant_id'] ?? null;  // ✅ Template ID z hierarchie
+            
             foreach ($hierarchyResult['recipients'] as $recipient) {
                 $recipients[] = array(
                     'uzivatel_id' => $recipient['user_id'],
                     'recipientRole' => $recipient['priority'] ?? 'INFO',
                     'templateVariantKey' => $recipient['priority'] ?? 'INFO',
+                    'templateId' => $variantId,  // ✅ OPRAVA: Přidat template ID!
                     'sendEmail' => $recipient['delivery']['email'] ?? false,
                     'sendInApp' => $recipient['delivery']['inApp'] ?? true
                 );

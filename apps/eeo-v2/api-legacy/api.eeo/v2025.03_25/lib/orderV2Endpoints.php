@@ -489,13 +489,6 @@ function handle_order_v2_list($input, $config, $queries) {
             $whereClause = 'WHERE ' . implode(' AND ', $whereConditions);
         }
         
-        // 🔥 DEBUG: Add WHERE to global debug for frontend
-        if (!isset($HIERARCHY_DEBUG_INFO)) {
-            $HIERARCHY_DEBUG_INFO = array();
-        }
-        $HIERARCHY_DEBUG_INFO['backend_where_clause'] = $whereClause;
-        $HIERARCHY_DEBUG_INFO['backend_params'] = $params;
-        
         error_log("Order V2 LIST: DB connection OK");
         error_log("Order V2 LIST: Table name = " . get_orders_table_name());
         
@@ -669,9 +662,6 @@ function handle_order_v2_list($input, $config, $queries) {
             error_log("Order V2 LIST: Timestamp error: " . $timestampEx->getMessage());
         }
         
-        // 🔥 Přidej hierarchy debug info do response
-        global $HIERARCHY_DEBUG_INFO;
-        
         echo json_encode(array(
             'status' => 'ok',
             'data' => $standardizedOrders,
@@ -685,26 +675,7 @@ function handle_order_v2_list($input, $config, $queries) {
                     'has_more' => $hasMore
                 ),
                 'filters_applied' => count($params),
-                'timestamp' => $apiTimestamp,
-                // 🔥 NOVÉ: Počty pre analýzu admin filtrovania
-                'admin_analysis' => array(
-                    'total_with_filters' => (int)$totalCount,
-                    'total_without_permission_filters' => (int)$totalWithoutPermissionFilters,
-                    'is_admin_by_role' => $isAdminByRole,
-                    'is_full_admin' => $isFullAdmin,
-                    'has_order_old' => $hasOrderOld,
-                    'has_order_read_all' => $hasOrderReadAll,
-                    'has_read_all_permissions' => $hasReadAllPermissions,
-                    'role_filter_applied' => !$isFullAdmin && !$hasOrderOld,
-                    'filter_difference' => (int)($totalWithoutPermissionFilters - $totalCount),
-                    'raw_permissions' => $user_permissions,
-                    'raw_roles' => $user_roles,
-                    'debug_in_array_order_old' => in_array('ORDER_OLD', $user_permissions),
-                    'debug_in_array_order_read_all' => in_array('ORDER_READ_ALL', $user_permissions),
-                    'debug_permissions_count' => count($user_permissions)
-                ),
-                // 🔥 HIERARCHY DEBUG INFO - viditelné v F12 konzoli
-                'hierarchy_debug' => $HIERARCHY_DEBUG_INFO ?? array('not_available' => true)
+                'timestamp' => $apiTimestamp
             )
         ));
         
@@ -1427,6 +1398,9 @@ function handle_order_v2_update($input, $config, $queries) {
         // === NOTIFIKAČNÍ SYSTÉM ===
         error_log("Order V2 UPDATE: Starting notification check for order ID $order_id");
         
+        // 🔥 DEBUG: Force immediate debug info
+        file_put_contents('/tmp/debug_order_update.log', date('Y-m-d H:i:s') . " - Starting notification check for order ID $order_id\n", FILE_APPEND);
+        
         // Zjistit, jaká událost nastala podle změny workflow stavu
         require_once __DIR__ . '/notificationHandlers.php';
         
@@ -1446,116 +1420,18 @@ function handle_order_v2_update($input, $config, $queries) {
         error_log("Order V2 UPDATE: Old workflow: " . json_encode($old_workflow_array));
         error_log("Order V2 UPDATE: New workflow: " . json_encode($new_workflow_array));
         
+        // 🔥 DEBUG: Force immediate debug info
+        file_put_contents('/tmp/debug_order_update.log', date('Y-m-d H:i:s') . " - Old workflow: " . json_encode($old_workflow_array) . " | New workflow: " . json_encode($new_workflow_array) . "\n", FILE_APPEND);
+        
         // Helper funkce pro detekci workflow stavu v array
         $hasWorkflowState = function($workflow_array, $state_to_find) {
             return is_array($workflow_array) && in_array($state_to_find, $workflow_array);
         };
         
-        // TRIGGER NOTIFIKACI JEN POKUD SE WORKFLOW STAV ZMĚNIL!
-        // Porovnat jako JSON stringy (normalize arraye)
-        $old_workflow_json = json_encode($old_workflow_array);
-        $new_workflow_json = json_encode($new_workflow_array);
-        
-        if (!empty($new_workflow_array) && $old_workflow_json !== $new_workflow_json) {
-            error_log("Order V2 UPDATE: Workflow changed from '$old_workflow_json' to '$new_workflow_json'");
-            
-            // ODESLANA_KE_SCHVALENI - pokud nově má a dříve neměl
-            if ($hasWorkflowState($new_workflow_array, 'ODESLANA_KE_SCHVALENI') && 
-                !$hasWorkflowState($old_workflow_array, 'ODESLANA_KE_SCHVALENI')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_PENDING_APPROVAL for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_PENDING_APPROVAL', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_PENDING_APPROVAL result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // SCHVALENA - pokud nově má a dříve neměl
-            if ($hasWorkflowState($new_workflow_array, 'SCHVALENA') && 
-                !$hasWorkflowState($old_workflow_array, 'SCHVALENA')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_APPROVED for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_APPROVED', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_APPROVED result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // ZAMITNUTA - pokud nově má a dříve neměl
-            if ($hasWorkflowState($new_workflow_array, 'ZAMITNUTA') && 
-                !$hasWorkflowState($old_workflow_array, 'ZAMITNUTA')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_REJECTED for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_REJECTED', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_REJECTED result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // DOKONCENA - pokud nově má a dříve neměl
-            if ($hasWorkflowState($new_workflow_array, 'DOKONCENA') && 
-                !$hasWorkflowState($old_workflow_array, 'DOKONCENA')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_COMPLETED for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_COMPLETED', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_COMPLETED result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // ODESLANA - pokud nově má a dříve neměl (odeslána dodavateli)
-            if ($hasWorkflowState($new_workflow_array, 'ODESLANA') && 
-                !$hasWorkflowState($old_workflow_array, 'ODESLANA')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_SENT_TO_SUPPLIER for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_SENT_TO_SUPPLIER', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_SENT_TO_SUPPLIER result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // POTVRZENA - pokud nově má a dříve neměl (potvrzena dodavatelem)
-            if ($hasWorkflowState($new_workflow_array, 'POTVRZENA') && 
-                !$hasWorkflowState($old_workflow_array, 'POTVRZENA')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_CONFIRMED_BY_SUPPLIER for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_CONFIRMED_BY_SUPPLIER', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_CONFIRMED_BY_SUPPLIER result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-            
-            // CEKA_SE - pokud nově má a dříve neměl (vrácena k doplnění)
-            if ($hasWorkflowState($new_workflow_array, 'CEKA_SE') && 
-                !$hasWorkflowState($old_workflow_array, 'CEKA_SE')) {
-                error_log("Order V2 UPDATE: Triggering ORDER_AWAITING_CHANGES for order ID $order_id");
-                try {
-                    $notif_result = notificationRouter($db, 'ORDER_AWAITING_CHANGES', $order_id, $current_user_id, array());
-                    error_log("Order V2 UPDATE: ORDER_AWAITING_CHANGES result: " . json_encode($notif_result));
-                } catch (Exception $notif_ex) {
-                    error_log("Order V2 UPDATE: Notification error: " . $notif_ex->getMessage());
-                    error_log("Order V2 UPDATE: Notification error trace: " . $notif_ex->getTraceAsString());
-                }
-            }
-        } else if (!empty($new_workflow_array)) {
-            error_log("Order V2 UPDATE: Workflow unchanged ('$new_workflow_json') - no notification triggered");
-        } else {
-            error_log("Order V2 UPDATE: No workflow state found, skipping notifications");
-        }
-        
-        error_log("Order V2 UPDATE: Notification check complete for order ID $order_id");
+        // ✅ NOTIFIKACE: Nyní se posílají CENTRÁLNĚ přes frontend triggerNotification()
+        // Backend už neposílá automatické notifikace při změně workflow stavu.
+        // Frontend explicitně volá /notifications/trigger s hierarchií.
+        error_log("Order V2 UPDATE: Notification check complete for order ID $order_id (handled by frontend)");
         
         // Sestavení zprávy o úspěšné aktualizaci
         $message_parts = array('Objednávka byla úspěšně aktualizována');
@@ -2046,7 +1922,26 @@ function updateOrderV2Items($db, $order_id, $items) {
  * Přidá pole 'lp_options' s LP kódy, které může uživatel vybrat pro položky.
  * Filtruje podle objednavka_data.lp_kody (pokud existují).
  * 
- * @param mysqli $db - Database connection
+ * @param PDO $db - Database connection
  * @param array &$order - Reference na objednávku (modifikuje se)
  */
+function enrichOrderWithLPOptions($db, &$order) {
+    try {
+        $lp_options = array();
+        
+        // Získat LP kódy z financování objednávky
+        if (isset($order['financovani']) && isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
+            $lp_options = $order['financovani']['lp_kody'];
+        }
+        
+        // Přidat do objednávky
+        $order['lp_options'] = $lp_options;
+        
+    } catch (Exception $e) {
+        error_log("enrichOrderWithLPOptions Error: " . $e->getMessage());
+        $order['lp_options'] = array();
+    }
+}
+
+?>
 
