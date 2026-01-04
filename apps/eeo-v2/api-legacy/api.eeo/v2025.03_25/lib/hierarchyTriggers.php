@@ -92,126 +92,179 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         
         $eventTypeId = (int)$eventTypeRow['id'];
         
-        // 4. NAJÍT TEMPLATE NODES které mají tento eventType
-        $templateNodes = [];
-        foreach ($structure['nodes'] as $node) {
-            // Support both 'type' (new) and 'typ' (old) for backward compatibility
-            $nodeType = $node['type'] ?? $node['typ'] ?? null;
-            if ($nodeType === 'template' && isset($node['data']['eventTypes'])) {
-                $nodeEventTypes = $node['data']['eventTypes'];
-                
-                // ✅ SUPPORT: Both ID (1) and STRING ("ORDER_PENDING_APPROVAL") formats
-                $hasEventType = false;
-                foreach ($nodeEventTypes as $nodeEventType) {
-                    if ($nodeEventType === $eventTypeId || $nodeEventType === $eventType) {
-                        $hasEventType = true;
-                        break;
-                    }
+        // 4. NAJÍT EDGES které mají tento eventType (nový systém 2025.03_25)
+        // ✅ SUPPORT: Edges s eventTypes (nový) + fallback na template nodes (starý systém)
+        $matchingEdges = [];
+        
+        // PRIORITY 1: Hledat edges s eventTypes (nový systém)
+        foreach ($structure['edges'] as $edge) {
+            if (!isset($edge['data']['eventTypes']) || empty($edge['data']['eventTypes'])) {
+                continue;
+            }
+            
+            $edgeEventTypes = $edge['data']['eventTypes'];
+            
+            // ✅ SUPPORT: Both ID (1) and STRING ("ORDER_PENDING_APPROVAL") formats
+            $hasEventType = false;
+            foreach ($edgeEventTypes as $edgeEventType) {
+                if ($edgeEventType === $eventTypeId || $edgeEventType === $eventType) {
+                    $hasEventType = true;
+                    break;
                 }
-                
-                if ($hasEventType) {
-                    $templateNodes[] = $node;
-                }
+            }
+            
+            if ($hasEventType) {
+                $matchingEdges[] = $edge;
             }
         }
         
-        if (empty($templateNodes)) {
-            error_log("HIERARCHY TRIGGER: No template nodes found for event type '$eventType' (ID: $eventTypeId)");
+        // FALLBACK: Pokud nejsou edges s eventTypes, hledej template nodes (starý systém)
+        if (empty($matchingEdges)) {
+            error_log("HIERARCHY TRIGGER: No edges with eventTypes found, trying template nodes (legacy mode)");
+            
+            $templateNodes = [];
+            foreach ($structure['nodes'] as $node) {
+                $nodeType = $node['type'] ?? $node['typ'] ?? null;
+                if ($nodeType === 'template' && isset($node['data']['eventTypes'])) {
+                    $nodeEventTypes = $node['data']['eventTypes'];
+                    
+                    $hasEventType = false;
+                    foreach ($nodeEventTypes as $nodeEventType) {
+                        if ($nodeEventType === $eventTypeId || $nodeEventType === $eventType) {
+                            $hasEventType = true;
+                            break;
+                        }
+                    }
+                    
+                    if ($hasEventType) {
+                        $templateNodes[] = $node;
+                    }
+                }
+            }
+            
+            // Převést template nodes na edges
+            foreach ($templateNodes as $templateNode) {
+                $templateEdges = array_filter($structure['edges'], function($edge) use ($templateNode) {
+                    return $edge['source'] === $templateNode['id'];
+                });
+                $matchingEdges = array_merge($matchingEdges, $templateEdges);
+            }
+        }
+        
+        if (empty($matchingEdges)) {
+            error_log("HIERARCHY TRIGGER: No edges found for event type '$eventType' (ID: $eventTypeId)");
             return false;
         }
         
-        error_log("HIERARCHY TRIGGER: Found " . count($templateNodes) . " template nodes for event '$eventType'");
+        error_log("HIERARCHY TRIGGER: Found " . count($matchingEdges) . " edges for event '$eventType'");
         
-        // 5. PRO KAŽDÝ TEMPLATE PROJÍT JEHO EDGES a RESOLVE PŘÍJEMCE
+        // 5. PRO KAŽDÝ EDGE RESOLVE PŘÍJEMCE
         $allRecipients = [];
         $variantId = null;
         $priority = 'WARNING'; // Default
         
-        foreach ($templateNodes as $templateNode) {
-            // Najít edges které vycházejí z tohoto template
-            $templateEdges = array_filter($structure['edges'], function($edge) use ($templateNode, $eventTypeId) {
-                // Edge musí vycházet z template
-                if ($edge['source'] !== $templateNode['id']) {
-                    return false;
+        foreach ($matchingEdges as $edge) {
+            // Najít SOURCE TEMPLATE pro variant resolution
+            $templateNode = null;
+            foreach ($structure['nodes'] as $node) {
+                $nodeType = $node['type'] ?? $node['typ'] ?? null;
+                if ($node['id'] === $edge['source'] && $nodeType === 'template') {
+                    $templateNode = $node;
+                    break;
                 }
-                
-                // Edge musí mít tento eventType (nebo žádný = všechny)
-                if (isset($edge['data']['eventTypes']) && !empty($edge['data']['eventTypes'])) {
-                    return in_array($eventTypeId, $edge['data']['eventTypes']);
-                }
-                
-                // Pokud edge nemá eventTypes, platí pro všechny eventTypes z template
-                return true;
-            });
+            }
             
-            if (empty($templateEdges)) {
-                error_log("HIERARCHY TRIGGER: No edges found for template '{$templateNode['id']}'");
+            if (!$templateNode) {
+                error_log("HIERARCHY TRIGGER: Template node '{$edge['source']}' not found for edge");
+                continue;
+            }
+            // RESOLVE PRIORITY z edge
+            $edgePriority = $edge['data']['priority'] ?? 'WARNING';
+            if ($edgePriority === 'AUTO') {
+                $edgePriority = resolveAutoPriority($eventData);
+            }
+            
+            // POUŽÍT TEMPLATE ID (ne varianty - ty jsou jen názvy!)
+            if ($variantId === null && isset($templateNode['data']['templateId'])) {
+                $variantId = (int)$templateNode['data']['templateId'];
+            }
+            
+            // Najít TARGET NODE
+            $targetNodeId = $edge['target'];
+            $targetNode = null;
+            foreach ($structure['nodes'] as $node) {
+                if ($node['id'] === $targetNodeId) {
+                    $targetNode = $node;
+                    break;
+                }
+            }
+            
+            if (!$targetNode) {
+                error_log("HIERARCHY TRIGGER: Target node '$targetNodeId' not found");
                 continue;
             }
             
-            error_log("HIERARCHY TRIGGER: Found " . count($templateEdges) . " edges for template '{$templateNode['id']}'");
+            // RESOLVE PŘÍJEMCE podle typu TARGET NODE
+            $recipients = resolveTargetNodeRecipients($targetNode, $eventData, $pdo);
             
-            // Pro každý edge resolve příjemce
-            foreach ($templateEdges as $edge) {
-                // RESOLVE PRIORITY z edge
-                $edgePriority = $edge['data']['priority'] ?? 'WARNING';
-                if ($edgePriority === 'AUTO') {
-                    $edgePriority = resolveAutoPriority($eventData);
+            if (!empty($recipients)) {
+                error_log("HIERARCHY TRIGGER: Resolved " . count($recipients) . " recipients from node '{$targetNode['id']}' (Priority: $edgePriority)");
+                foreach ($recipients as $r) {
+                    error_log("  → User {$r['user_id']}: {$r['email']}");
                 }
-                
-                // První edge určuje prioritu (můžeme později rozšířit o merge logic)
-                if ($priority === 'WARNING') {
-                    $priority = $edgePriority;
+                // Přidat priority k KAŽDÉMU příjemci z tohoto edge
+                foreach ($recipients as &$recipient) {
+                    $recipient['priority'] = $edgePriority;
                 }
-                
-                // RESOLVE VARIANT z template podle priority
-                $variantKey = strtolower($edgePriority) . 'Variant';
-                if (isset($templateNode['data'][$variantKey])) {
-                    $variantId = (int)$templateNode['data'][$variantKey];
-                }
-                
-                // Najít TARGET NODE
-                $targetNodeId = $edge['target'];
-                $targetNode = null;
-                foreach ($structure['nodes'] as $node) {
-                    if ($node['id'] === $targetNodeId) {
-                        $targetNode = $node;
-                        break;
-                    }
-                }
-                
-                if (!$targetNode) {
-                    error_log("HIERARCHY TRIGGER: Target node '$targetNodeId' not found");
-                    continue;
-                }
-                
-                // RESOLVE PŘÍJEMCE podle typu TARGET NODE
-                $recipients = resolveTargetNodeRecipients($targetNode, $eventData, $pdo);
-                
-                if (!empty($recipients)) {
-                    error_log("HIERARCHY TRIGGER: Resolved " . count($recipients) . " recipients from node '{$targetNode['id']}'");
-                    $allRecipients = array_merge($allRecipients, $recipients);
-                }
+                unset($recipient); // MUSÍ být - jinak reference kontaminuje další foreach!
+                $allRecipients = array_merge($allRecipients, $recipients);
             }
         }
         
         // DEDUPLIKACE příjemců (stejný user_id může být v několika rolích/úsecích)
+        // POZOR: Zachovat nejvyšší prioritu pokud user je víckrát!
         $uniqueRecipients = [];
-        $seenUserIds = [];
+        $seenUsers = [];
+        
+        error_log("HIERARCHY TRIGGER: Starting deduplication with " . count($allRecipients) . " total recipients");
+        foreach ($allRecipients as $i => $r) {
+            error_log("  allRecipients[$i]: user_id={$r['user_id']}, email={$r['email']}, priority={$r['priority']}");
+        }
         
         foreach ($allRecipients as $recipient) {
             $userId = $recipient['user_id'];
-            if (!in_array($userId, $seenUserIds)) {
-                $seenUserIds[] = $userId;
-                $uniqueRecipients[] = $recipient;
+            error_log("  Processing User $userId...");
+            
+            if (!isset($seenUsers[$userId])) {
+                error_log("    → NEW user, adding to list");
+                $seenUsers[$userId] = $recipient;
+            } else {
+                error_log("    → DUPLICATE user, merging delivery settings");
+                // Sloučit delivery (OR logic - pokud jeden má email=true, zachovat true)
+                $existing = $seenUsers[$userId];
+                $seenUsers[$userId]['delivery']['email'] = ($existing['delivery']['email'] ?? false) || ($recipient['delivery']['email'] ?? false);
+                $seenUsers[$userId]['delivery']['inApp'] = ($existing['delivery']['inApp'] ?? false) || ($recipient['delivery']['inApp'] ?? false);
+                $seenUsers[$userId]['delivery']['sms'] = ($existing['delivery']['sms'] ?? false) || ($recipient['delivery']['sms'] ?? false);
+                
+                // Zachovat nejvyšší prioritu (URGENT > WARNING > INFO)
+                $priorityOrder = ['INFO' => 1, 'WARNING' => 2, 'URGENT' => 3];
+                $existingPrio = $priorityOrder[$existing['priority'] ?? 'INFO'] ?? 1;
+                $newPrio = $priorityOrder[$recipient['priority'] ?? 'INFO'] ?? 1;
+                if ($newPrio > $existingPrio) {
+                    $seenUsers[$userId]['priority'] = $recipient['priority'];
+                }
             }
         }
         
-        error_log("HIERARCHY TRIGGER: Total unique recipients: " . count($uniqueRecipients) . ", Priority: $priority, Variant ID: $variantId");
+        $uniqueRecipients = array_values($seenUsers);
+        $priority = 'WARNING'; // Default pro zpětnou kompatibilitu
+        
+        error_log("HIERARCHY TRIGGER: Total unique recipients: " . count($uniqueRecipients) . ", Template ID: $variantId");
         
         return [
             'recipients' => $uniqueRecipients,
             'variant_id' => $variantId,
+            'variant_key' => $priority,
             'priority' => $priority,
             'profile_id' => $profileId,
             'profile_name' => $profile['nazev']
@@ -257,18 +310,22 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
         return [];
     }
     
-    // Delivery preferences z NODE (default: email + inApp)
+    // READ DELIVERY SETTINGS (pouze 'delivery', žádná duplikace!)
     $delivery = $nodeData['delivery'] ?? ['email' => true, 'inApp' => true, 'sms' => false];
     
-    // Scope definition
+    // ✅ SCOPE COMPATIBILITY: Auto-add roleId if missing but nodeData['roleId'] exists
     $scopeDef = $nodeData['scopeDefinition'] ?? ['type' => 'ALL'];
+    if (!isset($scopeDef['roleId']) && isset($nodeData['roleId'])) {
+        $scopeDef['roleId'] = $nodeData['roleId'];
+    }
     $scopeType = $scopeDef['type'];
     
     try {
         if ($nodeType === 'role') {
-            $roleId = $nodeData['roleId'] ?? null;
+            // ✅ ROLEID COMPATIBILITY: Try scopeDefinition.roleId first, fallback to nodeData.roleId
+            $roleId = $scopeDef['roleId'] ?? $nodeData['roleId'] ?? null;
             if (!$roleId) {
-                error_log("HIERARCHY TRIGGER: Role node missing roleId");
+                error_log("HIERARCHY TRIGGER: Role node missing roleId (checked both scopeDefinition and nodeData)");
                 return [];
             }
             
@@ -316,29 +373,64 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
                 }
                 
             } elseif ($scopeType === 'DYNAMIC_FROM_ENTITY') {
-                // Dynamicky z entity field
-                $field = $scopeDef['field'] ?? null;
-                if (!$field || !isset($eventData[$field])) {
-                    error_log("HIERARCHY TRIGGER: DYNAMIC field '$field' not found in event data");
+                // ✅ NOVÝ SYSTÉM 2025.03_25: Podpora pro MULTI-FIELD (fields array)
+                // Dynamicky z entity field(s) - podporuje 'field' (starý) i 'fields' (nový)
+                
+                // ZPĚTNÁ KOMPATIBILITA: Podpora pro starý formát {field: "prikazce_id"}
+                $fields = [];
+                if (isset($scopeDef['fields']) && is_array($scopeDef['fields']) && !empty($scopeDef['fields'])) {
+                    // NOVÝ FORMÁT: {fields: ["prikazce_id", "objednatel_id", "garant_uzivatel_id"]}
+                    $fields = $scopeDef['fields'];
+                    error_log("HIERARCHY TRIGGER: DYNAMIC - using MULTI-FIELD mode with " . count($fields) . " fields");
+                } elseif (isset($scopeDef['field']) && $scopeDef['field']) {
+                    // STARÝ FORMÁT: {field: "prikazce_id"} - převést na array
+                    $fields = [$scopeDef['field']];
+                    error_log("HIERARCHY TRIGGER: DYNAMIC - using SINGLE-FIELD mode (legacy)");
+                } else {
+                    error_log("HIERARCHY TRIGGER: DYNAMIC - no field(s) specified in scopeDefinition");
                     return [];
                 }
                 
-                $userId = (int)$eventData[$field];
-                if ($userId > 0) {
-                    $stmt = $pdo->prepare("
-                        SELECT id as user_id, email, username
-                        FROM " . TBL_UZIVATELE . "
-                        WHERE id = ? AND aktivni = 1
-                    ");
-                    $stmt->execute([$userId]);
+                // Projít všechny fieldy a vyresolvovat uživatele
+                $processedUserIds = []; // Zabránit duplicitám v rámci jednoho nodu
+                foreach ($fields as $field) {
+                    if (!isset($eventData[$field])) {
+                        error_log("HIERARCHY TRIGGER: DYNAMIC - field '$field' not found in event data, skipping");
+                        continue;
+                    }
                     
-                    if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                        $recipients[] = [
-                            'user_id' => (int)$row['user_id'],
-                            'email' => $row['email'],
-                            'username' => $row['username'],
-                            'delivery' => $delivery
-                        ];
+                    $userId = (int)$eventData[$field];
+                    
+                    // Přeskočit pokud už byl zpracován (v rámci tohoto nodu)
+                    if (in_array($userId, $processedUserIds)) {
+                        error_log("HIERARCHY TRIGGER: DYNAMIC - userId=$userId from field='$field' already processed, skipping");
+                        continue;
+                    }
+                    
+                    error_log("HIERARCHY TRIGGER: DYNAMIC - field='$field', userId=$userId");
+                    
+                    if ($userId > 0) {
+                        // ZKONTROLOVAT že user má danou roli!
+                        $stmt = $pdo->prepare("
+                            SELECT u.id as user_id, u.email, u.username
+                            FROM " . TBL_UZIVATELE . " u
+                            INNER JOIN " . TBL_UZIVATELE_ROLE . " ur ON u.id = ur.uzivatel_id
+                            WHERE u.id = ? AND ur.role_id = ? AND u.aktivni = 1
+                        ");
+                        $stmt->execute([$userId, $roleId]);
+                        
+                        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                            $recipients[] = [
+                                'user_id' => (int)$row['user_id'],
+                                'email' => $row['email'],
+                                'username' => $row['username'],
+                                'delivery' => $delivery
+                            ];
+                            $processedUserIds[] = $userId;
+                            error_log("HIERARCHY TRIGGER: DYNAMIC - User $userId from field '$field' added");
+                        } else {
+                            error_log("HIERARCHY TRIGGER: DYNAMIC - User $userId from field '$field' does not have role $roleId");
+                        }
                     }
                 }
             }

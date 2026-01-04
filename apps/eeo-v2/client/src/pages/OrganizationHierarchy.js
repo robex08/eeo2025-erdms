@@ -1612,7 +1612,8 @@ const OrganizationHierarchy = () => {
   
   // TARGET NODE: scopeDefinition a delivery options (Varianta B)
   const [targetScopeType, setTargetScopeType] = useState('ALL'); // ALL / SELECTED / DYNAMIC_FROM_ENTITY
-  const [targetScopeField, setTargetScopeField] = useState('prikazce_id'); // pro DYNAMIC_FROM_ENTITY
+  const [targetScopeField, setTargetScopeField] = useState('prikazce_id'); // pro DYNAMIC_FROM_ENTITY (LEGACY - single field)
+  const [targetScopeFields, setTargetScopeFields] = useState(['prikazce_id']); // pro DYNAMIC_FROM_ENTITY (MULTI-FIELD)
   const [targetSelectedIds, setTargetSelectedIds] = useState([]); // pro SELECTED
   const [targetIncludeSubordinates, setTargetIncludeSubordinates] = useState(false);
   const [targetDeliveryEmail, setTargetDeliveryEmail] = useState(true);
@@ -1620,6 +1621,29 @@ const OrganizationHierarchy = () => {
   const [targetDeliverySms, setTargetDeliverySms] = useState(false);
   const [availableUsersForRole, setAvailableUsersForRole] = useState([]); // Seznam uživatelů pro výběr
   const [loadingUsers, setLoadingUsers] = useState(false);
+  
+  // Kompletní seznam všech uživatelských polí z DB tabulek
+  const allUserFields = [
+    // Základní pole z 25a_objednavky
+    { value: 'uzivatel_id', label: '👨‍💼 uzivatel_id (Uživatel - vytvořil)', table: '25a_objednavky' },
+    { value: 'uzivatel_akt_id', label: '👨‍💻 uzivatel_akt_id (Uživatel - aktuální)', table: '25a_objednavky' },
+    { value: 'garant_uzivatel_id', label: '🛡️ garant_uzivatel_id (Garant)', table: '25a_objednavky' },
+    { value: 'objednatel_id', label: '📝 objednatel_id (Objednatel)', table: '25a_objednavky' },
+    { value: 'schvalovatel_id', label: '✅ schvalovatel_id (Schvalovatel)', table: '25a_objednavky' },
+    { value: 'prikazce_id', label: '👤 prikazce_id (Příkazce)', table: '25a_objednavky' },
+    { value: 'odesilatel_id', label: '📤 odesilatel_id (Odesílatel)', table: '25a_objednavky' },
+    { value: 'dodavatel_potvrdil_id', label: '🏢 dodavatel_potvrdil_id (Dodavatel - potvrdil)', table: '25a_objednavky' },
+    { value: 'zverejnil_id', label: '📢 zverejnil_id (Zveřejnil)', table: '25a_objednavky' },
+    { value: 'fakturant_id', label: '💰 fakturant_id (Fakturant)', table: '25a_objednavky' },
+    { value: 'dokoncil_id', label: '🏁 dokoncil_id (Dokončil)', table: '25a_objednavky' },
+    { value: 'potvrdil_vecnou_spravnost_id', label: '🔍 potvrdil_vecnou_spravnost_id (Potvrdil věcnou správnost)', table: '25a_objednavky' },
+    { value: 'zamek_uzivatel_id', label: '🔒 zamek_uzivatel_id (Zámek uživatele)', table: '25a_objednavky' },
+    
+    // Pole z 25a_objednavky_faktury
+    { value: 'fa_predana_zam_id', label: '📋 fa_predana_zam_id (Faktura - předána zaměstnanci)', table: '25a_faktury' },
+    { value: 'vytvoril_uzivatel_id', label: '🆕 vytvoril_uzivatel_id (Vytvořil uživatel)', table: '25a_faktury' },
+    { value: 'aktualizoval_uzivatel_id', label: '📝 aktualizoval_uzivatel_id (Aktualizoval uživatel)', table: '25a_faktury' },
+  ];
   
   // Source INFO recipients configuration
   const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
@@ -1791,6 +1815,97 @@ const OrganizationHierarchy = () => {
     }
   }, [edgeScopeFilter, edgeSendEmail, edgeSendInApp, edgeRecipientRole, edgeEventTypes, sourceInfoEnabled, sourceInfoFields, selectedEdge]);
   
+  // MULTI-FIELD: Synchronizace targetScopeFields do selectedNode při změně
+  useEffect(() => {
+    if (selectedNode && selectedNode.data?.scopeDefinition && targetScopeFields?.length > 0) {
+      // Validace fields
+      const validFields = [
+        'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
+        'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
+        'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+      ];
+      
+      const cleanedFields = targetScopeFields.filter(field => {
+        const isValid = validFields.includes(field);
+        if (!isValid) {
+          console.warn(`❌ Invalid field '${field}' filtered out from targetScopeFields`);
+        }
+        return isValid;
+      });
+      
+      if (cleanedFields.length !== targetScopeFields.length) {
+        console.log(`🧹 Cleaned targetScopeFields: ${targetScopeFields.length} -> ${cleanedFields.length}`);
+        setTargetScopeFields(cleanedFields);
+        return; // Zabráníme nekonečné smyčce
+      }
+      
+      // Aktualizovat node konfiguraci s multi-field
+      setNodes(prevNodes => 
+        prevNodes.map(node => {
+          if (node.id === selectedNode.id) {
+            const updatedNode = {
+              ...node,
+              data: {
+                ...node.data,
+                scopeDefinition: {
+                  ...node.data.scopeDefinition,
+                  fields: cleanedFields,
+                  // Odebrat starý single field pokud existuje
+                  field: undefined
+                }
+              }
+            };
+            delete updatedNode.data.scopeDefinition.field;
+            
+            console.log(`🔄 [Multi-field] Updated node ${node.id} scopeDefinition.fields:`, cleanedFields);
+            return updatedNode;
+          }
+          return node;
+        })
+      );
+    }
+  }, [targetScopeFields, selectedNode]);
+  
+  // MULTI-FIELD: Synchronizace sourceInfoFields do selectedEdge při změně
+  useEffect(() => {
+    if (selectedEdge && sourceInfoEnabled && sourceInfoFields?.length > 0) {
+      const validFields = [
+        'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
+        'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
+        'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+      ];
+      
+      const cleanedFields = sourceInfoFields.filter(field => validFields.includes(field));
+      
+      if (cleanedFields.length !== sourceInfoFields.length) {
+        setSourceInfoFields(cleanedFields);
+        return;
+      }
+      
+      // Aktualizovat edge konfiguraci s multi-field
+      setEdges(prevEdges => 
+        prevEdges.map(edge => {
+          if (edge.id === selectedEdge.id) {
+            const updatedEdge = {
+              ...edge,
+              data: {
+                ...edge.data,
+                source_info_recipients: {
+                  enabled: sourceInfoEnabled,
+                  fields: cleanedFields
+                }
+              }
+            };
+            
+            console.log(`🔄 [Multi-field] Updated edge ${edge.id} source_info_recipients.fields:`, cleanedFields);
+            return updatedEdge;
+          }
+          return edge;
+        })
+      );
+    }
+  }, [sourceInfoFields, sourceInfoEnabled, selectedEdge]);
+  
   // Auto-save template variant do node
   React.useEffect(() => {
     if (selectedNode && selectedNode.data?.type === 'template') {
@@ -1929,15 +2044,99 @@ const OrganizationHierarchy = () => {
     localStorage.setItem('hierarchy_expanded_sections', JSON.stringify(expandedSections));
   }, [expandedSections]);
 
-  // Auto-save do localStorage při změně nodes/edges
+  // Auto-save do localStorage při změně nodes/edges s MULTI-FIELD validací
   useEffect(() => {
     if (nodes.length > 0 || edges.length > 0) {
       try {
-        localStorage.setItem(LS_NODES_KEY, JSON.stringify(nodes));
-        localStorage.setItem(LS_EDGES_KEY, JSON.stringify(edges));
+        // VALIDACE A NORMALIZACE před uložením do localStorage
+        const normalizedNodes = nodes.map(node => {
+          const normalized = { ...node };
+          
+          // MIGRACE: field -> fields pro DYNAMIC_FROM_ENTITY
+          if (normalized.data?.scopeDefinition) {
+            const scope = normalized.data.scopeDefinition;
+            
+            // Převést starý formát field na nový fields
+            if (scope.field && !scope.fields) {
+              normalized.data.scopeDefinition.fields = [scope.field];
+              delete normalized.data.scopeDefinition.field;
+              console.log(`🔄 [localStorage] Migrated node ${node.id} field '${scope.field}' to fields array`);
+            }
+            
+            // Validace fields array
+            if (scope.fields && Array.isArray(scope.fields)) {
+              const validFields = [
+                'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
+                'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
+                'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+              ];
+              
+              normalized.data.scopeDefinition.fields = scope.fields.filter(field => {
+                const isValid = validFields.includes(field);
+                if (!isValid) {
+                  console.warn(`❌ [localStorage] Invalid field '${field}' removed from node ${node.id}`);
+                }
+                return isValid;
+              });
+            }
+          }
+          
+          return normalized;
+        });
+        
+        const normalizedEdges = edges.map(edge => {
+          const normalized = { ...edge };
+          
+          // MIGRACE edge source_info_recipients: field -> fields
+          if (normalized.data?.source_info_recipients) {
+            const sourceInfo = normalized.data.source_info_recipients;
+            
+            if (sourceInfo.field && !sourceInfo.fields) {
+              normalized.data.source_info_recipients.fields = [sourceInfo.field];
+              delete normalized.data.source_info_recipients.field;
+              console.log(`🔄 [localStorage] Migrated edge ${edge.id} source_info field to fields array`);
+            }
+            
+            // Validace edge fields
+            if (sourceInfo.fields && Array.isArray(sourceInfo.fields)) {
+              const validFields = [
+                'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
+                'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
+                'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+              ];
+              
+              normalized.data.source_info_recipients.fields = sourceInfo.fields.filter(field => {
+                return validFields.includes(field);
+              });
+            }
+          }
+          
+          return normalized;
+        });
+        
+        // Uložit normalizovaná data
+        localStorage.setItem(LS_NODES_KEY, JSON.stringify(normalizedNodes));
+        localStorage.setItem(LS_EDGES_KEY, JSON.stringify(normalizedEdges));
         localStorage.setItem(LS_TIMESTAMP_KEY, new Date().toISOString());
+        
+        // Přidat metadata pro multi-field tracking
+        localStorage.setItem(`${LS_NODES_KEY}_metadata`, JSON.stringify({
+          version: '1.1',
+          multiFieldSupport: true,
+          nodeCount: normalizedNodes.length,
+          edgeCount: normalizedEdges.length,
+          lastSaved: new Date().toISOString()
+        }));
+        
+        setHasDraft(true);
+        console.log('💾 [localStorage] Saved hierarchy with multi-field validation:', {
+          nodes: normalizedNodes.length,
+          edges: normalizedEdges.length,
+          multiFieldNodes: normalizedNodes.filter(n => n.data?.scopeDefinition?.fields).length
+        });
+        
       } catch (err) {
-        console.warn('Failed to save draft:', err);
+        console.error('❌ [localStorage] Chyba při ukládání draft hierarchie:', err);
       }
     }
   }, [nodes, edges]);
@@ -2038,12 +2237,13 @@ const OrganizationHierarchy = () => {
         setLoading(true);
         setError(null);
 
-        // 1. NEJDŘÍVE zkontrolovat localStorage draft
+        // 1. NEJDŘÍVE zkontrolovat localStorage draft s MULTI-FIELD migrací
         let draftLoaded = false;
         try {
           const savedNodes = localStorage.getItem(LS_NODES_KEY);
           const savedEdges = localStorage.getItem(LS_EDGES_KEY);
           const savedTimestamp = localStorage.getItem(LS_TIMESTAMP_KEY);
+          const savedMetadata = localStorage.getItem(`${LS_NODES_KEY}_metadata`);
           
           if (savedNodes && savedEdges && savedTimestamp) {
             const timestamp = new Date(savedTimestamp);
@@ -2051,23 +2251,96 @@ const OrganizationHierarchy = () => {
             
             // Načíst pouze pokud je draft mladší než 24 hodin
             if (hoursSince < 24) {
-              const parsedNodes = JSON.parse(savedNodes);
-              const parsedEdges = JSON.parse(savedEdges);
+              let parsedNodes = JSON.parse(savedNodes);
+              let parsedEdges = JSON.parse(savedEdges);
+              
+              // MIGRACE STARÉHO FORMÁTU: field -> fields
+              let needsUpdate = false;
+              let parsedMetadata = null;
+              
+              try {
+                parsedMetadata = savedMetadata ? JSON.parse(savedMetadata) : null;
+              } catch (e) {
+                console.warn('⚠️ [localStorage] Invalid metadata format, will migrate');
+              }
+              
+              const isOldFormat = !parsedMetadata || !parsedMetadata.multiFieldSupport;
+              
+              if (isOldFormat) {
+                console.log('🔄 [localStorage] Migrating old format to multi-field...');
+                
+                // MIGRACE NODES: field -> fields
+                parsedNodes = parsedNodes.map(node => {
+                  if (node.data?.scopeDefinition?.field && !node.data.scopeDefinition.fields) {
+                    console.log(`🔄 Migrating node ${node.id} field '${node.data.scopeDefinition.field}' to fields`);
+                    return {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        scopeDefinition: {
+                          ...node.data.scopeDefinition,
+                          fields: [node.data.scopeDefinition.field],
+                          field: undefined
+                        }
+                      }
+                    };
+                  }
+                  return node;
+                });
+                
+                // MIGRACE EDGES: source_info field -> fields
+                parsedEdges = parsedEdges.map(edge => {
+                  if (edge.data?.source_info_recipients?.field && !edge.data.source_info_recipients.fields) {
+                    console.log(`🔄 Migrating edge ${edge.id} source_info field to fields`);
+                    return {
+                      ...edge,
+                      data: {
+                        ...edge.data,
+                        source_info_recipients: {
+                          ...edge.data.source_info_recipients,
+                          fields: [edge.data.source_info_recipients.field],
+                          field: undefined
+                        }
+                      }
+                    };
+                  }
+                  return edge;
+                });
+                
+                needsUpdate = true;
+              }
               
               if (parsedNodes.length > 0 || parsedEdges.length > 0) {
                 draftLoaded = true;
                 setHasDraft(true);
                 setNodes(parsedNodes);
                 setEdges(parsedEdges);
+                
+                // Aktualizovat localStorage s migrovanými daty
+                if (needsUpdate) {
+                  console.log('💾 [localStorage] Saving migrated multi-field format');
+                  localStorage.setItem(LS_NODES_KEY, JSON.stringify(parsedNodes));
+                  localStorage.setItem(LS_EDGES_KEY, JSON.stringify(parsedEdges));
+                  localStorage.setItem(`${LS_NODES_KEY}_metadata`, JSON.stringify({
+                    version: '1.1',
+                    multiFieldSupport: true,
+                    migrated: true,
+                    migratedAt: new Date().toISOString(),
+                    nodeCount: parsedNodes.length,
+                    edgeCount: parsedEdges.length
+                  }));
+                }
               }
             } else {
+              // Smazat zastaralý draft
               localStorage.removeItem(LS_NODES_KEY);
               localStorage.removeItem(LS_EDGES_KEY);
               localStorage.removeItem(LS_TIMESTAMP_KEY);
+              localStorage.removeItem(`${LS_NODES_KEY}_metadata`);
             }
           }
         } catch (err) {
-          console.warn('Failed to restore draft:', err);
+          console.error('❌ [localStorage] Chyba při načítání draft:', err);
         }
 
         // 2. Načíst token a user data
@@ -2448,6 +2721,7 @@ const OrganizationHierarchy = () => {
       if (node.data?.type === 'role' || node.data?.type === 'department' || node.data?.type === 'user') {
         setTargetScopeType(node.data?.scopeDefinition?.type || 'ALL');
         setTargetScopeField(node.data?.scopeDefinition?.field || 'prikazce_id');
+        setTargetScopeFields(node.data?.scopeDefinition?.fields || ['prikazce_id']);
         setTargetSelectedIds(node.data?.scopeDefinition?.selectedIds || []);
         setTargetIncludeSubordinates(node.data?.scopeDefinition?.includeSubordinates || false);
         setTargetDeliveryEmail(node.data?.delivery?.email !== false);
@@ -6594,8 +6868,9 @@ const OrganizationHierarchy = () => {
                               data: {
                                 ...selectedNode.data,
                                 scopeDefinition: {
-                                  ...selectedNode.data.scopeDefinition,
-                                  type: newType
+                                  ...(selectedNode.data.scopeDefinition || {}),
+                                  type: newType,
+                                  roleId: selectedNode.data.roleId
                                 }
                               }
                             };
@@ -6719,7 +6994,7 @@ const OrganizationHierarchy = () => {
                         }}>
                           <strong>💡 Jak to funguje:</strong>
                           <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
-                            <li>Systém načte <strong>všechny účastníky entity</strong> (prikazce_id, garant_uzivatel_id, objednatel_id, uzivatel_id...)</li>
+                            <li>Systém načte <strong>všechny účastníky entity</strong> z vybraných polí (prikazce_id, garant_uzivatel_id, objednatel_id, uzivatel_id, dodavatel_potvrdil_id, fakturant_id, atd.)</li>
                             <li>Pokud je některý z nich <strong>z tohoto úseku</strong>, dostane notifikaci</li>
                             <li>Funguje jako <strong>filtr "úsek"</strong> na seznam účastníků</li>
                           </ul>
@@ -7058,13 +7333,22 @@ const OrganizationHierarchy = () => {
                           onChange={(e) => {
                             const newType = e.target.value;
                             setTargetScopeType(newType);
+                            
+                            // Pokud je DYNAMIC_FROM_ENTITY a field chybí, nastav default
+                            const currentField = selectedNode.data?.scopeDefinition?.field;
+                            const fieldToUse = (newType === 'DYNAMIC_FROM_ENTITY' && !currentField) 
+                              ? targetScopeField || 'prikazce_id' 
+                              : currentField;
+                            
                             const updatedNode = {
                               ...selectedNode,
                               data: {
                                 ...selectedNode.data,
                                 scopeDefinition: {
                                   ...(selectedNode.data.scopeDefinition || {}),
-                                  type: newType
+                                  type: newType,
+                                  roleId: selectedNode.data.roleId,
+                                  ...(newType === 'DYNAMIC_FROM_ENTITY' && { field: fieldToUse })
                                 }
                               }
                             };
@@ -7083,50 +7367,114 @@ const OrganizationHierarchy = () => {
                         </Select>
                       </FormGroup>
                       
-                      {/* DYNAMIC: Výběr pole */}
+                      {/* DYNAMIC: Výběr polí (MULTI-SELECT) */}
                       {targetScopeType === 'DYNAMIC_FROM_ENTITY' && (
                         <FormGroup>
                           <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.85rem' }}>
-                            Pole entity (např. prikazce_id)
+                            🔗 Pole entity pro automatické získání příjemců
                           </Label>
-                          <Select
-                            value={targetScopeField}
-                            onChange={(e) => {
-                              const newField = e.target.value;
-                              setTargetScopeField(newField);
-                              const updatedNode = {
-                                ...selectedNode,
-                                data: {
-                                  ...selectedNode.data,
-                                  scopeDefinition: {
-                                    ...selectedNode.data.scopeDefinition,
-                                    field: newField
-                                  }
-                                }
-                              };
-                              setSelectedNode(updatedNode);
-                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
-                            }}
-                            style={{ 
-                              background: 'white', 
-                              border: '2px solid #fb7185',
-                              fontWeight: '500',
-                              fontSize: '0.85rem'
-                            }}
-                          >
-                            <option value="prikazce_id">👤 prikazce_id (Příkazce)</option>
-                            <option value="garant_uzivatel_id">🛡️ garant_uzivatel_id (Garant)</option>
-                            <option value="objednatel_id">📝 objednatel_id (Objednatel)</option>
-                            <option value="uzivatel_id">👨‍💼 uzivatel_id (Uživatel)</option>
-                            <option value="prikazce_fakturace_id">💰 prikazce_fakturace_id (Příkazce fakturace)</option>
-                          </Select>
                           <div style={{ 
-                            marginTop: '8px', 
-                            fontSize: '0.75rem', 
-                            color: '#9f1239',
-                            fontStyle: 'italic'
+                            padding: '12px', 
+                            background: 'white', 
+                            border: '2px solid #fb7185',
+                            borderRadius: '8px',
+                            maxHeight: '400px',
+                            overflowY: 'auto'
                           }}>
-                            💡 Systém načte uzivatel_id z tohoto pole entity a pošle notifikaci jen těm, kdo mají tuto roli
+                            <div style={{ 
+                              fontSize: '0.75rem', 
+                              color: '#9f1239',
+                              marginBottom: '12px',
+                              fontStyle: 'italic'
+                            }}>
+                              💡 Zaškrtněte pole z kterých chcete získat ID uživatelů. Systém pošle notifikaci všem vybraným uživatelům, pokud mají správnou roli.
+                            </div>
+                            
+                            {allUserFields.map(field => (
+                              <label key={field.value} style={{ 
+                                display: 'flex', 
+                                alignItems: 'flex-start', 
+                                gap: '8px',
+                                padding: '10px',
+                                cursor: 'pointer',
+                                borderRadius: '6px',
+                                transition: 'background 0.2s',
+                                background: targetScopeFields.includes(field.value) ? '#fef3c7' : 'transparent',
+                                border: targetScopeFields.includes(field.value) ? '1px solid #f59e0b' : '1px solid transparent'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = targetScopeFields.includes(field.value) ? '#fef3c7' : '#f9fafb'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = targetScopeFields.includes(field.value) ? '#fef3c7' : 'transparent'}>
+                                <input
+                                  type="checkbox"
+                                  checked={targetScopeFields.includes(field.value)}
+                                  onChange={(e) => {
+                                    const fieldValue = field.value;
+                                    let newFields;
+                                    if (e.target.checked) {
+                                      newFields = [...targetScopeFields, fieldValue];
+                                    } else {
+                                      newFields = targetScopeFields.filter(f => f !== fieldValue);
+                                    }
+                                    setTargetScopeFields(newFields);
+                                    
+                                    // Update single field for backward compatibility
+                                    setTargetScopeField(newFields[0] || 'prikazce_id');
+                                    
+                                    const updatedNode = {
+                                      ...selectedNode,
+                                      data: {
+                                        ...selectedNode.data,
+                                        scopeDefinition: {
+                                          ...selectedNode.data.scopeDefinition,
+                                          fields: newFields, // NOVÝ multi-field systém
+                                          field: newFields[0] || 'prikazce_id' // LEGACY kompatibilita
+                                        }
+                                      }
+                                    };
+                                    setSelectedNode(updatedNode);
+                                    setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
+                                  }}
+                                  style={{ 
+                                    marginTop: '2px',
+                                    transform: 'scale(1.1)'
+                                  }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: '500', color: '#374151' }}>
+                                    {field.label}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '2px' }}>
+                                    Tabulka: {field.table}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                            
+                            {targetScopeFields.length === 0 && (
+                              <div style={{ 
+                                fontSize: '0.8rem', 
+                                color: '#dc2626', 
+                                textAlign: 'center', 
+                                padding: '20px',
+                                fontWeight: '500'
+                              }}>
+                                ⚠️ Musíte vybrat alespoň jedno pole!
+                              </div>
+                            )}
+                            
+                            {targetScopeFields.length > 0 && (
+                              <div style={{ 
+                                marginTop: '12px',
+                                padding: '8px',
+                                background: '#f0fdf4',
+                                border: '1px solid #22c55e',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                color: '#15803d'
+                              }}>
+                                ✅ Vybráno {targetScopeFields.length} pole: {targetScopeFields.join(', ')}
+                              </div>
+                            )}
                           </div>
                         </FormGroup>
                       )}

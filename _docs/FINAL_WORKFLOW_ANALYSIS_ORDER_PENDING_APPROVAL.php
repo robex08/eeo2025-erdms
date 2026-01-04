@@ -140,7 +140,7 @@ foreach ($workflowEdges as $index => $edge) {
     // Načti info o roli
     $roleInfo = ['nazev' => 'NEZNÁMÁ', 'popis' => '', 'active_users' => 0];
     if (isset($scope['roleId'])) {
-        $stmt = $pdo->prepare("SELECT nazev, popis FROM 25_role WHERE id = ?");
+        $stmt = $pdo->prepare("SELECT nazev_role as nazev, Popis as popis FROM 25_role WHERE id = ?");
         $stmt->execute([$scope['roleId']]);
         $role = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($role) {
