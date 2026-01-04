@@ -1154,17 +1154,17 @@ const Orders = () => {
   // Get the current year
   const currentYear = new Date().getFullYear();
 
-  // Retrieve initial year filter or set to the current year
-  const [yearFilter, setYearFilter] = useState(() => getUserStorage('orders_yearFilter', currentYear.toString()));
+  // Retrieve initial year filter or set to 2025 (max year for old orders)
+  const [yearFilter, setYearFilter] = useState(() => getUserStorage('orders_yearFilter', '2025'));
 
-  // Month filter - load from localStorage with user isolation or use "last-quarter" (poslední kvartál) jako výchozí
+  // Month filter - load from localStorage with user isolation or use "10-12" (poslední kvartál 2025) jako výchozí
   const [selectedMonth, setSelectedMonth] = useState(() => {
-    return getUserStorage('orders_selectedMonth', 'last-quarter'); // all, last-month, last-quarter, last-half, nebo "1-3" (konkrétní měsíce)
+    return getUserStorage('orders_selectedMonth', '10-12'); // all, last-month, last-quarter, last-half, nebo "1-3" (konkrétní měsíce)
   });
 
   // Show expanded month options
   const [showExpandedMonths, setShowExpandedMonths] = useState(() => {
-    const saved = getUserStorage('orders_selectedMonth', 'last-quarter');
+    const saved = getUserStorage('orders_selectedMonth', '10-12');
     // Pokud je uložená hodnota mimo základní 4, zobraz rozšířené možnosti
     return saved && !['all', 'last-month', 'last-quarter', 'last-half'].includes(saved);
   });
@@ -1330,33 +1330,35 @@ const Orders = () => {
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const monthSelectRef = useRef(null);
 
-  // Generate year options from 2016 to current year (DESC - od nejnovějšího k nejstaršímu)
+  // Generate year options from 2016 to 2025 (DESC - od nejnovějšího k nejstaršímu)
+  // Omezeno max na 2025, protože od 2026 jsou objednávky v novém systému
   const yearOptions = useMemo(() => {
     const years = []; // Začni bez "Všechny roky"
-    for (let year = currentYear; year >= 2016; year--) {
+    const maxYear = 2025; // Maximum pro staré objednávky
+    for (let year = maxYear; year >= 2016; year--) {
       years.push(year.toString());
     }
     years.push('Všechny roky'); // Přidej "Všechny roky" až na konec
     return years;
-  }, [currentYear]);
+  }, []);
 
   // Function to detect if any filters are active
   const hasActiveFilters = useMemo(() => {
     return globalFilter !== '' ||
            (Array.isArray(garantFilter) && garantFilter.length > 0) ||
            (Array.isArray(druhFilter) && druhFilter.length > 0) ||
-           yearFilter !== currentYear.toString() ||
+           yearFilter !== '2025' ||
            fakturaFilter ||
            pokladniDokFilter ||
            zverejnitFilter;
-  }, [globalFilter, garantFilter, druhFilter, yearFilter, currentYear, fakturaFilter, pokladniDokFilter, zverejnitFilter]);
+  }, [globalFilter, garantFilter, druhFilter, yearFilter, fakturaFilter, pokladniDokFilter, zverejnitFilter]);
 
   // Enhanced clear all filters function
   const clearAllFilters = () => {
     setGlobalFilter('');
     setGarantFilter([]);
     setDruhFilter([]);
-    setYearFilter(currentYear.toString()); // Reset to current year
+    setYearFilter('2025'); // Reset to 2025 (default for old orders)
     setFakturaFilter(false);
     setPokladniDokFilter(false);
     setZverejnitFilter(false);
@@ -1365,7 +1367,7 @@ const Orders = () => {
     setUserStorage('orders_globalFilter', '');
     setUserStorage('orders_garantFilter', []);
     setUserStorage('orders_druhFilter', []);
-    setUserStorage('orders_yearFilter', currentYear.toString());
+    setUserStorage('orders_yearFilter', '2025');
 
     // Also clear calendar-related localStorage keys that might affect OrdersListNew
     try {
@@ -1451,7 +1453,12 @@ const Orders = () => {
 
       setGlobalProgress(60);
 
-        setGlobalProgress(70);
+      // Zobraz počet načtených záznamů
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Načteno ${data.length} objednávek z databáze ${dbSource}`);
+      }
+
+      setGlobalProgress(70);
 
         if (data && Array.isArray(data)) {
 
@@ -1495,13 +1502,18 @@ const Orders = () => {
           }));
 
           setGlobalProgress(80);
+          
+          // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+          if (processedData.length > 100) {
+            await new Promise(resolve => requestAnimationFrame(resolve));
+          }
 
           setOrders(processedData);
 
-          setGlobalProgress(90);
+          setGlobalProgress(95);
 
           // Wait for UI to update
-          await new Promise(resolve => setTimeout(resolve, 600));
+          await new Promise(resolve => setTimeout(resolve, 800));
 
           setLoading(false);
           doneGlobalProgress();
@@ -1709,7 +1721,13 @@ const Orders = () => {
       }
 
       setGlobalProgress(60);
-  // (debug logs removed)
+      
+      // Zobraz počet načtených záznamů
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+      }
+
+      setGlobalProgress(70);
 
       const processedData = Array.isArray(data)
         ? processOrders(data).map((order) => ({
@@ -1753,15 +1771,29 @@ const Orders = () => {
         : [];
 
       setGlobalProgress(80);
+      
+      // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+      if (processedData.length > 100) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      
       setOrders(processedData);
-      setGlobalProgress(90);
+      setGlobalProgress(95);
 
-      // ✅ Počkej chvíli aby se splash stihl zobrazit
-      await new Promise(resolve => setTimeout(resolve, 600));
+      // ✅ Počkej aby se UI stihl vykreslit a uživatel viděl počet načtených záznamů
+      await new Promise(resolve => setTimeout(resolve, 800));
 
       // ✅ TEPRVE TEĎ VYPNU LOADING - data jsou v tabulce!
       setLoading(false);
       doneGlobalProgress();
+      
+      // Zobraz info toast o počtu načtených objednávek
+      if (processedData.length > 0) {
+        showToast(`✅ Načteno ${processedData.length} objednávek (${yearFilter !== 'Všechny roky' ? yearFilter : 'všechny roky'})`, {
+          type: 'success',
+          duration: 3000
+        });
+      }
 
     } catch (err) {
   setError('Nepodařilo se načíst data.');
@@ -2090,13 +2122,17 @@ const Orders = () => {
           setLastLoadDuration(loadDuration);
         }
 
-  // (debug logs removed)
+      setGlobalProgress(60);
+      
+      // Zobraz počet načtených záznamů
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Načteno ${data.length} objednávek z období ${yearFrom} - ${yearTo}`);
+      }
 
-       // console.log('Orders data received:', data); // Log the received data
+      setGlobalProgress(70);
 
-  setGlobalProgress(60);
-        const processedData = Array.isArray(data)
-          ? processOrders(data).map((order) => ({
+      const processedData = Array.isArray(data)
+        ? processOrders(data).map((order) => ({
               ...order,
               prilohy: parseInt(order.prilohy, 10) || 0,
               cislo_lp: order.cislo_lp,
@@ -2137,15 +2173,29 @@ const Orders = () => {
           : [];
 
         setGlobalProgress(80);
+        
+        // Pro velké datasety použij requestAnimationFrame pro hladší rendering
+        if (processedData.length > 100) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        
         setOrders(processedData);
-        setGlobalProgress(90);
+        setGlobalProgress(95);
 
-        // ✅ Počkej chvíli aby se splash stihl zobrazit
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // ✅ Počkej aby se UI stihl vykreslit a uživatel viděl počet načtených záznamů
+        await new Promise(resolve => setTimeout(resolve, 800));
 
         // ✅ TEPRVE TEĎ VYPNU LOADING - data jsou v tabulce!
         setLoading(false);
         doneGlobalProgress();
+        
+        // Zobraz info toast o počtu načtených objednávek
+        if (processedData.length > 0) {
+          showToast(`✅ Načteno ${processedData.length} objednávek (${yearFilter !== 'Všechny roky' ? `${yearFilter}, ${getMonthLabel(selectedMonth)}` : 'všechny roky'})`, {
+            type: 'success',
+            duration: 3000
+          });
+        }
 
       } catch (err) {
   try { const code = getErrorCodeCZ(err) || ''; if (code === 'chyba_serveru' || code === 'server_error') { setError('Chyba na serveru. Zkuste to prosím později.'); } else { setError(getUserErrorMessage(err) || 'Nepodařilo se načíst data.'); } } catch(e) { setError(getUserErrorMessage(err) || 'Nepodařilo se načíst data.'); }
@@ -2674,8 +2724,12 @@ return (
     {/* Loading overlay with blur and fade effects */}
     <LoadingOverlay $visible={loading}>
       <LoadingSpinner $visible={loading} />
-      <LoadingMessage $visible={loading}>Načítání objednávek</LoadingMessage>
-      <LoadingSubtext $visible={loading}>Zpracovávám data z databáze...</LoadingSubtext>
+      <LoadingMessage $visible={loading}>
+        Načítání objednávek {yearFilter !== 'Všechny roky' ? `(${yearFilter})` : '(všechny roky)'}
+      </LoadingMessage>
+      <LoadingSubtext $visible={loading}>
+        {orders.length > 0 ? `Zpracováno ${orders.length} objednávek...` : 'Zpracovávám data z databáze...'}
+      </LoadingSubtext>
     </LoadingOverlay>
 
     <PageContent $blurred={loading}>
