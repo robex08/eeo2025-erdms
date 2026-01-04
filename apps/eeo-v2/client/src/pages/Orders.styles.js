@@ -492,22 +492,25 @@ const styles = css`
   }
 
   .filter-box {
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
     padding: 15px;
     margin-bottom: 20px;
-    background-color: #f9f9f9;
+    background-color: #ffffff;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: space-between;
     width: 100%;
     box-sizing: border-box;
+    gap: 12px;
   }
 
   .filter-input-wrapper {
     position: relative;
     flex: 1;
-    margin-right: 12px; /* smaller gap so input stretches to selects */
+    min-width: 200px;
+    display: flex;
+    align-items: stretch;
   }
 
   .filter-input {
