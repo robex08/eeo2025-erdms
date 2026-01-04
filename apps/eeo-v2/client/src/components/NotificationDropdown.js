@@ -191,9 +191,9 @@ const NotificationIcon = styled.div(({ $priority }) => {
   if (normalizedPriority === 'EXCEPTIONAL' || normalizedPriority === 'URGENT') {
     bgColor = '#fef2f2';  // Světle červená
     iconColor = '#dc2626';  // Tmavě červená
-  } else if (normalizedPriority === 'APPROVAL' || normalizedPriority === 'HIGH') {
-    bgColor = '#fffbeb';  // Světle oranžová
-    iconColor = '#f59e0b';  // Tmavě oranžová
+  } else if (normalizedPriority === 'APPROVAL' || normalizedPriority === 'HIGH' || normalizedPriority === 'WARNING') {
+    bgColor = '#fff7ed';  // Světle oranžová
+    iconColor = '#ea580c';  // Tmavě oranžová
   } else {
     bgColor = '#eff6ff';  // Světle modrá
     iconColor = '#3b82f6';  // Tmavě modrá
@@ -206,7 +206,7 @@ const NotificationIcon = styled.div(({ $priority }) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 20px; /* Zvětšeno z 18px */
     flex-shrink: 0;
     background: ${bgColor};
     color: ${iconColor};
@@ -224,6 +224,37 @@ const NotificationTitle = styled.div`
   font-size: 14px;
   line-height: 1.4;
   margin-bottom: 4px;
+  
+  /* 🚨 URGENT zvýraznění - červené pozadí + žluté písmo */
+  ${props => {
+    if (props.$priority === 'urgent' || props.$priority === 'URGENT' || props.$priority === 'exceptional' || props.$priority === 'EXCEPTIONAL') {
+      return `
+        background: linear-gradient(135deg, #dc2626, #b91c1c);
+        color: #fef3c7;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        border: 1px solid #991b1b;
+        box-shadow: 0 2px 4px rgba(220,38,38,0.3);
+      `;
+    }
+    
+    /* ⚠️ WARNING zvýraznění - žlutavé pozadí + tmavé písmo */
+    if (props.$priority === 'warning' || props.$priority === 'WARNING' || props.$priority === 'high' || props.$priority === 'HIGH') {
+      return `
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: #451a03;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+        border: 1px solid #d97706;
+        box-shadow: 0 1px 3px rgba(251,191,36,0.4);
+      `;
+    }
+    
+    return '';
+  }}
 
   /* Truncate long titles */
   overflow: hidden;
@@ -651,7 +682,16 @@ export const NotificationDropdown = ({
           ) : (
             notifications.slice(0, 10).map((notification, index) => {
               const isUnread = !notification.precteno || notification.precteno === 0 || notification.precteno === false;
-              const priority = notification.priorita || 'normal';
+              let priority = notification.priorita || 'normal';
+              
+              // 🚨 Detekce URGENT z emoji v nadpisu
+              if (notification.nadpis && notification.nadpis.includes('🚨')) {
+                priority = 'URGENT';
+              } else if (notification.nadpis && notification.nadpis.includes('⚠️')) {
+                priority = 'WARNING';
+              } else if (notification.nadpis && notification.nadpis.includes('ℹ️')) {
+                priority = 'INFO';
+              }
 
               // ✅ Parse data_json pro zobrazení dodatečných informací
               let notificationData = {};
@@ -679,7 +719,7 @@ export const NotificationDropdown = ({
                     <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis)} />
                   </NotificationIcon>
                   <NotificationContent>
-                    <NotificationTitle $isUnread={isUnread}>
+                    <NotificationTitle $isUnread={isUnread} $priority={priority}>
                       {cleanNotificationTitle(notification.nadpis) || notification.app_title || 'Bez názvu'}
                     </NotificationTitle>
                     {(notification.zprava || notification.app_message) && (
