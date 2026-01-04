@@ -2667,10 +2667,25 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             $variantId = $hierarchyResult['variant_id'] ?? null;  // ✅ Template ID z hierarchie
             
             foreach ($hierarchyResult['recipients'] as $recipient) {
+                $priority = $recipient['priority'] ?? 'INFO';
+                
+                // ✅ OPRAVA: Mapování priority na HTML variantu
+                $htmlVariant = 'APPROVER_NORMAL'; // default
+                if ($priority === 'INFO') {
+                    $htmlVariant = 'SUBMITTER';  // Zelená pro INFO (submitter)
+                } elseif ($priority === 'URGENT' || $priority === 'urgent' || $priority === 'high' || $priority === 'EXCEPTIONAL') {
+                    $htmlVariant = 'APPROVER_URGENT';  // Červená pro URGENT/HIGH
+                } elseif ($priority === 'WARNING' || $priority === 'normal') {
+                    $htmlVariant = 'APPROVER_NORMAL';  // Oranžová pro WARNING/NORMAL
+                } else {
+                    $htmlVariant = 'APPROVER_NORMAL';  // Default oranžová
+                }
+                
                 $recipients[] = array(
                     'uzivatel_id' => $recipient['user_id'],
-                    'recipientRole' => $recipient['priority'] ?? 'INFO',
-                    'templateVariantKey' => $recipient['priority'] ?? 'INFO',
+                    'recipientRole' => $priority,
+                    'templateVariantKey' => $priority,
+                    'templateVariant' => $htmlVariant,  // ✅ PŘIDÁNO: HTML varianta
                     'templateId' => $variantId,  // ✅ OPRAVA: Přidat template ID!
                     'sendEmail' => $recipient['delivery']['email'] ?? false,
                     'sendInApp' => $recipient['delivery']['inApp'] ?? true
@@ -2870,6 +2885,15 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                     $placeholderDataWithUser['action_icon'] = 'ℹ️';
                 }
                 
+                // ✅ PRIORITY IKONA podle skutečné priority recipient
+                $recipientPriority = $recipient['templateVariantKey'] ?? $recipient['recipientRole'] ?? 'INFO';
+                $placeholderDataWithUser['priority_icon'] = getPriorityIcon($recipientPriority);
+                
+                // 🔍 DEBUG: Ikona priority pro recipient
+                error_log("   🔍 PRIORITY ICON DEBUG pro User {$recipient['uzivatel_id']}:");
+                error_log("      recipientPriority: $recipientPriority");
+                error_log("      priority_icon: " . $placeholderDataWithUser['priority_icon']);
+                
                 // 🔍 DEBUG: Vypsat VŠECHNY placeholdery před nahrazením
                 error_log("   🔍 FINANCOVÁNÍ DEBUG pro User {$recipient['uzivatel_id']}:");
                 error_log("      financovani value: " . ($placeholderDataWithUser['financovani'] ?? 'NOT SET'));
@@ -2878,6 +2902,9 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // 6. Nahradit placeholdery v šabloně
                 $processedTitle = replacePlaceholders($template['app_nadpis'], $placeholderDataWithUser);
                 $processedMessage = replacePlaceholders($template['app_zprava'], $placeholderDataWithUser);
+                
+                // ✅ OPRAVA: Zpracovat také email předmět s placeholdery pro každého recipienta
+                $processedEmailSubject = replacePlaceholders($template['email_predmet'], $placeholderDataWithUser);
                 
                 // 🔍 DEBUG: Před extrakcí varianty
                 error_log("   🔍 DEBUG BEFORE extractVariantFromEmailBody:");
@@ -2988,7 +3015,7 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                         ])]);
                     } catch (Exception $e) {}
                     
-                    $emailResult = sendNotificationEmail($db, $recipient['uzivatel_id'], $processedTitle, $processedEmailBody);
+                    $emailResult = sendNotificationEmail($db, $recipient['uzivatel_id'], $processedEmailSubject, $processedEmailBody);
                     
                     // DEBUG do DB
                     try {

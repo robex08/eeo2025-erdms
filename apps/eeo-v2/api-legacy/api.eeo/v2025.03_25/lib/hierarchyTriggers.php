@@ -9,6 +9,16 @@
  * @author Development Team
  */
 
+// Debug logging pro DEV environment - jednoduché a bezpečné
+function debugHierarchy($message) {
+    if (strpos(__DIR__, 'erdms-dev') !== false) {
+        $timestamp = date('Y-m-d H:i:s');
+        $logMessage = "[$timestamp] HIERARCHY: $message\n";
+        file_put_contents('/tmp/hierarchy_debug.log', $logMessage, FILE_APPEND | LOCK_EX);
+        error_log("HIERARCHY DEBUG: $message");
+    }
+}
+
 /**
  * Hlavní funkce pro resolve příjemců notifikace podle hierarchie
  * 
@@ -27,6 +37,8 @@
  * @return array|false ['recipients' => [...], 'variant_id' => X, 'priority' => 'URGENT'] nebo false pokud hierarchie není aktivní
  */
 function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
+    debugHierarchy("=== START RESOLVE === EventType: $eventType, Data keys: " . implode(',', array_keys($eventData)));
+    
     try {
         // 🔍 DEBUG: Log incoming event data
         error_log("🔍 HIERARCHY TRIGGER DEBUG - Event Data Received:");
@@ -291,7 +303,7 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
  * Resolve AUTO priority podle mimoradna_udalost fieldu
  * 
  * @param array $eventData - Data entity (objednávka, faktura, etc.)
- * @return string 'URGENT' nebo 'INFO'
+ * @return string 'URGENT' nebo 'WARNING'
  */
 function resolveAutoPriority($eventData) {
     // Zkontrolovat pole mimoradna_udalost
@@ -299,7 +311,7 @@ function resolveAutoPriority($eventData) {
         return 'URGENT';
     }
     
-    return 'INFO';
+    return 'WARNING';  // ✅ OPRAVA: Normální = WARNING (oranžová), ne INFO (zelená)
 }
 
 /**
