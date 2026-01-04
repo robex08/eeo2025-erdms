@@ -495,7 +495,7 @@ export async function fetchOrderAttachmentsOld({ token, username, id }) {
 }
 
 /** Fetch all users from new API2 */
-export async function fetchAllUsers({ token, username, _cacheBust }) {
+export async function fetchAllUsers({ token, username, _cacheBust, show_inactive }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
   }
@@ -504,6 +504,13 @@ export async function fetchAllUsers({ token, username, _cacheBust }) {
   // Add cache buster to prevent HTTP/browser caching
   if (_cacheBust) {
     payload._t = _cacheBust;
+  }
+
+  // Filter by active/inactive users (defaults to active only if not specified)
+  if (show_inactive !== undefined) {
+    payload.aktivni = show_inactive ? 0 : 1;
+  } else {
+    payload.aktivni = 1; // Default: pouze aktivní uživatelé
   }
 
   const response = await api2.post('users/list', payload);

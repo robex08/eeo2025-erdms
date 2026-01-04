@@ -474,7 +474,8 @@ const AddAssignmentDialog = ({
       try {
         const usersData = await fetchAllUsers({
           token,
-          username: user.username
+          username: user.username,
+          show_inactive: false // Pouze aktivní uživatelé
         });
         setUsers(usersData || []);
       } catch (error) {

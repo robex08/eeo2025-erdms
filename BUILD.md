@@ -1,7 +1,7 @@
 # EEO v2 - Build & Deploy
 
 **Datum:** 4. ledna 2026  
-**Verze:** 1.96a  
+**Verze:** 2.00  
 **Autor:** Robert Holovský
 
 ---
@@ -107,7 +107,7 @@ DB_PASSWORD=CHANGE_ME_DB_PASSWORD
 DB_CHARSET=utf8mb4
 
 # Application version
-REACT_APP_VERSION=1.96
+REACT_APP_VERSION=2.00
 
 # Upload paths - PROD používá /var/www/erdms-platform/data/
 UPLOAD_ROOT_PATH=/var/www/erdms-platform/data/eeo-v2/prilohy/
@@ -172,7 +172,7 @@ DB_PASSWORD=CHANGE_ME_DB_PASSWORD
 DB_CHARSET=utf8mb4
 
 # Application version
-REACT_APP_VERSION=1.96
+REACT_APP_VERSION=2.00
 
 # Upload paths - PROD používá /var/www/erdms-platform/data/
 UPLOAD_ROOT_PATH=/var/www/erdms-platform/data/eeo-v2/prilohy/
@@ -205,23 +205,23 @@ echo "✅ PROD deploy kompletní!"
 ```bash
 # package.json
 /var/www/erdms-dev/apps/eeo-v2/client/package.json
-# Změnit: "version": "1.94"
+# Změnit: "version": "2.00"
 
 # .env (runtime DEV)
 /var/www/erdms-dev/apps/eeo-v2/client/.env
-# Změnit: REACT_APP_VERSION=1.96-DEV
+# Změnit: REACT_APP_VERSION=2.00-DEV
 
 # .env.development (⚠️ KRITICKÉ pro DEV build!)
 /var/www/erdms-dev/apps/eeo-v2/client/.env.development
-# Změnit: REACT_APP_VERSION=1.96-DEV
+# Změnit: REACT_APP_VERSION=2.00-DEV
 
 # .env.production (⚠️ KRITICKÉ pro PROD build!)
 /var/www/erdms-dev/apps/eeo-v2/client/.env.production
-# Změnit: REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00
 
 # .env.example (template)
 /var/www/erdms-dev/apps/eeo-v2/client/.env.example
-# Změnit: REACT_APP_VERSION=1.96-DEV / REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00-DEV / REACT_APP_VERSION=2.00
 ```
 
 ### 2️⃣ Backend API Verze
@@ -229,15 +229,15 @@ echo "✅ PROD deploy kompletní!"
 ```bash
 # DEV API .env
 /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env
-# Změnit: REACT_APP_VERSION=1.96-DEV
+# Změnit: REACT_APP_VERSION=2.00-DEV
 
 # DEV API .env.example
 /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.example
-# Změnit: REACT_APP_VERSION=1.96-DEV / REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00-DEV / REACT_APP_VERSION=2.00
 
 # PROD API .env (po deployi)
 /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
-# Změnit: REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00
 ```
 
 ### 3️⃣ Dokumentace
@@ -245,9 +245,9 @@ echo "✅ PROD deploy kompletní!"
 ```bash
 # BUILD.md
 /var/www/erdms-dev/BUILD.md
-# Změnit: **Verze:** 1.94
+# Změnit: **Verze:** 2.00
 # Změnit: **Datum:** [aktuální datum]
-# Změnit: REACT_APP_VERSION=1.96 v příkladech
+# Změnit: REACT_APP_VERSION=2.00 v příkladech
 ```
 
 ### ⚡ Postup Změny Verze
@@ -257,39 +257,39 @@ echo "✅ PROD deploy kompletní!"
 
 # 1. Frontend package.json (základní verze)
 /var/www/erdms-dev/apps/eeo-v2/client/package.json
-# Změnit: "version": "1.96"
+# Změnit: "version": "2.00"
 
 # 2. DEV build environment 
 /var/www/erdms-dev/apps/eeo-v2/client/.env.development
-# Změnit: REACT_APP_VERSION=1.96-DEV
+# Změnit: REACT_APP_VERSION=2.00-DEV
 
 # 3. PROD build environment
 /var/www/erdms-dev/apps/eeo-v2/client/.env.production  
-# Změnit: REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00
 
 # 4. API template (dokumentace)
 /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.example
-# Změnit: REACT_APP_VERSION=1.96-DEV / REACT_APP_VERSION=1.96
+# Změnit: REACT_APP_VERSION=2.00-DEV / REACT_APP_VERSION=2.00
 
 # 5. BUILD.md (tento soubor)
 /var/www/erdms-dev/BUILD.md
-# Změnit: **Verze:** 1.96 + datum
+# Změnit: **Verze:** 2.00 + datum
 
 # 🔍 Vyhledání všech míst s verzí:
 cd /var/www/erdms-dev
-grep -r "1.95" --include="*.json" --include="*.env*" --include="*.md" apps/
+grep -r "1.96" --include="*.json" --include="*.env*" --include="*.md" apps/
 ```
 
 **⚠️ POZOR:** Verze se NEMĚNI v runtime .env souborech (.env), pouze v template souborech (.env.example, .env.development, .env.production)!
-sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.96-DEV/' .env
-sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.96-DEV/' .env.development
-sed -i 's/REACT_APP_VERSION=1.93/REACT_APP_VERSION=1.96/' .env.production
-sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.96-DEV/' .env.example
+sed -i 's/REACT_APP_VERSION=1.96b-DEV/REACT_APP_VERSION=2.00-DEV/' .env
+sed -i 's/REACT_APP_VERSION=1.96b-DEV/REACT_APP_VERSION=2.00-DEV/' .env.development
+sed -i 's/REACT_APP_VERSION=1.96b/REACT_APP_VERSION=2.00/' .env.production
+sed -i 's/REACT_APP_VERSION=1.96b-DEV/REACT_APP_VERSION=2.00-DEV/' .env.example
 
 # 3. Aktualizovat API
 cd /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo
-sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.96-DEV/' .env
-sed -i 's/REACT_APP_VERSION=1.93-DEV/REACT_APP_VERSION=1.96-DEV/' .env.example
+sed -i 's/REACT_APP_VERSION=1.96b-DEV/REACT_APP_VERSION=2.00-DEV/' .env
+sed -i 's/REACT_APP_VERSION=1.96b-DEV/REACT_APP_VERSION=2.00-DEV/' .env.example
 
 # 4. ⚠️ KRITICKÉ: Smazat staré buildy!
 cd /var/www/erdms-dev/apps/eeo-v2/client

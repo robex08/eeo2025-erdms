@@ -141,10 +141,35 @@ function handle_cashbook_get_post($config, $input) {
             return api_error(404, 'Pokladní kniha nenalezena');
         }
         
-        // Kontrola oprávnění
+        // Kontrola oprávnění - předat i pokladna_id pro kontrolu přiřazení
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canReadCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        // 🆕 Kontrola platnosti přiřazení pokladny - uživatel nesmí přistoupit k měsíci před datem přiřazení
+        if ($book['uzivatel_id'] == $userData['id']) {
+            $stmt = $db->prepare("
+                SELECT platne_od, platne_do
+                FROM " . TBL_POKLADNY_UZIVATELE . "
+                WHERE uzivatel_id = ? 
+                  AND pokladna_id = ?
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+                ORDER BY platne_od ASC
+                LIMIT 1
+            ");
+            $stmt->execute(array($userData['id'], $book['pokladna_id']));
+            $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($assignment && $assignment['platne_od']) {
+                // Vytvořit datum prvního dne požadovaného měsíce
+                $requestedMonthStart = sprintf('%04d-%02d-01', $book['rok'], $book['mesic']);
+                
+                // Pokud je požadovaný měsíc před datem přiřazení, zamítnout
+                if ($requestedMonthStart < $assignment['platne_od']) {
+                    return api_error(403, 'Nemáte oprávnění k této pokladně v daném období. Pokladna vám byla přiřazena až od ' . date('j.n.Y', strtotime($assignment['platne_od'])));
+                }
+            }
         }
         
                 // 🆕 PARAMETR force_recalc pro přepočet převodu z předchozího měsíce
@@ -262,15 +287,38 @@ function handle_cashbook_create_post($config, $input) {
             return api_error(401, 'Neplatný token');
         }
         
-        // Kontrola oprávnění
-        $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canCreateBook()) {
-            return api_error(403, 'Nedostatečná oprávnění pro vytváření pokladní knihy');
-        }
-        
-        // Validace
+        // Validace dat nejdříve (potřebujeme pokladna_id)
         $validator = new CashbookValidator();
         $data = $validator->validateCreate($input);
+        
+        // Kontrola oprávnění - nyní s pokladna_id pro kontrolu přiřazení
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canCreateBook($data['pokladna_id'])) {
+            return api_error(403, 'Nedostatečná oprávnění pro vytváření pokladní knihy. Musíte mít oprávnění CASH_BOOK_CREATE nebo být přiřazeni k této pokladně.');
+        }
+        
+        // 🆕 Kontrola platnosti přiřazení - nelze vytvořit knihu pro měsíc před přiřazením pokladny
+        if ($data['uzivatel_id'] == $userData['id'] && isset($data['pokladna_id'])) {
+            $stmt = $db->prepare("
+                SELECT platne_od, platne_do
+                FROM " . TBL_POKLADNY_UZIVATELE . "
+                WHERE uzivatel_id = ? 
+                  AND pokladna_id = ?
+                  AND (platne_do IS NULL OR platne_do >= CURDATE())
+                ORDER BY platne_od ASC
+                LIMIT 1
+            ");
+            $stmt->execute(array($userData['id'], $data['pokladna_id']));
+            $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($assignment && $assignment['platne_od']) {
+                $requestedMonthStart = sprintf('%04d-%02d-01', $data['rok'], $data['mesic']);
+                
+                if ($requestedMonthStart < $assignment['platne_od']) {
+                    return api_error(403, 'Nelze vytvořit pokladní knihu pro měsíc před přiřazením pokladny. Pokladna vám byla přiřazena až od ' . date('j.n.Y', strtotime($assignment['platne_od'])));
+                }
+            }
+        }
         
         // Kontrola, zda kniha pro dané období již neexistuje
         $bookModel = new CashbookModel($db);
@@ -340,7 +388,7 @@ function handle_cashbook_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -583,7 +631,7 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění pro vytváření položek');
         }
         
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění pro editaci této knihy');
         }
         
@@ -723,7 +771,7 @@ function handle_cashbook_entry_update_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -903,7 +951,7 @@ function handle_cashbook_entry_restore_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canEditCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         
@@ -961,7 +1009,7 @@ function handle_cashbook_audit_log_post($config, $input) {
         
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
-        if (!$permissions->canReadCashbook($book['uzivatel_id'])) {
+        if (!$permissions->canReadCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
         }
         

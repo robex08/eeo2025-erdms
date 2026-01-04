@@ -955,7 +955,8 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
       const [usersResult, usekyResult] = await Promise.all([
         fetchAllUsers({
           token: token,
-          username: user.username
+          username: user.username,
+          show_inactive: false // Pouze aktivní uživatelé
         }),
         getUsekyList({
           token: token,
@@ -1004,7 +1005,7 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
   };
 
   // Přidání uživatele
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUserForm.uzivatel_id) {
       showToast('Vyberte uživatele', 'error');
       return;
@@ -1025,9 +1026,39 @@ const CreateCashboxDialog = ({ isOpen, onClose, onSuccess }) => {
     }
 
     // Pokud přidáváme hlavního (ne zástupce), odebrat hlavní status ostatním
-    const jeHlavni = !newUserForm.je_zastupce;
+    let jeHlavni = !newUserForm.je_zastupce;
+    
+    // Kontrola, jestli uživatel už není hlavním správcem jiné pokladny
     if (jeHlavni) {
-      setAssignedUsers(prev => prev.map(u => ({ ...u, je_hlavni: false })));
+      try {
+        const allAssignmentsResult = await cashbookAPI.listAssignments(parseInt(userId), true);
+        const existingMain = allAssignmentsResult.data.assignments.find(
+          a => parseInt(a.je_hlavni) === 1 && a.pokladna_id !== formData.id
+        );
+        
+        if (existingMain) {
+          const cashboxName = existingMain.cislo_pokladny || `Pokladna ${existingMain.pokladna_id}`;
+          const confirmed = window.confirm(
+            `Uživatel "${userName}" je již hlavním správcem pokladny "${cashboxName}".\n\n` +
+            `Uživatel může být hlavním správcem pouze u jedné pokladny.\n\n` +
+            `Chcete jej přidat jako zástupce?`
+          );
+          
+          if (!confirmed) {
+            return;
+          }
+          
+          jeHlavni = false;
+          showToast('Uživatel přidán jako zástupce', 'info');
+        } else {
+          // Pokud je hlavní a nemá jinou hlavní pokladnu, odebrat hlavní status ostatním v této pokladně
+          setAssignedUsers(prev => prev.map(u => ({ ...u, je_hlavni: false })));
+        }
+      } catch (error) {
+        console.error('Chyba při kontrole přiřazení:', error);
+        showToast('Chyba při kontrole přiřazení uživatele', 'error');
+        return;
+      }
     }
 
     // Jméno může být v různých strukturách: prijmeni+jmeno, nebo cele_jmeno, nebo username

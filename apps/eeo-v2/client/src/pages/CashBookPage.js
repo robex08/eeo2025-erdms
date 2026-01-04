@@ -1844,8 +1844,10 @@ const CashBookPage = () => {
                 pokladna_id: parseInt(item.pokladna_id, 10),
                 cislo_pokladny: parseInt(item.cislo_pokladny, 10),
                 aktivni: parseInt(item.aktivni || 1, 10),
-                uzivatel_id: parseInt(item.uzivatel_id, 10),
+                uzivatel_id: item.uzivatel_id ? parseInt(item.uzivatel_id, 10) : null, // ✅ FIX: Handle null
                 je_hlavni: parseInt(item.je_hlavni || 0, 10),
+                platne_od: item.platne_od, // 🆕 Zachovat datum přiřazení
+                platne_do: item.platne_do, // 🆕 Zachovat datum ukončení
               }));
 
               setAllAssignments(transformedData);
@@ -2152,6 +2154,33 @@ const CashBookPage = () => {
     checkPreviousMonthStatus();
   }, [checkPreviousMonthStatus]);
 
+  // 🆕 Kontrola, zda je možné jít na předchozí měsíc (pro disabled stav tlačítka)
+  const canGoToPreviousMonth = useMemo(() => {
+    if (!mainAssignment?.platne_od) {
+      return true; // Žádné omezení pokud není platne_od
+    }
+
+    try {
+      // Vypočítat cílový měsíc
+      let targetMonth = currentMonth - 1;
+      let targetYear = currentYear;
+
+      if (targetMonth < 1) {
+        targetMonth = 12;
+        targetYear--;
+      }
+
+      const platneOdDate = new Date(mainAssignment.platne_od);
+      const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
+
+      // Vrátit true pokud cílový měsíc je >= platne_od
+      return targetMonthStart >= platneOdDate;
+    } catch (error) {
+      console.error('❌ Chyba při výpočtu canGoToPreviousMonth:', error);
+      return true; // V případě chyby povolit navigaci
+    }
+  }, [mainAssignment?.platne_od, currentMonth, currentYear]);
+
   // Navigace na předchozí měsíc
   const goToPreviousMonth = async () => {
     // Vypočítat cílový měsíc
@@ -2161,6 +2190,25 @@ const CashBookPage = () => {
     if (targetMonth < 1) {
       targetMonth = 12;
       targetYear--;
+    }
+
+    // 🚨 PLATNE_OD: Kontrola, zda uživatel může přistupovat k cílovému měsíci
+    if (mainAssignment?.platne_od) {
+      try {
+        const platneOdDate = new Date(mainAssignment.platne_od);
+        const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
+
+        if (targetMonthStart < platneOdDate) {
+          const formattedDate = platneOdDate.toLocaleDateString('cs-CZ');
+          showToast(
+            `Pokladna vám byla přiřazena až od ${formattedDate}. Nelze přejít na měsíc ${targetMonth}/${targetYear}.`,
+            'warning'
+          );
+          return; // ZASTAVIT navigaci
+        }
+      } catch (error) {
+        console.error('❌ Chyba při validaci platne_od:', error);
+      }
     }
 
     // 🚨 OCHRANA: Kontrola, zda pro cílový měsíc již kniha EXISTUJE
@@ -2211,6 +2259,34 @@ const CashBookPage = () => {
       return;
     }
 
+    // Vypočítat cílový měsíc
+    let targetMonth = currentMonth + 1;
+    let targetYear = currentYear;
+
+    if (targetMonth > 12) {
+      targetMonth = 1;
+      targetYear++;
+    }
+
+    // 🚨 PLATNE_OD: Kontrola, zda uživatel může přistupovat k cílovému měsíci
+    if (mainAssignment?.platne_od) {
+      try {
+        const platneOdDate = new Date(mainAssignment.platne_od);
+        const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
+
+        if (targetMonthStart < platneOdDate) {
+          const formattedDate = platneOdDate.toLocaleDateString('cs-CZ');
+          showToast(
+            `Pokladna vám byla přiřazena až od ${formattedDate}. Nelze přejít na měsíc ${targetMonth}/${targetYear}.`,
+            'warning'
+          );
+          return; // ZASTAVIT navigaci
+        }
+      } catch (error) {
+        console.error('❌ Chyba při validaci platne_od:', error);
+      }
+    }
+
     // Uložit aktuální měsíc před přepnutím
     const dataToSave = {
       entries: cashBookEntries.map(entry => ({ ...entry, isEditing: false })),
@@ -2220,12 +2296,8 @@ const CashBookPage = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
 
     // Přepnout měsíc
-    if (currentMonth === 12) {
-      setCurrentMonth(1);
-      setCurrentYear(prev => prev + 1);
-    } else {
-      setCurrentMonth(prev => prev + 1);
-    }
+    setCurrentMonth(targetMonth);
+    setCurrentYear(targetYear);
   };
 
   // Přejít na aktuální měsíc
@@ -3688,7 +3760,15 @@ const CashBookPage = () => {
           </h2>
         </MonthInfo>
         <MonthControls>
-          <MonthButton onClick={goToPreviousMonth} title="Předchozí měsíc">
+          <MonthButton 
+            onClick={goToPreviousMonth} 
+            disabled={!canGoToPreviousMonth}
+            title={
+              canGoToPreviousMonth 
+                ? "Předchozí měsíc" 
+                : `Pokladna přiřazena od ${mainAssignment?.platne_od ? new Date(mainAssignment.platne_od).toLocaleDateString('cs-CZ') : ''}`
+            }
+          >
             <FontAwesomeIcon icon={faChevronLeft} />
             Předchozí
           </MonthButton>

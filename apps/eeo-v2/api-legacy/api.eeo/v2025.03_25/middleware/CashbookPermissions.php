@@ -85,8 +85,12 @@ class CashbookPermissions {
     
     /**
      * Kontrola, zda má uživatel oprávnění číst pokladní knihu
+     * 
+     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_knihy.uzivatel_id)
+     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * @return bool True pokud má oprávnění
      */
-    public function canReadCashbook($cashbookUserId) {
+    public function canReadCashbook($cashbookUserId, $pokladnaId = null) {
         // Super admin může vše
         if ($this->isSuperAdmin()) {
             return true;
@@ -107,44 +111,79 @@ class CashbookPermissions {
             return true;
         }
         
+        // Uživatel bez globálních práv může číst knihy z pokladen, ke kterým je přiřazen
+        if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
+            return true;
+        }
+        
         return false;
     }
     
     /**
      * Kontrola, zda může editovat
+     * 
+     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_pokladni_knihy.uzivatel_id)
+     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * @return bool True pokud má oprávnění
      */
-    public function canEditCashbook($cashbookUserId) {
+    public function canEditCashbook($cashbookUserId, $pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_EDIT_ALL')) return true;
         if ($this->hasPermission('CASH_BOOK_EDIT_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // Uživatel bez globálních práv může editovat knihy z pokladen, ke kterým je přiřazen
+        if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
+            return true;
+        }
+        
         return false;
     }
     
     /**
      * Kontrola, zda může mazat
+     * 
+     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_pokladni_knihy.uzivatel_id)
+     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * @return bool True pokud má oprávnění
      */
-    public function canDeleteEntry($cashbookUserId) {
+    public function canDeleteCashbook($cashbookUserId, $pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_DELETE_ALL')) return true;
         if ($this->hasPermission('CASH_BOOK_DELETE_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // Uživatel bez globálních práv může mazat knihy z pokladen, ke kterým je přiřazen
+        if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
+            return true;
+        }
+        
         return false;
     }
     
     /**
      * Kontrola, zda může exportovat
+     * 
+     * @param int $cashbookUserId ID uživatele, kterému patří kniha (z 25a_pokladni_knihy.uzivatel_id)
+     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * @return bool True pokud má oprávnění
      */
-    public function canExportCashbook($cashbookUserId) {
+    public function canExportCashbook($cashbookUserId, $pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_EXPORT_ALL')) return true;
         if ($this->hasPermission('CASH_BOOK_EXPORT_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // Uživatel bez globálních práv může exportovat knihy z pokladen, ke kterým je přiřazen
+        if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
+            return true;
+        }
+        
         return false;
     }
     
     /**
-     * Kontrola, zda může vytvářet záznamy
+     * Kontrola, zda může vytvářet záznamy (entries)
      */
     public function canCreateEntry() {
         if ($this->isSuperAdmin()) return true;
@@ -155,11 +194,21 @@ class CashbookPermissions {
     
     /**
      * Kontrola, zda může vytvářet nové knihy
+     * Pro uživatele bez MANAGE/CREATE práv kontroluje přiřazení k pokladně
+     * 
+     * @param int|null $pokladnaId ID pokladny (volitelné, pro kontrolu přiřazení)
+     * @return bool True pokud má oprávnění
      */
-    public function canCreateBook() {
+    public function canCreateBook($pokladnaId = null) {
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_CREATE')) return true;
+        
+        // Pokud nemá obecná práva, zkontrolovat přiřazení k pokladně
+        if ($pokladnaId !== null) {
+            return $this->isOwnCashbox($pokladnaId);
+        }
+        
         return false;
     }
     

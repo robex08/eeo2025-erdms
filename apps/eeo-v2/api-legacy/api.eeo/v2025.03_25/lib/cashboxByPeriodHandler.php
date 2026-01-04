@@ -104,6 +104,10 @@ function handle_cashbox_list_by_period_post($config, $input) {
                   ON u.id = pu.uzivatel_id
                 WHERE pk.rok = ?
                   AND pk.mesic = ?
+                  AND (
+                    pu.platne_od IS NULL 
+                    OR DATE(CONCAT(pk.rok, '-', LPAD(pk.mesic, 2, '0'), '-01')) >= pu.platne_od
+                  )
             ";
         } else {
             $sql = "
