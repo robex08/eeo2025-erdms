@@ -36,7 +36,7 @@ class SystemInfoService {
      * Načte informace z API
      */
     static async fetchFromAPI() {
-        const apiBase = process.env.REACT_APP_API2_BASE_URL || '/dev/api.eeo/';
+        const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         
         // Získání autentizačních údajů (pokud jsou k dispozici)
         const token = localStorage.getItem('token');
@@ -121,7 +121,7 @@ class SystemInfoService {
      * Fallback informace
      */
     static getDefaultInfo() {
-        const apiBase = process.env.REACT_APP_API2_BASE_URL || '/dev/api.eeo/';
+        const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const isDev = apiBase.includes('/dev/');
         const dbName = isDev ? 'eeo2025-dev' : 'eeo2025';
         
