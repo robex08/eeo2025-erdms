@@ -491,26 +491,57 @@ const styles = css`
     text-align: left; /* left-align subrow paragraph content */
   }
 
+  /* Moderní filter box - F P R | fulltext | multiselect | multiselect */
   .filter-box {
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 20px;
-    background-color: #ffffff;
     display: flex;
-    align-items: stretch;
-    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
     width: 100%;
     box-sizing: border-box;
-    gap: 12px;
   }
 
+  /* Tlačítka F, P, R */
+  .filter-buttons {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .filter-button {
+    height: 48px;
+    min-width: 48px;
+    padding: 0 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1f2937;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .filter-button:hover {
+    background-color: #f9fafb;
+    border-color: #3b82f6;
+  }
+
+  .filter-button.active {
+    background-color: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+
+  /* Fulltext input - zabírá celou šířku */
   .filter-input-wrapper {
     position: relative;
     flex: 1;
-    min-width: 200px;
-    display: flex;
-    align-items: stretch;
+    min-width: 250px;
   }
 
   .filter-input {
@@ -556,7 +587,7 @@ const styles = css`
     transform: translateY(-50%);
     background: none;
     border: none;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     color: #9ca3af;
     cursor: pointer;
@@ -572,60 +603,32 @@ const styles = css`
     background: #f3f4f6;
   }
 
+  /* Multi-select dropdown wrapper */
   .filter-group {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     flex-shrink: 0;
   }
 
   .filter-select {
-    padding: 8px 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 16px;
-    line-height: 1.2;
-    white-space: nowrap;
-    text-align: right;
-    text-align-last: right;
-  }
-
-  .filter-select option {
-    text-align: left;
-  }
-
-  .filter-buttons {
-    display: flex;
-    gap: 10px;
-    margin-right: 20px;
-  }
-
-  .filter-button {
     height: 48px;
-    padding: 0 15px;
-    border: 2px solid #e5e7eb;
+    padding: 0 12px;
+    border: 2px solid #e2e8f0;
     border-radius: 8px;
+    font-size: 0.95rem;
+    line-height: 1.2;
     background-color: #ffffff;
     color: #1f2937;
-    font-size: 0.95rem;
-    font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
     box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
-  .filter-button:hover {
-    background-color: #f3f4f6;
-    border-color: #d1d5db;
-  }
-
-  .filter-button.active {
-    background-color: #3b82f6;
-    color: white;
-    border-color: #2563eb;
+  .filter-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
   .orders-boxes {
