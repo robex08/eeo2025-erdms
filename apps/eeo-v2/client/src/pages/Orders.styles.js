@@ -499,6 +499,10 @@ const styles = css`
     margin-bottom: 20px;
     width: 100%;
     box-sizing: border-box;
+    padding: 16px;
+    background-color: #ffffff;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
   }
 
   /* Tlačítka F, P, R */
