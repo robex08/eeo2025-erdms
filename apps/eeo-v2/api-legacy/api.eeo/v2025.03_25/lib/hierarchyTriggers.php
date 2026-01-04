@@ -291,7 +291,7 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
  * Resolve AUTO priority podle mimoradna_udalost fieldu
  * 
  * @param array $eventData - Data entity (objednávka, faktura, etc.)
- * @return string 'URGENT' nebo 'WARNING'
+ * @return string 'URGENT' nebo 'INFO'
  */
 function resolveAutoPriority($eventData) {
     // Zkontrolovat pole mimoradna_udalost
@@ -299,7 +299,7 @@ function resolveAutoPriority($eventData) {
         return 'URGENT';
     }
     
-    return 'WARNING';
+    return 'INFO';
 }
 
 /**
