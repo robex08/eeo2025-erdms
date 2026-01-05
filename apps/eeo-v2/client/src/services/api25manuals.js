@@ -97,20 +97,11 @@ export const downloadManual = async (filename, token, username) => {
  */
 export const uploadManual = async (file, token, username) => {
   try {
-    console.log('🔵 uploadManual - Starting upload');
-    console.log('  File:', file?.name, file?.type, file?.size);
-    console.log('  Token:', token?.substring(0, 20) + '...');
-    console.log('  Username:', username);
     
     const formData = new FormData();
     formData.append('token', token);
     formData.append('username', username);
     formData.append('file', file);
-    
-    console.log('  FormData entries:');
-    for (let pair of formData.entries()) {
-      console.log('   ', pair[0], ':', typeof pair[1] === 'object' ? pair[1].name : pair[1]);
-    }
     
     // ⚠️ Použij RAW axios místo instance (kvůli default Content-Type: application/json)
     const baseURL = process.env.REACT_APP_API2_BASE_URL;
@@ -118,13 +109,10 @@ export const uploadManual = async (file, token, username) => {
     const cleanBaseURL = baseURL.replace(/\/$/, '');
     const url = `${cleanBaseURL}/manuals/upload`;
     
-    console.log('  Posting to:', url);
-    
     const response = await axios.post(url, formData, {
       timeout: 300000, // 5 minut timeout pro velké soubory
       onUploadProgress: (progressEvent) => {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        console.log(`  Upload progress: ${percentCompleted}%`);
       }
     });
     
