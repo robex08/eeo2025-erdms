@@ -1380,25 +1380,12 @@ export const NotificationsPage = () => {
               const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
               const currentOrderId = targetOrderId;
 
-              console.log('Draft order comparison:', {
-                draftOrderId,
-                currentOrderId,
-                'draftData.savedOrderId': draftData.savedOrderId,
-                'draftData.formData?.id': draftData.formData?.id,
-                targetOrderId,
-                'String(draftOrderId)': String(draftOrderId),
-                'String(currentOrderId)': String(currentOrderId),
-                'jsou stejné?': String(draftOrderId) === String(currentOrderId),
-                'celý draftData': draftData
-              });
-
               // ✅ Pokud draft patří k TÉTO objednávce, NEPTAT SE!
               if (draftOrderId && currentOrderId && String(draftOrderId) === String(currentOrderId)) {
                 shouldShowConfirmDialog = false;
                 isDraftForThisOrder = true;
               } else {
                 // ❌ Draft patří k JINÉ objednávce - zeptej se
-                console.log('❌ Draft patří k JINÉ objednávce - kontroluji změny');
                 const hasNewConcept = isValidConcept(draftData);
                 const hasDbChanges = hasDraftChanges(draftData);
                 shouldShowConfirmDialog = hasNewConcept || hasDbChanges;
@@ -1787,11 +1774,6 @@ export const NotificationsPage = () => {
       .replace(/^🎯\s*/, '')     // Target
       .replace(/^📦\s*/, '')     // Package
       .replace(/^[ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
-    
-    // Debug log pro testování
-    if (originalTitle !== cleanedTitle) {
-      console.log('🧹 Title cleaned:', { original: originalTitle, cleaned: cleanedTitle });
-    }
     
     return cleanedTitle;
   };
