@@ -617,8 +617,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       // Použít proxy-file endpoint pro stažení PDF (řešení CORS)
       const proxyUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/proxy-file?url=${encodeURIComponent(priloha.download_url)}`;
       
-      console.log(`📄 Fetching PDF via proxy: ${proxyUrl}`);
-      console.log(`📄 Original URL: ${priloha.download_url}`);
       const response = await fetch(proxyUrl);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -626,7 +624,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       
       const contentType = response.headers.get('content-type');
       const contentLength = response.headers.get('content-length');
-      console.log(`📄 Response received, Content-Type: ${contentType}, Length: ${contentLength}`);
       
       // Validace response
       if (!contentType || !contentType.includes('pdf')) {
@@ -687,7 +684,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           });
         }).then((proceed) => {
           if (!proceed) {
-            console.log('📄 OCR zrušeno uživatelem - dokument není faktura');
             throw new Error('OCR_CANCELLED');
           }
         });
@@ -702,15 +698,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           spisovka_priloha_id: priloha.priloha_id
         });
       }
-
-      console.log('📄 OCR Data + Spisovka metadata:', {
-        ...data,
-        spisovka_dokument_id: dokumentId,
-        spisovka_priloha_id: priloha.priloha_id
-      });
       
       // ✅ AUTOMATICKY OTEVŘÍT PDF pro kontrolu výsledků OCR
-      console.log('📄 Opening PDF for verification...');
       setFileViewer({
         visible: true,
         url: priloha.download_url,
@@ -965,7 +954,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       const timeoutId = setTimeout(() => {
         const element = document.querySelector(`[data-section="dokument-${activeDokumentId}"]`);
         if (element) {
-          console.log('📜 Scrolling to active document:', activeDokumentId);
           element.scrollIntoView({ 
             behavior: 'smooth', 
             block: 'center',
