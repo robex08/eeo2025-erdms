@@ -2879,7 +2879,20 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faAddressBook} /> Adresář
                       </MenuDropdownItem>
                     )}
-                    {(hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                    {(
+                      hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE') ||
+                      hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
+                      hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
+                      hasPermission('CONTRACTS_VIEW') || hasPermission('CONTRACTS_CREATE') || hasPermission('CONTRACTS_EDIT') || hasPermission('CONTRACTS_DELETE') ||
+                      hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
+                      hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
+                      hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
+                      hasPermission('ROLES_VIEW') || hasPermission('ROLES_CREATE') || hasPermission('ROLES_EDIT') || hasPermission('ROLES_DELETE') ||
+                      hasPermission('PERMISSIONS_VIEW') || hasPermission('PERMISSIONS_CREATE') || hasPermission('PERMISSIONS_EDIT') || hasPermission('PERMISSIONS_DELETE') ||
+                      hasPermission('DOCX_TEMPLATES_VIEW') || hasPermission('DOCX_TEMPLATES_CREATE') || hasPermission('DOCX_TEMPLATES_EDIT') || hasPermission('DOCX_TEMPLATES_DELETE') ||
+                      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE') ||
+                      (hasAdminRole && hasAdminRole())
+                    ) && (
                       <MenuDropdownItem 
                         to="/dictionaries" 
                         onClick={() => setAdminMenuOpen(false)}

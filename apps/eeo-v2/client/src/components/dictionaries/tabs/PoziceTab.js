@@ -42,6 +42,7 @@ import {
   updatePozice,
   deletePozice,
 } from '../../../services/apiv2Dictionaries';
+import { createDictionaryPermissionHelper } from '../../../utils/dictionaryPermissions';
 import UniversalDictionaryDialog from '../UniversalDictionaryDialog';
 import DictionaryConfirmDialog from '../DictionaryConfirmDialog';
 
@@ -523,9 +524,12 @@ const UserCountBadge = styled.span`
 // =============================================================================
 
 const PoziceTab = () => {
-  const { token, user, userDetail } = useContext(AuthContext);
+  const { token, user, userDetail, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { cache, loadDictionary, invalidateCache } = useContext(DictionaryCacheContext);
+
+  // Oprávnění pro pozice
+  const permissions = createDictionaryPermissionHelper('POSITIONS', hasPermission);
 
   // ============= LOCALSTORAGE HELPERS =============
   const user_id = userDetail?.user_id;
