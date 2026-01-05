@@ -1453,11 +1453,6 @@ const Orders = () => {
 
       setGlobalProgress(60);
 
-      // Zobraz počet načtených záznamů
-      if (data && Array.isArray(data) && data.length > 0) {
-        console.log(`📊 Načteno ${data.length} objednávek z databáze ${dbSource}`);
-      }
-
       setGlobalProgress(70);
 
         if (data && Array.isArray(data)) {

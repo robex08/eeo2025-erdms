@@ -1890,7 +1890,6 @@ const ProfilePage = () => {
         const hasExistingSettings = settingsFromDB && Object.keys(settingsFromDB).length > 0;
         
         if (!hasExistingSettings) {
-          console.log('✨ Uživatel nemá nastavení v DB → Ukládám výchozí hodnoty');
           
           // Připrav výchozí nastavení z current state (userSettings má výchozí hodnoty z useState)
           const defaultSettings = userSettings;
