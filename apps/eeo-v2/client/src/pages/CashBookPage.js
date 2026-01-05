@@ -1117,7 +1117,6 @@ const CashBookPage = () => {
     return () => {
       if (userDetail?.id) {
         try {
-          console.log('🧹 CashBookPage unmount: Čištění localStorage');
           
           const userId = userDetail.id;
           
@@ -2597,7 +2596,6 @@ const CashBookPage = () => {
 
         documentNumber = `P${String(nextP).padStart(3, '0')}`;
         typeChanged = true;
-        console.log(`✨ Nová entry - vygenerováno číslo: ${documentNumber}`);
 
       } else if (shouldBeV) {
         // Vygenerovat nové V číslo
@@ -2625,7 +2623,6 @@ const CashBookPage = () => {
 
         documentNumber = `V${String(nextV).padStart(3, '0')}`;
         typeChanged = true;
-        console.log(`✨ Nová entry - vygenerováno číslo: ${documentNumber}`);
       }
     }
 
