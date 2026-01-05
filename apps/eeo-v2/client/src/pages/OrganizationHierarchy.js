@@ -2135,11 +2135,6 @@ const OrganizationHierarchy = () => {
         }));
         
         setHasDraft(true);
-        console.log('Normalized data:', {
-          nodes: normalizedNodes.length,
-          edges: normalizedEdges.length,
-          multiFieldNodes: normalizedNodes.filter(n => n.data?.scopeDefinition?.fields).length
-        });
         
       } catch (err) {
         console.error('❌ [localStorage] Chyba při ukládání draft hierarchie:', err);
@@ -2460,10 +2455,6 @@ const OrganizationHierarchy = () => {
           (structureData.data.nodes && structureData.data.nodes.length > 0) ||
           (structureData.data.edges && structureData.data.edges.length > 0)
         );
-        console.log('Structure data loaded:', {
-          nodes: structureData.data?.nodes?.length || 0,
-          edges: structureData.data?.edges?.length || 0
-        });
 
         // 4. Nastavit hierarchickou strukturu z API (preferovat API před draftem)
         if (shouldLoadFromApi) {
@@ -2499,11 +2490,6 @@ const OrganizationHierarchy = () => {
             animated: false,
             data: edge.data || {}
           }));
-          
-          console.log('ReactFlow data prepared:', {
-            nodes: flowNodes.length,
-            edges: flowEdges.length
-          });
           
           setNodes(flowNodes);
           setEdges(flowEdges);
@@ -2985,13 +2971,6 @@ const OrganizationHierarchy = () => {
     // Aktualizovat pozici uzlu v state (už je hotovo přes onNodesChange)
     // Nyní jen zalogovat pro debug
     const updatedNode = nodes.find(n => n.id === node.id);
-    if (updatedNode) {
-      console.log('Updated node:', {
-        id: updatedNode.id,
-        userId: updatedNode.data?.userId,
-        position: updatedNode.position
-      });
-    }
   }, [nodes]);
 
   const toggleSection = (section) => {
@@ -3240,14 +3219,6 @@ const OrganizationHierarchy = () => {
       x: event.clientX - nodeWidth / 2,
       y: event.clientY - nodeHeight / 2,
     });
-    
-    console.log('Drop event details:', {
-      dragId, 
-      position, 
-      clientX: event.clientX, 
-      clientY: event.clientY,
-      bounds: { left: reactFlowBounds.left, top: reactFlowBounds.top },
-      viewport: reactFlowInstance.getViewport()
     });
     
     // Zpracování notifikační šablony - přidat jako node
@@ -3991,14 +3962,6 @@ const OrganizationHierarchy = () => {
              !pos.includes('vedoucí');
     });
 
-    console.log('Organization hierarchy summary:', {
-      director: director ? `${director.name} (${director.department}, ${director.location})` : 'None',
-      deputies: deputies.map(d => ({ name: d.name, dept: d.department, code: d.departmentCode })),
-      directorHeads: directorHeads.map(h => ({ name: h.name, dept: h.department })),
-      heads: heads.map(h => ({ name: h.name, dept: h.department, code: h.departmentCode })),
-      others: `${others.length} users`
-    });
-
     // 2. Vytvoření nodes (pozice budou přepočítány dagre)
     const newNodes = [];
     const newEdges = [];
@@ -4186,11 +4149,6 @@ const OrganizationHierarchy = () => {
     // Nastavit nové nodes a edges s optimálním layoutem
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
-
-    console.log('Layout completed:', {
-      nodes: layoutedNodes.length,
-      edges: layoutedEdges.length
-    });
 
     setDialog({
       show: true,
@@ -4478,12 +4436,6 @@ const OrganizationHierarchy = () => {
       const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo';
       
       const profileId = targetProfileId || currentProfile?.id || 1;
-      
-      console.log('Saving hierarchy for profile:', {
-        profileId,
-        totalNodes: nodes.length,
-        totalEdges: edges.length
-      });
       
       // NOVÝ SYSTÉM: Uložit nodes a edges jako JSON do structure_json
       const payload = {
