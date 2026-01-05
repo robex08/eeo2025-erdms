@@ -320,17 +320,17 @@ function applyHierarchyFilterToOrders($userId, $db) {
     }
     
     if (empty($relationships)) {
-        // Uživatel nemá žádné hierarchické vztahy
-        // ALE musí vidět minimálně své vlastní objednávky (kde je tvůrce/objednatel/garant)
-        error_log("⚠️ User $userId has NO relationships in profile $profileId");
-        error_log("✅ Will see ONLY OWN orders (uzivatel_id, objednatel_id, garant_uzivatel_id)");
+        // 🔥 CRITICAL: Uživatel nemá žádné hierarchické vztahy s orders module
+        // → NEAPLIKUJ hierarchii, použij klasický role-based filtr (12 polí)
+        error_log("⚠️ User $userId has NO relationships with orders module in profile $profileId");
+        error_log("✅ Hierarchy will NOT be applied - fallback to role-based filter (12 fields)");
         
-        $HIERARCHY_DEBUG_INFO['reason'] = 'no_relationships_own_only';
-        $HIERARCHY_DEBUG_INFO['filter_generated'] = true;
-        $HIERARCHY_DEBUG_INFO['filter_preview'] = "User sees only own orders";
+        $HIERARCHY_DEBUG_INFO['reason'] = 'no_orders_relationships';
+        $HIERARCHY_DEBUG_INFO['filter_generated'] = false;
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = "NULL - will use role-based filter";
         
-        // Vrátíme filtr, který umožňuje vidět pouze vlastní objednávky
-        return "(o.uzivatel_id = $userId OR o.objednatel_id = $userId OR o.garant_uzivatel_id = $userId)";
+        // Vrátíme NULL → hierarchie se nepoužije, použije se role-based filtr
+        return null;
     }
     
     error_log("✅ Found " . count($relationships) . " relationships for user $userId in profile $profileId");
@@ -522,6 +522,13 @@ function applyHierarchyFilterToOrders($userId, $db) {
  * @return bool
  */
 function canUserViewOrder($orderId, $userId, $db) {
+    // 0. Check ORDER_MANAGE permission - má plný přístup ke VŠEM objednávkám
+    $user_permissions = getUserOrderPermissions($userId, $db);
+    if (in_array('ORDER_MANAGE', $user_permissions)) {
+        error_log("HIERARCHY: User $userId CAN view order $orderId (has ORDER_MANAGE)");
+        return true;
+    }
+    
     // 1. Načti nastavení hierarchie
     $settings = getHierarchySettings($db);
     
@@ -535,14 +542,23 @@ function canUserViewOrder($orderId, $userId, $db) {
         return true;
     }
     
-    // 3. Načti objednávku s 3 KLÍČOVÝMI ROLEMI (uzivatel, objednatel, garant)
-    // Hierarchie filtruje pouze přes 3 klíčové role - ostatní účastníci workflow jsou irelevantní
+    // 3. Načti objednávku se VŠEMI 12 ROLEMI (stejně jako list filter)
+    // Uživatel může vidět objednávku, pokud má roli v JAKÉMKOLIV z 12 polí
     $query = "
         SELECT 
             o.id,
             o.uzivatel_id,
             o.objednatel_id,
-            o.garant_uzivatel_id
+            o.garant_uzivatel_id,
+            o.schvalovatel_id,
+            o.prikazce_id,
+            o.uzivatel_akt_id,
+            o.odesilatel_id,
+            o.dodavatel_potvrdil_id,
+            o.zverejnil_id,
+            o.fakturant_id,
+            o.dokoncil_id,
+            o.potvrdil_vecnou_spravnost_id
         FROM " . TBL_OBJEDNAVKY . " o
         WHERE o.id = :orderId AND o.aktivni = 1
     ";
@@ -561,11 +577,20 @@ function canUserViewOrder($orderId, $userId, $db) {
     }
     
     // 4. Zkontroluj hierarchické vztahy pomocí structure_json
-    // POUZE 3 KLÍČOVÉ ROLE (uzivatel, objednatel, garant)
+    // VŠECH 12 ROLÍ (stejně jako v list filteru)
     $participantIds = array_filter([
         $order['uzivatel_id'],
         $order['objednatel_id'],
-        $order['garant_uzivatel_id']
+        $order['garant_uzivatel_id'],
+        $order['schvalovatel_id'],
+        $order['prikazce_id'],
+        $order['uzivatel_akt_id'],
+        $order['odesilatel_id'],
+        $order['dodavatel_potvrdil_id'],
+        $order['zverejnil_id'],
+        $order['fakturant_id'],
+        $order['dokoncil_id'],
+        $order['potvrdil_vecnou_spravnost_id']
     ]);
     
     if (empty($participantIds)) {
@@ -575,15 +600,15 @@ function canUserViewOrder($orderId, $userId, $db) {
     // Načíst vztahy uživatele ze structure_json
     $relationships = getUserRelationshipsFromStructure($userId, $db);
     
-    // 🔥 FIX: Pokud uživatel nemá vztahy, může vidět minimálně SVOJE VLASTNÍ objednávky
+    // 🔥 FIX: Pokud uživatel nemá vztahy, může vidět minimálně SVOJE VLASTNÍ objednávky (kde má roli)
     if (empty($relationships)) {
         error_log("HIERARCHY: User $userId has NO relationships in hierarchy - checking OWN orders only");
-        // Zkontrolovat, zda je uživatel přímo zúčastněný (uzivatel_id, objednatel_id, garant_uzivatel_id)
+        // Zkontrolovat, zda je uživatel přímo zúčastněný v JAKÉKOLIV z 12 rolí
         if (in_array($userId, $participantIds)) {
-            error_log("HIERARCHY: User $userId CAN view order $orderId (own order)");
+            error_log("HIERARCHY: User $userId CAN view order $orderId (has role in order)");
             return true;
         }
-        error_log("HIERARCHY: User $userId CANNOT view order $orderId (not own order, no relationships)");
+        error_log("HIERARCHY: User $userId CANNOT view order $orderId (no role in order, no relationships)");
         return false;
     }
     

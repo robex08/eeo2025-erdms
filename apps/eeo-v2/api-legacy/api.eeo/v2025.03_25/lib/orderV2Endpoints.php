@@ -675,7 +675,16 @@ function handle_order_v2_list($input, $config, $queries) {
                     'has_more' => $hasMore
                 ),
                 'filters_applied' => count($params),
-                'timestamp' => $apiTimestamp
+                'timestamp' => $apiTimestamp,
+                'debug' => array(
+                    'user_id' => $current_user_id,
+                    'is_admin' => $isAdminByRole,
+                    'hierarchy_applied' => $hierarchyApplied,
+                    'permissions' => $user_permissions,
+                    'roles' => $user_roles,
+                    'sql_preview' => substr($sql, 0, 500),
+                    'params' => $params
+                )
             )
         ));
         

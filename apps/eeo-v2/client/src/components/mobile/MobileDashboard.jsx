@@ -145,7 +145,14 @@ function MobileDashboard() {
   useEffect(() => {
     loadInitialData();
     loadActivityCount();
-  }, [selectedYear]);
+  }, [selectedYear]); // Tento useEffect se spustí při změně roku
+
+  useEffect(() => {
+    // Samostatný useEffect pro loadPendingApprovals - zajistí, že se spustí při změně roku nebo userDetail
+    if (canApprove && userDetail?.id) {
+      loadPendingApprovals();
+    }
+  }, [selectedYear, canApprove, userDetail?.id]); // Přidáno: reaguje na změnu roku
 
   // Načíst počet aktivit
   const loadActivityCount = () => {
@@ -779,6 +786,8 @@ function MobileDashboard() {
         notificationCount={notificationCount}
         onActivityClick={() => setActivityLogOpen(true)}
         activityCount={activityCount}
+        selectedYear={selectedYear}
+        onYearChange={setSelectedYear}
       />
       
       {/* Subheader pro approval screen */}

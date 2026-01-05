@@ -19,7 +19,7 @@ function mapUserStatusToSystemCode(userStatus) {
   }
   
   const mapping = {
-    'Ke schválení': 'KE_SCHVALENI',
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI, ne KE_SCHVALENI
     'Nová': 'NOVA',
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
@@ -188,8 +188,12 @@ export function filterOrders(orders, options = {}) {
     });
   }
 
-  // 3. Filtrování podle příkazce (pouze pro non-admin)
+  // 3. Filtrování podle rolí v objednávce (pouze pro non-admin)
   // ⚠️ VÝJIMKA: Koncepty patří vždy aktuálnímu uživateli (objednatel_id)
+  // 🎯 KONTROLA VŠECH 12 ROLÍ (konzistentní s backendem hierarchyOrderFilters.php):
+  // uzivatel_id, objednatel_id, garant_uzivatel_id, schvalovatel_id, prikazce_id,
+  // uzivatel_akt_id, odesilatel_id, dodavatel_potvrdil_id, zverejnil_id, 
+  // fakturant_id, dokoncil_id, potvrdil_vecnou_spravnost_id
   if (!isAdmin && userId) {
     filtered = filtered.filter(o => {
       // Koncepty: kontroluj objednatel_id nebo uzivatel_id
@@ -197,8 +201,21 @@ export function filterOrders(orders, options = {}) {
         return o.objednatel_id === userId || o.uzivatel_id === userId;
       }
       
-      // Ostatní: kontroluj příkazce
-      return o.prikazce_id === userId;
+      // Ostatní: kontroluj VŠECH 12 rolí v objednávce
+      return (
+        o.uzivatel_id === userId ||
+        o.objednatel_id === userId ||
+        o.garant_uzivatel_id === userId ||
+        o.schvalovatel_id === userId ||
+        o.prikazce_id === userId ||
+        o.uzivatel_akt_id === userId ||
+        o.odesilatel_id === userId ||
+        o.dodavatel_potvrdil_id === userId ||
+        o.zverejnil_id === userId ||
+        o.fakturant_id === userId ||
+        o.dokoncil_id === userId ||
+        o.potvrdil_vecnou_spravnost_id === userId
+      );
     });
   }
 
