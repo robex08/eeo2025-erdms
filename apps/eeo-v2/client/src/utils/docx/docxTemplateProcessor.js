@@ -14,11 +14,6 @@ import JSZip from 'jszip';
  */
 export const fillDocxTemplate = async (templateFile, fieldValues, fileName = 'vyplneny_dokument.docx') => {
   try {
-    console.log('[fillDocxTemplate]', {
-      templateSize: templateFile.size,
-      fieldsCount: Object.keys(fieldValues).length,
-      fields: fieldValues
-    });
 
     // Načti DOCX jako ZIP
     const zip = await JSZip.loadAsync(templateFile);
@@ -88,13 +83,6 @@ export const fillDocxTemplate = async (templateFile, fieldValues, fileName = 'vy
     const outputBlob = await zip.generateAsync({
       type: 'blob',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    });
-
-    console.log('[fillDocxTemplate] Result:', {
-      originalSize: templateFile.size,
-      filledSize: outputBlob.size,
-      fieldsProcessed: Object.keys(fieldValues).length,
-      replacementsMade: replacementCount
     });
 
     return outputBlob;

@@ -298,11 +298,6 @@ export async function generateDocxDocument({
     }
     
     // === KROK 4b: Vybraný uživatel pro podpis ===
-    console.log('Selected user for signature:', {
-      selectedUserId,
-      dostupniUzivatele: apiData.dostupni_uzivatele_pro_podpis,
-      pocetDostupnych: apiData.dostupni_uzivatele_pro_podpis?.length || 0
-    });
     
     if (selectedUserId && apiData.vypocitane) {
       const vybranyUzivatel = apiData.dostupni_uzivatele_pro_podpis?.find(
@@ -316,12 +311,6 @@ export async function generateDocxDocument({
         apiData.vypocitane.vybrany_uzivatel_cele_jmeno = vybranyUzivatel.cele_jmeno;
         apiData.vypocitane.vybrany_uzivatel_role = vybranyUzivatel.role;
         apiData.vypocitane.vybrany_uzivatel_lokalita = vybranyUzivatel.lokalita_nazev;
-        
-        console.log('Selected user data:', {
-          vybrany_uzivatel_cele_jmeno: apiData.vypocitane.vybrany_uzivatel_cele_jmeno,
-          vybrany_uzivatel_role: apiData.vypocitane.vybrany_uzivatel_role,
-          vybrany_uzivatel_lokalita: apiData.vypocitane.vybrany_uzivatel_lokalita
-        });
       }
     }
 
@@ -329,13 +318,6 @@ export async function generateDocxDocument({
     // Backend endpoint vrací data JIŽ NORMALIZOVANÁ a S VYPOČÍTANÝMI HODNOTAMI
 
     // === KROK 5: DYNAMICKÉ MAPOVÁNÍ polí ===
-
-    console.log('Supplier data:', {
-      dodavatel_nazev: apiData.dodavatel_nazev,
-      dodavatel_kontakt_jmeno: apiData.dodavatel_kontakt_jmeno,
-      dodavatel_kontakt_email: apiData.dodavatel_kontakt_email,
-      dodavatel_kontakt_telefon: apiData.dodavatel_kontakt_telefon,
-      dodavatel_adresa: apiData.dodavatel_adresa,
       dodavatel_ico: apiData.dodavatel_ico,
       dodavatel_dic: apiData.dodavatel_dic
     });
@@ -426,7 +408,6 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
         }
       }
     } catch (error) {
-      console.log(`  ❌ Chyba při mapování ${docxField}:`, error);
       value = '';
     }
 
@@ -522,10 +503,6 @@ function getValueFromPath(obj, path) {
  * NEMAPOVANÁ POLE SE ODSTRANÍ Z DOKUMENTU
  */
 function fillXmlWithFieldData(xmlContent, fieldValues) {
-
-  console.log('🔧 fillXmlWithFieldData START');
-  // Field values k vyplnění: fieldValues
-  console.log('📄 XML délka:', xmlContent.length);
 
   try {
     const parser = new window.DOMParser();
@@ -666,7 +643,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
     
     if (missingInXml.length > 0) {
       console.warn('⚠️ POLE V MAPOVÁNÍ, ALE NEJSOU V XML:', missingInXml);
-      console.log('🔧 Pokusím se nahradit jako textové placeholder...');
       
       // FALLBACK: Nahraď textové placeholder {DOCVARIABLE FIELD_NAME}
       let xmlString = serializer.serializeToString(xmlDoc);
@@ -691,7 +667,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
       });
       
       if (textReplacements > 0) {
-        console.log(`📝 Celkem nahrazeno ${textReplacements} textových placeholder`);
         return xmlString;
       }
     }
