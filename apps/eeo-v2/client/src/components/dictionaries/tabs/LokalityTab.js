@@ -517,12 +517,12 @@ const EmptyState = styled.div`
 `;
 
 const LokalityTab = () => {
-  const { token, user, userDetail, hasPermission } = useContext(AuthContext);
+  const { token, user, userDetail, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { cache, loadDictionary, invalidateCache } = useContext(DictionaryCacheContext);
 
   // Oprávnění pro lokality
-  const permissions = createDictionaryPermissionHelper('LOCATIONS', hasPermission);
+  const permissions = createDictionaryPermissionHelper('LOCATIONS', hasPermission, hasAdminRole);
 
   // Helper functions for user-specific localStorage
   const user_id = userDetail?.user_id;

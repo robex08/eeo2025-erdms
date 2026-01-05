@@ -11,10 +11,11 @@
  * Vytvoří helper pro kontrolu práv specifického číselníku
  * @param {string} prefix - Prefix práva (např. 'LOCATIONS', 'POSITIONS')
  * @param {function} hasPermission - funkce hasPermission z AuthContext
+ * @param {function} hasAdminRole - funkce hasAdminRole z AuthContext
  * @returns {object} Objekt s funkcemi pro kontrolu práv
  */
-export const createDictionaryPermissionHelper = (prefix, hasPermission) => {
-  if (!hasPermission) {
+export const createDictionaryPermissionHelper = (prefix, hasPermission, hasAdminRole) => {
+  if (!hasPermission || !hasAdminRole) {
     return {
       canView: () => false,
       canCreate: () => false,
@@ -26,10 +27,12 @@ export const createDictionaryPermissionHelper = (prefix, hasPermission) => {
 
   return {
     /**
-     * Může zobrazit položky (READ)
+     * Může zobrazit záložku a položky (READ)
+     * Vyžaduje VIEW právo nebo jakékoliv jiné právo pro tento číselník
+     * ADMIN role má automatický přístup
      */
     canView: () => {
-      return hasPermission('DICT_MANAGE') || 
+      return hasAdminRole() || 
              hasPermission(`${prefix}_VIEW`) ||
              hasPermission(`${prefix}_CREATE`) ||
              hasPermission(`${prefix}_EDIT`) ||
@@ -38,25 +41,28 @@ export const createDictionaryPermissionHelper = (prefix, hasPermission) => {
 
     /**
      * Může vytvářet nové položky (CREATE)
+     * Vyžaduje specifické právo nebo ADMIN roli
      */
     canCreate: () => {
-      return hasPermission('DICT_MANAGE') || 
+      return hasAdminRole() || 
              hasPermission(`${prefix}_CREATE`);
     },
 
     /**
      * Může editovat existující položky (EDIT)
+     * ADMIN role má plný přístup automaticky
      */
     canEdit: () => {
-      return hasPermission('DICT_MANAGE') || 
+      return hasAdminRole() || 
              hasPermission(`${prefix}_EDIT`);
     },
 
     /**
      * Může mazat položky (DELETE)
+     * ADMIN role má plný přístup automaticky
      */
     canDelete: () => {
-      return hasPermission('DICT_MANAGE') || 
+      return hasAdminRole() || 
              hasPermission(`${prefix}_DELETE`);
     },
 

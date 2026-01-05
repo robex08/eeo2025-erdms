@@ -2880,7 +2880,8 @@ const Layout = ({ children }) => {
                       </MenuDropdownItem>
                     )}
                     {(
-                      hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE') ||
+                      hasAdminRole() ||
+                      hasPermission('DICT_MANAGE') ||
                       hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
                       hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
                       hasPermission('CONTRACTS_VIEW') || hasPermission('CONTRACTS_CREATE') || hasPermission('CONTRACTS_EDIT') || hasPermission('CONTRACTS_DELETE') ||
@@ -2890,8 +2891,7 @@ const Layout = ({ children }) => {
                       hasPermission('ROLES_VIEW') || hasPermission('ROLES_CREATE') || hasPermission('ROLES_EDIT') || hasPermission('ROLES_DELETE') ||
                       hasPermission('PERMISSIONS_VIEW') || hasPermission('PERMISSIONS_CREATE') || hasPermission('PERMISSIONS_EDIT') || hasPermission('PERMISSIONS_DELETE') ||
                       hasPermission('DOCX_TEMPLATES_VIEW') || hasPermission('DOCX_TEMPLATES_CREATE') || hasPermission('DOCX_TEMPLATES_EDIT') || hasPermission('DOCX_TEMPLATES_DELETE') ||
-                      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE') ||
-                      (hasAdminRole && hasAdminRole())
+                      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
                     ) && (
                       <MenuDropdownItem 
                         to="/dictionaries" 
