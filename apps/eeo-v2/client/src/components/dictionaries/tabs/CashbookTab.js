@@ -1231,6 +1231,24 @@ const CashbookTab = () => {
         ),
       },
       {
+        accessorKey: 'pocatecni_stav_rok',
+        header: 'Počáteční stav',
+        cell: ({ row }) => {
+          const stav = row.original.pocatecni_stav_rok;
+          return (
+            <div style={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: stav !== null && stav !== undefined ? '#059669' : '#94a3b8'
+            }}>
+              {stav !== null && stav !== undefined 
+                ? `${parseFloat(stav).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                : '—'}
+            </div>
+          );
+        },
+      },
+      {
         accessorKey: 'ciselna_rada_vpd',
         header: 'VPD',
         cell: ({ row }) => (

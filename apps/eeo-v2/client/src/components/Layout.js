@@ -2832,7 +2832,14 @@ const Layout = ({ children }) => {
       {isLoggedIn && (
         <MenuBar>
           <MenuLeft ref={menuLeftRef}>
-            { hasAdminRole && hasAdminRole() && (
+            { hasPermission && (
+                hasPermission('USER_MANAGE') || 
+                hasPermission('DICT_MANAGE') || 
+                hasPermission('PHONEBOOK_MANAGE') ||
+                hasPermission('WORKFLOW_MANAGE') ||
+                hasPermission('APP_SETTINGS_MANAGE') ||
+                (hasAdminRole && hasAdminRole())
+              ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={adminButtonRef}
@@ -2864,36 +2871,46 @@ const Layout = ({ children }) => {
                       minWidth: `${adminDropdownPosition.width}px`
                     }}
                   >
-                    <MenuDropdownItem 
-                      to="/address-book" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faAddressBook} /> Adresář
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/dictionaries" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faBook} /> Číselníky
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/users" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faUsers} /> Uživatelé
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/organization-hierarchy" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faSitemap} /> Systém workflow a notifikací
-                    </MenuDropdownItem>
-                    <MenuDropdownItem 
-                      to="/app-settings" 
-                      onClick={() => setAdminMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faCog} /> Nastavení aplikace
-                    </MenuDropdownItem>
+                    {(hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/address-book" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faAddressBook} /> Adresář
+                      </MenuDropdownItem>
+                    )}
+                    {(hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/dictionaries" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faBook} /> Číselníky
+                      </MenuDropdownItem>
+                    )}
+                    {(hasPermission('USER_VIEW') || hasPermission('USER_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/users" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faUsers} /> Uživatelé
+                      </MenuDropdownItem>
+                    )}
+                    {(hasPermission('WORKFLOW_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/organization-hierarchy" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faSitemap} /> Systém workflow a notifikací
+                      </MenuDropdownItem>
+                    )}
+                    {(hasPermission('APP_SETTINGS_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/app-settings" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faCog} /> Nastavení aplikace
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}

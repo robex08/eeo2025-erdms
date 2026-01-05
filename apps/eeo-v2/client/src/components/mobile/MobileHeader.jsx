@@ -140,10 +140,15 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
             <select 
               className="mobile-year-selector"
               value={selectedYear || new Date().getFullYear()}
-              onChange={(e) => onYearChange(parseInt(e.target.value))}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Pokud je to "current" nebo jiný string, převeď na aktuální rok
+                onYearChange(value === 'current' ? new Date().getFullYear() : parseInt(value));
+              }}
               aria-label="Výběr roku"
             >
-              {Array.from({ length: new Date().getFullYear() - 2024 }, (_, i) => 2025 + i).map(year => (
+              <option value="current">Aktuální ({new Date().getFullYear()})</option>
+              {Array.from({ length: new Date().getFullYear() - 2024 }, (_, i) => 2025 + i).reverse().map(year => (
                 <option key={year} value={year}>{year}</option>
               ))}
             </select>

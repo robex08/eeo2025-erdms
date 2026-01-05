@@ -27,6 +27,7 @@ import {
 import { prettyDate } from '../utils/format';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ResetPasswordModal from '../components/ResetPasswordModal';
+import ForcePasswordChangeModal from '../components/ForcePasswordChangeModal';
 import UserManagementModal from '../components/userManagement/UserManagementModal';
 import UserContextMenu from '../components/UserContextMenu';
 import ModernHelper from '../components/ModernHelper';
@@ -168,7 +169,7 @@ const DashboardPanel = styled.div`
 
 const DashboardGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: 3fr 2.25fr 2.25fr 2.25fr 2.25fr;
   gap: 1.5rem;
 
   @media (max-width: 1200px) {
@@ -182,8 +183,8 @@ const DashboardGrid = styled.div`
 `;
 
 const TallStatCard = styled.div`
-  grid-column: span 3;
-  grid-row: span 2;
+  grid-column: 1;
+  grid-row: 1 / 3;
   background: linear-gradient(145deg, #ffffff, #f9fafb);
   border-radius: 12px;
   padding: 1rem;
@@ -216,7 +217,6 @@ const TallStatCard = styled.div`
 `;
 
 const SmallStatCard = styled.div`
-  grid-column: span 3;
   background: ${props => props.$isActive ?
     `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
     'linear-gradient(145deg, #ffffff, #f9fafb)'};
@@ -250,6 +250,49 @@ const SmallStatCard = styled.div`
 
   @media (max-width: 1200px) {
     grid-column: span 3;
+  }
+
+  @media (max-width: 768px) {
+    grid-column: span 1;
+    min-height: 100px;
+  }
+`;
+
+const MediumStatCard = styled.div`
+  grid-row: 2;
+  background: ${props => props.$isActive ?
+    `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
+    'linear-gradient(145deg, #ffffff, #f9fafb)'};
+  border-radius: 12px;
+  padding: 1rem;
+  border-left: 4px solid ${props => props.$color || '#3b82f6'};
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s ease;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  &:hover {
+    transform: ${props => props.$clickable ? 'translateY(-2px)' : 'translateY(-1px)'};
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.1),
+      0 2px 6px rgba(0, 0, 0, 0.06);
+    ${props => props.$clickable && `
+      background: linear-gradient(145deg, ${props.$color || '#3b82f6'}25, ${props.$color || '#3b82f6'}15);
+    `}
+  }
+
+  ${props => props.$isActive && `
+    border-left-width: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 2px ${props.$color || '#3b82f6'}40;
+  `}
+
+  @media (max-width: 1200px) {
+    grid-column: span 6;
   }
 
   @media (max-width: 768px) {
@@ -1255,6 +1298,9 @@ const Users = () => {
   const [statusFilter, setStatusFilter] = useState(() => {
     return getUserStorage('users_statusFilter', 'all'); // 'all', 'active', 'inactive'
   });
+  const [forcePasswordChangeFilter, setForcePasswordChangeFilter] = useState(() => {
+    return getUserStorage('users_forcePasswordChangeFilter', 'all'); // 'all', 'forced', 'normal'
+  });
   const [showFilters, setShowFilters] = useState(() => {
     return getUserStorage('users_showFilters', false); // Rozšířený filtr defaultně skrytý
   });
@@ -1319,6 +1365,8 @@ const Users = () => {
   });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
+  const [isForcePasswordChangeModalOpen, setIsForcePasswordChangeModalOpen] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [dialogAction, setDialogAction] = useState(null);
   const [deleteType, setDeleteType] = useState('soft'); // 'soft' nebo 'hard'
@@ -1568,6 +1616,39 @@ const Users = () => {
     return () => clearInterval(interval);
   }, [fetchActiveUsersData]);
 
+  // Načítání email šablon
+  useEffect(() => {
+    const fetchEmailTemplates = async () => {
+      if (!token || !username) return;
+      
+      try {
+        // Používám relativní cestu aby fungovalo přes proxy (setupProxy.js)
+        const response = await fetch('/api.eeo/notifications/templates', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json' 
+          },
+          body: JSON.stringify({
+            token,
+            username,
+            active_only: true
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'ok' && data.data) {
+            setEmailTemplates(data.data);
+          }
+        }
+      } catch (error) {
+        console.error('Chyba při načítání šablon:', error);
+      }
+    };
+
+    fetchEmailTemplates();
+  }, [token, username]);
+
   // Načítání počtů objednávek pro uživatele - PARALELNÍ VERZE s CACHE
   const fetchOrdersCounts = useCallback(async (forceRefresh = false) => {
     if (!users.length || !token || !username) {
@@ -1693,6 +1774,7 @@ const Users = () => {
     const total = users.length;
     const active = users.filter(u => u.active).length;
     const inactive = total - active;
+    const forcePasswordChange = users.filter(u => u.vynucena_zmena_hesla === 1).length;
 
     const departments = {};
     users.forEach(u => {
@@ -1706,7 +1788,7 @@ const Users = () => {
       groups[group] = (groups[group] || 0) + 1;
     });
 
-    return { total, active, inactive, departments, groups };
+    return { total, active, inactive, forcePasswordChange, departments, groups };
   }, [users]);
 
   // Utility function pro normalizaci textu (odstranění diakritiky a převod na malá písmena)
@@ -1723,6 +1805,10 @@ const Users = () => {
       // Status filtr (všichni/aktivní/neaktivní) - MUSÍ BÝT PRVNÍ!
       if (statusFilter === 'active' && !user.active) return false;
       if (statusFilter === 'inactive' && user.active) return false;
+
+      // Filtr vynucené změny hesla
+      if (forcePasswordChangeFilter === 'forced' && user.vynucena_zmena_hesla !== 1) return false;
+      if (forcePasswordChangeFilter === 'normal' && user.vynucena_zmena_hesla === 1) return false;
 
       // Global filter (Fultext) - bez diakritiky
       if (globalFilter) {
@@ -1791,7 +1877,7 @@ const Users = () => {
 
       return true;
     });
-  }, [users, globalFilter, statusFilter, departmentFilter, groupFilter, locationFilter, positionFilter, columnFilters, normalizeForSearch]);
+  }, [users, globalFilter, statusFilter, forcePasswordChangeFilter, departmentFilter, groupFilter, locationFilter, positionFilter, columnFilters, normalizeForSearch]);
 
   const columns = useMemo(() => [
     {
@@ -2161,6 +2247,10 @@ const Users = () => {
   }, [statusFilter, user_id]);
 
   useEffect(() => {
+    setUserStorage('users_forcePasswordChangeFilter', forcePasswordChangeFilter);
+  }, [forcePasswordChangeFilter, user_id]);
+
+  useEffect(() => {
     setUserStorage('users_showFilters', showFilters);
   }, [showFilters, user_id]);
 
@@ -2242,43 +2332,114 @@ const Users = () => {
   };
 
   const handleToggleForcePasswordChange = async (user) => {
+    // Otevřít modal s možnostmi
+    setSelectedUser(user);
+    setIsForcePasswordChangeModalOpen(true);
+  };
+
+  const handleForcePasswordChangeConfirm = async (options) => {
+    const user = selectedUser;
+    if (!user) return;
+
     const currentValue = user.vynucena_zmena_hesla === 1;
-    const newValue = !currentValue;
-    
+    const isForcing = !currentValue;
+
     try {
       startGlobalProgress();
-      setGlobalProgress(30);
+      setGlobalProgress(20);
 
-      // Volání API pro update vynucena_zmena_hesla
+      // Pokud je volba "remove-force", jen odstraníme vynucení
+      if (options.option === 'remove-force') {
+        const result = await partialUpdateUser({
+          token,
+          username,
+          id: user.id,
+          vynucena_zmena_hesla: 0
+        });
+
+        setGlobalProgress(70);
+
+        // Update local data
+        const updatedUsers = users.map(u => 
+          u.id === user.id 
+            ? { ...u, vynucena_zmena_hesla: 0 }
+            : u
+        );
+        setUsers(updatedUsers);
+
+        setGlobalProgress(100);
+        doneGlobalProgress();
+        setIsForcePasswordChangeModalOpen(false);
+
+        if (showToast) {
+          showToast(`✓ Vynucení změny hesla bylo zrušeno pro ${user.fullName || user.username}`, { type: 'success' });
+        }
+        return;
+      }
+
+      // Vynucení změny hesla
       const result = await partialUpdateUser({
         token,
         username,
         id: user.id,
-        vynucena_zmena_hesla: newValue ? 1 : 0
+        vynucena_zmena_hesla: 1
       });
 
+      setGlobalProgress(40);
 
-      setGlobalProgress(70);
+      // Pokud má být zaslán email s novým heslem
+      if (options.option === 'with-email' && options.templateId) {
+        try {
+          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3200/';
+          const response = await fetch(`${API_BASE_URL}auth/generate-and-send-password`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Auth-Token': token,
+              'X-Auth-Username': username,
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              template_id: options.templateId,
+            }),
+          });
+
+          setGlobalProgress(70);
+
+          if (!response.ok) {
+            throw new Error('Nepodařilo se odeslat email s novým heslem');
+          }
+
+          const emailResult = await response.json();
+          if (showToast) {
+            showToast(`✓ Nové heslo bylo vygenerováno a odesláno na ${user.email}`, { type: 'success' });
+          }
+        } catch (emailError) {
+          if (showToast) {
+            showToast(`⚠️ Vynucení bylo nastaveno, ale email se nepodařilo odeslat: ${emailError.message}`, { type: 'warning' });
+          }
+        }
+      }
 
       // Update local data
       const updatedUsers = users.map(u => 
         u.id === user.id 
-          ? { ...u, vynucena_zmena_hesla: newValue ? 1 : 0 }
+          ? { ...u, vynucena_zmena_hesla: 1 }
           : u
       );
       setUsers(updatedUsers);
 
       setGlobalProgress(100);
       doneGlobalProgress();
+      setIsForcePasswordChangeModalOpen(false);
 
-      if (showToast) {
-        const fullName = user.fullName || user.username;
-        const action = newValue ? 'vynutí změnu hesla' : 'zruší vynucení změny hesla';
-        showToast(`✓ Uživatel ${fullName} - ${action}`, { type: 'success' });
+      if (showToast && options.option === 'without-email') {
+        showToast(`✓ Vynucení změny hesla bylo nastaveno pro ${user.fullName || user.username}`, { type: 'success' });
       }
 
     } catch (error) {
       doneGlobalProgress();
+      setIsForcePasswordChangeModalOpen(false);
 
       const errorMessage = error.message || 'Chyba při změně nastavení hesla';
       if (showToast) {
@@ -2748,6 +2909,14 @@ const Users = () => {
     });
   };
 
+  const handleForcePasswordChangeFilterClick = () => {
+    setForcePasswordChangeFilter(prev => {
+      if (prev === 'all') return 'forced';
+      if (prev === 'forced') return 'normal';
+      return 'all';
+    });
+  };
+
   const handleClearFilters = () => {
     setGlobalFilter('');
     setDepartmentFilter('');
@@ -2755,6 +2924,7 @@ const Users = () => {
     setLocationFilter('');
     setPositionFilter('');
     setStatusFilter('all'); // Reset na defaultní hodnotu
+    setForcePasswordChangeFilter('all'); // Reset na defaultní hodnotu
     setColumnFilters({}); // Vymazat i column filtry v tabulce
     // localStorage will be updated automatically via useEffect hooks
   };
@@ -3135,7 +3305,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               $color="#16a34a"
               $clickable
               $isActive={statusFilter === 'active'}
-              onClick={() => setStatusFilter('active')}
+              onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
               title="Klikněte pro filtrování pouze aktivních uživatelů"
             >
               <StatHeader>
@@ -3149,7 +3319,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               $color="#dc2626"
               $clickable
               $isActive={statusFilter === 'inactive'}
-              onClick={() => setStatusFilter('inactive')}
+              onClick={() => setStatusFilter(statusFilter === 'inactive' ? 'all' : 'inactive')}
               title="Klikněte pro filtrování pouze neaktivních uživatelů"
             >
               <StatHeader>
@@ -3159,23 +3329,37 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               <StatLabel>Neaktivní uživatelé</StatLabel>
             </SmallStatCard>
 
-            <SmallStatCard $color="#f59e0b">
+            <SmallStatCard
+              $color="#f59e0b"
+              $clickable
+              $isActive={forcePasswordChangeFilter === 'forced'}
+              onClick={() => setForcePasswordChangeFilter(forcePasswordChangeFilter === 'forced' ? 'all' : 'forced')}
+              title="Klikněte pro filtrování uživatelů s vynucenou změnou hesla"
+            >
+              <StatHeader>
+                <StatValue>{stats.forcePasswordChange}</StatValue>
+                <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faExclamationTriangle} /></StatIcon>
+              </StatHeader>
+              <StatLabel>Vynucená změna hesla</StatLabel>
+            </SmallStatCard>
+
+            <MediumStatCard $color="#8b5cf6">
               <StatHeader>
                 <StatValue>{Object.keys(stats.departments).length}</StatValue>
-                <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faBuilding} /></StatIcon>
+                <StatIcon $color="#8b5cf6"><FontAwesomeIcon icon={faBuilding} /></StatIcon>
               </StatHeader>
               <StatLabel>Počet úseků</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
 
-            <SmallStatCard $color="#8b5cf6">
+            <MediumStatCard $color="#10b981">
               <StatHeader>
                 <StatValue>{Object.keys(stats.groups).length}</StatValue>
-                <StatIcon $color="#8b5cf6"><FontAwesomeIcon icon={faShield} /></StatIcon>
+                <StatIcon $color="#10b981"><FontAwesomeIcon icon={faShield} /></StatIcon>
               </StatHeader>
               <StatLabel>Počet skupin/rolí</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
 
-            <SmallStatCard $color="#ec4899">
+            <MediumStatCard $color="#ec4899">
               <StatHeader>
                 <StatValue>
                   {Object.keys(ordersCount).length > 0 ?
@@ -3186,7 +3370,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                 <StatIcon $color="#ec4899"><FontAwesomeIcon icon={faUserCheck} /></StatIcon>
               </StatHeader>
               <StatLabel>Uživatelů s objednávkami</StatLabel>
-            </SmallStatCard>
+            </MediumStatCard>
           </DashboardGrid>
         </DashboardPanel>
       )}
@@ -3449,6 +3633,40 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                         )}
                         {statusFilter === 'inactive' && (
                           <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#ef4444', fontSize: '20px' }}/>
+                        )}
+                      </IconFilterButton>
+                    </div>
+                  ) : header.column.columnDef.accessorKey === 'vynucena_zmena_hesla' ? (
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <IconFilterButton
+                        onClick={handleForcePasswordChangeFilterClick}
+                        title={
+                          forcePasswordChangeFilter === 'all' ? 'Zobrazit vše' :
+                          forcePasswordChangeFilter === 'forced' ? 'Jen s vynucenou změnou' :
+                          'Jen bez vynucené změny'
+                        }
+                      >
+                        {forcePasswordChangeFilter === 'all' && (
+                          <svg viewBox="0 0 512 512" style={{ width: '20px', height: '20px' }}>
+                            <defs>
+                              <clipPath id="clip-left-force">
+                                <rect x="0" y="0" width="256" height="512"/>
+                              </clipPath>
+                              <clipPath id="clip-right-force">
+                                <rect x="256" y="0" width="256" height="512"/>
+                              </clipPath>
+                            </defs>
+                            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"
+                                  fill="#f59e0b" clipPath="url(#clip-left-force)"/>
+                            <path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"
+                                  fill="#94a3b8" clipPath="url(#clip-right-force)"/>
+                          </svg>
+                        )}
+                        {forcePasswordChangeFilter === 'forced' && (
+                          <FontAwesomeIcon icon={faExclamationTriangle} style={{ color: '#f59e0b', fontSize: '20px' }}/>
+                        )}
+                        {forcePasswordChangeFilter === 'normal' && (
+                          <FontAwesomeIcon icon={faQuestionCircle} style={{ color: '#94a3b8', fontSize: '20px' }}/>
                         )}
                       </IconFilterButton>
                     </div>
@@ -4136,6 +4354,18 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
         }}
         onConfirm={handleResetPasswordConfirm}
         userData={selectedUser}
+      />
+
+      {/* Force Password Change Modal */}
+      <ForcePasswordChangeModal
+        isOpen={isForcePasswordChangeModalOpen}
+        onClose={() => {
+          setIsForcePasswordChangeModalOpen(false);
+          setSelectedUser(null);
+        }}
+        onConfirm={handleForcePasswordChangeConfirm}
+        userData={selectedUser}
+        templates={emailTemplates}
       />
 
       {/* User Management Modal */}

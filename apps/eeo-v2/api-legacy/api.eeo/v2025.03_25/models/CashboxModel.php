@@ -409,4 +409,101 @@ class CashboxModel {
         
         return $updated;
     }
+    
+    /**
+     * Získat koncový stav z předchozího měsíce
+     * Pro výpočet počátečního stavu aktuálního měsíce
+     * 
+     * @param int $uzivatelId ID uživatele
+     * @param int $pokladnaId ID pokladny
+     * @param int $rok Aktuální rok
+     * @param int $mesic Aktuální měsíc
+     * @return float Koncový stav předchozího měsíce
+     */
+    private function getPreviousMonthBalance($uzivatelId, $pokladnaId, $rok, $mesic) {
+        $prevMesic = $mesic - 1;
+        $prevRok = $rok;
+        
+        if ($prevMesic < 1) {
+            $prevMesic = 12;
+            $prevRok = $rok - 1;
+        }
+        
+        $stmt = $this->db->prepare("
+            SELECT koncovy_stav
+            FROM " . TBL_POKLADNI_KNIHY . " 
+            WHERE uzivatel_id = ?
+              AND pokladna_id = ?
+              AND rok = ?
+              AND mesic = ?
+            LIMIT 1
+        ");
+        $stmt->execute(array($uzivatelId, $pokladnaId, $prevRok, $prevMesic));
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $result ? floatval($result['koncovy_stav']) : 0.00;
+    }
+    
+    /**
+     * Přepočítat všechny následující měsíce po změně
+     * Propaguje změny počátečního stavu do všech dalších měsíců
+     * 
+     * @param int $uzivatelId ID uživatele
+     * @param int $pokladnaId ID pokladny
+     * @param int $rok Rok
+     * @param int $odMesic Od kterého měsíce přepočítat
+     */
+    private function recalculateFollowingMonths($uzivatelId, $pokladnaId, $rok, $odMesic) {
+        for ($mesic = $odMesic + 1; $mesic <= 12; $mesic++) {
+            $prevBalance = $this->getPreviousMonthBalance($uzivatelId, $pokladnaId, $rok, $mesic);
+            
+            // Načíst aktuální knihu
+            $stmt = $this->db->prepare("
+                SELECT id
+                FROM " . TBL_POKLADNI_KNIHY . " 
+                WHERE uzivatel_id = ?
+                  AND pokladna_id = ?
+                  AND rok = ?
+                  AND mesic = ?
+                LIMIT 1
+            ");
+            $stmt->execute(array($uzivatelId, $pokladnaId, $rok, $mesic));
+            $book = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$book) {
+                continue; // Měsíc neexistuje, přeskočit
+            }
+            
+            // Přepočítat sumy
+            $stmt = $this->db->prepare("
+                SELECT 
+                    COALESCE(SUM(castka_prijem), 0) as total_income,
+                    COALESCE(SUM(castka_vydaj), 0) as total_expense
+                FROM " . TBL_POKLADNI_POLOZKY . " 
+                WHERE pokladni_kniha_id = ?
+            ");
+            $stmt->execute(array($book['id']));
+            $sums = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            $totalIncome = floatval($sums['total_income']);
+            $totalExpense = floatval($sums['total_expense']);
+            $novyKoncovyStav = $prevBalance + $totalIncome - $totalExpense;
+            
+            // Aktualizovat knihu
+            $stmt = $this->db->prepare("
+                UPDATE " . TBL_POKLADNI_KNIHY . " 
+                SET 
+                    prevod_z_predchoziho = ?,
+                    pocatecni_stav = ?,
+                    koncovy_stav = ?
+                WHERE id = ?
+            ");
+            $stmt->execute(array(
+                $prevBalance,
+                $prevBalance,
+                $novyKoncovyStav,
+                $book['id']
+            ));
+        }
+    }
 }

@@ -468,17 +468,62 @@ function handle_order_v2_list($input, $config, $queries) {
             }
         }
         
-        // Filter: podle data od-do
-        if (isset($input['datum_od']) && !empty($input['datum_od'])) {
-            $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
-            $params['datum_od'] = $input['datum_od'];
-            error_log("Order V2 LIST: Date filter FROM: " . $input['datum_od']);
-        }
+        // 🔥 KRITICKÉ FIX: Podpora pro 'rok' a 'mesic' parametry z frontendu
+        // Frontend posílá { rok: 2026 } nebo { rok: 2026, mesic: "1" } nebo { rok: 2026, mesic: "10-12" }
+        // Backend musí převést na datum_od a datum_do
         
-        if (isset($input['datum_do']) && !empty($input['datum_do'])) {
-            $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
-            $params['datum_do'] = $input['datum_do'];
-            error_log("Order V2 LIST: Date filter TO: " . $input['datum_do']);
+        if (isset($input['rok']) && !empty($input['rok'])) {
+            $rok = (int)$input['rok'];
+            
+            if (isset($input['mesic']) && !empty($input['mesic'])) {
+                // Konkrétní měsíc nebo rozsah měsíců
+                $mesic = $input['mesic'];
+                
+                if (strpos($mesic, '-') !== false) {
+                    // Rozsah měsíců (např. "10-12" = říjen až prosinec)
+                    list($mesic_od, $mesic_do) = explode('-', $mesic);
+                    $mesic_od = (int)$mesic_od;
+                    $mesic_do = (int)$mesic_do;
+                    
+                    $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                    $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                    $params['datum_od'] = sprintf('%04d-%02d-01', $rok, $mesic_od);
+                    $params['datum_do'] = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $rok, $mesic_do)));
+                    
+                    error_log("Order V2 LIST: Year-Month RANGE filter: rok=$rok, mesic=$mesic_od-$mesic_do");
+                    error_log("Order V2 LIST: Converted to datum_od=" . $params['datum_od'] . ", datum_do=" . $params['datum_do']);
+                } else {
+                    // Jeden měsíc
+                    $mesic_cislo = (int)$mesic;
+                    
+                    $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                    $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                    $params['datum_od'] = sprintf('%04d-%02d-01', $rok, $mesic_cislo);
+                    $params['datum_do'] = date('Y-m-t', strtotime($params['datum_od']));
+                    
+                    error_log("Order V2 LIST: Year-Month filter: rok=$rok, mesic=$mesic_cislo");
+                    error_log("Order V2 LIST: Converted to datum_od=" . $params['datum_od'] . ", datum_do=" . $params['datum_do']);
+                }
+            } else {
+                // Celý rok bez měsíce
+                $whereConditions[] = "YEAR(o.dt_objednavky) = :rok_filter";
+                $params['rok_filter'] = $rok;
+                
+                error_log("Order V2 LIST: Year filter: rok=$rok");
+            }
+        } else {
+            // Fallback na datum_od a datum_do (původní logika)
+            if (isset($input['datum_od']) && !empty($input['datum_od'])) {
+                $whereConditions[] = "DATE(o.dt_objednavky) >= :datum_od";
+                $params['datum_od'] = $input['datum_od'];
+                error_log("Order V2 LIST: Date filter FROM: " . $input['datum_od']);
+            }
+            
+            if (isset($input['datum_do']) && !empty($input['datum_do'])) {
+                $whereConditions[] = "DATE(o.dt_objednavky) <= :datum_do";
+                $params['datum_do'] = $input['datum_do'];
+                error_log("Order V2 LIST: Date filter TO: " . $input['datum_do']);
+            }
         }
         
         error_log("Order V2 LIST: All filters applied, whereConditions: " . json_encode($whereConditions));
@@ -547,14 +592,44 @@ function handle_order_v2_list($input, $config, $queries) {
             $noFilterConditions = array("o.aktivni = 1");
             
             // Pridaj len dátumové filtre (bez role/permission filtrov)
-            if (isset($input['datum_od']) && !empty($input['datum_od'])) {
-                $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
-                $noFilterParams['datum_od_nf'] = $input['datum_od'];
-            }
-            
-            if (isset($input['datum_do']) && !empty($input['datum_do'])) {
-                $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
-                $noFilterParams['datum_do_nf'] = $input['datum_do'];
+            // Podpor jak rok/mesic tak datum_od/datum_do
+            if (isset($input['rok']) && !empty($input['rok'])) {
+                $rok = (int)$input['rok'];
+                
+                if (isset($input['mesic']) && !empty($input['mesic'])) {
+                    $mesic = $input['mesic'];
+                    
+                    if (strpos($mesic, '-') !== false) {
+                        list($mesic_od, $mesic_do) = explode('-', $mesic);
+                        $mesic_od = (int)$mesic_od;
+                        $mesic_do = (int)$mesic_do;
+                        
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                        $noFilterParams['datum_od_nf'] = sprintf('%04d-%02d-01', $rok, $mesic_od);
+                        $noFilterParams['datum_do_nf'] = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $rok, $mesic_do)));
+                    } else {
+                        $mesic_cislo = (int)$mesic;
+                        
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                        $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                        $noFilterParams['datum_od_nf'] = sprintf('%04d-%02d-01', $rok, $mesic_cislo);
+                        $noFilterParams['datum_do_nf'] = date('Y-m-t', strtotime($noFilterParams['datum_od_nf']));
+                    }
+                } else {
+                    $noFilterConditions[] = "YEAR(o.dt_objednavky) = :rok_filter_nf";
+                    $noFilterParams['rok_filter_nf'] = $rok;
+                }
+            } else {
+                if (isset($input['datum_od']) && !empty($input['datum_od'])) {
+                    $noFilterConditions[] = "DATE(o.dt_objednavky) >= :datum_od_nf";
+                    $noFilterParams['datum_od_nf'] = $input['datum_od'];
+                }
+                
+                if (isset($input['datum_do']) && !empty($input['datum_do'])) {
+                    $noFilterConditions[] = "DATE(o.dt_objednavky) <= :datum_do_nf";
+                    $noFilterParams['datum_do_nf'] = $input['datum_do'];
+                }
             }
             
             // Archivované filter (ak frontend nepožadoval archivované, vyfiltruj ich)
