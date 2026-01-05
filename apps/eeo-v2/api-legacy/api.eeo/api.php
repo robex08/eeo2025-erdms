@@ -231,6 +231,7 @@ $_config = require __DIR__ . '/' . VERSION . '/lib/dbconfig.php';
 $config = $_config['mysql'];
 require __DIR__ . '/' . VERSION . '/lib/queries.php';
 require __DIR__ . '/' . VERSION . '/lib/handlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/TimezoneHelper.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderAttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceHandlers.php';
@@ -900,6 +901,15 @@ switch ($endpoint) {
     case 'users/list':
         if ($request_method === 'POST') {
             handle_users_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'users/toggle-visibility':
+        if ($request_method === 'POST') {
+            handle_users_toggle_visibility($input, $config, $queries);
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));

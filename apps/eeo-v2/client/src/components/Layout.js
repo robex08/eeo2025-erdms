@@ -2875,7 +2875,7 @@ const Layout = ({ children }) => {
                   >
                     {(
                       hasAdminRole() ||
-                      hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')
+                      hasPermission('SUPPLIER_MANAGE') || hasPermission('PHONEBOOK_MANAGE')
                     ) && (
                       <MenuDropdownItem 
                         to="/address-book" 

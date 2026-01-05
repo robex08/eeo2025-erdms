@@ -601,7 +601,7 @@ function App() {
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                   {isLoggedIn && (
                     hasAdminRole && hasAdminRole() ||
-                    (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')))
+                    (hasPermission && (hasPermission('SUPPLIER_MANAGE') || hasPermission('PHONEBOOK_MANAGE')))
                   ) && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}

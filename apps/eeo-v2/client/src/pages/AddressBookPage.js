@@ -253,6 +253,10 @@ const AddressBookPage = () => {
   // Permission helper
   const permissions = createDictionaryPermissionHelper('PHONEBOOK', hasPermission, hasAdminRole);
 
+  // Kontrola oprávnění pro zobrazení záložek
+  const canManageSuppliers = hasAdminRole?.() || hasPermission?.('SUPPLIER_MANAGE');
+  const canManagePhonebook = hasAdminRole?.() || hasPermission?.('PHONEBOOK_MANAGE');
+
   // Refs pro volání refresh funkcí v child komponentách
   const contactManagementRef = useRef(null);
   const employeeManagementRef = useRef(null);
@@ -281,7 +285,11 @@ const AddressBookPage = () => {
   };
 
   const [activeTab, setActiveTab] = useState(() => {
-    return getUserStorage('addressBook_activeTab', 'suppliers');
+    const savedTab = getUserStorage('addressBook_activeTab', 'suppliers');
+    // Pokud má uživatel pouze jedno právo, nastav odpovídající záložku
+    if (canManageSuppliers && !canManagePhonebook) return 'suppliers';
+    if (canManagePhonebook && !canManageSuppliers) return 'employees';
+    return savedTab;
   });
 
   // Uložení activeTab do localStorage při změně
@@ -384,18 +392,22 @@ const AddressBookPage = () => {
 
         <TabContainer>
           <TabHeader>
-            <Tab
-              active={activeTab === 'suppliers'}
-              onClick={() => setActiveTab('suppliers')}
-            >
-              <span>🏢</span> Adresář dodavatelů
-            </Tab>
-            <Tab
-              active={activeTab === 'employees'}
-              onClick={() => setActiveTab('employees')}
-            >
-              <span>👥</span> Adresář zaměstnanců
-            </Tab>
+            {canManageSuppliers && (
+              <Tab
+                active={activeTab === 'suppliers'}
+                onClick={() => setActiveTab('suppliers')}
+              >
+                <span>🏢</span> Adresář dodavatelů
+              </Tab>
+            )}
+            {canManagePhonebook && (
+              <Tab
+                active={activeTab === 'employees'}
+                onClick={() => setActiveTab('employees')}
+              >
+                <span>👥</span> Adresář zaměstnanců
+              </Tab>
+            )}
           </TabHeader>
 
           <TabContent>

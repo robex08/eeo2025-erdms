@@ -2877,7 +2877,7 @@ const ProfilePage = () => {
               <Coins size={20} />
               <span>Limitované přísliby</span>
             </TabButton>
-            {hasPermission && (hasPermission('SUPPLIER_READ') || hasPermission('SUPPLIER_EDIT') || hasPermission('CONTACT_MANAGE')) && (
+            {hasPermission && (hasPermission('SUPPLIER_VIEW') || hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_MANAGE')) && (
               <TabButton 
                 $active={activeTab === 'suppliers'} 
                 onClick={() => setActiveTab('suppliers')}
@@ -3373,7 +3373,7 @@ const ProfilePage = () => {
           </TabContent>
 
           {/* Tab Content - Adresář dodavatelů */}
-          {hasPermission && (hasPermission('SUPPLIER_READ') || hasPermission('SUPPLIER_EDIT') || hasPermission('CONTACT_MANAGE')) && (() => {
+          {hasPermission && (hasPermission('SUPPLIER_VIEW') || hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_MANAGE')) && (() => {
             // Admini mají automaticky plný přístup
             const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
               role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
@@ -3381,7 +3381,7 @@ const ProfilePage = () => {
             
             let permLevel = 'READ'; // Default
             
-            if (isAdmin || hasPermission('CONTACT_MANAGE')) {
+            if (isAdmin || hasPermission('SUPPLIER_MANAGE')) {
               permLevel = 'MANAGE';
             } else if (hasPermission('SUPPLIER_EDIT')) {
               permLevel = 'EDIT';

@@ -3,7 +3,7 @@
 // Handlers pro API endpointy
 
 // Debug mode - set to true to enable detailed logging
-define('API_DEBUG_MODE', false);
+define('API_DEBUG_MODE', true);
 
 // Token configuration
 define('TOKEN_LIFETIME', 24 * 3600);           // 24 hodin = 86400 sekund
@@ -2095,7 +2095,7 @@ function user_has_admin_rights($user_id, $db, $queries) {
             
             foreach ($direct_rights as $right) {
                 $kod = isset($right['kod_prava']) ? $right['kod_prava'] : '';
-                if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'CONTACT_MANAGE_ALL'))) {
+                if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'SUPPLIER_MANAGE'))) {
                     return true;
                 }
             }
@@ -2117,7 +2117,7 @@ function user_has_admin_rights($user_id, $db, $queries) {
                     
                     foreach ($role_rights as $right) {
                         $kod = isset($right['kod_prava']) ? $right['kod_prava'] : '';
-                        if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'CONTACT_MANAGE_ALL'))) {
+                        if (in_array($kod, array('SUPERADMIN', 'ADMIN', 'SUPPLIER_MANAGE'))) {
                             return true;
                         }
                     }
@@ -3170,6 +3170,7 @@ function handle_users_list($input, $config, $queries) {
                     u.vynucena_zmena_hesla,
                     u.dt_vytvoreni,
                     u.dt_aktualizace,
+                    u.viditelny_v_tel_seznamu,
                     
                     IFNULL(p.nazev_pozice, '') as nazev_pozice,
                     p.parent_id as pozice_parent_id,
@@ -3189,7 +3190,7 @@ function handle_users_list($input, $config, $queries) {
                     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
                     LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
-                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
             ";
             $stmt = $db->prepare($sql);
@@ -3291,6 +3292,139 @@ function handle_users_list($input, $config, $queries) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba databáze: ' . $e->getMessage()));
         exit;
+    }
+}
+
+/**
+ * POST - Přepínání viditelnosti uživatele v telefonním seznamu
+ * Endpoint: users/toggle-visibility
+ * POST: {token, username, user_id, viditelny_v_tel_seznamu}
+ */
+function handle_users_toggle_visibility($input, $config, $queries) {
+    // 1. Validace HTTP metody
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    // 2. Parametry z body
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $user_id = $input['user_id'] ?? 0;
+    $viditelny_v_tel_seznamu = $input['viditelny_v_tel_seznamu'] ?? null;
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    if (!$user_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí user_id']);
+        return;
+    }
+
+    if ($viditelny_v_tel_seznamu === null || ($viditelny_v_tel_seznamu !== 0 && $viditelny_v_tel_seznamu !== 1)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Parametr viditelny_v_tel_seznamu musí být 0 nebo 1']);
+        return;
+    }
+
+    // 3. Ověření tokenu
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // Nastavení české časové zóny pro MySQL session
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // 5. Kontrola oprávnění - načtení rolí uživatele
+        $stmt = $db->prepare("
+            SELECT DISTINCT r.kod_role
+            FROM " . TBL_ROLE . " r
+            JOIN " . TBL_UZIVATELE_ROLE . " ur ON r.id = ur.role_id
+            JOIN " . TBL_UZIVATELE . " u ON ur.uzivatel_id = u.id
+            WHERE u.username = ? LIMIT 10
+        ");
+        $stmt->execute([$username]);
+        $user_roles = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        
+        // Kontrola specifického práva PHONEBOOK_MANAGE
+        $has_permission = false;
+        if (!$is_admin) {
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM " . TBL_UZIVATELE . " u
+                JOIN " . TBL_UZIVATELE_ROLE . " ur ON u.id = ur.uzivatel_id
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id
+                JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
+                WHERE u.username = ? AND p.kod_prava = 'PHONEBOOK_MANAGE'
+                LIMIT 1
+            ");
+            $stmt->execute([$username]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            $has_permission = $result && $result['count'] > 0;
+        }
+        
+        if (!$is_admin && !$has_permission) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nemáte oprávnění pro úpravu viditelnosti zaměstnanců']);
+            return;
+        }
+
+        // 6. Ověření existence uživatele
+        $stmt = $db->prepare("SELECT id, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+        $stmt->execute([$user_id]);
+        $target_user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$target_user) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Uživatel nenalezen']);
+            return;
+        }
+
+        // 7. UPDATE viditelnost
+        $stmt = $db->prepare("
+            UPDATE " . TBL_UZIVATELE . " 
+            SET viditelny_v_tel_seznamu = ?, dt_aktualizace = NOW() 
+            WHERE id = ?
+        ");
+        $stmt->execute([$viditelny_v_tel_seznamu, $user_id]);
+
+        // 8. Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'user_id' => (int)$user_id,
+                'viditelny_v_tel_seznamu' => (int)$viditelny_v_tel_seznamu,
+                'jmeno' => $target_user['jmeno'],
+                'prijmeni' => $target_user['prijmeni']
+            ],
+            'message' => 'Viditelnost zaměstnance byla úspěšně změněna'
+        ]);
+
+    } catch (Exception $e) {
+        // 9. Error handling
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při zpracování: ' . $e->getMessage()
+        ]);
     }
 }
 

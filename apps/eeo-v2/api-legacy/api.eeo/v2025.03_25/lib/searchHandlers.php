@@ -80,6 +80,28 @@ function handle_universal_search($input, $config) {
         error_log("  - Final isAdmin: " . ($isAdmin ? 'TRUE' : 'FALSE'));
         error_log("  - search_all: " . ($searchAll ? 'TRUE' : 'FALSE'));
         
+        // Získat údaje aktuálního uživatele pro filtrování podle visibility
+        $current_user_id = $auth_result['id'];
+        $current_user_useky = array();
+        
+        if (!$isAdmin) {
+            // Pro non-adminy získáme jejich úseky pro filtrování
+            $sqlUser = "SELECT usek_zkr FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1";
+            $stmtUser = $db->prepare($sqlUser);
+            $stmtUser->bindParam(':user_id', $current_user_id, PDO::PARAM_INT);
+            $stmtUser->execute();
+            $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
+            
+            if ($userData && $userData['usek_zkr']) {
+                $decoded = json_decode($userData['usek_zkr'], true);
+                if (is_array($decoded)) {
+                    $current_user_useky = $decoded;
+                } else {
+                    $current_user_useky = array($userData['usek_zkr']);
+                }
+            }
+        }
+        
         // Escapujeme query pro LIKE
         $escapedQuery = escapeLikeWildcards($query);
         $likeQuery = '%' . $escapedQuery . '%';
@@ -138,7 +160,7 @@ function handle_universal_search($input, $config) {
             $results['suppliers'] = array(
                 'category_label' => getCategoryLabel('suppliers'),
                 'total' => 0,
-                'results' => searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin)
+                'results' => searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $current_user_id, $current_user_useky)
             );
             $results['suppliers']['total'] = count($results['suppliers']['results']);
         }
@@ -392,22 +414,54 @@ function searchInvoices($db, $likeQuery, $normalizedQuery, $limit, $includeInact
 
 /**
  * Vyhledá dodavatele
+ * OPRAVENO: Filtruje podle visibility (personal, úsek, global)
  * 
  * @param PDO $db Database connection
  * @param string $likeQuery Escapovaný query s % wildcardy
  * @param int $limit Max počet výsledků
- * @param bool $includeInactive Ignorováno (dodavatelé nemají aktivni flag)
+ * @param bool $includeInactive Pokud false, zobrazí pouze aktivni=1
+ * @param bool $isAdmin Admin vidí všechny dodavatele
+ * @param int $userId ID aktuálního uživatele
+ * @param array $userUseky Pole úseků aktuálního uživatele
  * @return array Pole výsledků
  */
-function searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin) {
+function searchSuppliers($db, $likeQuery, $normalizedQuery, $limit, $includeInactive, $isAdmin, $userId = 0, $userUseky = array()) {
     try {
-        $sql = getSqlSearchSuppliers();
+        $sql = getSqlSearchSuppliers($isAdmin);
+        
+        // Pro non-adminy musíme dynamicky sestavit úsekové podmínky
+        if (!$isAdmin && !empty($userUseky)) {
+            $usekConditions = array();
+            foreach ($userUseky as $idx => $usek) {
+                $usekConditions[] = "d.usek_zkr LIKE :usek_$idx";
+            }
+            $usekConditionsStr = !empty($usekConditions) ? " OR (" . implode(' OR ', $usekConditions) . ")" : "";
+            $sql = str_replace('__USEK_CONDITIONS__', $usekConditionsStr, $sql);
+        } else {
+            $sql = str_replace('__USEK_CONDITIONS__', '', $sql);
+        }
+        
         $stmt = $db->prepare($sql);
         
         $stmt->bindValue(':query', $likeQuery, PDO::PARAM_STR);
         $stmt->bindValue(':query_normalized', $normalizedQuery, PDO::PARAM_STR);
+        $stmt->bindValue(':include_inactive', $includeInactive ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':is_admin', $isAdmin ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        
+        // Pro non-adminy bind visibility parametry
+        if (!$isAdmin) {
+            $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+            
+            // Bind úseky
+            if (!empty($userUseky)) {
+                foreach ($userUseky as $idx => $usek) {
+                    $usekPattern = '%"' . $usek . '"%';
+                    $stmt->bindValue(":usek_$idx", $usekPattern, PDO::PARAM_STR);
+                }
+            }
+        }
+        
         $stmt->execute();
         
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
