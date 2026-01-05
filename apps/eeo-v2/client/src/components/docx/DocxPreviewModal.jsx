@@ -355,9 +355,6 @@ const DocxPreviewModal = ({
     setError(null);
 
     try {
-      console.log('🔍 Generuji DOCX preview...');
-      console.log('📄 Šablona:', templateName);
-      console.log('🗺️ Mapování:', mapping);
 
       // 1. Načti DOCX soubor jako ArrayBuffer
       const arrayBuffer = await templateFile.arrayBuffer();
@@ -366,11 +363,8 @@ const DocxPreviewModal = ({
       const result = await mammoth.convertToHtml({ arrayBuffer });
       let html = result.value;
 
-      console.log('📝 HTML před nahrazením:', html.substring(0, 200));
-
       // 3. Získej testovací data pro náhled
       const sampleData = getSampleData(mapping);
-      console.log('🎲 Testovací data:', sampleData);
 
       // 4. Nahraď DocVariable pole reálnými daty
       let replacedCount = 0;
@@ -393,8 +387,6 @@ const DocxPreviewModal = ({
       });
 
       setFilledFields(replacedCount);
-      console.log(`✅ Nahrazeno ${replacedCount} polí`);
-      console.log('📝 HTML po nahrazení:', html.substring(0, 200));
 
       setHtmlPreview(html);
 
@@ -430,7 +422,6 @@ const DocxPreviewModal = ({
 
   const handleDownload = () => {
     // TODO: Implementovat stažení naplněného DOCX
-    console.log('📥 Stahování naplněného DOCX...');
     alert('Stahování bude implementováno v další verzi (vyžaduje backend API)');
   };
 
