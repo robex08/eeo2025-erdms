@@ -3219,7 +3219,6 @@ const OrganizationHierarchy = () => {
       x: event.clientX - nodeWidth / 2,
       y: event.clientY - nodeHeight / 2,
     });
-    });
     
     // Zpracování notifikační šablony - přidat jako node
     if (dragId.startsWith('notif-')) {

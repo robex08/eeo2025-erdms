@@ -978,6 +978,7 @@ export const AuthProvider = ({ children }) => {
         // Pokud modal není k dispozici, provést normální reload
         setTimeout(() => {
           // Použij PUBLIC_URL pro správnou cestu v DEV i PROD
+          const basePath = process.env.PUBLIC_URL || '/eeo-v2';
           window.location.href = basePath + '/';
         }, 500);
       }

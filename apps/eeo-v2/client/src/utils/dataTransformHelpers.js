@@ -329,5 +329,5 @@ export function debugDataFormat(data, label = 'Data') {
     isObject: typeof data === 'object' && !Array.isArray(data),
     value: data,
     keys: typeof data === 'object' ? Object.keys(data) : undefined
-  });
+  };
 }
