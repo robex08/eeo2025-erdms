@@ -585,7 +585,7 @@ function App() {
                     hasPermission('DICT_MANAGE') ||
                     hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
                     hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
-                    hasPermission('CONTRACTS_VIEW') || hasPermission('CONTRACTS_CREATE') || hasPermission('CONTRACTS_EDIT') || hasPermission('CONTRACTS_DELETE') ||
+                    hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE') ||
                     hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
                     hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
                     hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
@@ -597,9 +597,12 @@ function App() {
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
                   {isLoggedIn && <Route path="/reports" element={<ReportsPage />} />}
                   {isLoggedIn && <Route path="/statistics" element={<StatisticsPage />} />}
-                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/app-settings" element={<AppSettings />} />}
-                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
-                  {isLoggedIn && hasPermission && hasPermission('CONTACT_READ') && <Route path="/address-book" element={<AddressBookPage />} />}
+                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
+                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
+                  {isLoggedIn && (
+                    hasAdminRole && hasAdminRole() ||
+                    (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')))
+                  ) && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
                   {isLoggedIn && <Route path="/help" element={<HelpPage />} />}

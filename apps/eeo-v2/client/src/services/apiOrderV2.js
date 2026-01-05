@@ -702,15 +702,7 @@ export async function listOrdersV2(filters = {}, token, username, returnFullResp
       ...filters
     };
 
-    console.log('🔥 listOrdersV2 CALL:', { endpoint, username, filters, baseURL: apiOrderV2.defaults.baseURL });
-
     const response = await apiOrderV2.post(endpoint, requestPayload);
-    
-    console.log('🔥 listOrdersV2 RESPONSE:', { 
-      status: response.status, 
-      dataLength: response.data?.data?.length,
-      meta: response.data?.meta 
-    });
 
     const result = validateAPIResponse(response, 'listOrdersV2');
     

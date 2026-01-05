@@ -17,7 +17,6 @@ import { faBook, faSyncAlt } from '@fortawesome/free-solid-svg-icons';
 import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import { AuthContext } from '../context/AuthContext';
-import { AuthContext } from '../context/AuthContext';
 
 // Import Tab komponent
 import LokalityTab from '../components/dictionaries/tabs/LokalityTab';
@@ -145,6 +144,36 @@ const Tab = styled.button`
   }
 `;
 
+const EmptyStateContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background: white;
+  border-radius: 8px;
+  margin: 1rem 0;
+`;
+
+const EmptyStateIcon = styled.div`
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.3;
+`;
+
+const EmptyStateTitle = styled.h2`
+  font-size: 1.5rem;
+  color: #64748b;
+  margin: 0 0 0.5rem 0;
+`;
+
+const EmptyStateText = styled.p`
+  font-size: 1rem;
+  color: #94a3b8;
+  margin: 0;
+`;
+
 // =============================================================================
 // KOMPONENTA
 // =============================================================================
@@ -161,12 +190,36 @@ const DictionariesNew = () => {
            hasPermission(`${prefix}_DELETE`);
   };
 
-  // Load active tab from localStorage with fallback
+  // Seznam všech záložek v pořadí
+  const availableTabs = [
+    { key: 'docx', prefix: 'DOCX_TEMPLATES', name: 'DOCX Šablony' },
+    { key: 'cashbook', prefix: 'CASH_BOOKS', name: 'Pokladní knihy' },
+    { key: 'smlouvy', prefix: 'CONTRACT', name: 'Smlouvy' },
+    { key: 'lokality', prefix: 'LOCATIONS', name: 'Lokality' },
+    { key: 'pozice', prefix: 'POSITIONS', name: 'Pozice' },
+    { key: 'prava', prefix: 'PERMISSIONS', name: 'Práva' },
+    { key: 'role', prefix: 'ROLES', name: 'Role' },
+    { key: 'stavy', prefix: 'STATES', name: 'Stavy' },
+    { key: 'useky', prefix: 'DEPARTMENTS', name: 'Úseky' },
+    { key: 'organizace', prefix: 'ORGANIZATIONS', name: 'Organizace' }
+  ];
+
+  // Zjistit dostupné záložky
+  const accessibleTabs = availableTabs.filter(tab => canViewTab(tab.prefix));
+  const hasAnyTab = accessibleTabs.length > 0;
+  const firstAccessibleTab = accessibleTabs[0]?.key || null;
+
+  // Load active tab from localStorage with fallback na první dostupnou záložku
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      return localStorage.getItem('dictionaries_activeTab') || 'docx';
+      const saved = localStorage.getItem('dictionaries_activeTab');
+      // Zkontrolovat, jestli má k uložené záložce přístup
+      if (saved && accessibleTabs.some(t => t.key === saved)) {
+        return saved;
+      }
+      return firstAccessibleTab;
     } catch {
-      return 'docx';
+      return firstAccessibleTab;
     }
   });
 
@@ -262,7 +315,7 @@ const DictionariesNew = () => {
               Pokladní knihy
             </Tab>
           )}
-          {canViewTab('CONTRACTS') && (
+          {canViewTab('CONTRACT') && (
             <Tab $active={activeTab === 'smlouvy'} onClick={() => handleTabChange('smlouvy')}>
               <FileSignature size={18} />
               Smlouvy
@@ -312,17 +365,29 @@ const DictionariesNew = () => {
           )}
         </TabHeader>
 
+        {/* Empty state - když uživatel nemá přístup k žádné záložce */}
+        {!hasAnyTab && (
+          <EmptyStateContainer>
+            <EmptyStateIcon>🔒</EmptyStateIcon>
+            <EmptyStateTitle>Nemáte přístup k žádným číselníkům</EmptyStateTitle>
+            <EmptyStateText>
+              Pro zobrazení číselníků potřebujete odpovídající oprávnění.<br />
+              Kontaktujte prosím správce systému.
+            </EmptyStateText>
+          </EmptyStateContainer>
+        )}
+
         {/* Tab Content - každý tab je samostatný komponent */}
-        {activeTab === 'docx' && <DocxSablonyTab key={`docx-${refreshKey}`} />}
-        {activeTab === 'cashbook' && <CashbookTab key={`cashbook-${refreshKey}`} />}
-        {activeTab === 'smlouvy' && <SmlouvyTab key={`smlouvy-${refreshKey}`} />}
-        {activeTab === 'lokality' && <LokalityTab key={`lokality-${refreshKey}`} />}
-        {activeTab === 'pozice' && <PoziceTab key={`pozice-${refreshKey}`} />}
-        {activeTab === 'prava' && <PravaTab key={`prava-${refreshKey}`} />}
-        {activeTab === 'role' && <RoleTab key={`role-${refreshKey}`} />}
-        {activeTab === 'stavy' && <StavyTab key={`stavy-${refreshKey}`} />}
-        {activeTab === 'useky' && <UsekyTab key={`useky-${refreshKey}`} />}
-        {activeTab === 'organizace' && <OrganizaceTab key={`organizace-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'docx' && canViewTab('DOCX_TEMPLATES') && <DocxSablonyTab key={`docx-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'cashbook' && canViewTab('CASH_BOOKS') && <CashbookTab key={`cashbook-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'smlouvy' && canViewTab('CONTRACT') && <SmlouvyTab key={`smlouvy-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'lokality' && canViewTab('LOCATIONS') && <LokalityTab key={`lokality-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'pozice' && canViewTab('POSITIONS') && <PoziceTab key={`pozice-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'prava' && canViewTab('PERMISSIONS') && <PravaTab key={`prava-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'role' && canViewTab('ROLES') && <RoleTab key={`role-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'stavy' && canViewTab('STATES') && <StavyTab key={`stavy-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'useky' && canViewTab('DEPARTMENTS') && <UsekyTab key={`useky-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'organizace' && canViewTab('ORGANIZATIONS') && <OrganizaceTab key={`organizace-${refreshKey}`} />}
       </TabContainer>
     </PageContainer>
   );

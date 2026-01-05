@@ -14792,11 +14792,11 @@ function OrderForm25() {
         user_id,
         usek_zkr: userDetail?.usek_zkr,
         ico: ico, // Filtruj podle IČO
-        load_all: hasPermission && hasPermission('CONTACT_MANAGE')
+        load_all: (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')))
       });
 
       // Práva pro výběr Global scope
-      const canManageGlobal = hasPermission && hasPermission('CONTACT_MANAGE');
+      const canManageGlobal = (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')));
 
       // 🔍 DEBUG: Co backend vrátil
 
@@ -14997,7 +14997,7 @@ function OrderForm25() {
         username: username,
         user_id: user_id,
         usek_zkr: userDetail?.usek_zkr || undefined,
-        load_all: hasPermission && hasPermission('CONTACT_MANAGE') // Load all contacts for CONTACT_MANAGE users
+        load_all: (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE'))) // Load all contacts for users with PHONEBOOK rights
       });
 
       if (Array.isArray(result)) {
