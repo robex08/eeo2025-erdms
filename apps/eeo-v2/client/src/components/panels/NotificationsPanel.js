@@ -37,28 +37,16 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 
 	// 🔥 NOVÁ FUNKCE: Kontrola neuložených změn před otevřením objednávky
 	const handleOrderClick = async (orderId) => {
-		console.log('\n════════════════════════════════════════════════════════════════');
-		console.log('🔔 [KROK 1/7] NotificationsPanel - handleOrderClick ZAVOLÁNA!');
-		console.log('📋 Parametry:', { orderId, 'typeof': typeof orderId });
-		console.log('════════════════════════════════════════════════════════════════\n');
-
 		const targetOrderId = parseInt(orderId);
 		const user_id = userDetail?.user_id;
 
-		console.log('🔔 [KROK 2/7] Extrakce user_id a konverze ID');
-
 		if (!user_id) {
-			console.log('🔗 Navigate URL:', `/order-form-25?edit=${targetOrderId}`);
 			navigate(`/order-form-25?edit=${targetOrderId}`);
 			return;
 		}
 
 		try {
-			console.log('\n🔔 [KROK 3/7] Začínám kontrolu draftu přes DraftManager');
-			console.log('📦 DraftManager.setCurrentUser:', user_id);
 			draftManager.setCurrentUser(user_id);
-			
-			console.log('📦 DraftManager.hasDraft() - volám...');
 			const hasDraft = await draftManager.hasDraft();
 
 			let shouldShowConfirmDialog = false;
@@ -66,26 +54,12 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 			let isDraftForThisOrder = false;
 
 			if (hasDraft) {
-				console.log('\n🔔 [KROK 4/7] Draft existuje - načítám data');
 				try {
-					console.log('📦 DraftManager.loadDraft() - volám...');
-					const draftData = await draftManager.loadDraft();			console.log('Draft data loaded:', {						'má formData': !!draftData?.formData,
-						'má savedOrderId': !!draftData?.savedOrderId,
-						'savedOrderId': draftData?.savedOrderId,
-						'formData.id': draftData?.formData?.id
-					});
+					const draftData = await draftManager.loadDraft();
 
 					// 🎯 KONTROLA OWNERSHIP: Patří draft k TÉTO objednávce?
 					const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
 					const currentOrderId = targetOrderId;
-
-					console.log('\n🔔 [KROK 5/7] Porovnání ownership draftu', {
-						draftOrderId,
-						currentOrderId,
-						'String(draftOrderId)': String(draftOrderId),
-						'String(currentOrderId)': String(currentOrderId),
-						'jsou stejné?': String(draftOrderId) === String(currentOrderId)
-					});
 
 					// ✅ Pokud draft patří k TÉTO objednávce, NEPTAT SE!
 					if (draftOrderId && currentOrderId && String(draftOrderId) === String(currentOrderId)) {
@@ -93,7 +67,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 						isDraftForThisOrder = true;
 					} else {
 						// ❌ Draft patří k JINÉ objednávce - zeptej se
-						console.log('❌ [KROK 5/7] Draft patří k JINÉ objednávce - kontroluji změny');
 						const hasNewConcept = isValidConcept(draftData);
 						const hasDbChanges = hasDraftChanges(draftData);
 						shouldShowConfirmDialog = hasNewConcept || hasDbChanges;
@@ -110,23 +83,16 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 			} else {
 			}			// 🎯 OPTIMALIZACE: Pokud draft patří k TÉTO objednávce, rovnou naviguj
 			if (isDraftForThisOrder) {
-				console.log('\n🔔 [KROK 6/7] Draft pro TUTO objednávku - navigace BEZ dialogu');
-				console.log('🔗 Navigate URL:', `/order-form-25?edit=${targetOrderId}`);
 				navigate(`/order-form-25?edit=${targetOrderId}`);
-				console.log('════════════════════════════════════════════════════════════════\n');
 				return;
 			}
 
 			// 🎯 Pokud existuje draft pro JINOU objednávku, zobraz confirm dialog
-			console.log('\n🔔 [KROK 6/7] Kontrola, zda zobrazit confirm dialog');
 			
 			if (shouldShowConfirmDialog && draftDataToStore) {
 				const formData = draftDataToStore.formData || draftDataToStore;
 				const draftTitle = formData.ev_cislo || formData.cislo_objednavky || formData.predmet || '★ KONCEPT ★';
 				const hasNewConcept = isValidConcept(draftDataToStore);
-
-				console.log('🚨 [KROK 6/7] ZOBRAZUJI CONFIRM DIALOG');
-				console.log('📋 Dialog data:', { draftTitle, hasNewConcept });
 
 				const confirmResult = window.confirm(
 					`⚠️ POZOR - Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\n` +
@@ -137,8 +103,6 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 
 				if (!confirmResult) {
 					// Uživatel zrušil - zůstaneme na stránce
-					console.log('🚫 Uživatel zrušil - KONEC (zůstávám na stránce)');
-					console.log('════════════════════════════════════════════════════════════════\n');
 					return;
 				}
 
@@ -147,10 +111,7 @@ export const NotificationsPanel = ({font, notifications, clearNotifications, onC
 			}
 
 			// ✅ Naviguj na objednávku v EDIT módu
-			console.log('\n🔔 [KROK 7/7] FINÁLNÍ NAVIGACE');
-			console.log('🔗 Navigate URL:', `/order-form-25?edit=${targetOrderId}`);
 			navigate(`/order-form-25?edit=${targetOrderId}`);
-			console.log('════════════════════════════════════════════════════════════════\n');
 
 		} catch (error) {
 			console.error('\n❌❌❌ KRITICKÁ CHYBA v handleOrderClick ❌❌❌');
