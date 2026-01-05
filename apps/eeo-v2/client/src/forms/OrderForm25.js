@@ -16489,7 +16489,6 @@ function OrderForm25() {
       
       if (unlockOrderId && token && username) {
         try {
-          console.log('🔓 UNLOCK OrderForm25: Odemykám obj #' + unlockOrderId + ' (zavření formuláře)');
           await unlockOrderV2({ token, username, orderId: unlockOrderId });
           addDebugLog('success', 'CANCEL', 'unlock', `Objednávka ${unlockOrderId} byla odemknuta`);
         } catch (error) {
@@ -23907,9 +23906,6 @@ function OrderForm25() {
                                                   const fakturaId = faktura.id;
                                                   const lpData = fakturyLPCerpani[fakturaId];
                                                   const lpCerpani = lpData?.lpCerpani || [];
-                                                  
-                                                  console.log('💰 [LP Validace] Kontroluji LP čerpání pro fakturu:', fakturaId);
-                                                  console.log('💰 [LP Validace] LP čerpání:', lpCerpani);
                                                   
                                                   // Validace: MUSÍ být přiřazen minimálně 1 LP kód
                                                   if (!lpCerpani || lpCerpani.length === 0 || lpCerpani.every(lp => !lp.lp_cislo || lp.castka <= 0)) {
