@@ -277,12 +277,6 @@ const MailTestPanel = () => {
         throw new Error('Nejste přihlášeni');
       }
 
-      console.log('🔵 Odesílám email přes API...', {
-        to: formData.to,
-        subject: formData.subject,
-        from: formData.from
-      });
-
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
@@ -304,8 +298,6 @@ const MailTestPanel = () => {
       });
 
       clearTimeout(timeoutId);
-
-      console.log('🔵 API odpověď status:', response.status);
       
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
@@ -315,7 +307,6 @@ const MailTestPanel = () => {
       }
 
       const data = await response.json();
-      console.log('🔵 API odpověď data:', data);
 
       if (response.ok && data.sent) {
         setStatus('success');

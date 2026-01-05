@@ -2245,13 +2245,6 @@ const Users = () => {
     const currentValue = user.vynucena_zmena_hesla === 1;
     const newValue = !currentValue;
     
-    console.log('User edit debug:', {
-      userId: user.id,
-      currentValue,
-      newValue,
-      userData: user
-    });
-    
     try {
       startGlobalProgress();
       setGlobalProgress(30);

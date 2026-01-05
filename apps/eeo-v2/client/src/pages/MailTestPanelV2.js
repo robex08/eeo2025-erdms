@@ -560,7 +560,6 @@ const MailTestPanel = () => {
           const data = await response.json();
           if (data.status === 'ok' && data.data) {
             setTemplates(data.data);
-            console.log('📧 Načteno šablon:', data.data.length);
           }
         }
       } catch (error) {
@@ -674,9 +673,6 @@ const MailTestPanel = () => {
     try {
       const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
       const endpoint = `${API_BASE_URL}notify/email`;
-      
-      console.log('📧 Odesílám email na:', endpoint);
-      console.log('📧 Data:', { to: formData.to, subject: formData.subject, from: formData.from, html: formData.isHtml });
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -694,16 +690,12 @@ const MailTestPanel = () => {
         })
       });
 
-      console.log('📧 Response status:', response.status);
-
       let data;
       try {
         data = await response.json();
       } catch (e) {
         throw new Error('Server nevrátil JSON odpověď');
       }
-
-      console.log('📧 Response data:', data);
 
       if (data.status === 'ok' || data.sent === true) {
         setStatus('success');

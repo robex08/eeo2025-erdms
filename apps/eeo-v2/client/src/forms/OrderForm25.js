@@ -14918,19 +14918,10 @@ function OrderForm25() {
         usek_zkr: usekZkr // Backend očekává array nebo null (NE JSON string!)
       };
 
-      // console.log('📦 [SAVE TO DIRECTORY] Data připravená k odeslání:', dataToSave);
-
       let result;
 
       if (existingSupplierCheck?.exists && scope === existingSupplierCheck.scope) {
         // Aktualizace existujícího dodavatele ve stejném scope
-        /*console.log('📤 [SAVE TO DIRECTORY] Parametry pro updateSupplierByIco:', {
-          ico: dataToSave.ico,
-          nazev: dataToSave.nazev,
-          adresa: dataToSave.adresa,
-          userId,
-          usekZkr
-        });*/
 
         result = await updateSupplierByIco({
           token,
@@ -14950,12 +14941,6 @@ function OrderForm25() {
         showToast?.('Dodavatel byl úspěšně aktualizován v adresáři', 'success');
       } else {
         // Vytvoření nového dodavatele (nebo přidání do jiného scope)
-        // console.log('➕ [SAVE TO DIRECTORY] Vytváření nového dodavatele');
-        /*console.log('📤 [SAVE TO DIRECTORY] Parametry pro createSupplier:', {
-          userId,  // ← Správný userId podle scope
-          usekZkr,  // ← Správný usekZkr podle scope
-          ...dataToSave
-        });*/
 
         // 🔧 FIX: createSupplier očekává FLAT parametry, ne data objekt!
         // 🔧 FIX 2: Použít SPRÁVNÝ userId a usekZkr podle vybraného scope!
