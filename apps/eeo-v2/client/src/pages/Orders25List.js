@@ -9524,6 +9524,20 @@ const Orders25List = () => {
     setSelectedMonth(newMonth);
     setUserStorage('orders25List_selectedMonth', newMonth);
     setIsMonthDropdownOpen(false);
+    
+    // 🔥 KRITICKÉ: Vyčisti manuální datum filtry při změně měsíce
+    // Když uživatel vybere "Aktuální měsíc", "Poslední měsíc", atd.,
+    // nesmí se použít starší manuální datum filtry (dateFromFilter, dateToFilter)
+    // Backend vrátí správná data podle roku/měsíce
+    setDateFromFilter('');
+    setDateToFilter('');
+    
+    // Vymaž také z localStorage aby se neobnovily při F5
+    const sid = user_id || 'anon';
+    try {
+      localStorage.removeItem(`orders25_dateFrom_${sid}`);
+      localStorage.removeItem(`orders25_dateTo_${sid}`);
+    } catch (_) {}
   };
 
   // Handle show archived checkbox change
@@ -9576,46 +9590,54 @@ const Orders25List = () => {
         return {};
 
       case 'current-month':
-        // Aktuální měsíc: od 1. do dnes (1.12 - 6.12)
-        // Použijeme rok + měsíc pro backend
+        // Aktuální měsíc: od 1. do dnes (např. 1.1.2026 - 5.1.2026)
+        // ✅ Backend vrátí JEN aktuální měsíc (leden 2026), NE předchozí měsíce
         return {
           rok: currentYear,
           mesic: String(currentMonth + 1)
         };
 
       case 'last-month': {
-        // Poslední měsíc: celý předchozí měsíc + aktuální dny (1.11 - 6.12)
-        // Načteme data pro aktuální rok a pokud je to potřeba i předchozí rok
-        // Backend podporuje jen jeden rok, takže načteme aktuální rok
-        // Pro přechod roku (např. leden 2026 zobrazuje prosinec 2025) se použije klientské filtrování
+        // Poslední měsíc: 30 dní od dnešního data zpět (např. 6.12.2025 - 5.1.2026)
+        const lastMonthFrom = new Date(today);
+        lastMonthFrom.setDate(lastMonthFrom.getDate() - 30);
+        
         return {
-          rok: currentYear
+          datum_od: lastMonthFrom.toISOString().split('T')[0],
+          datum_do: today.toISOString().split('T')[0]
         };
       }
 
       case 'last-quarter': {
-        // Poslední kvartál: 3 předchozí měsíce + aktuální měsíc do dnes
-        // Načteme aktuální rok, klientské filtrování se postará o detail
+        // Poslední kvartál: 3 měsíce od dnešního data zpět (např. 5.10.2025 - 5.1.2026)
+        const lastQuarterFrom = new Date(today);
+        lastQuarterFrom.setMonth(lastQuarterFrom.getMonth() - 3);
+        
         return {
-          rok: currentYear
+          datum_od: lastQuarterFrom.toISOString().split('T')[0],
+          datum_do: today.toISOString().split('T')[0]
         };
       }
 
       case 'last-half': {
-        // Posledních 6 měsíců
-        // Načteme aktuální rok
+        // Posledních 6 měsíců: 6 měsíců od dnešního data zpět (např. 5.7.2025 - 5.1.2026)
+        const lastHalfFrom = new Date(today);
+        lastHalfFrom.setMonth(lastHalfFrom.getMonth() - 6);
+        
         return {
-          rok: currentYear
+          datum_od: lastHalfFrom.toISOString().split('T')[0],
+          datum_do: today.toISOString().split('T')[0]
         };
       }
 
       case 'last-year': {
-        // Poslední rok: 12 předchozích měsíců + aktuální měsíc do dnes
-        // Načteme aktuální rok (poslední rok rolling neznamená celý předchozí kalendářní rok)
-        // Mělo by načíst i předchozí rok, ale backend neumí více roků najednou
-        // Kompromis: načteme jen aktuální rok
+        // Poslední rok: 12 měsíců od dnešního data zpět (např. 5.1.2025 - 5.1.2026)
+        const lastYearFrom = new Date(today);
+        lastYearFrom.setMonth(lastYearFrom.getMonth() - 12);
+        
         return {
-          rok: currentYear
+          datum_od: lastYearFrom.toISOString().split('T')[0],
+          datum_do: today.toISOString().split('T')[0]
         };
       }
 

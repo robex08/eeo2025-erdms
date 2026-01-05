@@ -11,6 +11,7 @@
 
 require_once __DIR__ . '/../models/CashboxAssignmentModel.php';
 require_once __DIR__ . '/../models/GlobalSettingsModel.php';
+require_once __DIR__ . '/../middleware/CashbookPermissions.php';
 
 // ===========================================================================
 // CASHBOX ASSIGNMENTS - Přiřazení pokladen k uživatelům
