@@ -581,7 +581,8 @@ function App() {
                   {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}
                   {isLoggedIn && hasPermission && (hasPermission('USER_VIEW') || hasPermission('USER_MANAGE')) && <Route path="/users" element={<Users />} />}
                   {isLoggedIn && hasPermission && (
-                    hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE') ||
+                    hasAdminRole() ||
+                    hasPermission('DICT_MANAGE') ||
                     hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
                     hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
                     hasPermission('CONTRACTS_VIEW') || hasPermission('CONTRACTS_CREATE') || hasPermission('CONTRACTS_EDIT') || hasPermission('CONTRACTS_DELETE') ||

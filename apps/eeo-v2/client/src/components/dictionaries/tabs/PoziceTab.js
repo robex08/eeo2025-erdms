@@ -524,12 +524,12 @@ const UserCountBadge = styled.span`
 // =============================================================================
 
 const PoziceTab = () => {
-  const { token, user, userDetail, hasPermission } = useContext(AuthContext);
+  const { token, user, userDetail, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { cache, loadDictionary, invalidateCache } = useContext(DictionaryCacheContext);
 
   // Oprávnění pro pozice
-  const permissions = createDictionaryPermissionHelper('POSITIONS', hasPermission);
+  const permissions = createDictionaryPermissionHelper('POSITIONS', hasPermission, hasAdminRole);
 
   // ============= LOCALSTORAGE HELPERS =============
   const user_id = userDetail?.user_id;
@@ -825,14 +825,18 @@ const PoziceTab = () => {
           <IconButton
             className="edit"
             onClick={() => handleEdit(row.original)}
-            title="Upravit pozici"
+            title={permissions.canEdit() ? "Upravit pozici" : "Nemáte oprávnění editovat"}
+            disabled={!permissions.canEdit()}
+            style={{ opacity: permissions.canEdit() ? 1 : 0.4, cursor: permissions.canEdit() ? 'pointer' : 'not-allowed' }}
           >
             <FontAwesomeIcon icon={faEdit} />
           </IconButton>
           <IconButton
             className="delete"
             onClick={() => handleDeleteClick(row.original)}
-            title="Smazat pozici"
+            title={permissions.canDelete() ? "Smazat pozici" : "Nemáte oprávnění mazat"}
+            disabled={!permissions.canDelete()}
+            style={{ opacity: permissions.canDelete() ? 1 : 0.4, cursor: permissions.canDelete() ? 'pointer' : 'not-allowed' }}
           >
             <FontAwesomeIcon icon={faTrash} />
           </IconButton>
@@ -1024,7 +1028,12 @@ const PoziceTab = () => {
           )}
         </SearchBox>
 
-        <ActionButton $primary onClick={handleCreate}>
+        <ActionButton
+          $primary
+          onClick={handleCreate}
+          disabled={!permissions.canCreate()}
+          title={!permissions.canCreate() ? 'Nemáte oprávnění vytvářet pozice' : 'Přidat novou pozici'}
+        >
           <FontAwesomeIcon icon={faPlus} />
           Nová pozice
         </ActionButton>

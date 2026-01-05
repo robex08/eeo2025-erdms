@@ -10,12 +10,14 @@
  * @date 2025-10-19
  */
 
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBook, faSyncAlt } from '@fortawesome/free-solid-svg-icons';
 import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
+import { AuthContext } from '../context/AuthContext';
+import { AuthContext } from '../context/AuthContext';
 
 // Import Tab komponent
 import LokalityTab from '../components/dictionaries/tabs/LokalityTab';
@@ -148,6 +150,17 @@ const Tab = styled.button`
 // =============================================================================
 
 const DictionariesNew = () => {
+  const { hasPermission, hasAdminRole } = useContext(AuthContext);
+  
+  // Helper pro kontrolu viditelnosti záložky
+  const canViewTab = (prefix) => {
+    if (hasAdminRole()) return true;
+    return hasPermission(`${prefix}_VIEW`) ||
+           hasPermission(`${prefix}_CREATE`) ||
+           hasPermission(`${prefix}_EDIT`) ||
+           hasPermission(`${prefix}_DELETE`);
+  };
+
   // Load active tab from localStorage with fallback
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -237,46 +250,66 @@ const DictionariesNew = () => {
       {/* Tab Navigation */}
       <TabContainer>
         <TabHeader>
-          <Tab $active={activeTab === 'docx'} onClick={() => handleTabChange('docx')}>
-            <FileText size={18} />
-            DOCX Šablony
-          </Tab>
-          <Tab $active={activeTab === 'cashbook'} onClick={() => handleTabChange('cashbook')}>
-            <Calculator size={18} />
-            Pokladní knihy
-          </Tab>
-          <Tab $active={activeTab === 'smlouvy'} onClick={() => handleTabChange('smlouvy')}>
-            <FileSignature size={18} />
-            Smlouvy
-          </Tab>
-          <Tab $active={activeTab === 'lokality'} onClick={() => handleTabChange('lokality')}>
-            <Building size={18} />
-            Lokality
-          </Tab>
-          <Tab $active={activeTab === 'pozice'} onClick={() => handleTabChange('pozice')}>
-            <Briefcase size={18} />
-            Pozice
-          </Tab>
-          <Tab $active={activeTab === 'prava'} onClick={() => handleTabChange('prava')}>
-            <Key size={18} />
-            Práva
-          </Tab>
-          <Tab $active={activeTab === 'role'} onClick={() => handleTabChange('role')}>
-            <Shield size={18} />
-            Role
-          </Tab>
-          <Tab $active={activeTab === 'stavy'} onClick={() => handleTabChange('stavy')}>
-            <Circle size={18} />
-            Stavy
-          </Tab>
-          <Tab $active={activeTab === 'useky'} onClick={() => handleTabChange('useky')}>
-            <Network size={18} />
-            Úseky
-          </Tab>
-          <Tab $active={activeTab === 'organizace'} onClick={() => handleTabChange('organizace')}>
-            <Building2 size={18} />
-            Organizace
-          </Tab>
+          {canViewTab('DOCX_TEMPLATES') && (
+            <Tab $active={activeTab === 'docx'} onClick={() => handleTabChange('docx')}>
+              <FileText size={18} />
+              DOCX Šablony
+            </Tab>
+          )}
+          {canViewTab('CASH_BOOKS') && (
+            <Tab $active={activeTab === 'cashbook'} onClick={() => handleTabChange('cashbook')}>
+              <Calculator size={18} />
+              Pokladní knihy
+            </Tab>
+          )}
+          {canViewTab('CONTRACTS') && (
+            <Tab $active={activeTab === 'smlouvy'} onClick={() => handleTabChange('smlouvy')}>
+              <FileSignature size={18} />
+              Smlouvy
+            </Tab>
+          )}
+          {canViewTab('LOCATIONS') && (
+            <Tab $active={activeTab === 'lokality'} onClick={() => handleTabChange('lokality')}>
+              <Building size={18} />
+              Lokality
+            </Tab>
+          )}
+          {canViewTab('POSITIONS') && (
+            <Tab $active={activeTab === 'pozice'} onClick={() => handleTabChange('pozice')}>
+              <Briefcase size={18} />
+              Pozice
+            </Tab>
+          )}
+          {canViewTab('PERMISSIONS') && (
+            <Tab $active={activeTab === 'prava'} onClick={() => handleTabChange('prava')}>
+              <Key size={18} />
+              Práva
+            </Tab>
+          )}
+          {canViewTab('ROLES') && (
+            <Tab $active={activeTab === 'role'} onClick={() => handleTabChange('role')}>
+              <Shield size={18} />
+              Role
+            </Tab>
+          )}
+          {canViewTab('STATES') && (
+            <Tab $active={activeTab === 'stavy'} onClick={() => handleTabChange('stavy')}>
+              <Circle size={18} />
+              Stavy
+            </Tab>
+          )}
+          {canViewTab('DEPARTMENTS') && (
+            <Tab $active={activeTab === 'useky'} onClick={() => handleTabChange('useky')}>
+              <Network size={18} />
+              Úseky
+            </Tab>
+          )}
+          {canViewTab('ORGANIZATIONS') && (
+            <Tab $active={activeTab === 'organizace'} onClick={() => handleTabChange('organizace')}>
+              <Building2 size={18} />
+              Organizace
+            </Tab>
+          )}
         </TabHeader>
 
         {/* Tab Content - každý tab je samostatný komponent */}
