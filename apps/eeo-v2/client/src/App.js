@@ -499,7 +499,6 @@ function App() {
     
     // 🔄 RELOAD po zavření modalu pokud přišel po změně hesla
     if (wasFromPasswordChange) {
-      console.log('🔄 Modal zavřen po změně hesla - provádím reload aplikace');
       setTimeout(() => {
         const basePath = process.env.PUBLIC_URL || '/eeo-v2';
         window.location.href = basePath + '/';
@@ -510,23 +509,10 @@ function App() {
   const handleDontShowAgainPostLoginModal = async () => {
     const { config } = postLoginModal;
     
-    console.group('🔧 DISMISS MODAL DEBUG');
-    console.log('Config:', config);
-    console.log('user_id:', user_id);
-    console.log('user_id type:', typeof user_id);
-    console.log('ModalGuid:', config?.modalGuid);
-    console.log('ModalGuid type:', typeof config?.modalGuid);
-    
     if (config?.modalGuid && user_id) {
-      
       // Uložit do localStorage, že uživatel nechce modal zobrazovat
       const { dismissModalForUser } = await import('./services/postLoginModalService');
       dismissModalForUser(user_id, config.modalGuid);
-      
-      // Test okamžitého načtení
-      const { isModalDismissedByUser } = await import('./services/postLoginModalService');
-      const isDismissed = isModalDismissedByUser(user_id, config.modalGuid);
-      console.log('🧪 Okamžitý test dismissed:', isDismissed);
     } else {
       console.warn('❌ Chybí modalGuid nebo user_id!', { 
         modalGuid: config?.modalGuid, 
@@ -536,8 +522,6 @@ function App() {
         hasUserId: !!user_id
       });
     }
-    
-    console.groupEnd();
     
     // Zavřít modal
     handleClosePostLoginModal();
