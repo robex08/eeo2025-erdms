@@ -507,8 +507,11 @@ export async function fetchAllUsers({ token, username, _cacheBust, show_inactive
   }
 
   // Filter by active/inactive users (defaults to active only if not specified)
-  if (show_inactive !== undefined) {
-    payload.aktivni = show_inactive ? 0 : 1;
+  // show_inactive: true = vrátit všechny (aktivní i neaktivní) - NEposíláme filtr
+  // show_inactive: false = vrátit pouze aktivní - posíláme aktivni: 1
+  // show_inactive: undefined = default pouze aktivní - posíláme aktivni: 1
+  if (show_inactive === true) {
+    // Nepřidáváme filtr aktivni - backend vrátí všechny uživatele
   } else {
     payload.aktivni = 1; // Default: pouze aktivní uživatelé
   }

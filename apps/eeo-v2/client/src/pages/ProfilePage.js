@@ -1359,6 +1359,8 @@ const PERIOD_OPTIONS = [
 const SETTINGS_ACTIONS = {
   LOAD_FROM_DB: 'load_from_db',
   UPDATE_FIELD: 'update_field',
+  UPDATE_NESTED_FIELD: 'update_nested_field',
+  UPDATE_NESTED_CATEGORY: 'update_nested_category',
   TOGGLE_TILE: 'toggle_tile',
   TOGGLE_ICON: 'toggle_icon',
   TOGGLE_NOTIFICATION: 'toggle_notification',
@@ -1579,6 +1581,29 @@ const userSettingsReducer = (state, action) => {
         [action.payload.field]: action.payload.value
       };
       
+    case SETTINGS_ACTIONS.UPDATE_NESTED_FIELD:
+      // Aktualizace nested pole (např. notifikace.inapp_povoleny)
+      return {
+        ...state,
+        [action.payload.parent]: {
+          ...state[action.payload.parent],
+          [action.payload.field]: action.payload.value
+        }
+      };
+      
+    case SETTINGS_ACTIONS.UPDATE_NESTED_CATEGORY:
+      // Aktualizace kategorie notifikací (např. notifikace.kategorie.objednavky)
+      return {
+        ...state,
+        notifikace: {
+          ...state.notifikace,
+          kategorie: {
+            ...state.notifikace.kategorie,
+            [action.payload.category]: action.payload.value
+          }
+        }
+      };
+      
     case SETTINGS_ACTIONS.TOGGLE_TILE:
       // Toggle viditelnosti dlaždice
       return {
@@ -1783,7 +1808,7 @@ const ProfilePage = () => {
       
       try {
         // Načíst všechny uživatele pro garanta
-        const usersData = await fetchAllUsers({ token, username });
+        const usersData = await fetchAllUsers({ token, username, show_inactive: true });
         if (usersData && Array.isArray(usersData)) {
           setAllUsers(usersData);
           // Filtrovat pouze aktivní uživatele

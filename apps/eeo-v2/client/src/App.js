@@ -275,7 +275,8 @@ function App() {
   // 🔔 POST-LOGIN MODAL: State pro modal dialog po přihlášení
   const [postLoginModal, setPostLoginModal] = React.useState({
     isOpen: false,
-    config: null
+    config: null,
+    fromPasswordChange: false // 🔑 Flag pokud modal přišel po změně hesla
   });
 
   // ✅ KRITICKÉ: Stabilní reference na bgTasks - vytvoří se POUZE JEDNOU
@@ -363,7 +364,8 @@ function App() {
       if (modalConfig && modalConfig.enabled) {
         setPostLoginModal({
           isOpen: true,
-          config: modalConfig
+          config: modalConfig,
+          fromPasswordChange: modalConfig.fromPasswordChange || false // 🔑 Zachytit flag
         });
       }
     };
@@ -487,10 +489,22 @@ function App() {
 
   // 🔔 POST-LOGIN MODAL: Handler funkce
   const handleClosePostLoginModal = async () => {
+    const wasFromPasswordChange = postLoginModal.fromPasswordChange;
+    
     setPostLoginModal({
       isOpen: false,
-      config: null
+      config: null,
+      fromPasswordChange: false
     });
+    
+    // 🔄 RELOAD po zavření modalu pokud přišel po změně hesla
+    if (wasFromPasswordChange) {
+      console.log('🔄 Modal zavřen po změně hesla - provádím reload aplikace');
+      setTimeout(() => {
+        const basePath = process.env.PUBLIC_URL || '/eeo-v2';
+        window.location.href = basePath + '/';
+      }, 300); // Krátké zpoždění pro hladší přechod
+    }
   };
 
   const handleDontShowAgainPostLoginModal = async () => {

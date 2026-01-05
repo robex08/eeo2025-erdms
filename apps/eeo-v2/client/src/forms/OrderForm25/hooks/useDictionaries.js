@@ -62,7 +62,7 @@ export const useDictionaries = ({ token, username, enabled = true }) => {
           if (signal.aborted) return { key: 'users', success: false, cancelled: true };
           try {
             dispatch({ type: DICTIONARIES_ACTIONS.START_LOADING, payload: { key: 'users' } });
-            const users = await fetchAllUsers({ token, username }); // ⚠️ TODO: API nepodporuje signal zatím
+            const users = await fetchAllUsers({ token, username, show_inactive: true }); // ⚠️ TODO: API nepodporuje signal zatím
             if (signal.aborted) return { key: 'users', success: false, cancelled: true };
 
             // ✅ Bez SYSTEM uživatele - přidá se dynamicky jen u archivovaných objednávek
