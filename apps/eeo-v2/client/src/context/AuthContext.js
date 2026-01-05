@@ -966,6 +966,7 @@ export const AuthProvider = ({ children }) => {
             // Reload se provede automaticky po 30 sekundách jako fallback
             setTimeout(() => {
               const basePath = process.env.PUBLIC_URL || '/eeo-v2';
+              window.location.href = basePath + '/';
             }, 30000); // 30 sekund fallback
             
             return; // DŮLEŽITÉ: Nekončit funkci, modal je zobrazen
