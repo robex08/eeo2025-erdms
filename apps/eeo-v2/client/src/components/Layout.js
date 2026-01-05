@@ -2835,10 +2835,12 @@ const Layout = ({ children }) => {
             { hasPermission && (
                 hasPermission('USER_MANAGE') || 
                 hasPermission('DICT_MANAGE') || 
-                hasPermission('PHONEBOOK_MANAGE') ||
-                hasPermission('WORKFLOW_MANAGE') ||
-                hasPermission('APP_SETTINGS_MANAGE') ||
-                (hasAdminRole && hasAdminRole())
+                hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE') ||
+                hasPermission('LOCATIONS_VIEW') || hasPermission('POSITIONS_VIEW') || hasPermission('DEPARTMENTS_VIEW') || hasPermission('ORGANIZATIONS_VIEW') || 
+                hasPermission('STATES_VIEW') || hasPermission('ROLES_VIEW') || hasPermission('PERMISSIONS_VIEW') || hasPermission('DOCX_TEMPLATES_VIEW') || 
+                hasPermission('CASH_BOOKS_VIEW') || hasPermission('CONTRACT_VIEW') ||
+                (hasAdminRole && hasAdminRole()) ||
+                (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'))
               ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
@@ -2871,7 +2873,10 @@ const Layout = ({ children }) => {
                       minWidth: `${adminDropdownPosition.width}px`
                     }}
                   >
-                    {(hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                    {(
+                      hasAdminRole() ||
+                      hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')
+                    ) && (
                       <MenuDropdownItem 
                         to="/address-book" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -2884,7 +2889,7 @@ const Layout = ({ children }) => {
                       hasPermission('DICT_MANAGE') ||
                       hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
                       hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
-                      hasPermission('CONTRACTS_VIEW') || hasPermission('CONTRACTS_CREATE') || hasPermission('CONTRACTS_EDIT') || hasPermission('CONTRACTS_DELETE') ||
+                      hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE') ||
                       hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
                       hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
                       hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
@@ -2908,7 +2913,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faUsers} /> Uživatelé
                       </MenuDropdownItem>
                     )}
-                    {(hasPermission('WORKFLOW_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN')) && (
                       <MenuDropdownItem 
                         to="/organization-hierarchy" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -2916,7 +2921,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faSitemap} /> Systém workflow a notifikací
                       </MenuDropdownItem>
                     )}
-                    {(hasPermission('APP_SETTINGS_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (
                       <MenuDropdownItem 
                         to="/app-settings" 
                         onClick={() => setAdminMenuOpen(false)}
