@@ -318,10 +318,6 @@ export async function generateDocxDocument({
     // Backend endpoint vrací data JIŽ NORMALIZOVANÁ a S VYPOČÍTANÝMI HODNOTAMI
 
     // === KROK 5: DYNAMICKÉ MAPOVÁNÍ polí ===
-      dodavatel_ico: apiData.dodavatel_ico,
-      dodavatel_dic: apiData.dodavatel_dic
-    });
-
     const fieldMapping = createFieldMappingForDocx(apiData, templateMapping, selectedUserId);
     
 
