@@ -9395,7 +9395,6 @@ function OrderForm25() {
     if (jeCheckboxZaskrtnut && !jeUzDokoncena && !financialControlConfirmed && !skipFinancialControlModal) {
       // 🛑 STOP - NEPOKRAČOVAT v normálním save!
       // ✅ Otevřít modal pro potvrzení finanční kontroly
-      console.log('📋 [DOKONCENI] Otevírám modal pro potvrzení finanční kontroly...');
       setShowFinancialControlConfirmation(true);
       return; // Ukončit - čeká se na uživatelovo rozhodnutí v modalu
     }
@@ -13317,13 +13316,11 @@ function OrderForm25() {
 
     // 🔒 CENTRÁLNÍ ZAMYKÁNÍ: Blokovat upload pokud je objednávka dokončena/zamítnuta/zrušena
     if (isWorkflowCompleted && !canUnlockAnything) {
-      console.log('❌ BLOCKED: Workflow completed');
       showToast && showToast('Nelze nahrát přílohy - objednávka je dokončena/zamítnuta/zrušena', { type: 'warning' });
       return;
     }
 
     if (!files || files.length === 0) {
-      console.log('❌ BLOCKED: No files');
       return;
     }
 
@@ -13430,13 +13427,10 @@ function OrderForm25() {
 
     setAttachments(prev => {
       const updated = [...prev, ...newFiles];
-      console.log('📎 Attachments updated:', updated.length, updated);
       return updated;
     });
 
     setUploadingFiles(false);
-    
-    console.log('✨ handleFileUpload COMPLETED - Files should be visible now');
 
     // TOAST ODSTRANĚN - zobrazí se až při skutečném nahrání na server po klasifikaci
     // const duplicateCount = newFiles.filter(f => f.isDuplicate).length;
@@ -13571,7 +13565,6 @@ function OrderForm25() {
     setDragOver(false);
 
     const files = e.dataTransfer.files;
-    console.log('📁 Files from drop:', files?.length);
 
     if (files && files.length > 0) {
       handleFileUpload(files);
@@ -13580,7 +13573,6 @@ function OrderForm25() {
 
   const handleFileSelect = (e) => {
     const files = e.target.files;
-    console.log('📁 Files selected:', files?.length);
     if (files.length > 0) {
       handleFileUpload(files);
     }
