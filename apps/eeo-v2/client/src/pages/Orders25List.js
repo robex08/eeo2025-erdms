@@ -5943,7 +5943,6 @@ const Orders25List = () => {
   useEffect(() => {
     // Počkat, až jsou permissions inicializované (hasPermission funkce je k dispozici)
     if (!hasPermission || !token || !user?.username) {
-      console.log('⏳ [Orders25List] Čekám na inicializaci permissions/token/user...');
       return;
     }
     
@@ -9817,15 +9816,6 @@ const Orders25List = () => {
         } else if (typeof order.zpusob_financovani === 'object') {
           finData = order.zpusob_financovani;
         }
-      }
-
-      // DEBUG: Console log pro debugging (dočasné)
-      if (order.id === 1) {
-        console.log('🔍 DEBUG objednávka 1:', { 
-          financovani: order.financovani, 
-          finData, 
-          zpusobFinancovani 
-        });
       }
 
       // Pokud máme parsovaná data, extrahujeme nazev_stavu nebo mapujeme kod_stavu
