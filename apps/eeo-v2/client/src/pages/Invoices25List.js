@@ -1607,7 +1607,6 @@ const Invoices25List = () => {
           errorMessage: err?.message || 'Chyba při načítání informací o objednávce'
         };
         
-        console.log('🔒 Zobrazuji LOCK dialog s chybou');
         setLockedOrderInfo(lockInfo);
         setShowLockedOrderDialog(true);
         setIsCheckingLock(false); // Odemknout
