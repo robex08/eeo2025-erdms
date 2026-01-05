@@ -947,10 +947,52 @@ export const AuthProvider = ({ children }) => {
         // DŮLEŽITÉ: login() automaticky nastaví needsPasswordChange = false pokud backend nevrátí forcePasswordChange
         await login(username, newPassword);
         
-        // 🔄 FULL RELOAD: Zajistit čistý start aplikace po změně hesla
-        // Tím se zaručí, že všechny komponenty a state se správně inicializují
+        // � POST-LOGIN MODAL: Po změně hesla zobrazit post-login modal PŘED reload
+        // Toto je kritické - uživatel musí vidět důležité informace po prvním přihlášení
+        console.log('🔔 Kontroluji post-login modal po změně hesla...');
+        try {
+          const { checkPostLoginModal } = await import('../services/postLoginModalService');
+          const modalConfig = await checkPostLoginModal(
+            user.id,
+            result.token || token, // Použít nový token z výsledku změny hesla
+            username
+          );
+          
+          if (modalConfig && modalConfig.enabled) {
+            console.log('✅ Post-login modal bude zobrazen po změně hesla');
+            // 🔑 Přidat flag, že modal přišel po změně hesla
+            modalConfig.fromPasswordChange = true;
+            
+            // Vyvolat custom event - App.js ho zachytí a zobrazí modal
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('show-post-login-modal', {
+                detail: modalConfig
+              }));
+            }
+            
+            // ⏱️ ODLOŽENÝ RELOAD: Dát uživateli čas přečíst modal PŘED reload
+            // Modal je nyní viditelný, reload provedeme až po jeho zavření
+            // Uživatel může modal zavřít nebo kliknout "Příště nezobrazovat"
+            // Reload se provede automaticky po 30 sekundách jako fallback
+            setTimeout(() => {
+              console.log('🔄 Fallback reload po 30s - pokud uživatel nezavřel modal');
+              const basePath = process.env.PUBLIC_URL || '/eeo-v2';
+              window.location.href = basePath + '/';
+            }, 30000); // 30 sekund fallback
+            
+            return; // DŮLEŽITÉ: Nekončit funkci, modal je zobrazen
+          }
+        } catch (modalError) {
+          console.warn('⚠️ Chyba při kontrole post-login modal po změně hesla:', modalError);
+          // Pokračovat s reload i při chybě modalu
+        }
+        
+        // Pokud modal není k dispozici, provést normální reload
+        console.log('ℹ️ Post-login modal není k dispozici, pokračuji s reload');
         setTimeout(() => {
-          window.location.href = '/dev/eeo-v2/';
+          // Použij PUBLIC_URL pro správnou cestu v DEV i PROD
+          const basePath = process.env.PUBLIC_URL || '/eeo-v2';
+          window.location.href = basePath + '/';
         }, 500);
       }
       

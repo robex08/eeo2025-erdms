@@ -5494,7 +5494,7 @@ const Orders25List = () => {
 
       // Load users for names
       try {
-        const usersData = await fetchAllUsers({ token, username });
+        const usersData = await fetchAllUsers({ token, username, show_inactive: true });
         const usersMap = {};
 
         //  Přidej systémového uživatele SYSTEM (ID 0) pro archivované objednávky
@@ -6663,7 +6663,7 @@ const Orders25List = () => {
       id: 'select',
       header: '',
       cell: ({ row }) => (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ display: 'none' }}>
           <input
             type="checkbox"
             checked={row.getIsSelected()}
@@ -6672,9 +6672,10 @@ const Orders25List = () => {
           />
         </div>
       ),
-      size: 50,
+      size: 0,
       meta: {
-        align: 'center'
+        align: 'center',
+        hidden: true
       }
     },
     {
@@ -15673,12 +15674,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   borderTop: '1px solid #e5e7eb'
                 }}>
                   {header.id === 'select' ? (
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      height: '32px'
-                    }}>
+                    <div style={{ display: 'none' }}>
                       <input
                         type="checkbox"
                         checked={table.getIsAllRowsSelected()}
@@ -15712,8 +15708,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       gap: '3px',
                       height: '32px'
                     }}>
-                      {/* Hromadné akce - zobrazí se jen když jsou vybrané objednávky */}
-                      {(() => {
+                      {/* Hromadné akce - DOČASNĚ SKRYTO (nedokončená funkcionalita) */}
+                      {false && (() => {
                         const selectedCount = table.getSelectedRowModel().rows.length;
                         if (selectedCount > 0) {
                           const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);
@@ -17288,12 +17284,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                       borderTop: '1px solid #e5e7eb'
                     }}>
                       {header.id === 'select' ? (
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          height: '32px'
-                        }}>
+                        <div style={{ display: 'none' }}>
                           <input
                             type="checkbox"
                             checked={table.getIsAllRowsSelected()}
@@ -17327,8 +17318,8 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           gap: '3px',
                           height: '32px'
                         }}>
-                          {/* Hromadné akce */}
-                          {(() => {
+                          {/* Hromadné akce - DOČASNĚ SKRYTO */}
+                          {false && (() => {
                             const selectedCount = table.getSelectedRowModel().rows.length;
                             if (selectedCount > 0) {
                               const selectedOrders = table.getSelectedRowModel().rows.map(row => row.original);

@@ -1430,10 +1430,12 @@ const Users = () => {
       }
 
       // Přidáme timestamp do requestu, aby se vyhnul browser cache
+      // Pro modul Users načítáme VŠECHNY uživatele (aktivní i neaktivní)
       const data = await fetchAllUsers({
         token,
         username,
-        _cacheBust: Date.now() // Force bypass any HTTP cache
+        _cacheBust: Date.now(), // Force bypass any HTTP cache
+        show_inactive: true // Načíst i neaktivní uživatele (číselník)
       });
 
       // Save raw API data for debug modal
