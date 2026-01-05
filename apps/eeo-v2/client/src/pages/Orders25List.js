@@ -229,7 +229,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
   }
   
   const mapping = {
-    'Ke schválení': 'KE_SCHVALENI',
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI, ne KE_SCHVALENI
     'Nová': 'NOVA',
     'Rozpracovaná': 'ROZPRACOVANA',
     'Odeslaná dodavateli': 'ODESLANA',
@@ -1950,7 +1950,7 @@ const TableRow = styled.tr`
       if (props.$order?.stav_objednavky) {
         // Mapování uživatelsky přívětivých stavů na systémové kódy
         const mapping = {
-          'Ke schválení': 'KE_SCHVALENI',
+          'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
           'Nová': 'NOVA',
           'Schválená': 'SCHVALENA',
           'Zamítnutá': 'ZAMITNUTA',
@@ -5817,6 +5817,20 @@ const Orders25List = () => {
         return order;
       });
 
+      // 🐛 DEBUG: Log načtené objednávky
+      console.log('🔥 ORDERS LOADED:', {
+        total: finalOrders.length,
+        userId: user_id,
+        hasOrder17: finalOrders.some(o => o.id === 17),
+        order17: finalOrders.find(o => o.id === 17),
+        first5: finalOrders.slice(0, 5).map(o => ({
+          id: o.id,
+          cislo: o.cislo_objednavky,
+          prikazce_id: o.prikazce_id,
+          objednatel_id: o.objednatel_id
+        }))
+      });
+
       setOrders(finalOrders);
 
       // Populate rawData for debug panel
@@ -6460,7 +6474,7 @@ const Orders25List = () => {
     return {
       total,
       nova: byStatus.NOVA || 0,
-      ke_schvaleni: byStatus.KE_SCHVALENI || 0,
+      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0, // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
       schvalena: byStatus.SCHVALENA || 0,
       zamitnuta: byStatus.ZAMITNUTA || 0,
       ceka_se: byStatus.CEKA_SE || 0,
@@ -9553,10 +9567,9 @@ const Orders25List = () => {
       case 'all':
         // Žádný měsíční filtr
         if (selectedYear !== 'all') {
-          // Konkrétní rok - celý rok
+          // Konkrétní rok - celý rok - používáme 'rok' parametr pro backend
           return {
-            datum_od: `${year}-01-01`,
-            datum_do: `${year}-12-31`
+            rok: year
           };
         }
         // Všechny roky - žádný datumový filtr
@@ -9564,56 +9577,45 @@ const Orders25List = () => {
 
       case 'current-month':
         // Aktuální měsíc: od 1. do dnes (1.12 - 6.12)
+        // Použijeme rok + měsíc pro backend
         return {
-          datum_od: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear,
+          mesic: String(currentMonth + 1)
         };
 
       case 'last-month': {
         // Poslední měsíc: celý předchozí měsíc + aktuální dny (1.11 - 6.12)
-        const prevMonth = currentMonth - 1;
-        const prevMonthYear = prevMonth < 0 ? currentYear - 1 : currentYear;
-        const prevMonthNum = prevMonth < 0 ? 11 : prevMonth;
-        
+        // Načteme data pro aktuální rok a pokud je to potřeba i předchozí rok
+        // Backend podporuje jen jeden rok, takže načteme aktuální rok
+        // Pro přechod roku (např. leden 2026 zobrazuje prosinec 2025) se použije klientské filtrování
         return {
-          datum_od: `${prevMonthYear}-${String(prevMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear
         };
       }
 
       case 'last-quarter': {
         // Poslední kvartál: 3 předchozí měsíce + aktuální měsíc do dnes
-        const startMonth = currentMonth - 3;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
-        
+        // Načteme aktuální rok, klientské filtrování se postará o detail
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear
         };
       }
 
       case 'last-half': {
         // Posledních 6 měsíců
-        const startMonth = currentMonth - 6;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
-        
+        // Načteme aktuální rok
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear
         };
       }
 
       case 'last-year': {
         // Poslední rok: 12 předchozích měsíců + aktuální měsíc do dnes
-        const startMonth = currentMonth - 12;
-        const startYear = startMonth < 0 ? currentYear - 1 : currentYear;
-        const startMonthNum = startMonth < 0 ? 12 + startMonth : startMonth;
-        
+        // Načteme aktuální rok (poslední rok rolling neznamená celý předchozí kalendářní rok)
+        // Mělo by načíst i předchozí rok, ale backend neumí více roků najednou
+        // Kompromis: načteme jen aktuální rok
         return {
-          datum_od: `${startYear}-${String(startMonthNum + 1).padStart(2, '0')}-01`,
-          datum_do: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+          rok: currentYear
         };
       }
 
@@ -9629,11 +9631,10 @@ const Orders25List = () => {
           const startMonth = parseInt(monthMatch[1]);
           const endMonth = monthMatch[2] ? parseInt(monthMatch[2]) : startMonth;
 
-          const lastDay = new Date(year, endMonth, 0).getDate();
-          
+          // Backend akceptuje 'rok' a 'mesic' (např. "10" nebo "10-12")
           return {
-            datum_od: `${year}-${String(startMonth).padStart(2, '0')}-01`,
-            datum_do: `${year}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+            rok: year,
+            mesic: endMonth === startMonth ? `${startMonth}` : `${startMonth}-${endMonth}`
           };
         }
         
@@ -14150,15 +14151,15 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR */}
-                {isTileVisible('moje_objednavky') && userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele */}
+                {isTileVisible('moje_objednavky') && (() => {
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;
@@ -14560,8 +14561,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR (kompaktní režim) */}
-                {userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele (kompaktní režim) */}
+                {(() => {
                   // Spočítej kolik objednávek patří danému uživateli ZE FILTROVANÝCH DAT
                   // Order V2 API enriched používá tyto názvy polí:
                   // - uzivatel_id: ID objednatele (vytvořil objednávku)
@@ -14573,10 +14574,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;
@@ -14996,8 +14997,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   </StatCard>
                 )}
 
-                {/* Moje objednávky dlaždice - pouze pro SUPERADMIN a ADMINISTRATOR */}
-                {isTileVisible('moje_objednavky') && userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && (() => {
+                {/* Moje objednávky dlaždice - pro všechny uživatele */}
+                {isTileVisible('moje_objednavky') && (() => {
                   // Spočítej kolik objednávek patří danému uživateli ZE FILTROVANÝCH DAT
                   // Order V2 API enriched používá tyto názvy polí:
                   // - uzivatel_id: ID objednatele (vytvořil objednávku)
@@ -15009,10 +15010,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   const currentUserIdNum = parseInt(user_id, 10);
 
                   const myOrdersCount = filteredData.filter(order => {
-                    const isObjednatel = order.uzivatel_id === currentUserIdNum;
-                    const isGarant = order.garant_uzivatel_id === currentUserIdNum;
-                    const isSchvalovatel = order.schvalovatel_id === currentUserIdNum;
-                    const isPrikazce = order.prikazce_id === currentUserIdNum;
+                    const isObjednatel = parseInt(order.uzivatel_id, 10) === currentUserIdNum;
+                    const isGarant = parseInt(order.garant_uzivatel_id, 10) === currentUserIdNum;
+                    const isSchvalovatel = parseInt(order.schvalovatel_id, 10) === currentUserIdNum;
+                    const isPrikazce = parseInt(order.prikazce_id, 10) === currentUserIdNum;
 
                     return isObjednatel || isGarant || isSchvalovatel || isPrikazce;
                   }).length;

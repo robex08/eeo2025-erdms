@@ -31,22 +31,27 @@ const mobileDataService = {
    */
   async getAllMobileData({ token, username, year = new Date().getFullYear(), userId = null, isAdmin = false, showArchived = false }) {
     try {
-      // Načti data paralelně pro rychlejší načítání
-      const currentMonth = new Date().getMonth() + 1; // 1-12
-      
       // 🏢 Načtení hierarchie (pro metadata)
       const hierarchyConfig = await hierarchyService.getHierarchyConfigCached(token, username);
       
-      const [ordersResult, invoicesResult, cashbookResult] = await Promise.allSettled([
-        // 1. Objednávky pro daný rok - SPRÁVNÉ POŘADÍ PARAMETRŮ!
-        // listOrdersV2(filters, token, username, returnFullResponse, enriched)
+      // ✅ Načti pokladní knihy pro všechny měsíce vybraného roku (paralelně)
+      const cashbookPromises = Array.from({ length: 12 }, (_, i) => 
+        cashbookAPI.getCashboxListByPeriod(year, i + 1, true, true)
+          .catch(err => {
+            console.warn(`[MobileData] Chyba načítání pokladen pro ${year}/${i + 1}:`, err);
+            return { status: 'ok', data: { pokladny: [] } };
+          })
+      );
+      
+      const [ordersResult, invoicesResult, ...cashbookResults] = await Promise.allSettled([
+        // 1. Objednávky pro daný rok
         listOrdersV2({ rok: year }, token, username, false, true),
         
         // 2. Faktury pro daný rok
         listInvoices25({ token, username, year, page: 1, per_page: 1000 }),
         
-        // 3. Pokladní knihy pro aktuální měsíc (pro získání aktivních pokladen)
-        cashbookAPI.getCashboxListByPeriod(year, currentMonth, true, true)
+        // 3. Pokladní knihy pro všechny měsíce roku (12x paralelně)
+        ...cashbookPromises
       ]);
 
       // === OBJEDNÁVKY ===
@@ -69,10 +74,18 @@ const mobileDataService = {
 
       // === POKLADNA ===
       let cashbookData = null;
-      if (cashbookResult.status === 'fulfilled' && cashbookResult.value?.status === 'ok') {
-        cashbookData = this.calculateCashbookStats(cashbookResult.value.data);
+      // Agreguj data ze všech měsíců roku
+      const allCashbookData = cashbookResults
+        .filter(result => result.status === 'fulfilled' && result.value?.status === 'ok')
+        .map(result => result.value.data)
+        .filter(data => data && data.pokladny);
+      
+      if (allCashbookData.length > 0) {
+        // Sloučit data ze všech měsíců do jedné struktury
+        const mergedPokladny = this.mergeCashbookDataFromAllMonths(allCashbookData);
+        cashbookData = this.calculateCashbookStats({ pokladny: mergedPokladny });
       } else {
-        console.error('[MobileData] ❌ Cashbook API FAILED! Reason:', cashbookResult.reason);
+        console.warn('[MobileData] ⚠️ Žádná data z pokladen pro rok ' + year);
         cashbookData = { count: 0, balance: 0, pokladny: [] };
       }
 
@@ -91,7 +104,7 @@ const mobileDataService = {
           dataSource: {
             orders: ordersResult.status === 'fulfilled' ? 'API' : 'MOCK',
             invoices: invoicesResult.status === 'fulfilled' ? 'API' : 'MOCK',
-            cashbook: cashbookResult.status === 'fulfilled' ? 'API' : 'MOCK'
+            cashbook: allCashbookData.length > 0 ? 'API' : 'MOCK'
           },
           // 🏢 Hierarchie info
           hierarchy: {
@@ -147,7 +160,7 @@ const mobileDataService = {
     return {
       total: stats.total,
       totalAmount: stats.totalAmount,
-      // Mapování stavů
+      // Mapování stavů - ✅ POUŽITÍ SPRÁVNÝCH WORKFLOW KÓDŮ
       pending: { 
         count: stats.byStatus.ODESLANA_KE_SCHVALENI || 0, 
         amount: getAmountForStatus('ODESLANA_KE_SCHVALENI')
@@ -346,6 +359,54 @@ const mobileDataService = {
       balance: totalBalance,
       pokladny: pokladnyList
     };
+  },
+
+  /**
+   * Sloučí data pokladen ze všech měsíců roku do jedné struktury
+   * @param {Array} allMonthsData - Array dat ze všech měsíců [{pokladny: [...]}, ...]
+   * @returns {Array} - Sloučený seznam pokladen s agregovanými statistikami
+   */
+  mergeCashbookDataFromAllMonths(allMonthsData) {
+    const pokladnyMap = new Map();
+
+    // Projdi všechny měsíce a agreguj data podle ID pokladny
+    allMonthsData.forEach(monthData => {
+      if (!monthData.pokladny || !Array.isArray(monthData.pokladny)) return;
+
+      monthData.pokladny.forEach(pokladna => {
+        const id = pokladna.id;
+        
+        if (!pokladnyMap.has(id)) {
+          // Nová pokladna - inicializuj
+          pokladnyMap.set(id, {
+            id: pokladna.id,
+            cislo_pokladny: pokladna.cislo_pokladny,
+            nazev: pokladna.nazev,
+            aktivni: pokladna.aktivni,
+            pocet_zaznamu: 0,
+            celkove_prijmy: 0,
+            celkove_vydaje: 0,
+            prijmy_pocet: 0,
+            vydaje_pocet: 0,
+            koncovy_stav: parseFloat(pokladna.koncovy_stav || 0),
+            pocatecni_stav: parseFloat(pokladna.pocatecni_stav || 0),
+            prevod_z_predchoziho: parseFloat(pokladna.prevod_z_predchoziho || 0)
+          });
+        }
+
+        // Agreguj statistiky
+        const merged = pokladnyMap.get(id);
+        merged.pocet_zaznamu += parseInt(pokladna.pocet_zaznamu || 0, 10);
+        merged.celkove_prijmy += parseFloat(pokladna.celkove_prijmy || 0);
+        merged.celkove_vydaje += parseFloat(pokladna.celkove_vydaje || 0);
+        merged.prijmy_pocet += parseInt(pokladna.prijmy_pocet || 0, 10);
+        merged.vydaje_pocet += parseInt(pokladna.vydaje_pocet || 0, 10);
+        // Koncový stav bereme z posledního měsíce (ten se aktualizuje v loopu)
+        merged.koncovy_stav = parseFloat(pokladna.koncovy_stav || merged.koncovy_stav);
+      });
+    });
+
+    return Array.from(pokladnyMap.values());
   }
 };
 

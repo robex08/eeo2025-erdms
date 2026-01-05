@@ -14,8 +14,10 @@ const logoZZS = '/eeo-v2/logo-ZZS.png';
  * @param {function} onBackClick - Handler pro tlačítko zpět
  * @param {function} onActivityClick - Handler pro otevření historie aktivit
  * @param {number} activityCount - Počet aktivit v historii
+ * @param {number} selectedYear - Aktuálně vybraný rok
+ * @param {function} onYearChange - Handler pro změnu roku
  */
-function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick, onActivityClick, activityCount = 0 }) {
+function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButton = false, onBackClick, onActivityClick, activityCount = 0, selectedYear, onYearChange }) {
   const { isLoggedIn, token, user } = useContext(AuthContext);
   const [hierarchyInfo, setHierarchyInfo] = useState(null);
   
@@ -133,6 +135,20 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
 
         {/* Historie aktivit a menu */}
         <div className="mobile-header-actions">
+          {/* Rok selector (vlevo od activity) */}
+          {!showBackButton && onYearChange && (
+            <select 
+              className="mobile-year-selector"
+              value={selectedYear || new Date().getFullYear()}
+              onChange={(e) => onYearChange(parseInt(e.target.value))}
+              aria-label="Výběr roku"
+            >
+              {Array.from({ length: new Date().getFullYear() - 2024 }, (_, i) => 2025 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          )}
+
           {/* Historie aktivit (vlevo od hamburgeru) */}
           {!showBackButton && onActivityClick && (
             <button 

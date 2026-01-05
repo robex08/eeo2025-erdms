@@ -245,7 +245,7 @@ export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) =
   // 🔧 MAPOVÁNÍ: České názvy → Systémové kódy
   const czechToSystemCode = {
     'Nová': 'NOVA',
-    'Ke schválení': 'KE_SCHVALENI',
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI', // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
     'Schválená': 'SCHVALENA',
     'Zamítnutá': 'ZAMITNUTA',
     'Čeká se': 'CEKA_SE',
