@@ -909,12 +909,6 @@ export const AuthProvider = ({ children }) => {
 
   // 🔑 Funkce pro změnu hesla při vynuceném heslu  
   const changeForcePassword = async (newPassword) => {
-    console.log('🔐 changeForcePassword START:', { 
-      hasUser: !!user, 
-      username: user?.username, 
-      hasTempToken: !!tempToken,
-      newPasswordLength: newPassword?.length 
-    });
     
     if (!user || !user.username || !tempToken) {
       console.error('❌ Chybí data:', { user, tempToken });
@@ -927,7 +921,6 @@ export const AuthProvider = ({ children }) => {
       // Změnit heslo přes správné API s tokenem z 403
       // NEPOTŘEBUJEME oldPassword - backend ověří vynucena_zmena_hesla flag
       const { changePasswordApi2 } = await import('../services/api2auth');
-      console.log('📤 Volám changePasswordApi2 s tokenem:', tempToken.substring(0, 20) + '...');
       
       const result = await changePasswordApi2({
         token: tempToken,
@@ -949,7 +942,6 @@ export const AuthProvider = ({ children }) => {
         
         // � POST-LOGIN MODAL: Po změně hesla zobrazit post-login modal PŘED reload
         // Toto je kritické - uživatel musí vidět důležité informace po prvním přihlášení
-        console.log('🔔 Kontroluji post-login modal po změně hesla...');
         try {
           const { checkPostLoginModal } = await import('../services/postLoginModalService');
           const modalConfig = await checkPostLoginModal(
@@ -959,8 +951,6 @@ export const AuthProvider = ({ children }) => {
           );
           
           if (modalConfig && modalConfig.enabled) {
-            console.log('✅ Post-login modal bude zobrazen po změně hesla');
-            // 🔑 Přidat flag, že modal přišel po změně hesla
             modalConfig.fromPasswordChange = true;
             
             // Vyvolat custom event - App.js ho zachytí a zobrazí modal
@@ -975,9 +965,7 @@ export const AuthProvider = ({ children }) => {
             // Uživatel může modal zavřít nebo kliknout "Příště nezobrazovat"
             // Reload se provede automaticky po 30 sekundách jako fallback
             setTimeout(() => {
-              console.log('🔄 Fallback reload po 30s - pokud uživatel nezavřel modal');
               const basePath = process.env.PUBLIC_URL || '/eeo-v2';
-              window.location.href = basePath + '/';
             }, 30000); // 30 sekund fallback
             
             return; // DŮLEŽITÉ: Nekončit funkci, modal je zobrazen
@@ -988,10 +976,8 @@ export const AuthProvider = ({ children }) => {
         }
         
         // Pokud modal není k dispozici, provést normální reload
-        console.log('ℹ️ Post-login modal není k dispozici, pokračuji s reload');
         setTimeout(() => {
           // Použij PUBLIC_URL pro správnou cestu v DEV i PROD
-          const basePath = process.env.PUBLIC_URL || '/eeo-v2';
           window.location.href = basePath + '/';
         }, 500);
       }
