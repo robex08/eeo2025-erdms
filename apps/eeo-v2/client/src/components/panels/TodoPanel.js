@@ -202,7 +202,7 @@ export const TodoPanel = ({state, font, tasks, newTask, setNewTask, addTask, tog
 			// Import úkolů
 			if (importTasks && confirmDialog.data.tasks) {
 				importTasks(confirmDialog.data.tasks);
-				console.log('📥 Importované úkoly:', confirmDialog.data.tasks);
+				// Tasks imported successfully
 			}
 		}
 
