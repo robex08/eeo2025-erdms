@@ -960,7 +960,6 @@ const CashbookTab = () => {
 
   // 🆕 ADMIN: Force přepočet dokladů
   const handleForceRenumber = async (cashbox) => {
-    console.log('🔧 FORCE RENUMBER - pokladna ID:', cashbox.id);
 
     try {
       // ✅ PO ZMĚNĚ (commit 945cc8e): Přímo použít pokladna_id z řádku
@@ -972,8 +971,6 @@ const CashbookTab = () => {
         ciselna_rada_vpd: cashbox.ciselna_rada_vpd,
         ciselna_rada_ppd: cashbox.ciselna_rada_ppd
       };
-
-      console.log('🔧 FORCE RENUMBER - použiji pokladnu:', assignmentData);
 
       setAssignmentToRenumber(assignmentData);
       setForceRenumberDialogOpen(true);
@@ -1124,18 +1121,8 @@ const CashbookTab = () => {
     const { assignmentId, userName } = confirmRemove;
     setConfirmRemove({ show: false, assignmentId: null, userName: '' });
 
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📋 Assignment ID:', assignmentId);
-    console.log('👤 Uživatel:', userName);
-
     try {
-      console.log('📡 Volám API: cashbookAPI.unassignUserFromCashbox()');
       const result = await cashbookAPI.unassignUserFromCashbox(assignmentId);
-
-      console.log('   Status:', result?.status);
-      console.log('   Message:', result?.message);
-      console.log('   Affected rows:', result?.data?.affected_rows);
 
       if (result.status === 'ok') {
         // Kontrola affected_rows - pokud je 0, záznam nebyl aktualizován
@@ -1148,8 +1135,6 @@ const CashbookTab = () => {
           console.warn('   2. Záznam už má platne_do nastavené na dnešní datum');
           console.warn('   3. SQL WHERE podmínka je špatně');
           showToast(`VAROVÁNÍ: Uživatel "${userName}" nebyl odebrán - záznam už neexistuje nebo byl již deaktivován`, 'warning');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('═══════════════════════════════════════════════════════');
 
           // I tak refreshneme data, ať vidíme aktuální stav
           loadData();
@@ -1161,14 +1146,9 @@ const CashbookTab = () => {
 
         loadData(); // Reload data to reflect changes
         invalidateCache?.('cashbook');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('═══════════════════════════════════════════════════════');
       } else {
         console.error('❌ BE vrátilo neúspěšný status:', result?.status);
         showToast(result.message || 'Chyba při odebírání uživatele', 'error');
-        console.log('═══════════════════════════════════════════════════════');
-        console.log('❌ CASHBOOK TAB - FAILED');
-        console.log('═══════════════════════════════════════════════════════');
       }
     } catch (error) {
       console.error('═══════════════════════════════════════════════════════');
