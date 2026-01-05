@@ -7,8 +7,6 @@ async function pdfToCanvas(arrayBuffer) {
   // Dynamicky importujeme pdfjs-dist
   const pdfjsLib = await import('pdfjs-dist/webpack');
   
-  console.log(`📄 Loading PDF from ArrayBuffer (${arrayBuffer.byteLength} bytes)...`);
-  
   // Načteme PDF z ArrayBuffer
   const loadingTask = pdfjsLib.getDocument({ 
     data: arrayBuffer,
@@ -16,15 +14,12 @@ async function pdfToCanvas(arrayBuffer) {
   });
   
   const pdf = await loadingTask.promise;
-  console.log(`📄 PDF loaded: ${pdf.numPages} pages`);
   
   // Získáme první stranu
   const page = await pdf.getPage(1);
-  console.log(`📄 Page 1 loaded`);
   
   // Nastavíme viewport (scale 2 pro lepší kvalitu OCR)
   const viewport = page.getViewport({ scale: 2.0 });
-  console.log(`📄 Viewport: ${viewport.width}x${viewport.height}px`);
   
   // Vytvoříme canvas
   const canvas = document.createElement('canvas');
@@ -59,7 +54,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
       throw new Error('Neplatný ArrayBuffer');
     }
 
-    console.log(`📄 Starting OCR extraction (${arrayBuffer.byteLength} bytes, attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     onProgress(0, 'Načítám PDF...');
     
     // Validace velikosti
@@ -121,7 +115,6 @@ export async function extractTextFromPDF(arrayBuffer, onProgress = () => {}, ret
         tessedit_char_whitelist: '0123456789.,/:- ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž', // Povolené znaky
       });
       
-      console.log(`📐 Canvas size: ${canvas.width}x${canvas.height}px (scale: 2.0x)`);
       
     } catch (workerError) {
       console.error('❌ Worker creation error:', workerError);
@@ -277,11 +270,6 @@ export function extractInvoiceData(text) {
     }
   }
   
-  console.log(`📅 Found ${allDateMatches.length} dates in document:`);
-  allDateMatches.forEach((d, i) => {
-    console.log(`  ${i + 1}. ${d.date} (${d.parsed}) - context: ...${d.contextBefore.slice(-30)}[DATE]${d.contextAfter.slice(0, 30)}...`);
-  });
-  
   // ========== ROBUSTNÍ Hledání Datumu vystavení ==========
   // Více variant klíčových slov (včetně OCR chyb: í→i, ě→e, ř→r, atd.)
   const issueDateKeywords = [
@@ -361,10 +349,6 @@ export function extractInvoiceData(text) {
     if (hasWeakDne && !hasStrongKeyword) {
       score -= 10;
       foundKeywords.push('-weak_dne(penalty)');
-    }
-    
-    if (foundKeywords.length > 0) {
-      console.log(`  📅 Date ${dateMatch.date}: Keywords: ${foundKeywords.join(', ')} → score: ${score}`);
     }
     
     if (score > bestIssueScore) {
@@ -456,10 +440,6 @@ export function extractInvoiceData(text) {
       // Penalizace pokud je STEJNÉ jako datum vystavení (nesmysl)
       score -= 15;
       foundKeywords.push('-same_as_issue(penalty)');
-    }
-    
-    if (foundKeywords.length > 0) {
-      console.log(`  📅 Date ${dateMatch.date}: Keywords: ${foundKeywords.join(', ')} → score: ${score}`);
     }
     
     if (score > bestDueScore) {
@@ -572,7 +552,6 @@ function parseAmount(amountStr) {
   }
   
   const result = parseFloat(normalized);
-  console.log(`💰 parseAmount: "${amountStr}" → "${cleaned}" → "${normalized}" → ${result}`);
   
   return isNaN(result) ? null : result;
 }
