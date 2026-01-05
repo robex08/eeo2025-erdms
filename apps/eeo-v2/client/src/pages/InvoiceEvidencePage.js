@@ -3664,21 +3664,12 @@ export default function InvoiceEvidencePage() {
           // - ZKONTROLOVANA nebo DOKONCENA → vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
           // - VECNA_SPRAVNOST → nechat (už čeká na kontrolu)
           
-          console.log('🔍 [WORKFLOW DEBUG] Aktuální stav:', currentState);
-          console.log('🔍 [WORKFLOW DEBUG] Workflow stavy (před):', stavKody);
-          console.log('🔍 [WORKFLOW DEBUG] editingInvoiceId:', editingInvoiceId);
-          console.log('🔍 [WORKFLOW DEBUG] isAddingOrderToExistingInvoice:', isAddingOrderToExistingInvoice);
-          console.log('🔍 [WORKFLOW DEBUG] hadOriginalEntity:', hadOriginalEntity);
-          console.log('🔍 [WORKFLOW DEBUG] formData.order_id:', formData.order_id);
-          
           let needsUpdate = false;
           
           if (editingInvoiceId && !isAddingOrderToExistingInvoice) {
             // EDITACE existující faktury která UŽ MĚLA objednávku
-            console.log('🔄 [WORKFLOW] Detekována EDITACE existující faktury s objednávkou');
             if (currentState === 'ZKONTROLOVANA' || currentState === 'DOKONCENA') {
               // Vrátit zpět na VECNA_SPRAVNOST - musí projít novou kontrolou
-              console.log('⚠️ [WORKFLOW] Vracím na VECNA_SPRAVNOST (z', currentState, ')');
               stavKody.pop(); // Odstraň poslední stav (ZKONTROLOVANA/DOKONCENA)
               if (currentState === 'DOKONCENA' && stavKody[stavKody.length - 1] === 'ZKONTROLOVANA') {
                 stavKody.pop(); // Odstraň i ZKONTROLOVANA pokud tam je
@@ -3688,38 +3679,27 @@ export default function InvoiceEvidencePage() {
                 stavKody.push('VECNA_SPRAVNOST');
               }
               needsUpdate = true;
-              console.log('✅ [WORKFLOW] EDITACE FAKTURY: Objednávka vrácena na věcnou správnost');
-            } else {
-              console.log('ℹ️ [WORKFLOW] Již ve správném stavu (', currentState, '), žádná změna');
             }
+            // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
             // Pokud je už ve VECNA_SPRAVNOST, necháme beze změny
           } else {
             // NOVÁ FAKTURA nebo PŘIŘAZENÍ FAKTURY K OBJEDNÁVCE
-            console.log('🆕 [WORKFLOW] Detekována NOVÁ faktura nebo PŘIŘAZENÍ k objednávce');
             if (currentState === 'NEUVEREJNIT' || currentState === 'UVEREJNENA') {
               // První faktura → přidat FAKTURACE a pak VECNA_SPRAVNOST
-              console.log('✅ [WORKFLOW] První faktura → přidávám FAKTURACE + VECNA_SPRAVNOST');
               stavKody.push('FAKTURACE');
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
             } else if (currentState === 'FAKTURACE') {
               // Už má FAKTURACE → jen přidat VECNA_SPRAVNOST
-              console.log('✅ [WORKFLOW] Už má FAKTURACE → přidávám VECNA_SPRAVNOST');
               stavKody.push('VECNA_SPRAVNOST');
               needsUpdate = true;
             } else if (currentState === 'ZKONTROLOVANA') {
               // Vrátit zpět na VECNA_SPRAVNOST (faktury byly upraveny)
-              console.log('⚠️ [WORKFLOW] Vracím na VECNA_SPRAVNOST (z ZKONTROLOVANA)');
               stavKody.pop(); // Odstraň ZKONTROLOVANA
               needsUpdate = true;
-            } else {
-              console.log('ℹ️ [WORKFLOW] Již ve správném stavu nebo nepodporovaný stav (', currentState, ')');
             }
             // Pokud je currentState === 'VECNA_SPRAVNOST', necháme beze změny (needsUpdate = false)
           }
-          
-          console.log('🔍 [WORKFLOW DEBUG] Workflow stavy (po):', stavKody);
-          console.log('🔍 [WORKFLOW DEBUG] needsUpdate:', needsUpdate);
 
           if (needsUpdate) {
             // 🎯 Progress - aktualizace workflow objednávky
