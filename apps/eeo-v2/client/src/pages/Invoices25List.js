@@ -2206,15 +2206,6 @@ const Invoices25List = () => {
   };
 
   const handleViewInvoice = async (invoice) => {
-    console.log('Invoice data:', {
-      potvrdil_vecnou_spravnost_jmeno: invoice.potvrdil_vecnou_spravnost_jmeno,
-      vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno,
-      dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti,
-      vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka,
-      vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku,
-      potvrdil_vecnou_spravnost_id: invoice.potvrdil_vecnou_spravnost_id
-    });
-    
     setSlidePanelInvoice(invoice);
     setSlidePanelOpen(true);
     
