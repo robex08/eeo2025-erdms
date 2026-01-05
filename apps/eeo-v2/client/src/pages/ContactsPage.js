@@ -552,9 +552,9 @@ const ContactsPage = () => {
         const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
           role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
         );
-        const hasContactManage = hasPermission && hasPermission('CONTACT_MANAGE');
+        const hasSupplierManage = hasPermission && hasPermission('SUPPLIER_MANAGE');
         
-        if (!isAdmin && !hasContactManage) {
+        if (!isAdmin && !hasSupplierManage) {
           // Ostatní vidí jen globální, osobní a úsekove
           const currentUserDepartment = userDetail?.usek_zkr || userDetail?.department || userDetail?.usek || '';
           
@@ -726,6 +726,7 @@ const ContactsPage = () => {
     if (filter === 'all' || filter === 'employees') {
       const employeeContacts = employees
         .filter(emp => emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true)
+        .filter(emp => emp.viditelny_v_tel_seznamu === 1 || emp.viditelny_v_tel_seznamu === '1')
         .map(emp => ({
           type: 'employee',
           id: `emp-${emp.id || emp.ID}`,
@@ -889,7 +890,10 @@ const ContactsPage = () => {
     setCurrentPage(0);
   };
 
-  const employeeCount = employees.filter(e => e.aktivni === 1 || e.aktivni === '1' || e.aktivni === true).length;
+  const employeeCount = employees
+    .filter(e => e.aktivni === 1 || e.aktivni === '1' || e.aktivni === true)
+    .filter(e => e.viditelny_v_tel_seznamu === 1 || e.viditelny_v_tel_seznamu === '1')
+    .length;
   const supplierCount = suppliers.length;
 
   return (

@@ -94,6 +94,7 @@ function getSqlSearchUsers() {
                LIKE :query_normalized
         )
         AND (:is_admin = 1 OR u.aktivni = 1 OR :include_inactive = 1)
+        AND (:is_admin = 1 OR u.viditelny_v_tel_seznamu = 1)
         ORDER BY u.prijmeni, u.jmeno
         LIMIT :limit
     ";
@@ -638,12 +639,13 @@ function getSqlSearchInvoices() {
 
 /**
  * SQL pro vyhledávání v dodavatelích
- * Samostatná entita bez JOINů
+ * OPRAVENO: Filtruje podle visibility (personal, úsek, global) pro non-adminy
  * 
+ * @param bool $isAdmin Pokud true, vrátí SQL bez visibility filtru
  * @return string SQL dotaz
  */
-function getSqlSearchSuppliers() {
-    return "
+function getSqlSearchSuppliers($isAdmin = false) {
+    $baseSelect = "
         SELECT 
             d.id,
             d.nazev,
@@ -654,6 +656,9 @@ function getSqlSearchSuppliers() {
             d.kontakt_jmeno,
             d.kontakt_email,
             d.kontakt_telefon,
+            d.aktivni,
+            d.user_id,
+            d.usek_zkr,
             DATE_FORMAT(d.dt_vytvoreni, '%Y-%m-%d %H:%i:%s') as dt_vytvoreni,
             DATE_FORMAT(d.dt_aktualizace, '%Y-%m-%d %H:%i:%s') as dt_aktualizace,
             CASE
@@ -725,6 +730,25 @@ function getSqlSearchSuppliers() {
                'í','i'),'Í','I'),'ň','n'),'Ň','N'),'ó','o'),'Ó','O'),'ř','r'),'Ř','R'),'š','s'),'Š','S'),
                'ť','t'),'Ť','T'),'ú','u'),'Ú','U'),'ů','u'),'Ů','U'),'ý','y'),'Ý','Y'),'ž','z'),'Ž','Z')
                LIKE :query_normalized
+        )";
+    
+    // Admin vidí všechny (pouze aktivni filtr)
+    if ($isAdmin) {
+        return $baseSelect . "
+        AND (:is_admin = 1 OR d.aktivni = 1 OR :include_inactive = 1)
+        ORDER BY d.dt_aktualizace DESC
+        LIMIT :limit
+    ";
+    }
+    
+    // Non-admin: filtrování podle visibility + aktivni
+    // Vrátíme SQL s placeholdery pro úseky, které se dynamicky sestaví v handleru
+    return $baseSelect . "
+        AND (:is_admin = 1 OR d.aktivni = 1 OR :include_inactive = 1)
+        AND (
+            d.user_id = :user_id
+            OR (d.user_id = 0 AND (d.usek_zkr IS NULL OR d.usek_zkr = '' OR d.usek_zkr = '[]'))
+            __USEK_CONDITIONS__
         )
         ORDER BY d.dt_aktualizace DESC
         LIMIT :limit

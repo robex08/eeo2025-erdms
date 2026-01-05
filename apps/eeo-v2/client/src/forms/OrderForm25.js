@@ -4066,7 +4066,7 @@ const formatLpWithYear = (cisloLp, platneDo) => {
 function OrderForm25() {
   const navigate = useNavigate();
   const { showToast } = useContext(ToastContext) || {};
-  const { userDetail, user_id, username, token, user, userPermissions, hasPermission } = useContext(AuthContext) || {};
+  const { userDetail, user_id, username, token, user, userPermissions, hasPermission, hasAdminRole } = useContext(AuthContext) || {};
   const { triggerActivity } = useActivity();
   const { progress, start: startGlobalProgress, setProgress: setGlobalProgress, done: doneGlobalProgress, fail: failGlobalProgress, reset: resetGlobalProgress } = useContext(ProgressContext) || {};
 
@@ -14792,11 +14792,11 @@ function OrderForm25() {
         user_id,
         usek_zkr: userDetail?.usek_zkr,
         ico: ico, // Filtruj podle IČO
-        load_all: (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')))
+        load_all: hasAdminRole && hasAdminRole() // Pouze admin vidí všechny kontakty všech uživatelů
       });
 
-      // Práva pro výběr Global scope
-      const canManageGlobal = (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE')));
+      // Práva pro výběr Global scope - admin nebo uživatel s CREATE/EDIT právem může editovat globální kontakty
+      const canManageGlobal = (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')));
 
       // 🔍 DEBUG: Co backend vrátil
 
@@ -14997,7 +14997,7 @@ function OrderForm25() {
         username: username,
         user_id: user_id,
         usek_zkr: userDetail?.usek_zkr || undefined,
-        load_all: (hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE'))) // Load all contacts for users with PHONEBOOK rights
+        load_all: hasAdminRole && hasAdminRole() // Pouze admin vidí všechny kontakty všech uživatelů
       });
 
       if (Array.isArray(result)) {
@@ -15226,7 +15226,7 @@ function OrderForm25() {
                 user_id,
                 usek_zkr: userDetail?.usek_zkr,
                 ico: aresItem.ico,
-                load_all: hasPermission && hasPermission('CONTACT_MANAGE')
+                load_all: hasAdminRole && hasAdminRole()
               });
 
               const filteredResults = Array.isArray(dbResults)
@@ -20796,12 +20796,11 @@ function OrderForm25() {
                       )}
                     </SectionTitle>
                     <SectionControls>
-                      {/* 🏢 Ikona "Přidat do adresáře" - zobrazí se pouze pokud má právo CONTACT_MANAGE nebo CONTACT_EDIT */}
+                      {/* 🏢 Ikona "Přidat do adresáře" - zobrazí se pouze pokud má právo vytvářet/editovat kontakty */}
                       {checkSupplierRequiredFields() &&
                        !shouldLockPhase3Sections &&
                        !isPokladna &&
-                       hasPermission &&
-                       (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')) && (
+                       ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) && (
                         <AddToDirectoryIcon
                           isActive={true}
                           onClick={handleAddSupplierToDirectory}
@@ -25611,9 +25610,9 @@ function OrderForm25() {
                   <AresScopeOption
                     type="button"
                     selected={aresSelectedScope === 'usek'}
-                    onClick={() => hasPermission && hasPermission('CONTACT_EDIT') && setAresSelectedScope('usek')}
-                    disabled={!hasPermission || !hasPermission('CONTACT_EDIT')}
-                    title={(!hasPermission || !hasPermission('CONTACT_EDIT')) ? "Nemáte oprávnění pro úsekový kontakt" : ""}
+                    onClick={() => ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) && setAresSelectedScope('usek')}
+                    disabled={!((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT'))))}
+                    title={!((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))) ? "Nemáte oprávnění pro úsekový kontakt" : ""}
                   >
                     <FontAwesomeIcon icon={faBuilding} />
                     <span>Úsek</span>
@@ -25623,9 +25622,9 @@ function OrderForm25() {
                   <AresScopeOption
                     type="button"
                     selected={aresSelectedScope === 'global'}
-                    onClick={() => hasPermission && hasPermission('CONTACT_MANAGE') && setAresSelectedScope('global')}
-                    disabled={!hasPermission || !hasPermission('CONTACT_MANAGE')}
-                    title={(!hasPermission || !hasPermission('CONTACT_MANAGE')) ? "Nemáte oprávnění pro globální kontakt" : ""}
+                    onClick={() => ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE'))) && setAresSelectedScope('global')}
+                    disabled={!((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')))}
+                    title={!((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE'))) ? "Globální adresář je dostupný pouze pro administrátory a uživatele s právem SUPPLIER_MANAGE" : ""}
                   >
                     <FontAwesomeIcon icon={faGlobe} />
                     <span>Globální</span>
@@ -25637,7 +25636,7 @@ function OrderForm25() {
               {aresSelectedScope === 'usek' && (
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: '#262626', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {canManageUsers ? 'Výběr úseků' : `Váš úsek: ${userDetail?.usek_zkr || 'N/A'}`}
+                    {(hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')) ? 'Výběr úseků' : `Váš úsek: ${userDetail?.usek_zkr || 'N/A'}`}
                   </div>
                   {usekyLoading ? (
                     <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280' }}>
@@ -25649,7 +25648,7 @@ function OrderForm25() {
                     </div>
                   ) : (
                     <AresUsekGrid>
-                      {(canManageUsers ? availableUseky :
+                      {((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')) ? availableUseky :
                         availableUseky.filter(usek => usek.usek_zkr === userDetail?.usek_zkr)
                       ).map((usek, index) => (
                         <AresUsekItem
@@ -26822,9 +26821,9 @@ function OrderForm25() {
       existsInUsek={existingSupplierCheck?.existsInUsek || null}
       existsInGlobal={existingSupplierCheck?.existsInGlobal || null}
       userPermissions={{
-        canAddPersonal: hasPermission && (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')), // CONTACT_MANAGE nebo CONTACT_EDIT
-        canAddUsek: hasPermission && (hasPermission('CONTACT_MANAGE') || hasPermission('CONTACT_EDIT')), // CONTACT_MANAGE nebo CONTACT_EDIT pro své úseky
-        canAddGlobal: hasPermission && hasPermission('CONTACT_MANAGE') // Pouze CONTACT_MANAGE
+        canAddPersonal: ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))),
+        canAddUsek: ((hasAdminRole && hasAdminRole()) || (hasPermission && (hasPermission('SUPPLIER_CREATE') || hasPermission('SUPPLIER_EDIT')))),
+        canAddGlobal: ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('SUPPLIER_MANAGE')))
       }}
     />
 

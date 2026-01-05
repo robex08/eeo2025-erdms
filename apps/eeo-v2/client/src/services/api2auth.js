@@ -1297,6 +1297,40 @@ export async function deleteSupplierByIco({ token, username, ico }) {
 }
 
 /**
+ * Toggle employee visibility in phonebook
+ * Endpoint: POST users/toggle-visibility
+ * Requires: PHONEBOOK_MANAGE permission
+ */
+export async function toggleEmployeeVisibility({ token, username, user_id, viditelny_v_tel_seznamu }) {
+  if (!token || !username) {
+    throw new Error('Token and username are required');
+  }
+  
+  if (!user_id) {
+    throw new Error('user_id is required');
+  }
+  
+  const visibility_value = viditelny_v_tel_seznamu;
+  if (visibility_value !== 0 && visibility_value !== 1) {
+    throw new Error('viditelny_v_tel_seznamu must be 0 or 1');
+  }
+  
+  try {
+    const payload = { token, username, user_id, viditelny_v_tel_seznamu: visibility_value };
+    const response = await api2.post('users/toggle-visibility', payload, { timeout: 10000 });
+    
+    if (response.status !== 200) {
+      throw new Error('Neočekávaný kód odpovědi ze serveru');
+    }
+    
+    return response.data;
+  } catch (err) {
+    console.error('❌ [API toggleEmployeeVisibility] CHYBA:', err);
+    throw new Error(err.response?.data?.message || err.message || 'Chyba při změně viditelnosti');
+  }
+}
+
+/**
  * Fetch employees list via API2 endpoint 'users/list'
  * Returns normalized employee contact data
  */
@@ -1348,6 +1382,9 @@ export async function fetchEmployees({ token, username }) {
         dt_posledni_aktivita: emp.dt_posledni_aktivita || '',
         // Normalize aktivni to number: 1 for active, 0 for inactive
         aktivni: emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true ? 1 : 0,
+        // Add phonebook visibility status
+        viditelny_v_tel_seznamu: emp.viditelny_v_tel_seznamu === 1 || emp.viditelny_v_tel_seznamu === '1' || emp.viditelny_v_tel_seznamu === true ? 1 : 0,
+        // visible_in_phonebook: DEPRECATED - používej viditelny_v_tel_seznamu
         // Full name for display and search
         full_name: [
           emp.titul_pred,

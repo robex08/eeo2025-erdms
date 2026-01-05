@@ -1259,17 +1259,81 @@ function handle_ciselniky_dodavatele_list($input, $config, $queries) {
     try {
         $db = get_db($config);
         
+        // Získat údaje aktuálního uživatele včetně jeho úseků
+        $sqlUser = "SELECT u.id as user_id, u.usek_zkr FROM " . TBL_UZIVATELE . " u WHERE u.username = :username LIMIT 1";
+        $stmtUser = $db->prepare($sqlUser);
+        $stmtUser->bindParam(':username', $request_username, PDO::PARAM_STR);
+        $stmtUser->execute();
+        $currentUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$currentUser) {
+            http_response_code(403);
+            echo json_encode(array('err' => 'Uživatel nenalezen'));
+            return;
+        }
+        
+        $current_user_id = $currentUser['user_id'];
+        $current_user_useky = $currentUser['usek_zkr'] ? json_decode($currentUser['usek_zkr'], true) : array();
+        if (!is_array($current_user_useky)) {
+            $current_user_useky = $currentUser['usek_zkr'] ? array($currentUser['usek_zkr']) : array();
+        }
+        
+        // Kontrola oprávnění - SUPPLIER_MANAGE vidí všechny
+        $has_supplier_manage = has_permission($db, $request_username, 'SUPPLIER_MANAGE');
+        
         // Volitelný parametr pro zobrazení i neaktivních
         $show_inactive = isset($input['show_inactive']) ? (bool)$input['show_inactive'] : false;
         
-        if ($show_inactive) {
-            $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev ASC";
+        if ($has_supplier_manage) {
+            // Admin vidí všechny dodavatele
+            if ($show_inactive) {
+                $sql = "SELECT * FROM " . TBL_DODAVATELE . " ORDER BY nazev ASC";
+            } else {
+                $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE aktivni = 1 ORDER BY nazev ASC";
+            }
+            $stmt = $db->prepare($sql);
+            $stmt->execute();
         } else {
-            $sql = "SELECT * FROM " . TBL_DODAVATELE . " WHERE aktivni = 1 ORDER BY nazev ASC";
+            // Běžný uživatel vidí pouze:
+            // 1. Své osobní dodavatele (user_id = current_user_id)
+            // 2. Dodavatele svých úseků (usek_zkr obsahuje jeho úsek)
+            // 3. Globální dodavatele (user_id = 0 AND usek_zkr IS NULL OR usek_zkr = '')
+            
+            $aktivniCondition = $show_inactive ? '' : ' AND aktivni = 1';
+            
+            // Složitější dotaz s filtrováním podle viditelnosti
+            $sql = "SELECT * FROM " . TBL_DODAVATELE . " 
+                    WHERE (
+                        user_id = :user_id
+                        OR (user_id = 0 AND (usek_zkr IS NULL OR usek_zkr = '' OR usek_zkr = '[]'))";
+            
+            // Přidáme kontrolu úseků, pokud má uživatel nějaké
+            if (!empty($current_user_useky)) {
+                $usekConditions = array();
+                foreach ($current_user_useky as $idx => $usek) {
+                    $usekConditions[] = "usek_zkr LIKE :usek_$idx";
+                }
+                if (!empty($usekConditions)) {
+                    $sql .= " OR (" . implode(' OR ', $usekConditions) . ")";
+                }
+            }
+            
+            $sql .= ")" . $aktivniCondition . " ORDER BY nazev ASC";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->bindParam(':user_id', $current_user_id, PDO::PARAM_INT);
+            
+            // Bind úseky
+            if (!empty($current_user_useky)) {
+                foreach ($current_user_useky as $idx => $usek) {
+                    $usekPattern = '%"' . $usek . '"%';
+                    $stmt->bindValue(":usek_$idx", $usekPattern, PDO::PARAM_STR);
+                }
+            }
+            
+            $stmt->execute();
         }
         
-        $stmt = $db->prepare($sql);
-        $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         echo json_encode(array(

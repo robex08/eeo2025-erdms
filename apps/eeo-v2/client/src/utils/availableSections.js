@@ -16,8 +16,9 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   );
   
-  // ADRESÁŘ - CONTACT_MANAGE
-  if (hasPermission && hasPermission('CONTACT_MANAGE')) {
+  // ADRESÁŘ - SUPPLIER_MANAGE nebo SUPPLIER_VIEW/EDIT/CREATE
+  if (hasPermission && (hasPermission('SUPPLIER_MANAGE') || hasPermission('SUPPLIER_VIEW') || 
+      hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_CREATE'))) {
     sections.push({ value: 'address-book', label: 'Adresář' });
   }
   
