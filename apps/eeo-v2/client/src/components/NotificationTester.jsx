@@ -49,7 +49,7 @@ const NotificationTester = ({ token, username, userId }) => {
       });
 
       setPreview(response);
-      console.log('📋 Preview notifikace:', response);
+      // Preview loaded successfully
     } catch (error) {
       console.error('❌ Chyba:', error);
       alert('Chyba při načítání náhledu: ' + error.message);
@@ -78,7 +78,7 @@ const NotificationTester = ({ token, username, userId }) => {
       });
 
       setResult(response);
-      console.log('✅ Notifikace odeslána:', response);
+      // Notification sent successfully
       alert(`✅ Notifikace odeslána! ID: ${response.notification_id}`);
     } catch (error) {
       console.error('❌ Chyba:', error);
