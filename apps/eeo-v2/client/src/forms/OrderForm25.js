@@ -6941,13 +6941,28 @@ function OrderForm25() {
               return;
             }
             
-            // Jiná chyba
-            showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });
+            // ❌ Jiná chyba - objednávka neexistuje nebo jiný problém
+            const errorMsg = error?.message || error?.error || 'Objednávka nebyla nalezena';
+            showToast?.(
+              `Nepodařilo se načíst objednávku: ${errorMsg}`,
+              { type: 'error', autoClose: 5000 }
+            );
+            // Přesměruj zpět na seznam po 2 sekundách
+            setTimeout(() => {
+              navigate('/orders25-list', { replace: true });
+            }, 2000);
             return;
           }
 
           if (!dbOrder) {
-            showToast?.(formatToastMessage('Nepodařilo se načíst objednávku', 'error'), { type: 'error' });
+            showToast?.(
+              'Objednávka nebyla nalezena nebo nemáte oprávnění k jejímu zobrazení',
+              { type: 'error', autoClose: 5000 }
+            );
+            // Přesměruj zpět na seznam po 2 sekundách
+            setTimeout(() => {
+              navigate('/orders25-list', { replace: true });
+            }, 2000);
             return;
           }
 
@@ -18728,6 +18743,26 @@ function OrderForm25() {
       </LoadingOverlay>
     );
   }
+
+  // ⏱️ TIMEOUT PROTECTION: Pokud loading trvá déle než 20 sekund, zobrazit error
+  useEffect(() => {
+    if (!lifecycle.isReady) {
+      const timeoutId = setTimeout(() => {
+        if (!lifecycle.isReady) {
+          showToast?.(
+            'Načítání formuláře trvá příliš dlouho. Zkuste obnovit stránku nebo kontaktujte podporu.',
+            { type: 'error', autoClose: false }
+          );
+          // Přesměruj zpět na seznam po 3 sekundách
+          setTimeout(() => {
+            navigate('/orders25-list', { replace: true });
+          }, 3000);
+        }
+      }, 20000); // 20 sekund timeout
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [lifecycle.isReady, navigate, showToast]);
   //       <LoadingMessage $visible={true}>
   //         {isLoadingCiselniky && !isLoadingFormData && 'Načítám číselníky...'}
   //         {isLoadingCiselniky && isLoadingFormData && 'Načítám číselníky a data objednávky...'}
@@ -18760,7 +18795,14 @@ function OrderForm25() {
         <LoadingSubtext $visible={true}>
           {!dictionaries.isReady && `Načítám ${dictionaries.loadedCount || 0}/${dictionaries.totalToLoad || 8} číselníků...`}
           {dictionaries.isReady && lifecycle.isLoadingFormData && 'Načítám data objednávky...'}
-          {dictionaries.isReady && !lifecycle.isLoadingFormData && !lifecycle.isReady && 'Zpracovávám data...'}
+          {dictionaries.isReady && !lifecycle.isLoadingFormData && !lifecycle.isReady && (
+            <div style={{ textAlign: 'center' }}>
+              <div>Zpracovávám data...</div>
+              <div style={{ fontSize: '0.75rem', marginTop: '8px', opacity: 0.7 }}>
+                Pokud načítání trvá déle než 10 sekund, zkuste obnovit stránku (Ctrl+Shift+R)
+              </div>
+            </div>
+          )}
         </LoadingSubtext>
       </LoadingOverlay>
     );
