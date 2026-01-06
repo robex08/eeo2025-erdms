@@ -190,8 +190,8 @@ class EntryValidator {
             $errors[] = 'datum_zapisu musí být platné datum ve formátu YYYY-MM-DD';
         }
         
-        // Povinné pole: obsah_zapisu
-        if (empty($data['obsah_zapisu'])) {
+        // Povinné pole: obsah_zapisu (prázdný string je povolen)
+        if (!isset($data['obsah_zapisu'])) {
             $errors[] = 'obsah_zapisu je povinný';
         } elseif (strlen($data['obsah_zapisu']) > 500) {
             $errors[] = 'obsah_zapisu může mít maximálně 500 znaků';

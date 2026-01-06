@@ -42,6 +42,7 @@ class CashboxModel {
                 p.ciselna_rada_ppd,
                 p.ppd_od_cislo,
                 p.aktivni,
+                p.lp_kod_povinny,
                 p.poznamka,
                 p.vytvoreno,
                 p.aktualizovano,

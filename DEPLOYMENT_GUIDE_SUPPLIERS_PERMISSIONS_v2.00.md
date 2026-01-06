@@ -67,6 +67,22 @@
 - ✅ searchHandlers.php - universal search visibility + inactive filtering
 - ✅ searchQueries.php - SQL queries s visibility conditions
 
+### 💰 CASHBOOK - LP kód povinnost:
+- ✅ **Tabulka `25a_pokladny`** - přidán sloupec `lp_kod_povinny` TINYINT(1) DEFAULT 0
+- ✅ **CashboxModel.php** - `getAllCashboxes()` - SELECT zahrnuje `lp_kod_povinny`
+- ✅ **CashbookModel.php** - `getBooks()` a `getBookById()` - JOIN na pokladny + `pokladna_lp_kod_povinny`
+- ✅ **cashbookHandlersExtended.php** - nové endpointy:
+  - `handle_cashbox_lp_requirement_update_post()` - Order V2 standard
+  - `handle_cashbox_lp_requirement_get_post()` - Order V2 standard
+- ✅ **cashbookHandlers.php** - validace LP kódu podle `pokladna_lp_kod_povinny`:
+  - `handle_cashbook_entry_create_post()` - kontrola LP povinnosti
+  - `handle_cashbook_entry_update_post()` - kontrola LP povinnosti
+- ✅ **EntryValidator.php** - upravena validace `obsah_zapisu` (akceptuje prázdný string)
+- ✅ **api.php** - registrace endpointů `cashbox-lp-requirement-update`, `cashbox-lp-requirement-get`
+- ✅ **FE - CashbookTab.js** - toggle button pro LP povinnost v číselníku pokladen
+- ✅ **FE - CashBookPage.js** - podmíněná validace LP kódu podle nastavení pokladny
+- ✅ **FE - cashbookService.js** - API metody `updateLpRequirement()`, `getLpRequirement()`
+
 ---
 
 ## 🗓️ DEPLOYMENT CHECKLIST
@@ -75,7 +91,7 @@
 
 **Datum:** 5.-9. ledna 2026  
 **Prostředí:** DEV (eeo2025-dev)
-
+VZDY pouzij : /PHPAPI pro kontrolu api na beckaendu, db
 - [ ] **Test 1:** Ověřit universal search - neaktivní dodavatelé/uživatelé se nezobrazují
 - [ ] **Test 2:** Ověřit visibility filtering - běžný user vidí jen své/úsekové/globální dodavatele
 - [ ] **Test 3:** Ověřit "Administrace → Adresář" - přístup pouze pro SUPPLIER_MANAGE/PHONEBOOK_MANAGE
@@ -86,6 +102,10 @@
 - [ ] **Test 8:** PHP syntax check všech upravených BE souborů
 - [ ] **Test 9:** Test s různými rolemi (admin, THP/PES, VEDOUCI)
 - [ ] **Test 10:** Ověřit že CONTACT_* permissions již nejsou nikde použity
+- [ ] **Test 11:** 💰 CASHBOOK - Ověřit toggle LP kód povinnosti v číselníku pokladen
+- [ ] **Test 12:** 💰 CASHBOOK - Ověřit podmíněnou validaci LP kódu podle nastavení pokladny
+- [ ] **Test 13:** 💰 CASHBOOK - Ověřit že výdaj bez LP kódu lze uložit když je LP volitelný
+- [ ] **Test 14:** 💰 CASHBOOK - Ověřit že výdaj bez LP kódu NELZE uložit když je LP povinný
 
 **Dokumentace testů:**
 ```
@@ -261,7 +281,40 @@ ORDER BY r.nazev_role;
 
 ---
 
-#### 3.5 Smazání zastaralých CONTACT_* permissions
+#### 3.6 💰 CASHBOOK - Přidání sloupce lp_kod_povinny do tabulky 25a_pokladny
+
+```sql
+-- Kontrola před - ověřit strukturu tabulky
+DESCRIBE 25a_pokladny;
+
+-- Migrace - přidání sloupce
+ALTER TABLE `25a_pokladny` 
+ADD COLUMN `lp_kod_povinny` TINYINT(1) NOT NULL DEFAULT 0 
+COMMENT 'LP kód je povinný u výdajů: 0=volitelný, 1=povinný'
+AFTER `poznamka`;
+
+-- Validace - ověřit že sloupec existuje
+SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_DEFAULT, COLUMN_COMMENT 
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_SCHEMA = 'eeo2025' 
+  AND TABLE_NAME = '25a_pokladny' 
+  AND COLUMN_NAME = 'lp_kod_povinny';
+
+-- Kontrola počtu řádků
+SELECT 
+  COUNT(*) as total_cashboxes,
+  SUM(lp_kod_povinny = 1) as required_count,
+  SUM(lp_kod_povinny = 0) as optional_count
+FROM 25a_pokladny;
+```
+
+**Status:** ☐ DONE  ☐ FAILED  ☐ ROLLBACK NEEDED  
+**Výchozí hodnota:** 0 (LP kód volitelný)  
+**Poznámka:** Správci mohou hodnotu změnit v Číselníku pokladen pomocí toggle buttonu
+
+---
+
+#### 3.7 Smazání zastaralých CONTACT_* permissions
 
 ⚠️ **POZOR:** Provádět až po úspěšné migraci 3.4!
 

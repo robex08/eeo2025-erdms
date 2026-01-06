@@ -903,6 +903,48 @@ const cashbookAPI = {
       handleApiError(error, 'načítání LP detailu');
       throw error;
     }
+  },
+
+  // ========================================================================
+  // 🆕 LP KÓD POVINNOSŤ - Nastavenie povinnosti LP kódu u pokladen
+  // ========================================================================
+
+  /**
+   * Aktualizovať nastavenie povinnosti LP kódu u pokladny
+   * @param {number} pokladnaId - ID pokladny
+   * @param {boolean} lpKodPovinny - Či je LP kód povinný
+   * @returns {Promise<Object>} Response s aktualizovanou pokladnou
+   */
+  updateLpRequirement: async (pokladnaId, lpKodPovinny) => {
+    try {
+      const auth = await getAuthData();
+      const response = await axios.post(`${API_BASE}/cashbox-lp-requirement-update`, {
+        ...auth,
+        pokladna_id: pokladnaId,
+        lp_kod_povinny: lpKodPovinny
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'aktualizace nastavení LP kódu');
+    }
+  },
+
+  /**
+   * Získať nastavenie povinnosti LP kódu pre pokladnu
+   * @param {number} pokladnaId - ID pokladny
+   * @returns {Promise<Object>} Response s nastavením pokladny
+   */
+  getLpRequirement: async (pokladnaId) => {
+    try {
+      const auth = await getAuthData();
+      const response = await axios.post(`${API_BASE}/cashbox-lp-requirement-get`, {
+        ...auth,
+        pokladna_id: pokladnaId
+      });
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'načítání nastavení LP kódu');
+    }
   }
 };
 

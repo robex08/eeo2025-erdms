@@ -519,6 +519,44 @@ const MainBadge = styled.span`
   font-weight: 600;
 `;
 
+const LpRequiredToggle = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: ${props => props.disabled ? 'default' : 'pointer'};
+  transition: all 0.2s ease;
+  background: ${props => props.$required 
+    ? 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)' 
+    : 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+  };
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  opacity: ${props => props.disabled ? 0.7 : 1};
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    background: ${props => props.$required 
+      ? 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)' 
+      : 'linear-gradient(135deg, #475569 0%, #334155 100%)'
+    };
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  svg {
+    font-size: 0.75rem;
+  }
+`;
+
 const RemoveButton = styled.button`
   display: flex;
   align-items: center;
@@ -1166,6 +1204,47 @@ const CashbookTab = () => {
   }, []);
 
   // ============================================================================
+  // 🆕 LP KÓD POVINNOSŤ HANDLER
+  // ============================================================================
+
+  const handleToggleLpRequirement = useCallback(async (pokladnaId, newValue) => {
+    try {
+      console.log(`🔄 Toggle LP requirement for pokladna ${pokladnaId}: ${newValue}`);
+      
+      // Optimistická aktualizace UI
+      setCashboxes(prev => prev.map(pokladna => 
+        pokladna.id === pokladnaId 
+          ? { ...pokladna, lp_kod_povinny: newValue ? 1 : 0 }
+          : pokladna
+      ));
+      
+      const result = await cashbookAPI.updateLpRequirement(pokladnaId, newValue);
+      
+      if (result.status === 'ok' || result.status === 'success') {
+        showToast(`LP kód ${newValue ? 'je nyní povinný' : 'už není povinný'}`, 'success');
+        invalidateCache?.('cashbook');
+      } else {
+        // Vrátit zpět při chybě
+        setCashboxes(prev => prev.map(pokladna => 
+          pokladna.id === pokladnaId 
+            ? { ...pokladna, lp_kod_povinny: newValue ? 0 : 1 }
+            : pokladna
+        ));
+        showToast(result.message || 'Chyba pri aktualizaci nastavení LP kódu', 'error');
+      }
+    } catch (error) {
+      console.error('❌ Chyba při toggle LP requirement:', error);
+      // Vrátit zpět při chybě
+      setCashboxes(prev => prev.map(pokladna => 
+        pokladna.id === pokladnaId 
+          ? { ...pokladna, lp_kod_povinny: newValue ? 0 : 1 }
+          : pokladna
+      ));
+      showToast('Chyba při aktualizaci nastavení LP kódu', 'error');
+    }
+  }, [showToast, invalidateCache]);
+
+  // ============================================================================
   // TABLE COLUMNS - 🆕 NOVÁ STRUKTURA: Pokladny místo uživatelů
   // ============================================================================
 
@@ -1302,6 +1381,33 @@ const CashbookTab = () => {
             {row.original.aktivni ? 'Aktivní' : 'Neaktivní'}
           </StatusBadge>
         ),
+      },
+      {
+        accessorKey: 'lp_kod_povinny',
+        header: 'LP kód povinný',
+        cell: ({ row }) => {
+          const isRequired = row.original.lp_kod_povinny === 1 || row.original.lp_kod_povinny === '1';
+          return (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <LpRequiredToggle
+                $required={isRequired}
+                onClick={() => canManage && handleToggleLpRequirement(row.original.id, !isRequired)}
+                disabled={!canManage}
+                title={canManage 
+                  ? `Kliknout pro ${isRequired ? 'zrušení' : 'nastavení'} povinnosti LP kódu` 
+                  : `LP kód je ${isRequired ? 'povinný' : 'volitelný'}`
+                }
+              >
+                <FontAwesomeIcon icon={isRequired ? faCheckCircle : faTimesCircle} />
+                {isRequired ? 'Povinný' : 'Volitelný'}
+              </LpRequiredToggle>
+            </div>
+          );
+        },
       },
       {
         id: 'actions',

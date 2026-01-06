@@ -42,6 +42,9 @@ class CashbookModel {
                     NULLIF(s.titul_za, '')
                 ) AS zamknul_spravce_jmeno_plne,
                 
+                -- ✅ NOVÉ: LP kód povinnost z pokladny
+                p.lp_kod_povinny AS pokladna_lp_kod_povinny,
+                
                 lok.id AS lokalita_id,
                 lok.nazev AS lokalita_nazev,
                 lok.kod AS lokalita_kod,
@@ -54,6 +57,7 @@ class CashbookModel {
             FROM " . TBL_POKLADNI_KNIHY . " kb
             LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = kb.uzivatel_id
             LEFT JOIN " . TBL_UZIVATELE . " s ON s.id = kb.zamknuta_spravcem_kym
+            LEFT JOIN " . TBL_POKLADNY . " p ON p.id = kb.pokladna_id
             LEFT JOIN " . TBL_LOKALITY . " lok ON lok.id = u.lokalita_id
             LEFT JOIN " . TBL_USEKY . " us ON us.id = u.usek_id
             WHERE 1=1
@@ -142,6 +146,9 @@ class CashbookModel {
                     NULLIF(s.titul_za, '')
                 ) AS zamknul_spravce_jmeno_plne,
                 
+                -- ✅ NOVÉ: LP kód povinnost z pokladny
+                p.lp_kod_povinny AS pokladna_lp_kod_povinny,
+                
                 lok.id AS lokalita_id,
                 lok.nazev AS lokalita_nazev,
                 lok.kod AS lokalita_kod,
@@ -154,6 +161,7 @@ class CashbookModel {
             FROM " . TBL_POKLADNI_KNIHY . " kb
             LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = kb.uzivatel_id
             LEFT JOIN " . TBL_UZIVATELE . " s ON s.id = kb.zamknuta_spravcem_kym
+            LEFT JOIN " . TBL_POKLADNY . " p ON p.id = kb.pokladna_id
             LEFT JOIN " . TBL_LOKALITY . " lok ON lok.id = u.lokalita_id
             LEFT JOIN " . TBL_USEKY . " us ON us.id = u.usek_id
             WHERE kb.id = ?

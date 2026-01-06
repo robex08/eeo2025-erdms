@@ -6,12 +6,229 @@
  * - Přiřazení pokladen
  * - Globální nastavení
  * - Třístavové zamykání
+ * - LP kód povinnosť u pokladen
  * PHP 5.6 kompatibilní
  */
 
 require_once __DIR__ . '/../models/CashboxAssignmentModel.php';
 require_once __DIR__ . '/../models/GlobalSettingsModel.php';
 require_once __DIR__ . '/../middleware/CashbookPermissions.php';
+
+// ===========================================================================
+// CASHBOX LP KÓD POVINNOSŤ - Nastavenie povinnosti LP kódu u jednotlivých pokladen
+// ===========================================================================
+
+/**
+ * POST /cashbox-lp-requirement-update
+ * Aktualizovať nastavenie povinnosti LP kódu u pokladny
+ * Vyžaduje oprávnění CASH_BOOK_MANAGE
+ */
+function handle_cashbox_lp_requirement_update_post($input, $config) {
+    // 1. Validace HTTP metody podle Order V2 standardu
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        exit;
+    }
+
+    // 2. Parametry z body podle Order V2 standardu
+    $username = $input['username'] ?? '';
+    $token = $input['token'] ?? '';
+    
+    if (empty($username) || empty($token)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí povinné parametry username nebo token']);
+        exit;
+    }
+
+    // 3. Validace business parametrů
+    $pokladnaId = filter_var($input['pokladna_id'] ?? '', FILTER_VALIDATE_INT);
+    $lpKodPovinny = isset($input['lp_kod_povinny']) ? (bool)$input['lp_kod_povinny'] : null;
+
+    if (!$pokladnaId || $lpKodPovinny === null) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí nebo jsou neplatné parametry pokladna_id nebo lp_kod_povinny']);
+        exit;
+    }
+
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // 5. Timezone helper podle pravidel
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // 6. Ověření autentizace
+        $userData = verify_token_v2($username, $token, $db);
+        if (!$userData) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            exit;
+        }
+        
+        // 7. Kontrola oprávnění - pouze CASH_BOOK_MANAGE
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canManageCashbooks()) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nedostatečná oprávnění - vyžadováno CASH_BOOK_MANAGE']);
+            exit;
+        }
+        
+        // 8. Business logika - UPDATE s prepared statement a konstantou tabulky
+        $stmt = $db->prepare("
+            UPDATE `" . TBL_POKLADNY . "` 
+            SET lp_kod_povinny = ?, 
+                aktualizovano = NOW(), 
+                aktualizoval = ?
+            WHERE id = ?
+        ");
+        
+        $success = $stmt->execute([
+            $lpKodPovinny ? 1 : 0,
+            $userData['id'],
+            $pokladnaId
+        ]);
+        $affectedRows = $stmt->rowCount();
+
+        if (!$success) {
+            throw new Exception('Chyba při aktualizaci databáze');
+        }
+
+        if ($affectedRows === 0) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Pokladna s daným ID nebyla nalezena']);
+            exit;
+        }
+
+        // Načíst aktualizovanou pokladnu
+        $stmt = $db->prepare("
+            SELECT id, cislo_pokladny, nazev, lp_kod_povinny, kod_pracoviste, nazev_pracoviste
+            FROM `" . TBL_POKLADNY . "`
+            WHERE id = ?
+        ");
+        $stmt->execute([$pokladnaId]);
+        $pokladna = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // 9. Úspěšná odpověď podle Order V2 standardu
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'pokladna_id' => $pokladnaId,
+                'lp_kod_povinny' => $lpKodPovinny,
+                'affected_rows' => $affectedRows,
+                'pokladna' => $pokladna
+            ],
+            'message' => 'Nastavení povinnosti LP kódu bylo úspěšně aktualizováno'
+        ]);
+        
+    } catch (Exception $e) {
+        // 10. Error handling podle Order V2 standardu
+        error_log("handle_cashbox_lp_requirement_update_post error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Interní chyba serveru: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * POST /cashbox-lp-requirement-get
+ * Získať nastavenie povinnosti LP kódu pre pokladnu
+ */
+function handle_cashbox_lp_requirement_get_post($input, $config) {
+    // 1. Validace HTTP metody podle Order V2 standardu
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda povolena']);
+        exit;
+    }
+
+    // 2. Parametry z body podle Order V2 standardu
+    $username = $input['username'] ?? '';
+    $token = $input['token'] ?? '';
+    
+    if (empty($username) || empty($token)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí povinné parametry username nebo token']);
+        exit;
+    }
+
+    // 3. Validace business parametrů
+    $pokladnaId = filter_var($input['pokladna_id'] ?? '', FILTER_VALIDATE_INT);
+
+    if (!$pokladnaId) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí nebo je neplatný parametr pokladna_id']);
+        exit;
+    }
+
+    try {
+        // 4. DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // 5. Timezone helper podle pravidel
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // 6. Ověření autentizace
+        $userData = verify_token_v2($username, $token, $db);
+        if (!$userData) {
+            http_response_code(401);
+            echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+            exit;
+        }
+        
+        // 7. Kontrola oprávnění - aspoň CASH_BOOK_READ
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canReadCashbook(null)) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Nedostatečná oprávnění']);
+            exit;
+        }
+        
+        // 8. Business logika - SELECT s prepared statement a konstantou tabulky
+        $stmt = $db->prepare("
+            SELECT id, cislo_pokladny, nazev, lp_kod_povinny, kod_pracoviste, nazev_pracoviste
+            FROM `" . TBL_POKLADNY . "`
+            WHERE id = ?
+        ");
+        $stmt->execute([$pokladnaId]);
+        $pokladna = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$pokladna) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Pokladna s daným ID neexistuje']);
+            exit;
+        }
+        
+        // 9. Úspěšná odpověď podle Order V2 standardu
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'pokladna' => $pokladna,
+                'lp_kod_povinny' => (bool)$pokladna['lp_kod_povinny']
+            ],
+            'message' => 'Nastavení LP kódu bylo načteno'
+        ]);
+        
+    } catch (Exception $e) {
+        // 10. Error handling podle Order V2 standardu
+        error_log("handle_cashbox_lp_requirement_get_post error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Interní chyba serveru: ' . $e->getMessage()
+        ]);
+    }
+}
 
 // ===========================================================================
 // CASHBOX ASSIGNMENTS - Přiřazení pokladen k uživatelům
