@@ -5817,20 +5817,6 @@ const Orders25List = () => {
         return order;
       });
 
-      // 🐛 DEBUG: Log načtené objednávky
-      console.log('🔥 ORDERS LOADED:', {
-        total: finalOrders.length,
-        userId: user_id,
-        hasOrder17: finalOrders.some(o => o.id === 17),
-        order17: finalOrders.find(o => o.id === 17),
-        first5: finalOrders.slice(0, 5).map(o => ({
-          id: o.id,
-          cislo: o.cislo_objednavky,
-          prikazce_id: o.prikazce_id,
-          objednatel_id: o.objednatel_id
-        }))
-      });
-
       setOrders(finalOrders);
 
       // Populate rawData for debug panel
