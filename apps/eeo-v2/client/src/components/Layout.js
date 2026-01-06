@@ -2835,10 +2835,18 @@ const Layout = ({ children }) => {
             { hasPermission && (
                 hasPermission('USER_MANAGE') || 
                 hasPermission('DICT_MANAGE') || 
-                hasPermission('PHONEBOOK_VIEW') || hasPermission('PHONEBOOK_CREATE') || hasPermission('PHONEBOOK_EDIT') || hasPermission('PHONEBOOK_DELETE') ||
-                hasPermission('LOCATIONS_VIEW') || hasPermission('POSITIONS_VIEW') || hasPermission('DEPARTMENTS_VIEW') || hasPermission('ORGANIZATIONS_VIEW') || 
-                hasPermission('STATES_VIEW') || hasPermission('ROLES_VIEW') || hasPermission('PERMISSIONS_VIEW') || hasPermission('DOCX_TEMPLATES_VIEW') || 
-                hasPermission('CASH_BOOKS_VIEW') || hasPermission('CONTRACT_VIEW') ||
+                hasPermission('PHONEBOOK_MANAGE') ||
+                hasPermission('SUPPLIER_MANAGE') ||
+                hasPermission('LOCATIONS_MANAGE') || 
+                hasPermission('POSITIONS_MANAGE') || 
+                hasPermission('DEPARTMENTS_MANAGE') || 
+                hasPermission('ORGANIZATIONS_MANAGE') || 
+                hasPermission('STATES_MANAGE') || 
+                hasPermission('ROLES_MANAGE') || 
+                hasPermission('PERMISSIONS_MANAGE') || 
+                hasPermission('DOCX_TEMPLATES_MANAGE') || 
+                hasPermission('CASH_BOOKS_MANAGE') || 
+                hasPermission('CONTRACT_MANAGE') ||
                 (hasAdminRole && hasAdminRole()) ||
                 (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'))
               ) && (
