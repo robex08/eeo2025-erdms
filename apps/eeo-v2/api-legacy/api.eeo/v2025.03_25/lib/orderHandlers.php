@@ -666,7 +666,44 @@ function getLPDetaily($db, $lp_id) {
 }
 
 /**
- * Obohacení financování o lidský název typu a LP názvů
+ * Načte informace o zbývajícím budgetu LP z tabulky čerpání
+ * @param PDO $db - Databázové spojení
+ * @param int $lp_id - ID z tabulky 25_limitovane_prisliby
+ * @return array|null - Array s celkovy_limit, zbyva_predpoklad nebo null
+ */
+function getLPBudgetInfo($db, $lp_id) {
+    if (empty($lp_id)) return null;
+    
+    try {
+        // Nejdříve získáme cislo_lp z master tabulky
+        $stmt = $db->prepare("SELECT cislo_lp, YEAR(platne_od) as rok FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = :lp_id LIMIT 1");
+        $stmt->bindParam(':lp_id', $lp_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $lp_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$lp_data) return null;
+        
+        // Pak načteme data z tabulky čerpání podle cislo_lp a roku
+        $stmt2 = $db->prepare("
+            SELECT celkovy_limit, zbyva_predpoklad, zbyva_skutecne 
+            FROM " . TBL_LP_CERPANI . " 
+            WHERE cislo_lp = :cislo_lp AND rok = :rok 
+            LIMIT 1
+        ");
+        $stmt2->bindParam(':cislo_lp', $lp_data['cislo_lp'], PDO::PARAM_STR);
+        $stmt2->bindParam(':rok', $lp_data['rok'], PDO::PARAM_INT);
+        $stmt2->execute();
+        $result = $stmt2->fetch(PDO::FETCH_ASSOC);
+        
+        return $result ? $result : null;
+    } catch (Exception $e) {
+        error_log("getLPBudgetInfo Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Obohacení financování o lidský název typu a LP názvů + zbývající budget
  * @param PDO $db - Databázové spojení
  * @param array $order - Reference na objednávku (bude upravena)
  * @return void
@@ -681,16 +718,31 @@ function enrichOrderFinancovani($db, &$order) {
             }
         }
         
-        // Přidat LP detaily (cislo_lp a nazev_uctu)
+        // Přidat LP detaily (cislo_lp, nazev_uctu a zbývající budget)
         if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
             $lp_detaily = array();
+            
+            // Vytvořit _enriched sekci pro LP info s budgetem (pro frontend dialog)
+            $lp_info_enriched = array();
+            
             foreach ($order['financovani']['lp_kody'] as $lp_id) {
                 $lp = getLPDetaily($db, $lp_id);
+                
                 if ($lp) {
                     $lp_detaily[] = array(
                         'id' => $lp_id,
                         'cislo_lp' => $lp['cislo_lp'],
                         'nazev' => $lp['nazev_uctu']
+                    );
+                    
+                    // Načíst zbývající budget z tabulky čerpání
+                    $budget_info = getLPBudgetInfo($db, $lp_id);
+                    $lp_info_enriched[] = array(
+                        'id' => $lp_id,
+                        'kod' => $lp['cislo_lp'],
+                        'nazev' => $lp['nazev_uctu'],
+                        'remaining_budget' => $budget_info ? $budget_info['zbyva_predpoklad'] : null,
+                        'total_limit' => $budget_info ? $budget_info['celkovy_limit'] : null
                     );
                 } else {
                     $lp_detaily[] = array(
@@ -698,9 +750,24 @@ function enrichOrderFinancovani($db, &$order) {
                         'cislo_lp' => null,
                         'nazev' => null
                     );
+                    
+                    $lp_info_enriched[] = array(
+                        'id' => $lp_id,
+                        'kod' => null,
+                        'nazev' => null,
+                        'remaining_budget' => null,
+                        'total_limit' => null
+                    );
                 }
             }
+            
             $order['financovani']['lp_nazvy'] = $lp_detaily;
+            
+            // Přidat enriched LP info do _enriched sekce
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            $order['_enriched']['lp_info'] = $lp_info_enriched;
         }
     }
 }

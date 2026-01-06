@@ -9546,11 +9546,18 @@ const Orders25List = () => {
   }, []);
 
   // 🎯 Handler pro schválení objednávky z kontextového menu (příkazce)
-  const handleApproveFromContextMenu = useCallback((order) => {
-    setOrderToApprove(order);
-    setApprovalComment('');
-    setShowApprovalDialog(true);
-  }, []);
+  const handleApproveFromContextMenu = useCallback(async (order) => {
+    try {
+      // Načti detail objednávky s enriched daty (LP budget, smlouva, střediska)
+      const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+      setOrderToApprove(orderDetail);
+      setApprovalComment('');
+      setShowApprovalDialog(true);
+    } catch (error) {
+      console.error('Chyba při načítání detailu objednávky:', error);
+      showToast('Nepodařilo se načíst detail objednávky', { type: 'error' });
+    }
+  }, [token, username, showToast]);
 
   // 🎯 Handler pro zpracování schválení objednávky
   const handleApprovalAction = useCallback(async (action) => {
@@ -16862,6 +16869,69 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                     : '---'}
                 </ApprovalDialogValue>
               </ApprovalDialogSection>
+
+              {/* Střediska */}
+              {orderToApprove.strediska_kod && Array.isArray(orderToApprove.strediska_kod) && orderToApprove.strediska_kod.length > 0 && (
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Střediska</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove._enriched?.strediska && Array.isArray(orderToApprove._enriched.strediska)
+                      ? orderToApprove._enriched.strediska.map(s => `${s.kod} - ${s.nazev}`).join(', ')
+                      : orderToApprove.strediska_kod.join(', ')}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+              )}
+
+              {/* Zdroj financování */}
+              {orderToApprove.financovani && (
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Zdroj financování</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove.financovani.nazev || orderToApprove.financovani.typ || '---'}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+              )}
+
+              {/* LP kód, název a zbývající budget */}
+              {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Limitovaný příslib (LP)</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {(() => {
+                      const lpKody = orderToApprove.financovani.lp_kody;
+                      const lpInfo = orderToApprove._enriched?.lp_info || [];
+                      
+                      if (lpInfo.length > 0) {
+                        return lpInfo.map((lp, idx) => (
+                          <div key={idx} style={{ marginBottom: idx < lpInfo.length - 1 ? '0.5rem' : '0' }}>
+                            <strong>{lp.kod}</strong> - {lp.nazev}<br />
+                            <span style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                              Zbývající budget: {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'} Kč
+                            </span>
+                          </div>
+                        ));
+                      } else {
+                        return lpKody.join(', ');
+                      }
+                    })()}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+              )}
+
+              {/* Smlouva */}
+              {orderToApprove.cislo_smlouvy && (
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Číslo smlouvy</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove.cislo_smlouvy}
+                    {orderToApprove.smlouva_poznamka && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#64748b' }}>
+                        Poznámka: {orderToApprove.smlouva_poznamka}
+                      </div>
+                    )}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+              )}
 
               <ApprovalDialogSection>
                 <ApprovalDialogLabel>Poznámka ke schválení</ApprovalDialogLabel>
