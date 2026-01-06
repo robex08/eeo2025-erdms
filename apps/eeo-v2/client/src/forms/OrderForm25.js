@@ -5312,10 +5312,10 @@ function OrderForm25() {
   const setSelectedSmlouvaSuggestionIndex = (val) => setSmlouvyState(s => ({...s, selectedSuggestionIndex: val}));
   
   // Template State Aliases
-  const savedTemplates = templateState.saved;
-  const setSavedTemplates = (val) => setTemplateState(s => ({...s, saved: val}));
-  const serverTemplates = templateState.server;
-  const setServerTemplates = (val) => setTemplateState(s => ({...s, server: val}));
+  const savedTemplates = templateState.saved || [];
+  const setSavedTemplates = (val) => setTemplateState(s => ({...s, saved: Array.isArray(val) ? val : []}));
+  const serverTemplates = templateState.server || [];
+  const setServerTemplates = (val) => setTemplateState(s => ({...s, server: Array.isArray(val) ? val : []}));
   const templatesFetchStatus = templateState.fetchStatus;
   const setTemplatesFetchStatus = (val) => setTemplateState(s => ({...s, fetchStatus: val}));
   const templatesLoading = templateState.loading;
@@ -25841,8 +25841,8 @@ function OrderForm25() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[
                     { value: 'new', label: '✨ Nová', disabled: false },
-                    { value: 'update', label: '🔄 Aktualizovat', disabled: [...savedTemplates, ...serverTemplates].length === 0 },
-                    { value: 'merge', label: '🔗 Sloučit', disabled: [...savedTemplates, ...serverTemplates].length === 0 }
+                    { value: 'update', label: '🔄 Aktualizovat', disabled: [...(savedTemplates || []), ...(serverTemplates || [])].length === 0 },
+                    { value: 'merge', label: '🔗 Sloučit', disabled: [...(savedTemplates || []), ...(serverTemplates || [])].length === 0 }
                   ].map(option => (
                     <label key={option.value} style={{
                       flex: 1,
@@ -25884,14 +25884,14 @@ function OrderForm25() {
                     value={selectedTargetTemplate?.id || selectedTargetTemplate?.ts || ''}
                     onChange={(selectedValue) => {
                       // ✅ OPRAVA: StableCustomSelect posílá hodnotu přímo, ne event!
-                      const allTemplates = [...savedTemplates, ...serverTemplates];
+                      const allTemplates = [...(savedTemplates || []), ...(serverTemplates || [])];
                       const selected = allTemplates.find(t => (t.id || t.ts).toString() === String(selectedValue));
                       setSelectedTargetTemplate(selected);
                       if (saveMode === 'update' && selected) {
                         setTemplateName(selected.name || '');
                       }
                     }}
-                    options={[...savedTemplates, ...serverTemplates]}
+                    options={[...(savedTemplates || []), ...(serverTemplates || [])]}
                     placeholder="Vyberte šablonu..."
                     getOptionLabel={(option) => {
                       const source = option.__fromServer ? 'server' : 'lokální';
