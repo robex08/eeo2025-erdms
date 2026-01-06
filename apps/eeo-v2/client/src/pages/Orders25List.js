@@ -10,7 +10,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import ModernHelper from '../components/ModernHelper';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { createDownloadLink25, lockOrder25, unlockOrder25, getDruhyObjednavky25, getStrediska25 } from '../services/api25orders';
-import { getOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
+import { getOrderV2, updateOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
 import { fetchAllUsers, fetchApprovers, fetchCiselniky, fetchLimitovanePrisliby } from '../services/api2auth';
 import { getDocxSablonyList } from '../services/apiv2Dictionaries';
 import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
@@ -3458,39 +3458,223 @@ const ForceUnlockWarningActions = styled.div`
 
 const ForceUnlockWarningButton = styled.button`
   padding: 0.75rem 1.5rem;
-  border: 2px solid;
-  border-radius: 10px;
-  font-weight: 700;
+  border-radius: 8px;
+  border: none;
   font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   ${props => props.$primary ? `
-    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    background: linear-gradient(135deg, #ef4444, #dc2626);
     color: white;
-    border-color: transparent;
     box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 
     &:hover {
-      background: linear-gradient(135deg, #b91c1c, #991b1b);
-      box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
       transform: translateY(-2px);
-    }
-
-    &:active {
-      transform: translateY(0);
+      box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
     }
   ` : `
-    background: white;
-    color: #6b7280;
-    border-color: #d1d5db;
+    background: #f3f4f6;
+    color: #374151;
 
     &:hover {
-      background: #f9fafb;
-      border-color: #9ca3af;
-      color: #374151;
+      background: #e5e7eb;
     }
   `}
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+// 🎯 Schvalovací dialog (pro příkazce)
+const ApprovalDialogOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const ApprovalDialog = styled.div`
+  background: white;
+  border-radius: 16px;
+  max-width: 600px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: slideUp 0.3s ease;
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
+
+const ApprovalDialogHeader = styled.div`
+  background: linear-gradient(135deg, #10b981, #059669);
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 3px solid #047857;
+`;
+
+const ApprovalDialogIcon = styled.div`
+  font-size: 2rem;
+  filter: drop-shadow(0 2px 8px rgba(4, 120, 87, 0.5));
+`;
+
+const ApprovalDialogTitle = styled.h3`
+  margin: 0;
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  flex: 1;
+`;
+
+const ApprovalDialogContent = styled.div`
+  padding: 1.5rem;
+`;
+
+const ApprovalDialogSection = styled.div`
+  margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const ApprovalDialogLabel = styled.div`
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const ApprovalDialogValue = styled.div`
+  font-size: 1rem;
+  color: #0f172a;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+`;
+
+const ApprovalDialogTextarea = styled.textarea`
+  width: 100%;
+  min-height: 100px;
+  padding: 0.75rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #10b981;
+  }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+const ApprovalDialogActions = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  justify-content: flex-end;
+`;
+
+const ApprovalDialogButton = styled.button`
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  ${props => {
+    if (props.$approve) {
+      return `
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+
+        &:hover {
+          background: linear-gradient(135deg, #059669, #047857);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+        }
+      `;
+    } else if (props.$reject) {
+      return `
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+
+        &:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+        }
+      `;
+    } else if (props.$postpone) {
+      return `
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+
+        &:hover {
+          background: linear-gradient(135deg, #d97706, #b45309);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+        }
+      `;
+    } else {
+      return `
+        background: #f3f4f6;
+        color: #374151;
+
+        &:hover {
+          background: #e5e7eb;
+        }
+      `;
+    }
+  }}
+
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 // =============================================================================
@@ -4437,6 +4621,11 @@ const Orders25List = () => {
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [showArchivedWarningModal, setShowArchivedWarningModal] = useState(false);
   const [showArchivedWithDraftWarningModal, setShowArchivedWithDraftWarningModal] = useState(false); // Kombinovaný modal
+
+  // 🎯 State pro schvalovací dialog (příkazce)
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [orderToApprove, setOrderToApprove] = useState(null);
+  const [approvalComment, setApprovalComment] = useState('');
 
   // 🔒 Nový state pro dialog zamčené objednávky
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
@@ -5860,15 +6049,58 @@ const Orders25List = () => {
       };
       console.log('👁️ Viditelnost:', visibility);
       
+      // 🔍 AKTIVNÍ FRONTEND FILTRY
+      console.groupCollapsed('🔧 Aktivní frontend filtry');
+      console.log('📌 Základní filtry:', {
+        statusFilter: statusFilter.length > 0 ? statusFilter : 'Všechny stavy',
+        userFilter: userFilter || 'Žádný filtr uživatele',
+        showOnlyMyOrders: showOnlyMyOrders ? 'ANO - jen moje' : 'NE - všechny',
+        showArchived: showArchived ? 'ANO - včetně archivovaných' : 'NE - bez archivovaných'
+      });
+      console.log('👥 Výběr osob:', {
+        selectedObjednatel: selectedObjednatel.length > 0 ? selectedObjednatel : 'Žádný',
+        selectedGarant: selectedGarant.length > 0 ? selectedGarant : 'Žádný',
+        selectedSchvalovatel: selectedSchvalovatel.length > 0 ? selectedSchvalovatel : 'Žádný',
+        selectedPrikazce: selectedPrikazce.length > 0 ? selectedPrikazce : 'Žádný'
+      });
+      console.log('💰 Částka:', {
+        amountFromFilter: amountFromFilter || 'Neomezeno',
+        amountToFilter: amountToFilter || 'Neomezeno'
+      });
+      console.log('📅 Datum:', {
+        dateFromFilter: dateFromFilter || 'Neomezeno',
+        dateToFilter: dateToFilter || 'Neomezeno'
+      });
+      console.log('📋 Ostatní:', {
+        filterMaBytZverejneno: filterMaBytZverejneno ? 'ANO' : 'NE',
+        filterByloZverejneno: filterByloZverejneno ? 'ANO' : 'NE',
+        selectedYear: selectedYear || 'Neomezeně'
+      });
+      
+      // Textové filtry z hlavičky tabulky (columnFilters)
+      const activeColumnFilters = Object.entries(columnFilters || {})
+        .filter(([_, value]) => value && value.trim() !== '')
+        .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+      
+      if (Object.keys(activeColumnFilters).length > 0) {
+        console.log('🔎 Textové filtry (hlavička tabulky):', activeColumnFilters);
+      } else {
+        console.log('🔎 Textové filtry (hlavička tabulky): Žádné');
+      }
+      console.groupEnd();
+      
       // Možné důvody proč se objednávka NEZOBRAZÍ
       console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
-      console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná)');
+      console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná) a showArchived=false');
       console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
-      console.log('3. ❌ Frontend filtr: Aktivní tab filtr (např. "Moje objednávky" vs "Všechny")');
+      console.log('3. ❌ Frontend filtr: showOnlyMyOrders=true a uživatel není v žádné roli');
       console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
-      console.log('5. ❌ Search filtr: Objednávka neodpovídá vyhledávacímu dotazu');
-      console.log('6. ❌ Date range filtr: Objednávka je mimo vybraný datumový rozsah');
-      console.log('7. ❌ Status filtr: Objednávka má jiný stav než vybraný');
+      console.log('5. ❌ Search filtr: Objednávka neodpovídá globalSearch dotazu');
+      console.log('6. ❌ Date range filtr: Objednávka je mimo dateFrom/dateTo rozsah');
+      console.log('7. ❌ Status filtr: Objednávka nemá stav ze seznamu statusFilter');
+      console.log('8. ❌ User filtr: Objednávka nemá vybraného objednatele/garanta/schvalovatele/příkazce');
+      console.log('9. ❌ Amount filtr: Objednávka není v rozsahu amountFrom/amountTo');
+      console.log('10. ❌ Registr filtr: Objednávka nemá odpovídající registr status');
       console.groupEnd();
       
       // Ukázka prvních 3 objednávek
@@ -7650,7 +7882,7 @@ const Orders25List = () => {
             whiteSpace: 'nowrap',
             color: isOverLimit ? '#dc2626' : 'inherit'
           }}>
-            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+            {!isNaN(maxPrice) && maxPrice > 0 ? <>{maxPrice.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
       }
@@ -7727,7 +7959,7 @@ const Orders25List = () => {
         
         return (
           <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
       }
@@ -7783,7 +8015,7 @@ const Orders25List = () => {
         const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
         return (
           <div style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#059669' }}>
-            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ')}&nbsp;Kč</> : '---'}
+            {!isNaN(price) && price > 0 ? <>{price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;Kč</> : '---'}
           </div>
         );
       }
@@ -9312,6 +9544,96 @@ const Orders25List = () => {
     setFinancialControlOrder(order);
     setFinancialControlModalOpen(true);
   }, []);
+
+  // 🎯 Handler pro schválení objednávky z kontextového menu (příkazce)
+  const handleApproveFromContextMenu = useCallback((order) => {
+    setOrderToApprove(order);
+    setApprovalComment('');
+    setShowApprovalDialog(true);
+  }, []);
+
+  // 🎯 Handler pro zpracování schválení objednávky
+  const handleApprovalAction = useCallback(async (action) => {
+    if (!orderToApprove) return;
+
+    try {
+      // Načti současný workflow stav
+      let workflowStates = [];
+      try {
+        if (Array.isArray(orderToApprove.stav_workflow_kod)) {
+          workflowStates = [...orderToApprove.stav_workflow_kod];
+        } else if (typeof orderToApprove.stav_workflow_kod === 'string') {
+          workflowStates = JSON.parse(orderToApprove.stav_workflow_kod);
+        }
+      } catch (e) {
+        workflowStates = [];
+      }
+
+      // Připrav nový workflow stav podle akce
+      let newWorkflowStates = workflowStates.filter(s => 
+        !['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA'].includes(s)
+      );
+
+      let orderUpdate = {
+        schvaleni_komentar: approvalComment || ''
+      };
+
+      const timestamp = new Date().toISOString();
+
+      switch (action) {
+        case 'approve':
+          // Schválit - přidej SCHVALENA
+          newWorkflowStates.push('SCHVALENA');
+          orderUpdate.stav_objednavky = 'Schválená';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_id = currentUserId;
+          break;
+
+        case 'reject':
+          // Zamítnout - přidej ZAMITNUTA
+          newWorkflowStates.push('ZAMITNUTA');
+          orderUpdate.stav_objednavky = 'Zamítnutá';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_id = currentUserId;
+          break;
+
+        case 'postpone':
+          // Odložit - přidej CEKA_SE
+          newWorkflowStates.push('CEKA_SE');
+          orderUpdate.stav_objednavky = 'Čeká se';
+          break;
+
+        default:
+          return;
+      }
+
+      orderUpdate.stav_workflow_kod = JSON.stringify(newWorkflowStates);
+
+      // Zavolej API pro update
+      await updateOrderV2(orderToApprove.id, orderUpdate, token, username);
+
+      // Zavři dialog
+      setShowApprovalDialog(false);
+      setOrderToApprove(null);
+      setApprovalComment('');
+
+      // Zobraz úspěšnou zprávu
+      const actionMessages = {
+        approve: 'Objednávka byla úspěšně schválena',
+        reject: 'Objednávka byla zamítnuta',
+        postpone: 'Objednávka byla odložena'
+      };
+      showToast(actionMessages[action], { type: 'success' });
+
+      // Obnov seznam objednávek
+      ordersCacheService.invalidate(user_id);
+      await loadData(true);
+
+    } catch (error) {
+      console.error('Chyba při zpracování schválení:', error);
+      showToast('Chyba při zpracování schválení objednávky', { type: 'error' });
+    }
+  }, [orderToApprove, approvalComment, currentUserId, token, username, showToast, loadData, user_id]);
 
   const handleDocxModalClose = useCallback(() => {
     setDocxModalOpen(false);
@@ -15958,6 +16280,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <TableRow
                     $order={row.original}
                     $showHighlighting={showRowHighlighting}
+                    onContextMenu={handleTableContextMenu}
+                    data-order-id={row.original.cislo_objednavky || row.original.id}
+                    data-order-index={index + (currentPageIndex * pageSize)}
                   >
                     <TableCell colSpan={columns.length} style={{ padding: 0, borderBottom: '1px solid #000' }}>
                       {renderExpandedContent(row.original)}
@@ -16505,6 +16830,84 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         document.body
       )}
 
+      {/* 🎯 Schvalovací dialog (pro příkazce) */}
+      {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
+        <ApprovalDialogOverlay>
+          <ApprovalDialog>
+            <ApprovalDialogHeader>
+              <ApprovalDialogIcon>✅</ApprovalDialogIcon>
+              <ApprovalDialogTitle>Schválení objednávky</ApprovalDialogTitle>
+            </ApprovalDialogHeader>
+
+            <ApprovalDialogContent>
+              <ApprovalDialogSection>
+                <ApprovalDialogLabel>Číslo objednávky</ApprovalDialogLabel>
+                <ApprovalDialogValue>
+                  {orderToApprove.cislo_objednavky || orderToApprove.evidencni_cislo || `#${orderToApprove.id}`}
+                </ApprovalDialogValue>
+              </ApprovalDialogSection>
+
+              <ApprovalDialogSection>
+                <ApprovalDialogLabel>Předmět</ApprovalDialogLabel>
+                <ApprovalDialogValue>
+                  {orderToApprove.predmet || orderToApprove.nazev_objednavky || '---'}
+                </ApprovalDialogValue>
+              </ApprovalDialogSection>
+
+              <ApprovalDialogSection>
+                <ApprovalDialogLabel>Maximální cena s DPH</ApprovalDialogLabel>
+                <ApprovalDialogValue>
+                  {orderToApprove.max_cena_s_dph 
+                    ? `${parseFloat(orderToApprove.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                    : '---'}
+                </ApprovalDialogValue>
+              </ApprovalDialogSection>
+
+              <ApprovalDialogSection>
+                <ApprovalDialogLabel>Poznámka ke schválení</ApprovalDialogLabel>
+                <ApprovalDialogTextarea
+                  value={approvalComment}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                  placeholder="Nepovinná poznámka ke schválení..."
+                />
+              </ApprovalDialogSection>
+
+              <ApprovalDialogActions>
+                <ApprovalDialogButton onClick={() => {
+                  setShowApprovalDialog(false);
+                  setOrderToApprove(null);
+                  setApprovalComment('');
+                }}>
+                  Storno
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $postpone
+                  onClick={() => handleApprovalAction('postpone')}
+                >
+                  ⏰ Odložit
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $reject
+                  onClick={() => handleApprovalAction('reject')}
+                >
+                  ❌ Zamítnout
+                </ApprovalDialogButton>
+
+                <ApprovalDialogButton 
+                  $approve
+                  onClick={() => handleApprovalAction('approve')}
+                >
+                  ✅ Schválit
+                </ApprovalDialogButton>
+              </ApprovalDialogActions>
+            </ApprovalDialogContent>
+          </ApprovalDialog>
+        </ApprovalDialogOverlay>,
+        document.body
+      )}
+
       {/* Kontextové menu */}
       {contextMenu && (
         <OrderContextMenu
@@ -16519,11 +16922,39 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           onDelete={handleContextMenuDelete}
           onGenerateDocx={handleGenerateDocx}
           onGenerateFinancialControl={handleGenerateFinancialControl}
+          onApprove={handleApproveFromContextMenu}
           canDelete={
             hasPermission('ORDER_MANAGE') ||
             hasPermission('ORDER_DELETE_ALL') ||
             hasPermission('ORDER_2025') ||
             (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === currentUserId)
+          }
+          canApprove={
+            contextMenu.order && 
+            String(contextMenu.order.prikazce_id) === String(currentUserId) &&
+            (() => {
+              // Zkontroluj workflow stav - schválení je dostupné jen pro určité stavy
+              let workflowStates = [];
+              try {
+                if (Array.isArray(contextMenu.order.stav_workflow_kod)) {
+                  workflowStates = contextMenu.order.stav_workflow_kod;
+                } else if (typeof contextMenu.order.stav_workflow_kod === 'string') {
+                  workflowStates = JSON.parse(contextMenu.order.stav_workflow_kod);
+                }
+              } catch (e) {
+                workflowStates = [];
+              }
+              
+              // Schválení je možné jen ve stavech: ODESLANA_KE_SCHVALENI, CEKA_SE
+              // NIKOLI pro SCHVALENA nebo ZAMITNUTA (to už je hotovo)
+              const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+              const hasAllowedState = workflowStates.some(state => {
+                const stateCode = typeof state === 'string' ? state : (state.kod_stavu || state.nazev_stavu || '');
+                return allowedStates.includes(stateCode.toUpperCase());
+              });
+              
+              return hasAllowedState;
+            })()
           }
         />
       )}

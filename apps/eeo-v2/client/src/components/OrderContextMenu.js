@@ -12,7 +12,8 @@ import {
   faCopy,
   faPaste,
   faTimes,
-  faFileInvoice
+  faFileInvoice,
+  faCheckCircle
 } from '@fortawesome/free-solid-svg-icons';
 
 const MenuContainer = styled.div`
@@ -98,7 +99,9 @@ const MenuLabel = styled.span`
  * @param {Function} props.onDelete - Smazat objednávku
  * @param {Function} props.onGenerateDocx - Generovat DOCX ze šablony
  * @param {Function} props.onGenerateFinancialControl - Generovat finanční kontrolu (PDF/tisk)
+ * @param {Function} props.onApprove - Schválit objednávku (pro příkazce)
  * @param {boolean} props.canDelete - Má uživatel právo smazat?
+ * @param {boolean} props.canApprove - Je uživatel příkazce této objednávky?
  * @param {Object} props.selectedData - Vybraná data (buňka nebo řádek)
  */
 export const OrderContextMenu = ({
@@ -112,7 +115,9 @@ export const OrderContextMenu = ({
   onDelete,
   onGenerateDocx,
   onGenerateFinancialControl,
+  onApprove,
   canDelete = false,
+  canApprove = false,
   selectedData = null
 }) => {
   const menuRef = useRef(null);
@@ -481,6 +486,21 @@ export const OrderContextMenu = ({
         pointerEvents: isPositioned ? 'auto' : 'none'
       }}
     >
+      {/* 🎯 SCHVÁLENÍ - První položka pro příkazce */}
+      {canApprove && (
+        <>
+          <MenuItem
+            success
+            onClick={() => { onApprove(order); onClose(); }}
+            title="Schválit objednávku jako příkazce"
+          >
+            <FontAwesomeIcon icon={faCheckCircle} />
+            <MenuLabel>SCHVÁLIT obj.</MenuLabel>
+          </MenuItem>
+          <MenuDivider />
+        </>
+      )}
+
       <MenuItem
         onClick={() => { handleCut(); onClose(); }}
         title={`Vystrihnout ${selectedData ? 'obsah buňky' : 'celý řádek'} (Ctrl+X)`}
