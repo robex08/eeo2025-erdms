@@ -12,20 +12,21 @@ import {
   faMinus,
   faSquare,
   faWindowRestore,
-  faExpand
+  faExpand,
+  faSearch
 } from '@fortawesome/free-solid-svg-icons';
 import { Sparkles } from 'lucide-react';
 import { PanelBase, PanelHeader, TinyBtn, edgeHandles } from './PanelPrimitives';
 import styled from '@emotion/styled';
 import { extractTextFromPDF, extractInvoiceData } from '../../utils/invoiceOCR';
-import ErrorDialog from '../ErrorDialog';
 import { getSpisovkaZpracovaniList, deleteSpisovkaZpracovani } from '../../services/apiSpisovkaZpracovani';
+import ErrorDialog from '../ErrorDialog';
 
 // ============================================================
 // STYLED COMPONENTS + ANIMATIONS
 // ============================================================
 
-// CSS animace pro pulsující tečku
+// CSS animace pro pulsující tečku a spinning ikonu
 const globalStyles = `
   @keyframes pulse {
     0%, 100% {
@@ -35,6 +36,15 @@ const globalStyles = `
     50% {
       opacity: 0.5;
       transform: scale(1.2);
+    }
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
     }
   }
 `;
@@ -543,6 +553,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   const [filterMode, setFilterMode] = useState('nezaevidovane'); // 'vse' | 'nezaevidovane' | 'zaevidovane' - VÝCHOZÍ: Nezaevidované
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear()); // Rok (2025, 2024...)
   const [dateRange, setDateRange] = useState('dnes'); // 'dnes' | 'tyden' | 'mesic' | 'kvartal' | 'rok' - VÝCHOZÍ: Dnes
+  const [searchTerm, setSearchTerm] = useState(''); // 🔍 Fulltext vyhledávání v názvech, JID, číslech jednacích
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // 🕐 Debounced search term pro API
   const [activeDokumentId, setActiveDokumentId] = useState(null); // 🎯 ID dokumentu, se kterým uživatel právě pracuje
   const [expandedAttachments, setExpandedAttachments] = useState(new Set()); // 📎 Set expandovaných faktur (dokument_id)
   const [fileViewer, setFileViewer] = useState({ visible: false, url: '', filename: '', type: '', content: '' });
@@ -558,6 +570,20 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
   });
   const [isDraggingViewer, setIsDraggingViewer] = useState(false);
   const [errorDialog, setErrorDialog] = useState({ isOpen: false, title: '', message: '', details: null, onConfirm: null });
+
+  // 🕐 Debouncing pro search term - delay 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // � Reset pagination při změně debounced search termu
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  }, [debouncedSearchTerm]);
 
   const fetchTxtContent = async (url) => {
     try {
@@ -888,7 +914,13 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
     try {
       // Načíst faktury pro zvolený rok (vždy celý rok, pak client-side filtrujeme podle dateRange)
-      const apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${yearFilter}`;
+      let apiUrl = `${process.env.REACT_APP_API2_BASE_URL}spisovka.php/faktury?limit=${pagination.limit}&offset=${pagination.offset}&rok=${yearFilter}`;
+      
+      // 🔍 Přidat search parametr pokud je vyplněn
+      if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+        apiUrl += `&search=${encodeURIComponent(debouncedSearchTerm.trim())}`;
+      }
+      
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
@@ -912,12 +944,12 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit, pagination.offset, yearFilter, fetchZpracovaneDokumenty, token, username]);
+  }, [pagination.limit, pagination.offset, yearFilter, debouncedSearchTerm, dateRange, fetchZpracovaneDokumenty, token, username]);
 
-  // Initial fetch + refetch při změně roku
+  // Initial fetch + refetch při změně roku, search termu nebo období
   useEffect(() => {
     fetchFaktury();
-  }, [yearFilter]); // 📅 Refetch při změně roku
+  }, [yearFilter, debouncedSearchTerm, dateRange]); // 📅 Refetch při změně roku, vyhledávání (debounced) nebo období
 
   // Background refresh every 5 minutes
   useEffect(() => {
@@ -1104,40 +1136,59 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         return (
         <InboxContainer>
           <InboxHeader>
-            <InboxTitle>
+            <InboxTitle style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
               <FontAwesomeIcon icon={faBookOpen} />
               Faktury
-            </InboxTitle>
-            <InboxStats>
-              {filteredCount} / {pagination.total} celkem
-            </InboxStats>
-          </InboxHeader>
-          
-          {/* 📅 ROK + DATUM FILTRY */}
-          <div style={{
-            display: 'flex',
-            gap: '1rem',
-            padding: '0.75rem 1rem',
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-            borderBottom: '1px solid #bae6fd',
-            alignItems: 'center',
-            flexWrap: 'wrap'
-          }}>
-            {/* Rok selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 600 }}>Rok:</span>
               <select
                 value={yearFilter}
-                onChange={(e) => setYearFilter(parseInt(e.target.value))}
+                onChange={(e) => {
+                  setYearFilter(parseInt(e.target.value));
+                  // Reset pagination při změně roku
+                  setPagination(prev => ({ ...prev, offset: 0 }));
+                }}
                 style={{
-                  padding: '0.4rem 0.75rem',
-                  borderRadius: '6px',
-                  border: '2px solid #0284c7',
-                  background: 'white',
-                  color: '#0c4a6e',
-                  fontSize: '0.85rem',
+                  padding: '0.3rem 1.8rem 0.3rem 0.6rem',
+                  borderRadius: '5px',
+                  border: '1px solid rgba(255, 255, 255, 0.6)',
+                  background: 'rgba(255, 255, 255, 0.9)',
+                  color: '#1f2937',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundSize: '10px',
+                  minWidth: '75px',
+                  textAlign: 'center',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+                  e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.borderColor = '#22c55e';
+                  e.currentTarget.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.2), 0 2px 6px rgba(0, 0, 0, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.9)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
                 }}
               >
                 {(() => {
@@ -1148,19 +1199,49 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                     years.push(y);
                   }
                   return years.map(year => (
-                    <option key={year} value={year}>{year}</option>
+                    <option 
+                      key={year} 
+                      value={year} 
+                      style={{ 
+                        background: '#ffffff', 
+                        color: '#1f2937',
+                        padding: '0.4rem 0.6rem',
+                        fontWeight: 600,
+                        fontSize: '0.8rem'
+                      }}
+                    >
+                      {year}
+                    </option>
                   ));
                 })()}
               </select>
-            </div>
-
+            </InboxTitle>
+            <InboxStats>
+              {filteredCount} / {pagination.total} celkem
+            </InboxStats>
+          </InboxHeader>
+          
+          {/* 📅 DATUM FILTRY */}
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            borderBottom: '1px solid #bae6fd',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
             {/* Datum range filtry */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
               <span style={{ fontSize: '0.85rem', color: '#0369a1', fontWeight: 600 }}>Období:</span>
               {['dnes', 'tyden', 'mesic', 'kvartal', 'rok'].map(range => (
                 <button
                   key={range}
-                  onClick={() => setDateRange(range)}
+                  onClick={() => {
+                    setDateRange(range);
+                    // Reset pagination při změně období
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
                   style={{
                     padding: '0.4rem 0.75rem',
                     borderRadius: '6px',
@@ -1211,7 +1292,11 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
               {['vse', 'nezaevidovane', 'zaevidovane'].map(mode => (
                 <button
                   key={mode}
-                  onClick={() => setFilterMode(mode)}
+                  onClick={() => {
+                    setFilterMode(mode);
+                    // Reset pagination při změně režimu filtrování  
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
                   style={{
                     padding: '0.4rem 0.75rem',
                     borderRadius: '6px',
@@ -1285,6 +1370,109 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
               >
                 ⚡
               </button>
+            )}
+          </div>
+
+          {/* 🔍 SEARCH BOX pro fulltext vyhledávání */}
+          <div style={{
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+            borderBottom: '2px solid #e2e8f0',
+            position: 'relative'
+          }}>
+            <div style={{ position: 'relative' }}>
+              <FontAwesomeIcon 
+                icon={searchTerm !== debouncedSearchTerm ? faSpinner : faSearch}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#64748b',
+                  fontSize: '14px',
+                  pointerEvents: 'none',
+                  ...(searchTerm !== debouncedSearchTerm ? { animation: 'spin 1s linear infinite' } : {})
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Vyhledat v názvech, JID, číslech jednacích..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem 0.6rem 2.5rem',
+                  border: '2px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  background: 'white',
+                  color: '#1f2937',
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#3b82f6';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    // Reset pagination při vymazání vyhledávání
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f1f5f9';
+                    e.currentTarget.style.color = '#374151';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = '#64748b';
+                  }}
+                  title="Vymazat vyhledávání"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <div style={{ 
+                fontSize: '0.75rem', 
+                color: '#64748b', 
+                marginTop: '0.5rem',
+                fontStyle: 'italic',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                💡 Vyhledává se v názvech dokumentů, JID a číslech jednacích
+                {searchTerm !== debouncedSearchTerm && (
+                  <span style={{ color: '#f59e0b', fontWeight: '600' }}>
+                    ⏳ Vyhledávání...
+                  </span>
+                )}
+              </div>
             )}
           </div>
 

@@ -79,9 +79,34 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
     $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
     $rok = isset($_GET['rok']) ? (int)$_GET['rok'] : 2025;
+    $search = isset($_GET['search']) ? trim($_GET['search']) : ''; // 🔍 Fulltext vyhledávání
+    
+    // Sestavení WHERE klauzule pro vyhledávání
+    $where_conditions = [
+        "d.nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'",
+        "YEAR(d.datum_vzniku) = ?"
+    ];
+    $params = [$rok];
+    
+    // 🔍 Přidat fulltext vyhledávání pokud je zadané
+    if ($search !== '') {
+        $search_like = '%' . strtolower($search) . '%';
+        $where_conditions[] = "(
+            LOWER(d.nazev) LIKE ? OR 
+            LOWER(d.jid) LIKE ? OR 
+            LOWER(d.cislo_jednaci) LIKE ?
+        )";
+        $params[] = $search_like; // pro nazev
+        $params[] = $search_like; // pro jid
+        $params[] = $search_like; // pro cislo_jednaci
+    }
+    
+    $where_sql = implode(' AND ', $where_conditions);
+    $params[] = $limit;
+    $params[] = $offset;
+    
     
     // SQL dotaz - seznam faktur s počtem příloh
-    // REGEXP pattern odpovídá JS regex: /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i
     $sql = "
         SELECT 
             d.id as dokument_id,
@@ -94,8 +119,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
             COUNT(DISTINCT dtf.file_id) as pocet_priloh
         FROM dokument d
         LEFT JOIN dokument_to_file dtf ON d.id = dtf.dokument_id AND dtf.active = 1
-        WHERE d.nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'
-          AND YEAR(d.datum_vzniku) = ?
+        WHERE $where_sql
         GROUP BY d.id
         ORDER BY d.id DESC
         LIMIT ? OFFSET ?
@@ -107,7 +131,9 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
         send_error(500, 'Chyba přípravy SQL dotazu: ' . $conn->error);
     }
     
-    $stmt->bind_param('iii', $rok, $limit, $offset);
+    // Dynamické bind parametry podle počtu parametrů
+    $types = str_repeat('s', count($params) - 2) . 'ii'; // poslední dva jsou vždy int (limit, offset)
+    $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $result = $stmt->get_result();
     
@@ -170,16 +196,37 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     
     $stmt->close();
     
-    // Celkový počet faktur
+    // Celkový počet faktur (použít stejné WHERE podmínky bez LIMITu)
+    $count_where_conditions = [
+        "nazev REGEXP 'faktur[aáuú]|fa[[:space:]\.]*[cč][[:space:]\.]?|fak[[:space:]\.]*[cč][[:space:]\.]?|^fa[[:space:]]'",
+        "YEAR(datum_vzniku) = ?"
+    ];
+    $count_params = [$rok];
+    
+    // 🔍 Přidat fulltext vyhledávání pokud je zadané
+    if ($search !== '') {
+        $search_like = '%' . strtolower($search) . '%';
+        $count_where_conditions[] = "(
+            LOWER(nazev) LIKE ? OR 
+            LOWER(jid) LIKE ? OR 
+            LOWER(cislo_jednaci) LIKE ?
+        )";
+        $count_params[] = $search_like; // pro nazev
+        $count_params[] = $search_like; // pro jid
+        $count_params[] = $search_like; // pro cislo_jednaci
+    }
+    
+    $count_where_sql = implode(' AND ', $count_where_conditions);
+    
     $sql_count = "
         SELECT COUNT(*) as total
         FROM dokument
-        WHERE nazev LIKE 'fa č. %'
-          AND YEAR(datum_vzniku) = ?
+        WHERE $count_where_sql
     ";
     
     $stmt_count = $conn->prepare($sql_count);
-    $stmt_count->bind_param('i', $rok);
+    $count_types = str_repeat('s', count($count_params));
+    $stmt_count->bind_param($count_types, ...$count_params);
     $stmt_count->execute();
     $result_count = $stmt_count->get_result();
     $total_row = $result_count->fetch_assoc();
