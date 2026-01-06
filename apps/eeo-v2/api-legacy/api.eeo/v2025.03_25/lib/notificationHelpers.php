@@ -233,7 +233,8 @@ function notif_replacePlaceholders($text, $data) {
     }
     
     // Odstranit nenaplněné placeholdery (nahradit pomlčkou)
-    $text = preg_replace('/\{[a-z_]+\}/', '-', $text);
+    // ✅ OPRAVA: Přidána podpora pro číslice (order_id, invoice_id, atd.)
+    $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
     
     return $text;
 }
