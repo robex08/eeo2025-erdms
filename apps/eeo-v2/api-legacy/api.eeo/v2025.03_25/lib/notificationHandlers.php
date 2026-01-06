@@ -101,20 +101,33 @@ function getNotificationTemplate($db, $typ) {
  * Nahradí placeholdery v textu notifikace
  */
 function replacePlaceholders($text, $data) {
-    if (empty($text) || empty($data)) return $text;
+    if (empty($text)) return $text;
     
-    foreach ($data as $key => $value) {
-        // Konvertovat hodnotu na string (pokud je to pole nebo objekt)
-        if (is_array($value)) {
-            $value = implode(', ', $value);
-        } elseif (is_object($value)) {
-            $value = json_encode($value, JSON_UNESCAPED_UNICODE);
-        } elseif (!is_string($value) && !is_numeric($value)) {
-            $value = (string)$value;
+    // ✅ OPRAVA: I když je $data prázdné, stejně nahradit placeholdery pomlčkou
+    if (!empty($data)) {
+        foreach ($data as $key => $value) {
+            // Konvertovat hodnotu na string (pokud je to pole nebo objekt)
+            if (is_array($value)) {
+                $value = implode(', ', $value);
+            } elseif (is_object($value)) {
+                $value = json_encode($value, JSON_UNESCAPED_UNICODE);
+            } elseif (!is_string($value) && !is_numeric($value)) {
+                $value = (string)$value;
+            }
+            
+            // XSS prevence pro stringové hodnoty (stejně jako v notif_replacePlaceholders)
+            if (is_string($value) && !is_numeric($value)) {
+                $value = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+            }
+            
+            $text = str_replace('{' . $key . '}', $value, $text);
         }
-        
-        $text = str_replace('{' . $key . '}', $value, $text);
     }
+    
+    // ✅ OPRAVA: Odstranit nenaplněné placeholdery (nahradit pomlčkou)
+    // Podporuje malá písmena, čísla a podtržítka
+    $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
+    
     return $text;
 }
 
@@ -2029,7 +2042,8 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             'action_performed_by' => $trigger_user_name,  // ✅ OPRAVENO: Stejný jako trigger_user_name pro frontend (NotificationDropdown.js řádek 663)
             
             // ✅ NOVÉ: Účastníci - ID pro hierarchii
-            'objednavka_id' => $order['id'] ?? null,
+            'order_id' => $order['id'] ?? null,                        // ✅ KRITICKÉ: Pro linky v emailech!
+            'objednavka_id' => $order['id'] ?? null,                   // Alias pro frontend
             'uzivatel_id' => $order['uzivatel_id'] ?? null,           // Vytvořil
             'objednatel_id' => $order['objednatel_id'] ?? null,       // Objednatel
             'prikazce_id' => $order['prikazce_id'] ?? null,           // Příkazce

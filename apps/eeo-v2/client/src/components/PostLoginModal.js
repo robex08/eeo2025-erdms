@@ -46,6 +46,8 @@ const Dialog = styled.div`
   width: 70%;
   max-height: 80vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 
     0 20px 25px -5px rgba(0, 0, 0, 0.1),
     0 10px 10px -5px rgba(0, 0, 0, 0.04),
@@ -91,7 +93,7 @@ const Dialog = styled.div`
   @media (max-width: 480px) {
     width: 95%;
     max-width: 420px;
-    max-height: 98vh;
+    max-height: 96vh;
     border-radius: 12px;
   }
   
@@ -114,6 +116,7 @@ const Header = styled.div`
   align-items: center;
   gap: 1rem;
   position: relative;
+  flex-shrink: 0;
   
   /* Responzivní padding */
   @media (min-width: 1600px) {
@@ -179,33 +182,29 @@ const Title = styled.h2`
 
 const Content = styled.div`
   padding: 2rem;
-  max-height: 460px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
   
-  /* Responzivní padding a výška podle velikosti obrazovky */
+  /* Responzivní padding podle velikosti obrazovky */
   @media (min-width: 1600px) {
     padding: 2.5rem;
-    max-height: 575px;
   }
   
   @media (min-width: 1024px) and (max-width: 1599px) {
     padding: 2.25rem;
-    max-height: 518px;
   }
   
   @media (min-width: 768px) and (max-width: 1023px) {
     padding: 2rem;
-    max-height: 460px;
   }
   
   @media (max-width: 767px) {
     padding: 1.5rem;
-    max-height: 403px;
   }
   
   @media (max-width: 480px) {
     padding: 1rem;
-    max-height: 345px;
   }
   
   /* Vlastní scrollbar styling */
@@ -294,6 +293,7 @@ const Actions = styled.div`
   display: flex;
   gap: 1rem;
   justify-content: space-between;
+  flex-shrink: 0;
   
   /* Responzivní padding a layout */
   @media (min-width: 1600px) {
