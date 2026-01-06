@@ -1066,6 +1066,7 @@ const CashBookPage = () => {
   // 🆕 DB SYNC: Tracking aktuální knihy a sync stavu
   const [currentBookId, setCurrentBookId] = useState(null); // ID knihy v DB
   const [currentBookData, setCurrentBookData] = useState(null); // 🆕 Celý objekt knihy z BE (obsahuje lokalita_nazev, usek_nazev atd.)
+  const [lpKodPovinny, setLpKodPovinny] = useState(false); // 🆕 LP kód povinnost z pokladny
   const [isSyncing, setIsSyncing] = useState(false); // Probíhá synchronizace
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState(null); // Poslední úspěšná sync
 
@@ -1260,6 +1261,7 @@ const CashBookPage = () => {
 
         setCurrentBookId(book.id);
         setCurrentBookData(book); // 🆕 Uložit celý objekt knihy
+        setLpKodPovinny(book.pokladna_lp_kod_povinny === 1 || book.pokladna_lp_kod_povinny === '1'); // 🆕 LP kód povinnost
         setBookStatus(book.stav_knihy || 'aktivni');
         setCarryOverAmount(parseFloat(book.prevod_z_predchoziho || 0));
 
@@ -1298,6 +1300,7 @@ const CashBookPage = () => {
 
                 setCurrentBookId(bookId);
                 setCurrentBookData(newBook); // 🆕 Uložit celý objekt knihy
+                setLpKodPovinny(newBook.pokladna_lp_kod_povinny === 1 || newBook.pokladna_lp_kod_povinny === '1'); // 🆕 LP kód povinnost
                 setBookStatus(newBook.stav_knihy || 'aktivni');
                 setCarryOverAmount(parseFloat(newBook.prevod_z_predchoziho || 0));
 
@@ -2511,17 +2514,17 @@ const CashBookPage = () => {
       }
     }
 
-    // ✅ VALIDACE LP KÓDU: U výdajů je LP kód povinný
+    // ✅ VALIDACE LP KÓDU: U výdajů je LP kód povinný POUZE pokud pokladna má lp_kod_povinny = 1
     const hasExpense = editedEntry.expense && editedEntry.expense > 0;
     const hasDetailItems = editedEntry.detailItems && editedEntry.detailItems.length > 0;
     
-    if (hasExpense && !hasDetailItems && !editedEntry.lpCode) {
+    if (hasExpense && lpKodPovinny && !hasDetailItems && !editedEntry.lpCode) {
       showToast('⚠ LP kód je povinný u výdajů! Prosím vyberte LP kód ze seznamu.', 'error');
       return; // Zabránit uložení
     }
 
-    // ✅ VALIDACE LP KÓDU: U detail položek musí mít všechny platný LP kód
-    if (hasDetailItems) {
+    // ✅ VALIDACE LP KÓDU: U detail položek musí mít všechny platný LP kód (pokud je LP povinný)
+    if (hasDetailItems && lpKodPovinny) {
       const invalidItems = editedEntry.detailItems.filter(item => !item.lp_kod || !lpCodes.some(lp => lp.code === item.lp_kod));
       if (invalidItems.length > 0) {
         showToast('⚠ Všechny detail položky musí mít platný LP kód ze seznamu!', 'error');
@@ -4051,13 +4054,13 @@ const CashBookPage = () => {
                             onKeyDown={(e) => handleKeyDown(e, entry.id)}
                             onBlur={autoSave}
                             options={lpCodes}
-                            placeholder={lpLoading ? 'Načítání...' : (entry.expense > 0 ? 'LP kód (povinný) *' : 'LP kód (nepovinný)')}
+                            placeholder={lpLoading ? 'Načítání...' : (entry.expense > 0 && lpKodPovinny ? 'LP kód (povinný) *' : 'LP kód (nepovinný)')}
                             disabled={lpLoading}
                             loading={lpLoading}
-                            hasError={entry.expense > 0 && !entry.lpCode}
+                            hasError={entry.expense > 0 && lpKodPovinny && !entry.lpCode}
                             strictSelect={true}
                           />
-                          {entry.expense > 0 && !entry.lpCode && (
+                          {entry.expense > 0 && lpKodPovinny && !entry.lpCode && (
                             <div style={{ 
                               position: 'absolute', 
                               top: '100%', 

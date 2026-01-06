@@ -4030,6 +4030,28 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/cashbox-lp-requirement-update - nastavit LP kod povinnost
+        if ($endpoint === 'cashbox-lp-requirement-update') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_update_post($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-lp-requirement-get - ziskat LP kod povinnost
+        if ($endpoint === 'cashbox-lp-requirement-get') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_get_post($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // === LIMITOVANÉ PŘÍSLIBY - ČERPÁNÍ API ===
         
         // POST /api.eeo/limitovane-prisliby/prepocet - přepočet čerpání LP
@@ -5345,6 +5367,54 @@ switch ($endpoint) {
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use GET.'));
+            }
+            break;
+        }
+
+        // ===============================================
+        // CASHBOOK API - Pokladní knihy
+        // ===============================================
+        
+        // POST /api.eeo/cashbox-lp-requirement-update
+        if ($endpoint === 'cashbox-lp-requirement-update') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_update_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-lp-requirement-get
+        if ($endpoint === 'cashbox-lp-requirement-get') {
+            if ($request_method === 'POST') {
+                handle_cashbox_lp_requirement_get_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbook-list
+        if ($endpoint === 'cashbook-list') {
+            if ($request_method === 'POST') {
+                handle_cashbook_list_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-assignments-all
+        if ($endpoint === 'cashbox-assignments-all') {
+            if ($request_method === 'POST') {
+                handle_cashbook_assignments_all_post($_config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
             }
             break;
         }

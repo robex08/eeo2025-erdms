@@ -635,6 +635,25 @@ function handle_cashbook_entry_create_post($config, $input) {
             return api_error(403, 'Nedostatečná oprávnění pro editaci této knihy');
         }
         
+        // ✅ KONTROLA LP KÓDU POVINNOSTI podle nastavení pokladny
+        $lpKodPovinny = isset($book['pokladna_lp_kod_povinny']) && ($book['pokladna_lp_kod_povinny'] == 1 || $book['pokladna_lp_kod_povinny'] === '1');
+        $isExpense = isset($input['castka_vydaj']) && floatval($input['castka_vydaj']) > 0;
+        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
+        
+        // Pokud je LP povinný a jde o výdaj bez detail položek, musí mít LP kód
+        if ($lpKodPovinny && $isExpense && !$hasDetailItems && empty($input['lp_kod'])) {
+            return api_error(400, 'LP kód je povinný u výdajů pro tuto pokladnu');
+        }
+        
+        // Pokud má detail položky a LP je povinný, všechny musí mít LP kód
+        if ($lpKodPovinny && $hasDetailItems) {
+            foreach ($input['detail_items'] as $idx => $item) {
+                if (empty($item['lp_kod'])) {
+                    return api_error(400, 'LP kód je povinný u všech detail položek pro tuto pokladnu');
+                }
+            }
+        }
+        
         // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items, použít nový flow
         $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
         
@@ -773,6 +792,25 @@ function handle_cashbook_entry_update_post($config, $input) {
         $permissions = new CashbookPermissions($userData, $db);
         if (!$permissions->canEditCashbook($book['uzivatel_id'], $book['pokladna_id'])) {
             return api_error(403, 'Nedostatečná oprávnění');
+        }
+        
+        // ✅ KONTROLA LP KÓDU POVINNOSTI podle nastavení pokladny
+        $lpKodPovinny = isset($book['pokladna_lp_kod_povinny']) && ($book['pokladna_lp_kod_povinny'] == 1 || $book['pokladna_lp_kod_povinny'] === '1');
+        $isExpense = isset($input['castka_vydaj']) && floatval($input['castka_vydaj']) > 0;
+        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
+        
+        // Pokud je LP povinný a jde o výdaj bez detail položek, musí mít LP kód
+        if ($lpKodPovinny && $isExpense && !$hasDetailItems && empty($input['lp_kod'])) {
+            return api_error(400, 'LP kód je povinný u výdajů pro tuto pokladnu');
+        }
+        
+        // Pokud má detail položky a LP je povinný, všechny musí mít LP kód
+        if ($lpKodPovinny && $hasDetailItems) {
+            foreach ($input['detail_items'] as $idx => $item) {
+                if (empty($item['lp_kod'])) {
+                    return api_error(400, 'LP kód je povinný u všech detail položek pro tuto pokladnu');
+                }
+            }
         }
         
         // 🆕 DETEKCE MULTI-LP
