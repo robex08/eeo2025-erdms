@@ -5817,6 +5817,59 @@ const Orders25List = () => {
         return order;
       });
 
+      // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů
+      console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
+      console.log('👤 Uživatel:', { user_id, username, role: currentPermissions?.role });
+      console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
+      
+      // Analýza stavů objednávek
+      const stavyCount = finalOrders.reduce((acc, o) => {
+        const stav = o.stav_objednavky || 'NEZNAMY';
+        acc[stav] = (acc[stav] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('📊 Stavy objednávek:', stavyCount);
+      
+      // Analýza vlastnictví
+      const ownership = {
+        meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
+        jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
+        jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
+        jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id)).length,
+      };
+      console.log('👥 Vlastnictví objednávek:', ownership);
+      
+      // Kontrola visibility a aktivnosti
+      const visibility = {
+        aktivní: finalOrders.filter(o => o.aktivni === 1 || o.aktivni === '1').length,
+        neaktivní: finalOrders.filter(o => o.aktivni === 0 || o.aktivni === '0').length,
+        draft: finalOrders.filter(o => o.isDraft || o.isLocalConcept).length,
+      };
+      console.log('👁️ Viditelnost:', visibility);
+      
+      // Možné důvody proč se objednávka NEZOBRAZÍ
+      console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
+      console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná)');
+      console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
+      console.log('3. ❌ Frontend filtr: Aktivní tab filtr (např. "Moje objednávky" vs "Všechny")');
+      console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
+      console.log('5. ❌ Search filtr: Objednávka neodpovídá vyhledávacímu dotazu');
+      console.log('6. ❌ Date range filtr: Objednávka je mimo vybraný datumový rozsah');
+      console.log('7. ❌ Status filtr: Objednávka má jiný stav než vybraný');
+      console.groupEnd();
+      
+      // Ukázka prvních 3 objednávek
+      if (finalOrders.length > 0) {
+        console.groupCollapsed('📄 První 3 objednávky (ukázka)');
+        finalOrders.slice(0, 3).forEach((o, idx) => {
+          console.log(`${idx + 1}. #${o.id} | ${o.cislo_objednavky || 'N/A'} | ${o.stav_objednavky} | Příkazce: ${o.prikazce_id} | Aktivní: ${o.aktivni}`);
+        });
+        console.groupEnd();
+      }
+      
+      console.log('✅ Objednávky nastaveny do state - nyní se aplikují frontend filtry (tab, search, date range)');
+      console.groupEnd();
+
       setOrders(finalOrders);
 
       // Populate rawData for debug panel
