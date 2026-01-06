@@ -600,7 +600,7 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
     try {
       // ✨ V2 API: Use getOrderV2() - returns standardized data with enriched=true
-      const dbOrder = await getOrderV2(orderId, token, username, true); // ✅ enriched=true pro financovani.lp_nazvy
+      const dbOrder = await getOrderV2(orderId, token, username, true, archivovano); // ✅ enriched=true + archivovano parameter
 
       if (!dbOrder) {
         console.error('❌ [useOrderDataLoader] dbOrder is null!');

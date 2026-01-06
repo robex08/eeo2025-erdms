@@ -391,7 +391,7 @@ function validateAPIResponse(response, operation) {
  * console.log(order.max_cena_s_dph); // "25000.00"
  * console.log(order._enriched.objednatel); // User data
  */
-export async function getOrderV2(orderId, token, username, enriched = true) {
+export async function getOrderV2(orderId, token, username, enriched = true, archivovano = 0) {
   try {
     // Use /enriched endpoint for user data, items, invoices
     const endpoint = enriched
@@ -404,7 +404,7 @@ export async function getOrderV2(orderId, token, username, enriched = true) {
     const response = await apiOrderV2.post(endpoint, {
       token,
       username,
-      archivovano: 0
+      archivovano: archivovano // ✅ Použití parametru místo hardcoded 0
     });
 
     // 🔍🔍🔍 DEBUG: RAW RESPONSE Z BACKENDU - KOMPLETNÍ DATA 🔍🔍🔍
