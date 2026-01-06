@@ -5819,7 +5819,14 @@ const Orders25List = () => {
 
       // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů
       console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
-      console.log('👤 Uživatel:', { user_id, username, role: currentPermissions?.role });
+      console.log('👤 Uživatel:', { 
+        user_id, 
+        username, 
+        roles: userDetail?.roles?.map(r => r.kod_role || r.nazev_role).join(', ') || 'žádné role v userDetail',
+        hasAdminRole,
+        canViewAll: currentPermissions?.canViewAll,
+        hasOnlyOwn: currentPermissions?.hasOnlyOwn
+      });
       console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
       
       // Analýza stavů objednávek
@@ -5835,7 +5842,13 @@ const Orders25List = () => {
         meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
         jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
         jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
-        jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id)).length,
+        jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id) || String(o.garant_uzivatel_id) === String(user_id)).length,
+        jsemObjednatel: finalOrders.filter(o => String(o.objednatel_id) === String(user_id)).length,
+        jsemFakturant: finalOrders.filter(o => String(o.fakturant_id) === String(user_id)).length,
+        potvrdilJsem: finalOrders.filter(o => String(o.potvrdil_vecnou_spravnost_id) === String(user_id)).length,
+        dokončilJsem: finalOrders.filter(o => String(o.dokoncil_id) === String(user_id)).length,
+        zveřejnilJsem: finalOrders.filter(o => String(o.zverejnil_id) === String(user_id)).length,
+        aktualizoválJsem: finalOrders.filter(o => String(o.uzivatel_akt_id) === String(user_id)).length,
       };
       console.log('👥 Vlastnictví objednávek:', ownership);
       
