@@ -6587,7 +6587,11 @@ function OrderForm25() {
 
     // Pokud příkazce nenalezen, vrátit všechny LP kódy
     if (!selectedPrikazce) {
-      console.warn('⚠️ Příkazce nenalezen v approvers!');
+      // 📝 NOTE: Toto je normální při editaci starých objednávek kde příkazce už nemá ORDER_APPROVE právo
+      // nebo byl deaktivován. V tom případě zobrazíme všechny LP kódy bez filtrace.
+      if (process.env.NODE_ENV === 'development') {
+        console.info('ℹ️ Příkazce není v seznamu aktivních approvers (možná starší objednávka nebo změna role) - zobrazuji všechny LP kódy');
+      }
       return lpKodyOptions;
     }
 
@@ -18732,21 +18736,10 @@ function OrderForm25() {
     return false;
   }, [isLoadingCiselniky, isLoadingFormData]);
 
-  // 🛡️ AUTH GATE: Pokud není token/username, zobrazit loading a počkat
-  // MUSÍ BÝT AŽ PO VŠECH HOOKS (React Rules of Hooks)
-  if (!token || !username) {
-    return (
-      <LoadingOverlay $visible={true}>
-        <LoadingSpinner $visible={true} />
-        <LoadingMessage $visible={true}>Ověřuji přihlášení...</LoadingMessage>
-        <LoadingSubtext $visible={true}>Čekám na autentizaci...</LoadingSubtext>
-      </LoadingOverlay>
-    );
-  }
-
   // ⏱️ TIMEOUT PROTECTION: Pokud loading trvá déle než 20 sekund, zobrazit error
+  // MUSÍ BÝT PŘED VŠEMI EARLY RETURNS (React Rules of Hooks)
   useEffect(() => {
-    if (!lifecycle.isReady) {
+    if (!lifecycle.isReady && token && username) {
       const timeoutId = setTimeout(() => {
         if (!lifecycle.isReady) {
           showToast?.(
@@ -18762,7 +18755,19 @@ function OrderForm25() {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [lifecycle.isReady, navigate, showToast]);
+  }, [lifecycle.isReady, token, username, navigate, showToast]);
+
+  // 🛡️ AUTH GATE: Pokud není token/username, zobrazit loading a počkat
+  // MUSÍ BÝT AŽ PO VŠECH HOOKS (React Rules of Hooks)
+  if (!token || !username) {
+    return (
+      <LoadingOverlay $visible={true}>
+        <LoadingSpinner $visible={true} />
+        <LoadingMessage $visible={true}>Ověřuji přihlášení...</LoadingMessage>
+        <LoadingSubtext $visible={true}>Čekám na autentizaci...</LoadingSubtext>
+      </LoadingOverlay>
+    );
+  }
   //       <LoadingMessage $visible={true}>
   //         {isLoadingCiselniky && !isLoadingFormData && 'Načítám číselníky...'}
   //         {isLoadingCiselniky && isLoadingFormData && 'Načítám číselníky a data objednávky...'}

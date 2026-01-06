@@ -20,7 +20,11 @@ export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserI
         uzivatel_id: order.uzivatel_id,
         garant_uzivatel_id: order.garant_uzivatel_id,
         schvalovatel_id: order.schvalovatel_id,
-        prikazce_id: order.prikazce_id
+        prikazce_id: order.prikazce_id,
+        fakturant_id: order.fakturant_id,
+        potvrdil_vecnou_spravnost_id: order.potvrdil_vecnou_spravnost_id,
+        dokoncil_id: order.dokoncil_id,
+        zverejnil_id: order.zverejnil_id
       }
     });
   }
@@ -28,27 +32,42 @@ export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserI
   // Pokud filtr není aktivní, zobraz všechny objednávky
   if (!showOnlyMyOrders) return true;
 
-  // Filtruj objednávky kde je uživatel jako Objednatel, Garant, Schvalovatel nebo Příkazce
+  // Filtruj objednávky kde je uživatel v JAKÉKOLIV roli
   // 🔥 KRITICKÉ: Konverze všech ID na number pro spolehlivé porovnání
   const objednatelId = parseInt(order.objednatel_id, 10);
   const uzivatelId = parseInt(order.uzivatel_id, 10);
   const garantId = parseInt(order.garant_uzivatel_id, 10);
   const schvalovatelId = parseInt(order.schvalovatel_id, 10);
   const prikazceId = parseInt(order.prikazce_id, 10);
+  const fakturantId = parseInt(order.fakturant_id, 10);
+  const potvrdilId = parseInt(order.potvrdil_vecnou_spravnost_id, 10);
+  const dokoncilId = parseInt(order.dokoncil_id, 10);
+  const zverejnilId = parseInt(order.zverejnil_id, 10);
   
   const isObjednatel = objednatelId === currentUserId || uzivatelId === currentUserId;
   const isGarant = garantId === currentUserId;
   const isSchvalovatel = schvalovatelId === currentUserId;
   const isPrikazce = prikazceId === currentUserId;
+  const isFakturant = fakturantId === currentUserId;
+  const isPotvrdil = potvrdilId === currentUserId;
+  const isDokoncil = dokoncilId === currentUserId;
+  const isZverejnil = zverejnilId === currentUserId;
 
-  const result = isObjednatel || isGarant || isSchvalovatel || isPrikazce;
+  const result = isObjednatel || isGarant || isSchvalovatel || isPrikazce || 
+                 isFakturant || isPotvrdil || isDokoncil || isZverejnil;
   
   // 🐛 DEBUG: Log výsledek pro první objednávky
   if (order.id <= 20) {
     console.log(`🔍 filterMyOrders - Order #${order.id} RESULT:`, {
       result,
-      matches: { isObjednatel, isGarant, isSchvalovatel, isPrikazce },
-      converted_ids: { objednatelId, uzivatelId, garantId, schvalovatelId, prikazceId }
+      matches: { 
+        isObjednatel, isGarant, isSchvalovatel, isPrikazce,
+        isFakturant, isPotvrdil, isDokoncil, isZverejnil
+      },
+      converted_ids: { 
+        objednatelId, uzivatelId, garantId, schvalovatelId, prikazceId,
+        fakturantId, potvrdilId, dokoncilId, zverejnilId
+      }
     });
   }
 
