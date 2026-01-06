@@ -3587,20 +3587,36 @@ const ApprovalDialogTextarea = styled.textarea`
   width: 100%;
   min-height: 100px;
   padding: 0.75rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.9375rem;
   font-family: inherit;
   resize: vertical;
   transition: border-color 0.2s;
+  background: ${props => props.$hasError ? '#fef2f2' : 'white'};
 
   &:focus {
     outline: none;
-    border-color: #10b981;
+    border-color: ${props => props.$hasError ? '#dc2626' : '#10b981'};
   }
 
   &::placeholder {
     color: #94a3b8;
+  }
+`;
+
+const ApprovalDialogError = styled.div`
+  color: #ef4444;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  &:before {
+    content: '⚠️';
+    font-size: 1rem;
   }
 `;
 
@@ -4626,6 +4642,7 @@ const Orders25List = () => {
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [orderToApprove, setOrderToApprove] = useState(null);
   const [approvalComment, setApprovalComment] = useState('');
+  const [approvalCommentError, setApprovalCommentError] = useState(''); // Validační error pro poznámku
 
   // 🔒 Nový state pro dialog zamčené objednávky
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
@@ -9563,6 +9580,15 @@ const Orders25List = () => {
   const handleApprovalAction = useCallback(async (action) => {
     if (!orderToApprove) return;
 
+    // ⚠️ VALIDACE: Pro Odložit a Zamítnout je poznámka POVINNÁ
+    if ((action === 'reject' || action === 'postpone') && !approvalComment.trim()) {
+      setApprovalCommentError('Poznámka je povinná pro zamítnutí nebo odložení');
+      return;
+    }
+
+    // Vymaž validaci pokud je vše OK
+    setApprovalCommentError('');
+
     try {
       // Načti současný workflow stav
       let workflowStates = [];
@@ -9623,6 +9649,7 @@ const Orders25List = () => {
       setShowApprovalDialog(false);
       setOrderToApprove(null);
       setApprovalComment('');
+      setApprovalCommentError('');
 
       // Zobraz úspěšnou zprávu
       const actionMessages = {
@@ -16936,10 +16963,20 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               <ApprovalDialogSection>
                 <ApprovalDialogLabel>Poznámka ke schválení</ApprovalDialogLabel>
                 <ApprovalDialogTextarea
+                  $hasError={!!approvalCommentError}
                   value={approvalComment}
-                  onChange={(e) => setApprovalComment(e.target.value)}
-                  placeholder="Nepovinná poznámka ke schválení..."
+                  onChange={(e) => {
+                    setApprovalComment(e.target.value);
+                    // Vymaž error při psaní
+                    if (approvalCommentError) {
+                      setApprovalCommentError('');
+                    }
+                  }}
+                  placeholder="Nepovinná poznámka ke schválení (povinná pro Odložit/Zamítnout)..."
                 />
+                {approvalCommentError && (
+                  <ApprovalDialogError>{approvalCommentError}</ApprovalDialogError>
+                )}
               </ApprovalDialogSection>
 
               <ApprovalDialogActions>
@@ -16947,6 +16984,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   setShowApprovalDialog(false);
                   setOrderToApprove(null);
                   setApprovalComment('');
+                  setApprovalCommentError('');
                 }}>
                   Storno
                 </ApprovalDialogButton>
@@ -17001,7 +17039,13 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           }
           canApprove={
             contextMenu.order && 
-            String(contextMenu.order.prikazce_id) === String(currentUserId) &&
+            (
+              // 1. Příkazce objednávky
+              String(contextMenu.order.prikazce_id) === String(currentUserId) ||
+              // 2. ADMINISTRATOR a SUPERADMIN mohou schvalovat všechny objednávky
+              hasPermission('ADMINISTRATOR') ||
+              hasPermission('SUPERADMIN')
+            ) &&
             (() => {
               // Zkontroluj workflow stav - schválení je dostupné jen pro určité stavy
               let workflowStates = [];
