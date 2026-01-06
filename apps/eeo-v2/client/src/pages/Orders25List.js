@@ -9619,7 +9619,7 @@ const Orders25List = () => {
           newWorkflowStates.push('SCHVALENA');
           orderUpdate.stav_objednavky = 'Schválená';
           orderUpdate.dt_schvaleni = timestamp;
-          orderUpdate.schvalil_id = currentUserId;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
           break;
 
         case 'reject':
@@ -9627,13 +9627,15 @@ const Orders25List = () => {
           newWorkflowStates.push('ZAMITNUTA');
           orderUpdate.stav_objednavky = 'Zamítnutá';
           orderUpdate.dt_schvaleni = timestamp;
-          orderUpdate.schvalil_id = currentUserId;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
           break;
 
         case 'postpone':
-          // Odložit - přidej CEKA_SE
+          // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
           newWorkflowStates.push('CEKA_SE');
           orderUpdate.stav_objednavky = 'Čeká se';
+          orderUpdate.dt_schvaleni = timestamp;
+          orderUpdate.schvalil_uzivatel_id = currentUserId;
           break;
 
         default:
