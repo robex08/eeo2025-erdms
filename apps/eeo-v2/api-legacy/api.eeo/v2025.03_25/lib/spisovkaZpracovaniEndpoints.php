@@ -110,6 +110,43 @@ function handle_spisovka_zpracovani_list($input, $config) {
             ]
         );
         
+        // 🔐 KONTROLA OPRÁVNĚNÍ - SPISOVKA_MANAGE nebo ADMIN role
+        $stmt_perm = $pdo->prepare("
+            SELECT COUNT(*) as count
+            FROM 25_prava p
+            WHERE (p.kod_prava = 'SPISOVKA_MANAGE' OR p.kod_prava = 'ADMIN')
+            AND p.aktivni = 1
+            AND (
+                p.id IN (
+                    -- Přímá práva uživatele
+                    SELECT rp.pravo_id 
+                    FROM 25_role_prava rp 
+                    WHERE rp.user_id = :user_id1 AND rp.aktivni = 1
+                )
+                OR p.id IN (
+                    -- Práva z rolí (ADMIN check)
+                    SELECT rp.pravo_id 
+                    FROM 25_uzivatel_role ur
+                    JOIN 25_role r ON ur.role_id = r.id
+                    JOIN 25_role_prava rp ON r.id = rp.role_id AND rp.user_id = -1
+                    WHERE ur.uzivatel_id = :user_id2 
+                    AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
+                    AND rp.aktivni = 1
+                )
+            )
+        ");
+        $stmt_perm->execute([':user_id1' => $current_user_id, ':user_id2' => $current_user_id]);
+        $has_permission = $stmt_perm->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$has_permission || $has_permission['count'] == 0) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nedostatečná oprávnění. Vyžadováno: SPISOVKA_MANAGE nebo ADMIN role.'
+            ]);
+            return;
+        }
+        
         // Parametry filtrace
         $uzivatel_id = isset($input['uzivatel_id']) ? (int)$input['uzivatel_id'] : null;
         $stav = isset($input['stav']) ? $input['stav'] : null;
