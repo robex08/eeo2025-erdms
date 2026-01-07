@@ -1,5 +1,100 @@
 <?php
 
+// ============================================================================
+// KONSTANTY TABULEK - Duplicita z api.php pro standalone použití
+// ============================================================================
+
+// LP ČERPÁNÍ
+if (!defined('TBL_OBJEDNAVKY')) define('TBL_OBJEDNAVKY', '25a_objednavky');
+if (!defined('TBL_OBJEDNAVKY_POLOZKY')) define('TBL_OBJEDNAVKY_POLOZKY', '25a_objednavky_polozky');
+if (!defined('TBL_OBJEDNAVKY_PRILOHY')) define('TBL_OBJEDNAVKY_PRILOHY', '25a_objednavky_prilohy');
+if (!defined('TBL_POKLADNI_KNIHY')) define('TBL_POKLADNI_KNIHY', '25a_pokladni_knihy');
+if (!defined('TBL_POKLADNI_POLOZKY')) define('TBL_POKLADNI_POLOZKY', '25a_pokladni_polozky');
+if (!defined('TBL_POKLADNI_POLOZKY_DETAIL')) define('TBL_POKLADNI_POLOZKY_DETAIL', '25a_pokladni_polozky_detail');
+if (!defined('TBL_LP_MASTER')) define('TBL_LP_MASTER', '25_limitovane_prisliby');
+if (!defined('TBL_LP_CERPANI')) define('TBL_LP_CERPANI', '25_limitovane_prisliby_cerpani');
+
+// POKLADNY (CASHBOX)
+if (!defined('TBL_POKLADNY')) define('TBL_POKLADNY', '25a_pokladny');
+if (!defined('TBL_POKLADNY_UZIVATELE')) define('TBL_POKLADNY_UZIVATELE', '25a_pokladny_uzivatele');
+if (!defined('TBL_POKLADNI_AUDIT')) define('TBL_POKLADNI_AUDIT', '25a_pokladni_audit');
+if (!defined('TBL_POKLADNI_PRIRAZENI')) define('TBL_POKLADNI_PRIRAZENI', '25a_pokladni_prirazeni');
+
+// CORE ENTITIES
+if (!defined('TBL_UZIVATELE')) define('TBL_UZIVATELE', '25_uzivatele');
+if (!defined('TBL_SMLOUVY')) define('TBL_SMLOUVY', '25_smlouvy');
+if (!defined('TBL_SMLOUVY_IMPORT_LOG')) define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
+if (!defined('TBL_FAKTURY')) define('TBL_FAKTURY', '25a_objednavky_faktury');
+if (!defined('TBL_FAKTURY_PRILOHY')) define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
+if (!defined('TBL_FAKTURY_LP_CERPANI')) define('TBL_FAKTURY_LP_CERPANI', '25a_faktury_lp_cerpani');
+if (!defined('TBL_DODAVATELE')) define('TBL_DODAVATELE', '25_dodavatele');
+
+// AUTORIZACE & ROLE
+if (!defined('TBL_PRAVA')) define('TBL_PRAVA', '25_prava');
+if (!defined('TBL_ROLE')) define('TBL_ROLE', '25_role');
+if (!defined('TBL_ROLE_PRAVA')) define('TBL_ROLE_PRAVA', '25_role_prava');
+if (!defined('TBL_UZIVATELE_ROLE')) define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
+if (!defined('TBL_UZIVATELE_PRAVA')) define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
+if (!defined('TBL_USER_GROUPS_MEMBERS')) define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
+
+// UŽIVATELÉ (EXTENDED)
+if (!defined('TBL_UZIVATELE_ZASTUPOVANI')) define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
+if (!defined('TBL_UZIVATELE_POZNAMKY')) define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
+
+// HIERARCHIE
+if (!defined('TBL_UZIVATELE_HIERARCHIE')) define('TBL_UZIVATELE_HIERARCHIE', '25_uzivatele_hierarchie');
+if (!defined('TBL_HIERARCHIE_PROFILY')) define('TBL_HIERARCHIE_PROFILY', '25_hierarchie_profily');
+if (!defined('TBL_HIERARCHIE_VZTAHY')) define('TBL_HIERARCHIE_VZTAHY', '25_hierarchie_vztahy');
+
+// NASTAVENÍ
+if (!defined('TBL_NASTAVENI_GLOBALNI')) define('TBL_NASTAVENI_GLOBALNI', '25a_nastaveni_globalni');
+if (!defined('TBL_UZIVATEL_NASTAVENI')) define('TBL_UZIVATEL_NASTAVENI', '25_uzivatel_nastaveni');
+
+// ČÍSELNÍKY
+if (!defined('TBL_POZICE')) define('TBL_POZICE', '25_pozice');
+if (!defined('TBL_CISELNIK_STAVY')) define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');
+if (!defined('TBL_USEKY')) define('TBL_USEKY', '25_useky');
+if (!defined('TBL_LOKALITY')) define('TBL_LOKALITY', '25_lokality');
+
+// ORGANIZACE
+if (!defined('TBL_ORGANIZACE_VIZITKA')) define('TBL_ORGANIZACE_VIZITKA', '25_organizace_vizitka');
+
+// DOCX ŠABLONY
+if (!defined('TBL_SABLONY_DOCX')) define('TBL_SABLONY_DOCX', '25_sablony_docx');
+if (!defined('TBL_DOCX_SABLONY')) define('TBL_DOCX_SABLONY', '25_docx_sablony');
+if (!defined('TBL_DOCX_MAPOVANI')) define('TBL_DOCX_MAPOVANI', '25_docx_mapovani');
+if (!defined('TBL_DOCX_KATEGORIE')) define('TBL_DOCX_KATEGORIE', '25_docx_kategorie');
+if (!defined('TBL_DOCX_GENEROVANE')) define('TBL_DOCX_GENEROVANE', '25_docx_generovane');
+if (!defined('TBL_SABLONY_OBJEDNAVEK')) define('TBL_SABLONY_OBJEDNAVEK', '25_sablony_objednavek');
+
+// NOTIFIKACE
+if (!defined('TBL_NOTIFIKACE')) define('TBL_NOTIFIKACE', '25_notifikace');
+if (!defined('TBL_NOTIFIKACE_FRONTA')) define('TBL_NOTIFIKACE_FRONTA', '25_notifikace_fronta');
+if (!defined('TBL_NOTIFIKACE_AUDIT')) define('TBL_NOTIFIKACE_AUDIT', '25_notifikace_audit');
+if (!defined('TBL_NOTIFIKACE_PRECTENI')) define('TBL_NOTIFIKACE_PRECTENI', '25_notifikace_precteni');
+if (!defined('TBL_NOTIFIKACE_SABLONY')) define('TBL_NOTIFIKACE_SABLONY', '25_notifikace_sablony');
+if (!defined('TBL_NOTIFIKACE_TYPY_UDALOSTI')) define('TBL_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti');
+if (!defined('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI')) define('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni');
+
+// CHAT
+if (!defined('TBL_CHAT_KONVERZACE')) define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
+if (!defined('TBL_CHAT_ZPRAVY')) define('TBL_CHAT_ZPRAVY', '25_chat_zpravy');
+if (!defined('TBL_CHAT_UCASTNICI')) define('TBL_CHAT_UCASTNICI', '25_chat_ucastnici');
+if (!defined('TBL_CHAT_REAKCE')) define('TBL_CHAT_REAKCE', '25_chat_reakce');
+if (!defined('TBL_CHAT_PRECTENE_ZPRAVY')) define('TBL_CHAT_PRECTENE_ZPRAVY', '25_chat_prectene_zpravy');
+if (!defined('TBL_CHAT_ONLINE_STATUS')) define('TBL_CHAT_ONLINE_STATUS', '25_chat_online_status');
+if (!defined('TBL_CHAT_MENTIONS')) define('TBL_CHAT_MENTIONS', '25_chat_mentions');
+
+// AUDIT
+if (!defined('TBL_AUDITNI_ZAZNAMY')) define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
+
+// LIMITOVANÉ PŘÍSLIBY
+if (!defined('TBL_LIMITOVANE_PRISLIBY')) define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
+if (!defined('TBL_LIMITOVANE_PRISLIBY_CERPANI')) define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
+
+// SPISOVKA
+if (!defined('TBL_SPISOVKA_ZPRACOVANI_LOG')) define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
+
 define('OLD_TABLE_USERS', 'users');
 define('OLD_TABLE_RIGHTS', 'rights');
 define('OLD_TABLE_GROUPS', 'groups');

@@ -193,6 +193,18 @@ class CashbookPermissions {
     }
     
     /**
+     * Kontrola, zda může mazat záznamy (entries)
+     * Stejná logika jako canEditCashbook - může mazat, když může editovat
+     * 
+     * @param int $cashbookUserId ID uživatele, kterému patří kniha
+     * @return bool True pokud má oprávnění
+     */
+    public function canDeleteEntry($cashbookUserId) {
+        // Použijeme stejnou logiku jako pro editaci
+        return $this->canEditCashbook($cashbookUserId);
+    }
+    
+    /**
      * Kontrola, zda může vytvářet nové knihy
      * Pro uživatele bez MANAGE/CREATE práv kontroluje přiřazení k pokladně
      * 

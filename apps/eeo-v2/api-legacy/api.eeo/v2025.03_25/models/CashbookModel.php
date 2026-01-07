@@ -479,7 +479,8 @@ class CashbookModel {
                     COALESCE(SUM(castka_prijem), 0) as total_income,
                     COALESCE(SUM(castka_vydaj), 0) as total_expense
                 FROM " . TBL_POKLADNI_POLOZKY . " 
-                WHERE pokladni_kniha_id = ?
+                WHERE pokladni_kniha_id = ? 
+                  AND (smazano = 0 OR smazano IS NULL)
             ");
             $stmt->execute(array($bookId));
             $sums = $stmt->fetch(PDO::FETCH_ASSOC);

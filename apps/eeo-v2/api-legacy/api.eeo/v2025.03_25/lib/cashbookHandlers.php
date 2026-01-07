@@ -887,39 +887,65 @@ function handle_cashbook_entry_update_post($config, $input) {
  */
 function handle_cashbook_entry_delete_post($config, $input) {
     try {
+        error_log("🔍 cashbook-entry-delete START");
+        error_log("  - entry_id: " . ($input['entry_id'] ?? 'MISSING'));
+        error_log("  - username: " . ($input['username'] ?? 'MISSING'));
+        
         // Ověření tokenu
         if (empty($input['username']) || empty($input['token'])) {
+            error_log("❌ Missing username or token");
             return api_error(401, 'Chybí username nebo token');
         }
         
         if (empty($input['entry_id'])) {
+            error_log("❌ Missing entry_id");
             return api_error(400, 'Chybí entry_id');
         }
         
         $db = get_db($config);
+        error_log("✓ DB connection OK");
+        
         $userData = verify_token_v2($input['username'], $input['token'], $db);
         
         if (!$userData) {
+            error_log("❌ Invalid token for user: " . $input['username']);
             return api_error(401, 'Neplatný token');
         }
+        
+        error_log("✓ Token verified - user_id: " . $userData['id']);
+        error_log("✓ Token verified - user_id: " . $userData['id']);
         
         // Načíst položku
         $entryModel = new CashbookEntryModel($db);
         $entry = $entryModel->getEntryById($input['entry_id']);
         
         if (!$entry) {
+            error_log("❌ Entry not found: " . $input['entry_id']);
             return api_error(404, 'Položka nenalezena');
         }
+        
+        error_log("✓ Entry loaded - kniha_id: " . $entry['pokladni_kniha_id']);
         
         // Načíst knihu
         $bookModel = new CashbookModel($db);
         $book = $bookModel->getBookById($entry['pokladni_kniha_id']);
         
+        if (!$book) {
+            http_response_code(200);
+            echo json_encode(['status' => 'debug', 'step' => '4-book-not-found', 'kniha_id' => $entry['pokladni_kniha_id']]);
+            exit;
+        }
+        
+        error_log("✓ Book loaded - stav: " . $book['stav_knihy']);
+        
         // Kontrola oprávnění
         $permissions = new CashbookPermissions($userData, $db);
         if (!$permissions->canDeleteEntry($book['uzivatel_id'])) {
+            error_log("❌ Permission denied for user_id: " . $userData['id']);
             return api_error(403, 'Nedostatečná oprávnění pro mazání');
         }
+        
+        error_log("✓ Permissions OK - starting delete");
         
         // Smazat
         $db->beginTransaction();
@@ -927,6 +953,8 @@ function handle_cashbook_entry_delete_post($config, $input) {
         try {
             $service = new CashbookService($db);
             $service->deleteEntry($input['entry_id'], $userData['id']);
+            
+            error_log("✓ Entry deleted successfully");
             
             // 🆕 KASKÁDOVÝ PŘEPOČET: Smazání položky mění koncový stav → přepočítat následující měsíce
             if ($book['pokladna_id'] && $book['uzivatel_id']) {
@@ -949,7 +977,10 @@ function handle_cashbook_entry_delete_post($config, $input) {
         
     } catch (Exception $e) {
         error_log("handle_cashbook_entry_delete_post error: " . $e->getMessage());
-        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        
+        // DEBUG: Vracíme detailní chybu včetně souboru a řádku
+        return api_error(500, 'Chyba při mazání: ' . $e->getMessage() . ' (soubor: ' . basename($e->getFile()) . ':' . $e->getLine() . ')');
     }
 }
 
