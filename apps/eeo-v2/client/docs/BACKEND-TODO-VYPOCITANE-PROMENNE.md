@@ -109,9 +109,9 @@ vypocitane = {
 
 | Pole | Typ | Formát | Příklad |
 |------|-----|--------|---------|
-| `celkova_cena_bez_dph` | string | "1 234.56 Kč" | "125 000.00 Kč" |
-| `celkova_cena_s_dph` | string | "1 234.56 Kč" | "151 250.00 Kč" |
-| `vypoctene_dph` | string | "1 234.56 Kč" | "26 250.00 Kč" |
+| `celkova_cena_bez_dph` | string | "1 234,56 Kč" | "125 000,00 Kč" |
+| `celkova_cena_s_dph` | string | "1 234,56 Kč" | "151 250,00 Kč" |
+| `vypoctene_dph` | string | "1 234,56 Kč" | "26 250,00 Kč" |
 | `pocet_polozek` | number | 123 | 5 |
 | `pocet_priloh` | number | 123 | 3 |
 | `datum_generovani` | string | "DD.MM.YYYY" | "05.11.2025" |
@@ -123,15 +123,15 @@ vypocitane = {
 
 ### Formát měny
 ```python
-# ✅ SPRÁVNĚ
-"125 000.00 Kč"    # Mezera jako tisícový oddělovač, s jednotkou
-"1 234 567.89 Kč"  # Tečka jako des. oddělovač, s jednotkou
+# ✅ SPRÁVNĚ - ČESKÝ STANDARD (čárka jako desetinný oddělovač)
+"125 000,00 Kč"    # Mezera jako tisícový oddělovač, čárka jako des. oddělovač
+"1 234 567,89 Kč"  # Zabraňuje interpretaci MS Word jako data (např. 01.02.8157)
 
-# ❌ ŠPATNĚ
-"125,000.00 Kč"    # Čárka místo mezery
+# ❌ ŠPATNĚ - ANGLICKÝ FORMÁT (tečka může být interpretována jako datum)
+"125,000.00 Kč"    # Čárka místo mezery jako tisícový oddělovač
 "125000.00 Kč"     # Bez tisícového oddělovače
-"125 000,00 Kč"    # Čárka jako des. oddělovač
-"125 000.00"       # Bez jednotky Kč
+"125 000.00 Kč"    # Tečka jako des. oddělovač (problém s MS Word!)
+"125 000,00"       # Bez jednotky Kč
 ```
 
 ### Formát data
@@ -205,9 +205,9 @@ vypocitane = {
 ```json
 {
   "vypocitane": {
-    "celkova_cena_bez_dph": "125 000.00 Kč",
-    "celkova_cena_s_dph": "151 250.00 Kč",
-    "vypoctene_dph": "26 250.00 Kč",
+    "celkova_cena_bez_dph": "125 000,00 Kč",
+    "celkova_cena_s_dph": "151 250,00 Kč",
+    "vypoctene_dph": "26 250,00 Kč",
     "pocet_polozek": 2,
     "pocet_priloh": 3,
     "datum_generovani": "05.11.2025",
@@ -220,7 +220,7 @@ vypocitane = {
 
 ## 🎯 Proč to potřebujeme
 
-1. **DOCX šablony**: Uživatel si v Word šabloně napíše `{{vypocitane.celkova_cena_s_dph}}` a při generování se tam doplní "151 250.00 Kč"
+1. **DOCX šablony**: Uživatel si v Word šabloně napíše `{{vypocitane.celkova_cena_s_dph}}` a při generování se tam doplní "151 250,00 Kč" (český formát zabraňuje interpretaci MS Word jako datum)
 
 2. **Vybraný uživatel**: Před generováním si uživatel vybere libovolného uživatele z listboxu (garant, přikazce, schvalovatel, atd.) → jeho celé jméno (včetně titulů) se dosadí do šablony jako `{{vypocitane.vybrany_uzivatel_cele_jmeno}}`
 

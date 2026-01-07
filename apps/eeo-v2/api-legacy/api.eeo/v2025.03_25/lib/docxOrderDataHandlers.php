@@ -13,8 +13,9 @@
  * @return string Naformátovaná částka s mezerou jako tisícovým oddělovačem a jednotkou " Kč"
  */
 function format_cz_currency($value) {
-    // Formátování s 2 des. místy, mezera jako tisícový oddělovač, tečka jako des. oddělovač, jednotka Kč
-    return number_format((float)$value, 2, '.', ' ') . ' Kč';
+    // Formátování s 2 des. místy, mezera jako tisícový oddělovač, ČÁRKA jako des. oddělovač (český standard)
+    // Čárka zabrání MS Word interpretaci čísla jako data (např. 01.02.8157 -> 1. února 8157)
+    return number_format((float)$value, 2, ',', ' ') . ' Kč';
 }
 
 /**
@@ -877,12 +878,12 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
         
         // === SESTAVENÍ VYPOČÍTANÝCH HODNOT ===
         $vypocitane = array(
-            // Ceny - RAW formát
-            'celkova_cena_bez_dph' => number_format($celkova_cena_bez_dph, 2, '.', ''),
-            'celkova_cena_s_dph' => number_format($celkova_cena_s_dph, 2, '.', ''),
-            'vypoctene_dph' => number_format($vypoctene_dph, 2, '.', ''),
+            // Ceny - RAW formát (čárka jako des. oddělovač, mezera jako tisícový = český standard)
+            'celkova_cena_bez_dph' => number_format($celkova_cena_bez_dph, 2, ',', ' '),
+            'celkova_cena_s_dph' => number_format($celkova_cena_s_dph, 2, ',', ' '),
+            'vypoctene_dph' => number_format($vypoctene_dph, 2, ',', ' '),
             
-            // Ceny - S FORMÁTOVÁNÍM (mezera jako tisícový oddělovač)
+            // Ceny - S FORMÁTOVÁNÍM (mezera jako tisícový oddělovač + jednotka Kč)
             'celkova_cena_bez_dph_kc' => format_cz_currency($celkova_cena_bez_dph),
             'celkova_cena_s_dph_kc' => format_cz_currency($celkova_cena_s_dph),
             'vypoctene_dph_kc' => format_cz_currency($vypoctene_dph),
