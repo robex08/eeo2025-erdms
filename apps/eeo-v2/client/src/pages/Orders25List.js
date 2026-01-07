@@ -3511,11 +3511,12 @@ const ApprovalDialogOverlay = styled.div`
 
 const ApprovalDialog = styled.div`
   background: white;
-  border-radius: 16px;
-  max-width: 600px;
-  width: 90%;
+  border-radius: 12px;
+  max-width: 1200px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
   animation: slideUp 0.3s ease;
 
   @keyframes slideUp {
@@ -3532,33 +3533,53 @@ const ApprovalDialog = styled.div`
 
 const ApprovalDialogHeader = styled.div`
   background: linear-gradient(135deg, #10b981, #059669);
-  padding: 1.5rem;
+  padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  border-bottom: 3px solid #047857;
+  gap: 0.75rem;
+  border-bottom: 2px solid #047857;
 `;
 
 const ApprovalDialogIcon = styled.div`
-  font-size: 2rem;
+  font-size: 1.5rem;
   filter: drop-shadow(0 2px 8px rgba(4, 120, 87, 0.5));
 `;
 
 const ApprovalDialogTitle = styled.h3`
   margin: 0;
   color: white;
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: 1.125rem;
+  font-weight: 700;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   flex: 1;
 `;
 
 const ApprovalDialogContent = styled.div`
-  padding: 1.5rem;
+  padding: 1.25rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ApprovalDialogTopGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  margin-bottom: 1rem;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
 const ApprovalDialogSection = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: ${props => props.$fullWidth ? '1rem' : '0'};
+  grid-column: ${props => props.$fullWidth ? '1 / -1' : 'auto'};
 
   &:last-child {
     margin-bottom: 0;
@@ -3566,29 +3587,41 @@ const ApprovalDialogSection = styled.div`
 `;
 
 const ApprovalDialogLabel = styled.div`
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #64748b;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 `;
 
 const ApprovalDialogValue = styled.div`
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: #0f172a;
-  padding: 0.75rem;
+  padding: 0.5rem;
   background: #f8fafc;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid #e2e8f0;
+  line-height: 1.4;
+`;
+
+const ApprovalDialogNote = styled.div`
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  background: #f1f5f9;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 4px;
 `;
 
 const ApprovalDialogTextarea = styled.textarea`
   width: 100%;
-  min-height: 100px;
-  padding: 0.75rem;
+  min-height: 80px;
+  padding: 0.625rem;
   border: 2px solid ${props => props.$hasError ? '#ef4444' : '#e2e8f0'};
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 0.9375rem;
   font-family: inherit;
   resize: vertical;
@@ -3607,29 +3640,31 @@ const ApprovalDialogTextarea = styled.textarea`
 
 const ApprovalDialogError = styled.div`
   color: #ef4444;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
-  margin-top: 0.5rem;
+  margin-top: 0.375rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
 
   &:before {
     content: '⚠️';
-    font-size: 1rem;
+    font-size: 0.875rem;
   }
 `;
 
 const ApprovalDialogActions = styled.div`
   display: flex;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
   justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
 `;
 
 const ApprovalDialogButton = styled.button`
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
   border: none;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -3644,36 +3679,36 @@ const ApprovalDialogButton = styled.button`
       return `
         background: linear-gradient(135deg, #10b981, #059669);
         color: white;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        box-shadow: 0 3px 8px rgba(16, 185, 129, 0.25);
 
         &:hover {
           background: linear-gradient(135deg, #059669, #047857);
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
         }
       `;
     } else if (props.$reject) {
       return `
         background: linear-gradient(135deg, #ef4444, #dc2626);
         color: white;
-        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        box-shadow: 0 3px 8px rgba(239, 68, 68, 0.25);
 
         &:hover {
           background: linear-gradient(135deg, #dc2626, #b91c1c);
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
         }
       `;
     } else if (props.$postpone) {
       return `
         background: linear-gradient(135deg, #f59e0b, #d97706);
         color: white;
-        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        box-shadow: 0 3px 8px rgba(245, 158, 11, 0.25);
 
         &:hover {
           background: linear-gradient(135deg, #d97706, #b45309);
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
         }
       `;
     } else {
@@ -8212,7 +8247,7 @@ const Orders25List = () => {
   const filteredData = useMemo(() => {
     const filtered = orders.filter(order => {
       
-      // 1. "Jen moje" filtr
+      // 1. "Jen moje" filtr  
       if (!filterMyOrders(order, showOnlyMyOrders, userDetail, currentUserId)) {
         return false;
       }
@@ -13014,6 +13049,31 @@ const Orders25List = () => {
 
   return (
     <>
+      {/* ⚠️ Kontrola oprávnění - pokud uživatel nemá žádná práva na objednávky */}
+      {!permissions.canViewAll && !permissions.hasOnlyOwn && (
+        <Container>
+          <div style={{
+            padding: '3rem 2rem',
+            textAlign: 'center',
+            background: '#fff3cd',
+            borderRadius: '8px',
+            border: '2px solid #ffc107',
+            margin: '2rem auto',
+            maxWidth: '600px'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+            <h2 style={{ color: '#856404', marginBottom: '1rem' }}>Nemáte oprávnění</h2>
+            <p style={{ color: '#856404', fontSize: '1.1rem', lineHeight: '1.6' }}>
+              Pro zobrazení seznamu objednávek nemáte dostatečná oprávnění.<br />
+              Kontaktujte administrátora systému.
+            </p>
+          </div>
+        </Container>
+      )}
+
+      {/* ✅ Zobrazit obsah pouze pokud má uživatel nějaká práva */}
+      {(permissions.canViewAll || permissions.hasOnlyOwn) && (
+        <>
       {/* Loading overlay s blur efektem - MIMO Container pro správné zobrazení */}
       <LoadingOverlay $visible={loading}>
         <LoadingSpinner $visible={loading} />
@@ -16876,32 +16936,78 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
             </ApprovalDialogHeader>
 
             <ApprovalDialogContent>
+              {/* TOP GRID: Číslo, Předmět, Max cena - 3 columns */}
+              <ApprovalDialogTopGrid>
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Číslo objednávky</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove.cislo_objednavky || orderToApprove.evidencni_cislo || `#${orderToApprove.id}`}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Předmět</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove.predmet || orderToApprove.nazev_objednavky || '---'}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+
+                <ApprovalDialogSection>
+                  <ApprovalDialogLabel>Maximální cena s DPH</ApprovalDialogLabel>
+                  <ApprovalDialogValue>
+                    {orderToApprove.max_cena_s_dph 
+                      ? `${parseFloat(orderToApprove.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
+                      : '---'}
+                  </ApprovalDialogValue>
+                </ApprovalDialogSection>
+              </ApprovalDialogTopGrid>
+
+              {/* Objednatel a Garant */}
               <ApprovalDialogSection>
-                <ApprovalDialogLabel>Číslo objednávky</ApprovalDialogLabel>
+                <ApprovalDialogLabel>Objednatel</ApprovalDialogLabel>
                 <ApprovalDialogValue>
-                  {orderToApprove.cislo_objednavky || orderToApprove.evidencni_cislo || `#${orderToApprove.id}`}
+                  {(() => {
+                    if (orderToApprove.objednatel_uzivatel) {
+                      const u = orderToApprove.objednatel_uzivatel;
+                      return (
+                        <div>
+                          <div>{`${u.jmeno || ''} ${u.prijmeni || ''}`.trim() || u.username || '---'}</div>
+                          {u.email && <div style={{ fontSize: '0.8125rem', color: '#64748b', marginTop: '0.25rem' }}>{u.email}</div>}
+                          {u.telefon && <div style={{ fontSize: '0.8125rem', color: '#64748b' }}>{u.telefon}</div>}
+                        </div>
+                      );
+                    } else if (orderToApprove.objednatel_id) {
+                      return getUserDisplayName(orderToApprove.objednatel_id);
+                    }
+                    return '---';
+                  })()}
                 </ApprovalDialogValue>
               </ApprovalDialogSection>
 
               <ApprovalDialogSection>
-                <ApprovalDialogLabel>Předmět</ApprovalDialogLabel>
+                <ApprovalDialogLabel>Garant</ApprovalDialogLabel>
                 <ApprovalDialogValue>
-                  {orderToApprove.predmet || orderToApprove.nazev_objednavky || '---'}
-                </ApprovalDialogValue>
-              </ApprovalDialogSection>
-
-              <ApprovalDialogSection>
-                <ApprovalDialogLabel>Maximální cena s DPH</ApprovalDialogLabel>
-                <ApprovalDialogValue>
-                  {orderToApprove.max_cena_s_dph 
-                    ? `${parseFloat(orderToApprove.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`
-                    : '---'}
+                  {(() => {
+                    if (orderToApprove.garant_uzivatel) {
+                      const u = orderToApprove.garant_uzivatel;
+                      return (
+                        <div>
+                          <div>{`${u.jmeno || ''} ${u.prijmeni || ''}`.trim() || u.username || '---'}</div>
+                          {u.email && <div style={{ fontSize: '0.8125rem', color: '#64748b', marginTop: '0.25rem' }}>{u.email}</div>}
+                          {u.telefon && <div style={{ fontSize: '0.8125rem', color: '#64748b' }}>{u.telefon}</div>}
+                        </div>
+                      );
+                    } else if (orderToApprove.garant_uzivatel_id) {
+                      return getUserDisplayName(orderToApprove.garant_uzivatel_id);
+                    }
+                    return '---';
+                  })()}
                 </ApprovalDialogValue>
               </ApprovalDialogSection>
 
               {/* Střediska */}
               {orderToApprove.strediska_kod && Array.isArray(orderToApprove.strediska_kod) && orderToApprove.strediska_kod.length > 0 && (
-                <ApprovalDialogSection>
+                <ApprovalDialogSection $fullWidth>
                   <ApprovalDialogLabel>Střediska</ApprovalDialogLabel>
                   <ApprovalDialogValue>
                     {orderToApprove._enriched?.strediska && Array.isArray(orderToApprove._enriched.strediska)
@@ -16913,17 +17019,41 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
 
               {/* Zdroj financování */}
               {orderToApprove.financovani && (
-                <ApprovalDialogSection>
+                <ApprovalDialogSection $fullWidth>
                   <ApprovalDialogLabel>Zdroj financování</ApprovalDialogLabel>
                   <ApprovalDialogValue>
-                    {orderToApprove.financovani.nazev || orderToApprove.financovani.typ || '---'}
+                    <div>{orderToApprove.financovani.nazev || orderToApprove.financovani.typ || '---'}</div>
+                    
+                    {/* Individuální schválení */}
+                    {orderToApprove.financovani.individualni_schvaleni && (
+                      <ApprovalDialogNote>
+                        <strong>Individuální schválení:</strong> {orderToApprove.financovani.individualni_schvaleni}
+                        {orderToApprove.financovani.individualni_schvaleni_poznamka && (
+                          <div style={{ marginTop: '0.25rem' }}>
+                            Poznámka: {orderToApprove.financovani.individualni_schvaleni_poznamka}
+                          </div>
+                        )}
+                      </ApprovalDialogNote>
+                    )}
+                    
+                    {/* Pojistná událost */}
+                    {orderToApprove.financovani.pojistna_udalost_cislo && (
+                      <ApprovalDialogNote>
+                        <strong>Pojistná událost:</strong> {orderToApprove.financovani.pojistna_udalost_cislo}
+                        {orderToApprove.financovani.pojistna_udalost_poznamka && (
+                          <div style={{ marginTop: '0.25rem' }}>
+                            Poznámka: {orderToApprove.financovani.pojistna_udalost_poznamka}
+                          </div>
+                        )}
+                      </ApprovalDialogNote>
+                    )}
                   </ApprovalDialogValue>
                 </ApprovalDialogSection>
               )}
 
               {/* LP kód, název a zbývající budget */}
               {orderToApprove.financovani?.lp_kody && Array.isArray(orderToApprove.financovani.lp_kody) && orderToApprove.financovani.lp_kody.length > 0 && (
-                <ApprovalDialogSection>
+                <ApprovalDialogSection $fullWidth>
                   <ApprovalDialogLabel>Limitovaný příslib (LP)</ApprovalDialogLabel>
                   <ApprovalDialogValue>
                     {(() => {
@@ -16932,11 +17062,23 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                       
                       if (lpInfo.length > 0) {
                         return lpInfo.map((lp, idx) => (
-                          <div key={idx} style={{ marginBottom: idx < lpInfo.length - 1 ? '0.5rem' : '0' }}>
-                            <strong>{lp.kod}</strong> - {lp.nazev}<br />
-                            <span style={{ color: '#64748b', fontSize: '0.875rem' }}>
-                              Zbývající budget: {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'} Kč
-                            </span>
+                          <div key={idx} style={{ marginBottom: idx < lpInfo.length - 1 ? '0.75rem' : '0', paddingBottom: idx < lpInfo.length - 1 ? '0.75rem' : '0', borderBottom: idx < lpInfo.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                            <div style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>
+                              <strong>{lp.kod}</strong> — {lp.nazev}
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.875rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                              <span>
+                                <strong>Celkový limit:</strong> {lp.total_limit ? parseFloat(lp.total_limit).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'} Kč
+                              </span>
+                              <span>
+                                <strong>Zbývá:</strong> {lp.remaining_budget ? parseFloat(lp.remaining_budget).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'} Kč
+                              </span>
+                              {lp.total_limit && lp.remaining_budget && (
+                                <span>
+                                  <strong>Čerpání:</strong> {(parseFloat(lp.total_limit) - parseFloat(lp.remaining_budget)).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ));
                       } else {
@@ -16948,21 +17090,24 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               )}
 
               {/* Smlouva */}
-              {orderToApprove.cislo_smlouvy && (
-                <ApprovalDialogSection>
-                  <ApprovalDialogLabel>Číslo smlouvy</ApprovalDialogLabel>
+              {(orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy) && (
+                <ApprovalDialogSection $fullWidth>
+                  <ApprovalDialogLabel>Smlouva</ApprovalDialogLabel>
                   <ApprovalDialogValue>
-                    {orderToApprove.cislo_smlouvy}
-                    {orderToApprove.smlouva_poznamka && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#64748b' }}>
-                        Poznámka: {orderToApprove.smlouva_poznamka}
-                      </div>
+                    <div style={{ fontSize: '1rem' }}>
+                      <strong>Číslo:</strong> {orderToApprove.cislo_smlouvy || orderToApprove.financovani?.cislo_smlouvy}
+                    </div>
+                    {(orderToApprove.smlouva_poznamka || orderToApprove.financovani?.smlouva_poznamka) && (
+                      <ApprovalDialogNote>
+                        Poznámka: {orderToApprove.smlouva_poznamka || orderToApprove.financovani?.smlouva_poznamka}
+                      </ApprovalDialogNote>
                     )}
                   </ApprovalDialogValue>
                 </ApprovalDialogSection>
               )}
 
-              <ApprovalDialogSection>
+              {/* Poznámka - celý řádek */}
+              <ApprovalDialogSection $fullWidth>
                 <ApprovalDialogLabel>Poznámka ke schválení</ApprovalDialogLabel>
                 <ApprovalDialogTextarea
                   $hasError={!!approvalCommentError}
@@ -17061,9 +17206,9 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 workflowStates = [];
               }
               
-              // Schválení je možné jen ve stavech: ODESLANA_KE_SCHVALENI, CEKA_SE
-              // NIKOLI pro SCHVALENA nebo ZAMITNUTA (to už je hotovo)
-              const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+              // Schválení je možné ve stavech: ODESLANA_KE_SCHVALENI, CEKA_SE, SCHVALENA, ZAMITNUTA
+              // Admin/superadmin mohou znovu schvalovat i už schválené/zamítnuté objednávky
+              const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
               const hasAllowedState = workflowStates.some(state => {
                 const stateCode = typeof state === 'string' ? state : (state.kod_stavu || state.nazev_stavu || '');
                 return allowedStates.includes(stateCode.toUpperCase());
@@ -18062,6 +18207,10 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
 
       {/* Moderní Sponka helper - kontextová nápověda pro seznam objednávek */}
       {hasPermission('HELPER_VIEW') && <ModernHelper pageContext="orders" />}
+      
+      {/* ✅ Konec podmíněného zobrazení pro uživatele s oprávněními */}
+      </>
+      )}
     </>
   );
 };

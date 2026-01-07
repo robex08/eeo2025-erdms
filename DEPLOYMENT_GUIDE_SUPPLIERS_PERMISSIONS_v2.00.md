@@ -48,6 +48,13 @@
 - ✅ OrderForm25.js - SUPPLIER_* místo PHONEBOOK_* pro dodavatele
 - ✅ availableSections.js - menu permissions
 - ✅ Layout.js - "Administrace → Adresář" permissions
+
+### 🔧 Hierarchy System Fixes:
+- ✅ orderV2Endpoints.php - Enhanced error handling a fallback mechanismus
+- ✅ hierarchyOrderFilters.php - Oprava table name constants
+- ✅ Implementace robust error handling pro hierarchy filtering
+- ✅ Graceful degradation na role-based filtering
+- ✅ Comprehensive debug logging pro troubleshooting
 - ✅ **PHONEBOOK VISIBILITY FIX:**
   - ✅ ContactsPage.js - filtr podle `viditelny_v_tel_seznamu`
   - ✅ EmployeeManagement.js - přepnutí na `viditelny_v_tel_seznamu`
@@ -60,8 +67,13 @@
 - ✅ queries.php - přidán `viditelny_v_tel_seznamu` do SELECT
 - ✅ App.js - route /address-book permissions
 - ✅ AddressBookPage.js - podmíněné záložky podle práv
+- ✅ **HIERARCHY FIXES:**
+  - ✅ orderV2Endpoints.php - robust error handling a fallback na role-based filtering
+  - ✅ hierarchyOrderFilters.php - oprava table name constants (TBL_* → direct names)
+  - ✅ Comprehensive exception handling pro hierarchy system
+  - ✅ Debug logging pro troubleshooting hierarchy issues
 
-### 🔧 Backend změny:
+### 🔧 Backend Security:
 - ✅ handlers.php - `CONTACT_MANAGE_ALL` → `SUPPLIER_MANAGE`
 - ✅ ciselnikyHandlers.php - `handle_ciselniky_dodavatele_list()` - visibility filtering
 - ✅ searchHandlers.php - universal search visibility + inactive filtering
@@ -106,6 +118,9 @@ VZDY pouzij : /PHPAPI pro kontrolu api na beckaendu, db
 - [ ] **Test 12:** 💰 CASHBOOK - Ověřit podmíněnou validaci LP kódu podle nastavení pokladny
 - [ ] **Test 13:** 💰 CASHBOOK - Ověřit že výdaj bez LP kódu lze uložit když je LP volitelný
 - [ ] **Test 14:** 💰 CASHBOOK - Ověřit že výdaj bez LP kódu NELZE uložit když je LP povinný
+- [ ] **Test 15:** 🔧 HIERARCHY - Ověřit že objednávka 11569 je viditelná po filtraci
+- [ ] **Test 16:** 🔧 HIERARCHY - Test fallback mechanismu při vypnutí hierarchie
+- [ ] **Test 17:** 🔧 HIERARCHY - Kontrola error logů (nesmí obsahovat "Hierarchy filter failed")
 
 **Dokumentace testů:**
 ```
@@ -711,6 +726,110 @@ ORDER BY aktivni DESC;
 ```
 
 **Důvod:** Nový kód už nepoužívá `visible_in_phonebook` fallback - vše je na `viditelny_v_tel_seznamu`.
+
+---
+
+## 🔧 HIERARCHY SYSTEM FIXES (KRITICKÉ OPRAVY)
+
+⚠️ **POZOR:** Tyto opravy řeší kritický problém s hierarchie filtrem v objednávkách kde byly objednávky neviditelné po změně stavu.
+
+### 🎯 Problém:
+- Order 11569 se nezobrazoval po změně stavu na "CEKA_SE"
+- Hierarchy filter měl nedefinované table constants (TBL_*)
+- Chyběl robust error handling pro hierarchy system
+- Nebyl fallback mechanismus při selhání hierarchy
+
+### 🔧 Implementované opravy:
+
+#### 1. orderV2Endpoints.php
+```php
+// Přidáno robust error handling s fallback
+try {
+    $orders = applyHierarchyFilterToOrders($orders, $userId);
+} catch (Exception $e) {
+    // Graceful degradation na role-based filtering
+    error_log("Hierarchy filter failed: " . $e->getMessage());
+    $orders = applyRoleBasedFilterToOrders($orders, $userId);
+}
+```
+
+#### 2. hierarchyOrderFilters.php
+```php
+// Opraveny table name constants
+$query = "SELECT * FROM 25a_uzivatel_vztahy_organizace"; // místo TBL_*
+$query = "SELECT * FROM 25a_nastaveni_globalni"; // místo TBL_*
+
+// Přidáno comprehensive error handling
+try {
+    $relationships = getUserRelationshipsFromStructure($userId);
+} catch (Exception $e) {
+    error_log("Hierarchy getUserRelationships failed: " . $e->getMessage());
+    return []; // Vrať prázdný array pro graceful degradaci
+}
+```
+
+### ✅ Validace po deployi:
+
+```bash
+# Zkontrolovat hierarchy settings v databázi
+mysql -u [USER] -p eeo2025 -e "
+SELECT 
+    klic_nastaveni, 
+    hodnota_nastaveni 
+FROM 25a_nastaveni_globalni 
+WHERE klic_nastaveni LIKE 'hierarchy%';
+"
+
+# Očekávaný výsledek:
+# hierarchy_enabled = 1
+# hierarchy_profile_id = 12
+# hierarchy_logic = OR
+```
+
+```bash
+# Test order visibility pro uživatele 136 (příkazce order 11569)
+mysql -u [USER] -p eeo2025 -e "
+SELECT 
+    obj_id,
+    obj_cislo,
+    stav_workflow_kod,
+    prikazce_id,
+    aktivni
+FROM 25a_objednavky 
+WHERE obj_id = 11569;
+"
+
+# Očekávaný výsledek:
+# obj_id=11569, stav_workflow_kod=CEKA_SE, prikazce_id=136, aktivni=1
+```
+
+### 🔍 Monitoring a troubleshooting:
+
+```bash
+# Zkontrolovat error logy pro hierarchy issues
+tail -f /var/log/apache2/error.log | grep -i hierarchy
+
+# Debug hierarchy settings pomocí PHP
+php -r "
+include '/path/to/config.php';
+\$result = mysql_query('SELECT * FROM 25a_nastaveni_globalni WHERE klic_nastaveni LIKE \"hierarchy%\"');
+while(\$row = mysql_fetch_assoc(\$result)) {
+    echo \$row['klic_nastaveni'] . ': ' . \$row['hodnota_nastaveni'] . \"\n\";
+}
+"
+```
+
+### 📋 Post-deployment checklist:
+
+- [ ] Hierarchy enabled správně nastaveno (=1)
+- [ ] Order 11569 viditelný pro příkazce (userId 136)
+- [ ] Error logy neobsahují "Hierarchy filter failed" zprávy
+- [ ] Frontend zobrazuje správný počet objednávek (5 místo 3)
+- [ ] Status "Čeká se" obsahuje správný počet objednávek
+- [ ] Rollback plan připraven v případě problémů
+
+**Status oprav:** ☐ DEPLOYED  ☐ TESTED  ☐ VERIFIED  
+**Poznámky:** _________________
 
 ---
 

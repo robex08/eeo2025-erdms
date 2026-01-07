@@ -245,7 +245,13 @@ class OrderV2Handler {
         $result = array();
         foreach ($standardData as $key => $value) {
             if (!in_array($key, $authFields) && !in_array($key, $blacklistedFields)) {
-                $result[$key] = $value;
+                // 🔧 FIELD MAPPING: frontend → database column names
+                if ($key === 'schvalil_uzivatel_id') {
+                    // Frontend posílá schvalil_uzivatel_id, ale DB má schvalovatel_id
+                    $result['schvalovatel_id'] = $value;
+                } else {
+                    $result[$key] = $value;
+                }
             }
         }
         
@@ -421,11 +427,24 @@ class OrderV2Handler {
         
         foreach ($datetimeFields as $field) {
             if (isset($standardData[$field]) && $standardData[$field] !== null && $standardData[$field] !== '') {
-                // Try to parse ISO 8601 format back to MySQL datetime
-                $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $standardData[$field]);
+                // Try multiple ISO 8601 formats including milliseconds
+                $dt = false;
+                
+                // ISO format s millisekundami: 2026-01-06T23:02:35.125Z
+                if (!$dt) {
+                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s.v\Z', $standardData[$field]);
+                }
+                
+                // ISO format bez millisekundy: 2026-01-06T23:02:35Z
+                if (!$dt) {
+                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $standardData[$field]);
+                }
+                
+                // Standard MySQL format: 2026-01-06 23:02:35
                 if (!$dt) {
                     $dt = DateTime::createFromFormat('Y-m-d H:i:s', $standardData[$field]);
                 }
+                
                 // Pokud přišlo jen datum bez času (Y-m-d), přidej aktuální čas
                 if (!$dt) {
                     $dt = DateTime::createFromFormat('Y-m-d', $standardData[$field]);
@@ -435,11 +454,20 @@ class OrderV2Handler {
                         $dt->setTime($now->format('H'), $now->format('i'), $now->format('s'));
                     }
                 }
+                
                 if ($dt) {
+                    // Ensure Czech timezone for database
+                    $dt->setTimezone(new DateTimeZone('Europe/Prague'));
                     $result[$field] = $dt->format('Y-m-d H:i:s');
                 } else {
-                    // Pokud selže parsing, nech původní hodnotu
-                    $result[$field] = $standardData[$field];
+                    // Pokud selže všechen parsing, pokus o strtotime
+                    $timestamp = strtotime($standardData[$field]);
+                    if ($timestamp !== false) {
+                        $result[$field] = date('Y-m-d H:i:s', $timestamp);
+                    } else {
+                        // Last resort - set current timestamp
+                        $result[$field] = date('Y-m-d H:i:s');
+                    }
                 }
             }
         }
