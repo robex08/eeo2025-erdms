@@ -1584,7 +1584,8 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         $sql = "SELECT lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, lp.cislo_uctu, lp.nazev_uctu, lp.vyse_financniho_kryti, lp.platne_od, lp.platne_do, u.usek_zkr, u.usek_nazev 
                 FROM " . TBL_LP_MASTER . " lp 
                 LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id 
-                WHERE lp.cislo_lp IS NOT NULL";
+                WHERE lp.cislo_lp IS NOT NULL 
+                AND YEAR(lp.platne_od) = YEAR(CURRENT_DATE)";
 
         // Add filters dynamically
         if ($usekZkr !== null && $usekZkr !== '') {

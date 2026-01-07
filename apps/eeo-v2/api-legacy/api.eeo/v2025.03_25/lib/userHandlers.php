@@ -932,3 +932,151 @@ function handle_users_generate_temp_password($input, $config, $queries) {
         error_log("[Users] Exception in handle_users_generate_temp_password: " . $e->getMessage());
     }
 }
+
+/**
+ * Vygeneruje nové heslo a odešle ho uživateli emailem
+ * POST /api.eeo/auth/generate-and-send-password
+ * 
+ * @param array $input - user_id (int), template_id (int)
+ * @param array $config - DB konfigurace
+ * @param array $queries - nepoužito
+ */
+function handle_auth_generate_and_send_password($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $user_id = isset($input['user_id']) ? (int)$input['user_id'] : 0;
+    $template_id = isset($input['template_id']) ? (int)$input['template_id'] : null;
+    
+    // Autentizace
+    $token_data = verify_token_v2($request_username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+    
+    // Kontrola admin oprávnění (SUPERADMIN nebo ADMINISTRATOR)
+    if (!isset($token_data['is_admin']) || !$token_data['is_admin']) {
+        http_response_code(403);
+        echo json_encode(array('status' => 'error', 'err' => 'Nemáte oprávnění pro generování hesel'));
+        return;
+    }
+    
+    // Validace
+    if (!$user_id) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'err' => 'Není vybrán uživatel (user_id)'));
+        return;
+    }
+
+    if (!$template_id) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'err' => 'Není vybrána emailová šablona (template_id)'));
+        return;
+    }
+    
+    try {
+        $db = get_db($config);
+        
+        // Načíst šablonu podle ID
+        $template_sql = "SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE id = ? AND aktivni = 1 LIMIT 1";
+        $stmt = $db->prepare($template_sql);
+        $stmt->execute([$template_id]);
+        $template = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$template) {
+            throw new Exception('Emailová šablona nenalezena nebo není aktivní');
+        }
+        
+        // Načíst uživatele
+        $user_sql = "SELECT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za 
+                     FROM " . TBL_UZIVATELE . " u 
+                     WHERE u.id = ? AND u.aktivni = 1 LIMIT 1";
+        $stmt = $db->prepare($user_sql);
+        $stmt->execute([$user_id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            throw new Exception('Uživatel nenalezen nebo není aktivní');
+        }
+        
+        if (empty($user['email'])) {
+            throw new Exception('Uživatel nemá nastaven email');
+        }
+        
+        // Vygenerovat nové heslo
+        $temp_password = substr(str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%'), 0, 8);
+        $hashed_password = password_hash($temp_password, PASSWORD_DEFAULT);
+        
+        // Uložit nové heslo a nastavit vynucení změny
+        $update_sql = "UPDATE " . TBL_UZIVATELE . " 
+                       SET password_hash = ?, vynucena_zmena_hesla = 1 
+                       WHERE id = ?";
+        $stmt = $db->prepare($update_sql);
+        $stmt->execute([$hashed_password, $user_id]);
+        
+        // Sestavit celé jméno
+        $full_name = trim(
+            ($user['titul_pred'] ? $user['titul_pred'] . ' ' : '') . 
+            $user['jmeno'] . ' ' . 
+            $user['prijmeni'] . 
+            ($user['titul_za'] ? ', ' . $user['titul_za'] : '')
+        );
+        
+        // Připravit email
+        $email_subject = $template['email_predmet'];
+        $email_body = $template['email_telo'];
+        
+        // Nahradit placeholdery
+        $placeholders = array(
+            '{uzivatelske_jmeno}' => $user['username'],
+            '{docasne_heslo}' => $temp_password,
+            '{cele_jmeno}' => $full_name,
+            '{jmeno}' => $user['jmeno'],
+            '{prijmeni}' => $user['prijmeni'],
+            '{email}' => $user['email'],
+            '{prihlasovaci_url}' => 'https://erdms.zachranka.cz/eeo-v2/',
+            '{YEAR}' => date('Y')
+        );
+        
+        foreach ($placeholders as $placeholder => $value) {
+            $email_subject = str_replace($placeholder, $value, $email_subject);
+            $email_body = str_replace($placeholder, $value, $email_body);
+        }
+        
+        // Odeslat email
+        require_once __DIR__ . '/mail.php';
+        $email_result = eeo_mail_send($user['email'], $email_subject, $email_body, array('html' => true));
+        
+        if (!$email_result || !isset($email_result['ok']) || !$email_result['ok']) {
+            // Rollback - zrušit vynucení změny hesla
+            $rollback_sql = "UPDATE " . TBL_UZIVATELE . " 
+                             SET vynucena_zmena_hesla = 0 
+                             WHERE id = ?";
+            $stmt = $db->prepare($rollback_sql);
+            $stmt->execute([$user_id]);
+            
+            throw new Exception('Nepodařilo se odeslat email s novým heslem');
+        }
+        
+        // Úspěch
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Nové heslo bylo vygenerováno a odesláno na email uživatele',
+            'data' => array(
+                'user_id' => $user_id,
+                'username' => $user['username'],
+                'full_name' => $full_name,
+                'email' => $user['email']
+            )
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error', 
+            'err' => $e->getMessage()
+        ));
+        error_log("[Auth] Exception in handle_auth_generate_and_send_password: " . $e->getMessage());
+    }
+}

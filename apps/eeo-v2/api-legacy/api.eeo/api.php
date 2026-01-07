@@ -977,6 +977,17 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
+    
+    // === AUTH ENDPOINTS ===
+    case 'auth/generate-and-send-password':
+        require_once 'v2025.03_25/lib/userHandlers.php';
+        if ($request_method === 'POST') {
+            handle_auth_generate_and_send_password($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
 
     case 'limitovane_prisliby':
         if ($request_method === 'POST') {

@@ -6058,6 +6058,115 @@ const Orders25List = () => {
         return order;
       });
 
+      // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů
+      console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
+      console.log('👤 Uživatel:', { 
+        user_id, 
+        username, 
+        roles: userDetail?.roles?.map(r => r.kod_role || r.nazev_role).join(', ') || 'žádné role v userDetail',
+        hasAdminRole,
+        canViewAll: currentPermissions?.canViewAll,
+        hasOnlyOwn: currentPermissions?.hasOnlyOwn
+      });
+      console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
+      
+      // Analýza stavů objednávek
+      const stavyCount = finalOrders.reduce((acc, o) => {
+        const stav = o.stav_objednavky || 'NEZNAMY';
+        acc[stav] = (acc[stav] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('📊 Stavy objednávek:', stavyCount);
+      
+      // Analýza vlastnictví
+      const ownership = {
+        meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
+        jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
+        jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
+        jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id) || String(o.garant_uzivatel_id) === String(user_id)).length,
+        jsemObjednatel: finalOrders.filter(o => String(o.objednatel_id) === String(user_id)).length,
+        jsemFakturant: finalOrders.filter(o => String(o.fakturant_id) === String(user_id)).length,
+        potvrdilJsem: finalOrders.filter(o => String(o.potvrdil_vecnou_spravnost_id) === String(user_id)).length,
+        dokončilJsem: finalOrders.filter(o => String(o.dokoncil_id) === String(user_id)).length,
+        zveřejnilJsem: finalOrders.filter(o => String(o.zverejnil_id) === String(user_id)).length,
+        aktualizoválJsem: finalOrders.filter(o => String(o.uzivatel_akt_id) === String(user_id)).length,
+      };
+      console.log('👥 Vlastnictví objednávek:', ownership);
+      
+      // Kontrola visibility a aktivnosti
+      const visibility = {
+        aktivní: finalOrders.filter(o => o.aktivni === 1 || o.aktivni === '1').length,
+        neaktivní: finalOrders.filter(o => o.aktivni === 0 || o.aktivni === '0').length,
+        draft: finalOrders.filter(o => o.isDraft || o.isLocalConcept).length,
+      };
+      console.log('👁️ Viditelnost:', visibility);
+      
+      // 🔍 AKTIVNÍ FRONTEND FILTRY
+      console.groupCollapsed('🔧 Aktivní frontend filtry');
+      console.log('📌 Základní filtry:', {
+        statusFilter: statusFilter.length > 0 ? statusFilter : 'Všechny stavy',
+        userFilter: userFilter || 'Žádný filtr uživatele',
+        showOnlyMyOrders: showOnlyMyOrders ? 'ANO - jen moje' : 'NE - všechny',
+        showArchived: showArchived ? 'ANO - včetně archivovaných' : 'NE - bez archivovaných'
+      });
+      console.log('👥 Výběr osob:', {
+        selectedObjednatel: selectedObjednatel.length > 0 ? selectedObjednatel : 'Žádný',
+        selectedGarant: selectedGarant.length > 0 ? selectedGarant : 'Žádný',
+        selectedSchvalovatel: selectedSchvalovatel.length > 0 ? selectedSchvalovatel : 'Žádný',
+        selectedPrikazce: selectedPrikazce.length > 0 ? selectedPrikazce : 'Žádný'
+      });
+      console.log('💰 Částka:', {
+        amountFromFilter: amountFromFilter || 'Neomezeno',
+        amountToFilter: amountToFilter || 'Neomezeno'
+      });
+      console.log('📅 Datum:', {
+        dateFromFilter: dateFromFilter || 'Neomezeno',
+        dateToFilter: dateToFilter || 'Neomezeno'
+      });
+      console.log('📋 Ostatní:', {
+        filterMaBytZverejneno: filterMaBytZverejneno ? 'ANO' : 'NE',
+        filterByloZverejneno: filterByloZverejneno ? 'ANO' : 'NE',
+        selectedYear: selectedYear || 'Neomezeně'
+      });
+      
+      // Textové filtry z hlavičky tabulky (columnFilters)
+      const activeColumnFilters = Object.entries(columnFilters || {})
+        .filter(([_, value]) => value && value.trim() !== '')
+        .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+      
+      if (Object.keys(activeColumnFilters).length > 0) {
+        console.log('🔎 Textové filtry (hlavička tabulky):', activeColumnFilters);
+      } else {
+        console.log('🔎 Textové filtry (hlavička tabulky): Žádné');
+      }
+      console.groupEnd();
+      
+      // Možné důvody proč se objednávka NEZOBRAZÍ
+      console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
+      console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná) a showArchived=false');
+      console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
+      console.log('3. ❌ Frontend filtr: showOnlyMyOrders=true a uživatel není v žádné roli');
+      console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
+      console.log('5. ❌ Search filtr: Objednávka neodpovídá globalSearch dotazu');
+      console.log('6. ❌ Date range filtr: Objednávka je mimo dateFrom/dateTo rozsah');
+      console.log('7. ❌ Status filtr: Objednávka nemá stav ze seznamu statusFilter');
+      console.log('8. ❌ User filtr: Objednávka nemá vybraného objednatele/garanta/schvalovatele/příkazce');
+      console.log('9. ❌ Amount filtr: Objednávka není v rozsahu amountFrom/amountTo');
+      console.log('10. ❌ Registr filtr: Objednávka nemá odpovídající registr status');
+      console.groupEnd();
+      
+      // Ukázka prvních 3 objednávek
+      if (finalOrders.length > 0) {
+        console.groupCollapsed('📄 První 3 objednávky (ukázka)');
+        finalOrders.slice(0, 3).forEach((o, idx) => {
+          console.log(`${idx + 1}. #${o.id} | ${o.cislo_objednavky || 'N/A'} | ${o.stav_objednavky} | Příkazce: ${o.prikazce_id} | Aktivní: ${o.aktivni}`);
+        });
+        console.groupEnd();
+      }
+      
+      console.log('✅ Objednávky nastaveny do state - nyní se aplikují frontend filtry (tab, search, date range)');
+      console.groupEnd();
+
       setOrders(finalOrders);
 
       // Populate rawData for debug panel
@@ -9303,7 +9412,7 @@ const Orders25List = () => {
     draftManager.deleteDraft();
 
     //  KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
-    localStorage.removeItem('activeOrderEditId');
+    localStorage.removeItem(`activeOrderEditId_${user_id}`);
 
     // Zavři modal a vyčisti state
     setShowEditConfirmModal(false);

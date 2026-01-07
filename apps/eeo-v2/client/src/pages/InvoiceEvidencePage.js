@@ -2263,7 +2263,7 @@ export default function InvoiceEvidencePage() {
           
           // 2. 🌍 Global flags
           localStorage.removeItem('hadOriginalEntity');
-          localStorage.removeItem('activeOrderEditId');
+          localStorage.removeItem(`activeOrderEditId_${user_id}`);
           localStorage.removeItem('spisovka_active_dokument');
           
           // 3. 📎 Cache pro objednávky a smlouvy načtené v tomto formuláři
@@ -2713,7 +2713,7 @@ export default function InvoiceEvidencePage() {
     setSelectedType('order');
     setSmlouvaData(null);
     
-    localStorage.setItem('activeOrderEditId', order.id);
+    localStorage.setItem(`activeOrderEditId_${user_id}`, order.id);
     
     loadOrderData(order.id);
   };
