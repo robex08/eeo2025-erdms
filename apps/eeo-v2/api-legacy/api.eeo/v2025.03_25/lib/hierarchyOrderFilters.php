@@ -27,19 +27,28 @@
  * @return array Pole vztahů ve formátu kompatibilním se starým kódem
  */
 function getUserRelationshipsFromStructure($userId, $db) {
+    // 🔥 FIX: Použij přímo název tabulky místo konstanty
+    error_log("🔍 HIERARCHY: getUserRelationshipsFromStructure() START for userId=$userId");
+    
     // Načíst aktivní profil
-    $stmt = $db->prepare("SELECT id, structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE aktivni = 1 LIMIT 1");
+    $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
     $stmt->execute();
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$profile || empty($profile['structure_json'])) {
+        error_log("🔍 HIERARCHY: No active profile found or empty structure_json");
         return [];
     }
     
+    error_log("🔍 HIERARCHY: Found active profile id=" . $profile['id']);
+    
     $structure = json_decode($profile['structure_json'], true);
     if (!$structure || !isset($structure['nodes']) || !isset($structure['edges'])) {
+        error_log("🔍 HIERARCHY: Invalid structure_json format");
         return [];
     }
+    
+    error_log("🔍 HIERARCHY: Structure has " . count($structure['nodes']) . " nodes and " . count($structure['edges']) . " edges");
     
     // Najít user node
     $userNodeId = null;
@@ -51,16 +60,21 @@ function getUserRelationshipsFromStructure($userId, $db) {
     }
     
     if (!$userNodeId) {
+        error_log("🔍 HIERARCHY: User $userId not found in hierarchy structure");
         return [];
     }
     
+    error_log("🔍 HIERARCHY: User $userId found as node $userNodeId");
+    
     // Najít role uživatele
     $userRoles = [];
-    $stmt = $db->prepare("SELECT role_id FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id = :userId");
+    $stmt = $db->prepare("SELECT role_id FROM 25_uzivatele_role WHERE uzivatel_id = :userId");
     $stmt->execute(['userId' => $userId]);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $userRoles[] = $row['role_id'];
     }
+    
+    error_log("🔍 HIERARCHY: User $userId has " . count($userRoles) . " roles: " . implode(',', $userRoles));
     
     // Projít edges a najít vztahy uživatele
     $relationships = [];
@@ -150,52 +164,58 @@ function getUserRelationshipsFromStructure($userId, $db) {
 function getHierarchySettings($db) {
     error_log("🔍 HIERARCHY DEBUG: Loading settings from 25a_nastaveni_globalni");
     
-    // Načítání jednotlivých nastavení z key-value tabulky
-    $query = "
-        SELECT klic, hodnota
-        FROM " . TBL_NASTAVENI_GLOBALNI . "
-        WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id', 'hierarchy_logic')
-    ";
-    
-    try {
-        $stmt = $db->query($query);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        error_log("❌ HIERARCHY ERROR: Failed to load settings: " . $e->getMessage());
-        return [
-            'enabled' => false,
-            'profile_id' => null,
-            'logic' => 'OR'
-        ];
-    }
-    
+    // 🔥 FIX: Zkus najít nastavení v různých možných tabulkách
+    $possibleTables = ['25a_nastaveni_globalni', '25_nastaveni', 'nastaveni'];
     $settings = [
         'enabled' => false,
         'profile_id' => null,
         'logic' => 'OR'
     ];
     
-    foreach ($rows as $row) {
-        error_log("🔍 HIERARCHY DEBUG: Setting loaded - {$row['klic']} = {$row['hodnota']}");
-        switch ($row['klic']) {
-            case 'hierarchy_enabled':
-                $settings['enabled'] = (int)$row['hodnota'] === 1;
-                break;
-            case 'hierarchy_profile_id':
-                $settings['profile_id'] = ($row['hodnota'] && $row['hodnota'] !== 'NULL') 
-                    ? (int)$row['hodnota'] 
-                    : null;
-                break;
-            case 'hierarchy_logic':
-                $settings['logic'] = $row['hodnota'] ?? 'OR';
-                break;
+    foreach ($possibleTables as $tableName) {
+        try {
+            // Zkus načíst nastavení z této tabulky
+            $query = "
+                SELECT klic, hodnota
+                FROM {$tableName}
+                WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id', 'hierarchy_logic')
+            ";
+            
+            $stmt = $db->query($query);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (count($rows) > 0) {
+                error_log("🔍 HIERARCHY DEBUG: Settings found in table {$tableName}");
+                foreach ($rows as $row) {
+                    error_log("🔍 HIERARCHY DEBUG: Setting loaded - {$row['klic']} = {$row['hodnota']}");
+                    switch ($row['klic']) {
+                        case 'hierarchy_enabled':
+                            $settings['enabled'] = (int)$row['hodnota'] === 1;
+                            break;
+                        case 'hierarchy_profile_id':
+                            $settings['profile_id'] = ($row['hodnota'] && $row['hodnota'] !== 'NULL') 
+                                ? (int)$row['hodnota'] 
+                                : null;
+                            break;
+                        case 'hierarchy_logic':
+                            $settings['logic'] = $row['hodnota'] ?? 'OR';
+                            break;
+                    }
+                }
+                
+                error_log("✅ HIERARCHY DEBUG: Final settings - enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
+                          ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
+                          ", logic=" . $settings['logic']);
+                return $settings;
+            }
+        } catch (PDOException $e) {
+            error_log("⚠️ HIERARCHY DEBUG: Table {$tableName} not found or error: " . $e->getMessage());
+            continue;
         }
     }
     
-    error_log("✅ HIERARCHY DEBUG: Final settings - enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
-              ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
-              ", logic=" . $settings['logic']);
-    
+    // Žádná tabulka nenalezena nebo žádná data
+    error_log("❌ HIERARCHY DEBUG: No settings found in any table - hierarchy disabled");
     return $settings;
 }
 
@@ -210,12 +230,13 @@ function getHierarchySettings($db) {
 function isUserHierarchyImmune($userId, $db) {
     error_log("🔍 HIERARCHY DEBUG: Checking HIERARCHY_IMMUNE for user $userId");
     
+    // 🔥 FIX: Používej přímo názvy tabulek
     // Check práv přes role uživatele (HIERARCHY_IMMUNE je přiřazeno k rolím SUPERADMIN/ADMINISTRATOR)
     $queryRoles = "
         SELECT COUNT(*) as cnt
-        FROM " . TBL_UZIVATELE_ROLE . " ur
-        INNER JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
-        INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+        FROM 25_uzivatele_role ur
+        INNER JOIN 25_role_prava rp ON rp.role_id = ur.role_id
+        INNER JOIN 25_prava p ON p.id = rp.pravo_id
         WHERE ur.uzivatel_id = :userId
           AND p.kod_prava = 'HIERARCHY_IMMUNE'
           AND p.aktivni = 1
@@ -263,40 +284,42 @@ function applyHierarchyFilterToOrders($userId, $db) {
     error_log("   User ID: $userId");
     error_log("════════════════════════════════════════════════════════");
     
-    // 1. Načti nastavení hierarchie
-    $settings = getHierarchySettings($db);
-    
-    // 🔥 Ulož config do debug info
-    $HIERARCHY_DEBUG_INFO['config'] = array(
-        'enabled' => $settings['enabled'],
-        'profile_id' => $settings['profile_id'],
-        'logic' => $settings['logic']
-    );
-    error_log("📋 HIERARCHY CONFIG: enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
-              ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
-              ", logic=" . $settings['logic']);
-    
-    if (!$settings['enabled']) {
-        error_log("❌ HIERARCHY DISABLED - skipping filter");
-        $HIERARCHY_DEBUG_INFO['reason'] = 'disabled';
-        return null;
-    }
-    
-    if (!$settings['profile_id']) {
-        error_log("❌ NO PROFILE SELECTED - skipping filter");
-        $HIERARCHY_DEBUG_INFO['reason'] = 'no_profile';
-        return null;
-    }
-    
-    error_log("✅ Hierarchy ENABLED, profile=" . $settings['profile_id']);
-    
-    // 2. Check HIERARCHY_IMMUNE
-    if (isUserHierarchyImmune($userId, $db)) {
-        error_log("🛡️ User $userId is IMMUNE - skipping filter");
-        $HIERARCHY_DEBUG_INFO['immune'] = true;
-        $HIERARCHY_DEBUG_INFO['reason'] = 'user_immune';
-        return null;
-    }
+    // 🔥 POJISTKA: Odchytí všechny chyby a vrátí NULL pro fallback na role-based filtr
+    try {
+        // 1. Načti nastavení hierarchie
+        $settings = getHierarchySettings($db);
+        
+        // 🔥 Ulož config do debug info
+        $HIERARCHY_DEBUG_INFO['config'] = array(
+            'enabled' => $settings['enabled'],
+            'profile_id' => $settings['profile_id'],
+            'logic' => $settings['logic']
+        );
+        error_log("📋 HIERARCHY CONFIG: enabled=" . ($settings['enabled'] ? 'YES' : 'NO') . 
+                  ", profile_id=" . ($settings['profile_id'] ?? 'NULL') . 
+                  ", logic=" . $settings['logic']);
+        
+        if (!$settings['enabled']) {
+            error_log("❌ HIERARCHY DISABLED - skipping filter");
+            $HIERARCHY_DEBUG_INFO['reason'] = 'disabled';
+            return null;
+        }
+        
+        if (!$settings['profile_id']) {
+            error_log("❌ NO PROFILE SELECTED - skipping filter");
+            $HIERARCHY_DEBUG_INFO['reason'] = 'no_profile';
+            return null;
+        }
+        
+        error_log("✅ Hierarchy ENABLED, profile=" . $settings['profile_id']);
+        
+        // 2. Check HIERARCHY_IMMUNE
+        if (isUserHierarchyImmune($userId, $db)) {
+            error_log("🛡️ User $userId is IMMUNE - skipping filter");
+            $HIERARCHY_DEBUG_INFO['immune'] = true;
+            $HIERARCHY_DEBUG_INFO['reason'] = 'user_immune';
+            return null;
+        }
     
     error_log("✅ User is NOT immune - will apply hierarchy filter");
     
@@ -510,6 +533,19 @@ function applyHierarchyFilterToOrders($userId, $db) {
     error_log("════════════════════════════════════════════════════════");
     
     return $whereClause;
+    
+    } catch (Exception $e) {
+        // 🔥 POJISTKA: Při jakékoliv chybě vrať NULL → použije se role-based filtr
+        error_log("❌ HIERARCHY CRITICAL ERROR: " . $e->getMessage());
+        error_log("🔄 FALLBACK: Using role-based filter instead of hierarchy");
+        
+        $HIERARCHY_DEBUG_INFO['error'] = $e->getMessage();
+        $HIERARCHY_DEBUG_INFO['reason'] = 'exception_fallback';
+        $HIERARCHY_DEBUG_INFO['filter_generated'] = false;
+        $HIERARCHY_DEBUG_INFO['filter_preview'] = 'NULL - exception fallback to role-based';
+        
+        return null;
+    }
 }
 
 /**

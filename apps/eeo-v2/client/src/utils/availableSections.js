@@ -16,6 +16,23 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
   );
   
+  // ✅ PRIORITA 1: OBJEDNÁVKY - jakékoliv ORDER oprávnění (většina uživatelů)
+  const hasOrderPermission = hasPermission && (
+    hasPermission('ORDER_MANAGE') ||
+    hasPermission('ORDER_2025') ||
+    hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_DELETE_ALL') ||
+    hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
+  );
+  
+  if (hasOrderPermission) {
+    sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
+  }
+  
+  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
+  if (isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) {
+    sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
+  }
+  
   // ADRESÁŘ - SUPPLIER_MANAGE nebo SUPPLIER_VIEW/EDIT/CREATE
   if (hasPermission && (hasPermission('SUPPLIER_MANAGE') || hasPermission('SUPPLIER_VIEW') || 
       hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_CREATE'))) {
@@ -93,16 +110,6 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   
   // NÁPOVĚDA - vždy dostupná pro všechny přihlášené
   sections.push({ value: 'help', label: 'Nápověda' });
-  
-  // OBJEDNÁVKY - ORDER_MANAGE nebo ORDER_2025
-  if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025'))) {
-    sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
-  }
-  
-  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW
-  if (isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) {
-    sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
-  }
   
   // UŽIVATELÉ - USER_VIEW nebo USER_MANAGE
   if (hasPermission && (hasPermission('USER_VIEW') || hasPermission('USER_MANAGE'))) {

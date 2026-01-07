@@ -171,17 +171,24 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
       // Whitelist of routes that should be saved for restoration
       const validRoutes = ['/order-form-25', '/orders25-list', '/users', '/dictionaries', '/profile', '/address-book', '/change-password', '/statistics', '/orders', '/debug', '/cash-book'];
 
-      if (validRoutes.includes(location.pathname)) {
-        localStorage.setItem('app_lastRoute', location.pathname);
+      if (validRoutes.includes(location.pathname) && userId) {
+        // Per-user localStorage key
+        localStorage.setItem(`app_lastRoute_user_${userId}`, location.pathname);
       }
     }
-  }, [isLoggedIn, location.pathname]);
+  }, [isLoggedIn, location.pathname, userId]);
 
   // Migrate old route paths
   useEffect(() => {
-    const lastRoute = localStorage.getItem('app_lastRoute');
-    if (lastRoute === '/statistics-new') {
-      localStorage.setItem('app_lastRoute', '/statistics');
+    // Cleanup: Odstranit starý globální klíč (migrace na per-user)
+    const oldGlobalRoute = localStorage.getItem('app_lastRoute');
+    if (oldGlobalRoute) {
+      localStorage.removeItem('app_lastRoute');
+    }
+    
+    const lastRoute = userId ? localStorage.getItem(`app_lastRoute_user_${userId}`) : null;
+    if (lastRoute === '/statistics-new' && userId) {
+      localStorage.setItem(`app_lastRoute_user_${userId}`, '/statistics');
     }
   }, []);
 
@@ -234,11 +241,11 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
               targetRoute = sectionMap[targetSection] || '/profile';
             }
             
-            // ✅ Fallback pokud route není v mapě
-            if (!targetRoute) {
-              console.warn('⚠️ Unknown section in userSettings:', targetSection);
+            // ✅ Fallback pokud route není v mapě nebo sekce neexistuje
+            if (!targetRoute || !targetSection) {
+              console.warn('⚠️ Unknown or missing section in userSettings:', targetSection);
               targetSection = getFirstAvailableSection(hasPermission, userDetail);
-              targetRoute = sectionMap[targetSection] || '/orders25-list';
+              targetRoute = sectionMap[targetSection] || '/profile';
             }
             
             navigate(targetRoute, { replace: true });
@@ -249,8 +256,8 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
         console.warn('⚠️ Chyba při načítání výchozí sekce:', error);
       }
       
-      // Fallback 1: lastRoute (pro případ kdy userSettings není nastaveno)
-      const lastRoute = localStorage.getItem('app_lastRoute');
+      // Fallback 1: lastRoute per-user (pro případ kdy userSettings není nastaveno)
+      const lastRoute = userId ? localStorage.getItem(`app_lastRoute_user_${userId}`) : null;
       if (lastRoute && lastRoute !== '/orders-list-new') {
         navigate(lastRoute, { replace: true });
         return;
@@ -575,7 +582,11 @@ function App() {
 
                   {isLoggedIn && <Route path="/orders" element={<Orders />} />}
 
-                  {isLoggedIn && <Route path="/orders25-list" element={<Orders25List />} />}
+                  {isLoggedIn && hasPermission && (
+                    hasPermission('ORDER_MANAGE') ||
+                    hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_DELETE_ALL') ||
+                    hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
+                  ) && <Route path="/orders25-list" element={<Orders25List />} />}
                   {isLoggedIn && <Route path="/invoices25-list" element={<Invoices25List />} />}
                   {isLoggedIn && <Route path="/invoice-evidence/:orderId?" element={<InvoiceEvidencePage />} />}
                   {isLoggedIn && <Route path="/order-form-25" element={<OrderForm25 />} />}
@@ -600,8 +611,12 @@ function App() {
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                   {isLoggedIn && (
-                    hasAdminRole && hasAdminRole() ||
-                    (hasPermission && (hasPermission('SUPPLIER_MANAGE') || hasPermission('PHONEBOOK_MANAGE')))
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && (
+                      hasPermission('SUPPLIER_MANAGE') || hasPermission('SUPPLIER_VIEW') || 
+                      hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_CREATE') ||
+                      hasPermission('PHONEBOOK_MANAGE')
+                    ))
                   ) && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}

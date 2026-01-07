@@ -6569,8 +6569,12 @@ function OrderForm25() {
   // Kontrola rolí pro speciální oprávnění - MUSÍ BÝT PŘED použitím!
   const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
   const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
+  const isPrikazce = userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE');
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
   const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
+
+  // 🆕 Rozšířená logika schvalování podle zadání - zahrnout role PRIKAZCE, SUPERADMIN, ADMINISTRATOR
+  const canViewApprovalSection = canApproveOrders || canManageOrders || isPrikazce || isSuperAdmin || isAdmin;
 
   // 🎯 Filtrované LP kódy podle úseku vybraného příkazce a platnosti
   // MUSÍ být AŽ PO definici isSuperAdmin a approvers!
@@ -6788,8 +6792,31 @@ function OrderForm25() {
 
   // ✅ CHECKBOXY "Stav schválení" - VŽDY odemčené ve FÁZI 2, zamčené až ve FÁZI 3+
   // 🏛️ ARCHIVOVANÉ: Vždy odemčené (isArchived = false)
+  // 🔑 SPECIÁLNÍ ROLE: Pro PRIKAZCE, ADMINISTRATOR, SUPERADMIN a příkazce objednávky zůstávají checkboxy aktivní i při zamítnutí VE FÁZI SCHVALOVÁNÍ
   // Toto je aktivní část workflow ve FÁZI 2 (uživatel musí zaškrtnout Schváleno/Neschváleno/Čeká se)
-  const shouldLockSchvaleniCheckboxes = !isArchived && currentPhase >= 3 && !workflowManager.isSectionUnlocked('phase2');
+  const shouldLockSchvaleniCheckboxes = (() => {
+    // Základní kontrola - archivované objednávky a fáze
+    if (isArchived || (currentPhase >= 3 && !workflowManager.isSectionUnlocked('phase2'))) {
+      // Speciální oprávnění POUZE VE FÁZI SCHVALOVÁNÍ (2-3) - mohou schvalovat i zamítnuté objednávky
+      if (currentPhase === 2 || currentPhase === 3) {
+        const hasGeneralRole = userDetail?.roles?.some(role => 
+          role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+        );
+        const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
+        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder;
+        const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
+        
+        // Pokud má uživatel speciální oprávnění a objednávka je zamítnuta VE FÁZI SCHVALOVÁNÍ, nechej checkboxy aktivní
+        if (hasSpecialApprovalRights && isRejectedOrder) {
+          return false; // ODEMČENO - může měnit schválení
+        }
+      }
+      
+      return true; // ZAMČENO - standardní behavior
+    }
+    
+    return false; // ODEMČENO - standardní behavior ve fázi 2
+  })();
 
   // ✅ Financování je FÁZE 1-2 (samostatná sekce)
   const financovaniState = allSectionStates.financovani;
@@ -19155,8 +19182,17 @@ function OrderForm25() {
             })()}
 
             {/* Řádek s fází a akcemi NEBO zelený info box pro dokončenou objednávku NEBO červený pro zamítnutou NEBO oranžový pro stornovanou */}
-            {isWorkflowRejected ? (
-              // 🔴 Červený info box pro zamítnutou objednávku
+            {isWorkflowRejected && !(
+              // Kontrola POUZE VE FÁZI SCHVALOVÁNÍ (2-3) - v jiných fázích standardní chování
+              (currentPhase === 2 || currentPhase === 3) && (
+                (userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE')) ||  // Obecná role PRIKAZCE
+                (userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN')) || // Obecná role SUPERADMIN  
+                (userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR')) || // Obecná role ADMINISTRATOR
+                (parseInt(formData.prikazce_id, 10) === user_id) // NEBO je příkazcem této objednávky
+              )
+            ) ? (
+              // 🔴 Červený info box pro zamítnutou objednávku - SKRYTÝ pro speciální role a příkazce objednávky
+              // Pro speciální role a příkazce objednávky se nezobrazuje červený box, ale checkboxy schvalování zůstávají aktivní
               <div style={{
                 padding: '1rem 1.5rem',
                 marginTop: '1rem',
@@ -19332,8 +19368,16 @@ function OrderForm25() {
                   )}
                 </div>
               </div>
-            ) : isWorkflowCompleted ? (
-              // 🔒 Zelený info box pro dokončenou objednávku
+            ) : isWorkflowCompleted && !(
+              // Pro zamítnuté objednávky VE FÁZI SCHVALOVÁNÍ - SKRÝT zelený box u speciálních rolí
+              isWorkflowRejected && (currentPhase === 2 || currentPhase === 3) && (
+                (userDetail?.roles?.some(role => 
+                  role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                )) ||
+                (parseInt(formData.prikazce_id, 10) === user_id)
+              )
+            ) ? (
+              // 🔒 Zelený info box pro dokončenou objednávku - SKRYTÝ pro zamítnuté objednávky u speciálních rolí
               <div style={{
                 padding: '1rem 1.5rem',
                 marginTop: '1rem',
@@ -19566,14 +19610,30 @@ function OrderForm25() {
                 <ActionButton
                   className="save-btn"
                   onClick={handleSaveOrder}
-                  disabled={
-                    isSaving ||
-                    showSaveProgress ||
-                    !canSaveOrder ||
-                    (isWorkflowCompleted && !canUnlockAnything) ||
-                    isLoadingEvCislo ||  // 🆕 ŘEŠENÍ #1: Blokovat během loading
-                    !isValidEvCislo(formData.ev_cislo)  // 🆕 ŘEŠENÍ #3: Blokovat pokud není platné
-                  }
+                  disabled={(() => {
+                    // Základní blokovací podmínky
+                    if (isSaving || showSaveProgress || !canSaveOrder || isLoadingEvCislo || !isValidEvCislo(formData.ev_cislo)) {
+                      return true;
+                    }
+                    
+                    // Pro speciální role ve fázi schvalování (2-3) - povolit uložit i u zamítnutých
+                    if (isWorkflowCompleted && (currentPhase === 2 || currentPhase === 3)) {
+                      const hasGeneralRole = userDetail?.roles?.some(role => 
+                        role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                      );
+                      const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
+                      const hasSpecialRights = hasGeneralRole || isPrikazceOfOrder;
+                      const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
+                      
+                      // Pokud má speciální práva a je to zamítnutá objednávka ve fázi schvalování, povolit uložit
+                      if (hasSpecialRights && isRejectedOrder) {
+                        return false; // POVOLIT uložit
+                      }
+                    }
+                    
+                    // Standardní logika - dokončené objednávky blokovat (mimo výše uvedené výjimky)
+                    return isWorkflowCompleted && !canUnlockAnything;
+                  })()}
                   title={
                     isLoadingEvCislo
                       ? 'Načítá se evidenční číslo...'
@@ -20449,13 +20509,13 @@ function OrderForm25() {
               {/* 🔧 Sekce STAV SCHVÁLENÍ se zobrazí když:
                   1. Objednávka je uložena v DB (má ID)
                   2. Workflow NENÍ ve stavu NOVA (tzn. má jiný stav než nová objednávka)
-                  3. Uživatel má oprávnění ke schvalování (admin nebo ORDER_APPROVAL role)
+                  3. Uživatel má oprávnění ke schvalování nebo je v rolích PRIKAZCE, SUPERADMIN, ADMINISTRATOR
 
                   Zobrazuje se pro stavy: CEKA_SE, ZAMITNUTO, SCHVALENO, ODESLAN_KE_SCHVALENI a další
                   Skrývá se pouze pro stav NOVA nebo pokud uživatel nemá oprávnění */}
               {!!formData.id &&
                !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
-               (canApproveOrders || canManageOrders) && (
+               canViewApprovalSection && (
                 <>
                   {/* Šedivá oddělovací linka NAD celou sekcí schválení */}
                   <div style={{
