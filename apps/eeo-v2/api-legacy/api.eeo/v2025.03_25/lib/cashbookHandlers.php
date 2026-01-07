@@ -162,11 +162,12 @@ function handle_cashbook_get_post($config, $input) {
             $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($assignment && $assignment['platne_od']) {
-                // Vytvořit datum prvního dne požadovaného měsíce
-                $requestedMonthStart = sprintf('%04d-%02d-01', $book['rok'], $book['mesic']);
+                // Vytvořit datum posledního dne požadovaného měsíce
+                $requestedMonthEnd = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $book['rok'], $book['mesic'])));
                 
-                // Pokud je požadovaný měsíc před datem přiřazení, zamítnout
-                if ($requestedMonthStart < $assignment['platne_od']) {
+                // Pokud je celý požadovaný měsíc před datem přiřazení, zamítnout
+                // (např. měsíc končí 2026-01-31, přiřazení od 2026-02-01 → zamítnout)
+                if ($requestedMonthEnd < $assignment['platne_od']) {
                     return api_error(403, 'Nemáte oprávnění k této pokladně v daném období. Pokladna vám byla přiřazena až od ' . date('j.n.Y', strtotime($assignment['platne_od'])));
                 }
             }
