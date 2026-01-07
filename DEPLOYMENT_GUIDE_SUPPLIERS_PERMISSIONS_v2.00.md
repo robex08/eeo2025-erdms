@@ -41,6 +41,9 @@
 - ✅ Vytvořeny nové permissions: `SUPPLIER_CREATE`, `SUPPLIER_DELETE`, `PHONEBOOK_MANAGE`
 - ✅ Přejmenováno: `SUPPLIER_READ` → `SUPPLIER_VIEW`
 - ✅ Migrace 20 přiřazení rolí z CONTACT_* na SUPPLIER_*
+- ✅ **NOVÉ (7. ledna 2026):** Přidáno právo `FILE_REGISTRY_MANAGE` pro správu spisovky/file registry
+  - Umožňuje přístup k "Spisovka Inbox" panelu v zaevidování faktury
+  - Alternativa k ADMIN právu pro správu spisové služby
 
 ### 🎨 Frontend změny:
 - ✅ ProfilePage.js - refactoring permissions
@@ -115,6 +118,41 @@
   - `DOCX-VYPOCITANE-POLOZKY.md`
   - `BACKEND-TODO-VYPOCITANE-PROMENNE.md`
 
+### 💰 CASHBOOK - Validace příjem/výdaj a LP kód povinnost (7. ledna 2026):
+- ✅ **FE - CashBookPage.js** - validace povinnosti příjmu nebo výdaje:
+  - Přidána kontrola že musí být vyplněn buď příjem NEBO výdaj (ne oba současně)
+  - Červené zvýraznění nevalidních polí (červený border + světle červené pozadí)
+  - Error toast s jasnou chybovou hláškou
+  - Validation error state ukládá které pole je nevalidní
+- ✅ **FE - ConfirmDialog.js** - oprava FontAwesome ikony:
+  - Změněno z `icon="trash"` (string) na `icon={faTrash}` (objekt)
+  - Odstraněna chyba "Could not find icon {prefix: 'fas', iconName: 'trash'}"
+- ✅ **BE - CashbookService.php** - backend validace:
+  - Kontrola že je uvedena částka příjmu NEBO výdaje
+  - Kontrola že nejsou uvedeny obě současně
+  - Podmíněná validace LP kódu podle nastavení pokladny (`lp_kod_povinny`)
+
+### 📖 FILE REGISTRY PERMISSION (7. ledna 2026):
+- ✅ **Nové právo:** `FILE_REGISTRY_MANAGE` (ID 148, anglický název pro spisovku)
+- ✅ **FE - InvoiceEvidencePage.js** - přejmenování práva:
+  - Line 2509: `hasPermission('FILE_REGISTRY_MANAGE')` místo `SPISOVKA_MANAGE`
+  - Line 4177: `hasPermission('FILE_REGISTRY_MANAGE')` místo `SPISOVKA_MANAGE`  
+  - Line 6174: `hasPermission('FILE_REGISTRY_MANAGE')` místo `SPISOVKA_MANAGE`
+- ✅ **Umožňuje:**
+  - Přístup k "Spisovka Inbox" panelu v zaevidování faktury
+  - Alternativa k ADMIN právu pro správu spisové služby
+  - Drag & drop faktur do spisovky
+  - Zobrazení posledních 5 záznamů a dnešního počtu
+
+### 🏦 PRODUKČNÍ LP KÓDY - Očekávaná data (7. ledna 2026):
+⚠️ **DŮLEŽITÉ:** V produkci se očekává že již existuje LP kód:
+- **Kód:** `LPKP - FINKP`
+- **Popis:** Limitovaný přísliv - Finanční kontrola pokladny
+- **Použití:** Pro pokladní knihy a finanční operace
+- **Tabulka:** `25_limitovane_prisliby`
+- **Validace:** Při migraci zkontrolovat přítomnost tohoto LP kódu
+- **Fallback:** Pokud neexistuje, vytvořit nebo použít alternativní LP kód dle instrukcí správce
+
 ---
 
 ## 🗓️ DEPLOYMENT CHECKLIST
@@ -145,6 +183,11 @@ VZDY pouzij : /PHPAPI pro kontrolu api na beckaendu, db
 - [ ] **Test 19:** 📄 DOCX - Ověřit že DPH se zobrazuje jako `8 157,02 Kč` (ne jako datum)
 - [ ] **Test 20:** 📄 DOCX - Ověřit že předmět objednávky se zobrazuje beze změny (např. "DEV: Test 02")
 - [ ] **Test 21:** 📄 DOCX - Ověřit větší částky (nad 100 000 Kč) - správné tisícové oddělovače
+- [ ] **Test 22:** 📖 FILE REGISTRY - Ověřit přístup k "Spisovka Inbox" panelu s FILE_REGISTRY_MANAGE právem
+- [ ] **Test 23:** 📖 FILE REGISTRY - Ověřit že ikona spisovky se zobrazuje v header actions
+- [ ] **Test 24:** 📖 FILE REGISTRY - Ověřit že běžný user bez FILE_REGISTRY_MANAGE práva nevidí ikonu
+- [ ] **Test 25:** 💰 CASHBOOK - Ověřit validaci příjem/výdaj s červeným zvýrazněním
+- [ ] **Test 26:** 💰 CASHBOOK - Ověřit že prázdný řádek nelze uložit (toast error)
 
 **Dokumentace testů:**
 ```
@@ -160,6 +203,15 @@ Status: ☐ PASS  ☐ FAIL  ☐ NEED REVIEW
 
 **Datum:** Den před deployem  
 **Prostředí:** PRODUCTION
+
+- [ ] **Pre-check 1:** Ověřit existenci LP kódu `LPKP - FINKP` v produkci
+  ```sql
+  SELECT cislo_lp, popis, aktivni 
+  FROM 25_limitovane_prisliby 
+  WHERE cislo_lp LIKE 'LPKP%' OR cislo_lp LIKE '%FINKP%';
+  ```
+  **Očekávaný výsledek:** Minimálně 1 záznam s LP kódem pro finanční kontrolu pokladny  
+  **Pokud neexistuje:** Kontaktovat správce - může být nutné vytvořit nebo použít alternativní LP
 
 - [ ] **Backup 1:** Full dump produkční DB `eeo2025`
   ```bash
@@ -243,19 +295,20 @@ GROUP BY visible_in_phonebook;
 
 ```sql
 -- Kontrola před
-SELECT COUNT(*) FROM 25_prava WHERE kod_prava LIKE 'SUPPLIER_%' OR kod_prava LIKE 'PHONEBOOK_%';
+SELECT COUNT(*) FROM 25_prava WHERE kod_prava LIKE 'SUPPLIER_%' OR kod_prava LIKE 'PHONEBOOK_%' OR kod_prava = 'FILE_REGISTRY_MANAGE';
 
 -- Migrace
 INSERT INTO 25_prava (kod_prava, popis, aktivni) VALUES 
 ('SUPPLIER_CREATE', 'Oprávnění k vytváření nových dodavatelů', 1),
 ('SUPPLIER_DELETE', 'Oprávnění k mazání dodavatelů', 1),
-('PHONEBOOK_MANAGE', 'Plný přístup k telefonnímu seznamu zaměstnanců (všechny operace)', 1)
+('PHONEBOOK_MANAGE', 'Plný přístup k telefonnímu seznamu zaměstnanců (všechny operace)', 1),
+('FILE_REGISTRY_MANAGE', 'Správa spisové služby / file registry (přístup k spisovka inbox)', 1)
 ON DUPLICATE KEY UPDATE popis=VALUES(popis);
 
 -- Validace
 SELECT id, kod_prava, popis, aktivni 
 FROM 25_prava 
-WHERE kod_prava IN ('SUPPLIER_CREATE', 'SUPPLIER_DELETE', 'PHONEBOOK_MANAGE');
+WHERE kod_prava IN ('SUPPLIER_CREATE', 'SUPPLIER_DELETE', 'PHONEBOOK_MANAGE', 'FILE_REGISTRY_MANAGE');
 ```
 
 **Status:** ☐ DONE  ☐ FAILED  ☐ ROLLBACK NEEDED  

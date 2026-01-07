@@ -798,16 +798,17 @@ const CurrencyInputWrapper = styled.div`
 
 const EditableInput = styled.input`
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${props => props.$hasError ? '#dc2626' : '#d1d5db'};
   border-radius: 4px;
   padding: 0.5rem;
   font-size: 0.875rem;
   transition: all 0.2s ease;
+  background: ${props => props.$hasError ? 'rgba(220, 38, 38, 0.05)' : 'white'};
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: ${props => props.$hasError ? '#dc2626' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(220, 38, 38, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
   }
 
   &.date-input {
@@ -904,7 +905,7 @@ const AddRowButton = styled.button`
 // CURRENCY INPUT COMPONENT - Zachovává pozici kurzoru při psaní
 // =============================================================================
 
-function CurrencyInput({ value, onChange, onKeyDown, onBlur, placeholder = '0,00', disabled = false }) {
+function CurrencyInput({ value, onChange, onKeyDown, onBlur, placeholder = '0,00', disabled = false, hasError = false }) {
   const inputRef = useRef(null);
   const [localValue, setLocalValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -980,6 +981,7 @@ function CurrencyInput({ value, onChange, onKeyDown, onBlur, placeholder = '0,00
         onBlur={handleBlurLocal}
         onKeyDown={handleKeyDownLocal}
         disabled={disabled}
+        $hasError={hasError}
         className="amount-input"
       />
     </CurrencyInputWrapper>
@@ -1028,6 +1030,9 @@ const CashBookPage = () => {
   const [reopenMonthDialogOpen, setReopenMonthDialogOpen] = useState(false);
   const [unlockBookDialogOpen, setUnlockBookDialogOpen] = useState(false);
   const [retroactiveCreationBlockedDialogOpen, setRetroactiveCreationBlockedDialogOpen] = useState(false);
+  
+  // 🆕 State pro validation errors (červené zvýraznění)
+  const [validationErrors, setValidationErrors] = useState({}); // { entryId: { income: true, expense: true, lpCode: true } }
 
   // Stav pokladní knihy - VŠECHNY HOOKS MUSÍ BÝT NA ZAČÁTKU
   // ✅ FIX: Prázdné pole - data se načtou z DB nebo localStorage v useEffect
@@ -1073,6 +1078,9 @@ const CashBookPage = () => {
   // 🆕 PREVIOUS MONTH WARNING: Varování pokud předchozí měsíc není uzavřený
   const [showPreviousMonthWarning, setShowPreviousMonthWarning] = useState(false);
   const [syncConflicts, setSyncConflicts] = useState([]); // Pole konfliktů ke zobrazení
+  
+  // 🆕 ERROR STATE: Zobrazí se místo tabulky pokud uživatel nemá přístup
+  const [accessError, setAccessError] = useState(null); // { type: 'no_permission' | 'no_assignment' | 'other', message: 'text' }
 
   // Získat lokalitu podle přihlášeného uživatele
   const getUserLocation = () => {
@@ -1322,10 +1330,26 @@ const CashBookPage = () => {
     } catch (error) {
       console.error('❌ Chyba při zajištění existence knihy:', error);
 
-      // ✅ Speciální zpracování chyby - uživatel nemá přiřazení
+      // ✅ Speciální zpracování chyb s nastavením accessError místo jen toastu
       if (error.message === 'NO_ASSIGNMENT') {
+        setAccessError({
+          type: 'no_assignment',
+          message: 'Bohužel Vám pokladní kniha nebyla přidělena. Kontaktujte správce.'
+        });
         showToast('Bohužel Vám pokladní kniha nebyla přidělena. Kontaktujte správce.', 'error');
         // Nastavit prázdný stav
+        setCashBookEntries([]);
+        setCurrentBookId(null);
+        return null;
+      }
+      
+      // ✅ Zpracování 403 Forbidden - nemá oprávnění
+      if (error.message && error.message.includes('Nemáte oprávnění')) {
+        setAccessError({
+          type: 'no_permission',
+          message: error.message
+        });
+        showToast(error.message, 'error');
         setCashBookEntries([]);
         setCurrentBookId(null);
         return null;
@@ -1446,6 +1470,9 @@ const CashBookPage = () => {
 
     const loadDataFromDB = async () => {
       try {
+        // Reset error state při úspěšném načtení
+        setAccessError(null);
+        
         // 1. Zajistit existenci knihy v DB (nebo vytvořit novou)
         const result = await ensureBookExists();
 
@@ -2499,6 +2526,36 @@ const CashBookPage = () => {
     const editedEntry = cashBookEntries.find(e => e.id === id);
     if (!editedEntry) return;
 
+    // ✅ VALIDACE PŘÍJEM/VÝDAJ: Musí být vyplněn buď příjem nebo výdaj
+    const hasIncome = editedEntry.income && editedEntry.income > 0;
+    const hasExpense = editedEntry.expense && editedEntry.expense > 0;
+    const hasDetailItems = editedEntry.detailItems && editedEntry.detailItems.length > 0;
+    
+    if (!hasIncome && !hasExpense) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [id]: { income: true, expense: true }
+      }));
+      showToast('⚠ Musí být uvedena částka příjmu nebo výdaje!', 'error');
+      return; // Zabránit uložení
+    }
+    
+    if (hasIncome && hasExpense) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [id]: { income: true, expense: true }
+      }));
+      showToast('⚠ Nelze uvést zároveň příjem i výdaj!', 'error');
+      return; // Zabránit uložení
+    }
+    
+    // Vymazat validation errors pokud validace prošla
+    setValidationErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[id];
+      return newErrors;
+    });
+
     // ✅ VALIDACE DATUMU: Zkontrolovat, zda je datum v rámci měsíce pokladní knihy
     if (editedEntry.date) {
       const entryDate = new Date(editedEntry.date);
@@ -2515,9 +2572,6 @@ const CashBookPage = () => {
     }
 
     // ✅ VALIDACE LP KÓDU: U výdajů je LP kód povinný POUZE pokud pokladna má lp_kod_povinny = 1
-    const hasExpense = editedEntry.expense && editedEntry.expense > 0;
-    const hasDetailItems = editedEntry.detailItems && editedEntry.detailItems.length > 0;
-    
     if (hasExpense && lpKodPovinny && !hasDetailItems && !editedEntry.lpCode) {
       showToast('⚠ LP kód je povinný u výdajů! Prosím vyberte LP kód ze seznamu.', 'error');
       return; // Zabránit uložení
@@ -2564,8 +2618,7 @@ const CashBookPage = () => {
 
     // ✅ VALIDACE: Zkontrolovat, jestli prefix čísla dokladu odpovídá typu (příjem/výdaj)
     let documentNumber = editedEntry.documentNumber;
-    const hasIncome = editedEntry.income && editedEntry.income > 0;
-    // hasExpense už je deklarován výše
+    // hasIncome a hasExpense už jsou deklarované výše (řádek ~2523)
     let typeChanged = false;
 
     // 🆕 Pokud nemá číslo dokladu a má příjem/výdaj, vygenerovat nové číslo
@@ -3555,6 +3608,45 @@ const CashBookPage = () => {
     );
   }
 
+  // 🆕 ACCESS ERROR STATE: Zobrazit pokud došlo k chybě při načítání (403, no_assignment atd.)
+  if (accessError) {
+    return (
+      <PageContainer>
+        <Header>
+          <h1>
+            <FontAwesomeIcon icon={faCalculator} />
+            Pokladní kniha
+          </h1>
+          <p className="subtitle">
+            {accessError.type === 'no_permission' ? 'Chybí oprávnění' : 
+             accessError.type === 'no_assignment' ? 'Chybí přiřazení' : 'Chyba přístupu'}
+          </p>
+        </Header>
+        <InfoPanel>
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <FontAwesomeIcon 
+              icon={accessError.type === 'no_permission' ? faLock : faInfoCircle} 
+              size="3x" 
+              style={{ color: accessError.type === 'no_permission' ? '#dc2626' : '#f59e0b', marginBottom: '1rem' }} 
+            />
+            <h3>
+              {accessError.type === 'no_permission' ? '🔒 Nemáte přístup k této pokladní knize' : 
+               accessError.type === 'no_assignment' ? '⚠️ Chybí přiřazení pokladny' : 'Chyba'}
+            </h3>
+            <p style={{ marginTop: '1rem', color: '#64748b', maxWidth: '600px', margin: '1rem auto' }}>
+              {accessError.message}
+            </p>
+            <p style={{ marginTop: '2rem', fontSize: '0.9rem', color: '#94a3b8' }}>
+              {accessError.type === 'no_permission' 
+                ? 'Pokud si myslíte že byste měli mít přístup, kontaktujte správce systému.' 
+                : 'Pro přidělení pokladny kontaktujte administrátora.'}
+            </p>
+          </div>
+        </InfoPanel>
+      </PageContainer>
+    );
+  }
+
   return (
     <>
       <Global styles={printStyles} />
@@ -4018,6 +4110,7 @@ const CashBookPage = () => {
                       onKeyDown={(e) => handleKeyDown(e, entry.id)}
                       onBlur={autoSave}
                       placeholder="0,00"
+                      hasError={validationErrors[entry.id]?.income}
                     />
                   ) : (
                     entry.income ? formatCurrency(entry.income) : ''
@@ -4032,6 +4125,7 @@ const CashBookPage = () => {
                       onKeyDown={(e) => handleKeyDown(e, entry.id)}
                       onBlur={autoSave}
                       placeholder="0,00"
+                      hasError={validationErrors[entry.id]?.expense}
                     />
                   ) : (
                     entry.expense ? formatCurrency(entry.expense) : ''
@@ -4620,7 +4714,7 @@ const CashBookPage = () => {
       <ConfirmDialog
         isOpen={deleteDialogOpen}
         title="Smazání položky"
-        icon="trash"
+        icon={faTrash}
         variant="danger"
         onConfirm={handleConfirmDelete}
         onClose={handleCancelDelete}
