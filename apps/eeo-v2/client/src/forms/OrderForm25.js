@@ -16981,6 +16981,29 @@ function OrderForm25() {
           }
         });
       }
+
+      // 📎 VALIDACE PŘÍLOH: Všechny přílohy MUSÍ mít klasifikaci před uložením
+      // Kontrola pouze pokud má objednávka ID (přílohy se zobrazují až po prvním uložení)
+      if (formData.id && attachments && attachments.length > 0) {
+        const objFiles = attachments.filter(a => {
+          // Filtrovat pouze hlavní přílohy objednávky (obj- prefix)
+          const prefix = getFilePrefix(a);
+          return prefix === 'obj-';
+        });
+
+        const unclassifiedFiles = objFiles.filter(file => 
+          !file.klasifikace || file.klasifikace.trim() === ''
+        );
+
+        if (unclassifiedFiles.length > 0) {
+          errors.prilohy_klasifikace = `Nelze uložit objednávku - ${unclassifiedFiles.length} ${unclassifiedFiles.length === 1 ? 'příloha nemá' : 'příloh nemá'} klasifikaci. Všechny přílohy musí být klasifikovány (Objednávka/Faktura/Košilka/Jiné) před uložením.`;
+          
+          // Rozbalit sekci Přílohy pokud je sbalená
+          if (sectionStates.prilohy) {
+            setSectionStates(prev => ({ ...prev, prilohy: false }));
+          }
+        }
+      }
     }
 
     const hasErrors = Object.keys(errors).length > 0;
