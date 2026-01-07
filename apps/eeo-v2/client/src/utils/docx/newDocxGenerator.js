@@ -20,6 +20,14 @@ import { downloadDocxSablonaAsFile, getDocxSablonaDetail } from '../../services/
 function formatDateForDocx(value) {
   if (!value) return value;
 
+  // ⚠️ DŮLEŽITÉ: Pokud hodnota obsahuje čárku nebo "Kč", NENÍ to datum, ale částka!
+  // Nesmíme ji formátovat, jinak Word interpretuje "01.02.8157 Kč" jako datum
+  if (typeof value === 'string') {
+    if (value.includes(',') || value.includes('Kč') || value.includes(' Kč')) {
+      return value; // Je to částka, NE datum!
+    }
+  }
+
   // Pokud je to už formátované datum ve správném formátu, vrátíme ho
   if (typeof value === 'string' && /^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
     return value;
@@ -383,9 +391,8 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
         // Sloučení více polí (např. "objednatel.prijmeni + objednatel.jmeno")
         const parts = finalPath.split(' + ').map(part => part.trim());
         const values = parts.map(part => {
-          const v = getValueFromPath(apiData, part) || '';
-          // Formátuj datum pokud to vypadá jako datum
-          return formatDateForDocx(v);
+          return getValueFromPath(apiData, part) || '';
+          // ⚠️ NEFORMÁTUJEME! Backend už posílá správně naformátované hodnoty
         }).filter(v => v);
         value = values.join(' ');
 
@@ -398,10 +405,9 @@ function createFieldMappingForDocx(apiData, templateMapping, selectedUserId = nu
           missingFields.push({ docxField, dbPath: finalPath });
           // Chybějící pole: ${docxField} (${finalPath})
           value = '';
-        } else {
-          // Formátuj datum pokud to vypadá jako datum
-          value = formatDateForDocx(value);
         }
+        // ⚠️ NEFORMÁTUJEME! Backend už posílá správně naformátované hodnoty (částky s čárkou, data apod.)
+        // Jakékoliv formátování na frontendu by mohlo způsobit problémy (např. Word interpretuje čísla jako data)
       }
     } catch (error) {
       value = '';
@@ -638,8 +644,6 @@ function fillXmlWithFieldData(xmlContent, fieldValues) {
     const missingInMapping = foundFieldNames.filter(f => !mappingKeys.includes(f));
     
     if (missingInXml.length > 0) {
-      console.warn('⚠️ POLE V MAPOVÁNÍ, ALE NEJSOU V XML:', missingInXml);
-      
       // FALLBACK: Nahraď textové placeholder {DOCVARIABLE FIELD_NAME}
       let xmlString = serializer.serializeToString(xmlDoc);
       let textReplacements = 0;
