@@ -800,7 +800,7 @@ const ConfirmDeleteButton = styled(ConfirmButton)`
 // =============================================================================
 
 const CashbookTab = () => {
-  const { user, hasPermission } = useContext(AuthContext);
+  const { user, hasPermission, hasAdminRole } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { invalidateCache } = useContext(DictionaryCacheContext) || {};
 
@@ -849,8 +849,17 @@ const CashbookTab = () => {
   const [forceRenumberDialogOpen, setForceRenumberDialogOpen] = useState(false);
   const [assignmentToRenumber, setAssignmentToRenumber] = useState(null);
 
-  // Oprávnění
-  const canManage = hasPermission('CASH_BOOK_MANAGE');
+  // Admin má plný přístup ke všemu
+  const isAdmin = hasAdminRole();
+  
+  // Oprávnění pro číselník pokladních knih (CASH_BOOKS_* - nový systém)
+  const canView = isAdmin || hasPermission('CASH_BOOKS_VIEW');
+  const canCreate = isAdmin || hasPermission('CASH_BOOKS_CREATE');
+  const canEdit = isAdmin || hasPermission('CASH_BOOKS_EDIT');
+  const canDelete = isAdmin || hasPermission('CASH_BOOKS_DELETE');
+  
+  // Fallback na starý systém (CASH_BOOK_MANAGE) pro zpětnou kompatibilitu
+  const canManage = isAdmin || hasPermission('CASH_BOOK_MANAGE') || canEdit || canDelete;
 
   // ============================================================================
   // PAGINATION PERSISTENCE
@@ -874,10 +883,10 @@ const CashbookTab = () => {
 
   // Znovu načíst když se změní oprávnění
   useEffect(() => {
-    if (canManage !== undefined) {
+    if (canView !== undefined || canEdit !== undefined) {
       loadData();
     }
-  }, [canManage]);
+  }, [canView, canEdit, canCreate, canDelete]);
 
   const loadData = async () => {
     setLoading(true);
@@ -918,7 +927,7 @@ const CashbookTab = () => {
   // ============================================================================
 
   const handleSaveSettings = async () => {
-    if (!canManage) {
+    if (!canEdit) {
       showToast?.('Nemáte oprávnění pro správu nastavení', { type: 'error' });
       return;
     }
@@ -1077,8 +1086,8 @@ const CashbookTab = () => {
       return user.platne_do > today; // Budoucí datum = ještě aktivní (dnes už ne)
     });
 
-    if (!canManage) {
-      return null; // Non-admin nemůže rozbalit
+    if (!canView) {
+      return null; // Bez VIEW práva nemůže rozbalit
     }
 
     return (
@@ -1142,13 +1151,19 @@ const CashbookTab = () => {
         </div>
       </ExpandedContent>
     );
-  }, [canManage]);
+  }, [canView, canEdit, canDelete]);
 
   // Placeholder handlery pro assign/unassign (budou implementovány s dialogy)
   const handleAssignUser = useCallback((cashboxId) => {
-    // TODO: Otevřít AssignUserDialog
-    showToast('Funkce přiřazení uživatele - připravena pro implementaci', 'info');
-  }, [showToast]);
+    // Najít pokladnu podle ID a otevřít EditCashboxDialog
+    const cashbox = cashboxes.find(c => c.id === cashboxId);
+    if (cashbox) {
+      setSelectedAssignment(cashbox);
+      setEditDialogOpen(true);
+    } else {
+      showToast('Pokladna nenalezena', 'error');
+    }
+  }, [cashboxes, showToast]);
 
   // User removal with custom confirm dialog
   const handleUnassignUserClick = useCallback((assignmentId, userName) => {
@@ -1395,9 +1410,9 @@ const CashbookTab = () => {
             }}>
               <LpRequiredToggle
                 $required={isRequired}
-                onClick={() => canManage && handleToggleLpRequirement(row.original.id, !isRequired)}
-                disabled={!canManage}
-                title={canManage 
+                onClick={() => canEdit && handleToggleLpRequirement(row.original.id, !isRequired)}
+                disabled={!canEdit}
+                title={canEdit 
                   ? `Kliknout pro ${isRequired ? 'zrušení' : 'nastavení'} povinnosti LP kódu` 
                   : `LP kód je ${isRequired ? 'povinný' : 'volitelný'}`
                 }
@@ -1420,20 +1435,20 @@ const CashbookTab = () => {
           <ActionIcons>
             <IconButton
               onClick={() => handleEdit(row.original)}
-              disabled={!canManage}
+              disabled={!canEdit}
               title="Upravit pokladnu (VPD/PPD)"
             >
               <FontAwesomeIcon icon={faEdit} />
             </IconButton>
             <IconButton
               onClick={() => handleDelete(row.original)}
-              disabled={!canManage}
+              disabled={!canDelete}
               $delete
               title="Smazat pokladnu"
             >
               <FontAwesomeIcon icon={faTrash} />
             </IconButton>
-            {canManage && (
+            {canEdit && (
               <IconButton
                 onClick={() => handleForceRenumber(row.original)}
                 $warning
@@ -1446,7 +1461,7 @@ const CashbookTab = () => {
         ),
       },
     ],
-    [canManage]
+    [canView, canEdit, canDelete, canCreate]
   );
 
   // ============================================================================
@@ -1514,7 +1529,7 @@ const CashbookTab = () => {
   return (
     <Container>
       {/* Global Settings Panel */}
-      {canManage && (
+      {canEdit && (
         <SettingsPanel>
           <SettingsTitle>
             <FontAwesomeIcon icon={faCog} />
@@ -1562,7 +1577,7 @@ const CashbookTab = () => {
           )}
         </SearchWrapper>
 
-        {canManage && (
+        {canCreate && (
           <ActionButton onClick={handleAddNew} $primary>
             <FontAwesomeIcon icon={faPlus} />
             Přidat pokladnu

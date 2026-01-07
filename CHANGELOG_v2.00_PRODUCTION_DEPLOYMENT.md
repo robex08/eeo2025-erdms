@@ -29,6 +29,15 @@
 **Problém:** MS Word interpretoval částky jako data (`01.02.8157 Kč` → datum)  
 **Řešení:** Český standard formátování s čárkou a mezerami (`8 157,02 Kč`)
 
+### 6. 💼 Cashbook Permissions - Granulární práva pro číselník
+**Problém:** CashbookTab používal CASH_BOOK_MANAGE místo CASH_BOOKS_* pro číselníkové operace  
+**Řešení:** Implementace granulárních práv (VIEW/CREATE/EDIT/DELETE) pro správu definic pokladních knih
+
+### 7. 🐛 Cashbook Tab - Oprava přiřazení uživatelů a admin přístupu
+**Problém 1:** Tlačítko "Přiřadit uživatele" nedělalo nic (placeholder funkce)  
+**Problém 2:** Admin vidí tab ale nemůže editovat (chybí hasAdminRole check)  
+**Řešení:** Oprava handleAssignUser() + přidání admin fallbacku pro všechna oprávnění
+
 ---
 
 ## 📊 Detailní changelog po kategoriích
@@ -79,6 +88,27 @@ VALUES ('SPISOVKA_MANAGE', 'Správa Spisovka InBox - přístup k evidenci faktur
 **Automatické přiřazení:**
 - Role `EKONOM` (pokud existuje)
 - Role `UCETNI` (pokud existuje)
+
+#### Tabulka `25_prava` - Cashbook oprávnění již existují
+**CASH_BOOK_*** (IDs 35-47, 82) - Modul pokladny (práce s položkami):
+- `CASH_BOOK_MANAGE` (ID 39) - Superpravo - kompletní správa všech pokladních knih
+- `CASH_BOOK_READ_OWN` (ID 40) - Zobrazení vlastní pokladní knihy
+- `CASH_BOOK_READ_ALL` (ID 41) - Zobrazení všech pokladních knih
+- `CASH_BOOK_CREATE` (ID 35) - Vytvoření nového záznamu ve vlastní pokladní knize
+- `CASH_BOOK_EDIT_OWN` (ID 42) - Editace záznamů ve vlastní pokladní knize
+- `CASH_BOOK_EDIT_ALL` (ID 43) - Editace záznamů ve všech pokladních knihách
+- `CASH_BOOK_DELETE_OWN` (ID 44) - Smazání záznamů z vlastní pokladní knihy
+- `CASH_BOOK_DELETE_ALL` (ID 45) - Smazání záznamů ze všech pokladních knih
+- `CASH_BOOK_EXPORT_OWN` (ID 46) - Export vlastní pokladní knihy
+- `CASH_BOOK_EXPORT_ALL` (ID 47) - Export všech pokladních knih
+
+**CASH_BOOKS_*** (IDs 134-137) - Číselník knih (správa definic):
+- `CASH_BOOKS_VIEW` (ID 134) - Zobrazení pokladních knih v číselníku
+- `CASH_BOOKS_CREATE` (ID 135) - Vytváření nových pokladních knih v číselníku
+- `CASH_BOOKS_EDIT` (ID 136) - Editace pokladních knih v číselníku
+- `CASH_BOOKS_DELETE` (ID 137) - Mazání pokladních knih z číselníku
+
+**⚠️ NUTNÉ přiřadit podle rolí - práva existují, ale nejsou přiřazená!**
 
 #### Tabulka `25_role_prava` - Migrace přiřazení
 **Celkem migrováno:** 20 přiřazení z CONTACT_* na SUPPLIER_*
@@ -132,6 +162,77 @@ if (value.includes(',') || value.includes('Kč')) {
 **Výsledek:**
 - `predmet: "DEV: Test 02"` → zůstane beze změny ✅
 - `vypoctene_dph: "8 157,02 Kč"` → není formátováno jako datum ✅
+
+#### Cashbook Tab - Granulární permissions
+**Soubor:** `CashbookTab.js`
+
+```javascript
+// PŘED (chybné):
+const canManage = hasPermission('CASH_BOOK_MANAGE');
+
+// PO (správné):
+const canView = hasPermission('CASH_BOOKS_VIEW');
+const canCreate = hasPermission('CASH_BOOKS_CREATE');
+const canEdit = hasPermission('CASH_BOOKS_EDIT');
+const canDelete = hasPermission('CASH_BOOKS_DELETE');
+const canManage = hasPermission('CASH_BOOK_MANAGE') || canEdit || canDelete; // Fallback
+```
+
+**Změny v komponentě:**
+- Viditelnost settings panelu: `canManage` → `canEdit`
+- Rozbalení řádků: `canManage` → `canView`
+- Tlačítko přidat: `canManage` → `canCreate`
+- Tlačítko upravit: `canManage` → `canEdit`
+- Tlačítko smazat: `canManage` → `canDelete`
+- LP kód toggle: `canManage` → `canEdit`
+
+**DictionariesNew.js:**
+- Tab viditelnost: `canViewTab('CASH_BOOKS')` (už bylo správně)
+- Obsah tabu: `<CashbookTab />` s granulárními právy
+
+#### Cashbook Tab - Oprava přiřazení uživatelů + admin přístup
+**Soubor:** `CashbookTab.js`
+
+**Problém 1: Nefunkční tlačítko "Přiřadit uživatele"**
+```javascript
+// PŘED (placeholder - nedělal nic!):
+const handleAssignUser = useCallback((cashboxId) => {
+  showToast('Funkce přiřazení uživatele - připravena pro implementaci', 'info');
+}, [showToast]);
+
+// PO (funkční - otevře EditCashboxDialog):
+const handleAssignUser = useCallback((cashboxId) => {
+  const cashbox = cashboxes.find(c => c.id === cashboxId);
+  if (cashbox) {
+    setSelectedAssignment(cashbox);
+    setEditDialogOpen(true);
+  } else {
+    showToast('Pokladna nenalezena', 'error');
+  }
+}, [cashboxes, showToast]);
+```
+
+**Problém 2: Admin vidí tab ale nemůže editovat**
+```javascript
+// PŘED (admin nemá přístup):
+const { user, hasPermission } = useContext(AuthContext);
+const canView = hasPermission('CASH_BOOKS_VIEW');
+const canEdit = hasPermission('CASH_BOOKS_EDIT');
+
+// PO (admin má plný přístup):
+const { user, hasPermission, hasAdminRole } = useContext(AuthContext);
+const isAdmin = hasAdminRole();
+const canView = isAdmin || hasPermission('CASH_BOOKS_VIEW');
+const canCreate = isAdmin || hasPermission('CASH_BOOKS_CREATE');
+const canEdit = isAdmin || hasPermission('CASH_BOOKS_EDIT');
+const canDelete = isAdmin || hasPermission('CASH_BOOKS_DELETE');
+const canManage = isAdmin || hasPermission('CASH_BOOK_MANAGE') || canEdit || canDelete;
+```
+
+**Výsledek:**
+- ✅ Tlačítko "+ Přiřadit uživatele" nyní otevře EditCashboxDialog
+- ✅ V dialogu lze vybrat uživatele z dropdownu a přiřadit jako hlavní/zástupce
+- ✅ Admin má plný přístup ke všem operacím bez nutnosti specifických práv
 
 #### Debug cleanup
 **Odstraněno:**
@@ -234,6 +335,9 @@ if ($cashbox['lp_kod_povinny'] == 1 && empty($lp_kod)) {
 
 **Nové soubory:**
 - `CHANGELOG_v2.00_PRODUCTION_DEPLOYMENT.md` - Tento soubor
+- `migration_spisovka_manage_permission_v2.00.sql` - Migrace pro SPISOVKA_MANAGE oprávnění
+- `ANALYSIS_CASH_BOOKS_PERMISSIONS.md` - Analýza CASH_BOOK_* vs CASH_BOOKS_*
+- `CHANGELOG_CASHBOOK_TAB_PERMISSIONS_FIX.md` - Dokumentace opravy CashbookTab
 
 ---
 
@@ -248,20 +352,41 @@ ALTER TABLE 25_uzivatele ADD COLUMN visible_in_phonebook TINYINT(1) NOT NULL DEF
 ALTER TABLE 25a_pokladny ADD COLUMN lp_kod_povinny TINYINT(1) DEFAULT 0;
 
 -- 3. Vytvoření nových permissions
-INSERT INTO 25_prava (nazev_prava, popis) VALUES 
+INSERT INTO 25_prava (kod_prava, popis) VALUES 
   ('SUPPLIER_CREATE', 'Vytváření dodavatelů'),
   ('SUPPLIER_DELETE', 'Mazání dodavatelů'),
   ('PHONEBOOK_MANAGE', 'Správa telefonního seznamu');
 
--- 4. Přejmenování SUPPLIER_READ → SUPPLIER_VIEW
-UPDATE 25_prava SET nazev_prava = 'SUPPLIER_VIEW' WHERE nazev_prava = 'SUPPLIER_READ';
-
--- 5. Smazání deprecated permissions
-DELETE FROM 25_role_prava WHERE pravo_id IN (
-  SELECT id FROM 25_prava WHERE nazev_prava IN ('CONTACT_MANAGE', 'CONTACT_READ', 'CONTACT_EDIT')
+-- 4. Vytvoření SPISOVKA_MANAGE permission
+INSERT INTO `25_prava` (`kod_prava`, `popis`, `aktivni`) 
+SELECT 'SPISOVKA_MANAGE', 'Správa Spisovka InBox - přístup k evidenci faktur ze spisovny', 1
+WHERE NOT EXISTS (
+    SELECT 1 FROM `25_prava` WHERE `kod_prava` = 'SPISOVKA_MANAGE'
 );
-DELETE FROM 25_prava WHERE nazev_prava IN ('CONTACT_MANAGE', 'CONTACT_READ', 'CONTACT_EDIT');
+
+-- 5. Přiřazení SPISOVKA_MANAGE rolím EKONOM a UCETNI
+INSERT INTO `25_role_prava` (`role_id`, `pravo_id`)
+SELECT r.id, p.id
+FROM `25_role` r
+CROSS JOIN `25_prava` p
+WHERE r.kod_role IN ('EKONOM', 'UCETNI')
+  AND p.kod_prava = 'SPISOVKA_MANAGE'
+  AND NOT EXISTS (
+      SELECT 1 FROM `25_role_prava` rp
+      WHERE rp.role_id = r.id AND rp.pravo_id = p.id
+  );
+
+-- 6. Přejmenování SUPPLIER_READ → SUPPLIER_VIEW
+UPDATE 25_prava SET kod_prava = 'SUPPLIER_VIEW' WHERE kod_prava = 'SUPPLIER_READ';
+
+-- 7. Smazání deprecated permissions
+DELETE FROM 25_role_prava WHERE pravo_id IN (
+  SELECT id FROM 25_prava WHERE kod_prava IN ('CONTACT_MANAGE', 'CONTACT_READ', 'CONTACT_EDIT')
+);
+DELETE FROM 25_prava WHERE kod_prava IN ('CONTACT_MANAGE', 'CONTACT_READ', 'CONTACT_EDIT');
 ```
+
+**📄 Migrační soubor:** `migration_spisovka_manage_permission_v2.00.sql`
 
 ### Manuální úpravy (podle potřeby)
 ```sql
@@ -274,6 +399,42 @@ WHERE username IN ('system', 'admin', 'robot', ...);
 UPDATE 25a_pokladny 
 SET lp_kod_povinny = 1 
 WHERE nazev IN ('Hlavní pokladna', 'Pokladna ředitelství');
+
+-- Manuální přiřazení SPISOVKA_MANAGE jednotlivým uživatelům
+-- (pokud potřebují přístup mimo své role)
+INSERT INTO 25_uzivatel_prava (uzivatel_id, pravo_id)
+SELECT [USER_ID], id FROM 25_prava WHERE kod_prava = 'SPISOVKA_MANAGE';
+```
+
+**🔍 Kontrola SPISOVKA_MANAGE přiřazení:**
+```sql
+-- Zobrazit všechny uživatele s přístupem ke Spisovka InBox
+SELECT 
+    u.jmeno, 
+    u.prijmeni, 
+    u.username,
+    r.nazev_role,
+    'přes roli' AS zdroj
+FROM 25_uzivatel_role ur
+JOIN 25_uzivatele u ON ur.uzivatel_id = u.id
+JOIN 25_role r ON ur.role_id = r.id
+JOIN 25_role_prava rp ON r.id = rp.role_id
+JOIN 25_prava p ON rp.pravo_id = p.id
+WHERE p.kod_prava = 'SPISOVKA_MANAGE'
+
+UNION
+
+SELECT 
+    u.jmeno, 
+    u.prijmeni, 
+    u.username,
+    NULL AS nazev_role,
+    'přímo uživateli' AS zdroj
+FROM 25_uzivatel_prava up
+JOIN 25_uzivatele u ON up.uzivatel_id = u.id
+JOIN 25_prava p ON up.pravo_id = p.id
+WHERE p.kod_prava = 'SPISOVKA_MANAGE'
+ORDER BY prijmeni, jmeno;
 ```
 
 ---
@@ -439,6 +600,100 @@ mappedData[field] = String(value || '');  // Žádné transformace!
 4. Zkusit volat API znovu
 5. Očekávaná odpověď: HTTP 200 + data ✅
 
+### Test 10: Cashbook Tab - Granulární permissions
+1. Vytvořit testovacího uživatele s **pouze** `CASH_BOOKS_VIEW` (ID 134)
+2. Přihlásit se a otevřít Číselníky → Pokladní knihy
+3. Ověřit viditelnost:
+   - ✅ Tab "Pokladní knihy" je viditelný
+   - ✅ Seznam pokladen se zobrazuje
+   - ✅ Řádky lze rozbalit (vidět přiřazené uživatele)
+   - ❌ Panel "Globální nastavení" NENÍ viditelný
+   - ❌ Tlačítko "+ Přidat pokladnu" NENÍ viditelné
+   - ❌ Tlačítka Edit/Delete jsou **disabled**
+4. Přidat oprávnění `CASH_BOOKS_EDIT` (ID 136):
+   ```sql
+   INSERT INTO 25_uzivatel_prava (uzivatel_id, pravo_id) VALUES ([USER_ID], 136);
+   ```
+5. Refresh stránky (F5)
+6. Ověřit novou viditelnost:
+   - ✅ Panel "Globální nastavení" je nyní viditelný
+   - ✅ Tlačítko "Upravit" je **aktivní**
+   - ✅ Může měnit LP kód povinnost
+   - ❌ Tlačítko "Smazat" je stále **disabled**
+7. Přidat oprávnění `CASH_BOOKS_CREATE` (ID 135):
+   ```sql
+   INSERT INTO 25_uzivatel_prava (uzivatel_id, pravo_id) VALUES ([USER_ID], 135);
+   ```
+8. Ověřit:
+   - ✅ Tlačítko "+ Přidat pokladnu" je viditelné a aktivní
+9. Přidat oprávnění `CASH_BOOKS_DELETE` (ID 137):
+   ```sql
+   INSERT INTO 25_uzivatel_prava (uzivatel_id, pravo_id) VALUES ([USER_ID], 137);
+   ```
+10. Ověřit:
+    - ✅ Tlačítko "Smazat" je **aktivní**
+
+### Test 11: Cashbook - Fallback na CASH_BOOK_MANAGE
+1. Vytvořit uživatele s **pouze** `CASH_BOOK_MANAGE` (ID 39, starý systém)
+2. Přihlásit se a otevřít Číselníky → Pokladní knihy
+3. Ověřit že uživatel má **plný přístup** díky fallbacku:
+   ```javascript
+   canManage = hasPermission('CASH_BOOK_MANAGE') || canEdit || canDelete;
+   ```
+4. Všechna tlačítka musí být aktivní (zpětná kompatibilita) ✅
+
+### Test 12: Přiřazení práv podle rolí
+**Role Účetní:**
+```sql
+-- Ověřit přiřazení
+SELECT r.nazev, p.kod_prava, p.popis
+FROM 25_prava_role pr
+JOIN 25_role r ON pr.id_role = r.id
+JOIN 25_prava p ON pr.id_prava = p.id
+WHERE r.nazev = 'Účetní' AND p.kod_prava LIKE 'CASH_%'
+ORDER BY p.kod_prava;
+```
+Očekávaný výsledek:
+- CASH_BOOK_MANAGE (superpravo)
+- CASH_BOOKS_VIEW, CREATE, EDIT, DELETE
+
+**Role THP pracovník:**
+Očekávaný výsledek:
+- CASH_BOOK_READ_OWN, CREATE, EDIT_OWN, DELETE_OWN
+- ŽÁDNÉ CASH_BOOKS_* práva
+
+### Test 13: Cashbook Tab - Přiřazení uživatelů + Admin přístup
+**Test 13a: Ověření funkčnosti přiřazení uživatele**
+1. Přihlásit se jako admin nebo uživatel s CASH_BOOKS_EDIT
+2. Otevřít Číselníky → Pokladní knihy
+3. Rozbalit řádek u pokladny (kliknout na šipku)
+4. Kliknout na tlačítko "+ Přiřadit uživatele"
+5. Ověřit že se otevře **EditCashboxDialog** ✅ (NE toast "připravena pro implementaci" ❌)
+6. V pravé části dialogu vybrat uživatele z dropdownu
+7. Zaškrtnout/odškrtnout "Zástupce" podle potřeby
+8. Kliknout "Přidat uživatele"
+9. Ověřit toast: "Uživatel byl úspěšně přiřazen" ✅
+10. Zavřít dialog a obnovit stránku (F5)
+11. Rozbalit řádek a ověřit že uživatel je přiřazen ✅
+
+**Test 13b: Ověření admin přístupu**
+1. Přihlásit se jako **admin BEZ** jakýchkoliv CASH_BOOKS_* práv
+2. Otevřít Číselníky → Pokladní knihy
+3. Ověřit viditelnost:
+   - ✅ Tab "Pokladní knihy" je viditelný (díky hasAdminRole v DictionariesNew)
+   - ✅ Panel "Globální nastavení" je viditelný
+   - ✅ Tlačítko "+ Přidat pokladnu" je aktivní
+   - ✅ Tlačítko "Upravit" je aktivní (NE disabled)
+   - ✅ Tlačítko "Smazat" je aktivní (NE disabled)
+   - ✅ LP kód toggle je aktivní
+4. Zkusit upravit nastavení (Use Prefix) - musí fungovat ✅
+5. Zkusit přidat uživatele do pokladny - musí fungovat ✅
+
+**Test 13c: Non-admin bez práv**
+1. Přihlásit se jako běžný uživatel BEZ CASH_BOOKS_* práv
+2. Otevřít Číselníky
+3. Ověřit že tab "Pokladní knihy" **NENÍ viditelný** ❌
+
 ---
 
 ## 🚨 Rollback plán
@@ -462,7 +717,7 @@ tar -xzf /var/backups/erdms/erdms-platform_YYYYMMDD_HHMMSS.tar.gz apps/eeo-v2
 #### 3. Částečný rollback (pouze permissions)
 ```sql
 -- Obnovit CONTACT_* permissions
-INSERT INTO 25_prava (nazev_prava, popis) VALUES 
+INSERT INTO 25_prava (kod_prava, popis) VALUES 
   ('CONTACT_MANAGE', 'Správa kontaktů'),
   ('CONTACT_READ', 'Zobrazení kontaktů'),
   ('CONTACT_EDIT', 'Editace kontaktů');
@@ -494,6 +749,9 @@ Po úspěšném deploymentu:
 
 - [ ] Ověřit že aplikace funguje v PROD
 - [ ] Test všech klíčových funkcí (viz Testovací scénáře)
+- [ ] **KRITICKÉ: Spustit migraci `migration_spisovka_manage_permission_v2.00.sql`**
+- [ ] **KRITICKÉ: Přiřadit CASH_BOOKS_* práva podle rolí** (viz níže)
+- [ ] Ověřit přístup ke Spisovka InBox pro role EKONOM/UCETNI
 - [ ] Zkontrolovat error logy (5-10 minut po deploymentu)
 - [ ] Ověřit že performance je OK
 - [ ] Deaktivovat maintenance mode
@@ -501,6 +759,115 @@ Po úspěšném deploymentu:
 - [ ] Archivovat skripty a backupy
 - [ ] Aktualizovat dokumentaci
 - [ ] Git tag pro produkční verzi: `git tag -a v2.00 -m "Production release v2.00"`
+
+---
+
+## 📋 KROK 1: Spustit SPISOVKA_MANAGE migraci
+
+```bash
+# Připojit se na PROD databázi
+mysql -h [PROD_HOST] -u [PROD_USER] -p eeo2025 < migration_spisovka_manage_permission_v2.00.sql
+```
+
+**Co migrace udělá:**
+1. ✅ Vytvoří oprávnění `SPISOVKA_MANAGE`
+2. ✅ Automaticky přiřadí rolím `EKONOM` a `UCETNI` (pokud existují)
+3. ✅ Zobrazí kontrolní výpis přiřazení
+
+**Očekávaný výstup:**
+```
+✅ Oprávnění SPISOVKA_MANAGE bylo vytvořeno
+✅ SPISOVKA_MANAGE přiřazeno roli: EKONOM
+✅ SPISOVKA_MANAGE přiřazeno roli: UCETNI
+```
+
+**Kontrola po migraci:**
+```sql
+-- Ověřit že oprávnění existuje
+SELECT id, kod_prava, popis, aktivni 
+FROM 25_prava 
+WHERE kod_prava = 'SPISOVKA_MANAGE';
+
+-- Ověřit přiřazení rolím
+SELECT r.nazev_role, p.kod_prava
+FROM 25_role_prava rp
+JOIN 25_role r ON rp.role_id = r.id
+JOIN 25_prava p ON rp.pravo_id = p.id
+WHERE p.kod_prava = 'SPISOVKA_MANAGE';
+```
+
+---
+
+## 📋 KROK 2: Přiřadit CASH_BOOKS_* práva podle rolí
+
+**⚠️ Práva existují v DB (IDs 134-137), ale NEJSOU PŘIŘAZENÁ!**
+
+### Doporučené přiřazení podle rolí:
+
+#### Role: Účetní / Ekonom
+```sql
+USE eeo2025;
+
+-- Přiřadit plný přístup k číselníku pokladních knih
+INSERT IGNORE INTO 25_prava_role (id_role, id_prava)
+SELECT r.id, p.id
+FROM 25_role r
+CROSS JOIN 25_prava p
+WHERE r.nazev IN ('Účetní', 'Ekonom')
+  AND p.kod_prava IN (
+    'CASH_BOOK_MANAGE',         -- Superpravo pro modul pokladny
+    'CASH_BOOKS_VIEW',          -- Vidět číselník
+    'CASH_BOOKS_CREATE',        -- Přidat knihu
+    'CASH_BOOKS_EDIT',          -- Upravit knihu
+    'CASH_BOOKS_DELETE'         -- Smazat knihu
+  );
+```
+
+#### Role: THP pracovník
+```sql
+USE eeo2025;
+
+-- Přiřadit práva jen pro vlastní pokladnu
+INSERT IGNORE INTO 25_prava_role (id_role, id_prava)
+SELECT r.id, p.id
+FROM 25_role r
+CROSS JOIN 25_prava p
+WHERE r.nazev = 'THP pracovník'
+  AND p.kod_prava IN (
+    'CASH_BOOK_READ_OWN',       -- Vidět jen svou pokladnu
+    'CASH_BOOK_CREATE',         -- Vytvářet položky
+    'CASH_BOOK_EDIT_OWN',       -- Editovat vlastní položky
+    'CASH_BOOK_DELETE_OWN'      -- Mazat vlastní položky
+  );
+-- ŽÁDNÉ CASH_BOOKS_* práva = nemůže spravovat číselník
+```
+
+#### Role: Admin
+```sql
+USE eeo2025;
+
+-- Admin by měl mít všechna práva
+INSERT IGNORE INTO 25_prava_role (id_role, id_prava)
+SELECT r.id, p.id
+FROM 25_role r
+CROSS JOIN 25_prava p
+WHERE r.nazev = 'Admin'
+  AND p.kod_prava LIKE 'CASH_%';
+```
+
+### Kontrola přiřazení:
+```sql
+-- Výpis všech CASH_* práv podle rolí
+SELECT 
+  r.nazev AS role,
+  p.kod_prava,
+  p.popis
+FROM 25_prava_role pr
+JOIN 25_role r ON pr.id_role = r.id
+JOIN 25_prava p ON pr.id_prava = p.id
+WHERE p.kod_prava LIKE 'CASH_%'
+ORDER BY r.nazev, p.kod_prava;
+```
 
 ---
 
