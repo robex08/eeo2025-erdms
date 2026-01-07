@@ -2506,7 +2506,7 @@ export default function InvoiceEvidencePage() {
 
   // Effect: Načíst počet faktur ze spisovky za dnešní den (pro badge) a posledních 5 záznamů (pro tooltip)
   useEffect(() => {
-    if (!hasPermission('ADMIN')) return;
+    if (!hasPermission('ADMIN') && !hasPermission('SPISOVKA_MANAGE')) return;
 
     const fetchSpisovkaData = async () => {
       try {
@@ -4178,7 +4178,7 @@ export default function InvoiceEvidencePage() {
           }
         </PageTitle>
         <HeaderActions>
-          {hasPermission('ADMIN') && (
+          {(hasPermission('ADMIN') || hasPermission('SPISOVKA_MANAGE')) && (
             <TooltipWrapper
               ref={tooltipButtonRef}
               onMouseEnter={() => {
@@ -6170,8 +6170,8 @@ export default function InvoiceEvidencePage() {
         document.body
       )}
 
-      {/* 📖 Spisovka Inbox Panel - pouze pro ADMIN */}
-      {hasPermission('ADMIN') && spisovkaInboxOpen && (
+      {/* 📖 Spisovka Inbox Panel - pro ADMIN nebo SPISOVKA_MANAGE */}
+      {(hasPermission('ADMIN') || hasPermission('SPISOVKA_MANAGE')) && spisovkaInboxOpen && (
         <SpisovkaInboxPanel
           panelState={spisovkaInboxState}
           setPanelState={setSpisovkaInboxState}

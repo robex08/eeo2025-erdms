@@ -95,6 +95,26 @@
 - ✅ **FE - CashBookPage.js** - podmíněná validace LP kódu podle nastavení pokladny
 - ✅ **FE - cashbookService.js** - API metody `updateLpRequirement()`, `getLpRequirement()`
 
+### 📄 DOCX GENEROVÁNÍ - Formátování částek (7. ledna 2026):
+- ✅ **BE - docxOrderDataHandlers.php** - `format_cz_currency()`:
+  - Změněno z `number_format($value, 2, '.', ' ')` na `number_format($value, 2, ',', ' ')`
+  - **Důvod:** Český standard - čárka jako des. oddělovač, mezera jako tisícový
+  - **Problém:** MS Word interpretoval `01.02.8157 Kč` jako datum `1. února 8157`
+  - **Řešení:** Formát `8 157,02 Kč` Word správně interpretuje jako text/číslo
+- ✅ **BE - docxOrderDataHandlers.php** - RAW formáty čísel:
+  - Přidána mezera jako tisícový oddělovač do `vypocitane.celkova_cena_*` polí
+  - Nyní: `38 842,98` místo `38842,98`
+- ✅ **FE - newDocxGenerator.js** - `createFieldMappingForDocx()`:
+  - **ODSTRANĚNO** automatické volání `formatDateForDocx()` na všechny hodnoty
+  - **Důvod:** Backend už posílá správně naformátované hodnoty, frontend by je neměl měnit
+  - Přidána ochrana: hodnoty obsahující `,` nebo `Kč` se neformátují jako data
+- ✅ **FE - Orders25List.js** - odstranění debug console.log (filtry)
+- ✅ **FE - newDocxGenerator.js** - odstranění debug console.warn (missing fields)
+- ✅ **Dokumentace** - aktualizovány příklady na český formát:
+  - `DOCX-VYPOCITANE-PROMENNE-DOKUMENTACE.md`
+  - `DOCX-VYPOCITANE-POLOZKY.md`
+  - `BACKEND-TODO-VYPOCITANE-PROMENNE.md`
+
 ---
 
 ## 🗓️ DEPLOYMENT CHECKLIST
@@ -121,6 +141,10 @@ VZDY pouzij : /PHPAPI pro kontrolu api na beckaendu, db
 - [ ] **Test 15:** 🔧 HIERARCHY - Ověřit že objednávka 11569 je viditelná po filtraci
 - [ ] **Test 16:** 🔧 HIERARCHY - Test fallback mechanismu při vypnutí hierarchie
 - [ ] **Test 17:** 🔧 HIERARCHY - Kontrola error logů (nesmí obsahovat "Hierarchy filter failed")
+- [ ] **Test 18:** 📄 DOCX - Vygenerovat DOCX pro objednávku s částkou 47 000 Kč a ověřit formátování
+- [ ] **Test 19:** 📄 DOCX - Ověřit že DPH se zobrazuje jako `8 157,02 Kč` (ne jako datum)
+- [ ] **Test 20:** 📄 DOCX - Ověřit že předmět objednávky se zobrazuje beze změny (např. "DEV: Test 02")
+- [ ] **Test 21:** 📄 DOCX - Ověřit větší částky (nad 100 000 Kč) - správné tisícové oddělovače
 
 **Dokumentace testů:**
 ```
