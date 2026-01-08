@@ -76,15 +76,49 @@ export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserI
 
 /**
  * Filtr podle data objednávky
+ * Prohledává:
+ * - Datum poslední změny (dt_aktualizace nebo dt_objednavky)
+ * - Datum vytvoření (dt_vytvoreni)
+ * - Čas vytvoření
  */
 export const filterByOrderDate = (order, filterValue, getOrderDate) => {
   if (!filterValue) return true;
 
-  const orderDateValue = getOrderDate(order);
-  if (!orderDateValue) return false;
+  // Získat datum objednávky (použije se jako fallback)
+  const orderDate = getOrderDate(order);
+  
+  // Datum poslední změny (bez času)
+  const lastModified = order.dt_aktualizace || order.dt_objednavky || (orderDate ? new Date(orderDate).toISOString() : null);
+  const lastModifiedStr = lastModified ? formatDateOnly(new Date(lastModified)) : '';
 
-  const dateStr = formatDateOnly(new Date(orderDateValue));
-  return dateStr.toLowerCase().includes(filterValue.toLowerCase());
+  // Datum a čas vytvoření
+  const created = order.dt_vytvoreni || (orderDate ? new Date(orderDate).toISOString() : null);
+  let createdDateStr = '';
+  let createdTimeStr = '';
+  if (created) {
+    const createdDate = new Date(created);
+    createdDateStr = formatDateOnly(createdDate);
+    createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Převést filterValue (yyyy-mm-dd) na dd.mm.yyyy pro porovnání, pokud je to datum z DatePickeru
+  let searchText = filterValue;
+  if (filterValue.includes('-') && filterValue.length === 10) {
+    // Formát yyyy-mm-dd z DatePickeru
+    const date = new Date(filterValue);
+    if (!isNaN(date.getTime())) {
+      searchText = formatDateOnly(date);
+    }
+  }
+
+  // Spojit všechny tři hodnoty pro prohledávání
+  const fullText = `${lastModifiedStr} ${createdDateStr} ${createdTimeStr}`;
+
+  // Case-insensitive a bez diakritiky
+  const normalizedText = removeDiacritics(fullText.toLowerCase());
+  const normalizedFilter = removeDiacritics(searchText.toLowerCase());
+
+  return normalizedText.includes(normalizedFilter);
 };
 
 /**
@@ -223,6 +257,33 @@ export const filterByDodavatel = (order, filterValue) => {
 };
 
 /**
+ * Filtr podle způsobu financování
+ * Používá stejnou logiku jako sloupec a podřádek - order.financovani.typ_nazev nebo order.financovani.typ
+ */
+export const filterByFinancovani = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  let financovaniText = '';
+
+  // STEJNÁ LOGIKA JAKO V PODŘÁDKU: order.financovani.typ_nazev nebo order.financovani.typ
+  if (order.financovani && typeof order.financovani === 'object') {
+    financovaniText = order.financovani.typ_nazev || order.financovani.typ || '';
+  }
+
+  // Pokud je prázdný, hledej "---"
+  if (!financovaniText) {
+    const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+    return normalizedFilter === '---' || normalizedFilter === '';
+  }
+
+  // Case-insensitive a bez diakritiky
+  const normalizedText = removeDiacritics(financovaniText.toLowerCase());
+  const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+
+  return normalizedText.includes(normalizedFilter);
+};
+
+/**
  * Pomocná funkce pro porovnání numerické hodnoty s filtrem
  * Podporuje operátory: >10000, <5000, =1234 nebo textové vyhledávání
  * @param {number} value - Hodnota k porovnání
@@ -233,6 +294,9 @@ const compareNumericValue = (value, filterValue) => {
   if (!filterValue) return true;
 
   const trimmed = filterValue.trim();
+  
+  // Pokud je prázdný string, vrať všechno
+  if (!trimmed) return true;
 
   // Pokus se detekovat operátor na začátku
   const operatorMatch = trimmed.match(/^(>|<|=)\s*(.+)$/);
@@ -242,7 +306,8 @@ const compareNumericValue = (value, filterValue) => {
     const numStr = operatorMatch[2].replace(/\s/g, '').replace(/,/g, '.');
     const filterNum = parseFloat(numStr);
 
-    if (isNaN(filterNum)) return false;
+    // Pokud není validní číslo po operátoru, vrať všechno
+    if (isNaN(filterNum)) return true;
 
     switch (operator) {
       case '>':
@@ -269,6 +334,38 @@ export const filterByMaxPrice = (order, filterValue) => {
   if (!filterValue) return true;
 
   const amount = parseFloat(order.max_cena_s_dph || 0);
+  return compareNumericValue(amount, filterValue);
+};
+
+/**
+ * Filtr podle ceny s DPH (z položek)
+ */
+export const filterByItemsPrice = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  let amount = 0;
+  
+  // Priorita: položky_celkova_cena_s_dph nebo součet položek
+  if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
+    const value = parseFloat(order.polozky_celkova_cena_s_dph);
+    if (!isNaN(value) && value > 0) amount = value;
+  } else if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
+    amount = order.polozky.reduce((sum, item) => {
+      const cena = parseFloat(item.cena_s_dph || 0);
+      return sum + (isNaN(cena) ? 0 : cena);
+    }, 0);
+  }
+  
+  return compareNumericValue(amount, filterValue);
+};
+
+/**
+ * Filtr podle celkové částky faktur
+ */
+export const filterByInvoicesPrice = (order, filterValue) => {
+  if (!filterValue) return true;
+
+  const amount = parseFloat(order.faktury_celkova_castka_s_dph || 0);
   return compareNumericValue(amount, filterValue);
 };
 
@@ -396,9 +493,18 @@ export const applyColumnFilters = (order, columnFilters, getOrderDate, getOrderD
 
   // Filtr podle ceny
   if (!filterByMaxPrice(order, columnFilters.max_cena_s_dph)) return false;
+  
+  // Filtr podle ceny s DPH (položky)
+  if (!filterByItemsPrice(order, columnFilters.cena_s_dph)) return false;
+  
+  // Filtr podle celkové částky faktur
+  if (!filterByInvoicesPrice(order, columnFilters.faktury_celkova_castka_s_dph)) return false;
 
   // Filtr podle dodavatele
   if (!filterByDodavatel(order, columnFilters.dodavatel_nazev)) return false;
+
+  // Filtr podle způsobu financování
+  if (!filterByFinancovani(order, columnFilters.zpusob_financovani)) return false;
 
   // 🔧 FIX: Sloučené sloupce - hledačky používají objednatel_garant a prikazce_schvalovatel
   // Pro objednatel_garant hledej v objednateli i garantovi

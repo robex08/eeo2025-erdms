@@ -8,6 +8,8 @@ import { ToastContext } from '../context/ToastContext';
 import { loadSettingsFromLocalStorage } from '../services/userSettingsApi';
 import ConfirmDialog from '../components/ConfirmDialog';
 import ModernHelper from '../components/ModernHelper';
+import DatePicker from '../components/DatePicker';
+import OperatorInput from '../components/OperatorInput';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { createDownloadLink25, lockOrder25, unlockOrder25, getDruhyObjednavky25, getStrediska25 } from '../services/api25orders';
 import { getOrderV2, updateOrderV2, listOrdersV2, deleteOrderV2, downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2'; // ✅ V2 API pro načítání, mazání a přílohy
@@ -170,6 +172,7 @@ const ActionButton = styled.button`
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.6rem;
+  height: 38px;
   border: 2px solid #3b82f6;
   border-radius: 6px;
   background: ${props => props.$primary ? '#3b82f6' : 'white'};
@@ -4029,401 +4032,6 @@ const MultiSelectLocal = ({ field, value, onChange, options, placeholder, icon }
 };
 
 // =============================================================================
-// DATEPICKER KOMPONENTA
-// =============================================================================
-
-const DatePicker = ({ value, onChange, placeholder = 'Vyberte datum' }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [openUpwards, setOpenUpwards] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
-  const wrapperRef = useRef(null);
-
-  const selectedDate = value ? new Date(value) : null;
-
-  useEffect(() => {
-    if (value) {
-      const date = new Date(value);
-      if (!isNaN(date.getTime())) {
-        setCurrentMonth(date);
-      }
-    }
-  }, [value]);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    
-    const handleCloseAllDatePickers = () => {
-      setIsOpen(false);
-    };
-    
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      window.addEventListener('closeAllDatePickers', handleCloseAllDatePickers);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-        window.removeEventListener('closeAllDatePickers', handleCloseAllDatePickers);
-      };
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && wrapperRef.current) {
-      let rafId = null;
-      let previousFloatingState = window.__floatingHeaderVisible || false;
-      
-      const checkPosition = () => {
-        if (!wrapperRef.current) return;
-        
-        // Detekce změny floating header stavu během scrollu
-        const currentFloatingState = window.__floatingHeaderVisible || false;
-        if (currentFloatingState !== previousFloatingState) {
-
-          setIsOpen(false);
-          previousFloatingState = currentFloatingState;
-          return;
-        }
-        
-        const buttonRect = wrapperRef.current.getBoundingClientRect();
-        const calendarHeight = 380;
-        const footerHeight = 54;
-        const buffer = 20;
-        const spaceBelow = window.innerHeight - buttonRect.bottom - footerHeight - buffer;
-        const spaceAbove = buttonRect.top - buffer;
-        const shouldOpenUpward = spaceBelow < 300 || (spaceBelow < calendarHeight && spaceAbove > spaceBelow + 50);
-        setOpenUpwards(shouldOpenUpward);
-        
-        // Vypočítej pozici pro fixed positioning
-        const left = buttonRect.left;
-        const top = shouldOpenUpward ? buttonRect.top - calendarHeight - 4 : buttonRect.bottom + 4;
-        setPopupPosition({ top, left });
-      };
-      
-      const handleScroll = () => {
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-        }
-        rafId = requestAnimationFrame(checkPosition);
-      };
-      
-      checkPosition();
-      
-      // Aktualizuj pozici při scrollu - použij capture fázi pro všechny scrolly
-      window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
-      window.addEventListener('resize', checkPosition);
-      
-      return () => {
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-        }
-        window.removeEventListener('scroll', handleScroll, { capture: true });
-        window.removeEventListener('resize', checkPosition);
-      };
-    }
-  }, [isOpen]);
-
-  const formatDisplayDate = (date) => {
-    if (!date) return '';
-    try {
-      const d = new Date(date);
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    } catch {
-      return '';
-    }
-  };
-
-  const formatInputDate = (date) => {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const getCalendarDays = () => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-    const days = [];
-    for (let i = startDay - 1; i >= 0; i--) {
-      const date = new Date(year, month, -i);
-      days.push({ date, isOtherMonth: true });
-    }
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      const date = new Date(year, month, i);
-      days.push({ date, isOtherMonth: false });
-    }
-    const remainingDays = 42 - days.length;
-    for (let i = 1; i <= remainingDays; i++) {
-      const date = new Date(year, month + 1, i);
-      days.push({ date, isOtherMonth: true });
-    }
-    return days;
-  };
-
-  const handleDateSelect = (date) => {
-    onChange(formatInputDate(date));
-    setIsOpen(false);
-  };
-
-  const handleToday = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    handleDateSelect(new Date());
-  };
-
-  const handleClear = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    onChange('');
-    setIsOpen(false);
-  };
-
-  const prevMonth = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  };
-
-  const nextMonth = (e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
-  };
-
-  const today = new Date();
-  const calendarDays = getCalendarDays();
-  const displayText = value ? formatDisplayDate(value) : placeholder;
-
-  return (
-    <DatePickerWrapper ref={wrapperRef}>
-      <InputWithIcon hasIcon>
-        <Calendar size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
-        <DateInputButton
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          hasValue={!!value}
-        >
-          {displayText}
-        </DateInputButton>
-        {value && (
-          <DateClearButton type="button" onClick={handleClear} title="Smazat datum">✕</DateClearButton>
-        )}
-        <DateTodayButton type="button" onClick={handleToday} title="Nastavit dnešní datum">📅</DateTodayButton>
-      </InputWithIcon>
-      {isOpen && ReactDOM.createPortal(
-        <DateCalendarPopup openUpwards={openUpwards} style={{ top: `${popupPosition.top}px`, left: `${popupPosition.left}px` }}>
-          <CalendarHeader>
-            <CalendarNav onClick={prevMonth}>◀</CalendarNav>
-            <CalendarTitle>
-              <span>{currentMonth.toLocaleDateString('cs-CZ', { month: 'long' })}</span>
-              <span>{currentMonth.getFullYear()}</span>
-            </CalendarTitle>
-            <CalendarNav onClick={nextMonth}>▶</CalendarNav>
-          </CalendarHeader>
-          <CalendarGrid>
-            {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map((day) => (
-              <CalendarDay key={day}>{day}</CalendarDay>
-            ))}
-            {calendarDays.map((day, index) => {
-              const isToday = day.date.toDateString() === today.toDateString();
-              const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
-              return (
-                <CalendarDate
-                  key={index}
-                  onClick={() => handleDateSelect(day.date)}
-                  isToday={isToday}
-                  isSelected={isSelected}
-                  isOtherMonth={day.isOtherMonth}
-                >
-                  {day.date.getDate()}
-                </CalendarDate>
-              );
-            })}
-          </CalendarGrid>
-          <CalendarFooter>
-            <CalendarButton className="today" onClick={handleToday}>Dnes</CalendarButton>
-            <CalendarButton className="clear" onClick={handleClear}>Smazat</CalendarButton>
-          </CalendarFooter>
-        </DateCalendarPopup>,
-        document.body
-      )}
-    </DatePickerWrapper>
-  );
-};
-
-const DatePickerWrapper = styled.div`
-  position: relative;
-  width: 100%;
-`;
-
-const InputWithIcon = styled.div`
-  position: relative;
-  width: 100%;
-`;
-
-const DateInputButton = styled.button`
-  width: 100%;
-  display: block;
-  padding: 0.5rem;
-  padding-left: 2.75rem;
-  padding-right: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  background: white;
-  color: ${props => props.hasValue ? '#1f2937' : '#9ca3af'};
-  font-size: 0.875rem;
-  font-weight: ${props => props.hasValue ? '600' : '400'};
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  height: 42px;
-  min-height: 42px;
-  &:hover {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-`;
-
-const DateClearButton = styled.button`
-  display: none;
-`;
-
-const DateTodayButton = styled.button`
-  display: none;
-`;
-
-const DateCalendarPopup = styled.div`
-  position: fixed;
-  z-index: 999999;
-  background: white;
-  border: 2px solid #3b82f6;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-  padding: 0.5rem;
-  width: max-content;
-  min-width: 280px;
-`;
-
-const CalendarHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid #e5e7eb;
-`;
-
-const CalendarNav = styled.button`
-  background: #f3f4f6;
-  border: none;
-  border-radius: 4px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #374151;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: all 0.2s ease;
-  &:hover {
-    background: #3b82f6;
-    color: white;
-    transform: scale(1.1);
-  }
-`;
-
-const CalendarTitle = styled.div`
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #111827;
-  display: flex;
-  gap: 0.35rem;
-`;
-
-const CalendarGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-`;
-
-const CalendarDay = styled.div`
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #6b7280;
-  padding: 0.15rem;
-`;
-
-const CalendarDate = styled.button`
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  border: none;
-  border-radius: 4px;
-  background: ${props => props.isSelected ? '#3b82f6' : 'transparent'};
-  color: ${props => props.isSelected ? 'white' : props.isOtherMonth ? '#9ca3af' : '#374151'};
-  font-weight: ${props => props.isSelected ? '600' : '400'};
-  cursor: pointer;
-  transition: all 0.2s ease;
-  &:hover {
-    background: ${props => props.isSelected ? '#2563eb' : '#f3f4f6'};
-    transform: scale(1.1);
-    color: ${props => props.isSelected ? 'white' : '#111827'};
-  }
-`;
-
-const CalendarFooter = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 2px solid #e5e7eb;
-`;
-
-const CalendarButton = styled.button`
-  flex: 1;
-  padding: 0.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  &.today {
-    background: #dbeafe;
-    color: #1e40af;
-    &:hover {
-      background: #bfdbfe;
-    }
-  }
-  &.clear {
-    background: #fee2e2;
-    color: #991b1b;
-    &:hover {
-      background: #fecaca;
-    }
-  }
-`;
-
-// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
@@ -4869,6 +4477,33 @@ const Orders25List = () => {
     });
   });
 
+  // 🚀 PERFORMANCE: Debounced column filters pro rychlejší psaní
+  // Lokální state pro okamžitou změnu inputu (UX), debounce pro aplikaci filtru (performance)
+  const [localColumnFilters, setLocalColumnFilters] = useState(columnFilters);
+  const columnFilterTimeoutRef = useRef(null);
+
+  // Synchronizuj local state když se změní column filters z jiného zdroje (např. clear all)
+  useEffect(() => {
+    setLocalColumnFilters(columnFilters);
+  }, [columnFilters]);
+
+  // Debounced setter pro column filters
+  const setColumnFiltersDebounced = useCallback((newFilters) => {
+    // Okamžitě updatni lokální state (input se updatuje bez zpoždění)
+    setLocalColumnFilters(newFilters);
+
+    // Clear předchozí timeout
+    if (columnFilterTimeoutRef.current) {
+      clearTimeout(columnFilterTimeoutRef.current);
+    }
+
+    // Aplikuj filtr po 300ms debounce
+    columnFilterTimeoutRef.current = setTimeout(() => {
+      setColumnFilters(newFilters);
+      setUserStorage('orders25List_columnFilters', newFilters);
+    }, 300);
+  }, []);
+
   // Multiselect filters (ID filtry z rozšířeného filtrovacího panelu)
   const [multiselectFilters, setMultiselectFilters] = useState({
     objednatel: '',
@@ -4876,6 +4511,15 @@ const Orders25List = () => {
     prikazce: '',
     schvalovatel: ''
   });
+
+  // 🧹 CLEANUP: Clear debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (columnFilterTimeoutRef.current) {
+        clearTimeout(columnFilterTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Row highlighting by status (zvýrazňování podle stavu)
   const [showRowHighlighting, setShowRowHighlighting] = useState(() => {
@@ -6058,114 +5702,120 @@ const Orders25List = () => {
         return order;
       });
 
-      // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů
-      console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
-      console.log('👤 Uživatel:', { 
-        user_id, 
-        username, 
-        roles: userDetail?.roles?.map(r => r.kod_role || r.nazev_role).join(', ') || 'žádné role v userDetail',
-        hasAdminRole,
-        canViewAll: currentPermissions?.canViewAll,
-        hasOnlyOwn: currentPermissions?.hasOnlyOwn
-      });
-      console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
+      // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů (VYPNUTO PRO VÝKON)
+      // PERFORMANCE: Tento log je drahý (reduce, filter operace) a spouští se při každém načtení
+      // Zapni pouze při potřebě debugování
+      const ENABLE_DEBUG_LOG = false;
       
-      // Analýza stavů objednávek
-      const stavyCount = finalOrders.reduce((acc, o) => {
-        const stav = o.stav_objednavky || 'NEZNAMY';
-        acc[stav] = (acc[stav] || 0) + 1;
-        return acc;
-      }, {});
-      console.log('📊 Stavy objednávek:', stavyCount);
-      
-      // Analýza vlastnictví
-      const ownership = {
-        meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
-        jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
-        jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
-        jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id) || String(o.garant_uzivatel_id) === String(user_id)).length,
-        jsemObjednatel: finalOrders.filter(o => String(o.objednatel_id) === String(user_id)).length,
-        jsemFakturant: finalOrders.filter(o => String(o.fakturant_id) === String(user_id)).length,
-        potvrdilJsem: finalOrders.filter(o => String(o.potvrdil_vecnou_spravnost_id) === String(user_id)).length,
-        dokončilJsem: finalOrders.filter(o => String(o.dokoncil_id) === String(user_id)).length,
-        zveřejnilJsem: finalOrders.filter(o => String(o.zverejnil_id) === String(user_id)).length,
-        aktualizoválJsem: finalOrders.filter(o => String(o.uzivatel_akt_id) === String(user_id)).length,
-      };
-      console.log('👥 Vlastnictví objednávek:', ownership);
-      
-      // Kontrola visibility a aktivnosti
-      const visibility = {
-        aktivní: finalOrders.filter(o => o.aktivni === 1 || o.aktivni === '1').length,
-        neaktivní: finalOrders.filter(o => o.aktivni === 0 || o.aktivni === '0').length,
-        draft: finalOrders.filter(o => o.isDraft || o.isLocalConcept).length,
-      };
-      console.log('👁️ Viditelnost:', visibility);
-      
-      // 🔍 AKTIVNÍ FRONTEND FILTRY
-      console.groupCollapsed('🔧 Aktivní frontend filtry');
-      console.log('📌 Základní filtry:', {
-        statusFilter: statusFilter.length > 0 ? statusFilter : 'Všechny stavy',
-        userFilter: userFilter || 'Žádný filtr uživatele',
-        showOnlyMyOrders: showOnlyMyOrders ? 'ANO - jen moje' : 'NE - všechny',
-        showArchived: showArchived ? 'ANO - včetně archivovaných' : 'NE - bez archivovaných'
-      });
-      console.log('👥 Výběr osob:', {
-        selectedObjednatel: selectedObjednatel.length > 0 ? selectedObjednatel : 'Žádný',
-        selectedGarant: selectedGarant.length > 0 ? selectedGarant : 'Žádný',
-        selectedSchvalovatel: selectedSchvalovatel.length > 0 ? selectedSchvalovatel : 'Žádný',
-        selectedPrikazce: selectedPrikazce.length > 0 ? selectedPrikazce : 'Žádný'
-      });
-      console.log('💰 Částka:', {
-        amountFromFilter: amountFromFilter || 'Neomezeno',
-        amountToFilter: amountToFilter || 'Neomezeno'
-      });
-      console.log('📅 Datum:', {
-        dateFromFilter: dateFromFilter || 'Neomezeno',
-        dateToFilter: dateToFilter || 'Neomezeno'
-      });
-      console.log('📋 Ostatní:', {
-        filterMaBytZverejneno: filterMaBytZverejneno ? 'ANO' : 'NE',
-        filterByloZverejneno: filterByloZverejneno ? 'ANO' : 'NE',
-        selectedYear: selectedYear || 'Neomezeně'
-      });
-      
-      // Textové filtry z hlavičky tabulky (columnFilters)
-      const activeColumnFilters = Object.entries(columnFilters || {})
-        .filter(([_, value]) => value && value.trim() !== '')
-        .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-      
-      if (Object.keys(activeColumnFilters).length > 0) {
-        console.log('🔎 Textové filtry (hlavička tabulky):', activeColumnFilters);
-      } else {
-        console.log('🔎 Textové filtry (hlavička tabulky): Žádné');
-      }
-      console.groupEnd();
-      
-      // Možné důvody proč se objednávka NEZOBRAZÍ
-      console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
-      console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná) a showArchived=false');
-      console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
-      console.log('3. ❌ Frontend filtr: showOnlyMyOrders=true a uživatel není v žádné roli');
-      console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
-      console.log('5. ❌ Search filtr: Objednávka neodpovídá globalSearch dotazu');
-      console.log('6. ❌ Date range filtr: Objednávka je mimo dateFrom/dateTo rozsah');
-      console.log('7. ❌ Status filtr: Objednávka nemá stav ze seznamu statusFilter');
-      console.log('8. ❌ User filtr: Objednávka nemá vybraného objednatele/garanta/schvalovatele/příkazce');
-      console.log('9. ❌ Amount filtr: Objednávka není v rozsahu amountFrom/amountTo');
-      console.log('10. ❌ Registr filtr: Objednávka nemá odpovídající registr status');
-      console.groupEnd();
-      
-      // Ukázka prvních 3 objednávek
-      if (finalOrders.length > 0) {
-        console.groupCollapsed('📄 První 3 objednávky (ukázka)');
-        finalOrders.slice(0, 3).forEach((o, idx) => {
-          console.log(`${idx + 1}. #${o.id} | ${o.cislo_objednavky || 'N/A'} | ${o.stav_objednavky} | Příkazce: ${o.prikazce_id} | Aktivní: ${o.aktivni}`);
+      if (ENABLE_DEBUG_LOG) {
+        console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
+        console.log('👤 Uživatel:', { 
+          user_id, 
+          username, 
+          roles: userDetail?.roles?.map(r => r.kod_role || r.nazev_role).join(', ') || 'žádné role v userDetail',
+          hasAdminRole,
+          canViewAll: currentPermissions?.canViewAll,
+          hasOnlyOwn: currentPermissions?.hasOnlyOwn
         });
+        console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
+        
+        // Analýza stavů objednávek
+        const stavyCount = finalOrders.reduce((acc, o) => {
+          const stav = o.stav_objednavky || 'NEZNAMY';
+          acc[stav] = (acc[stav] || 0) + 1;
+          return acc;
+        }, {});
+        console.log('📊 Stavy objednávek:', stavyCount);
+        
+        // Analýza vlastnictví
+        const ownership = {
+          meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
+          jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
+          jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
+          jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id) || String(o.garant_uzivatel_id) === String(user_id)).length,
+          jsemObjednatel: finalOrders.filter(o => String(o.objednatel_id) === String(user_id)).length,
+          jsemFakturant: finalOrders.filter(o => String(o.fakturant_id) === String(user_id)).length,
+          potvrdilJsem: finalOrders.filter(o => String(o.potvrdil_vecnou_spravnost_id) === String(user_id)).length,
+          dokončilJsem: finalOrders.filter(o => String(o.dokoncil_id) === String(user_id)).length,
+          zveřejnilJsem: finalOrders.filter(o => String(o.zverejnil_id) === String(user_id)).length,
+          aktualizoválJsem: finalOrders.filter(o => String(o.uzivatel_akt_id) === String(user_id)).length,
+        };
+        console.log('👥 Vlastnictví objednávek:', ownership);
+        
+        // Kontrola visibility a aktivnosti
+        const visibility = {
+          aktivní: finalOrders.filter(o => o.aktivni === 1 || o.aktivni === '1').length,
+          neaktivní: finalOrders.filter(o => o.aktivni === 0 || o.aktivni === '0').length,
+          draft: finalOrders.filter(o => o.isDraft || o.isLocalConcept).length,
+        };
+        console.log('👁️ Viditelnost:', visibility);
+        
+        // 🔍 AKTIVNÍ FRONTEND FILTRY
+        console.groupCollapsed('🔧 Aktivní frontend filtry');
+        console.log('📌 Základní filtry:', {
+          statusFilter: statusFilter.length > 0 ? statusFilter : 'Všechny stavy',
+          userFilter: userFilter || 'Žádný filtr uživatele',
+          showOnlyMyOrders: showOnlyMyOrders ? 'ANO - jen moje' : 'NE - všechny',
+          showArchived: showArchived ? 'ANO - včetně archivovaných' : 'NE - bez archivovaných'
+        });
+        console.log('👥 Výběr osob:', {
+          selectedObjednatel: selectedObjednatel.length > 0 ? selectedObjednatel : 'Žádný',
+          selectedGarant: selectedGarant.length > 0 ? selectedGarant : 'Žádný',
+          selectedSchvalovatel: selectedSchvalovatel.length > 0 ? selectedSchvalovatel : 'Žádný',
+          selectedPrikazce: selectedPrikazce.length > 0 ? selectedPrikazce : 'Žádný'
+        });
+        console.log('💰 Částka:', {
+          amountFromFilter: amountFromFilter || 'Neomezeno',
+          amountToFilter: amountToFilter || 'Neomezeno'
+        });
+        console.log('📅 Datum:', {
+          dateFromFilter: dateFromFilter || 'Neomezeno',
+          dateToFilter: dateToFilter || 'Neomezeno'
+        });
+        console.log('📋 Ostatní:', {
+          filterMaBytZverejneno: filterMaBytZverejneno ? 'ANO' : 'NE',
+          filterByloZverejneno: filterByloZverejneno ? 'ANO' : 'NE',
+          selectedYear: selectedYear || 'Neomezeně'
+        });
+        
+        // Textové filtry z hlavičky tabulky (columnFilters)
+        const activeColumnFilters = Object.entries(columnFilters || {})
+          .filter(([_, value]) => value && value.trim() !== '')
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+        
+        if (Object.keys(activeColumnFilters).length > 0) {
+          console.log('🔎 Textové filtry (hlavička tabulky):', activeColumnFilters);
+        } else {
+          console.log('🔎 Textové filtry (hlavička tabulky): Žádné');
+        }
+        console.groupEnd();
+        
+        // Možné důvody proč se objednávka NEZOBRAZÍ
+        console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
+        console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná) a showArchived=false');
+        console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
+        console.log('3. ❌ Frontend filtr: showOnlyMyOrders=true a uživatel není v žádné roli');
+        console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
+        console.log('5. ❌ Search filtr: Objednávka neodpovídá globalSearch dotazu');
+        console.log('6. ❌ Date range filtr: Objednávka je mimo dateFrom/dateTo rozsah');
+        console.log('7. ❌ Status filtr: Objednávka nemá stav ze seznamu statusFilter');
+        console.log('8. ❌ User filtr: Objednávka nemá vybraného objednatele/garanta/schvalovatele/příkazce');
+        console.log('9. ❌ Amount filtr: Objednávka není v rozsahu amountFrom/amountTo');
+        console.log('10. ❌ Registr filtr: Objednávka nemá odpovídající registr status');
+        console.groupEnd();
+        
+        // Ukázka prvních 3 objednávek
+        if (finalOrders.length > 0) {
+          console.groupCollapsed('📄 První 3 objednávky (ukázka)');
+          finalOrders.slice(0, 3).forEach((o, idx) => {
+            console.log(`${idx + 1}. #${o.id} | ${o.cislo_objednavky || 'N/A'} | ${o.stav_objednavky} | Příkazce: ${o.prikazce_id} | Aktivní: ${o.aktivni}`);
+          });
+          console.groupEnd();
+        }
+      
+        console.log('✅ Objednávky nastaveny do state - nyní se aplikují frontend filtry (tab, search, date range)');
         console.groupEnd();
       }
-      
-      console.log('✅ Objednávky nastaveny do state - nyní se aplikují frontend filtry (tab, search, date range)');
-      console.groupEnd();
 
       setOrders(finalOrders);
 
@@ -7087,32 +6737,60 @@ const Orders25List = () => {
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true;
 
-        const orderDateTime = getOrderDateTime(row.original);
+        const order = row.original;
+        const orderDateTime = getOrderDateTime(order);
         if (!orderDateTime) return false;
 
-        const date = new Date(orderDateTime);
-        const dateStr = formatDateOnly(date);
-        const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
-        const fullText = `${dateStr} ${timeStr}`;
+        // Datum poslední změny (bez času)
+        const lastModified = order.dt_aktualizace || order.dt_objednavky || orderDateTime;
+        const lastModifiedStr = formatDateOnly(new Date(lastModified));
+
+        // Datum a čas vytvoření
+        const created = order.dt_vytvoreni || orderDateTime;
+        const createdDate = new Date(created);
+        const createdDateStr = formatDateOnly(createdDate);
+        const createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+        // Převést filterValue (yyyy-mm-dd) na dd.mm.yyyy pro porovnání
+        let searchText = filterValue;
+        if (filterValue.includes('-') && filterValue.length === 10) {
+          // Formát yyyy-mm-dd z DatePickeru
+          const date = new Date(filterValue);
+          if (!isNaN(date.getTime())) {
+            searchText = formatDateOnly(date);
+          }
+        }
+
+        // Spojit všechny tři hodnoty pro prohledávání
+        const fullText = `${lastModifiedStr} ${createdDateStr} ${createdTimeStr}`;
 
         // Case-insensitive a bez diakritiky
         const normalizedText = removeDiacritics(fullText.toLowerCase());
-        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+        const normalizedFilter = removeDiacritics(searchText.toLowerCase());
 
         return normalizedText.includes(normalizedFilter);
       },
       cell: ({ row }) => {
-        const orderDateTime = getOrderDateTime(row.original);
+        const order = row.original;
+        const orderDateTime = getOrderDateTime(order);
         if (!orderDateTime) return <div style={{ textAlign: 'center' }}>---</div>;
 
-        const date = new Date(orderDateTime);
-        const dateStr = formatDateOnly(date);
-        const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        // Datum poslední změny objednávky (bez času)
+        const lastModified = order.dt_aktualizace || order.dt_objednavky || orderDateTime;
+        const lastModifiedDate = new Date(lastModified);
+        const lastModifiedStr = formatDateOnly(lastModifiedDate);
+
+        // Datum a čas vytvoření objednávky
+        const created = order.dt_vytvoreni || orderDateTime;
+        const createdDate = new Date(created);
+        const createdDateStr = formatDateOnly(createdDate);
+        const createdTimeStr = createdDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
 
         return (
-          <div style={{ textAlign: 'center', lineHeight: '1.2' }}>
-            <div>{dateStr}</div>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{timeStr}</div>
+          <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
+            <div>{lastModifiedStr}</div>
+            <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{createdDateStr}</div>
+            <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{createdTimeStr}</div>
           </div>
         );
       },
@@ -7219,6 +6897,89 @@ const Orders25List = () => {
         </div>
       ),
       size: 180
+    },
+    {
+      accessorKey: 'zpusob_financovani',
+      header: 'Financování',
+      sortingFn: withDraftPriority((rowA, rowB) => {
+        // Funkce pro získání způsobu financování - STEJNÁ LOGIKA JAKO V PODŘÁDKU
+        const getFinancovaniText = (order) => {
+          // Priorita: order.financovani.typ_nazev nebo order.financovani.typ
+          if (order.financovani && typeof order.financovani === 'object') {
+            return order.financovani.typ_nazev || order.financovani.typ || '';
+          }
+          return '';
+        };
+
+        const nameA = getFinancovaniText(rowA.original);
+        const nameB = getFinancovaniText(rowB.original);
+
+        // České třídění (prázdné na konec)
+        if (!nameA && !nameB) return 0;
+        if (!nameA) return 1;
+        if (!nameB) return -1;
+
+        return nameA.localeCompare(nameB, 'cs', { sensitivity: 'base' });
+      }),
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true;
+
+        const order = row.original;
+        let financovaniText = '';
+
+        // STEJNÁ LOGIKA JAKO V PODŘÁDKU
+        if (order.financovani && typeof order.financovani === 'object') {
+          financovaniText = order.financovani.typ_nazev || order.financovani.typ || '';
+        }
+
+        // Pokud je prázdný, hledej "---"
+        if (!financovaniText) {
+          const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+          return normalizedFilter === '---' || normalizedFilter === '';
+        }
+
+        // Case-insensitive a bez diakritiky
+        const normalizedText = removeDiacritics(String(financovaniText).toLowerCase());
+        const normalizedFilter = removeDiacritics(filterValue.toLowerCase());
+
+        return normalizedText.includes(normalizedFilter);
+      },
+      cell: ({ row }) => {
+        const order = row.original;
+        let financovaniText = '---';
+
+        // STEJNÁ LOGIKA JAKO V PODŘÁDKU: order.financovani.typ_nazev nebo order.financovani.typ
+        if (order.financovani && typeof order.financovani === 'object') {
+          financovaniText = order.financovani.typ_nazev || order.financovani.typ || '---';
+        }
+
+        // Zkrátit víceoslovné názvy: "Limitovaný příslib" -> "Limitovaný p."
+        let displayText = financovaniText;
+        if (financovaniText !== '---') {
+          const words = financovaniText.trim().split(/\s+/);
+          if (words.length > 1) {
+            // První slovo celé + první písmeno dalších slov s tečkou
+            displayText = words[0] + ' ' + words.slice(1).map(w => w.charAt(0) + '.').join(' ');
+          }
+        }
+
+        return (
+          <div style={{
+            textAlign: 'left',
+            whiteSpace: 'nowrap',
+            fontWeight: 600,
+            color: '#7c3aed'
+          }}
+          title={financovaniText !== '---' ? financovaniText : ''}
+          >
+            {globalFilter
+              ? highlightText(displayText, globalFilter)
+              : displayText
+            }
+          </div>
+        );
+      },
+      size: 120
     },
     {
       accessorKey: 'objednatel_garant',
@@ -7887,6 +7648,7 @@ const Orders25List = () => {
         // Podpora pro porovnávací operátory: =10000, <10000, >10000
         if (filterTrimmed.match(/^[=<>]/)) {
           const operator = filterTrimmed[0];
+          // Odstranit mezery, čárky a další non-numeric znaky kromě tečky
           const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
           const compareValue = parseFloat(valueStr);
 
@@ -7961,6 +7723,7 @@ const Orders25List = () => {
         // Podpora pro porovnávací operátory: =10000, <10000, >10000
         if (filterTrimmed.match(/^[=<>]/)) {
           const operator = filterTrimmed[0];
+          // Odstranit mezery, čárky a další non-numeric znaky kromě tečky
           const valueStr = filterTrimmed.substring(1).trim().replace(/\s/g, '').replace(/,/g, '');
           const compareValue = parseFloat(valueStr);
 
@@ -10831,7 +10594,7 @@ const Orders25List = () => {
 
   const clearColumnFilters = () => {
     // Vymaž vyhledávací pole v hlavičce tabulky
-    setColumnFilters({
+    const emptyFilters = {
       dt_objednavky: '',
       cislo_objednavky: '',
       predmet: '',
@@ -10841,7 +10604,16 @@ const Orders25List = () => {
       garant: '',
       prikazce: '',
       schvalovatel: ''
-    });
+    };
+    
+    // Clear debounce timeout
+    if (columnFilterTimeoutRef.current) {
+      clearTimeout(columnFilterTimeoutRef.current);
+    }
+    
+    setColumnFilters(emptyFilters);
+    setLocalColumnFilters(emptyFilters);
+    setUserStorage('orders25List_columnFilters', emptyFilters);
 
     // Reset selectů v rozšířeném filtru - prázdná pole místo prázdných stringů
     setSelectedObjednatel([]);
@@ -15947,6 +15719,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <DateRangeInputs>
                 <DateInputWrapper>
                   <DatePicker
+                    fieldName="dateFromFilter"
                     value={dateFromFilter || ''}
                     onChange={(value) => setDateFromFilter(value || '')}
                     placeholder="Datum od"
@@ -15955,6 +15728,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <DateSeparator>—</DateSeparator>
                 <DateInputWrapper>
                   <DatePicker
+                    fieldName="dateToFilter"
                     value={dateToFilter || ''}
                     onChange={(value) => setDateToFilter(value || '')}
                     placeholder="Datum do"
@@ -16286,15 +16060,30 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
                     <div style={{ position: 'relative' }}>
                       <DatePicker
-                        fieldName={`filter_${header.column.columnDef.accessorKey}`}
+                        fieldName="dt_objednavky_filter"
                         value={columnFilters[header.column.columnDef.accessorKey] || ''}
                         onChange={(value) => {
                           const newFilters = { ...columnFilters };
+                          // Uložit datum ve formátu yyyy-mm-dd (jak ho vrací DatePicker)
                           newFilters[header.column.columnDef.accessorKey] = value;
                           setColumnFilters(newFilters);
                         }}
                         placeholder="Datum"
                         variant="compact"
+                      />
+                    </div>
+                  ) : header.column.columnDef.accessorKey === 'max_cena_s_dph' || 
+                     header.column.columnDef.accessorKey === 'cena_s_dph' || 
+                     header.column.columnDef.accessorKey === 'faktury_celkova_castka_s_dph' ? (
+                    <div style={{ position: 'relative' }}>
+                      <OperatorInput
+                        value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
+                        onChange={(value) => {
+                          const newFilters = { ...localColumnFilters };
+                          newFilters[header.column.columnDef.accessorKey] = value;
+                          setColumnFiltersDebounced(newFilters);
+                        }}
+                        placeholder={header.column.columnDef.header}
                       />
                     </div>
                   ) : (
@@ -16303,19 +16092,24 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <ColumnFilterInput
                         type="text"
                         placeholder={`Hledat ${header.column.columnDef.header}...`}
-                        value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                        value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
                         onChange={(e) => {
-                          const newFilters = { ...columnFilters };
+                          const newFilters = { ...localColumnFilters };
                           newFilters[header.column.columnDef.accessorKey] = e.target.value;
-                          setColumnFilters(newFilters);
+                          setColumnFiltersDebounced(newFilters);
+                        }}
+                        style={{
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden'
                         }}
                       />
-                      {columnFilters[header.column.columnDef.accessorKey] && (
+                      {localColumnFilters[header.column.columnDef.accessorKey] && (
                         <ColumnClearButton
                           onClick={() => {
-                            const newFilters = { ...columnFilters };
+                            const newFilters = { ...localColumnFilters };
                             delete newFilters[header.column.columnDef.accessorKey];
-                            setColumnFilters(newFilters);
+                            setColumnFiltersDebounced(newFilters);
                           }}
                           title="Vymazat"
                         >
@@ -16419,7 +16213,6 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
-              <option value={250}>250</option>
             </PageSizeSelect>
 
             <PageButton
@@ -18157,15 +17950,30 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                       ) : header.column.columnDef.accessorKey === 'dt_objednavky' ? (
                         <div style={{ position: 'relative' }}>
                           <DatePicker
-                            fieldName={`filter_floating_${header.column.columnDef.accessorKey}`}
+                            fieldName="dt_objednavky_filter_floating"
                             value={columnFilters[header.column.columnDef.accessorKey] || ''}
                             onChange={(value) => {
                               const newFilters = { ...columnFilters };
+                              // Uložit datum ve formátu yyyy-mm-dd (jak ho vrací DatePicker)
                               newFilters[header.column.columnDef.accessorKey] = value;
                               setColumnFilters(newFilters);
                             }}
                             placeholder="Datum"
                             variant="compact"
+                          />
+                        </div>
+                      ) : header.column.columnDef.accessorKey === 'max_cena_s_dph' || 
+                         header.column.columnDef.accessorKey === 'cena_s_dph' || 
+                         header.column.columnDef.accessorKey === 'faktury_celkova_castka_s_dph' ? (
+                        <div style={{ position: 'relative' }}>
+                          <OperatorInput
+                            value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
+                            onChange={(value) => {
+                              const newFilters = { ...localColumnFilters };
+                              newFilters[header.column.columnDef.accessorKey] = value;
+                              setColumnFiltersDebounced(newFilters);
+                            }}
+                            placeholder={header.column.columnDef.header}
                           />
                         </div>
                       ) : (
@@ -18174,19 +17982,24 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           <ColumnFilterInput
                             type="text"
                             placeholder={`Hledat ${header.column.columnDef.header}...`}
-                            value={columnFilters[header.column.columnDef.accessorKey] || ''}
+                            value={localColumnFilters[header.column.columnDef.accessorKey] || ''}
                             onChange={(e) => {
-                              const newFilters = { ...columnFilters };
+                              const newFilters = { ...localColumnFilters };
                               newFilters[header.column.columnDef.accessorKey] = e.target.value;
-                              setColumnFilters(newFilters);
+                              setColumnFiltersDebounced(newFilters);
+                            }}
+                            style={{
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden'
                             }}
                           />
-                          {columnFilters[header.column.columnDef.accessorKey] && (
+                          {localColumnFilters[header.column.columnDef.accessorKey] && (
                             <ColumnClearButton
                               onClick={() => {
-                                const newFilters = { ...columnFilters };
+                                const newFilters = { ...localColumnFilters };
                                 delete newFilters[header.column.columnDef.accessorKey];
-                                setColumnFilters(newFilters);
+                                setColumnFiltersDebounced(newFilters);
                               }}
                               title="Vymazat"
                             >
