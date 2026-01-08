@@ -1530,6 +1530,9 @@ const ColumnFilterInput = styled.input`
   font-size: 0.75rem;
   background: #f9fafb;
   transition: all 0.2s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 
   &:focus {
     outline: none;
@@ -16083,7 +16086,11 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                           newFilters[header.column.columnDef.accessorKey] = value;
                           setColumnFiltersDebounced(newFilters);
                         }}
-                        placeholder={header.column.columnDef.header}
+                        placeholder={
+                          header.column.columnDef.accessorKey === 'max_cena_s_dph' ? 'Max. cena s DPH' :
+                          header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
+                          'Cena FA s DPH'
+                        }
                       />
                     </div>
                   ) : (
@@ -16097,11 +16104,6 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                           const newFilters = { ...localColumnFilters };
                           newFilters[header.column.columnDef.accessorKey] = e.target.value;
                           setColumnFiltersDebounced(newFilters);
-                        }}
-                        style={{
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden'
                         }}
                       />
                       {localColumnFilters[header.column.columnDef.accessorKey] && (
@@ -17973,7 +17975,11 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                               newFilters[header.column.columnDef.accessorKey] = value;
                               setColumnFiltersDebounced(newFilters);
                             }}
-                            placeholder={header.column.columnDef.header}
+                            placeholder={
+                              header.column.columnDef.accessorKey === 'max_cena_s_dph' ? 'Max. cena s DPH' :
+                              header.column.columnDef.accessorKey === 'cena_s_dph' ? 'Cena s DPH' :
+                              'Cena FA s DPH'
+                            }
                           />
                         </div>
                       ) : (
@@ -17987,11 +17993,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                               const newFilters = { ...localColumnFilters };
                               newFilters[header.column.columnDef.accessorKey] = e.target.value;
                               setColumnFiltersDebounced(newFilters);
-                            }}
-                            style={{
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden'
                             }}
                           />
                           {localColumnFilters[header.column.columnDef.accessorKey] && (

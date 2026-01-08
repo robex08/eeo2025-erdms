@@ -184,7 +184,16 @@ const EditableCombobox = ({
     return options.filter(option => {
       const code = (option.code || '').toLowerCase();
       const name = (option.name || '').toLowerCase();
-      return code.includes(searchTerm) || name.includes(searchTerm);
+      const displayName = (option.displayName || '').toLowerCase();
+      const dropdownDisplay = (option.dropdownDisplay || '').toLowerCase();
+      const usek_zkr = (option.usek_zkr || '').toLowerCase();
+      const usek_nazev = (option.usek_nazev || '').toLowerCase();
+      return code.includes(searchTerm) || 
+             name.includes(searchTerm) || 
+             displayName.includes(searchTerm) ||
+             dropdownDisplay.includes(searchTerm) ||
+             usek_zkr.includes(searchTerm) ||
+             usek_nazev.includes(searchTerm);
     });
   }, [inputValue, options, loading]);
 
@@ -360,7 +369,7 @@ const EditableCombobox = ({
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
-                <strong>{option.code}</strong>
+                <strong>{option.dropdownDisplay || option.displayName || option.code}</strong>
                 {option.name && <small>{option.name}</small>}
               </DropdownItem>
             ))

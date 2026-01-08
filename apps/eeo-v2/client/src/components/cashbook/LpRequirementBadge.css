@@ -1,0 +1,74 @@
+/**
+ * LpRequirementBadge.css
+ * Styly pro LP requirement badge (LP povinné / volitelné)
+ */
+
+.lp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.lp-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* LP POVINNÉ - Červená (upozornění) */
+.lp-required {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.lp-required:hover {
+  background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+}
+
+/* LP VOLITELNÉ - Šedá (neutrální) */
+.lp-optional {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+}
+
+.lp-optional:hover {
+  background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+}
+
+/* Ikona */
+.lp-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Label */
+.lp-label {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+/* Responsive - na malých obrazovkách zmenšit */
+@media (max-width: 768px) {
+  .lp-badge {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+    gap: 0.25rem;
+  }
+  
+  .lp-icon {
+    font-size: 0.9rem;
+  }
+  
+  .lp-label {
+    font-size: 0.75rem;
+  }
+}
