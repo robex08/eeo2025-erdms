@@ -300,7 +300,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   const today = new Date();
   const calendarDays = getCalendarDays();
 
-  const displayText = value ? formatDisplayDate(value) : '';
+  const displayText = value ? formatDisplayDate(value) : placeholder;
 
   return (
     <DatePickerWrapper ref={wrapperRef} data-field={fieldName}>
@@ -445,7 +445,7 @@ const InputWithIcon = styled.div`
 const DateInputButton = styled.button`
   width: 100%;
   display: block;
-  height: ${props => props.$variant === 'compact' ? '32px' : '48px'};
+  height: ${props => props.$variant === 'compact' ? '38px' : '48px'};
   padding: ${props => props.$variant === 'compact' ? '0.375rem 0.5rem' : '0.5rem 2.75rem'};
   padding-left: ${props => props.$variant === 'compact' ? '0.5rem' : '2.75rem'};
   padding-right: ${props => props.$variant === 'compact' ? '0.5rem' : (props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem')};
