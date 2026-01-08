@@ -142,12 +142,12 @@ const NumberInput = styled.input`
   text-align: right;
   background: transparent;
   min-width: 50px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 
   &::placeholder {
     color: #94a3b8;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
   }
 `;
 

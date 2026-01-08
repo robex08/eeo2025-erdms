@@ -1581,11 +1581,22 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         $kategorie = isset($input['kategorie']) ? trim($input['kategorie']) : null;
 
         // Unified query builder - always include usek info via LEFT JOIN
+        // Vrátit LP kódy, které jsou platné kdykoliv v aktuálním roce
+        // (tzn. platne_od <= konec roku AND platne_do >= začátek roku)
+        $currentYear = date('Y');
+        $yearStart = $currentYear . '-01-01';
+        $yearEnd = $currentYear . '-12-31';
+        
         $sql = "SELECT lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, lp.cislo_uctu, lp.nazev_uctu, lp.vyse_financniho_kryti, lp.platne_od, lp.platne_do, u.usek_zkr, u.usek_nazev 
                 FROM " . TBL_LP_MASTER . " lp 
                 LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id 
                 WHERE lp.cislo_lp IS NOT NULL 
-                AND YEAR(lp.platne_od) = YEAR(CURRENT_DATE)";
+                AND lp.platne_od <= :year_end 
+                AND lp.platne_do >= :year_start";
+        
+        // Přidat parametry pro rok
+        $params[':year_start'] = $yearStart;
+        $params[':year_end'] = $yearEnd;
 
         // Add filters dynamically
         if ($usekZkr !== null && $usekZkr !== '') {

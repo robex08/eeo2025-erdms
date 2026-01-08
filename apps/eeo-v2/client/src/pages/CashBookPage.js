@@ -33,6 +33,7 @@ import PokladniKnihaPDF from '../components/PokladniKnihaPDF';
 import { Global, css } from '@emotion/react';
 import cashbookAPI from '../services/cashbookService';
 import BookStatusBadge from '../components/cashbook/BookStatusBadge';
+import LpRequirementBadge from '../components/cashbook/LpRequirementBadge';
 import CashboxSelector from '../components/CashboxSelector';
 import { getCashbookPermissionsObject } from '../utils/cashbookPermissions';
 
@@ -1075,6 +1076,9 @@ const CashBookPage = () => {
   const [isSyncing, setIsSyncing] = useState(false); // Probíhá synchronizace
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState(null); // Poslední úspěšná sync
 
+  // 🆕 REF: Sledování předchozího assignmentu pro detekci změny pokladny
+  const prevAssignmentIdRef = useRef(null);
+
   // 🆕 PREVIOUS MONTH WARNING: Varování pokud předchozí měsíc není uzavřený
   const [showPreviousMonthWarning, setShowPreviousMonthWarning] = useState(false);
   const [syncConflicts, setSyncConflicts] = useState([]); // Pole konfliktů ke zobrazení
@@ -1510,12 +1514,29 @@ const CashBookPage = () => {
         const isPageReload = window.performance?.navigation?.type === 1 ||
                             window.performance?.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
 
-        // 2. Načíst localStorage pro porovnání (pouze pokud NENÍ page reload)
+        // ✅ DETEKCE ZMĚNY POKLADNY
+        // Pokud se změnil mainAssignment.id, je to změna pokladny (admin/uživatel přepnul pokladnu)
+        const currentAssignmentId = mainAssignment?.id;
+        const isCashboxChange = prevAssignmentIdRef.current !== null && 
+                                prevAssignmentIdRef.current !== currentAssignmentId;
+        
+        // Aktualizovat ref pro příští kontrolu
+        prevAssignmentIdRef.current = currentAssignmentId;
+
+        if (isCashboxChange) {
+          console.log('🔄 Detekce změny pokladny:', {
+            prev: prevAssignmentIdRef.current,
+            current: currentAssignmentId,
+            action: 'FORCE RELOAD Z DB'
+          });
+        }
+
+        // 2. Načíst localStorage pro porovnání (pouze pokud NENÍ page reload ANI změna pokladny)
         const savedData = localStorage.getItem(STORAGE_KEY);
         let localEntries = [];
         let localTimestamp = null;
 
-        if (savedData && !isPageReload) {
+        if (savedData && !isPageReload && !isCashboxChange) {
           try {
             const parsed = JSON.parse(savedData);
             localEntries = parsed.entries || [];
@@ -1540,6 +1561,17 @@ const CashBookPage = () => {
         // 🎯 PRAVIDLO 1: Pokud je page reload (F5), VŽDY ignorovat localStorage
         if (isPageReload) {
           // F5 → načíst jen z DB, smazat starý localStorage
+          setCashBookEntries(entries);
+          if (entries.length > 0) {
+            saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
+          }
+          setLastSyncTimestamp(new Date().toISOString());
+        }
+        // 🎯 PRAVIDLO 1B: Pokud uživatel/admin změnil pokladnu, VŽDY načíst z DB
+        else if (isCashboxChange) {
+          console.log('✅ Změna pokladny detekovaná → FORCE RELOAD Z DB (ignorován localStorage)');
           setCashBookEntries(entries);
           if (entries.length > 0) {
             saveToLocalStorage(entries, book.stav_knihy, parseFloat(book.prevod_z_predchoziho || 0));
@@ -1670,12 +1702,18 @@ const CashBookPage = () => {
           username: user.username
         });
 
-        // Transformovat data do jednotného formátu { code, name }
-        // SPRÁVNÁ STRUKTURA: cislo_lp (např. "LPIT01"), nazev_uctu (název LP kódu)
+        // Transformovat data do jednotného formátu { code, name, usek_zkr, usek_nazev }
+        // SPRÁVNÁ STRUKTURA: cislo_lp (např. "LPIT01"), nazev_uctu (název LP kódu), usek_zkr (zkratka úseku), usek_nazev (celý název úseku)
         const transformedLps = Array.isArray(data) ? data.map(lp => {
           const code = lp.cislo_lp || lp.kod || lp.code || lp.id;
           const name = lp.nazev_uctu || lp.nazev || lp.name || lp.popis || '';
-          return { code, name };
+          const usek_zkr = lp.usek_zkr || '';
+          const usek_nazev = lp.usek_nazev || '';
+          // Pro input po výběru: "LPIT1 (IT)"
+          const displayName = usek_zkr ? `${code} (${usek_zkr})` : code;
+          // Pro dropdown: "LPIT1 (Informační technologie)"
+          const dropdownDisplay = usek_nazev ? `${code} (${usek_nazev})` : code;
+          return { code, name, usek_zkr, usek_nazev, displayName, dropdownDisplay };
         }) : [];
 
         setLpCodes(transformedLps);
@@ -2395,16 +2433,117 @@ const CashBookPage = () => {
     return newId;
   };
 
+  /**
+   * 🔄 HELPER: Tichý reload dat z DB na pozadí (bez překresleni stránky)
+   * Použito po uložení, smazání nebo obnovení položky
+   */
+  const silentReloadFromDB = useCallback(async () => {
+    if (!currentBookId) return;
+
+    try {
+      console.log('🔄 Tichý reload z DB...');
+      
+      // Načíst čerstvá data z DB (s force_recalc pro přepočet převodu)
+      const bookResult = await cashbookAPI.getBook(currentBookId, true);
+
+      if (bookResult.status === 'ok' && bookResult.data) {
+        const book = bookResult.data.book || bookResult.data;
+        const entries = bookResult.data.entries || [];
+
+        // Aktualizovat stav knihy a metadata
+        if (book.stav_knihy) {
+          setBookStatus(book.stav_knihy);
+        }
+        if (book.prevod_z_predchoziho !== undefined) {
+          setCarryOverAmount(parseFloat(book.prevod_z_predchoziho || 0));
+        }
+        if (book.pokladna_lp_kod_povinny !== undefined) {
+          setLpKodPovinny(book.pokladna_lp_kod_povinny === 1 || book.pokladna_lp_kod_povinny === '1');
+        }
+
+        // Transformovat entries do frontend formátu
+        const transformedEntries = entries.map(transformDBEntryToFrontend);
+        
+        // Aktualizovat state (bez isEditing, aby se uzavřely editátory)
+        setCashBookEntries(transformedEntries.map(e => ({ ...e, isEditing: false })));
+        
+        // Uložit do localStorage
+        saveToLocalStorage(
+          transformedEntries,
+          book.stav_knihy || 'aktivni',
+          parseFloat(book.prevod_z_predchoziho || 0)
+        );
+        
+        setLastSyncTimestamp(new Date().toISOString());
+        
+        console.log('✅ Tichý reload dokončen:', {
+          entries: transformedEntries.length,
+          balance: book.koncovy_stav
+        });
+      }
+    } catch (error) {
+      console.error('❌ Chyba při tichém reloadu:', error);
+      // Nepřerušujeme uživatele - data jsou již uložena
+    }
+  }, [currentBookId, transformDBEntryToFrontend, saveToLocalStorage]);
+
+  /**
+   * 🧹 HELPER: Vyčištění localStorage cache pro konkrétní pokladnu
+   * Smaže všechny cashbook cache klíče pro danou pokladnu (všechny měsíce a roky)
+   */
+  const clearCashbookCacheForAssignment = useCallback((assignmentId) => {
+    if (!userDetail?.id || !assignmentId) return;
+
+    const userId = userDetail.id;
+    const keysToRemove = [];
+
+    // Najít všechny klíče pro tuto pokladnu: cashbook_${userId}_${assignmentId}_*
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(`cashbook_${userId}_${assignmentId}_`)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    // Smazat všechny nalezené klíče
+    keysToRemove.forEach(key => {
+      console.log('🗑️ Čištění cache:', key);
+      localStorage.removeItem(key);
+    });
+
+    console.log(`✅ Vyčištěno ${keysToRemove.length} cache klíčů pro pokladnu ${assignmentId}`);
+  }, [userDetail]);
+
   // 🆕 CASHBOX SELECTOR: Handler pro změnu pokladny
   const handleCashboxChange = useCallback(async (newAssignment) => {
     if (!newAssignment || newAssignment.id === mainAssignment?.id) {
       return; // Stejná pokladna, nic nedělat
     }
 
-    // Nastavit novou pokladnu
+    console.log('🔄 Přepínání pokladny:', {
+      from: mainAssignment?.id,
+      to: newAssignment.id,
+      cashbox: newAssignment.cislo_pokladny
+    });
+
+    // 1️⃣ VYČISTIT CACHE STARÉ POKLADNY (pokud existuje)
+    if (mainAssignment?.id) {
+      clearCashbookCacheForAssignment(mainAssignment.id);
+    }
+
+    // 2️⃣ VYČISTIT MEMORY CACHE (React state)
+    setCashBookEntries([]);
+    setCurrentBookId(null);
+    setCurrentBookData(null);
+    setCarryOverAmount(0);
+    setBookStatus('aktivni');
+    setLpKodPovinny(false);
+    setLastSyncTimestamp(null);
+
+    // 3️⃣ NASTAVIT NOVOU POKLADNU
     setMainAssignment(newAssignment);
 
-    // 🆕 Uložit výběr pokladny do localStorage (hlavně pro adminy)
+    // 4️⃣ ULOŽIT VÝBĚR DO SELECTOR CACHE (jen pro obnovení selectu)
     try {
       const saveData = {
         id: newAssignment.id,
@@ -2413,17 +2552,17 @@ const CashBookPage = () => {
       };
       localStorage.setItem('cashbook_selector_cashbox', JSON.stringify(saveData));
     } catch (err) {
-      // Tichá chyba - není kritická
+      console.error('❌ Chyba při ukládání selector cache:', err);
     }
 
-    // Vymazat aktuální data
-    setCashBookEntries([]);
-    setCurrentBookId(null);
-    setCarryOverAmount(0);
-
-    // Force reload - data se načtou automaticky v useEffect který sleduje mainAssignment
-    showToast(`Přepnuto na pokladnu ${newAssignment.cislo_pokladny} - ${newAssignment.nazev_pracoviste || newAssignment.nazev}`, 'success');
-  }, [mainAssignment, showToast]);
+    // 5️⃣ FORCE RELOAD Z DB - data se načtou v useEffect sledující mainAssignment
+    // UseEffect automaticky zavolá loadBookData() který načte VŽDY Z DB (ne z cache)
+    
+    showToast(
+      `Přepnuto na pokladnu ${newAssignment.cislo_pokladny} - ${newAssignment.nazev_pracoviste || newAssignment.nazev}`, 
+      'success'
+    );
+  }, [mainAssignment, userDetail, showToast, clearCashbookCacheForAssignment]);
 
   // Handler pro tlačítko "Přidat nový řádek" - stejná logika jako Shift+Insert
   const handleAddNewRow = () => {
@@ -2482,25 +2621,28 @@ const CashBookPage = () => {
     if (entryToDelete) {
       const entry = cashBookEntries.find(e => e.id === entryToDelete);
 
-      // Odstranit z frontendu
-      setCashBookEntries(prev => prev.filter(entry => entry.id !== entryToDelete));
-
-      // Pokud má DB ID, smazat i z DB
+      // Pokud má DB ID, smazat z DB
       if (entry?.db_id) {
         try {
           await cashbookAPI.deleteEntry(entry.db_id);
-          showToast('Položka byla smazána z databáze', 'success');
+          
+          // 🔄 TICHÝ RELOAD z DB na pozadí (přepočet zůstatků po smazání)
+          await silentReloadFromDB();
+          
+          showToast('✅ Položka smazána a zůstatky přepočteny', 'success');
         } catch (error) {
           console.error('❌ Chyba při mazání z DB:', error);
           showToast('Chyba při mazání z databáze', 'error');
         }
       } else {
+        // Nová položka bez DB ID - jen odstranit z frontendu
+        setCashBookEntries(prev => prev.filter(e => e.id !== entryToDelete));
         showToast('Položka byla odstraněna', 'success');
+        
+        // Uložit změny do localStorage
+        const updatedEntries = cashBookEntries.filter(e => e.id !== entryToDelete);
+        saveToLocalStorage(updatedEntries, bookStatus, carryOverAmount);
       }
-
-      // Uložit změny do localStorage
-      const updatedEntries = cashBookEntries.filter(e => e.id !== entryToDelete);
-      saveToLocalStorage(updatedEntries, bookStatus, carryOverAmount);
     }
     setDeleteDialogOpen(false);
     setEntryToDelete(null);
@@ -2828,6 +2970,10 @@ const CashBookPage = () => {
           celkove_vydaje: totalExpenses,
           koncovy_stav: endBalance
         });
+
+        // 🔄 TICHÝ RELOAD z DB na pozadí (přepočet zůstatků)
+        await silentReloadFromDB();
+        showToast('✅ Položka uložena a zůstatky přepočteny', 'success');
 
       } catch (error) {
         console.error('❌ Chyba při ukládání do DB:', error);
@@ -3711,6 +3857,7 @@ const CashBookPage = () => {
             <FontAwesomeIcon icon={faCalculator} />
             Přehled pokladny - {organizationInfo.month} {organizationInfo.year}
             <BookStatusBadge status={bookStatus} />
+            <LpRequirementBadge isRequired={lpKodPovinny} />
           </div>
           <div className="compact-values">
             <div className="compact-item">
@@ -3746,8 +3893,9 @@ const CashBookPage = () => {
               <FontAwesomeIcon icon={faInfoCircle} style={{ marginRight: '0.5rem' }} />
               Přehled pokladny
               {/* 🆕 KROK 3: Status badge přímo u nadpisu */}
-              <span style={{ marginLeft: '1rem', display: 'inline-flex', verticalAlign: 'middle' }}>
+              <span style={{ marginLeft: '1rem', display: 'inline-flex', gap: '0.5rem', verticalAlign: 'middle' }}>
                 <BookStatusBadge status={bookStatus} />
+                <LpRequirementBadge isRequired={lpKodPovinny} />
               </span>
             </h3>
             <p>Aktuální stav pokladní knihy za měsíc {organizationInfo.month} {organizationInfo.year}</p>
@@ -4199,7 +4347,13 @@ const CashBookPage = () => {
                           title={expandedDetailEntryId === entry.id 
                             ? 'Zavřít panel' 
                             : (entry.detailItems && entry.detailItems.length > 0 
-                              ? entry.detailItems.map(item => `${item.lp_kod}: ${Number(item.castka).toFixed(2)} Kč${item.popis ? ' - ' + item.popis : ''}`).join('\n')
+                              ? entry.detailItems.map(item => {
+                                  const lpData = lpCodes.find(lp => lp.code === item.lp_kod);
+                                  const displayCode = lpData && lpData.usek_zkr 
+                                    ? `${item.lp_kod} (${lpData.usek_zkr})` 
+                                    : item.lp_kod;
+                                  return `${displayCode}: ${Number(item.castka).toFixed(2)} Kč${item.popis ? ' - ' + item.popis : ''}`;
+                                }).join('\n')
                               : 'Přidat více LP kódů')
                           }
                         >
@@ -4219,12 +4373,26 @@ const CashBookPage = () => {
                     <div>
                       {entry.detailItems && entry.detailItems.length > 0 ? (
                         <div style={{ fontSize: '11px', color: '#666' }}>
-                          {entry.detailItems.map((item, idx) => (
-                            <div key={idx}>{item.lp_kod} ({Number(item.castka).toFixed(2)} Kč)</div>
-                          ))}
+                          {entry.detailItems.map((item, idx) => {
+                            // Najít LP kód v seznamu pro získání úseku
+                            const lpData = lpCodes.find(lp => lp.code === item.lp_kod);
+                            const displayCode = lpData && lpData.usek_zkr 
+                              ? `${item.lp_kod} (${lpData.usek_zkr})` 
+                              : item.lp_kod;
+                            return (
+                              <div key={idx}>{displayCode} ({Number(item.castka).toFixed(2)} Kč)</div>
+                            );
+                          })}
                         </div>
                       ) : (
-                        entry.lpCode || '-'
+                        (() => {
+                          // Najít LP kód v seznamu pro získání úseku
+                          const lpData = lpCodes.find(lp => lp.code === entry.lpCode);
+                          if (lpData && lpData.usek_zkr) {
+                            return `${entry.lpCode} (${lpData.usek_zkr})`;
+                          }
+                          return entry.lpCode || '-';
+                        })()
                       )}
                     </div>
                   )}
@@ -4347,12 +4515,20 @@ const CashBookPage = () => {
                                 </td>
                                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
                                   <EditableCombobox
-                                    value={item.lp_kod || ''}
+                                    value={(() => {
+                                      if (!item.lp_kod) return '';
+                                      // Pokud máme uložený lp_popis s displayName, použít ho
+                                      if (item.lp_popis) return item.lp_popis;
+                                      // Jinak zkonstruovat displayName z lpCodes
+                                      const lpData = lpCodes.find(lp => lp.code === item.lp_kod);
+                                      return lpData?.displayName || item.lp_kod;
+                                    })()}
                                     onChange={(e) => {
                                       const updated = [...detailEditBuffer];
                                       const selectedLp = lpCodes.find(lp => lp.code === e.target.value);
                                       updated[idx].lp_kod = e.target.value;
-                                      updated[idx].lp_popis = selectedLp?.name || '';
+                                      // Uložit display name se zkratkou úseku pro pozdější zobrazení
+                                      updated[idx].lp_popis = selectedLp?.displayName || '';
                                       setDetailEditBuffer(updated);
                                     }}
                                     options={lpCodes}
