@@ -1256,13 +1256,16 @@ function handle_invoices25_list($input, $config, $queries) {
         $user_usek_id = $usek_data ? (int)$usek_data['usek_id'] : null;
         $user_usek_zkr = $usek_data ? $usek_data['usek_zkr'] : null;
         
-        // 🔥 ADMIN CHECK: SUPERADMIN nebo ADMINISTRATOR = plný přístup (vidí VŠE)
-        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR nebo UCETNI = plný přístup (vidí VŠE)
+        // Role UCETNI má automatický přístup ke všem fakturám pro účetní operace
+        $is_admin = in_array('SUPERADMIN', $user_roles) || 
+                    in_array('ADMINISTRATOR', $user_roles) || 
+                    in_array('UCETNI', $user_roles);
         
         // DEBUG logging
         error_log("Invoices25 LIST: User $user_id roles: " . implode(', ', $user_roles));
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
-        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR): " . ($is_admin ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI): " . ($is_admin ? 'YES' : 'NO'));
 
         // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem
         if (!$is_admin) {
