@@ -3512,8 +3512,6 @@ export default function InvoiceEvidencePage() {
             });
 
             if (allInvoicesConfirmed) {
-              console.log('✅ Všechny faktury objednávky jsou ověřené - posun do stavu ZKONTROLOVANA');
-              
               // Parsovat aktuální workflow stavy
               let stavKody = [];
               if (orderData.stav_workflow_kod) {
@@ -3542,8 +3540,6 @@ export default function InvoiceEvidencePage() {
                   token,
                   username
                 );
-                
-                console.log('✅ Objednávka posunuta do stavu ZKONTROLOVANA');
               }
             }
           } catch (orderUpdateError) {
@@ -3583,14 +3579,6 @@ export default function InvoiceEvidencePage() {
     
     // 🆕 Uživatel klikl na Zaevidovat/Aktualizovat - nastavit flag
     setInvoiceUserConfirmed(true);
-
-    console.log('🔍 [SUBMIT] START:', {
-      editingInvoiceId,
-      isReadOnlyMode,
-      hasChangedVecnaSpravnost,
-      formData_vecna: formData.vecna_spravnost_potvrzeno,
-      originalFormData_vecna: originalFormData?.vecna_spravnost_potvrzeno
-    });
 
     // ✅ Kontrola stavu objednávky
     // - Pro NOVOU fakturu s objednávkou
@@ -3683,8 +3671,6 @@ export default function InvoiceEvidencePage() {
       // Zavřít progress modal při chybě validace
       setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '' });
       
-      console.log('🔍 [VALIDATION] Errors:', errors);
-      
       return;
     }
 
@@ -3712,17 +3698,6 @@ export default function InvoiceEvidencePage() {
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
       };
 
-      // 🔍 DEBUG: Kompletní logging před odesláním
-      console.log('🔍 SUBMIT START DEBUG:', {
-        order_id: formData.order_id,
-        smlouva_id: formData.smlouva_id,
-        fa_cislo_vema: formData.fa_cislo_vema,
-        editingInvoiceId: editingInvoiceId,
-        orderData: orderData,
-        hasOrderData: !!orderData,
-        orderDataId: orderData?.id
-      });
-
       const apiParams = {
         token,
         username,
@@ -3748,10 +3723,6 @@ export default function InvoiceEvidencePage() {
 
       if (editingInvoiceId) {
         // EDITACE - UPDATE faktury
-        console.log('=== DEBUG UPDATE PATH ===');
-        console.log('Editing invoice ID:', editingInvoiceId);
-        console.log('Order ID to assign:', formData.order_id);
-        
         // updateInvoiceV2 očekává updateData jako separátní objekt
         const updateData = {
           objednavka_id: formData.order_id || null,
@@ -3777,15 +3748,6 @@ export default function InvoiceEvidencePage() {
           dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti || null
         };
         
-        console.log('🔍 [UPDATE] updateData:', updateData);
-        console.log('🔍 [UPDATE] Věcná správnost:', {
-          umisteni_majetku: updateData.umisteni_majetku,
-          poznamka: updateData.poznamka_vecne_spravnosti,
-          potvrzeno: updateData.vecna_spravnost_potvrzeno,
-          potvrdil_id: updateData.potvrdil_vecnou_spravnost_id,
-          dt_potvrzeni: updateData.dt_potvrzeni_vecne_spravnosti
-        });
-
         // 🎯 Progress - aktualizace faktury
         setProgressModal(prev => ({
           ...prev,
@@ -3799,11 +3761,6 @@ export default function InvoiceEvidencePage() {
           invoice_id: editingInvoiceId,
           updateData
         });
-        
-        console.log('🔍 [UPDATE] API Response:', result);
-        console.log('🔍 [UPDATE] Response status:', result?.status);
-        console.log('🔍 [UPDATE] Response success:', result?.success);
-        console.log('🔍 [UPDATE] Response message:', result?.message);
         
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
         
@@ -3847,18 +3804,14 @@ export default function InvoiceEvidencePage() {
         
         if (formData.file) {
           // S přílohou
-          console.log('🔍 CREATING INVOICE WITH ATTACHMENT:', apiParams);
           result = await createInvoiceWithAttachmentV2({
             ...apiParams,
             file: formData.file,
             klasifikace: formData.klasifikace || null // Typ přílohy
           });
-          console.log('✅ CREATE WITH ATTACHMENT RESPONSE:', result);
         } else {
           // Bez přílohy
-          console.log('🔍 CREATING INVOICE WITHOUT ATTACHMENT:', apiParams);
           result = await createInvoiceV2(apiParams);
-          console.log('✅ CREATE RESPONSE:', result);
         }
 
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro novou fakturu (pokud je LP financování)
@@ -3875,11 +3828,6 @@ export default function InvoiceEvidencePage() {
         }
 
         setProgress?.(100);
-        
-        console.log('=== DEBUG SUCCESS RESPONSE ===', result);
-        console.log('Result data:', result?.data);
-        console.log('Invoice ID:', result?.data?.id);
-        console.log('Order assignment in response:', result?.data?.order_id);
         
         // 🎯 Progress - úspěšné vytvoření
         let successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla zaevidována do systému.`;
