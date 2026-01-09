@@ -2288,9 +2288,9 @@ const Invoices25List = () => {
   const handleUnlinkInvoice = (invoice) => {
     const entityType = invoice.objednavka_id ? 'objednávky' : invoice.smlouva_id ? 'smlouvy' : null;
     const entityNumber = invoice.objednavka_id 
-      ? (invoice.objednavka_cislo || `#${invoice.objednavka_id}`)
+      ? (invoice.cislo_objednavky || `#${invoice.objednavka_id}`)
       : invoice.smlouva_id 
-        ? (invoice.smlouva_cislo || `#${invoice.smlouva_id}`)
+        ? (invoice.cislo_smlouvy || `#${invoice.smlouva_id}`)
         : null;
     
     if (!entityType) {
@@ -2314,14 +2314,21 @@ const Invoices25List = () => {
           
           // API call pro odpojení
           const { updateInvoiceV2 } = await import('../services/api25invoices');
+          const updateData = {};
+          
+          // Nastavit správné pole podle entity type
+          if (invoice.objednavka_id) {
+            updateData.objednavka_id = null; // Odpojit od objednávky
+          }
+          if (invoice.smlouva_id) {
+            updateData.smlouva_id = null; // Odpojit od smlouvy
+          }
+          
           await updateInvoiceV2({
             token,
             username,
             invoice_id: invoice.id,
-            updateData: {
-              objednavka_id: invoice.objednavka_id ? null : undefined,
-              smlouva_id: invoice.smlouva_id ? null : undefined
-            }
+            updateData
           });
           
           // Refresh seznam faktur
