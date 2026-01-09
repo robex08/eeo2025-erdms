@@ -2013,6 +2013,11 @@ const TableRow = styled.tr`
     animation-iteration-count: 1;
     z-index: 100 !important;
     position: relative;
+    
+    /* Po dokončení animace zůstane výrazný tmavě zelený border */
+    border: 3px solid #059669 !important;
+    border-left: 6px solid #047857 !important;
+    box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.2) !important;
   ` : ''}
 
   /* Jemný hover efekt pro všechny řádky (kromě konceptů které mají vlastní) */
@@ -5401,6 +5406,12 @@ const Orders25List = () => {
     const loadStartTime = performance.now();
 
     try {
+      // ⚠️ Vynuluj highlight jen při NORMÁLNÍM načítání (ne silent)
+      // Silent reload = po schválení - border musí zůstat
+      if (!silent) {
+        setHighlightOrderId(null);
+      }
+      
       if (!silent) {
         setLoading(true);
         setError(null);
@@ -6077,6 +6088,9 @@ const Orders25List = () => {
         setLoading(false);
         setInitializing(false);
         setTimeout(() => setProgress?.(0), 500);
+      } else {
+        // I při silent reloadu vynuluj progress bar (pokud nějaký zůstal)
+        setTimeout(() => setProgress?.(0), 100);
       }
     }
   }, [token, user?.username, user_id, selectedYear, selectedMonth, showArchived]);
@@ -9515,7 +9529,8 @@ const Orders25List = () => {
       // Načti detail objednávky s enriched daty (LP budget, smlouva, střediska)
       const orderDetail = await getOrderV2(order.id, token, username, true, 0);
       setOrderToApprove(orderDetail);
-      setApprovalComment('');
+      // Načti existující komentář ke schválení z DB (pokud existuje)
+      setApprovalComment(orderDetail.schvaleni_komentar || '');
       setShowApprovalDialog(true);
     } catch (error) {
       console.error('Chyba při načítání detailu objednávky:', error);
@@ -9600,11 +9615,14 @@ const Orders25List = () => {
       setApprovalComment('');
       setApprovalCommentError('');
 
-      // Zobraz úspěšnou zprávu
+      // Zobraz bohatší úspěšnou zprávu s detaily
+      const currentUser = users[currentUserId];
+      const userName = currentUser ? `${currentUser.jmeno} ${currentUser.prijmeni}` : 'Váš účet';
+      
       const actionMessages = {
-        approve: 'Objednávka byla úspěšně schválena',
-        reject: 'Objednávka byla zamítnuta',
-        postpone: 'Objednávka byla odložena'
+        approve: `✅ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla úspěšně schválena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Schválil: ${userName}`,
+        reject: `❌ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla zamítnuta\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Zamítl: ${userName}`,
+        postpone: `⏸️ Objednávka ${orderToApprove.ev_cislo || orderToApprove.cislo_objednavky} byla odložena\n📋 ${orderToApprove.predmet?.substring(0, 60)}${orderToApprove.predmet?.length > 60 ? '...' : ''}\n👤 Odložil: ${userName}`
       };
       showToast(actionMessages[action], { type: 'success' });
 
@@ -9615,10 +9633,8 @@ const Orders25List = () => {
       ordersCacheService.invalidate(user_id);
       await loadData(true, true); // forceRefresh=true, silent=true
 
-      // Automaticky zruš zvýraznění po 5 sekundách
-      setTimeout(() => {
-        setHighlightOrderId(null);
-      }, 5000);
+      // ⚠️ Border zůstane až do příštího refresh (libovolným způsobem)
+      // highlightOrderId se vynuluje automaticky při příštím loadData()
 
     } catch (error) {
       console.error('Chyba při zpracování schválení:', error);
@@ -16889,7 +16905,22 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
           <ApprovalDialog>
             <ApprovalDialogHeader>
               <ApprovalDialogIcon>✅</ApprovalDialogIcon>
-              <ApprovalDialogTitle>Schválení objednávky</ApprovalDialogTitle>
+              <ApprovalDialogTitle>
+                Schválení objednávky
+                <span style={{ 
+                  marginLeft: '1rem', 
+                  fontSize: '0.9em', 
+                  fontWeight: 700,
+                  color: '#fbbf24',
+                  background: '#065f46',
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '2px solid #047857',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
+                }}>
+                  {orderToApprove.stav_objednavky || '---'}
+                </span>
+              </ApprovalDialogTitle>
             </ApprovalDialogHeader>
 
             <ApprovalDialogContent>
@@ -17127,16 +17158,31 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
             (hasPermission('ORDER_DELETE_OWN') && contextMenu.order.uzivatel_id === currentUserId)
           }
           canApprove={
-            contextMenu.order && 
-            (
-              // 1. Příkazce objednávky
-              String(contextMenu.order.prikazce_id) === String(currentUserId) ||
-              // 2. ADMINISTRATOR a SUPERADMIN mohou schvalovat všechny objednávky
-              hasPermission('ADMINISTRATOR') ||
-              hasPermission('SUPERADMIN')
-            ) &&
             (() => {
-              // Zkontroluj workflow stav - schválení je dostupné jen pro určité stavy
+              if (!contextMenu.order) return false;
+              
+              // DEBUG - logování oprávnění
+              const isPrikazce = String(contextMenu.order.prikazce_id) === String(currentUserId);
+              const isAdminRole = hasAdminRole();
+              
+              console.log('🔍 canApprove check:', {
+                orderId: contextMenu.order.id,
+                cislo: contextMenu.order.cislo_objednavky,
+                prikazce_id: contextMenu.order.prikazce_id,
+                currentUserId: currentUserId,
+                isPrikazce,
+                isAdminRole
+              });
+              
+              // 1. Zkontroluj oprávnění: Příkazce NEBO ADMINI (Superadmin/Administrator)
+              const hasPermissionToApprove = isPrikazce || isAdminRole;
+              
+              if (!hasPermissionToApprove) {
+                console.log('❌ Nemá oprávnění ke schválení (není příkazce ani admin)');
+                return false;
+              }
+              
+              // 2. Zkontroluj workflow stav
               let workflowStates = [];
               try {
                 if (Array.isArray(contextMenu.order.stav_workflow_kod)) {
@@ -17148,15 +17194,25 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 workflowStates = [];
               }
               
-              // Schválení je možné ve stavech: ODESLANA_KE_SCHVALENI, CEKA_SE, SCHVALENA, ZAMITNUTA
-              // Admin/superadmin mohou znovu schvalovat i už schválené/zamítnuté objednávky
               const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
-              const hasAllowedState = workflowStates.some(state => {
-                const stateCode = typeof state === 'string' ? state : (state.kod_stavu || state.nazev_stavu || '');
-                return allowedStates.includes(stateCode.toUpperCase());
+              const lastState = workflowStates.length > 0 
+                ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+                    ? workflowStates[workflowStates.length - 1] 
+                    : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+                  ).toUpperCase()
+                : '';
+              
+              const isAllowedState = allowedStates.includes(lastState);
+              
+              console.log('🔍 Workflow stav check:', {
+                stav_workflow_kod: contextMenu.order.stav_workflow_kod,
+                workflowStates,
+                lastState,
+                allowedStates,
+                isAllowedState
               });
               
-              return hasAllowedState;
+              return isAllowedState;
             })()
           }
         />
