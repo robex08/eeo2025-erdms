@@ -3927,12 +3927,6 @@ export default function InvoiceEvidencePage() {
               message: 'Aktualizuji stav objednávky a odesílám notifikace...'
             }));
             
-            console.log('=== DEBUG WORKFLOW UPDATE ===');
-            console.log('Order ID:', formData.order_id);
-            console.log('Current state:', currentState);
-            console.log('New workflow codes:', stavKody);
-            console.log('Needs update:', needsUpdate);
-            
             // Aktualizuj objednávku
             // ✅ Kromě stav_workflow_kod je nutné aktualizovat i stav_objednavky (textový stav)
             await updateOrderV2(
