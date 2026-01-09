@@ -10,24 +10,6 @@ import { formatDateOnly } from './format';
  * Filtr "Jen moje objednávky" - pro všechny uživatele
  */
 export const filterMyOrders = (order, showOnlyMyOrders, userDetail, currentUserId) => {
-  // 🐛 DEBUG: Log první 3 objednávky
-  if (order.id <= 20) {
-    console.log(`🔍 filterMyOrders - Order #${order.id}:`, {
-      showOnlyMyOrders,
-      currentUserId,
-      order_ids: {
-        objednatel_id: order.objednatel_id,
-        uzivatel_id: order.uzivatel_id,
-        garant_uzivatel_id: order.garant_uzivatel_id,
-        schvalovatel_id: order.schvalovatel_id,
-        prikazce_id: order.prikazce_id,
-        fakturant_id: order.fakturant_id,
-        potvrdil_vecnou_spravnost_id: order.potvrdil_vecnou_spravnost_id,
-        dokoncil_id: order.dokoncil_id,
-        zverejnil_id: order.zverejnil_id
-      }
-    });
-  }
 
   // Pokud filtr není aktivní, zobraz všechny objednávky
   if (!showOnlyMyOrders) return true;
