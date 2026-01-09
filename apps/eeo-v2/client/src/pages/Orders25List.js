@@ -5331,6 +5331,18 @@ const Orders25List = () => {
           responseTimestamp: new Date().toISOString()
         }));
 
+        // 🔥 DEBUG: Vypis seznam evidenčních čísel z BE response
+        console.log('=== BE → FE: Seznam objednávek z API ===');
+        console.log('Celkem objednávek:', apiResult?.data?.length || 0);
+        console.log('Filtr:', filters);
+        const orderNumbers = (apiResult?.data || []).map(o => ({
+          cislo: o.cislo_objednavky,
+          dt_obj: o.dt_objednavky,
+          stav: o.stav_objednavky
+        }));
+        console.table(orderNumbers);
+        console.log('Evidenční čísla:', orderNumbers.map(o => o.cislo).join(', '));
+
         return apiResult?.data || [];
       };
 
@@ -5467,8 +5479,17 @@ const Orders25List = () => {
                 prikazce_id: formData.prikazce_id || '',
                 uzivatel_id: objednatelId || user_id,
                 strediska_kod: formData.strediska_kod || [],
-                dt_vytvoreni: draftData.timestamp || new Date().toISOString(),
-                temp_datum_objednavky: draftData.firstAutoSaveDate ? draftData.firstAutoSaveDate.split('T')[0] : (formData.temp_datum_objednavky || new Date().toISOString().split('T')[0]),
+                // 🔥 FIX: Použít lokální český čas místo UTC
+                dt_vytvoreni: draftData.timestamp || (() => {
+                  const now = new Date();
+                  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                  const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                })(),
+                temp_datum_objednavky: draftData.firstAutoSaveDate ? draftData.firstAutoSaveDate.split('T')[0] : (formData.temp_datum_objednavky || (() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                })()),
                 vytvoril_uzivatel: username,
                 isDraft: true,
                 je_koncept: true,
@@ -9788,6 +9809,14 @@ const Orders25List = () => {
     const currentDay = today.getDate();
     const year = selectedYear !== 'all' ? parseInt(selectedYear) : currentYear;
 
+    // 🔥 FIX: Funkce pro formátování data v ČESKÉ časové zóně (ne UTC!)
+    const formatDateLocal = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     switch (selectedMonth) {
       case 'all':
         // Žádný měsíční filtr
@@ -9814,8 +9843,8 @@ const Orders25List = () => {
         lastMonthFrom.setDate(lastMonthFrom.getDate() - 30);
         
         return {
-          datum_od: lastMonthFrom.toISOString().split('T')[0],
-          datum_do: today.toISOString().split('T')[0]
+          datum_od: formatDateLocal(lastMonthFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
@@ -9825,8 +9854,8 @@ const Orders25List = () => {
         lastQuarterFrom.setMonth(lastQuarterFrom.getMonth() - 3);
         
         return {
-          datum_od: lastQuarterFrom.toISOString().split('T')[0],
-          datum_do: today.toISOString().split('T')[0]
+          datum_od: formatDateLocal(lastQuarterFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
@@ -9836,8 +9865,8 @@ const Orders25List = () => {
         lastHalfFrom.setMonth(lastHalfFrom.getMonth() - 6);
         
         return {
-          datum_od: lastHalfFrom.toISOString().split('T')[0],
-          datum_do: today.toISOString().split('T')[0]
+          datum_od: formatDateLocal(lastHalfFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
@@ -9847,8 +9876,8 @@ const Orders25List = () => {
         lastYearFrom.setMonth(lastYearFrom.getMonth() - 12);
         
         return {
-          datum_od: lastYearFrom.toISOString().split('T')[0],
-          datum_do: today.toISOString().split('T')[0]
+          datum_od: formatDateLocal(lastYearFrom),
+          datum_do: formatDateLocal(today)
         };
       }
 
@@ -11869,7 +11898,7 @@ const Orders25List = () => {
                     color: '#64748b',
                     textAlign: 'right'
                   }}>
-                    {prettyDate(order.odesilatel.datum)}
+                    {formatDateOnly(order.odesilatel.datum)}
                   </div>
                 )}
               </div>
@@ -17310,7 +17339,13 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   const updateData = {
                     stav_objednavky: 'Schválená',
                     stav_workflow_kod: JSON.stringify(newWorkflow),
-                    datum_schvaleni: new Date().toISOString()
+                    // 🔥 FIX: Použít lokální český čas místo UTC
+                    datum_schvaleni: (() => {
+                      const now = new Date();
+                      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                      const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                      return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                    })()
                   };
 
                   const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api.eeo/orders-v2.php`, {

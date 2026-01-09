@@ -444,7 +444,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
       // 3. Pokud má "má být zveřejněna", označ jako zveřejněnou
       if (transformedData.ma_byt_zverejnena || transformedData.ma_byt_zverejnena === 1) {
-        transformedData.dt_zverejneni = transformedData.dt_zverejneni || new Date().toISOString().split('T')[0];
+        // 🔥 FIX: Použít lokální datum místo UTC
+        transformedData.dt_zverejneni = transformedData.dt_zverejneni || (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })();
       }
 
       // 4. Nastav jako zkontrolováno
@@ -501,7 +506,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
 
       // 3. Pokud má "má být zveřejněna", označ jako zveřejněnou
       if (transformedData.ma_byt_zverejnena || transformedData.ma_byt_zverejnena === 1) {
-        transformedData.dt_zverejneni = transformedData.dt_zverejneni || new Date().toISOString().split('T')[0];
+        // 🔥 FIX: Použít lokální datum místo UTC
+        transformedData.dt_zverejneni = transformedData.dt_zverejneni || (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })();
       }
 
       // 4. Nastav jako zkontrolováno
@@ -708,7 +718,12 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         id: null,
         objednavka_id: null,
         ev_cislo: newEvCislo,
-        temp_datum_objednavky: new Date().toISOString().split('T')[0],
+        // 🔥 FIX: Použít lokální datum místo UTC
+        temp_datum_objednavky: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          return `${y}-${m}-${d}`;
+        })(),
 
         // Reset workflow
         stav_workflow_kod: 'NOVA',

@@ -281,7 +281,13 @@ const OrderV2TestPanel = () => {
         max_cena_s_dph: "5000",
         stav_workflow_kod: '["ODESLANA_KE_SCHVALENI"]',
         stav_objednavky: "Ke schválení",
-        dt_objednavky: new Date().toISOString().slice(0, 19).replace('T', ' ')
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        dt_objednavky: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+          return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        })()
       };
 
       const data = await createOrderV2(orderData, token, username);

@@ -565,6 +565,12 @@ function canUserViewOrder($orderId, $userId, $db) {
         return true;
     }
     
+    // 0a. Check INVOICE_MANAGE permission - má přístup k objednávkám pro přiřazení faktur
+    if (in_array('INVOICE_MANAGE', $user_permissions)) {
+        error_log("HIERARCHY: User $userId CAN view order $orderId (has INVOICE_MANAGE)");
+        return true;
+    }
+    
     // 1. Načti nastavení hierarchie
     $settings = getHierarchySettings($db);
     

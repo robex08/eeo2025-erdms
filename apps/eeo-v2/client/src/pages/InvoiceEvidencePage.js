@@ -78,7 +78,11 @@ const formatDateForPicker = (date) => {
   if (!date) return '';
   const d = new Date(date);
   if (isNaN(d)) return '';
-  return d.toISOString().split('T')[0];
+  // 🔥 FIX: Použít lokální české datum místo UTC
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 // Currency Input Component - zachovává pozici kurzoru při psaní
@@ -1682,8 +1686,20 @@ export default function InvoiceEvidencePage() {
 
   // 🔒 Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
   const isInvoiceEditable = useMemo(() => {
-    return !isReadOnlyMode && !(formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed);
-  }, [isReadOnlyMode, formData.order_id, orderData, canAddInvoiceToOrder]);
+    // Readonly režim - nemůže editovat
+    if (isReadOnlyMode) return false;
+    
+    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
+    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
+    
+    // 🔥 OPRAVA: Běžný uživatel (s INVOICE_MANAGE) nemůže editovat fakturu po schválení věcné správnosti
+    // Pouze admin (INVOICE_MANAGE_ALL) může editovat i po schválení
+    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
+      return false;
+    }
+    
+    return true;
+  }, [isReadOnlyMode, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
 
   // 🔒 Zjistit, zda je objednávka ve stavu DOKONČENA (již nelze provádět věcnou kontrolu)
   const isOrderCompleted = useMemo(() => {
@@ -3296,13 +3312,16 @@ export default function InvoiceEvidencePage() {
             : orderData.financovani;
           
           if (fin.typ === 'LP') {
-            if (!lpCerpani || lpCerpani.length === 0 || lpCerpani.every(lp => !lp.lp_cislo || lp.castka <= 0)) {
+            // 🔥 FIX: Filtrovat jen validní řádky (s LP kódem a částkou > 0)
+            const validLpCerpani = (lpCerpani || []).filter(lp => lp.lp_id && lp.lp_cislo && lp.castka > 0);
+            
+            if (validLpCerpani.length === 0) {
               showToast && showToast('⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód!', 'error');
               setLoading(false);
               return;
             }
 
-            const totalLP = lpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
+            const totalLP = validLpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
             const faCastka = parseFloat(formData.fa_castka) || 0;
             if (totalLP > faCastka) {
               showToast && showToast(`❌ Součet LP čerpání překračuje částku faktury`, 'error');
@@ -3323,6 +3342,53 @@ export default function InvoiceEvidencePage() {
           showToast && showToast('Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky', 'error');
           setLoading(false);
           return;
+        }
+      }
+
+      // 🆕 Validace - kontrola celkového součtu všech faktur objednávky
+      if (orderData && orderData.max_cena_s_dph && orderData.faktury) {
+        const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+        
+        // Spočítat celkový součet všech faktur (včetně aktuální)
+        const totalFaktur = orderData.faktury.reduce((sum, f) => {
+          // Pokud je to aktuální faktura, použít hodnotu z formuláře
+          if (f.id === editingInvoiceId) {
+            return sum + (parseFloat(formData.fa_castka) || 0);
+          }
+          // Jinak použít uloženou hodnotu
+          return sum + (parseFloat(f.fa_castka) || 0);
+        }, 0);
+        
+        // Kontrola překročení
+        if (totalFaktur > maxCena) {
+          const rozdil = totalFaktur - maxCena;
+          
+          // Pokud není vyplněna poznámka, vyžadovat zdůvodnění
+          // (Warning je zobrazený v červeném boxu - scrollování k poli)
+          if (!formData.vecna_spravnost_poznamka || formData.vecna_spravnost_poznamka.trim() === '') {
+            // Místo toastu jen zastavíme - pole poznámky je už zvýrazněno červeně
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // 🆕 Validace - pokud je to poslední faktura, vyžadovat zdůvodnění
+      if (orderData && orderData.faktury) {
+        // Zjistit počet nepotvrzených faktur
+        const nepotvrzene = orderData.faktury.filter(f => !f.vecna_spravnost_potvrzeno || f.vecna_spravnost_potvrzeno === 0);
+        
+        // Pokud je to poslední nepotvrzená faktura (ostatní už jsou potvrzené)
+        if (nepotvrzene.length === 1 && nepotvrzene[0].id === editingInvoiceId) {
+          // Vyžadovat poznámku pro poslední fakturu
+          if (!formData.vecna_spravnost_poznamka || formData.vecna_spravnost_poznamka.trim() === '') {
+            showToast && showToast(
+              '⚠️ Toto je poslední faktura objednávky. Vyplňte prosím poznámku k věcné kontrole (např. potvrzení dokončení zakázky).',
+              'error'
+            );
+            setLoading(false);
+            return;
+          }
         }
       }
 
@@ -3357,7 +3423,12 @@ export default function InvoiceEvidencePage() {
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
         if (lpCerpani && lpCerpani.length > 0) {
           try {
-            await saveFakturaLPCerpani(editingInvoiceId, lpCerpani, token, username);
+            // 🔥 FIX: Filtrovat jen validní řádky před uložením do DB
+            const validLpCerpani = lpCerpani.filter(lp => lp.lp_id && lp.lp_cislo && lp.castka > 0);
+            
+            if (validLpCerpani.length > 0) {
+              await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
+            }
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
@@ -3375,6 +3446,62 @@ export default function InvoiceEvidencePage() {
             );
           } catch (notifError) {
             console.error('❌ Chyba při odesílání notifikace:', notifError);
+          }
+        }
+
+        // 🆕 AUTOMATICKÝ POSUN DO STAVU ZKONTROLOVANA
+        // Pokud jsou nyní VŠECHNY faktury objednávky potvrzené na věcnou správnost,
+        // posun objednávku do stavu ZKONTROLOVANA
+        if (formData.order_id && orderData && formData.vecna_spravnost_potvrzeno === 1) {
+          try {
+            // Zkontrolovat zda všechny faktury mají vecna_spravnost_potvrzeno = 1
+            const allInvoicesConfirmed = orderData.faktury.every(f => {
+              // Pro aktuální fakturu použít hodnotu z formuláře
+              if (f.id === editingInvoiceId) {
+                return formData.vecna_spravnost_potvrzeno === 1;
+              }
+              // Pro ostatní faktury použít uloženou hodnotu
+              return f.vecna_spravnost_potvrzeno === 1;
+            });
+
+            if (allInvoicesConfirmed) {
+              console.log('✅ Všechny faktury objednávky jsou ověřené - posun do stavu ZKONTROLOVANA');
+              
+              // Parsovat aktuální workflow stavy
+              let stavKody = [];
+              if (orderData.stav_workflow_kod) {
+                if (typeof orderData.stav_workflow_kod === 'string') {
+                  try {
+                    stavKody = JSON.parse(orderData.stav_workflow_kod);
+                  } catch (e) {
+                    stavKody = [orderData.stav_workflow_kod];
+                  }
+                } else if (Array.isArray(orderData.stav_workflow_kod)) {
+                  stavKody = [...orderData.stav_workflow_kod];
+                }
+              }
+
+              // Pokud ještě nemá ZKONTROLOVANA, přidej ho
+              if (!stavKody.includes('ZKONTROLOVANA')) {
+                stavKody.push('ZKONTROLOVANA');
+                
+                // Aktualizuj objednávku
+                await updateOrderV2(
+                  formData.order_id,
+                  { 
+                    stav_workflow_kod: JSON.stringify(stavKody),
+                    stav_objednavky: 'Zkontrolovaná'
+                  },
+                  token,
+                  username
+                );
+                
+                console.log('✅ Objednávka posunuta do stavu ZKONTROLOVANA');
+              }
+            }
+          } catch (orderUpdateError) {
+            console.error('❌ Chyba při aktualizaci stavu objednávky:', orderUpdateError);
+            // Nezastavujeme proces - věcná správnost je už uložená
           }
         }
 
@@ -3497,8 +3624,27 @@ export default function InvoiceEvidencePage() {
     try {
       // Věcná správnost podle dokumentace
       const getMysqlDateTime = () => {
-        return new Date().toISOString().slice(0, 19).replace('T', ' ');
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
       };
+
+      // 🔍 DEBUG: Kompletní logging před odesláním
+      console.log('🔍 SUBMIT START DEBUG:', {
+        order_id: formData.order_id,
+        smlouva_id: formData.smlouva_id,
+        fa_cislo_vema: formData.fa_cislo_vema,
+        editingInvoiceId: editingInvoiceId,
+        orderData: orderData,
+        hasOrderData: !!orderData,
+        orderDataId: orderData?.id
+      });
 
       const apiParams = {
         token,
@@ -3525,6 +3671,10 @@ export default function InvoiceEvidencePage() {
 
       if (editingInvoiceId) {
         // EDITACE - UPDATE faktury
+        console.log('=== DEBUG UPDATE PATH ===');
+        console.log('Editing invoice ID:', editingInvoiceId);
+        console.log('Order ID to assign:', formData.order_id);
+        
         // updateInvoiceV2 očekává updateData jako separátní objekt
         const updateData = {
           objednavka_id: formData.order_id || null,
@@ -3543,6 +3693,8 @@ export default function InvoiceEvidencePage() {
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
         };
+        
+        console.log('=== DEBUG UPDATE DATA ===', updateData);
 
         // 🎯 Progress - aktualizace faktury
         setProgressModal(prev => ({
@@ -3557,6 +3709,8 @@ export default function InvoiceEvidencePage() {
           invoice_id: editingInvoiceId,
           updateData
         });
+        
+        console.log('=== DEBUG UPDATE RESPONSE ===', result);
         
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
         
@@ -3573,12 +3727,19 @@ export default function InvoiceEvidencePage() {
         setProgress?.(100);
         
         // 🎯 Progress - úspěšná aktualizace
+        let successMessage = `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena.`;
+        if (formData.order_id && orderData) {
+          successMessage = `Faktura ${formData.fa_cislo_vema} byla přidána k objednávce ${orderData.cislo_objednavky || orderData.evidencni_cislo}.`;
+        } else if (formData.smlouva_id && smlouvaData) {
+          successMessage = `Faktura ${formData.fa_cislo_vema} byla přidána ke smlouvě ${smlouvaData.cislo_smlouvy}.`;
+        }
+        
         setProgressModal(prev => ({
           ...prev,
           progress: 100,
           status: 'success',
           title: 'Faktura byla aktualizována',
-          message: `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena do databáze.`
+          message: successMessage
         }));
       } else {
         // NOVÁ FAKTURA - CREATE
@@ -3593,14 +3754,18 @@ export default function InvoiceEvidencePage() {
         
         if (formData.file) {
           // S přílohou
+          console.log('🔍 CREATING INVOICE WITH ATTACHMENT:', apiParams);
           result = await createInvoiceWithAttachmentV2({
             ...apiParams,
             file: formData.file,
             klasifikace: formData.klasifikace || null // Typ přílohy
           });
+          console.log('✅ CREATE WITH ATTACHMENT RESPONSE:', result);
         } else {
           // Bez přílohy
+          console.log('🔍 CREATING INVOICE WITHOUT ATTACHMENT:', apiParams);
           result = await createInvoiceV2(apiParams);
+          console.log('✅ CREATE RESPONSE:', result);
         }
 
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro novou fakturu (pokud je LP financování)
@@ -3618,13 +3783,25 @@ export default function InvoiceEvidencePage() {
 
         setProgress?.(100);
         
+        console.log('=== DEBUG SUCCESS RESPONSE ===', result);
+        console.log('Result data:', result?.data);
+        console.log('Invoice ID:', result?.data?.id);
+        console.log('Order assignment in response:', result?.data?.order_id);
+        
         // 🎯 Progress - úspěšné vytvoření
+        let successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla zaevidována do systému.`;
+        if (formData.order_id && orderData) {
+          successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla přidána k objednávce ${orderData.cislo_objednavky || orderData.evidencni_cislo}.`;
+        } else if (formData.smlouva_id && smlouvaData) {
+          successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla přidána ke smlouvě ${smlouvaData.cislo_smlouvy}.`;
+        }
+        
         setProgressModal(prev => ({
           ...prev,
           progress: 100,
           status: 'success',
           title: 'Faktura byla zaevidována',
-          message: `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena do systému.`
+          message: successMessage
         }));
       }
 
@@ -3708,6 +3885,12 @@ export default function InvoiceEvidencePage() {
               progress: 85,
               message: 'Aktualizuji stav objednávky a odesílám notifikace...'
             }));
+            
+            console.log('=== DEBUG WORKFLOW UPDATE ===');
+            console.log('Order ID:', formData.order_id);
+            console.log('Current state:', currentState);
+            console.log('New workflow codes:', stavKody);
+            console.log('Needs update:', needsUpdate);
             
             // Aktualizuj objednávku
             // ✅ Kromě stav_workflow_kod je nutné aktualizovat i stav_objednavky (textový stav)
@@ -3805,7 +3988,9 @@ export default function InvoiceEvidencePage() {
       }
 
     } catch (err) {
-      console.error('Error creating invoice:', err);
+      console.error('=== DEBUG CATCH ERROR ===', err);
+      console.error('Error response:', err.response);
+      console.error('Error message:', err.message);
       setError(err.message || 'Chyba při evidenci faktury');
       setProgress?.(0);
       
@@ -4291,6 +4476,27 @@ export default function InvoiceEvidencePage() {
                     POUZE PRO ČTENÍ
                   </span>
                 )}
+                
+                {/* 🔥 NOVÝ: Badge pro uzamčenou fakturu po schválení věcné správnosti */}
+                {!isReadOnlyMode && formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL') && (
+                  <span style={{ 
+                    marginRight: '1rem',
+                    background: 'rgba(255, 255, 255, 0.95)',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '4px',
+                    color: '#dc2626',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: '2px solid rgba(255, 255, 255, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <FontAwesomeIcon icon={faLock} />
+                    Faktura uzamčena
+                  </span>
+                )}
+                
                 {/* Tlačítko zrušit úpravu - pouze v editačním režimu (ne readonly) */}
                 {editingInvoiceId && !isReadOnlyMode && (
                   <button
@@ -5404,13 +5610,94 @@ export default function InvoiceEvidencePage() {
                   })()
                 )}
 
+                {/* 🔥 NOVÝ: Porovnání MAX CENA vs CELKOVÝ SOUČET VŠECH FAKTUR */}
+                {orderData && orderData.max_cena_s_dph && orderData.faktury && orderData.faktury.length > 1 && (
+                  (() => {
+                    const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+                    
+                    // Spočítat celkový součet všech faktur (včetně aktuální)
+                    const totalFaktur = orderData.faktury.reduce((sum, f) => {
+                      if (f.id === editingInvoiceId) {
+                        return sum + (parseFloat(formData.fa_castka) || 0);
+                      }
+                      return sum + (parseFloat(f.fa_castka) || 0);
+                    }, 0);
+                    
+                    const rozdil = totalFaktur - maxCena;
+                    const prekroceno = rozdil > 0;
+
+                    return (
+                      <div style={{
+                        background: prekroceno ? '#fef2f2' : '#f0fdf4',
+                        border: `2px solid ${prekroceno ? '#dc2626' : '#22c55e'}`,
+                        borderRadius: '8px',
+                        padding: '1rem',
+                        marginBottom: '1rem',
+                        fontSize: '0.9rem'
+                      }}>
+                        <div style={{ 
+                          fontWeight: '700', 
+                          color: prekroceno ? '#991b1b' : '#166534',
+                          marginBottom: '0.75rem',
+                          fontSize: '1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          {prekroceno ? '🚨' : '✅'} Celkový součet všech faktur objednávky
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#6b7280' }}>Max. cena objednávky s DPH:</span>
+                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                            {maxCena.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#6b7280' }}>Součet všech faktur ({orderData.faktury.length}×):</span>
+                          <span style={{ fontWeight: '600', color: '#374151' }}>
+                            {totalFaktur.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          paddingTop: '0.75rem', 
+                          borderTop: `2px solid ${prekroceno ? '#fca5a5' : '#86efac'}`,
+                          fontWeight: '700',
+                          fontSize: '1.05rem'
+                        }}>
+                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                            {prekroceno ? '⚠️ PŘEKROČENÍ:' : '✅ Rozdíl:'}
+                          </span>
+                          <span style={{ color: prekroceno ? '#dc2626' : '#16a34a' }}>
+                            {prekroceno ? '+' : ''}{rozdil.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                          </span>
+                        </div>
+                        {prekroceno && (
+                          <div style={{
+                            marginTop: '0.75rem',
+                            padding: '0.75rem',
+                            background: '#fee2e2',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem',
+                            color: '#991b1b',
+                            fontWeight: '600'
+                          }}>
+                            ⚠️ POZOR: Celková fakturace překračuje schválenou částku! {isInvoiceEditable ? 'Vysvětlete důvod v poznámce níže.' : 'Vysvětlení níže v Poznámce.'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
+
                 <FieldRow $columns="1fr">
                   <FieldGroup>
                     <FieldLabel>Umístění majetku</FieldLabel>
                     <input
                       type="text"
                       value={formData.vecna_spravnost_umisteni_majetku || ''}
-                      disabled={isOrderCompleted || loading}
+                      disabled={!isInvoiceEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_umisteni_majetku: e.target.value }))}
                       placeholder="Např. Kladno, budova K2, místnost 203"
                       style={{
@@ -5421,11 +5708,11 @@ export default function InvoiceEvidencePage() {
                         borderRadius: '8px',
                         outline: 'none',
                         transition: 'all 0.2s',
-                        background: (isOrderCompleted || loading) ? '#f9fafb' : 'white',
-                        cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'text'
+                        background: (!isInvoiceEditable || loading) ? '#f9fafb' : 'white',
+                        cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'text'
                       }}
                       onFocus={(e) => {
-                        if (!isOrderCompleted && !loading) {
+                        if (isInvoiceEditable && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5449,7 +5736,7 @@ export default function InvoiceEvidencePage() {
                     </FieldLabel>
                     <textarea
                       value={formData.vecna_spravnost_poznamka || ''}
-                      disabled={isOrderCompleted || loading}
+                      disabled={!isInvoiceEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_poznamka: e.target.value }))}
                       placeholder="Volitelná poznámka k věcné správnosti..."
                       rows={2}
@@ -5457,17 +5744,48 @@ export default function InvoiceEvidencePage() {
                         width: '100%',
                         padding: '0.75rem',
                         fontSize: '0.95rem',
-                        border: '2px solid #e5e7eb',
+                        border: (() => {
+                          // Červený border POUZE když je editovatelná A překročená
+                          if (isInvoiceEditable && orderData && orderData.max_cena_s_dph && orderData.faktury) {
+                            const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+                            const totalFaktur = orderData.faktury.reduce((sum, f) => {
+                              if (f.id === editingInvoiceId) {
+                                return sum + (parseFloat(formData.fa_castka) || 0);
+                              }
+                              return sum + (parseFloat(f.fa_castka) || 0);
+                            }, 0);
+                            if (totalFaktur > maxCena) {
+                              return '3px solid #dc2626';
+                            }
+                          }
+                          return '2px solid #e5e7eb';
+                        })(),
                         borderRadius: '8px',
                         outline: 'none',
                         transition: 'all 0.2s',
-                        background: (isOrderCompleted || loading) ? '#f9fafb' : 'white',
-                        cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'text',
+                        background: (() => {
+                          if (!isInvoiceEditable || loading) return '#f9fafb';
+                          // Světle červené pozadí POUZE když je editovatelná A překročená
+                          if (orderData && orderData.max_cena_s_dph && orderData.faktury) {
+                            const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+                            const totalFaktur = orderData.faktury.reduce((sum, f) => {
+                              if (f.id === editingInvoiceId) {
+                                return sum + (parseFloat(formData.fa_castka) || 0);
+                              }
+                              return sum + (parseFloat(f.fa_castka) || 0);
+                            }, 0);
+                            if (totalFaktur > maxCena) {
+                              return '#fef2f2';
+                            }
+                          }
+                          return 'white';
+                        })(),
+                        cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'text',
                         resize: 'vertical',
                         fontFamily: 'inherit'
                       }}
                       onFocus={(e) => {
-                        if (!isOrderCompleted && !loading) {
+                        if (isInvoiceEditable && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5499,7 +5817,7 @@ export default function InvoiceEvidencePage() {
                           lpCerpani={lpCerpani}
                           availableLPCodes={dictionaries.data?.lpKodyOptions || []}
                           onChange={(newLpCerpani) => setLpCerpani(newLpCerpani)}
-                          disabled={isOrderCompleted || loading}
+                          disabled={!isInvoiceEditable || loading}
                         />
                       );
                     } else {
@@ -5523,15 +5841,15 @@ export default function InvoiceEvidencePage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    cursor: (isOrderCompleted || loading) ? 'not-allowed' : 'pointer',
+                    cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'pointer',
                     fontSize: '0.9rem',
-                    fontWeight: (isOrderCompleted || loading) ? '400' : '600',
-                    color: (isOrderCompleted || loading) ? '#9ca3af' : '#374151'
+                    fontWeight: (!isInvoiceEditable || loading) ? '400' : '600',
+                    color: (!isInvoiceEditable || loading) ? '#9ca3af' : '#374151'
                   }}>
                     <input
                       type="checkbox"
                       checked={formData.vecna_spravnost_potvrzeno === 1}
-                      disabled={isOrderCompleted || loading}
+                      disabled={!isInvoiceEditable || loading}
                       onChange={(e) => {
                         const newValue = e.target.checked ? 1 : 0;
                         
@@ -5577,7 +5895,7 @@ export default function InvoiceEvidencePage() {
                   </label>
                 </div>
 
-                {/* Tlačítka pro update věcné správnosti */}
+                {/* Tlačítko pro opuštění formuláře */}
                 {editingInvoiceId && (
                   <div style={{
                     marginTop: '1.5rem',
@@ -5589,24 +5907,7 @@ export default function InvoiceEvidencePage() {
                   }}>
                     <button
                       onClick={() => {
-                        // Pro omezené uživatele - vrátit na seznam faktur
-                        if (isReadOnlyMode) {
-                          navigate('/invoices25-list');
-                          return;
-                        }
-                        
-                        // Pro uživatele s vyšším oprávněním - zrušit změny věcné správnosti
-                        if (originalFormData) {
-                          setFormData(prev => ({
-                            ...prev,
-                            vecna_spravnost_umisteni_majetku: originalFormData.vecna_spravnost_umisteni_majetku || '',
-                            vecna_spravnost_poznamka: originalFormData.vecna_spravnost_poznamka || '',
-                            vecna_spravnost_potvrzeno: originalFormData.vecna_spravnost_potvrzeno || 0,
-                            potvrdil_vecnou_spravnost_id: originalFormData.potvrdil_vecnou_spravnost_id || null,
-                            dt_potvrzeni_vecne_spravnosti: originalFormData.dt_potvrzeni_vecne_spravnosti || ''
-                          }));
-                        }
-                        showToast && showToast('Změny věcné správnosti zrušeny', 'info');
+                        navigate('/invoices25-list');
                       }}
                       disabled={loading}
                       style={{
@@ -5624,32 +5925,7 @@ export default function InvoiceEvidencePage() {
                       onMouseEnter={(e) => !loading && (e.target.style.background = '#4b5563')}
                       onMouseLeave={(e) => !loading && (e.target.style.background = '#6b7280')}
                     >
-                      {isReadOnlyMode ? 'Opustit formulář' : 'Zrušit'}
-                    </button>
-                    <button
-                      onClick={handleUpdateMaterialCorrectness}
-                      disabled={loading || isOrderCompleted}
-                      style={{
-                        padding: '0.75rem 1.5rem',
-                        background: (loading || isOrderCompleted) ? '#9ca3af' : '#16a34a',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '0.95rem',
-                        fontWeight: '600',
-                        cursor: (loading || isOrderCompleted) ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        transition: 'all 0.2s',
-                        opacity: (loading || isOrderCompleted) ? 0.6 : 1
-                      }}
-                      onMouseEnter={(e) => !(loading || isOrderCompleted) && (e.target.style.background = '#15803d')}
-                      onMouseLeave={(e) => !(loading || isOrderCompleted) && (e.target.style.background = '#16a34a')}
-                      title={isOrderCompleted ? 'Nelze aktualizovat věcnou správnost u dokončené objednávky' : ''}
-                    >
-                      <FontAwesomeIcon icon={loading ? faSpinner : faSave} spin={loading} />
-                      Aktualizovat věcnou správnost
+                      Opustit formulář
                     </button>
                   </div>
                 )}
@@ -6247,9 +6523,8 @@ export default function InvoiceEvidencePage() {
                     const resetData = progressModal.resetData || {};
                     const { wasEditing, currentOrderId, currentSmlouvaId } = resetData;
                     
-                    // ✅ PŘI UPDATE - smazat všechno včetně objednávky
-                    // ✅ PŘI CREATE - ponechat objednávku pro další fakturu
-                    const shouldResetEntity = wasEditing;
+                    // ✅ VŽDY smazat všechno včetně objednávky/smlouvy
+                    const shouldResetEntity = true;
                     
                     // Reset formData
                     setFormData({
@@ -6274,23 +6549,13 @@ export default function InvoiceEvidencePage() {
                       dt_potvrzeni_vecne_spravnosti: ''
                     });
                     
-                    // Reset preview entity a autocomplete pokud je potřeba
-                    if (shouldResetEntity) {
-                      setOrderData(null);
-                      setSmlouvaData(null);
-                      setSearchTerm('');
-                      setShowSuggestions(false);
-                      setIsEntityUnlocked(false);
-                      setHadOriginalEntity(false);
-                    } else {
-                      // ✅ Refresh objednávky/smlouvy pro aktualizované faktury
-                      if (currentOrderId && orderData) {
-                        await loadOrderData(currentOrderId);
-                      }
-                      if (currentSmlouvaId && smlouvaData) {
-                        await loadSmlouvaData(currentSmlouvaId);
-                      }
-                    }
+                    // Reset preview entity a autocomplete
+                    setOrderData(null);
+                    setSmlouvaData(null);
+                    setSearchTerm('');
+                    setShowSuggestions(false);
+                    setIsEntityUnlocked(false);
+                    setHadOriginalEntity(false);
 
                     // Reset pole errors a tracking změn
                     setFieldErrors({});

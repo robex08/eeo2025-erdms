@@ -427,45 +427,44 @@ class OrderV2Handler {
         
         foreach ($datetimeFields as $field) {
             if (isset($standardData[$field]) && $standardData[$field] !== null && $standardData[$field] !== '') {
-                // Try multiple ISO 8601 formats including milliseconds
+                // 🔥 FIX: Frontend už posílá LOKÁLNÍ ČESKÝ ČAS (ne UTC)!
+                // NEKONVERTOVAT! Pouze zajistit správný MySQL formát (Y-m-d H:i:s)
                 $dt = false;
                 
-                // ISO format s millisekundami: 2026-01-06T23:02:35.125Z
-                if (!$dt) {
+                // ISO format s millisekundami: 2026-01-09T00:49:44.125Z
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/', $standardData[$field])) {
                     $dt = DateTime::createFromFormat('Y-m-d\TH:i:s.v\Z', $standardData[$field]);
                 }
                 
-                // ISO format bez millisekundy: 2026-01-06T23:02:35Z
-                if (!$dt) {
-                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $standardData[$field]);
+                // ISO format bez millisekundy: 2026-01-09T00:49:44Z nebo 2026-01-09T00:49:44
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/', $standardData[$field])) {
+                    $cleaned = rtrim($standardData[$field], 'Z');
+                    $dt = DateTime::createFromFormat('Y-m-d\TH:i:s', $cleaned);
                 }
                 
-                // Standard MySQL format: 2026-01-06 23:02:35
-                if (!$dt) {
-                    $dt = DateTime::createFromFormat('Y-m-d H:i:s', $standardData[$field]);
+                // Standard MySQL format: 2026-01-09 00:49:44
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $standardData[$field])) {
+                    // ✅ UŽ JE V SPRÁVNÉM FORMÁTU - jen zkopírovat
+                    $result[$field] = $standardData[$field];
+                    continue;
                 }
                 
-                // Pokud přišlo jen datum bez času (Y-m-d), přidej aktuální čas
-                if (!$dt) {
-                    $dt = DateTime::createFromFormat('Y-m-d', $standardData[$field]);
-                    if ($dt) {
-                        // Přidej aktuální čas
-                        $now = new DateTime();
-                        $dt->setTime($now->format('H'), $now->format('i'), $now->format('s'));
-                    }
+                // Pokud přišlo jen datum bez času (Y-m-d), přidej půlnoc
+                if (!$dt && preg_match('/^\d{4}-\d{2}-\d{2}$/', $standardData[$field])) {
+                    $result[$field] = $standardData[$field] . ' 00:00:00';
+                    continue;
                 }
                 
                 if ($dt) {
-                    // Ensure Czech timezone for database
-                    $dt->setTimezone(new DateTimeZone('Europe/Prague'));
+                    // Konvertuj do MySQL formátu
                     $result[$field] = $dt->format('Y-m-d H:i:s');
                 } else {
-                    // Pokud selže všechen parsing, pokus o strtotime
+                    // Last resort - pokus o strtotime
                     $timestamp = strtotime($standardData[$field]);
                     if ($timestamp !== false) {
                         $result[$field] = date('Y-m-d H:i:s', $timestamp);
                     } else {
-                        // Last resort - set current timestamp
+                        // Fallback - current timestamp
                         $result[$field] = date('Y-m-d H:i:s');
                     }
                 }

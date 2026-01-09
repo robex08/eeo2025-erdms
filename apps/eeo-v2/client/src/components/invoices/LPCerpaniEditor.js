@@ -558,14 +558,15 @@ function LPCerpaniEditor({
     }
   }, [faktura?.id]);
 
-  // Inicializace rows z lpCerpani prop - JEN při změně faktury
+  // Inicializace rows z lpCerpani prop - JEN JEDNOU při první inicializaci nebo změně faktury
   useEffect(() => {
-    // SPUSTIT JEN při první inicializaci nebo změně faktury
-    if (!autoFilledRef.current) {
+    // 🔥 FIX: Inicializovat JEN když se změní faktura nebo je to první načtení
+    // Neměnit rows když se mění lpCerpani props (to by způsobilo přepsání lokálních změn)
+    if (!autoFilledRef.current && faktura?.id) {
       const currentLength = lpCerpani?.length || 0;
       
       if (currentLength > 0) {
-        // Načíst existující data
+        // Načíst existující data z props (první načtení)
         setRows(lpCerpani.map((item, idx) => {
           // Najít LP kód v dostupných options pro správné namapování
           const matchedLP = availableLPCodes?.find(lp => 
@@ -575,7 +576,7 @@ function LPCerpaniEditor({
           );
           
           return {
-            id: `row_${idx}_${Date.now()}`,
+            id: item.id || `row_${idx}_${Date.now()}`,
             lp_cislo: item.lp_cislo || '',
             lp_id: item.lp_id || (matchedLP ? matchedLP.id : null),
             castka: item.castka || 0,
@@ -601,17 +602,13 @@ function LPCerpaniEditor({
         if (onChange) {
           // Použít setTimeout pro volání onChange až po dokončení render cyklu
           setTimeout(() => {
-            onChange([{
-              lp_cislo: autoRow.lp_cislo,
-              lp_id: autoRow.lp_id,
-              castka: autoRow.castka,
-              poznamka: autoRow.poznamka
-            }]);
+            onChange([autoRow]);
           }, 0);
         }
       } else {
-        // Prázdné lpCerpani a není co auto-fillovat
+        // Prázdné lpCerpani a není co auto-fillovat - nechat prázdné
         setRows([]);
+        autoFilledRef.current = true; // Označit jako inicializované
       }
     }
   }, [faktura?.id, isLPFinancing, filteredLPCodes, onChange]);
@@ -628,7 +625,8 @@ function LPCerpaniEditor({
 
     // 1. Povinnost pro LP financování - musí mít alespoň jeden VALIDNÍ řádek
     const validRows = rows.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-    if (isLPFinancing && validRows.length === 0) {
+    // ❌ ZRUŠENO: Nezobrazovat warning v disabled stavu
+    if (!disabled && isLPFinancing && validRows.length === 0) {
       messages.push({
         type: 'error',
         text: '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!',
@@ -703,9 +701,14 @@ function LPCerpaniEditor({
         return row;
       });
       
+      // 🔥 FIX: Posílat VŠECHNY řádky (i částečně vyplněné), parent má validovat před uložením
+      if (onChange) {
+        setTimeout(() => onChange(updated), 0);
+      }
+      
       return updated;
     });
-  }, [filteredLPCodes]);
+  }, [filteredLPCodes, onChange]);
 
   // Handler pro změnu částky
   const handleCastkaChange = useCallback((rowId, value) => {
@@ -716,19 +719,23 @@ function LPCerpaniEditor({
           : row
       );
       
+      // 🔥 FIX: Posílat VŠECHNY řádky (i částečně vyplněné), parent má validovat před uložením
+      if (onChange) {
+        setTimeout(() => onChange(updated), 0);
+      }
+      
       return updated;
     });
-  }, []);
+  }, [onChange]);
 
   // Handler pro smazání řádku
   const handleRemoveRow = useCallback((rowId) => {
     setRows(prev => {
       const updated = prev.filter(row => row.id !== rowId);
       
-      // Volání onChange okamžitě po aktualizaci
+      // Volání onChange okamžitě po aktualizaci - poslat všechny zbývající řádky
       if (onChange) {
-        const validRows = updated.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-        setTimeout(() => onChange(validRows), 0);
+        setTimeout(() => onChange(updated), 0);
       }
       
       return updated;
@@ -747,21 +754,18 @@ function LPCerpaniEditor({
     setRows(prev => {
       const updated = [...prev, newRow];
       
-      // Volání onChange okamžitě po aktualizaci
-      if (onChange) {
-        const validRows = updated.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-        setTimeout(() => onChange(validRows), 0);
-      }
+      // 🔥 FIX: NEVOLAT onChange při přidání prázdného řádku
+      // onChange se zavolá až při vyplnění LP kódu nebo částky (handleLPChange, handleCastkaChange)
+      // Jinak se resetuje parent state a řádek zmizí
       
       return updated;
     });
-  }, [onChange]);
+  }, []);
   
   // Handler pro uložení dat při opuštění pole
   const handleSaveData = useCallback(() => {
     if (onChange) {
-      const validRows = rows.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-      onChange(validRows);
+      onChange(rows);
     }
   }, [onChange, rows]);
 

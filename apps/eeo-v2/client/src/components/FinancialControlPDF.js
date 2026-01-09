@@ -503,7 +503,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   // 👤 Uživatelé - všichni ve formátu PŘÍJMENÍ JMÉNO
   const vyrizuje = formatUserName(order?.objednatel || order?.uzivatel);
   const garant = formatUserName(order?.garant_uzivatel || order?.garant);
-  const prikazceOperace = formatUserName(order?.schvalovatel || order?.prikazce);
+  const schvalovatel = formatUserName(order?.schvalovatel || order?.prikazce);
   
   // 📅 Datum vytvoření (dt_vytvoreni) - zobrazí se pod "Vyřizuje"
   const dtVytvoreni = order?.dt_vytvoreni || MISSING;
@@ -781,7 +781,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
 
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Příkazce operace:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(prikazceOperace)]}>{prikazceOperace}</Text>
+            <Text style={[styles.controlValue, getMissingStyle(schvalovatel)]}>{schvalovatel}</Text>
           </View>
 
           <View style={styles.controlRow}>
