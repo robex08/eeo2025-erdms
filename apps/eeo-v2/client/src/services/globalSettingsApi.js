@@ -92,11 +92,6 @@ export const saveGlobalSettings = async (settings, token, username) => {
       settings
     };
     
-    console.group('💾 SAVE GLOBAL SETTINGS');
-    console.log('Settings to save:', settings);
-    console.log('Full payload:', payload);
-    console.groupEnd();
-    
     const response = await fetch(`${API_BASE_URL}/global-settings`, {
       method: 'POST',
       headers: {
