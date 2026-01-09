@@ -5394,19 +5394,21 @@ const Orders25List = () => {
   }, [orders, users]); // prepareDropdownLists vynecháno - stabilní díky useCallback s [users]
 
   // Load data
-  const loadData = useCallback(async (forceRefresh = false) => {
+  const loadData = useCallback(async (forceRefresh = false, silent = false) => {
     if (!token || !user?.username) return;
 
     //  CACHE: Start měření doby načítání
     const loadStartTime = performance.now();
 
     try {
-      setLoading(true);
-      setError(null);
-      setProgress?.(5);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setProgress?.(5);
+      }
 
       // Load orders podle oprávnění - použij orders25/by-user pro filtrování na BE
-      setProgress?.(20);
+      if (!silent) setProgress?.(20);
 
       let ordersData;
 
@@ -5508,7 +5510,7 @@ const Orders25List = () => {
       setLastLoadTime(new Date());
       setLastLoadDuration(loadDuration);
 
-      setProgress?.(60);
+      if (!silent) setProgress?.(60);
 
       // Load users for names
       try {
@@ -5552,6 +5554,8 @@ const Orders25List = () => {
         });
 
         setUsers(usersMap);
+
+        if (!silent) setProgress?.(70);
 
         // NYNÍ můžeme zpracovat koncepty s dostupnými users daty
         const localDrafts = [];
@@ -5712,7 +5716,7 @@ const Orders25List = () => {
         });
 
         setApproversList(approversWithDisplayName);
-        setProgress?.(75);
+        if (!silent) setProgress?.(75);
       } catch (err) {
         // Error loading approvers
       }
@@ -5727,7 +5731,7 @@ const Orders25List = () => {
           return nameA.localeCompare(nameB, 'cs');
         });
         setOrderStatesList(sortedStates);
-        setProgress?.(80);
+        if (!silent) setProgress?.(80);
       } catch (err) {
         // Error loading state codes
       }
@@ -6049,7 +6053,7 @@ const Orders25List = () => {
         // Tiše ignorovat chyby při generování kalendáře
       }
 
-      setProgress?.(100);
+      if (!silent) setProgress?.(100);
 
       // ❌ ODSTRANĚNO: Broadcast po každém načtení dat
       // Toto způsobovalo nekonečnou smyčku mezi záložkami
@@ -6069,9 +6073,11 @@ const Orders25List = () => {
       initStepsCompleted.current.expandedRestored = true;
       initStepsCompleted.current.scrollRestored = true;
     } finally {
-      setLoading(false);
-      setInitializing(false);
-      setTimeout(() => setProgress?.(0), 500);
+      if (!silent) {
+        setLoading(false);
+        setInitializing(false);
+        setTimeout(() => setProgress?.(0), 500);
+      }
     }
   }, [token, user?.username, user_id, selectedYear, selectedMonth, showArchived]);
   // OPTIMALIZACE: Odstraněno 'permissions' z dependencies - použit permissionsRef.current místo toho
@@ -9605,9 +9611,9 @@ const Orders25List = () => {
       // Zvýrazni objednávku (stejně jako při ukládání z formuláře)
       setHighlightOrderId(orderToApprove.id);
 
-      // Obnov seznam objednávek
+      // Obnov seznam objednávek (tiše na pozadí bez loading gate)
       ordersCacheService.invalidate(user_id);
-      await loadData(true);
+      await loadData(true, true); // forceRefresh=true, silent=true
 
       // Automaticky zruš zvýraznění po 5 sekundách
       setTimeout(() => {
