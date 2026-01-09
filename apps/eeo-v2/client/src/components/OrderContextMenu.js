@@ -495,7 +495,7 @@ export const OrderContextMenu = ({
             title="Schválit objednávku jako příkazce"
           >
             <FontAwesomeIcon icon={faCheckCircle} />
-            <MenuLabel>SCHVÁLIT obj.</MenuLabel>
+            <MenuLabel>SCHVÁLIT objednávku</MenuLabel>
           </MenuItem>
           <MenuDivider />
         </>

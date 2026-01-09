@@ -3579,6 +3579,8 @@ const ApprovalTwoColumnLayout = styled.div`
 
 const ApprovalLeftColumn = styled.div`
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 `;
 
 const ApprovalRightColumn = styled.div`
@@ -8061,17 +8063,18 @@ const Orders25List = () => {
             >
               <FontAwesomeIcon icon={faListCheck} />
             </ActionMenuButton>
-            {/* 5⃣ SMAZAT */}
-            <ActionMenuButton
-              className="delete"
-              data-action="delete"
-              data-order-index={orderIndex}
-              data-order-id={orderId}
-              title="Smazat"
-              disabled={!canDelete(row.original)}
-            >
-              <FontAwesomeIcon icon={faTrash} />
-            </ActionMenuButton>
+            {/* 5⃣ SMAZAT - zobrazit pouze pokud má uživatel právo smazat TUTO objednávku */}
+            {canDelete(row.original) && (
+              <ActionMenuButton
+                className="delete"
+                data-action="delete"
+                data-order-index={orderIndex}
+                data-order-id={orderId}
+                title="Smazat"
+              >
+                <FontAwesomeIcon icon={faTrash} />
+              </ActionMenuButton>
+            )}
           </ActionMenu>
         );
       },
@@ -8079,12 +8082,13 @@ const Orders25List = () => {
       minSize: 120,
       maxSize: 140
     }
-  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName]);
+  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName, hasPermission]);
   // 🔥 CRITICAL: Removed currentPageIndex, pageSize from deps
   // orderIndex is calculated inside cell renderer, doesn't need to be in deps
   // handleActionClick has stable reference (no deps) - won't cause re-render
   // Removed 'users' dependency - uses usersRef.current via getUserDisplayName instead
   // This prevents entire table re-render when users object changes (loadData)
+  // Added hasPermission to deps for conditional rendering of delete icon
 
   // 🔍 FUNKCE PRO ZVÝRAZNĚNÍ VYHLEDÁVANÉHO TEXTU V PODŘÁDCÍCH
   const highlightSearchText = useCallback((text, searchTerm) => {
@@ -8551,15 +8555,14 @@ const Orders25List = () => {
       return hasPermission('ORDER_MANAGE') || hasPermission('ORDER_DELETE_ALL');
     }
 
-    // Uživatelé s ORDER_*_ALL oprávněními mohou mazat všechny objednávky
+    // Uživatelé s ORDER_DELETE_ALL nebo ORDER_MANAGE mohou mazat všechny objednávky
     if (hasPermission('ORDER_DELETE_ALL') || hasPermission('ORDER_MANAGE')) {
-      // hasPermission('ORDER_OLD') - ORDER_OLD je pouze pro starý systém (Orders.js)
       return true;
     }
 
-    // Uživatelé s ORDER_*_OWN oprávněními (včetně ORDER_2025) mohou mazat pouze své objednávky
+    // Uživatelé s ORDER_DELETE_OWN mohou mazat pouze své objednávky
     // 🔥 FIX: Použij currentUserId (number) místo user_id (string)
-    if (hasPermission('ORDER_DELETE_OWN') || hasPermission('ORDER_2025')) {
+    if (hasPermission('ORDER_DELETE_OWN')) {
       return order.objednatel_id === currentUserId ||
              order.uzivatel_id === currentUserId ||
              order.garant_uzivatel_id === currentUserId ||
@@ -9599,9 +9602,17 @@ const Orders25List = () => {
       };
       showToast(actionMessages[action], { type: 'success' });
 
+      // Zvýrazni objednávku (stejně jako při ukládání z formuláře)
+      setHighlightOrderId(orderToApprove.id);
+
       // Obnov seznam objednávek
       ordersCacheService.invalidate(user_id);
       await loadData(true);
+
+      // Automaticky zruš zvýraznění po 5 sekundách
+      setTimeout(() => {
+        setHighlightOrderId(null);
+      }, 5000);
 
     } catch (error) {
       console.error('Chyba při zpracování schválení:', error);
@@ -16622,8 +16633,8 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         isOpen={showDeleteConfirmModal}
         onClose={handleDeleteCancel}
         onConfirm={() => {
-          if (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) {
-            handleDeleteConfirm('hard'); // Administrátor - smazat úplně
+          if (hasPermission('ADMINI')) {
+            handleDeleteConfirm('hard'); // Administrátor (role ADMINI) - smazat úplně
           } else {
             handleDeleteConfirm('soft'); // Běžný uživatel - označit neaktivní
           }
@@ -16631,14 +16642,14 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
         title="Smazání objednávky"
         icon={faTrash}
         variant="danger"
-        confirmText={(hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) ? 'Smazat úplně' : 'Označit neaktivní'}
+        confirmText={hasPermission('ADMINI') ? 'Smazat úplně' : 'Označit neaktivní'}
         cancelText="Zrušit"
       >
         <p>
           Chystáte se smazat objednávku <strong>"{orderToDelete?.cislo_objednavky || orderToDelete?.predmet || `ID ${orderToDelete?.id}`}"</strong>.
         </p>
 
-        {(hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) ? (
+        {hasPermission('ADMINI') ? (
           <div>
             <p><strong>Máte administrátorská práva. Vyberte způsob smazání:</strong></p>
             <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '6px', margin: '1rem 0' }}>
@@ -16945,6 +16956,25 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                       </ApprovalCompactValue>
                     </ApprovalCompactItem>
                   </ApprovalCompactList>
+
+                  {/* Poznámka ke schválení - v levém sloupci */}
+                  <ApprovalSection style={{ marginTop: '1rem' }}>
+                    <ApprovalSectionTitle>📝 Poznámka ke schválení (nepovinná)</ApprovalSectionTitle>
+                    <ApprovalDialogTextarea
+                      $hasError={!!approvalCommentError}
+                      value={approvalComment}
+                      onChange={(e) => {
+                        setApprovalComment(e.target.value);
+                        if (approvalCommentError) {
+                          setApprovalCommentError('');
+                        }
+                      }}
+                      placeholder="Nepovinná poznámka ke schválení (povinná pro Odložit/Zamítnout)..."
+                    />
+                    {approvalCommentError && (
+                      <ApprovalDialogError>{approvalCommentError}</ApprovalDialogError>
+                    )}
+                  </ApprovalSection>
                 </ApprovalLeftColumn>
 
                 {/* PRAVÝ SLOUPEC - Financování (LP/Smlouvy) */}
@@ -17031,25 +17061,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                   )}
                 </ApprovalRightColumn>
               </ApprovalTwoColumnLayout>
-
-              {/* Poznámka ke schválení - full width */}
-              <ApprovalSection style={{ marginTop: '1rem' }}>
-                <ApprovalSectionTitle>📝 Poznámka ke schválení (nepovinná)</ApprovalSectionTitle>
-                <ApprovalDialogTextarea
-                  $hasError={!!approvalCommentError}
-                  value={approvalComment}
-                  onChange={(e) => {
-                    setApprovalComment(e.target.value);
-                    if (approvalCommentError) {
-                      setApprovalCommentError('');
-                    }
-                  }}
-                  placeholder="Nepovinná poznámka ke schválení (povinná pro Odložit/Zamítnout)..."
-                />
-                {approvalCommentError && (
-                  <ApprovalDialogError>{approvalCommentError}</ApprovalDialogError>
-                )}
-              </ApprovalSection>
 
               <ApprovalDialogActions>
                 <ApprovalDialogButton onClick={() => {
