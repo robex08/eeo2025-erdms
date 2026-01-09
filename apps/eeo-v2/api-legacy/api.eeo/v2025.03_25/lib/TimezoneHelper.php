@@ -111,9 +111,17 @@ class TimezoneHelper {
             if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $datetime_value)) {
                 $dt = new DateTime($datetime_value, $utc_tz);
             }
-            // 2. ISO 8601 s timezone: "2025-11-14T18:50:57+00:00"
-            else if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/', $datetime_value)) {
+            // 2. ISO 8601 s timezone: "2025-11-14T18:50:57+01:00"
+            else if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2})$/', $datetime_value, $matches)) {
                 $dt = new DateTime($datetime_value); // Už obsahuje timezone
+                
+                // KRITICKÁ OPRAVA: Pokud už je to v European timezone (+01:00 nebo +02:00), nekonvertovat!
+                $timezone_offset = $matches[1];
+                if ($timezone_offset === '+01:00' || $timezone_offset === '+02:00') {
+                    // Už je v evropské/české timezone - pouze vrátit jako MySQL formát
+                    return $dt->format('Y-m-d H:i:s');
+                }
+                // Jinak pokračuj s konverzí
             }
             // 3. MySQL datetime formát: "2025-11-14 18:50:57" (předpokládáme UTC)
             else if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $datetime_value)) {

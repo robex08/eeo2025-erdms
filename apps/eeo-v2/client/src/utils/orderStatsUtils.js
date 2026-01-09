@@ -195,26 +195,30 @@ export function filterOrders(orders, options = {}) {
   // uzivatel_akt_id, odesilatel_id, dodavatel_potvrdil_id, zverejnil_id, 
   // fakturant_id, dokoncil_id, potvrdil_vecnou_spravnost_id
   if (!isAdmin && userId) {
+    // 🔧 FIX: Konvertuj userId na string pro konzistentní porovnání (DB vrací string/number mixed)
+    const userIdStr = String(userId);
+    
     filtered = filtered.filter(o => {
       // Koncepty: kontroluj objednatel_id nebo uzivatel_id
       if (o.isDraft || o.je_koncept) {
-        return o.objednatel_id === userId || o.uzivatel_id === userId;
+        return String(o.objednatel_id) === userIdStr || String(o.uzivatel_id) === userIdStr;
       }
       
       // Ostatní: kontroluj VŠECH 12 rolí v objednávce
+      // 🔧 FIX: Porovnávej jako stringy kvůli mixed typům z DB
       return (
-        o.uzivatel_id === userId ||
-        o.objednatel_id === userId ||
-        o.garant_uzivatel_id === userId ||
-        o.schvalovatel_id === userId ||
-        o.prikazce_id === userId ||
-        o.uzivatel_akt_id === userId ||
-        o.odesilatel_id === userId ||
-        o.dodavatel_potvrdil_id === userId ||
-        o.zverejnil_id === userId ||
-        o.fakturant_id === userId ||
-        o.dokoncil_id === userId ||
-        o.potvrdil_vecnou_spravnost_id === userId
+        String(o.uzivatel_id) === userIdStr ||
+        String(o.objednatel_id) === userIdStr ||
+        String(o.garant_uzivatel_id) === userIdStr ||
+        String(o.schvalovatel_id) === userIdStr ||
+        String(o.prikazce_id) === userIdStr ||
+        String(o.uzivatel_akt_id) === userIdStr ||
+        String(o.odesilatel_id) === userIdStr ||
+        String(o.dodavatel_potvrdil_id) === userIdStr ||
+        String(o.zverejnil_id) === userIdStr ||
+        String(o.fakturant_id) === userIdStr ||
+        String(o.dokoncil_id) === userIdStr ||
+        String(o.potvrdil_vecnou_spravnost_id) === userIdStr
       );
     });
   }

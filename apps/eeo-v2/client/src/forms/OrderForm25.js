@@ -4716,7 +4716,10 @@ function OrderForm25() {
     ev_cislo: '',
 
     // Dočasné datum objednávky pro koncepty (generuje se na FE, přepíše se při prvním uložení na BE)
-    temp_datum_objednavky: new Date().toISOString().split('T')[0], // 🔧 OPRAVA: Nastavit ihned při inicializaci
+    temp_datum_objednavky: (() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    })(), // 🔥 FIX: Použít lokální české datum místo UTC
 
     // Datum vytvoření objednávky (nastavuje se až při uložení do DB)
     datum_vytvoreni: ''
@@ -7965,7 +7968,13 @@ function OrderForm25() {
         fa_poznamka: '',
         vytvoril_uzivatel_id: user_id,
         vytvoril_jmeno: getUserNameById(user_id),
-        dt_vytvoreni: new Date().toISOString(),
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        dt_vytvoreni: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+          return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        })(),
         dt_aktualizace: null,
         aktivni: 1,
         _isNew: true
@@ -8035,14 +8044,26 @@ function OrderForm25() {
       fa_strediska_kod: cleanedStrediska, // ✅ POUŽÍT VYČIŠTĚNÉ STRINGY
       vytvoril_uzivatel_id: user_id,
       vytvoril_jmeno: getUserNameById(user_id),
-      dt_vytvoreni: new Date().toISOString(),
+      // 🔥 FIX: Použít lokální český čas místo UTC
+      dt_vytvoreni: (() => {
+        const now = new Date();
+        const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+        const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+        return `${y}-${m}-${d} ${h}:${min}:${s}`;
+      })(),
       aktivni: 1,
       _isNew: false, // Označit jako uloženou (uloží se s objednávkou)
       // fa_dorucena je VŽDY 1 (boolean flag že faktura je doručená)
       fa_dorucena: 1,
-      // 🔧 OPRAVA MAPOVÁNÍ DATUMOVÝCH POLÍ
-      fa_datum_doruceni: fakturaFormData.fa_dorucena || new Date().toISOString().split('T')[0], // fa_dorucena obsahuje datum doručení!
-      fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || new Date().toISOString().split('T')[0], // Přidat datum vystavení
+      // � FIX: Použít lokální české datum místo UTC
+      fa_datum_doruceni: fakturaFormData.fa_dorucena || (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
+      fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
       fa_datum_splatnosti: fakturaFormData.fa_splatnost || '', // fa_splatnost obsahuje datum splatnosti!
       // 📎 PŘÍLOHY FAKTURY - ukládají se do konceptu stejně jako prilohy_dokumenty
       attachments: [], // Pole příloh faktury (formát stejný jako u objednávek)
@@ -8225,7 +8246,13 @@ function OrderForm25() {
               ...faktura,
               ...fakturaFormData,
               fa_strediska_kod: cleanedStrediska,
-              dt_aktualizace: new Date().toISOString(),
+              // 🔥 FIX: Použít lokální český čas místo UTC
+              dt_aktualizace: (() => {
+                const now = new Date();
+                const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                return `${y}-${m}-${d} ${h}:${min}:${s}`;
+              })(),
               fa_dorucena: 1,
               fa_datum_doruceni: fakturaFormData.fa_datum_doruceni,
               fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || fakturaFormData.fa_datum_doruceni,
@@ -8291,7 +8318,13 @@ function OrderForm25() {
             fa_poznamka: isdocData.fa_poznamka || faktura.fa_poznamka,
             fa_strediska_kod: isdocData.fa_strediska_kod || faktura.fa_strediska_kod,
             fa_dorucena: 1,
-            dt_aktualizace: new Date().toISOString(),
+            // 🔥 FIX: Použít lokální český čas místo UTC
+            dt_aktualizace: (() => {
+              const now = new Date();
+              const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+              const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+              return `${y}-${m}-${d} ${h}:${min}:${s}`;
+            })(),
             _isdoc_parsed: true,
             _isdoc_polozky: isdocData._isdoc_polozky,
             _isdoc_dodavatel: isdocData._isdoc_dodavatel,
@@ -8346,7 +8379,13 @@ function OrderForm25() {
       // Metadata
       vytvoril_uzivatel_id: user_id,
       vytvoril_jmeno: getUserNameById(user_id),
-      dt_vytvoreni: new Date().toISOString(),
+      // 🔥 FIX: Použít lokální český čas místo UTC
+      dt_vytvoreni: (() => {
+        const now = new Date();
+        const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+        const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+        return `${y}-${m}-${d} ${h}:${min}:${s}`;
+      })(),
       dt_aktualizace: null,
       aktivni: 1,
       _isdoc_parsed: true,
@@ -8872,7 +8911,13 @@ function OrderForm25() {
         fa_splatnost: '',
         vytvoril_uzivatel_id: user_id,
         vytvoril_jmeno: getUserNameById(user_id),
-        dt_vytvoreni: new Date().toISOString(),
+        // 🔥 FIX: Použít lokální český čas místo UTC
+        dt_vytvoreni: (() => {
+          const now = new Date();
+          const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+          const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+          return `${y}-${m}-${d} ${h}:${min}:${s}`;
+        })(),
         dt_aktualizace: null,
         aktivni: 1,
         _isNew: true,
@@ -10061,6 +10106,9 @@ function OrderForm25() {
 
       // 8.5. ZKONTROLOVANA - POUZE pokud VŠECHNY faktury mají potvrzenou per-invoice věcnou správnost
       // ✅ NOVÁ LOGIKA: Kontrola per-invoice checkboxů pro KAŽDOU fakturu
+      // 🔐 WORKFLOW PRAVIDLA:
+      // - INVOICE_MANAGE (fakturant/účetní) → MŮŽE editovat FA → vrací workflow na VECNA_SPRAVNOST
+      // - Garant/Příkazce (bez INVOICE_MANAGE) → MŮŽE potvrdit věcnou → posune na ZKONTROLOVANA
       const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
         (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
       
@@ -10388,11 +10436,18 @@ function OrderForm25() {
             fa_castka: String(parseFloat(faktura.fa_castka) || 0),           // ✅ V2 API: VŽDY STRING pro přesnost!
             fa_cislo_vema: faktura.fa_cislo_vema || '',                       // POVINNÉ - číslo faktury (může být '')
             fa_dorucena: 1,                                                   // POVINNÉ - 0 nebo 1 (boolean)
-            fa_datum_vystaveni: faktura.fa_datum_vystaveni || new Date().toISOString().split('T')[0], // DŮLEŽITÉ - datum vystavení
+            // 🔥 FIX: Použít lokální české datum místo UTC
+            fa_datum_vystaveni: faktura.fa_datum_vystaveni || (() => {
+              const now = new Date();
+              return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+            })(),
             fa_datum_splatnosti: faktura.fa_splatnost || faktura.fa_datum_splatnosti || '', // ✅ FE -> DB: fa_splatnost -> fa_datum_splatnosti (obousměrný mapping)
             fa_datum_doruceni: (typeof faktura.fa_datum_doruceni === 'string' && faktura.fa_datum_doruceni.match(/^\d{4}-\d{2}-\d{2}$/))
               ? faktura.fa_datum_doruceni
-              : new Date().toISOString().split('T')[0], // ✅ OPRAVA: Použít jen pokud je validní datum
+              : (() => {
+                  const now = new Date();
+                  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                })(),
             fa_strediska_kod: strediskaArray,                                 // ✅ POLE KÓDŮ: ["KLADNO","BENESOV","BEROUN"]
             fa_poznamka: faktura.fa_poznamka || '',                           // VOLITELNÉ - poznámka
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 DB mapping
@@ -10406,7 +10461,13 @@ function OrderForm25() {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
                   typ_platby: 'pokladna',
                   pokladni_doklad: {
-                    datum_vytvoreni: faktura.dt_vytvoreni || new Date().toISOString(),
+                    // 🔥 FIX: Použít lokální český čas místo UTC
+                    datum_vytvoreni: faktura.dt_vytvoreni || (() => {
+                      const now = new Date();
+                      const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                      const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                      return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                    })(),
                     poznamka: faktura.fa_poznamka || '',
                     prilohy_count: faktura.attachments?.length || 0,
                     vytvoril_uzivatel_id: faktura.vytvoril_uzivatel_id,
@@ -12285,8 +12346,11 @@ function OrderForm25() {
       dt_schvaleni: '',
       schvaleni_komentar: '',
       stav_workflow_kod: '["ODESLANA_KE_SCHVALENI"]', // ✅ Nová objednávka začíná rovnou stavem ODESLANA_KE_SCHVALENI
-      // 🔧 KRITICKÁ OPRAVA: Nastavit datumové údaje pro novou objednávku
-      temp_datum_objednavky: new Date().toISOString().split('T')[0], // Dočasné datum objednávky
+      // � FIX: Použít lokální české datum místo UTC
+      temp_datum_objednavky: (() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      })(),
       datum_vytvoreni: '', // Datum vytvoření se nastaví až při prvním uložení do DB
       datum_splatnosti: '', // Datum splatnosti zatím prázdné
       // 🔥 KRITICKÉ: Vyčistit faktury při resetu - nesmí se přenést ze staré objednávky!
@@ -17001,6 +17065,22 @@ function OrderForm25() {
           // Rozbalit sekci Přílohy pokud je sbalená
           if (sectionStates.prilohy) {
             setSectionStates(prev => ({ ...prev, prilohy: false }));
+          }
+          
+          // Uložit ID první neklasifikované přílohy pro scroll po render
+          if (unclassifiedFiles[0]?.id) {
+            setTimeout(() => {
+              const attachmentElement = document.querySelector(`[data-attachment-id="${unclassifiedFiles[0].id}"]`);
+              if (attachmentElement) {
+                attachmentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Zvýraznit přílohu animací
+                attachmentElement.style.transition = 'all 0.3s';
+                attachmentElement.style.boxShadow = '0 0 0 3px #dc2626';
+                setTimeout(() => {
+                  attachmentElement.style.boxShadow = '';
+                }, 2000);
+              }
+            }, 100);
           }
         }
       }
@@ -23115,7 +23195,13 @@ function OrderForm25() {
                                 fa_poznamka: '',
                                 vytvoril_uzivatel_id: user_id,
                                 vytvoril_jmeno: getUserNameById(user_id),
-                                dt_vytvoreni: new Date().toISOString(),
+                                // 🔥 FIX: Použít lokální český čas místo UTC
+                                dt_vytvoreni: (() => {
+                                  const now = new Date();
+                                  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                                  const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                                  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                                })(),
                                 dt_aktualizace: null,
                                 aktivni: 1,
                                 _isNew: true,
@@ -23254,7 +23340,13 @@ function OrderForm25() {
                             fa_poznamka: '',
                             vytvoril_uzivatel_id: user_id,
                             vytvoril_jmeno: getUserNameById(user_id),
-                            dt_vytvoreni: new Date().toISOString(),
+                            // 🔥 FIX: Použít lokální český čas místo UTC
+                            dt_vytvoreni: (() => {
+                              const now = new Date();
+                              const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                              const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                              return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                            })(),
                             dt_aktualizace: null,
                             aktivni: 1,
                             _isNew: true,
@@ -23846,18 +23938,23 @@ function OrderForm25() {
                                             lpCerpani={lpData.lpCerpani}
                                             availableLPCodes={lpKodyOptions || []}
                                             onChange={(newLpCerpani) => {
-                                              // Aktualizovat lokální state
+                                              // 🔥 FIX: Filtrovat jen validní řádky pro state update
+                                              const validLpCerpani = (newLpCerpani || []).filter(lp => 
+                                                lp.lp_id && lp.lp_cislo && lp.castka > 0
+                                              );
+                                              
+                                              // Aktualizovat lokální state se všemi řádky (pro zobrazení)
                                               setFakturyLPCerpani(prev => ({
                                                 ...prev,
                                                 [fakturaId]: {
-                                                  lpCerpani: newLpCerpani,
+                                                  lpCerpani: newLpCerpani, // Uložit všechny pro zobrazení
                                                   loaded: true
                                                 }
                                               }));
                                               
-                                              // Pokud má faktura reálné ID, uložit na backend
-                                              if (isRealInvoice) {
-                                                saveFakturaLPCerpaniData(fakturaId, newLpCerpani)
+                                              // Pokud má faktura reálné ID, uložit na backend JEN validní řádky
+                                              if (isRealInvoice && validLpCerpani.length > 0) {
+                                                saveFakturaLPCerpaniData(fakturaId, validLpCerpani)
                                                   .catch(err => {
                                                     console.error('❌ Chyba při ukládání LP čerpání:', err);
                                                     showToast && showToast('Nepodařilo se uložit LP čerpání: ' + err.message, 'warning');
@@ -24203,7 +24300,13 @@ function OrderForm25() {
                                   fa_splatnost: '',
                                   vytvoril_uzivatel_id: user_id,
                                   vytvoril_jmeno: getUserNameById(user_id),
-                                  dt_vytvoreni: new Date().toISOString(),
+                                  // 🔥 FIX: Použít lokální český čas místo UTC
+                                  dt_vytvoreni: (() => {
+                                    const now = new Date();
+                                    const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+                                    const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
+                                    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                                  })(),
                                   dt_aktualizace: null,
                                   aktivni: 1,
                                   _isNew: true,
@@ -25285,7 +25388,10 @@ function OrderForm25() {
                           </div>
                         </div>
                         {objFiles.map((file, index) => (
-                          <div key={file.id} style={{
+                          <div 
+                            key={file.id}
+                            data-attachment-id={file.id}
+                            style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: '0.75rem',

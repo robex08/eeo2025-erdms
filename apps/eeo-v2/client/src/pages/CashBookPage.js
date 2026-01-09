@@ -1791,7 +1791,12 @@ const CashBookPage = () => {
             ...entry,
             id: entry.id || `temp-${Date.now()}-${Math.random()}`,
             db_id: entry.id,
-            date: entry.datum_zapisu || entry.datum || new Date().toISOString().split('T')[0],
+            // 🔥 FIX: Použít lokální datum (fallback pokud chybí v DB)
+            date: entry.datum_zapisu || entry.datum || (() => {
+              const now = new Date();
+              const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0'), d = String(now.getDate()).padStart(2,'0');
+              return `${y}-${m}-${d}`;
+            })(),
             documentNumber: entry.cislo_dokladu || '',
             description: entry.obsah_zapisu || '',
             person: entry.komu_od_koho || '',
@@ -2091,10 +2096,11 @@ const CashBookPage = () => {
     return date.toLocaleDateString('cs-CZ');
   };
 
-  // Dnešní datum ve formátu YYYY-MM-DD
+  // Dnešní datum ve formátu YYYY-MM-DD (🔥 FIX: lokální český čas)
   const getTodayDate = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    const y = today.getFullYear(), m = String(today.getMonth()+1).padStart(2,'0'), d = String(today.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
   };
 
   // 🆕 ZJEDNODUŠENO: Generování čísla dokladu - pokračuje od posledního v aktuálním měsíci
@@ -4326,10 +4332,21 @@ const CashBookPage = () => {
                               setDetailEditBuffer([]);
                             } else {
                               setExpandedDetailEntryId(entry.id);
-                              setDetailEditBuffer(entry.detailItems && entry.detailItems.length > 0 
-                                ? [...entry.detailItems] 
-                                : [{ popis: '', castka: 0, lp_kod: '', lp_popis: '' }]
-                              );
+                              // Načíst existující detail items a doplnit lp_popis (displayName) z lpCodes
+                              const detailItems = entry.detailItems && entry.detailItems.length > 0 
+                                ? entry.detailItems.map(item => {
+                                    // Pokud již má lp_popis, použít ho, jinak zkonstruovat z lpCodes
+                                    if (!item.lp_popis && item.lp_kod) {
+                                      const lpData = lpCodes.find(lp => lp.code === item.lp_kod);
+                                      return {
+                                        ...item,
+                                        lp_popis: lpData?.displayName || item.lp_kod
+                                      };
+                                    }
+                                    return item;
+                                  })
+                                : [{ popis: '', castka: 0, lp_kod: '', lp_popis: '' }];
+                              setDetailEditBuffer(detailItems);
                             }
                           }}
                           style={{
@@ -4515,14 +4532,7 @@ const CashBookPage = () => {
                                 </td>
                                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
                                   <EditableCombobox
-                                    value={(() => {
-                                      if (!item.lp_kod) return '';
-                                      // Pokud máme uložený lp_popis s displayName, použít ho
-                                      if (item.lp_popis) return item.lp_popis;
-                                      // Jinak zkonstruovat displayName z lpCodes
-                                      const lpData = lpCodes.find(lp => lp.code === item.lp_kod);
-                                      return lpData?.displayName || item.lp_kod;
-                                    })()}
+                                    value={item.lp_kod || ''}
                                     onChange={(e) => {
                                       const updated = [...detailEditBuffer];
                                       const selectedLp = lpCodes.find(lp => lp.code === e.target.value);

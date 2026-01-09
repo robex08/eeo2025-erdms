@@ -362,8 +362,8 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             'vecna_spravnost_umisteni_majetku', 'vecna_spravnost_poznamka', 'vecna_spravnost_potvrzeno',
             // Nové fieldy - předání zaměstnanci
             'fa_datum_zaplaceni', 'fa_predana_zam_id', 'fa_datum_predani_zam', 'fa_datum_vraceni_zam',
-            // Vazba na smlouvu
-            'smlouva_id',
+            // Vazba na smlouvu A OBJEDNÁVKU - přidáno 08.01.2026
+            'smlouva_id', 'objednavka_id',
             // Workflow stav - přidáno 22.12.2025
             'stav'
         );

@@ -1100,25 +1100,28 @@ function normalizeDatetime($datetime_value, $include_time = true) {
     if ($datetime_value === '') {
         return null;
     }
+
+    // DEBUG: Log input value
+    error_log("🔍 normalizeDatetime INPUT: " . $datetime_value);
     
     try {
         // Pokud je zadán pouze datum bez času, přidáme čas
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $datetime_value)) {
             if ($include_time) {
-                // Pouze datum → přidáme aktuální český čas (respektuje letní/zimní čas)
-                $datetime_value .= ' ' . TimezoneHelper::getCzechDateTime('H:i:s');
+                // Pouze datum → přidáme aktuální čas (MySQL timezone je už správně nastavená)
+                $datetime_value .= ' ' . date('H:i:s');
             }
             // Pro pouze datum pole vracíme bez změny
         }
         // Pokud je zadán datum + čas, validujeme formát
         else if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $datetime_value)) {
-            // KRITICKÁ OPRAVA: FE posílá čas v UTC, musíme konvertovat na Europe/Prague
-            // Použití TimezoneHelper pro konzistentní konverzi
-            $datetime_value = TimezoneHelper::convertUtcToCzech($datetime_value);
+            // Frontend už posílá čas v české timezone - NEKONVERTOVAT znovu!
+            // Použij hodnotu tak, jak je
+            // $datetime_value je už správně
         }
-        // Jiné formáty (ISO 8601, apod.) - konvertuj přes TimezoneHelper
-        else {
-            // TimezoneHelper zvládá ISO 8601 (2025-11-14T18:50:57Z) i další formáty
+        // ISO 8601 formáty (YYYY-MM-DDTHH:mm:ssZ nebo s timezone) - konvertuj pouze ty
+        else if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/', $datetime_value)) {
+            // Pouze ISO 8601 s timezone označením konvertujeme
             $converted = TimezoneHelper::convertUtcToCzech($datetime_value);
             if ($converted !== null) {
                 $datetime_value = $converted;
@@ -1131,10 +1134,17 @@ function normalizeDatetime($datetime_value, $include_time = true) {
                 return null;
             }
         }
+        // Ostatní formáty - nechej beze změny
+        else {
+            // Neznámý formát - nechej tak jak je
+        }
         
+        // DEBUG: Log final value
+        error_log("🔍 normalizeDatetime OUTPUT: " . $datetime_value);
         return $datetime_value;
         
     } catch (Exception $e) {
+        error_log("🔍 normalizeDatetime ERROR: " . $e->getMessage());
         return null;
     }
 }
@@ -1345,6 +1355,10 @@ function handle_orders25_list($input, $config, $queries) {
     // Volitelný rok a měsíc/interval měsíců pro filtrování podle dt_vytvoreni
     $rok = isset($input['rok']) && $input['rok'] !== '' ? (int)$input['rok'] : null;
     
+    // Volitelné datum od/do filtry (formát YYYY-MM-DD)
+    $datum_od = isset($input['datum_od']) && $input['datum_od'] !== '' ? $input['datum_od'] : null;
+    $datum_do = isset($input['datum_do']) && $input['datum_do'] !== '' ? $input['datum_do'] : null;
+    
     // Volitelný parametr archivovano (1 = jen archivované objednávky se stavem ARCHIVOVANO)
     $archivovano = isset($input['archivovano']) && $input['archivovano'] == 1 ? 1 : 0;
     
@@ -1380,14 +1394,24 @@ function handle_orders25_list($input, $config, $queries) {
     // Dynamické sestavení SQL dotazu s filtrem pro archivované objednávky
     $sql = "SELECT * FROM " . TBL_OBJEDNAVKY . " WHERE aktivni = 1";
     
-    if ($rok !== null) {
-        $sql .= " AND YEAR(dt_vytvoreni) = :rok";
-    }
-    if ($mesic_od !== null) {
-        $sql .= " AND MONTH(dt_vytvoreni) >= :mesic_od";
-    }
-    if ($mesic_do !== null) {
-        $sql .= " AND MONTH(dt_vytvoreni) <= :mesic_do";
+    // Datum od/do má přednost před rok/měsíc filtrováním
+    if ($datum_od !== null && $datum_do !== null) {
+        $sql .= " AND DATE(dt_vytvoreni) >= :datum_od AND DATE(dt_vytvoreni) <= :datum_do";
+    } else if ($datum_od !== null) {
+        $sql .= " AND DATE(dt_vytvoreni) >= :datum_od";
+    } else if ($datum_do !== null) {
+        $sql .= " AND DATE(dt_vytvoreni) <= :datum_do";
+    } else {
+        // Pokud nejsou datum filtry, použij rok/měsíc filtry
+        if ($rok !== null) {
+            $sql .= " AND YEAR(dt_vytvoreni) = :rok";
+        }
+        if ($mesic_od !== null) {
+            $sql .= " AND MONTH(dt_vytvoreni) >= :mesic_od";
+        }
+        if ($mesic_do !== null) {
+            $sql .= " AND MONTH(dt_vytvoreni) <= :mesic_do";
+        }
     }
     
     // Pokud archivovano NENÍ nastaveno, vyloučíme archivované objednávky
@@ -1401,14 +1425,25 @@ function handle_orders25_list($input, $config, $queries) {
     // Select all orders with optional year/month filter
     $stmt = $db->prepare($sql);
     
-    if ($rok !== null) {
-        $stmt->bindParam(':rok', $rok, PDO::PARAM_INT);
+    // Bind datum parametry pokud jsou nastaveny
+    if ($datum_od !== null) {
+        $stmt->bindParam(':datum_od', $datum_od, PDO::PARAM_STR);
     }
-    if ($mesic_od !== null) {
-        $stmt->bindParam(':mesic_od', $mesic_od, PDO::PARAM_INT);
+    if ($datum_do !== null) {
+        $stmt->bindParam(':datum_do', $datum_do, PDO::PARAM_STR);
     }
-    if ($mesic_do !== null) {
-        $stmt->bindParam(':mesic_do', $mesic_do, PDO::PARAM_INT);
+    
+    // Bind rok/měsíc parametry pouze pokud nejsou datum filtry
+    if ($datum_od === null && $datum_do === null) {
+        if ($rok !== null) {
+            $stmt->bindParam(':rok', $rok, PDO::PARAM_INT);
+        }
+        if ($mesic_od !== null) {
+            $stmt->bindParam(':mesic_od', $mesic_od, PDO::PARAM_INT);
+        }
+        if ($mesic_do !== null) {
+            $stmt->bindParam(':mesic_do', $mesic_do, PDO::PARAM_INT);
+        }
     }
     
         $stmt->execute();
@@ -1985,9 +2020,9 @@ function handle_orders25_insert($input, $config, $queries) {
         // ✅ GARANTUJEME: $final_order_number NIKDY není NULL v tomto bodě
 
         // Partial insert - pouze povinné a zadané hodnoty
-        // Použít TimezoneHelper pro správný český čas (respektuje letní/zimní čas)
-        $current_date = TimezoneHelper::getCzechDateTime('Y-m-d');
-        $current_datetime = TimezoneHelper::getCzechDateTime();
+        // Použít obyčejný date() - MySQL timezone je už nastavená správně přes TimezoneHelper::setMysqlTimezone()
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
         
         // ✅ NORMALIZACE: strediska_kod → JSON array stringů (UPPERCASE)
         $strediska_kod_normalized = 'NEZADANO';
@@ -2100,9 +2135,13 @@ function handle_orders25_insert($input, $config, $queries) {
             }
         }
         
+        // DEBUG: Log timezone info před vytvořením objednávky  
+        error_log("🔍 DEBUG dt_objednavky CREATE: current_datetime=" . $current_datetime . ", input_dt_objednavky=" . (isset($input['dt_objednavky']) ? $input['dt_objednavky'] : 'NOT_SET'));
+        error_log("🔍 DEBUG timezone: server_time=" . date('Y-m-d H:i:s') . ", php_timezone=" . date_default_timezone_get());
+        
         $orderData = [
             ':cislo_objednavky' => $final_order_number,
-            ':dt_objednavky' => normalizeDatetime(isset($input['dt_objednavky']) ? $input['dt_objednavky'] : $current_datetime, true),
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : $current_datetime,
             ':predmet' => isset($input['predmet']) ? $input['predmet'] : 'Návrh objednávky',
             ':strediska_kod' => $strediska_kod_normalized,
             ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
@@ -2559,10 +2598,13 @@ function handle_orders25_update($input, $config, $queries) {
             }
         }
         
+        // DEBUG: Log timezone info před UPDATE objednávky
+        error_log("🔍 DEBUG dt_objednavky UPDATE: order_id=" . $order_id . ", input_dt_objednavky=" . (isset($input['dt_objednavky']) ? $input['dt_objednavky'] : 'NOT_SET'));
+        
         $updateData = [
             ':id' => $order_id,
             ':cislo_objednavky' => isset($input['cislo_objednavky']) ? $input['cislo_objednavky'] : null,
-            ':dt_objednavky' => normalizeDatetime(isset($input['dt_objednavky']) ? $input['dt_objednavky'] : null, true),
+            ':dt_objednavky' => isset($input['dt_objednavky']) ? $input['dt_objednavky'] : null,
             ':predmet' => isset($input['predmet']) ? $input['predmet'] : '',
             ':strediska_kod' => $strediska_kod_normalized,
             ':max_cena_s_dph' => isset($input['max_cena_s_dph']) ? $input['max_cena_s_dph'] : null,
@@ -2720,15 +2762,17 @@ function handle_orders25_update($input, $config, $queries) {
                     
                     if (!$order_data['fakturant_id']) {
                         // První faktura - nastav fakturanta a datum přidání první faktury
+                        // 🔧 FIX: Použij TimezoneHelper místo NOW() pro správnou timezone
+                        $current_time = TimezoneHelper::getCzechDateTime();
                         $stmt_update_order = $db->prepare("
                             UPDATE `25a_objednavky` 
                             SET fakturant_id = ?,
-                                dt_faktura_pridana = NOW(),
-                                dt_aktualizace = NOW(),
+                                dt_faktura_pridana = ?,
+                                dt_aktualizace = ?,
                                 uzivatel_akt_id = ?
                             WHERE id = ?
                         ");
-                        $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
+                        $stmt_update_order->execute(array($current_user_id, $current_time, $current_time, $current_user_id, $order_id));
                         
                         error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
                     }
@@ -3060,9 +3104,9 @@ function handle_orders25_partial_insert($input, $config, $queries) {
         }
 
         // Pouze zadané hodnoty - ostatní NULL nebo výchozí hodnoty
-        // Použít TimezoneHelper pro správný český čas (respektuje letní/zimní čas)
-        $current_date = TimezoneHelper::getCzechDateTime('Y-m-d');
-        $current_datetime = TimezoneHelper::getCzechDateTime();
+        // Použít obyčejný date() - MySQL timezone je už nastavená správně přes TimezoneHelper::setMysqlTimezone()
+        $current_date = date('Y-m-d');
+        $current_datetime = date('Y-m-d H:i:s');
         
         $fields = [];
         $values = [];
@@ -5450,9 +5494,10 @@ function handle_orders25_add_invoice($input, $config, $queries) {
         if ($stmt->execute()) {
             echo json_encode([
                 'status' => 'ok',
-                'message' => 'Faktura byla úspěšně přidána k objednávce',
+                'message' => 'Faktura ' . $cislo_faktury . ' byla úspěšně přidána k objednávce ' . $order['cislo_objednavky'],
                 'data' => [
                     'order_id' => $order_id,
+                    'order_number' => $order['cislo_objednavky'],
                     'added_by_user_id' => $current_user_id,
                     'cislo_faktury' => $cislo_faktury,
                     'datum_faktury' => $datum_faktury,
