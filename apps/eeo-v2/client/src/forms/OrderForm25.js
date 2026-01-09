@@ -9959,7 +9959,7 @@ function OrderForm25() {
 
       if (workflowStates.includes('SCHVALENA') &&
           !formData.stav_odeslano &&
-          !isOrderCancelled &&
+          !formData.stav_stornovano &&
           !workflowStates.includes('ROZPRACOVANA') &&
           !isJustNowApproved) {  // ✅ NOVÁ PODMÍNKA: nepřidávat při prvním schválení
         // Přidat ROZPRACOVANA (indikátor že se na objednávce pracuje)
@@ -9969,7 +9969,7 @@ function OrderForm25() {
 
       // 4. ODESLANA - po odeslání dodavateli (nahrazuje ROZPRACOVANA)
       // ✅ KRITICKÉ: Workflow MUSÍ být ČISTÝ ["SCHVALENA", "ODESLANA"], vymazat vyšší fáze
-      if (formData.stav_odeslano && !isOrderCancelled) {
+      if (formData.stav_odeslano && !formData.stav_stornovano) {
         // Nastavit čistý workflow FÁZE 4
         workflowStates = ['SCHVALENA', 'ODESLANA'];
         addDebugLog('info', 'SAVE', 'workflow-clean', '✅ Workflow nastaven na čistou FÁZI 4: ["SCHVALENA", "ODESLANA"]');
@@ -9980,7 +9980,7 @@ function OrderForm25() {
       }
 
       // 5. ZRUSENA - při stornování
-      if (isOrderCancelled) {
+      if (formData.stav_stornovano) {
         if (!workflowStates.includes('ZRUSENA')) {
           workflowStates.push('ZRUSENA');
           addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav ZRUSENA');
@@ -9995,7 +9995,7 @@ function OrderForm25() {
       // 6. POTVRZENA - potvrzení od dodavatele
       const isDodavatelPotvrzeno = formData.dodavatel_zpusob_potvrzeni?.potvrzeni === 'ANO' ||
                                   formData.stav_u_dodavatele === 'potvrzeno';
-      if (isDodavatelPotvrzeno && !isOrderCancelled) {
+      if (isDodavatelPotvrzeno && !formData.stav_stornovano) {
         if (!workflowStates.includes('POTVRZENA')) {
           workflowStates.push('POTVRZENA');
           addDebugLog('info', 'SAVE', 'workflow-update', '✅ Přidán stav POTVRZENA - dodavatel potvrdil ANO');
@@ -10018,7 +10018,7 @@ function OrderForm25() {
       // - Pokud dodavatel potvrdil (POTVRZENA) a ma_byt_zverejnena === true → přidat stav 'UVEREJNIT' (posun na fázi 5)
       // - Pokud dodavatel potvrdil a ma_byt_zverejnena === false → přidat stav 'NEUVEREJNIT' (přeskočit na fázi 6 - Fakturace)
       // - Pokud ma_byt_zverejnena není definováno, považovat za false (defaultní chování)
-      if (workflowStates.includes('POTVRZENA') && !isOrderCancelled) {
+      if (workflowStates.includes('POTVRZENA') && !formData.stav_stornovano) {
         const maBytZverejnena = formData.ma_byt_zverejnena === true || formData.ma_byt_zverejnena === 1;
 
         if (maBytZverejnena) {
@@ -10056,7 +10056,7 @@ function OrderForm25() {
       }
 
       // Pokud POTVRZENA zmizí nebo je stornováno, odstranit jakékoliv zveřejňovací stavy
-      if (!workflowStates.includes('POTVRZENA') || isOrderCancelled) {
+      if (!workflowStates.includes('POTVRZENA') || formData.stav_stornovano) {
         workflowStates = workflowStates.filter(s => !['UVEREJNIT', 'NEUVEREJNIT', 'UVEREJNENA'].includes(s));
         addDebugLog('info', 'SAVE', 'workflow-update', 'Odebrány zveřejňovací stavy (není POTVRZENA nebo je stornováno)');
       }
@@ -10073,7 +10073,7 @@ function OrderForm25() {
            workflowStates.includes('POTVRZENA') ||
            workflowStates.includes('UVEREJNENA') ||
            workflowStates.includes('NEUVEREJNIT')) &&
-          !isOrderCancelled) {
+          !formData.stav_stornovano) {
         if (!workflowStates.includes('VECNA_SPRAVNOST')) {
           workflowStates.push('VECNA_SPRAVNOST');
           addDebugLog('info', 'SAVE', 'workflow-update', '🏪 Režim POKLADNA → přidán stav VECNA_SPRAVNOST (přeskočeny fáze 4-6) → FÁZE 7/8');
@@ -10082,7 +10082,7 @@ function OrderForm25() {
 
       // 8. FAKTURACE - při přidání faktury (pouze když NENÍ pokladna)
       // ✅ Pokud má objednávka faktury → přidat FAKTURACE (pokud ještě není) + VECNA_SPRAVNOST
-      if (!isPokladna && formData.faktury && formData.faktury.length > 0 && !isOrderCancelled) {
+      if (!isPokladna && formData.faktury && formData.faktury.length > 0 && !formData.stav_stornovano) {
         // Ujisti se že má FAKTURACE
         if (!workflowStates.includes('FAKTURACE')) {
           workflowStates.push('FAKTURACE');
@@ -10104,7 +10104,7 @@ function OrderForm25() {
       const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
         (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
       
-      if (allFakturyVecneSpravny && !isOrderCancelled) {
+      if (allFakturyVecneSpravny && !formData.stav_stornovano) {
         if (!workflowStates.includes('ZKONTROLOVANA')) {
           workflowStates.push('ZKONTROLOVANA');
           addDebugLog('info', 'SAVE', 'workflow-update', `✅ VŠECHNY faktury (${formData.faktury.length}x) mají potvrzenou věcnou správnost → přidán stav ZKONTROLOVANA → FÁZE 8/8`);
@@ -10127,7 +10127,7 @@ function OrderForm25() {
       // ✅ OPRAVA: Kontrolovat AKTUÁLNÍ stav workflowStates (po přidání ZKONTROLOVANA výše)
       const jeVecnaSprávnostPotvrzena = workflowStates.includes('ZKONTROLOVANA');
 
-      if (jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !isOrderCancelled) {
+      if (jeDokonceniPotvrzeno && jeVecnaSprávnostPotvrzena && !formData.stav_stornovano) {
         if (!workflowStates.includes('DOKONCENA')) {
           workflowStates.push('DOKONCENA');
           addDebugLog('info', 'SAVE', 'workflow-update', 'Přidán stav DOKONCENA - objednávka finálně dokončena');
@@ -10252,7 +10252,7 @@ function OrderForm25() {
 
       // dt_odeslani se používá jak pro odeslání, tak pro storno
       // ✅ DŮLEŽITÉ: Workflow data měnit POUZE pokud je sekce ODEMČENÁ!
-      if (formData.stav_odeslano || isOrderCancelled) {
+      if (formData.stav_odeslano || formData.stav_stornovano) {
         // Kontrola: je sekce FÁZE 3 odemčená?
         const isPhase3Unlocked = !shouldLockPhase3Sections;
 
@@ -10269,7 +10269,7 @@ function OrderForm25() {
           }
 
           // Pro ODESLÁNÍ: nastavit datum odeslání a smazat důvod storna
-          if (formData.stav_odeslano && !isOrderCancelled) {
+          if (formData.stav_odeslano && !formData.stav_stornovano) {
             // ✅ Datum odeslání nastavit POUZE pokud ještě neexistuje (při prvním odeslání)
             if (!formData.dt_odeslani) {
               const datumOdeslani = formData.datum_odeslani || getMySQLDate(); // ✅ JEDNOTNÝ FORMÁT
@@ -10283,7 +10283,7 @@ function OrderForm25() {
             orderData.odeslani_storno_duvod = ''; // Vymazat důvod storna při odeslání
           }
           // Pro STORNO: nastavit datum storna a zachovat důvod storna
-          else if (isOrderCancelled) {
+          else if (formData.stav_stornovano) {
             // ✅ Datum storna nastavit POUZE pokud ještě neexistuje (při prvním stornování)
             if (!formData.dt_odeslani) {
               // datum_storna pole neexistuje - použít aktuální datum
@@ -16800,7 +16800,7 @@ function OrderForm25() {
     let errors = {};
 
     // SPECIÁLNÍ LOGIKA: Při stornování validovat pouze storno pole
-    if (isOrderCancelled) {
+    if (formData.stav_stornovano) {
       // Pro stornované objednávky validovat pouze důvod stornování
       if (!formData.odeslani_storno_duvod?.trim()) {
         errors.odeslani_storno_duvod = 'Důvod stornování je povinný';
@@ -17079,18 +17079,13 @@ function OrderForm25() {
     if (hasErrors) {
       const errorCount = Object.keys(errors).length;
       
-      if (isOrderCancelled) {
-        // Speciální zpráva pro stornování
-        showToast && showToast(`Nelze stornovat - zkontrolujte vyznačená pole`, { type: 'error' });
-      } else {
-        // Strukturovaná chybová zpráva
-        const structuredMessage = formatValidationErrors(errors);
-        
-        showToast && showToast(structuredMessage, { 
-          type: 'error', 
-          timeout: 10000
-        });
-      }
+      // Strukturovaná chybová zpráva (včetně stornování)
+      const structuredMessage = formatValidationErrors(errors);
+      
+      showToast && showToast(structuredMessage, { 
+        type: 'error', 
+        timeout: 10000
+      });
 
       // Scroll na první chybový element s mírným zpožděním
       setTimeout(() => {
@@ -17106,7 +17101,7 @@ function OrderForm25() {
     let errors = {};
 
     // SPECIÁLNÍ LOGIKA: Při stornování validovat pouze storno pole
-    if (isOrderCancelled) {
+    if (formData.stav_stornovano) {
       if (!formData.odeslani_storno_duvod?.trim()) {
         errors.odeslani_storno_duvod = 'Důvod stornování je povinný';
       }
@@ -22228,7 +22223,7 @@ function OrderForm25() {
           </FormSection>
 
           {/* INFORMAČNÍ BLOK - KONEC FÁZE 2 */}
-          {(isArchived || currentPhase >= 2) && hasWorkflowState(formData.stav_workflow_kod, 'SCHVALENA') && !formData.stav_odeslano && !isOrderCancelled && (
+          {(isArchived || currentPhase >= 2) && hasWorkflowState(formData.stav_workflow_kod, 'SCHVALENA') && !formData.stav_odeslano && !formData.stav_stornovano && (
             <div style={{
               margin: '2rem 0',
               padding: '1rem 1.25rem',
@@ -22247,7 +22242,7 @@ function OrderForm25() {
           )}
 
           {/* FÁZE 3: Další sekce zobrazené ve FÁZI 3 (pouze pokud není stornováno) */}
-          {(isArchived || currentPhase >= 3) && !isOrderCancelled && (
+          {(isArchived || currentPhase >= 3) && !formData.stav_stornovano && (
             <>
               {/* FÁZE 4+: Sekce potvrzení dodavatelem - zobrazí se až po ODESLÁNÍ dodavateli */}
 
@@ -24759,7 +24754,7 @@ function OrderForm25() {
               )}
 
               {/* INFORMAČNÍ BLOK - FÁZE 4/8: Čekání na potvrzení dodavatelem */}
-              {(isArchived || currentPhase >= 4) && !isOrderCancelled && formData.dodavatel_zpusob_potvrzeni?.potvrzeni !== 'ANO' && (
+              {(isArchived || currentPhase >= 4) && !formData.stav_stornovano && formData.dodavatel_zpusob_potvrzeni?.potvrzeni !== 'ANO' && (
                 <div style={{
                   margin: '2rem 0',
                   padding: '1rem 1.25rem',
@@ -26942,10 +26937,23 @@ function OrderForm25() {
         addDebugLog('info', 'UNLOCK', 'cancelled', `🔓 Odemykám stornovanou objednávku ID: ${formData.id}`);
         
         // Odebrat ZRUSENA stav z workflow
-        const updatedWorkflow = (formData.stav_workflow_kod || '')
-          .split(',')
-          .filter(s => s.trim() !== 'ZRUSENA')
-          .join(',');
+        const currentWorkflow = formData.stav_workflow_kod;
+        let updatedWorkflow;
+        
+        if (Array.isArray(currentWorkflow)) {
+          // Už je to array
+          updatedWorkflow = currentWorkflow.filter(s => s !== 'ZRUSENA');
+        } else if (typeof currentWorkflow === 'string') {
+          // Je to string nebo JSON string
+          try {
+            const parsed = JSON.parse(currentWorkflow);
+            updatedWorkflow = Array.isArray(parsed) ? parsed.filter(s => s !== 'ZRUSENA') : [currentWorkflow].filter(s => s !== 'ZRUSENA');
+          } catch {
+            updatedWorkflow = currentWorkflow.split(',').filter(s => s.trim() !== 'ZRUSENA');
+          }
+        } else {
+          updatedWorkflow = [];
+        }
         
         // Vymazat storno data
         const clearedData = {
