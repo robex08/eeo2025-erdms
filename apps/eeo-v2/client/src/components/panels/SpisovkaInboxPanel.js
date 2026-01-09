@@ -543,7 +543,7 @@ const TxtViewer = styled.pre`
 // MAIN COMPONENT
 // ============================================================
 
-const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username, showToast }) => {
+const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onOCRDataExtracted, token, username, showToast, onRefreshRequested, refreshCounter }) => {
   const [faktury, setFaktury] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -831,6 +831,11 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         const processedIds = new Set(response.data.map(item => item.dokument_id));
         setZpracovaneIds(processedIds);
         
+        console.log('📋 Loaded zpracované dokumenty:', {
+          processedCount: response.data.length,
+          processedIds: Array.from(processedIds)
+        });
+        
         // Vytvořit Map s detaily pro každý dokument
         const detailsMap = new Map();
         response.data.forEach(item => {
@@ -846,9 +851,15 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       }
     } catch (err) {
       console.warn('⚠️ Nepodařilo se načíst zpracované dokumenty:', err);
+      
+      // 🔴 403 Forbidden - nedostatečná oprávnění → zobrazit toast
+      if (err.message && err.message.includes('403')) {
+        showToast('❌ Nemáte oprávnění ke správě File Registru. Vyžadováno právo FILE_REGISTRY_MANAGE nebo ADMIN role.', 'error');
+      }
+      
       // Neblokujeme - panel může fungovat i bez tohoto
     }
-  }, [token, username]);
+  }, [token, username, showToast]);
 
   // 🗑️ Zrušit zpracování Spisovka dokumentu
   const handleCancelProcessing = useCallback(async (dokumentId, fakturaId, faCisloVema) => {
@@ -951,6 +962,13 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
     fetchFaktury();
   }, [yearFilter, debouncedSearchTerm, dateRange]); // 📅 Refetch při změně roku, vyhledávání (debounced) nebo období
 
+  // 📋 Fetch zpracovaných dokumentů - při mount, změně credentials nebo filtrů
+  useEffect(() => {
+    if (token && username) {
+      fetchZpracovaneDokumenty();
+    }
+  }, [token, username, fetchZpracovaneDokumenty, yearFilter, debouncedSearchTerm, dateRange]); // 🎯 Fetch při mount, credentials nebo filtrech
+
   // Background refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(() => {
@@ -959,6 +977,15 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
 
     return () => clearInterval(interval);
   }, [fetchFaktury]);
+
+  // 🔄 Refresh panelu při změně refreshCounter (po označení dokumentu jako zpracovaný)
+  useEffect(() => {
+    if (refreshCounter > 0) {
+      console.log('📋 Refreshing Spisovka panel after document processed...');
+      fetchZpracovaneDokumenty();
+      // Následně se odložený fetch faktur provede automaticky
+    }
+  }, [refreshCounter, fetchZpracovaneDokumenty]);
 
   // 🎯 Polling pro aktivní dokument z localStorage
   useEffect(() => {
@@ -1117,12 +1144,56 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
       </PanelHeader>
 
       {!panelState.minimized && (() => {
-        // 📊 Spočítat filtrované faktury pro zobrazení v headeru
+        // 📊 Spočítat filtrované faktury podle všech režimů (pre zobrazení v headeru)
         const { dateFrom, dateTo } = calculateDateRange(dateRange, yearFilter);
         const dateFromTs = new Date(dateFrom).getTime();
         const dateToTs = new Date(dateTo + ' 23:59:59').getTime();
         
+        // 🧮 Počítání podle všech režimů s aplikováním datum + název filtrů
+        let nezaevidovaneCount = 0;
+        let zaevidovaneCount = 0;
+        
+        faktury.forEach(faktura => {
+          // 0. Filter podle názvu - pouze faktury (stejná logika jako v filteredFaktury)
+          const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                            /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+          
+          if (!isFaktura) return; // Není faktura podle názvu
+          
+          // 1. Filter podle dateRange
+          const fakturaDate = new Date(faktura.datum_vzniku);
+          const fakturaTs = fakturaDate.getTime();
+          if (fakturaTs < dateFromTs || fakturaTs > dateToTs) return; // Mimo datum rozsah
+          
+          // 2. Počítání podle zpracování
+          const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
+          if (isZaevidovano) {
+            zaevidovaneCount++;
+          } else {
+            nezaevidovaneCount++;
+          }
+        });
+        
+        // 🐛 DEBUG: Logging pre analýzu problému
+        console.log('📋 Spisovka Panel Counts Debug:', {
+          totalFaktury: faktury.length,
+          zpracovaneIdsSize: zpracovaneIds.size,
+          nezaevidovaneCount,
+          zaevidovaneCount,
+          dateRange: `${dateFrom} - ${dateTo}`,
+          filterMode
+        });
+        
+        // 📈 Aktuálně zobrazený počet (podle filterMode)
         const filteredCount = faktury.filter(faktura => {
+          // Aplikovat všechny filtry stejně jako výše
+          const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                            /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+          
+          if (!isFaktura) return false;
+          
           const fakturaDate = new Date(faktura.datum_vzniku);
           const fakturaTs = fakturaDate.getTime();
           if (fakturaTs < dateFromTs || fakturaTs > dateToTs) return false;
@@ -1130,7 +1201,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           const isZaevidovano = zpracovaneIds.has(faktura.dokument_id);
           if (filterMode === 'nezaevidovane') return !isZaevidovano;
           if (filterMode === 'zaevidovane') return isZaevidovano;
-          return true;
+          return true; // 'vse'
         }).length;
         
         return (
@@ -1323,8 +1394,8 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                 }}
               >
                 {mode === 'vse' && 'Vše'}
-                {mode === 'nezaevidovane' && `Nezaevidované (${faktury.filter(f => !zpracovaneIds.has(f.dokument_id)).length})`}
-                {mode === 'zaevidovane' && `Zaevidované (${zpracovaneIds.size})`}
+                {mode === 'nezaevidovane' && `Nezaevidované (${nezaevidovaneCount})`}
+                {mode === 'zaevidovane' && `Zaevidované (${zaevidovaneCount})`}
               </button>
             ))}
             </div>

@@ -28,6 +28,50 @@ require_once __DIR__ . '/orderQueries.php';
 define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
 
 /**
+ * 🔐 Helper: Kontrola oprávnění pro Spisovka InBox
+ * Vyžaduje právo FILE_REGISTRY_MANAGE nebo ADMIN/SUPERADMIN roli
+ * 
+ * @param PDO $pdo - DB connection
+ * @param int $user_id - ID uživatele
+ * @return bool - True pokud má oprávnění
+ */
+function check_spisovka_permission($pdo, $user_id) {
+    // 1️⃣ Kontrola zda má SUPERADMIN nebo ADMINISTRATOR roli (mají přístup všude)
+    $stmt_admin = $pdo->prepare("
+        SELECT COUNT(*) as count
+        FROM 25_uzivatele_role ur
+        JOIN 25_role r ON ur.role_id = r.id
+        WHERE ur.uzivatel_id = :user_id
+        AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
+        AND r.aktivni = 1
+    ");
+    $stmt_admin->execute([':user_id' => $user_id]);
+    $is_admin = $stmt_admin->fetch(PDO::FETCH_ASSOC);
+    
+    if ($is_admin && $is_admin['count'] > 0) {
+        return true; // ✅ SUPERADMIN/ADMINISTRATOR má přístup automaticky
+    }
+    
+    // 2️⃣ Kontrola konkrétního práva FILE_REGISTRY_MANAGE
+    $stmt_perm = $pdo->prepare("
+        SELECT COUNT(*) as count
+        FROM 25_prava p
+        WHERE p.kod_prava = 'FILE_REGISTRY_MANAGE'
+        AND p.aktivni = 1
+        AND p.id IN (
+            -- Přímá práva uživatele
+            SELECT rp.pravo_id 
+            FROM 25_role_prava rp 
+            WHERE rp.user_id = :user_id1 AND rp.aktivni = 1
+        )
+    ");
+    $stmt_perm->execute([':user_id1' => $user_id]);
+    $has_permission = $stmt_perm->fetch(PDO::FETCH_ASSOC);
+    
+    return $has_permission && $has_permission['count'] > 0;
+}
+
+/**
  * GET /api/spisovka-zpracovani/list
  * Seznam zpracovaných dokumentů s možností filtrování
  * 
@@ -42,28 +86,6 @@ define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');
  * - offset: int (optional, default 0) - Offset pro stránkování
  */
 function handle_spisovka_zpracovani_list($input, $config) {
-    // OKAMŽITÝ DB logging - musí fungovat!
-    try {
-        $log_pdo = new PDO("mysql:host=10.3.172.11;dbname=eeo2025", "eeo2025", "hn48qka?a");
-        $log_pdo->exec("INSERT INTO debug_api_log (endpoint, method, input_data, error_message) VALUES ('START', 'POST', 'Function called', 'Config check: " . (isset($config) ? 'YES' : 'NO') . "')");
-    } catch (Exception $le) {
-        file_put_contents('/tmp/debug_log_error.txt', date('Y-m-d H:i:s') . " - " . $le->getMessage() . "\n", FILE_APPEND);
-    }
-    
-    // DB Debug logger
-    $debug_pdo = null;
-    try {
-        $debug_pdo = new PDO(
-            "mysql:host={$config['mysql']['host']};dbname={$config['mysql']['database']};charset=utf8mb4",
-            $config['mysql']['username'],
-            $config['mysql']['password']
-        );
-        $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, input_data) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote(json_encode($input)) . ")");
-    } catch (Exception $e) {
-        error_log("Debug log failed: " . $e->getMessage());
-        file_put_contents('/tmp/debug_log_error.txt', date('Y-m-d H:i:s') . " - Config log failed: " . $e->getMessage() . "\n", FILE_APPEND);
-    }
-    
     error_log("📋 handle_spisovka_zpracovani_list called");
     error_log("Input: " . json_encode($input));
     
@@ -72,11 +94,7 @@ function handle_spisovka_zpracovani_list($input, $config) {
     $token = isset($input['token']) ? $input['token'] : '';
     
     if (!function_exists('verify_token_v2')) {
-        $err_msg = "verify_token_v2 function NOT FOUND!";
-        error_log("❌ " . $err_msg);
-        if ($debug_pdo) {
-            $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ")");
-        }
+        error_log("❌ verify_token_v2 function NOT FOUND!");
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => 'verify_token_v2 not found']);
         return;
@@ -84,9 +102,6 @@ function handle_spisovka_zpracovani_list($input, $config) {
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
-        if ($debug_pdo) {
-            $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message) VALUES ('spisovka-zpracovani/list', 'POST', 'Auth failed')");
-        }
         http_response_code(401);
         echo json_encode([
             'status' => 'error',
@@ -110,39 +125,12 @@ function handle_spisovka_zpracovani_list($input, $config) {
             ]
         );
         
-        // 🔐 KONTROLA OPRÁVNĚNÍ - SPISOVKA_MANAGE nebo ADMIN role
-        $stmt_perm = $pdo->prepare("
-            SELECT COUNT(*) as count
-            FROM 25_prava p
-            WHERE (p.kod_prava = 'SPISOVKA_MANAGE' OR p.kod_prava = 'ADMIN')
-            AND p.aktivni = 1
-            AND (
-                p.id IN (
-                    -- Přímá práva uživatele
-                    SELECT rp.pravo_id 
-                    FROM 25_role_prava rp 
-                    WHERE rp.user_id = :user_id1 AND rp.aktivni = 1
-                )
-                OR p.id IN (
-                    -- Práva z rolí (ADMIN check)
-                    SELECT rp.pravo_id 
-                    FROM 25_uzivatel_role ur
-                    JOIN 25_role r ON ur.role_id = r.id
-                    JOIN 25_role_prava rp ON r.id = rp.role_id AND rp.user_id = -1
-                    WHERE ur.uzivatel_id = :user_id2 
-                    AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR')
-                    AND rp.aktivni = 1
-                )
-            )
-        ");
-        $stmt_perm->execute([':user_id1' => $current_user_id, ':user_id2' => $current_user_id]);
-        $has_permission = $stmt_perm->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$has_permission || $has_permission['count'] == 0) {
+        // 🔐 KONTROLA OPRÁVNĚNÍ - FILE_REGISTRY_MANAGE nebo ADMIN role
+        if (!check_spisovka_permission($pdo, $current_user_id)) {
             http_response_code(403);
             echo json_encode([
                 'status' => 'error',
-                'message' => 'Nedostatečná oprávnění. Vyžadováno: SPISOVKA_MANAGE nebo ADMIN role.'
+                'message' => 'Nedostatečná oprávnění. Vyžadováno: FILE_REGISTRY_MANAGE nebo ADMIN role.'
             ]);
             return;
         }
@@ -251,15 +239,6 @@ function handle_spisovka_zpracovani_list($input, $config) {
         error_log("Spisovka zpracovani list error: " . $err_msg);
         error_log("Stack: " . $stack);
         
-        // Log do DB
-        if ($debug_pdo) {
-            try {
-                $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message, stack_trace) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ", " . $debug_pdo->quote($stack) . ")");
-            } catch (Exception $log_err) {
-                error_log("Failed to log error to DB: " . $log_err->getMessage());
-            }
-        }
-        
         http_response_code(500);
         echo json_encode([
             'status' => 'error',
@@ -270,15 +249,6 @@ function handle_spisovka_zpracovani_list($input, $config) {
         $err_msg = "General Error: " . $e->getMessage();
         $stack = $e->getTraceAsString();
         error_log("Spisovka zpracovani list error: " . $err_msg);
-        
-        // Log do DB
-        if ($debug_pdo) {
-            try {
-                $debug_pdo->exec("INSERT INTO debug_api_log (endpoint, method, error_message, stack_trace) VALUES ('spisovka-zpracovani/list', 'POST', " . $debug_pdo->quote($err_msg) . ", " . $debug_pdo->quote($stack) . ")");
-            } catch (Exception $log_err) {
-                error_log("Failed to log error to DB: " . $log_err->getMessage());
-            }
-        }
         
         http_response_code(500);
         echo json_encode([
@@ -315,6 +285,8 @@ function handle_spisovka_zpracovani_stats($input, $config) {
         return;
     }
     
+    $current_user_id = $auth_result['id'];
+    
     try {
         // PDO připojení
         $pdo = new PDO(
@@ -327,6 +299,16 @@ function handle_spisovka_zpracovani_stats($input, $config) {
                 PDO::ATTR_EMULATE_PREPARES => false
             ]
         );
+        
+        // 🔐 KONTROLA OPRÁVNĚNÍ
+        if (!check_spisovka_permission($pdo, $current_user_id)) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nedostatečná oprávnění. Vyžadováno: FILE_REGISTRY_MANAGE nebo ADMIN role.'
+            ]);
+            return;
+        }
         
         // Parametry filtrace
         $uzivatel_id = isset($input['uzivatel_id']) ? (int)$input['uzivatel_id'] : null;
@@ -479,6 +461,16 @@ function handle_spisovka_zpracovani_mark($input, $config) {
                 PDO::ATTR_EMULATE_PREPARES => false
             ]
         );
+        
+        // 🔐 KONTROLA OPRÁVNĚNÍ
+        if (!check_spisovka_permission($pdo, $current_user_id)) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nedostatečná oprávnění. Vyžadováno: FILE_REGISTRY_MANAGE nebo ADMIN role.'
+            ]);
+            return;
+        }
         
         // Parametry
         $dokument_id = (int)$input['dokument_id'];
@@ -642,6 +634,16 @@ function handle_spisovka_zpracovani_delete($input, $config) {
         
         // Nastavit časovou zónu
         TimezoneHelper::setMysqlTimezone($db);
+        
+        // 🔐 KONTROLA OPRÁVNĚNÍ
+        if (!check_spisovka_permission($db, $current_user_id)) {
+            http_response_code(403);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Nedostatečná oprávnění. Vyžadováno: FILE_REGISTRY_MANAGE nebo ADMIN role.'
+            ]);
+            return;
+        }
         
         // Smazat záznam
         $stmt = $db->prepare("

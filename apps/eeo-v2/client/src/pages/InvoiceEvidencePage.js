@@ -1549,6 +1549,10 @@ export default function InvoiceEvidencePage() {
   // State pro sledování editace faktury (localStorage se načte v useEffect)
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   
+  // 🆕 Flag: Je to PŮVODNÍ EDITACE faktury (načtená z location.state, localStorage)?
+  // Rozlišuje původní editaci od nové faktury, kde se ID vytvoří jen pro upload příloh
+  const [isOriginalEdit, setIsOriginalEdit] = useState(false);
+  
   // 🆕 Flag: Faktura byla POTVRZENA uživatelem (kliknutí na Zaevidovat)
   // Tento flag se NENASTAVÍ při auto-vytvoření faktury při uploadu přílohy
   const [invoiceUserConfirmed, setInvoiceUserConfirmed] = useState(false);
@@ -1601,6 +1605,12 @@ export default function InvoiceEvidencePage() {
   const [showSpisovkaTooltip, setShowSpisovkaTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   const tooltipButtonRef = useRef(null);
+  
+  // 📋 Callback pro refresh Spisovka panelu po označení dokumentu
+  const [spisovkaRefreshCounter, setSpisovkaRefreshCounter] = useState(0);
+  const handleSpisovkaRefresh = useCallback(() => {
+    setSpisovkaRefreshCounter(prev => prev + 1);
+  }, []);
 
   // 🔄 Resize handler - kontrola pozice panelu při změně velikosti okna
   useEffect(() => {
@@ -1844,6 +1854,7 @@ export default function InvoiceEvidencePage() {
         // 🆕 Pokud je uloženo editingInvoiceId, nastavit i invoiceUserConfirmed
         // (protože to znamená, že faktura byla již potvrzena)
         setInvoiceUserConfirmed(true);
+        setIsOriginalEdit(true);
       }
       
       // Načíst hadOriginalEntity
@@ -2034,6 +2045,8 @@ export default function InvoiceEvidencePage() {
       setEditingInvoiceId(editIdToLoad);
       // ✅ Nastavit invoiceUserConfirmed na true - načítáme existující fakturu
       setInvoiceUserConfirmed(true);
+      setIsOriginalEdit(true);
+      setIsOriginalEdit(true);
       
       try {
         // Načíst data faktury
@@ -2815,7 +2828,7 @@ export default function InvoiceEvidencePage() {
     });
     
     setEditingInvoiceId(faktura.id);
-    
+    setIsOriginalEdit(true);
     
     // 🆕 Při načtení existující faktury pro editaci nastavit flag na true
     setInvoiceUserConfirmed(true);
@@ -2989,6 +3002,8 @@ export default function InvoiceEvidencePage() {
 
             if (result.success) {
               showToast && showToast('✅ Příloha přidána (duplicitní záznam vytvořen)', { type: 'success' });
+              // 🔄 REFRESH Spisovka panelu po force tracking
+              handleSpisovkaRefresh();
             } else {
               console.warn('⚠️ Force tracking se nezdařil:', result);
             }
@@ -3042,6 +3057,9 @@ export default function InvoiceEvidencePage() {
           pendingSpisovkaMetadataRef.current = null;
           // ⚠️ NEvyčišťovat LS zde - uživatel může přidat další přílohy ze stejné faktury
           // LS se vyčistí při opouštění stránky nebo při reset formu
+          
+          // 🔄 REFRESH Spisovka panelu po úspěšném markování
+          handleSpisovkaRefresh();
         } else if (result.conflict) {
           // 🚨 CONFLICT - zobrazit dialog uživateli
           console.warn('⚠️ Conflict detekován:', result);
@@ -3060,7 +3078,7 @@ export default function InvoiceEvidencePage() {
       // ✅ Při chybě vyčistit LS - uživatel musí začít znovu
       localStorage.removeItem('spisovka_active_dokument');
     }
-  }, [username, token, handleSpisovkaConflict]); // ✅ OPRAVENO: formData.fa_cislo_vema odstraněno z dependencies
+  }, [username, token, handleSpisovkaConflict, handleSpisovkaRefresh]); // ✅ OPRAVENO: formData.fa_cislo_vema odstraněno z dependencies
 
   // 📎 Validace faktury před uploadem příloh (podle vzoru OrderForm25)
   // Parametr: faktura objekt (ne file!) - obsahuje data faktury pro validaci
@@ -4032,9 +4050,9 @@ export default function InvoiceEvidencePage() {
 
       // ⚠️ RESET FORMULÁŘE se provede až po kliknutí na "Pokračovat" v progress dialogu
       // Uložíme data potřebná pro reset do stavu progress dialogu
-      // ✅ PŘI UPDATE (editaci) - smazat všechno včetně objednávky
-      // ✅ PŘI CREATE (nové) - ponechat objednávku pro další fakturu
-      const wasEditing = !!editingInvoiceId;
+      // ✅ PŘI UPDATE (skutečná editace původní faktury) - smazat všechno a přejít na seznam
+      // ✅ PŘI CREATE (nové evidující - i když má temp ID pro přílohy) - zůstat na formuláři
+      const wasEditing = isOriginalEdit;
       
       // ✅ CLEANUP: Vymazat originalFormData aby nedošlo k memory leak
       setOriginalFormData(null);
@@ -4116,6 +4134,7 @@ export default function InvoiceEvidencePage() {
       setEditingInvoiceId(null);
       setHadOriginalEntity(false);
       setInvoiceUserConfirmed(false);
+      setIsOriginalEdit(false);
       setJustCompletedOperation(true); // Zabránit reload z LS
       
       // 💾 Vyčistit localStorage
@@ -4679,6 +4698,7 @@ export default function InvoiceEvidencePage() {
                       // ✅ KROK 2: Kompletní reset state
                       setEditingInvoiceId(null);
                       setInvoiceUserConfirmed(false);
+                      setIsOriginalEdit(false);
                       setAttachments([]);
                       setOriginalFormData(null);
                       setHasChangedCriticalField(false);
@@ -6664,6 +6684,8 @@ export default function InvoiceEvidencePage() {
           token={token}
           username={username}
           showToast={showToast}
+          onRefreshRequested={handleSpisovkaRefresh}
+          refreshCounter={spisovkaRefreshCounter}
         />
       )}
 
@@ -6776,6 +6798,7 @@ export default function InvoiceEvidencePage() {
                     // 🆕 Reset editingInvoiceId a invoiceUserConfirmed
                     setEditingInvoiceId(null);
                     setInvoiceUserConfirmed(false);
+                    setIsOriginalEdit(false);
                     
                     // 🚫 Reset flag pro localStorage (umožní načítání při F5)
                     setJustCompletedOperation(false);
@@ -6785,9 +6808,10 @@ export default function InvoiceEvidencePage() {
                     
                     // 🔄 PŘESMĚROVÁNÍ: 
                     // - Pokud byl READONLY mode (věcná správnost) → přejít na seznam faktur
-                    // - Pokud byla BĚŽNÁ EVIDENCE (fakturant) → zůstat na formuláři pro další fakturu
-                    if (wasReadOnlyMode) {
-                      navigate('/invoices');
+                    // - Pokud byla EDITACE FAKTURY → přejít na seznam faktur 
+                    // - Pokud byla NOVÁ EVIDEJCE faktury → zůstat na formuláři pro další fakturu
+                    if (wasReadOnlyMode || wasEditing) {
+                      navigate('/invoices25-list');
                     }
                     // Jinak zůstat na stránce s prázdným formulářem pro další fakturu
                   }}
