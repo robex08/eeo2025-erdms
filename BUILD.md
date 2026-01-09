@@ -10,6 +10,19 @@
 
 Tento dokument popisuje **kompletní proces buildu a deploye** EEO v2 aplikace pro DEV a PROD prostředí.
 
+### ⚠️ DŮLEŽITÉ: Správa verzí
+
+**Při změně verze je nutné aktualizovat tyto soubory:**
+1. `BUILD.md` - hlavní verzovací soubor (tento soubor)
+2. `apps/eeo-v2/client/package.json` - verze npm balíčku
+3. `apps/eeo-v2/client/.env.development` - **REACT_APP_VERSION** pro DEV build
+4. `apps/eeo-v2/client/.env.production` - **REACT_APP_VERSION** pro PROD build
+5. `apps/eeo-v2/client/.env.example` - šablona pro .env soubory (commituje se do gitu)
+
+**Poznámka:** Soubory `.env.development` a `.env.production` jsou ignorovány gitem (`.gitignore`), 
+ale jsou **kritické pro správné zobrazení verze** v aplikaci. Verze z `package.json` se **nepoužívá** 
+bez nastavení `REACT_APP_VERSION` v `.env` souborech!
+
 **Klíčové principy:**
 - ✅ DEV a PROD jsou **plně separované**
 - ✅ DEV zůstává v `/var/www/erdms-dev/` - **nikdy se nekopíruje**
