@@ -4601,6 +4601,21 @@ const Orders25List = () => {
 
   // Column-specific filters (textové filtry z hlavičky tabulky) - load from localStorage
   const [columnFilters, setColumnFilters] = useState(() => {
+    // 🐛 FIX: Neklade filtry pokud není user_id (currentUserId by byl NaN)
+    // Filtry se načtou až v useEffect když je currentUserId validní
+    if (!user_id || isNaN(parseInt(user_id, 10))) {
+      return {
+        dt_objednavky: '',
+        cislo_objednavky: '',
+        predmet: '',
+        objednatel: '',
+        stav_objednavky: '',
+        max_cena_s_dph: '',
+        garant: '',
+        prikazce: '',
+        schvalovatel: ''
+      };
+    }
     return getUserStorage('orders25List_columnFilters', {
       dt_objednavky: '',
       cislo_objednavky: '',
@@ -4614,7 +4629,24 @@ const Orders25List = () => {
     });
   });
 
-  // 🚀 PERFORMANCE: Debounced column filters pro rychlejší psaní
+  // � FIX: Načti filtry z localStorage když se currentUserId stane validní
+  // Problém: currentUserId může být NaN při prvním renderu pokud user_id není ready
+  // Řešení: Načti filtry až když je currentUserId validní číslo
+  useEffect(() => {
+    if (!isNaN(currentUserId) && currentUserId > 0) {
+      const savedFilters = getUserStorage('orders25List_columnFilters', null);
+      if (savedFilters) {
+        setColumnFilters(savedFilters);
+      }
+      // 🐛 FIX: Načti také multiselect filtry
+      const savedMultiselectFilters = getUserStorage('orders25List_multiselectFilters', null);
+      if (savedMultiselectFilters) {
+        setMultiselectFilters(savedMultiselectFilters);
+      }
+    }
+  }, [currentUserId]); // Spustí se když se currentUserId změní z NaN na validní číslo
+
+  // �🚀 PERFORMANCE: Debounced column filters pro rychlejší psaní
   // Lokální state pro okamžitou změnu inputu (UX), debounce pro aplikaci filtru (performance)
   const [localColumnFilters, setLocalColumnFilters] = useState(columnFilters);
   const columnFilterTimeoutRef = useRef(null);
@@ -4642,12 +4674,30 @@ const Orders25List = () => {
   }, []);
 
   // Multiselect filters (ID filtry z rozšířeného filtrovacího panelu)
-  const [multiselectFilters, setMultiselectFilters] = useState({
-    objednatel: '',
-    garant: '',
-    prikazce: '',
-    schvalovatel: ''
+  const [multiselectFilters, setMultiselectFilters] = useState(() => {
+    // 🐛 FIX: Načti multiselect filtry z localStorage (per-user)
+    if (!user_id || isNaN(parseInt(user_id, 10))) {
+      return {
+        objednatel: '',
+        garant: '',
+        prikazce: '',
+        schvalovatel: ''
+      };
+    }
+    return getUserStorage('orders25List_multiselectFilters', {
+      objednatel: '',
+      garant: '',
+      prikazce: '',
+      schvalovatel: ''
+    });
   });
+
+  // 🐛 FIX: Ulož multiselect filtry do localStorage když se změní
+  useEffect(() => {
+    if (!isNaN(currentUserId) && currentUserId > 0) {
+      setUserStorage('orders25List_multiselectFilters', multiselectFilters);
+    }
+  }, [multiselectFilters, currentUserId]);
 
   // 🧹 CLEANUP: Clear debounce timeout on unmount
   useEffect(() => {
@@ -5858,120 +5908,7 @@ const Orders25List = () => {
         return order;
       });
 
-      // 📊 DEBUG: Přehledný výpis všech filtrů a jejich efektů (VYPNUTO PRO VÝKON)
-      // PERFORMANCE: Tento log je drahý (reduce, filter operace) a spouští se při každém načtení
-      // Zapni pouze při potřebě debugování
-      const ENABLE_DEBUG_LOG = false;
-      
-      if (ENABLE_DEBUG_LOG) {
-        console.groupCollapsed('📋 ORDERS25LIST - Aplikované filtry po načtení');
-        console.log('👤 Uživatel:', { 
-          user_id, 
-          username, 
-          roles: userDetail?.roles?.map(r => r.kod_role || r.nazev_role).join(', ') || 'žádné role v userDetail',
-          hasAdminRole,
-          canViewAll: currentPermissions?.canViewAll,
-          hasOnlyOwn: currentPermissions?.hasOnlyOwn
-        });
-        console.log('📦 Celkový počet načtených objednávek:', finalOrders.length);
-        
-        // Analýza stavů objednávek
-        const stavyCount = finalOrders.reduce((acc, o) => {
-          const stav = o.stav_objednavky || 'NEZNAMY';
-          acc[stav] = (acc[stav] || 0) + 1;
-          return acc;
-        }, {});
-        console.log('📊 Stavy objednávek:', stavyCount);
-        
-        // Analýza vlastnictví
-        const ownership = {
-          meVytvořil: finalOrders.filter(o => String(o.uzivatel_id) === String(user_id)).length,
-          jsemPříkazce: finalOrders.filter(o => String(o.prikazce_id) === String(user_id)).length,
-          jsemSchvalovatel: finalOrders.filter(o => String(o.schvalovatel_id) === String(user_id)).length,
-          jsemGarant: finalOrders.filter(o => String(o.garant_id) === String(user_id) || String(o.garant_uzivatel_id) === String(user_id)).length,
-          jsemObjednatel: finalOrders.filter(o => String(o.objednatel_id) === String(user_id)).length,
-          jsemFakturant: finalOrders.filter(o => String(o.fakturant_id) === String(user_id)).length,
-          potvrdilJsem: finalOrders.filter(o => String(o.potvrdil_vecnou_spravnost_id) === String(user_id)).length,
-          dokončilJsem: finalOrders.filter(o => String(o.dokoncil_id) === String(user_id)).length,
-          zveřejnilJsem: finalOrders.filter(o => String(o.zverejnil_id) === String(user_id)).length,
-          aktualizoválJsem: finalOrders.filter(o => String(o.uzivatel_akt_id) === String(user_id)).length,
-        };
-        console.log('👥 Vlastnictví objednávek:', ownership);
-        
-        // Kontrola visibility a aktivnosti
-        const visibility = {
-          aktivní: finalOrders.filter(o => o.aktivni === 1 || o.aktivni === '1').length,
-          neaktivní: finalOrders.filter(o => o.aktivni === 0 || o.aktivni === '0').length,
-          draft: finalOrders.filter(o => o.isDraft || o.isLocalConcept).length,
-        };
-        console.log('👁️ Viditelnost:', visibility);
-        
-        // 🔍 AKTIVNÍ FRONTEND FILTRY
-        console.groupCollapsed('🔧 Aktivní frontend filtry');
-        console.log('📌 Základní filtry:', {
-          statusFilter: statusFilter.length > 0 ? statusFilter : 'Všechny stavy',
-          userFilter: userFilter || 'Žádný filtr uživatele',
-          showOnlyMyOrders: showOnlyMyOrders ? 'ANO - jen moje' : 'NE - všechny',
-          showArchived: showArchived ? 'ANO - včetně archivovaných' : 'NE - bez archivovaných'
-        });
-        console.log('👥 Výběr osob:', {
-          selectedObjednatel: selectedObjednatel.length > 0 ? selectedObjednatel : 'Žádný',
-          selectedGarant: selectedGarant.length > 0 ? selectedGarant : 'Žádný',
-          selectedSchvalovatel: selectedSchvalovatel.length > 0 ? selectedSchvalovatel : 'Žádný',
-          selectedPrikazce: selectedPrikazce.length > 0 ? selectedPrikazce : 'Žádný'
-        });
-        console.log('💰 Částka:', {
-          amountFromFilter: amountFromFilter || 'Neomezeno',
-          amountToFilter: amountToFilter || 'Neomezeno'
-        });
-        console.log('📅 Datum:', {
-          dateFromFilter: dateFromFilter || 'Neomezeno',
-          dateToFilter: dateToFilter || 'Neomezeno'
-        });
-        console.log('📋 Ostatní:', {
-          filterMaBytZverejneno: filterMaBytZverejneno ? 'ANO' : 'NE',
-          filterByloZverejneno: filterByloZverejneno ? 'ANO' : 'NE',
-          selectedYear: selectedYear || 'Neomezeně'
-        });
-        
-        // Textové filtry z hlavičky tabulky (columnFilters)
-        const activeColumnFilters = Object.entries(columnFilters || {})
-          .filter(([_, value]) => value && value.trim() !== '')
-          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-        
-        if (Object.keys(activeColumnFilters).length > 0) {
-          console.log('🔎 Textové filtry (hlavička tabulky):', activeColumnFilters);
-        } else {
-          console.log('🔎 Textové filtry (hlavička tabulky): Žádné');
-        }
-        console.groupEnd();
-        
-        // Možné důvody proč se objednávka NEZOBRAZÍ
-        console.groupCollapsed('⚠️ Důvody proč se objednávka může NEZOBRAZIT');
-        console.log('1. ❌ Objednávka má aktivni=0 (archivovaná/smazaná) a showArchived=false');
-        console.log('2. ❌ Frontend filtr: Uživatel nemá právo ORDER_VIEW_ALL a není součástí objednávky');
-        console.log('3. ❌ Frontend filtr: showOnlyMyOrders=true a uživatel není v žádné roli');
-        console.log('4. ❌ Org hierarchie: Uživatel není v hierarchii příkazce/schvalovatele (pokud aktivní)');
-        console.log('5. ❌ Search filtr: Objednávka neodpovídá globalSearch dotazu');
-        console.log('6. ❌ Date range filtr: Objednávka je mimo dateFrom/dateTo rozsah');
-        console.log('7. ❌ Status filtr: Objednávka nemá stav ze seznamu statusFilter');
-        console.log('8. ❌ User filtr: Objednávka nemá vybraného objednatele/garanta/schvalovatele/příkazce');
-        console.log('9. ❌ Amount filtr: Objednávka není v rozsahu amountFrom/amountTo');
-        console.log('10. ❌ Registr filtr: Objednávka nemá odpovídající registr status');
-        console.groupEnd();
-        
-        // Ukázka prvních 3 objednávek
-        if (finalOrders.length > 0) {
-          console.groupCollapsed('📄 První 3 objednávky (ukázka)');
-          finalOrders.slice(0, 3).forEach((o, idx) => {
-            console.log(`${idx + 1}. #${o.id} | ${o.cislo_objednavky || 'N/A'} | ${o.stav_objednavky} | Příkazce: ${o.prikazce_id} | Aktivní: ${o.aktivni}`);
-          });
-          console.groupEnd();
-        }
-      
-        console.log('✅ Objednávky nastaveny do state - nyní se aplikují frontend filtry (tab, search, date range)');
-        console.groupEnd();
-      }
+      // 📊 DEBUG: Debug logy byly odstraněny pro lepší výkon v produkci
 
       setOrders(finalOrders);
 
@@ -10969,6 +10906,16 @@ const Orders25List = () => {
     setLocalColumnFilters(emptyFilters);
     setUserStorage('orders25List_columnFilters', emptyFilters);
 
+    // 🐛 FIX: Vymaž také multiselect filtry
+    const emptyMultiselectFilters = {
+      objednatel: '',
+      garant: '',
+      prikazce: '',
+      schvalovatel: ''
+    };
+    setMultiselectFilters(emptyMultiselectFilters);
+    setUserStorage('orders25List_multiselectFilters', emptyMultiselectFilters);
+
     // Reset selectů v rozšířeném filtru - prázdná pole místo prázdných stringů
     setSelectedObjednatel([]);
     setSelectedGarant([]);
@@ -11417,6 +11364,15 @@ const Orders25List = () => {
                 </span>
               </InfoValue>
             </InfoRow>
+
+            {order.schvaleni_komentar && (
+              <InfoRow>
+                <InfoLabel>Komentář:</InfoLabel>
+                <InfoValue style={{ fontStyle: 'italic', color: '#64748b' }}>
+                  {order.schvaleni_komentar}
+                </InfoValue>
+              </InfoRow>
+            )}
 
             {/* Oddělovací linka pod stavem */}
             <div style={{
