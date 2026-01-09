@@ -831,11 +831,6 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
         const processedIds = new Set(response.data.map(item => item.dokument_id));
         setZpracovaneIds(processedIds);
         
-        console.log('📋 Loaded zpracované dokumenty:', {
-          processedCount: response.data.length,
-          processedIds: Array.from(processedIds)
-        });
-        
         // Vytvořit Map s detaily pro každý dokument
         const detailsMap = new Map();
         response.data.forEach(item => {
@@ -1175,17 +1170,7 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
           }
         });
         
-        // 🐛 DEBUG: Logging pre analýzu problému
-        console.log('📋 Spisovka Panel Counts Debug:', {
-          totalFaktury: faktury.length,
-          zpracovaneIdsSize: zpracovaneIds.size,
-          nezaevidovaneCount,
-          zaevidovaneCount,
-          dateRange: `${dateFrom} - ${dateTo}`,
-          filterMode
-        });
-        
-        // 📈 Aktuálně zobrazený počet (podle filterMode)
+        //  Aktuálně zobrazený počet (podle filterMode)
         const filteredCount = faktury.filter(faktura => {
           // Aplikovat všechny filtry stejně jako výše
           const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');

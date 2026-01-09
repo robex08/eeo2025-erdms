@@ -269,8 +269,8 @@ function handle_user_profile($input, $config, $queries) {
             )
         );
         
-        // OPRAVENÝ SQL - správná tabulka 25a_objednavky + české stavy s diakritikou
-        // PHP 5.6 compatible - používáme přímý název tabulky místo konstanty
+        // OPRAVENÝ SQL - filtrovat podle objednatel_id (ne uzivatel_id!)
+        // Uživatel chce vidět statistiky objednávek KDE JE OBJEDNATELEM
         $sql_stats = "
             SELECT 
                 COUNT(*) as celkem,
@@ -279,7 +279,7 @@ function handle_user_profile($input, $config, $queries) {
                 SUM(CASE WHEN o.stav_objednavky IN ('SCHVALENA', 'Schválená') THEN 1 ELSE 0 END) as schvalena,
                 SUM(CASE WHEN o.stav_objednavky IN ('ZAMITNUTA', 'Zamítnutá') THEN 1 ELSE 0 END) as zamitnuta,
                 SUM(CASE WHEN o.stav_objednavky IN ('ROZPRACOVANA', 'Rozpracovaná') THEN 1 ELSE 0 END) as rozpracovana,
-                SUM(CASE WHEN o.stav_objednavky IN ('ODESLANA', 'Odeslaná') THEN 1 ELSE 0 END) as odeslana,
+                SUM(CASE WHEN o.stav_objednavky IN ('ODESLANA', 'Odeslaná', 'Odesláno dodavateli') THEN 1 ELSE 0 END) as odeslana,
                 SUM(CASE WHEN o.stav_objednavky IN ('POTVRZENA', 'Potvrzená') THEN 1 ELSE 0 END) as potvrzena,
                 SUM(CASE WHEN o.stav_objednavky IN ('UVEREJNENA', 'Uveřejněná') THEN 1 ELSE 0 END) as uverejnena,
                 SUM(CASE WHEN o.stav_objednavky IN ('CEKA_POTVRZENI', 'Čeká potvrzení', 'Čeká na potvrzení') THEN 1 ELSE 0 END) as ceka_potvrzeni,
@@ -290,7 +290,9 @@ function handle_user_profile($input, $config, $queries) {
                 SUM(CASE WHEN o.stav_objednavky IN ('VECNA_SPRAVNOST', 'Věcná správnost') THEN 1 ELSE 0 END) as vecna_spravnost,
                 SUM(CASE WHEN o.stav_objednavky IN ('ZKONTROLOVANA', 'Zkontrolovaná') THEN 1 ELSE 0 END) as zkontrolovana
             FROM 25a_objednavky o
-            WHERE o.uzivatel_id = :user_id AND o.aktivni = 1
+            WHERE o.objednatel_id = :user_id 
+              AND o.aktivni = 1
+              AND o.stav_objednavky NOT IN ('SMAZANA', 'Smazaná')
         ";
         
         try {
@@ -324,6 +326,31 @@ function handle_user_profile($input, $config, $queries) {
                 $stats['zruseno_storno'] = $zruseno;
                 $stats['aktivni'] = $stats['celkem'] - $zruseno;
             }
+            
+            // Přidat statistiku objednávek kde je uživatel GARANT
+            // Počítá objednávky kde garant_uzivatel_id odpovídá user_id
+            // POZOR: V DB je sloupec garant_uzivatel_id, ne garant_id!
+            // DŮLEŽITÉ: Nepočítá objednávky kde je garant zároveň objednatelem (ty jsou v objednatel statistikách)
+            $sql_garant = "
+                SELECT COUNT(*) as celkem_garant
+                FROM 25a_objednavky o
+                WHERE o.garant_uzivatel_id = :user_id 
+                  AND o.garant_uzivatel_id IS NOT NULL
+                  AND o.garant_uzivatel_id != o.objednatel_id
+                  AND o.aktivni = 1
+                  AND o.stav_objednavky NOT IN ('SMAZANA', 'Smazaná')
+            ";
+            $stmtGarant = $db->prepare($sql_garant);
+            $stmtGarant->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+            $stmtGarant->execute();
+            $garantData = $stmtGarant->fetch();
+            
+            if ($garantData) {
+                $stats['celkem_garant'] = (int)$garantData['celkem_garant'];
+            } else {
+                $stats['celkem_garant'] = 0;
+            }
+            
         } catch (Exception $e) {
             error_log("Chyba při načítání statistik profilu: " . $e->getMessage());
         }

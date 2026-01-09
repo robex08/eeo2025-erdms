@@ -12,8 +12,8 @@ const api2 = axios.create({
 api2.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       // Don't show auth error toast for login endpoint - let the login form handle it
       const isLoginRequest = error.config?.url?.includes('user/login');
 
@@ -24,6 +24,7 @@ api2.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';
