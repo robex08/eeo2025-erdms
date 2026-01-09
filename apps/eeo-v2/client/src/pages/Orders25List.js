@@ -5473,18 +5473,6 @@ const Orders25List = () => {
           responseTimestamp: new Date().toISOString()
         }));
 
-        // 🔥 DEBUG: Vypis seznam evidenčních čísel z BE response
-        console.log('=== BE → FE: Seznam objednávek z API ===');
-        console.log('Celkem objednávek:', apiResult?.data?.length || 0);
-        console.log('Filtr:', filters);
-        const orderNumbers = (apiResult?.data || []).map(o => ({
-          cislo: o.cislo_objednavky,
-          dt_obj: o.dt_objednavky,
-          stav: o.stav_objednavky
-        }));
-        console.table(orderNumbers);
-        console.log('Evidenční čísla:', orderNumbers.map(o => o.cislo).join(', '));
-
         return apiResult?.data || [];
       };
 
