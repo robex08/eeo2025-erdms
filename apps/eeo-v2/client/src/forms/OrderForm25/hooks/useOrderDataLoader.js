@@ -215,17 +215,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         }
       })(),
 
-      // STORNOVANA: stav obsahuje "STORNOVANA"
-      stav_stornovano: (() => {
-        try {
-          const stavyArray = Array.isArray(dbOrder.stav_workflow_kod)
-            ? dbOrder.stav_workflow_kod
-            : JSON.parse(dbOrder.stav_workflow_kod || '[]');
-          return Array.isArray(stavyArray) && stavyArray.includes('STORNOVANA');
-        } catch (e) {
-          return false;
-        }
-      })(),
+      // 🛑 ODSTRANĚNO: stav_stornovano neexistuje v DB - používá se workflow stav ZRUSENA
+      // Frontend by měl používat hasWorkflowState(stav_workflow_kod, 'ZRUSENA')
 
       // 🎯 FÁZE 1: Stav schválení (UI helper odvozený ze workflow stavů)
       // ✅ Checkbox se zobrazuje pro všechny stavy KROMĚ "NOVA"
@@ -256,8 +247,8 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       })(),
 
       // Datumová pole
-      datum_odeslani: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslano).split(' ')[0] : '',
-      datum_storna: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslano).split(' ')[0] : '',
+      datum_odeslani: dbOrder.dt_odeslani || dbOrder.dt_odeslano ? (dbOrder.dt_odeslani || dbOrder.dt_odeslani).split(' ')[0] : '',
+      // 🛑 ODSTRANĚNO: datum_storna - používá se dt_odeslani pro obojí (odeslání i storno)
       dt_akceptace: dbOrder.dt_akceptace ? dbOrder.dt_akceptace.split(' ')[0] : '',
       datum_vytvoreni: dbOrder.dt_vytvoreni ? dbOrder.dt_vytvoreni.split(' ')[0] : '',
       datum_splatnosti: dbOrder.dt_splatnost ? dbOrder.dt_splatnost.split(' ')[0] : '',
@@ -740,8 +731,7 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
         // Reset stavů
         stav_odeslano: false,
         datum_odeslani: '',
-        stav_stornovano: false,
-        datum_storna: '',
+        // 🛑 ODSTRANĚNO: stav_stornovano, datum_storna - neexistují v DB
 
         // Reset příloh a faktur
         prilohy_dokumenty: [],
