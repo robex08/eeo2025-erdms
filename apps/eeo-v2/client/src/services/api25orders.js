@@ -63,11 +63,8 @@ const logDebug = (type, endpoint, data, response) => {
 api25orders.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Token expired - could redirect to login or show notification
-
-      // If we're in a browser environment, we could show a global notification
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -75,6 +72,7 @@ api25orders.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';

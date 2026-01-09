@@ -36,9 +36,8 @@ api25invoices.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Pro ostatní endpointy zachovat původní chování (auto-logout)
-    // Check for authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔐 401 Unauthorized - token expired → logout
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -46,6 +45,7 @@ api25invoices.interceptors.response.use(
         window.dispatchEvent(event);
       }
     }
+    // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';

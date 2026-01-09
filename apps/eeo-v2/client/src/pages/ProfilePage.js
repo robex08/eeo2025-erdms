@@ -5,7 +5,7 @@ import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
-import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins } from 'lucide-react';
+import { User, Mail, Building, Building2, MapPin, Phone, IdCard, Calendar, Shield, RefreshCw, Lock, Key, Hash, MessageSquare, FileText, TrendingUp, XCircle, Archive, CheckCircle, Settings, Info, UserCog, Search, X, Sliders, Eye, Download, Filter, Layout, Save, ChevronDown, ChevronUp, Coins, Clock, Send } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch, faList, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { fetchFreshUserDetail, fetchCiselniky, fetchAllUsers, fetchApprovers } from '../services/api2auth';
@@ -234,12 +234,40 @@ const InfoCard = styled.div`
   padding: 1.5rem;
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  position: relative;
 
   &:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border-color: #cbd5e1;
   }
+`;
+
+const CardWithChart = styled(InfoCard)`
+  display: flex;
+  flex-direction: column;
+  min-height: 500px;
+`;
+
+const CardContent = styled.div`
+  flex: 1;
+`;
+
+const PieChartContainer = styled.div`
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  width: 270px;
+  height: 270px;
+  opacity: 0.9;
+  
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const PieChartSvg = styled.svg`
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
 `;
 
 const SectionDivider = styled.div`
@@ -1725,6 +1753,7 @@ const ProfilePage = () => {
 
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
+  const loadingRef = React.useRef(false); // Prevent multiple simultaneous loads
   const [activeTab, setActiveTab] = useState(() => {
     try {
       return localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
@@ -1746,6 +1775,7 @@ const ProfilePage = () => {
     total: 0,
     active: 0,
     zruseno_storno: 0,
+    celkem_garant: 0,
     stavy: {}
   });
 
@@ -1868,6 +1898,7 @@ const ProfilePage = () => {
         total: stats.celkem || 0,
         active: stats.aktivni || 0,
         zruseno_storno: stats.zruseno_storno || 0,
+        celkem_garant: stats.celkem_garant || 0,
         stavy: stats.stavy || {}
       });
     }
@@ -2234,14 +2265,16 @@ const ProfilePage = () => {
   // POZOR: Pokud endpoint selže, NEMĚŇ data - nech původní z AuthContext
   useEffect(() => {
     const loadEnrichedProfile = async () => {
-      // DŮLEŽITÉ: Pokud nemáme profileData (ještě se neinicializovala z AuthContext), NEPOKRAČUJ
-      if (!profileData) {
+      if (!token || !username || !userDetail) {
         return;
       }
 
-      if (!token || !username) {
+      // 🔒 Prevent multiple simultaneous loads
+      if (loadingRef.current) {
         return;
       }
+
+      loadingRef.current = true;
 
       try {
         const apiUrl = `${process.env.REACT_APP_API2_BASE_URL || '/api.eeo/'}user/profile`;
@@ -2262,6 +2295,7 @@ const ProfilePage = () => {
 
         // Kontrola na chybu z backendu
         if (data.status === 'error') {
+          loadingRef.current = false;
           return; // Použij data z AuthContext
         }
 
@@ -2269,51 +2303,54 @@ const ProfilePage = () => {
 
           const apiData = data.data;
 
+          // 🎯 KRITICKÉ: Použít současné profileData pro zachování organizace pokud API nevrací
+          const currentData = profileData || userDetail;
+
           // Kompletní merge dat podle nové API struktury
           const enrichedData = {
             // Základní identifikace
-            uzivatel_id: apiData.id || profileData?.uzivatel_id,
-            id: apiData.id || profileData?.id,
-            login: apiData.username || profileData?.login,
-            username: apiData.username || profileData?.username,
+            uzivatel_id: apiData.id || currentData?.uzivatel_id,
+            id: apiData.id || currentData?.id,
+            login: apiData.username || currentData?.login,
+            username: apiData.username || currentData?.username,
 
             // Jméno a kontakt
             cely_jmeno: apiData.cely_jmeno || `${apiData.jmeno || ''} ${apiData.prijmeni || ''}`.trim(),
-            jmeno: apiData.jmeno || profileData?.jmeno,
-            prijmeni: apiData.prijmeni || profileData?.prijmeni,
-            email: apiData.email || profileData?.email,
-            telefon: apiData.telefon || profileData?.telefon,
+            jmeno: apiData.jmeno || currentData?.jmeno,
+            prijmeni: apiData.prijmeni || currentData?.prijmeni,
+            email: apiData.email || currentData?.email,
+            telefon: apiData.telefon || currentData?.telefon,
 
             // Tituly
-            titul_pred: apiData.titul_pred || profileData?.titul_pred || '',
-            titul_za: apiData.titul_za || profileData?.titul_za || null,
+            titul_pred: apiData.titul_pred || currentData?.titul_pred || '',
+            titul_za: apiData.titul_za || currentData?.titul_za || null,
 
             // Stav a časové značky
-            aktivni: apiData.aktivni ?? profileData?.aktivni ?? 1,
-            dt_vytvoreni: apiData.dt_vytvoreni || profileData?.dt_vytvoreni || '',
-            dt_aktualizace: apiData.dt_aktualizace || profileData?.dt_aktualizace || '',
-            dt_posledni_aktivita: apiData.dt_posledni_aktivita || profileData?.dt_posledni_aktivita || '',
+            aktivni: apiData.aktivni ?? currentData?.aktivni ?? 1,
+            dt_vytvoreni: apiData.dt_vytvoreni || currentData?.dt_vytvoreni || '',
+            dt_aktualizace: apiData.dt_aktualizace || currentData?.dt_aktualizace || '',
+            dt_posledni_aktivita: apiData.dt_posledni_aktivita || currentData?.dt_posledni_aktivita || '',
 
             // Lokalita
-            lokalita_id: apiData.lokalita?.id || profileData?.lokalita_id,
-            lokalita_nazev: apiData.lokalita?.nazev || profileData?.lokalita_nazev || '',
-            lokalita_typ: apiData.lokalita?.typ || profileData?.lokalita_typ || '',
-            lokalita_parent_id: apiData.lokalita?.parent_id || profileData?.lokalita_parent_id || null,
-            lokalita: apiData.lokalita || profileData?.lokalita,
+            lokalita_id: apiData.lokalita?.id || currentData?.lokalita_id,
+            lokalita_nazev: apiData.lokalita?.nazev || currentData?.lokalita_nazev || '',
+            lokalita_typ: apiData.lokalita?.typ || currentData?.lokalita_typ || '',
+            lokalita_parent_id: apiData.lokalita?.parent_id || currentData?.lokalita_parent_id || null,
+            lokalita: apiData.lokalita || currentData?.lokalita,
 
             // Pozice (z původních dat, API to nevrací)
-            pozice_id: profileData?.pozice_id,
-            nazev_pozice: profileData?.nazev_pozice || '',
-            pozice: profileData?.pozice,
+            pozice_id: currentData?.pozice_id,
+            nazev_pozice: currentData?.nazev_pozice || '',
+            pozice: currentData?.pozice,
 
             // Úsek (z původních dat, API to nevrací)
-            usek_id: profileData?.usek_id,
-            usek_nazev: profileData?.usek_nazev || '',
-            usek_zkr: profileData?.usek_zkr || [],
-            usek: profileData?.usek,
+            usek_id: currentData?.usek_id,
+            usek_nazev: currentData?.usek_nazev || '',
+            usek_zkr: currentData?.usek_zkr || [],
+            usek: currentData?.usek,
 
-            // Organizace - kompletní mapování
-            organizace_id: apiData.organizace?.id || profileData?.organizace_id,
+            // 🏢 ORGANIZACE - KRITICKÉ: Zachovat pokud API nevrací, ale preferovat API data
+            organizace_id: apiData.organizace?.id || currentData?.organizace_id,
             organizace: apiData.organizace ? {
               id: apiData.organizace.id,
               nazev_organizace: apiData.organizace.nazev_organizace || '',
@@ -2330,18 +2367,18 @@ const ProfilePage = () => {
               email: apiData.organizace.email || '',
               telefon: apiData.organizace.telefon || '',
               web: apiData.organizace.web || ''
-            } : profileData?.organizace,
+            } : currentData?.organizace, // ✅ Zachovat existující organizaci pokud API nevrací
 
             // Nadřízený
-            nadrizeny_cely_jmeno: apiData.nadrizeny?.cely_jmeno || profileData?.nadrizeny_cely_jmeno || '',
-            nadrizeny: apiData.nadrizeny || profileData?.nadrizeny,
+            nadrizeny_cely_jmeno: apiData.nadrizeny?.cely_jmeno || currentData?.nadrizeny_cely_jmeno || '',
+            nadrizeny: apiData.nadrizeny || currentData?.nadrizeny,
 
             // Role a práva
-            roles: apiData.roles || profileData?.roles || [],
-            direct_rights: apiData.direct_rights || profileData?.direct_rights || [],
+            roles: apiData.roles || currentData?.roles || [],
+            direct_rights: apiData.direct_rights || currentData?.direct_rights || [],
 
             // Statistiky objednávek
-            statistiky_objednavek: apiData.statistiky_objednavek || profileData?.statistiky_objednavek || {
+            statistiky_objednavek: apiData.statistiky_objednavek || currentData?.statistiky_objednavek || {
               celkem: 0,
               aktivni: 0,
               zruseno_storno: 0,
@@ -2352,15 +2389,14 @@ const ProfilePage = () => {
           setProfileData(enrichedData);
         }
       } catch (error) {
-        // Fallback - použij data z AuthContext (už jsou v profileData)
+        // Fallback - použij data z AuthContext (silence error)
+      } finally {
+        loadingRef.current = false;
       }
     };
 
-    // Načti pouze pokud máme všechna data a profileData je už inicializované
-    if (token && username && userDetail && profileData) {
-      loadEnrichedProfile();
-    }
-  }, [token, username, userDetail?.uzivatel_id, profileData?.uzivatel_id]);
+    loadEnrichedProfile();
+  }, [token, username, userDetail]);
 
   const refreshProfile = async () => {
     if (!token || !username) {
@@ -3138,11 +3174,12 @@ const ProfilePage = () => {
             </InfoCard>
 
             {/* Sloupec 2: Aktivita účtu */}
-            <InfoCard>
-              <CardTitle>
-                <TrendingUp size={20} />
-                Aktivita účtu
-              </CardTitle>
+            <CardWithChart>
+              <CardContent>
+                <CardTitle>
+                  <TrendingUp size={20} />
+                  Aktivita účtu
+                </CardTitle>
 
               <InfoItem>
                 <InfoIcon color="#6366f1">
@@ -3189,7 +3226,7 @@ const ProfilePage = () => {
                   <FileText size={16} />
                 </InfoIcon>
                 <InfoContent>
-                  <InfoLabel>Celkem vytvořených objednávek</InfoLabel>
+                  <InfoLabel>Celkem objednávek (jako objednatel)</InfoLabel>
                   <InfoValue>
                     {orderStats.total}
                   </InfoValue>
@@ -3207,6 +3244,48 @@ const ProfilePage = () => {
                   </InfoValue>
                 </InfoContent>
               </InfoItem>
+
+              {orderStats.stavy?.ke_schvaleni > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#f59e0b">
+                    <Clock size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Ke schválení</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.ke_schvaleni}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
+
+              {orderStats.stavy?.schvalena > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#10b981">
+                    <CheckCircle size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Schválené</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.schvalena}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
+
+              {orderStats.stavy?.odeslana > 0 && (
+                <InfoItem>
+                  <InfoIcon color="#3b82f6">
+                    <Send size={16} />
+                  </InfoIcon>
+                  <InfoContent>
+                    <InfoLabel>Odesláno dodavateli</InfoLabel>
+                    <InfoValue>
+                      {orderStats.stavy.odeslana}
+                    </InfoValue>
+                  </InfoContent>
+                </InfoItem>
+              )}
 
               {(() => {
                 const zamitnute = orderStats.stavy?.zamitnuta || 0;
@@ -3230,7 +3309,7 @@ const ProfilePage = () => {
 
               {orderStats.stavy?.archivovano > 0 && (
                 <InfoItem>
-                  <InfoIcon color="#94a3b8">
+                  <InfoIcon color="#64748b">
                     <Archive size={16} />
                   </InfoIcon>
                   <InfoContent>
@@ -3244,18 +3323,145 @@ const ProfilePage = () => {
 
               {orderStats.stavy?.dokoncena > 0 && (
                 <InfoItem>
-                  <InfoIcon color="#10b981">
+                  <InfoIcon color="#059669">
                     <CheckCircle size={16} />
                   </InfoIcon>
                   <InfoContent>
-                    <InfoLabel>Dokončena</InfoLabel>
+                    <InfoLabel>Dokončené</InfoLabel>
                     <InfoValue>
                       {orderStats.stavy.dokoncena}
                     </InfoValue>
                   </InfoContent>
                 </InfoItem>
               )}
-            </InfoCard>
+
+              <InfoItem>
+                <InfoIcon color="#8b5cf6">
+                  <Shield size={16} />
+                </InfoIcon>
+                <InfoContent>
+                  <InfoLabel>Objednávky jako garant</InfoLabel>
+                  <InfoValue>
+                    {orderStats.celkem_garant}
+                  </InfoValue>
+                </InfoContent>
+              </InfoItem>
+              </CardContent>
+
+              {/* Koláčový graf v rohu */}
+              <PieChartContainer>
+                {(() => {
+                  // Všechny možné stavy s rozlišenými barvami
+                  const allStates = [
+                    { label: 'Nová', value: orderStats.stavy?.nova || 0, color: '#06b6d4' },
+                    { label: 'Ke schválení', value: orderStats.stavy?.ke_schvaleni || 0, color: '#f59e0b' },
+                    { label: 'Schválené', value: orderStats.stavy?.schvalena || 0, color: '#10b981' },
+                    { label: 'Rozpracovaná', value: orderStats.stavy?.rozpracovana || 0, color: '#f97316' },
+                    { label: 'Odesláno', value: orderStats.stavy?.odeslana || 0, color: '#3b82f6' },
+                    { label: 'Potvrzená', value: orderStats.stavy?.potvrzena || 0, color: '#14b8a6' },
+                    { label: 'Uveřejněná', value: orderStats.stavy?.uverejnena || 0, color: '#6366f1' },
+                    { label: 'Čeká potvrzení', value: orderStats.stavy?.ceka_potvrzeni || 0, color: '#eab308' },
+                    { label: 'Dokončené', value: orderStats.stavy?.dokoncena || 0, color: '#059669' },
+                    { label: 'Věcná správnost', value: orderStats.stavy?.vecna_spravnost || 0, color: '#8b5cf6' },
+                    { label: 'Zkontrolovaná', value: orderStats.stavy?.zkontrolovana || 0, color: '#22c55e' },
+                    { label: 'Zamítnuté', value: orderStats.stavy?.zamitnuta || 0, color: '#ef4444' },
+                    { label: 'Zrušené', value: orderStats.stavy?.zrusena || 0, color: '#dc2626' },
+                    { label: 'Archivováno', value: orderStats.stavy?.archivovano || 0, color: '#64748b' },
+                    { label: 'Jako garant', value: orderStats.celkem_garant || 0, color: '#a855f7' }
+                  ];
+                  
+                  const chartData = allStates.filter(item => item.value > 0);
+
+                  // Použít celkový počet ze statistiky
+                  const total = orderStats.total || 0;
+                  const active = orderStats.active || 0;
+                  const chartTotal = chartData.reduce((sum, item) => sum + item.value, 0);
+                  
+                  if (total === 0) return null;
+
+                  let cumulativePercent = 0;
+                  
+                  const createArc = (startPercent, endPercent) => {
+                    const startAngle = startPercent * 2 * Math.PI;
+                    const endAngle = endPercent * 2 * Math.PI;
+                    const largeArc = endPercent - startPercent > 0.5 ? 1 : 0;
+                    
+                    const x1 = 135 + 120 * Math.cos(startAngle - Math.PI / 2);
+                    const y1 = 135 + 120 * Math.sin(startAngle - Math.PI / 2);
+                    const x2 = 135 + 120 * Math.cos(endAngle - Math.PI / 2);
+                    const y2 = 135 + 120 * Math.sin(endAngle - Math.PI / 2);
+                    
+                    return `M 135 135 L ${x1} ${y1} A 120 120 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                  };
+
+                  return (
+                    <PieChartSvg viewBox="0 0 270 270">
+                      {chartData.map((item, idx) => {
+                        const percent = item.value / chartTotal;
+                        const startPercent = cumulativePercent;
+                        cumulativePercent += percent;
+                        
+                        // Vypočítat střed výseče pro popisek
+                        const midPercent = (startPercent + cumulativePercent) / 2;
+                        const midAngle = midPercent * 2 * Math.PI - Math.PI / 2;
+                        const labelRadius = 95;
+                        const labelX = 135 + labelRadius * Math.cos(midAngle);
+                        const labelY = 135 + labelRadius * Math.sin(midAngle);
+                        
+                        return (
+                          <g key={idx}>
+                            <path
+                              d={createArc(startPercent, cumulativePercent)}
+                              fill={item.color}
+                              stroke="white"
+                              strokeWidth="2"
+                              opacity="0.9"
+                            >
+                              <title>{`${item.label}: ${item.value}`}</title>
+                            </path>
+                            {/* Popisek stavu */}
+                            <text
+                              x={labelX}
+                              y={labelY}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="700"
+                              fill="white"
+                              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}
+                            >
+                              {item.value}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      <circle cx="135" cy="135" r="50" fill="white" opacity="0.95" />
+                      {/* Celkem */}
+                      <text
+                        x="135"
+                        y="130"
+                        textAnchor="middle"
+                        fontSize="32"
+                        fontWeight="700"
+                        fill="#1e293b"
+                      >
+                        {total}
+                      </text>
+                      {/* Aktivní */}
+                      <text
+                        x="135"
+                        y="155"
+                        textAnchor="middle"
+                        fontSize="24"
+                        fontWeight="600"
+                        fill="#10b981"
+                      >
+                        {active}
+                      </text>
+                    </PieChartSvg>
+                  );
+                })()}
+              </PieChartContainer>
+            </CardWithChart>
 
             {/* Sloupec 3: Organizace */}
             <InfoCard>
