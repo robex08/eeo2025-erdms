@@ -6879,6 +6879,94 @@ const Orders25List = () => {
         align: 'center'
       }
     },
+    // 🎯 Sloupec SCHVÁLIT - ikona pro rychlé schválení
+    {
+      id: 'approve',
+      header: '✅',
+      cell: ({ row }) => {
+        const order = row.original;
+        
+        // Kontrola oprávnění
+        const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+        const isAdmin = hasAdminRole();
+        const hasApprovePermission = hasPermission('ORDER_APPROVE');
+        const canUserApprove = isPrikazce || isAdmin || hasApprovePermission;
+        
+        if (!canUserApprove) return null;
+        
+        // Kontrola workflow stavu
+        let workflowStates = [];
+        try {
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+          }
+        } catch (e) {
+          workflowStates = [];
+        }
+        
+        const allowedStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+        const lastState = workflowStates.length > 0 
+          ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+              ? workflowStates[workflowStates.length - 1] 
+              : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+            ).toUpperCase()
+          : '';
+        
+        const isAllowedState = allowedStates.includes(lastState);
+        
+        if (!isAllowedState) return null;
+        
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const orderDetail = await getOrderV2(order.id, token, username, true, 0);
+                  setOrderToApprove(orderDetail);
+                  setApprovalComment(orderDetail.schvaleni_komentar || '');
+                  setShowApprovalDialog(true);
+                } catch (error) {
+                  console.error('Chyba při načítání detailu objednávky:', error);
+                  showToast('Chyba při načítání objednávky', { type: 'error' });
+                }
+              }}
+              style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'white',
+                cursor: 'pointer',
+                padding: '0.4rem 0.5rem',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.3)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(5, 150, 105, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(5, 150, 105, 0.3)';
+              }}
+              title="Schválit objednávku"
+            >
+              ✅
+            </button>
+          </div>
+        );
+      },
+      size: 60,
+      meta: {
+        align: 'center'
+      }
+    },
     {
       accessorKey: 'dt_objednavky',
       header: 'Datum objednávky',
