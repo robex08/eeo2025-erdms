@@ -3793,12 +3793,21 @@ const Invoices25List = () => {
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
-                        {canManageInvoices && (invoice.objednavka_id || invoice.smlouva_id) && (
-                          <TooltipWrapper text="Odpojit od objednávky/smlouvy" preferredPosition="left">
+                        {canManageInvoices && (
+                          <TooltipWrapper text={
+                            (invoice.objednavka_id || invoice.smlouva_id) 
+                              ? "Odpojit od objednávky/smlouvy" 
+                              : "Faktura není napojená na objednávku ani smlouvu"
+                          } preferredPosition="left">
                             <ActionMenuButton 
                               className="unlink"
                               onClick={() => handleUnlinkInvoice(invoice)}
-                              title="Odpojit"
+                              disabled={!(invoice.objednavka_id || invoice.smlouva_id)}
+                              title={
+                                (invoice.objednavka_id || invoice.smlouva_id) 
+                                  ? "Odpojit" 
+                                  : "Není napojená"
+                              }
                             >
                               <FontAwesomeIcon icon={faUnlink} />
                             </ActionMenuButton>
