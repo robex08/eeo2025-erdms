@@ -572,7 +572,7 @@ const LargeStatCard = styled.div`
 `;
 
 const LargeStatValue = styled.div`
-  font-size: clamp(2rem, 3vw, 2.75rem);
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
   font-weight: 700;
   color: #1e293b;
   text-align: left;
