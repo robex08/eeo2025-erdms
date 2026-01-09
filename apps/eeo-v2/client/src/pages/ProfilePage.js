@@ -1889,10 +1889,26 @@ const ProfilePage = () => {
         // 🆕 KONTROLA: Pokud uživatel NEMÁ nastavení v DB (prázdný objekt nebo null)
         const hasExistingSettings = settingsFromDB && Object.keys(settingsFromDB).length > 0;
         
+        // Zkontroluj, zda je uživatel ADMIN
+        const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+        );
+        
         if (!hasExistingSettings) {
           
           // Připrav výchozí nastavení z current state (userSettings má výchozí hodnoty z useState)
-          const defaultSettings = userSettings;
+          let defaultSettings = userSettings;
+          
+          // Pro non-admin vynuluj chat
+          if (!isAdmin) {
+            defaultSettings = {
+              ...defaultSettings,
+              zobrazit_ikony_nastroju: {
+                ...defaultSettings.zobrazit_ikony_nastroju,
+                chat: false
+              }
+            };
+          }
           
           // Ulož výchozí nastavení do DB
           try {
@@ -1906,6 +1922,11 @@ const ProfilePage = () => {
             // Ulož do localStorage
             saveSettingsToLocalStorage(parseInt(user_id, 10), defaultSettings);
             
+            // Pokud jsme upravili chat, aktualizuj state
+            if (!isAdmin) {
+              dispatch({ type: SETTINGS_ACTIONS.LOAD_FROM_DB, payload: defaultSettings });
+            }
+            
           } catch (saveError) {
             console.error('⚠️ Chyba při ukládání výchozích nastavení:', saveError);
             // Pokračuj dál - použijeme výchozí hodnoty lokálně
@@ -1917,11 +1938,23 @@ const ProfilePage = () => {
         
         // 🎯 Uživatel MÁ nastavení v DB → Použij je (NEPŘEPISUJ)
         
+        // Pro non-admin vždy vynuluj chat (i když je v DB)
+        let finalSettings = settingsFromDB;
+        if (!isAdmin) {
+          finalSettings = {
+            ...settingsFromDB,
+            zobrazit_ikony_nastroju: {
+              ...(settingsFromDB.zobrazit_ikony_nastroju || {}),
+              chat: false
+            }
+          };
+        }
+        
         // Ulož do localStorage
-        saveSettingsToLocalStorage(parseInt(user_id, 10), settingsFromDB);
+        saveSettingsToLocalStorage(parseInt(user_id, 10), finalSettings);
         
         // Deep merge s výchozími hodnotami (zachová strukturu, přepíše hodnoty)
-        dispatch({ type: SETTINGS_ACTIONS.LOAD_FROM_DB, payload: settingsFromDB });
+        dispatch({ type: SETTINGS_ACTIONS.LOAD_FROM_DB, payload: finalSettings });
         
       } catch (error) {
         console.error('Error loading user settings from DB:', error);
@@ -2098,6 +2131,18 @@ const ProfilePage = () => {
         profil: userSettings.profil,
         zobrazit_ikony_nastroju: userSettings.zobrazit_ikony_nastroju
       };
+      
+      // 🔒 Pro non-admin uživatele vždy vynuluj chat
+      const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+        role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+      );
+      
+      if (!isAdmin) {
+        cleanSettings.zobrazit_ikony_nastroju = {
+          ...(cleanSettings.zobrazit_ikony_nastroju || {}),
+          chat: false
+        };
+      }
 
       // Krok 1: Uložit do databáze (saveUserSettings automaticky uloží i do localStorage)
       const dbResponse = await saveUserSettings({
@@ -3543,23 +3588,38 @@ const ProfilePage = () => {
                         </ToggleSwitch>
                       </ToggleSettingItem>
 
-                      {/* Chat */}
-                      <ToggleSettingItem>
-                        <ToggleSettingLabel>
-                          <ToggleSettingTitle>💬 Chat</ToggleSettingTitle>
-                          <SettingDescription>
-                            Zobrazit ikonu pro chat
-                          </SettingDescription>
-                        </ToggleSettingLabel>
-                        <ToggleSwitch>
-                          <input
-                            type="checkbox"
-                            checked={userSettings.zobrazit_ikony_nastroju.chat}
-                            onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'chat', value: e.target.checked } })}
-                          />
-                          <span></span>
-                        </ToggleSwitch>
-                      </ToggleSettingItem>
+                      {/* Chat - pouze pro ADMIN role editovatelné */}
+                      {(() => {
+                        const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
+                          role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+                        );
+                        
+                        return (
+                          <ToggleSettingItem>
+                            <ToggleSettingLabel>
+                              <ToggleSettingTitle>💬 Chat</ToggleSettingTitle>
+                              <SettingDescription>
+                                {isAdmin 
+                                  ? 'Zobrazit ikonu pro chat' 
+                                  : 'Chat je dostupný pouze pro administrátory'}
+                              </SettingDescription>
+                            </ToggleSettingLabel>
+                            <ToggleSwitch>
+                              <input
+                                type="checkbox"
+                                checked={isAdmin ? userSettings.zobrazit_ikony_nastroju.chat : false}
+                                disabled={!isAdmin}
+                                onChange={(e) => {
+                                  if (isAdmin) {
+                                    dispatch({ type: SETTINGS_ACTIONS.UPDATE_NESTED_FIELD, payload: { parent: 'zobrazit_ikony_nastroju', field: 'chat', value: e.target.checked } });
+                                  }
+                                }}
+                              />
+                              <span></span>
+                            </ToggleSwitch>
+                          </ToggleSettingItem>
+                        );
+                      })()}
 
                       {/* Kalkulačka */}
                       <ToggleSettingItem>

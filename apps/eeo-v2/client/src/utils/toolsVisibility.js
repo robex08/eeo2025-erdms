@@ -45,7 +45,7 @@ export const getToolsVisibility = (userId = null) => {
       return {
         notes: true,
         todo: true,
-        chat: true,
+        chat: false, // Chat je dostupný pouze pro ADMIN uživatele
         kalkulacka: true,
         helper: true
       };
@@ -58,7 +58,7 @@ export const getToolsVisibility = (userId = null) => {
       return {
         notes: true,
         todo: true,
-        chat: true,
+        chat: false, // Chat je dostupný pouze pro ADMIN uživatele
         kalkulacka: true,
         helper: true
       };
@@ -71,7 +71,7 @@ export const getToolsVisibility = (userId = null) => {
     return {
       notes: true,
       todo: true,
-      chat: true,
+      chat: false, // Chat je dostupný pouze pro ADMIN uživatele
       kalkulacka: true,
       helper: true
     };
