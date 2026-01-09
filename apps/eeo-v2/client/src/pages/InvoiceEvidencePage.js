@@ -3797,28 +3797,7 @@ export default function InvoiceEvidencePage() {
         
         setProgress?.(100);
         
-        // 🎯 Progress - úspěšná aktualizace
-        // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML/samostatná)
-        let successMessage = '';
-        const faCislo = formData.fa_cislo_vema || 'bez čísla';
-        
-        if (formData.order_id && orderData) {
-          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
-          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí s objednávkou: ${objCislo}`;
-        } else if (formData.smlouva_id && smlouvaData) {
-          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
-          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí se smlouvou: ${smlCislo}`;
-        } else {
-          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
-        }
-        
-        setProgressModal(prev => ({
-          ...prev,
-          progress: 100,
-          status: 'success',
-          title: '✅ Faktura aktualizována',
-          message: successMessage
-        }));
+        // ⏸️ POZASTAVENÍ: Success message se nastaví AŽ PO workflow update (dole)
       } else {
         // NOVÁ FAKTURA - CREATE
         // 🎯 Progress - vytváření faktury
@@ -3857,28 +3836,7 @@ export default function InvoiceEvidencePage() {
 
         setProgress?.(100);
         
-        // 🎯 Progress - úspěšné vytvoření
-        // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML/samostatná)
-        let successMessage = '';
-        const faCislo = formData.fa_cislo_vema || 'bez čísla';
-        
-        if (formData.order_id && orderData) {
-          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
-          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena k objednávce: ${objCislo}`;
-        } else if (formData.smlouva_id && smlouvaData) {
-          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
-          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena ke smlouvě: ${smlCislo}`;
-        } else {
-          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
-        }
-        
-        setProgressModal(prev => ({
-          ...prev,
-          progress: 100,
-          status: 'success',
-          title: '✅ Faktura zaevidována',
-          message: successMessage
-        }));
+        // ⏸️ POZASTAVENÍ: Success message se nastaví AŽ PO workflow update (dole)
       }
 
       // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav
@@ -3985,6 +3943,46 @@ export default function InvoiceEvidencePage() {
           // Neblokujeme úspěch faktury, jen logujeme chybu
         }
       }
+
+      // 🎯 FINÁLNÍ SUCCESS MESSAGE - zobrazí se AŽ PO workflow update
+      // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML/samostatná)
+      const faCislo = formData.fa_cislo_vema || 'bez čísla';
+      let finalSuccessMessage = '';
+      let finalSuccessTitle = '';
+      
+      if (editingInvoiceId) {
+        // UPDATE faktury
+        finalSuccessTitle = '✅ Faktura aktualizována';
+        if (formData.order_id && orderData) {
+          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí s objednávkou: ${objCislo}`;
+        } else if (formData.smlouva_id && smlouvaData) {
+          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí se smlouvou: ${smlCislo}`;
+        } else {
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
+        }
+      } else {
+        // CREATE faktury
+        finalSuccessTitle = '✅ Faktura zaevidována';
+        if (formData.order_id && orderData) {
+          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena k objednávce: ${objCislo}`;
+        } else if (formData.smlouva_id && smlouvaData) {
+          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena ke smlouvě: ${smlCislo}`;
+        } else {
+          finalSuccessMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
+        }
+      }
+      
+      setProgressModal(prev => ({
+        ...prev,
+        progress: 100,
+        status: 'success',
+        title: finalSuccessTitle,
+        message: finalSuccessMessage
+      }));
 
       // ⚠️ RESET FORMULÁŘE se provede až po kliknutí na "Pokračovat" v progress dialogu
       // Uložíme data potřebná pro reset do stavu progress dialogu
