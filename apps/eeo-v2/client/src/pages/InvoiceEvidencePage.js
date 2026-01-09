@@ -3549,13 +3549,34 @@ export default function InvoiceEvidencePage() {
         }
 
         // Vždy zobrazit progress dialog pro oba typy uživatelů
+        // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML)
+        const faCislo = formData.fa_cislo_vema || 'bez čísla';
+        let successMessage = '';
+        
+        if (formData.order_id && orderData) {
+          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
+          successMessage = `Věcná správnost faktury ${faCislo} byla úspěšně potvrzena.\n\nSouvisí s objednávkou: ${objCislo}`;
+          if (isReadOnlyMode) {
+            successMessage += '\n\nBudete přesměrováni na seznam faktur.';
+          }
+        } else if (formData.smlouva_id && smlouvaData) {
+          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
+          successMessage = `Věcná správnost faktury ${faCislo} byla úspěšně potvrzena.\n\nSouvisí se smlouvou: ${smlCislo}`;
+          if (isReadOnlyMode) {
+            successMessage += '\n\nBudete přesměrováni na seznam faktur.';
+          }
+        } else {
+          successMessage = `Věcná správnost faktury ${faCislo} byla úspěšně potvrzena.`;
+          if (isReadOnlyMode) {
+            successMessage += '\n\nBudete přesměrováni na seznam faktur.';
+          }
+        }
+        
         setProgressModal({
           show: true,
           status: 'success',
-          title: 'Věcná správnost uložena',
-          message: isReadOnlyMode 
-            ? 'Věcná správnost faktury byla úspěšně zaznamenána. Budete přesměrováni na seznam faktur.'
-            : 'Věcná správnost faktury byla úspěšně aktualizována.',
+          title: '✅ Věcná správnost potvrzena',
+          message: successMessage,
           resetData: { isVecnaSpravnost: true, isReadOnlyMode }
         });
       } else {
@@ -3777,18 +3798,25 @@ export default function InvoiceEvidencePage() {
         setProgress?.(100);
         
         // 🎯 Progress - úspěšná aktualizace
-        let successMessage = `Faktura ${formData.fa_cislo_vema} byla úspěšně uložena.`;
+        // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML/samostatná)
+        let successMessage = '';
+        const faCislo = formData.fa_cislo_vema || 'bez čísla';
+        
         if (formData.order_id && orderData) {
-          successMessage = `Faktura ${formData.fa_cislo_vema} byla přidána k objednávce ${orderData.cislo_objednavky || orderData.evidencni_cislo}.`;
+          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
+          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí s objednávkou: ${objCislo}`;
         } else if (formData.smlouva_id && smlouvaData) {
-          successMessage = `Faktura ${formData.fa_cislo_vema} byla přidána ke smlouvě ${smlouvaData.cislo_smlouvy}.`;
+          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
+          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nSouvisí se smlouvou: ${smlCislo}`;
+        } else {
+          successMessage = `Faktura ${faCislo} byla úspěšně aktualizována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
         }
         
         setProgressModal(prev => ({
           ...prev,
           progress: 100,
           status: 'success',
-          title: 'Faktura byla aktualizována',
+          title: '✅ Faktura aktualizována',
           message: successMessage
         }));
       } else {
@@ -3830,18 +3858,25 @@ export default function InvoiceEvidencePage() {
         setProgress?.(100);
         
         // 🎯 Progress - úspěšné vytvoření
-        let successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla zaevidována do systému.`;
+        // 📝 SJEDNOCENÁ TEXTACE: Číslo FA + souvislost (OBJ/SML/samostatná)
+        let successMessage = '';
+        const faCislo = formData.fa_cislo_vema || 'bez čísla';
+        
         if (formData.order_id && orderData) {
-          successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla přidána k objednávce ${orderData.cislo_objednavky || orderData.evidencni_cislo}.`;
+          const objCislo = orderData.cislo_objednavky || orderData.evidencni_cislo || `#${orderData.id}`;
+          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena k objednávce: ${objCislo}`;
         } else if (formData.smlouva_id && smlouvaData) {
-          successMessage = `Faktura ${formData.fa_cislo_vema || 'bez čísla'} byla přidána ke smlouvě ${smlouvaData.cislo_smlouvy}.`;
+          const smlCislo = smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`;
+          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nPřiřazena ke smlouvě: ${smlCislo}`;
+        } else {
+          successMessage = `Faktura ${faCislo} byla úspěšně zaevidována.\n\nFaktura zatříděna jako samostatná (bez přiřazení k objednávce či smlouvě).`;
         }
         
         setProgressModal(prev => ({
           ...prev,
           progress: 100,
           status: 'success',
-          title: 'Faktura byla zaevidována',
+          title: '✅ Faktura zaevidována',
           message: successMessage
         }));
       }
@@ -3966,6 +4001,7 @@ export default function InvoiceEvidencePage() {
         ...prev,
         resetData: {
           wasEditing,
+          wasReadOnlyMode: isReadOnlyMode, // 🆕 Pro rozlišení věcné správnosti vs. běžné evidence
           currentOrderId: formData.order_id,
           currentSmlouvaId: formData.smlouva_id
         }
@@ -6605,7 +6641,7 @@ export default function InvoiceEvidencePage() {
                     
                     // 🎯 KROK 2: RESET FORMULÁŘE
                     const resetData = progressModal.resetData || {};
-                    const { wasEditing, currentOrderId, currentSmlouvaId } = resetData;
+                    const { wasEditing, wasReadOnlyMode, currentOrderId, currentSmlouvaId } = resetData;
                     
                     // ✅ VŽDY smazat všechno včetně objednávky/smlouvy
                     const shouldResetEntity = true;
@@ -6656,6 +6692,14 @@ export default function InvoiceEvidencePage() {
                     
                     // Zavřít progress dialog
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
+                    
+                    // 🔄 PŘESMĚROVÁNÍ: 
+                    // - Pokud byl READONLY mode (věcná správnost) → přejít na seznam faktur
+                    // - Pokud byla BĚŽNÁ EVIDENCE (fakturant) → zůstat na formuláři pro další fakturu
+                    if (wasReadOnlyMode) {
+                      navigate('/invoices');
+                    }
+                    // Jinak zůstat na stránce s prázdným formulářem pro další fakturu
                   }}
                 >
                   Pokračovat
