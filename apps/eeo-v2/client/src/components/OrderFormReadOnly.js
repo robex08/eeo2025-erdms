@@ -12,7 +12,7 @@ import {
   faUser, faBuilding, faFileAlt, faMoneyBillWave, faCalendar,
   faCheckCircle, faClock, faMapMarkerAlt, faTruck, faChevronDown,
   faClipboardCheck, faBox, faCoins, faCheck, faTimesCircle, faEdit,
-  faPaperclip, faFile, faDownload
+  faPaperclip, faFile, faDownload, faUnlink, faTrash
 } from '@fortawesome/free-solid-svg-icons';
 import { formatDateOnly } from '../utils/format';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../services/apiOrderV2';
@@ -371,7 +371,36 @@ const EditInvoiceButton = styled.button`
   }
 `;
 
-const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, canEditInvoice = true, editingInvoiceId, isReadOnlyMode = false, token, username }, ref) => {
+const UnlinkInvoiceButton = styled.button`
+  padding: 0.5rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+  min-width: 36px;
+  height: 36px;
+  justify-content: center;
+  
+  &:hover {
+    background: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoice, onUnlinkInvoice, canEditInvoice = true, editingInvoiceId, isReadOnlyMode = false, token, username }, ref) => {
   // State pro svinovací sekce
   const [collapsed, setCollapsed] = useState({
     objednatel: false,
@@ -1291,29 +1320,56 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                       <FontAwesomeIcon icon={faEdit} />
                       {isReadOnlyMode ? 'PRÁVĚ KONTROLUJETE' : 'PRÁVĚ EDITUJETE'}
                     </div>
-                  ) : onEditInvoice && canEditInvoice && (
-                    <EditInvoiceButton 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditInvoice(faktura);
-                      }}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.25)',
-                        color: 'white',
-                        border: '1px solid rgba(255, 255, 255, 0.4)',
-                        padding: '0.5rem 1rem',
-                        fontWeight: '600'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.35)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faEdit} />
-                      Upravit
-                    </EditInvoiceButton>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {onEditInvoice && canEditInvoice && (
+                        <EditInvoiceButton 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditInvoice(faktura);
+                          }}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.25)',
+                            color: 'white',
+                            border: '1px solid rgba(255, 255, 255, 0.4)',
+                            padding: '0.5rem 1rem',
+                            fontWeight: '600'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.35)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faEdit} />
+                          Upravit
+                        </EditInvoiceButton>
+                      )}
+                      
+                      {onUnlinkInvoice && canEditInvoice && !isBeingEdited && (
+                        <UnlinkInvoiceButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUnlinkInvoice(faktura);
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.3)',
+                            color: 'white',
+                            border: '1px solid rgba(239, 68, 68, 0.5)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.5)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+                          }}
+                          title="Odpojit fakturu od objednávky"
+                        >
+                          <FontAwesomeIcon icon={faUnlink} />
+                        </UnlinkInvoiceButton>
+                      )}
+                    </div>
                   )}
                 </div>
 

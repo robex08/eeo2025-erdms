@@ -2827,7 +2827,49 @@ export default function InvoiceEvidencePage() {
     showToast && showToast('📝 Faktura načtena pro úpravu', 'info');
   }, [showToast, orderData, canAddInvoiceToOrder]);
 
-  // 📎 Handler: změna příloh (controlled component pattern)
+  // � Handler: Odpojit fakturu od objednávky
+  const handleUnlinkInvoice = useCallback((faktura) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '⚠️ Odpojit fakturu od objednávky?',
+      message: `Opravdu chcete odpojit fakturu ${faktura.fa_cislo_vema || `#${faktura.id}`} od této objednávky?\n\n` +
+        `Co se stane:\n` +
+        `• Faktura zůstane v systému jako SAMOSTATNÁ\n` +
+        `• Objednávka už nebude vidět tuto fakturu\n` +
+        `• Workflow objednávky se může změnit (pokud to byla poslední faktura)\n` +
+        `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n\n` +
+        `⚠️ Tuto akci NELZE vzít zpět!`,
+      onConfirm: async () => {
+        try {
+          // Zavřít dialog
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          
+          // Zavolat API pro odpojení faktury
+          await updateInvoiceV2({
+            token,
+            username,
+            invoice_id: faktura.id,
+            updateData: {
+              objednavka_id: null  // Odpojit od objednávky
+            }
+          });
+          
+          // Reload objednávky aby se aktualizoval seznam faktur
+          await loadOrderData(formData.order_id);
+          
+          showToast && showToast(`✅ Faktura ${faktura.fa_cislo_vema || `#${faktura.id}`} byla odpojena od objednávky`, 'success');
+        } catch (err) {
+          console.error('❌ Chyba při odpojování faktury:', err);
+          showToast && showToast('Nepodařilo se odpojit fakturu: ' + (err.message || 'Neznámá chyba'), 'error');
+        }
+      },
+      onCancel: () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      }
+    });
+  }, [token, username, formData.order_id, loadOrderData, showToast]);
+
+  // �📎 Handler: změna příloh (controlled component pattern)
   const handleAttachmentsChange = useCallback((updater) => {
     // ✅ Správně zpracovat funkční updater (jako setAttachments)
     setAttachments(prev => {
@@ -6352,6 +6394,7 @@ export default function InvoiceEvidencePage() {
               orderData={orderData}
               onCollapseChange={setHasAnySectionCollapsed}
               onEditInvoice={isReadOnlyMode ? null : handleEditInvoice}
+              onUnlinkInvoice={isReadOnlyMode ? null : handleUnlinkInvoice}
               canEditInvoice={!isReadOnlyMode && canAddInvoiceToOrder(orderData).allowed}
               editingInvoiceId={editingInvoiceId} // ✅ Předat ID editované faktury pro zvýraznění
               isReadOnlyMode={isReadOnlyMode} // ✅ Předat readonly režim pro změnu textu
