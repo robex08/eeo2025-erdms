@@ -1824,8 +1824,9 @@ export default function InvoiceEvidencePage() {
     // Skip localStorage pouze když:
     // 1. Je freshNavigationFlag (právě kliknuto na "Zaevidovat") NEBO
     // 2. Editujeme existující fakturu NEBO  
-    // 3. Načítáme fakturu z objednávky/smlouvy
-    const shouldSkipLS = freshNavigationFlag || isEditingExisting || isLoadingOrder || isLoadingSmlouva;
+    // 3. Načítáme fakturu z objednávky/smlouvy NEBO
+    // 4. Právě proběhla úspěšná operace (UPDATE/CREATE)
+    const shouldSkipLS = freshNavigationFlag || isEditingExisting || isLoadingOrder || isLoadingSmlouva || justCompletedOperation;
     
     if (shouldSkipLS) {
       setLsLoaded(true);
@@ -2832,7 +2833,7 @@ export default function InvoiceEvidencePage() {
     setConfirmDialog({
       isOpen: true,
       title: '⚠️ Odpojit fakturu od objednávky?',
-      message: `Opravdu chcete odpojit fakturu ${faktura.fa_cislo_vema || `#${faktura.id}`} od této objednávky?\n\n` +
+      message: `Opravdu chcete odpojit fakturu ${faktura.fa_cislo_vema || faktura.cislo_faktury || `#${faktura.id}`} od této objednávky?\n\n` +
         `Co se stane:\n` +
         `• Faktura zůstane v systému jako SAMOSTATNÁ\n` +
         `• Objednávka už nebude vidět tuto fakturu\n` +
@@ -2857,7 +2858,7 @@ export default function InvoiceEvidencePage() {
           // Reload objednávky aby se aktualizoval seznam faktur
           await loadOrderData(formData.order_id);
           
-          showToast && showToast(`✅ Faktura ${faktura.fa_cislo_vema || `#${faktura.id}`} byla odpojena od objednávky`, 'success');
+          showToast && showToast(`✅ Faktura ${faktura.fa_cislo_vema || faktura.cislo_faktury || `#${faktura.id}`} byla odpojena od objednávky`, 'success');
         } catch (err) {
           console.error('❌ Chyba při odpojování faktury:', err);
           showToast && showToast('Nepodařilo se odpojit fakturu: ' + (err.message || 'Neznámá chyba'), 'error');
@@ -4046,6 +4047,9 @@ export default function InvoiceEvidencePage() {
           currentSmlouvaId: formData.smlouva_id
         }
       }));
+      
+      // 🚫 Nastavit flag aby se při dalším useEffect neloadovala data z LS
+      setJustCompletedOperation(true);
 
       // 📋 SPISOVKA TRACKING: Označit dokument jako zpracovaný (pouze pro nové faktury, ne editace)
       // 📋 AUTO-TRACKING: Označit Spisovka dokument jako zpracovaný
@@ -4104,6 +4108,45 @@ export default function InvoiceEvidencePage() {
       console.error('Error message:', err.message);
       setError(err.message || 'Chyba při evidenci faktury');
       setProgress?.(0);
+      
+      // 🗑️ KRITICKÉ: Při chybě smazat editingInvoiceId a resetovat form
+      setEditingInvoiceId(null);
+      setHadOriginalEntity(false);
+      setInvoiceUserConfirmed(false);
+      setJustCompletedOperation(true); // Zabránit reload z LS
+      
+      // 💾 Vyčistit localStorage
+      try {
+        localStorage.removeItem(`invoiceForm_${user_id}`);
+        localStorage.removeItem(`invoiceAttach_${user_id}`);
+        localStorage.removeItem(`invoiceEdit_${user_id}`);
+        localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
+        localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
+      } catch (lsErr) {
+        console.warn('Chyba při mazání localStorage:', lsErr);
+      }
+      
+      // Reset formuláře do výchozího stavu
+      setFormData({
+        order_id: '',
+        smlouva_id: null,
+        fa_cislo_vema: '',
+        fa_typ: 'BEZNA',
+        fa_datum_doruceni: formatDateForPicker(new Date()),
+        fa_datum_vystaveni: '',
+        fa_datum_splatnosti: '',
+        fa_castka: '',
+        fa_poznamka: '',
+        fa_strediska_kod: [],
+        file: null,
+        fa_predana_zam_id: null,
+        fa_datum_predani_zam: '',
+        fa_datum_vraceni_zam: ''
+      });
+      setAttachments([]);
+      setOrderData(null);
+      setSmlouvaData(null);
+      setLpCerpani([]);
       
       // 🎯 Progress - chyba při ukládání
       setProgressModal({
@@ -6731,6 +6774,9 @@ export default function InvoiceEvidencePage() {
                     setEditingInvoiceId(null);
                     setInvoiceUserConfirmed(false);
                     
+                    // 🚫 Reset flag pro localStorage (umožní načítání při F5)
+                    setJustCompletedOperation(false);
+                    
                     // Zavřít progress dialog
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', resetData: null });
                     
@@ -6751,6 +6797,8 @@ export default function InvoiceEvidencePage() {
                   variant="primary" 
                   onClick={() => {
                     setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '' });
+                    // 🚫 Reset flag aby příští načtení mohlo loadovat z LS
+                    setJustCompletedOperation(false);
                   }}
                 >
                   Zavřít
