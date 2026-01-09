@@ -1,7 +1,7 @@
 # EEO v2 - Build & Deploy
 
 **Datum:** 9. ledna 2026  
-**Verze:** 2.06:dev  
+**Verze:** 2.07:dev  
 **Autor:** Robert Holovský
 
 ---
