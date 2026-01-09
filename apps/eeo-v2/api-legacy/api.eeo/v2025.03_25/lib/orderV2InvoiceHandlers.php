@@ -291,13 +291,83 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         
         $invoice_id = $db->lastInsertId();
         
-        // 🆕 WORKFLOW UPDATE - automatická aktualizace workflow po přidání faktury
-        // Replika logiky z OrderForm25.js - přidá FAKTURACE + VECNA_SPRAVNOST
+        // =========================================================================
+        // 🔄 AUTOMATICKÁ ZMĚNA WORKFLOW OBJEDNÁVKY PO VYTVOŘENÍ FAKTURY
+        // =========================================================================
+        // ✅ POŽADAVEK: Pokud se přidá nová faktura k objednávce ve stavu ZKONTROLOVANA,
+        //    automaticky vrátit objednávku na VECNA_SPRAVNOST (musí projít novou kontrolou).
+        // ✅ Také automaticky přidat FAKTURACE a VECNA_SPRAVNOST pokud ještě nejsou.
+        
         if ($order_id !== null && $order_id > 0) {
-            $workflowSuccess = handleInvoiceWorkflowUpdate($db, $order_id);
-            if (!$workflowSuccess) {
-                error_log("[WORKFLOW] Varování: Nepodařilo se aktualizovat workflow pro objednávku ID {$order_id} po přidání faktury");
-                // Pokračujeme - workflow update není kritická chyba pro vytvoření faktury
+            try {
+                // Načíst aktuální stav objednávky
+                $sql_order = "SELECT id, stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
+                $stmt_order = $db->prepare($sql_order);
+                $stmt_order->execute(array($order_id));
+                $order = $stmt_order->fetch(PDO::FETCH_ASSOC);
+                
+                if ($order) {
+                    // Parsovat workflow stavy
+                    $workflow_states = json_decode($order['stav_workflow_kod'], true);
+                    if (!is_array($workflow_states)) {
+                        $workflow_states = array();
+                    }
+                    
+                    $workflow_changed = false;
+                    
+                    // PRAVIDLO 1: Ujistit se, že má FAKTURACE
+                    if (!in_array('FAKTURACE', $workflow_states)) {
+                        $workflow_states[] = 'FAKTURACE';
+                        $workflow_changed = true;
+                        error_log("✅ INVOICE CREATE: Přidán stav FAKTURACE pro objednávku #{$order_id}");
+                    }
+                    
+                    // PRAVIDLO 2: Ujistit se, že má VECNA_SPRAVNOST
+                    if (!in_array('VECNA_SPRAVNOST', $workflow_states)) {
+                        $workflow_states[] = 'VECNA_SPRAVNOST';
+                        $workflow_changed = true;
+                        error_log("✅ INVOICE CREATE: Přidán stav VECNA_SPRAVNOST pro objednávku #{$order_id}");
+                    }
+                    
+                    // PRAVIDLO 3: Pokud byla ZKONTROLOVANA → vrátit na VECNA_SPRAVNOST
+                    $had_zkontrolovana = in_array('ZKONTROLOVANA', $workflow_states);
+                    if ($had_zkontrolovana) {
+                        $workflow_states = array_values(array_filter($workflow_states, function($s) {
+                            return $s !== 'ZKONTROLOVANA';
+                        }));
+                        $workflow_changed = true;
+                        error_log("🔙 INVOICE CREATE: Přidána nová faktura → objednávka #{$order_id} vrácena ze ZKONTROLOVANA na VECNA_SPRAVNOST");
+                    }
+                    
+                    // Pokud se workflow změnil → uložit do DB
+                    if ($workflow_changed) {
+                        // Aktualizovat workflow objednávky
+                        $new_workflow_json = json_encode($workflow_states);
+                        
+                        // Určit textový stav podle posledního workflow kódu
+                        $last_workflow_code = end($workflow_states);
+                        $stav_objednavky_text = 'Věcná správnost'; // Výchozí pro VECNA_SPRAVNOST
+                        
+                        $sql_update_order = "UPDATE " . TBL_OBJEDNAVKY . " 
+                                             SET stav_workflow_kod = ?, 
+                                                 stav_objednavky = ?,
+                                                 dt_aktualizace = NOW(),
+                                                 uzivatel_akt_id = ?
+                                             WHERE id = ? AND aktivni = 1";
+                        $stmt_update_order = $db->prepare($sql_update_order);
+                        $stmt_update_order->execute(array(
+                            $new_workflow_json,
+                            $stav_objednavky_text,
+                            $token_data['id'],
+                            $order_id
+                        ));
+                        
+                        error_log("📋 INVOICE CREATE: Workflow objednávky #{$order_id} aktualizováno: " . implode(' → ', $workflow_states));
+                    }
+                }
+            } catch (Exception $order_update_error) {
+                // Neblokovat úspěch faktury, jen zalogovat chybu
+                error_log("⚠️ INVOICE CREATE: Chyba při aktualizaci workflow objednávky: " . $order_update_error->getMessage());
             }
         }
         
@@ -488,6 +558,133 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena nebo není aktivní'));
             return;
+        }
+        
+        // =========================================================================
+        // 🔄 AUTOMATICKÁ ZMĚNA WORKFLOW OBJEDNÁVKY PO UPDATE FAKTURY
+        // =========================================================================
+        // ✅ POŽADAVEK: Pokud uživatel potvrdí věcnou správnost faktury v modulu Faktury,
+        //    zkontrolovat VŠECHNY faktury objednávky a pokud jsou všechny zkontrolované,
+        //    automaticky přidat ZKONTROLOVANA do workflow objednávky.
+        // ✅ REVERSE: Pokud se upraví kritická pole faktury nebo přidá nová faktura,
+        //    vrátit objednávku ze stavu ZKONTROLOVANA zpět na VECNA_SPRAVNOST.
+        
+        $order_id = (int)$current_invoice['objednavka_id'];
+        
+        if ($order_id > 0) {
+            try {
+                // Načíst aktuální stav objednávky
+                $sql_order = "SELECT id, stav_workflow_kod FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1";
+                $stmt_order = $db->prepare($sql_order);
+                $stmt_order->execute(array($order_id));
+                $order = $stmt_order->fetch(PDO::FETCH_ASSOC);
+                
+                if ($order) {
+                    // Parsovat workflow stavy
+                    $workflow_states = json_decode($order['stav_workflow_kod'], true);
+                    if (!is_array($workflow_states)) {
+                        $workflow_states = array();
+                    }
+                    
+                    $workflow_changed = false;
+                    
+                    // PRAVIDLO 1: Pokud se potvrdila věcná správnost → zkontrolovat všechny faktury
+                    if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+                        // Načíst všechny faktury objednávky
+                        $sql_all_invoices = "SELECT id, vecna_spravnost_potvrzeno FROM " . TBL_FAKTURY . " 
+                                             WHERE objednavka_id = ? AND aktivni = 1";
+                        $stmt_all = $db->prepare($sql_all_invoices);
+                        $stmt_all->execute(array($order_id));
+                        $all_invoices = $stmt_all->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        // Zkontrolovat, zda VŠECHNY faktury mají vecna_spravnost_potvrzeno = 1
+                        $all_approved = true;
+                        foreach ($all_invoices as $inv) {
+                            if ((int)$inv['vecna_spravnost_potvrzeno'] !== 1) {
+                                $all_approved = false;
+                                break;
+                            }
+                        }
+                        
+                        if ($all_approved && count($all_invoices) > 0) {
+                            // ✅ Všechny faktury jsou zkontrolované → přidat ZKONTROLOVANA
+                            if (!in_array('ZKONTROLOVANA', $workflow_states)) {
+                                $workflow_states[] = 'ZKONTROLOVANA';
+                                $workflow_changed = true;
+                                $invoice_count = count($all_invoices);
+                                error_log("✅ INVOICE MODULE: Všechny faktury ({$invoice_count}x) objednávky #{$order_id} jsou zkontrolované → přidán stav ZKONTROLOVANA");
+                            }
+                        } else {
+                            // ❌ Ne všechny faktury jsou zkontrolované → odebrat ZKONTROLOVANA
+                            $had_zkontrolovana = in_array('ZKONTROLOVANA', $workflow_states);
+                            $workflow_states = array_values(array_filter($workflow_states, function($s) {
+                                return $s !== 'ZKONTROLOVANA';
+                            }));
+                            if ($had_zkontrolovana) {
+                                $workflow_changed = true;
+                                error_log("🔓 INVOICE MODULE: Ne všechny faktury objednávky #{$order_id} jsou zkontrolované → odebrán stav ZKONTROLOVANA");
+                            }
+                        }
+                    }
+                    
+                    // PRAVIDLO 2: Pokud se změnila kritická pole → vrátit z ZKONTROLOVANA na VECNA_SPRAVNOST
+                    if ($requires_reapproval) {
+                        $had_zkontrolovana = in_array('ZKONTROLOVANA', $workflow_states);
+                        $workflow_states = array_values(array_filter($workflow_states, function($s) {
+                            return $s !== 'ZKONTROLOVANA';
+                        }));
+                        if ($had_zkontrolovana) {
+                            $workflow_changed = true;
+                            error_log("🔙 INVOICE MODULE: Kritická pole faktury #{$invoice_id} byla změněna → objednávka #{$order_id} vrácena ze ZKONTROLOVANA na VECNA_SPRAVNOST");
+                        }
+                    }
+                    
+                    // Pokud se workflow změnil → uložit do DB
+                    if ($workflow_changed) {
+                        // Ujistit se, že máme VECNA_SPRAVNOST před ZKONTROLOVANA
+                        if (!in_array('VECNA_SPRAVNOST', $workflow_states)) {
+                            // Přidat VECNA_SPRAVNOST před ZKONTROLOVANA
+                            $zkontrolovana_index = array_search('ZKONTROLOVANA', $workflow_states);
+                            if ($zkontrolovana_index !== false) {
+                                array_splice($workflow_states, $zkontrolovana_index, 0, 'VECNA_SPRAVNOST');
+                            } else {
+                                $workflow_states[] = 'VECNA_SPRAVNOST';
+                            }
+                        }
+                        
+                        // Aktualizovat workflow objednávky
+                        $new_workflow_json = json_encode($workflow_states);
+                        
+                        // Určit textový stav podle posledního workflow kódu
+                        $last_workflow_code = end($workflow_states);
+                        $stav_objednavky_text = 'Věcná správnost'; // Výchozí
+                        if ($last_workflow_code === 'ZKONTROLOVANA') {
+                            $stav_objednavky_text = 'Zkontrolována';
+                        } else if ($last_workflow_code === 'VECNA_SPRAVNOST') {
+                            $stav_objednavky_text = 'Věcná správnost';
+                        }
+                        
+                        $sql_update_order = "UPDATE " . TBL_OBJEDNAVKY . " 
+                                             SET stav_workflow_kod = ?, 
+                                                 stav_objednavky = ?,
+                                                 dt_aktualizace = NOW(),
+                                                 uzivatel_akt_id = ?
+                                             WHERE id = ? AND aktivni = 1";
+                        $stmt_update_order = $db->prepare($sql_update_order);
+                        $stmt_update_order->execute(array(
+                            $new_workflow_json,
+                            $stav_objednavky_text,
+                            $token_data['id'],
+                            $order_id
+                        ));
+                        
+                        error_log("📋 INVOICE MODULE: Workflow objednávky #{$order_id} aktualizováno: " . implode(' → ', $workflow_states));
+                    }
+                }
+            } catch (Exception $order_update_error) {
+                // Neblokovat úspěch faktury, jen zalogovat chybu
+                error_log("⚠️ INVOICE MODULE: Chyba při aktualizaci workflow objednávky: " . $order_update_error->getMessage());
+            }
         }
         
         // Return updated fields for confirmation
