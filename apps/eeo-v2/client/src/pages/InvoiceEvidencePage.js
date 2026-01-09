@@ -1684,22 +1684,24 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
-  // 🔒 Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
-  const isInvoiceEditable = useMemo(() => {
-    // Readonly režim - nemůže editovat
-    if (isReadOnlyMode) return false;
+  // 🆕 Detekce změny POUZE polí věcné správnosti (pro readonly uživatele)
+  const hasChangedVecnaSpravnost = useMemo(() => {
+    if (!editingInvoiceId || !originalFormData) return false;
     
-    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
-    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
+    const vecnaSpravnostFields = [
+      'umisteni_majetku',
+      'poznamka_vecne_spravnosti',
+      'vecna_spravnost_potvrzeno',
+      'potvrdil_vecnou_spravnost_id',
+      'datum_potvrzeni_vecne_spravnosti'
+    ];
     
-    // 🔥 OPRAVA: Běžný uživatel (s INVOICE_MANAGE) nemůže editovat fakturu po schválení věcné správnosti
-    // Pouze admin (INVOICE_MANAGE_ALL) může editovat i po schválení
-    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
-      return false;
-    }
-    
-    return true;
-  }, [isReadOnlyMode, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
+    return vecnaSpravnostFields.some(field => {
+      const original = originalFormData[field];
+      const current = formData[field];
+      return original !== current;
+    });
+  }, [formData, originalFormData, editingInvoiceId]);
 
   // 🔒 Zjistit, zda je objednávka ve stavu DOKONČENA (již nelze provádět věcnou kontrolu)
   const isOrderCompleted = useMemo(() => {
@@ -1719,6 +1721,49 @@ export default function InvoiceEvidencePage() {
     const currentState = stavKody.length > 0 ? stavKody[stavKody.length - 1] : null;
     return currentState === 'DOKONCENA';
   }, [orderData]);
+
+  // 🔒 Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
+  const isInvoiceEditable = useMemo(() => {
+    // Readonly režim - nemůže editovat
+    if (isReadOnlyMode) return false;
+    
+    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
+    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
+    
+    // 🔥 OPRAVA: Běžný uživatel (s INVOICE_MANAGE) nemůže editovat fakturu po schválení věcné správnosti
+    // Pouze admin (INVOICE_MANAGE_ALL) může editovat i po schválení
+    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
+      return false;
+    }
+    
+    return true;
+  }, [isReadOnlyMode, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
+
+  // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
+  // Věcná správnost JE editovatelná dokud NENÍ potvrzena
+  // Po potvrzení (vecna_spravnost_potvrzeno === 1) se ZAMKNE
+  // 🔥 DŮLEŽITÉ: Uživatelé s INVOICE_MATERIAL_CORRECTNESS MOHOU editovat věcnou správnost
+  //             i když nemají INVOICE_MANAGE (to je jejich hlavní účel!)
+  const isVecnaSpravnostEditable = useMemo(() => {
+    // Musí mít alespoň jedno z těchto oprávnění:
+    // - INVOICE_MANAGE (plný přístup k fakturám)
+    // - INVOICE_MATERIAL_CORRECTNESS (pouze věcná správnost)
+    const hasAnyPermission = hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_MATERIAL_CORRECTNESS');
+    if (!hasAnyPermission) {
+      return false; // Bez permission vůbec nemůže editovat
+    }
+    
+    // Pokud už JE potvrzena věcná správnost → ZAMČENO (kromě INVOICE_MANAGE_ALL)
+    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
+      return false;
+    }
+    
+    // Pokud je objednávka dokončená → ZAMČENO
+    if (isOrderCompleted) return false;
+    
+    // Jinak ODEMČENO
+    return true;
+  }, [formData.vecna_spravnost_potvrzeno, isOrderCompleted, hasPermission]);
 
   // � Načítání LP číselníků při mount
   useEffect(() => {
@@ -5460,7 +5505,11 @@ export default function InvoiceEvidencePage() {
           )}
 
           {/* TLAČÍTKA */}
-          {!isReadOnlyMode && (
+          {/* Zobrazit tlačítka pokud:
+              - Není readonly mode (běžný uživatel s INVOICE_MANAGE)
+              - NEBO je readonly mode (INVOICE_MATERIAL_CORRECTNESS) ale změnila se věcná správnost
+          */}
+          {(!isReadOnlyMode || (isReadOnlyMode && hasChangedVecnaSpravnost)) && (
           <ButtonGroup>
             <Button $variant="secondary" onClick={handleBack} disabled={loading}>
               <FontAwesomeIcon icon={faTimes} />
@@ -5469,15 +5518,28 @@ export default function InvoiceEvidencePage() {
             <Button 
               $variant="primary" 
               onClick={handleSubmit} 
-              disabled={loading || (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed)}
+              disabled={
+                loading || 
+                // Běžná disabled logika - nelze přidat fakturu k objednávce v zakázaném stavu
+                (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) ||
+                // 🔥 NOVÉ: Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost
+                (isReadOnlyMode && !hasChangedVecnaSpravnost)
+              }
               title={
                 formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed
                   ? canAddInvoiceToOrder(orderData).reason
-                  : ''
+                  : (isReadOnlyMode && !hasChangedVecnaSpravnost)
+                    ? 'Nemáte oprávnění měnit základní data faktury. Můžete pouze potvrdit věcnou správnost.'
+                    : ''
               }
             >
               <FontAwesomeIcon icon={loading ? faExclamationTriangle : faSave} />
               {loading ? 'Ukládám...' : (() => {
+                // 🔥 Readonly uživatelé vidí jednoduché "Uložit věcnou správnost"
+                if (isReadOnlyMode) {
+                  return 'Uložit věcnou správnost';
+                }
+                
                 // ✅ OPRAVA: Tlačítko je "Aktualizovat" jen pokud:
                 // 1. Máme editingInvoiceId (faktura existuje v DB)
                 // 2. A ZÁROVEŇ uživatel potvrdil fakturu (klikl na Zaevidovat)
@@ -5697,7 +5759,7 @@ export default function InvoiceEvidencePage() {
                     <input
                       type="text"
                       value={formData.vecna_spravnost_umisteni_majetku || ''}
-                      disabled={!isInvoiceEditable || loading}
+                      disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_umisteni_majetku: e.target.value }))}
                       placeholder="Např. Kladno, budova K2, místnost 203"
                       style={{
@@ -5708,11 +5770,11 @@ export default function InvoiceEvidencePage() {
                         borderRadius: '8px',
                         outline: 'none',
                         transition: 'all 0.2s',
-                        background: (!isInvoiceEditable || loading) ? '#f9fafb' : 'white',
-                        cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'text'
+                        background: (!isVecnaSpravnostEditable || loading) ? '#f9fafb' : 'white',
+                        cursor: (!isVecnaSpravnostEditable || loading) ? 'not-allowed' : 'text'
                       }}
                       onFocus={(e) => {
-                        if (isInvoiceEditable && !loading) {
+                        if (isVecnaSpravnostEditable && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5736,7 +5798,7 @@ export default function InvoiceEvidencePage() {
                     </FieldLabel>
                     <textarea
                       value={formData.vecna_spravnost_poznamka || ''}
-                      disabled={!isInvoiceEditable || loading}
+                      disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_poznamka: e.target.value }))}
                       placeholder="Volitelná poznámka k věcné správnosti..."
                       rows={2}
@@ -5746,7 +5808,7 @@ export default function InvoiceEvidencePage() {
                         fontSize: '0.95rem',
                         border: (() => {
                           // Červený border POUZE když je editovatelná A překročená
-                          if (isInvoiceEditable && orderData && orderData.max_cena_s_dph && orderData.faktury) {
+                          if (isVecnaSpravnostEditable && orderData && orderData.max_cena_s_dph && orderData.faktury) {
                             const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
                             const totalFaktur = orderData.faktury.reduce((sum, f) => {
                               if (f.id === editingInvoiceId) {
@@ -5764,7 +5826,7 @@ export default function InvoiceEvidencePage() {
                         outline: 'none',
                         transition: 'all 0.2s',
                         background: (() => {
-                          if (!isInvoiceEditable || loading) return '#f9fafb';
+                          if (!isVecnaSpravnostEditable || loading) return '#f9fafb';
                           // Světle červené pozadí POUZE když je editovatelná A překročená
                           if (orderData && orderData.max_cena_s_dph && orderData.faktury) {
                             const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
@@ -5780,12 +5842,12 @@ export default function InvoiceEvidencePage() {
                           }
                           return 'white';
                         })(),
-                        cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'text',
+                        cursor: (!isVecnaSpravnostEditable || loading) ? 'not-allowed' : 'text',
                         resize: 'vertical',
                         fontFamily: 'inherit'
                       }}
                       onFocus={(e) => {
-                        if (isInvoiceEditable && !loading) {
+                        if (isVecnaSpravnostEditable && !loading) {
                           e.target.style.borderColor = '#3b82f6';
                           e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                         }
@@ -5817,7 +5879,7 @@ export default function InvoiceEvidencePage() {
                           lpCerpani={lpCerpani}
                           availableLPCodes={dictionaries.data?.lpKodyOptions || []}
                           onChange={(newLpCerpani) => setLpCerpani(newLpCerpani)}
-                          disabled={!isInvoiceEditable || loading}
+                          disabled={!isVecnaSpravnostEditable || loading}
                         />
                       );
                     } else {
@@ -5841,15 +5903,15 @@ export default function InvoiceEvidencePage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    cursor: (!isInvoiceEditable || loading) ? 'not-allowed' : 'pointer',
+                    cursor: (!isVecnaSpravnostEditable || loading) ? 'not-allowed' : 'pointer',
                     fontSize: '0.9rem',
-                    fontWeight: (!isInvoiceEditable || loading) ? '400' : '600',
-                    color: (!isInvoiceEditable || loading) ? '#9ca3af' : '#374151'
+                    fontWeight: (!isVecnaSpravnostEditable || loading) ? '400' : '600',
+                    color: (!isVecnaSpravnostEditable || loading) ? '#9ca3af' : '#374151'
                   }}>
                     <input
                       type="checkbox"
                       checked={formData.vecna_spravnost_potvrzeno === 1}
-                      disabled={!isInvoiceEditable || loading}
+                      disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => {
                         const newValue = e.target.checked ? 1 : 0;
                         
