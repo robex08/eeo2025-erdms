@@ -9815,6 +9815,9 @@ const Orders25List = () => {
       ordersCacheService.invalidate(user_id);
       await loadData(true, true); // forceRefresh=true, silent=true
 
+      // Reset progress bar po dokončení
+      setTimeout(() => setProgress?.(0), 300);
+
       // ⚠️ Border zůstane až do příštího refresh (libovolným způsobem)
       // highlightOrderId se vynuluje automaticky při příštím loadData()
 
