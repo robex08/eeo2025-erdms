@@ -11,7 +11,7 @@ import {
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
-  faLock, faEnvelope, faPhone, faClock
+  faLock, faEnvelope, faPhone, faClock, faUnlink
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -877,6 +877,11 @@ const ActionMenuButton = styled.button`
     background: #eff6ff;
   }
 
+  &.unlink:hover:not(:disabled) {
+    color: #f97316;
+    background: #fff7ed;
+  }
+
   &.delete:hover:not(:disabled) {
     color: #dc2626;
     background: #fef2f2;
@@ -1509,6 +1514,15 @@ const Invoices25List = () => {
     isOpen: false,
     invoice: null,
     newStatus: null
+  });
+  
+  // State pro confirm dialog (unlink, atd.)
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    onCancel: null
   });
   
   // 🔒 State pro LOCK dialog system
@@ -2267,6 +2281,67 @@ const Invoices25List = () => {
         editInvoiceId: invoice.id,
         orderIdForLoad: invoice.objednavka_id || null
       } 
+    });
+  };
+
+  // Handler pro odpojení faktury od objednávky/smlouvy
+  const handleUnlinkInvoice = (invoice) => {
+    const entityType = invoice.objednavka_id ? 'objednávky' : invoice.smlouva_id ? 'smlouvy' : null;
+    const entityNumber = invoice.objednavka_id 
+      ? (invoice.objednavka_cislo || `#${invoice.objednavka_id}`)
+      : invoice.smlouva_id 
+        ? (invoice.smlouva_cislo || `#${invoice.smlouva_id}`)
+        : null;
+    
+    if (!entityType) {
+      showToast?.('Faktura není přiřazena k žádné objednávce ani smlouvě', { type: 'warning' });
+      return;
+    }
+    
+    setConfirmDialog({
+      isOpen: true,
+      title: `⚠️ Odpojit fakturu od ${entityType}?`,
+      message: `Opravdu chcete odpojit fakturu ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} od ${entityType} ${entityNumber}?\n\n` +
+        `Co se stane:\n` +
+        `• Faktura zůstane v systému jako SAMOSTATNÁ\n` +
+        `• ${entityType === 'objednávky' ? 'Objednávka' : 'Smlouva'} už nebude vidět tuto fakturu\n` +
+        `• Workflow ${entityType === 'objednávky' ? 'objednávky' : 'smlouvy'} se může změnit\n` +
+        `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n\n` +
+        `⚠️ Tuto akci NELZE vzít zpět!`,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          
+          // API call pro odpojení
+          const { updateInvoiceV2 } = await import('../services/api25invoices');
+          await updateInvoiceV2({
+            token,
+            username,
+            invoice_id: invoice.id,
+            updateData: {
+              objednavka_id: invoice.objednavka_id ? null : undefined,
+              smlouva_id: invoice.smlouva_id ? null : undefined
+            }
+          });
+          
+          // Refresh seznam faktur
+          loadData();
+          
+          showToast?.(
+            `✅ Faktura ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} byla odpojena od ${entityType} ${entityNumber}`,
+            { type: 'success' }
+          );
+        } catch (err) {
+          console.error('❌ Chyba při odpojování faktury:', err);
+          showToast?.(
+            `Nepodařilo se odpojit fakturu: ${err.message || 'Neznámá chyba'}`,
+            { type: 'error' }
+          );
+        }
+      },
+      onCancel: () => {
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+      }
     });
   };
 
@@ -3711,6 +3786,17 @@ const Invoices25List = () => {
                             </ActionMenuButton>
                           </TooltipWrapper>
                         )}
+                        {canManageInvoices && (invoice.objednavka_id || invoice.smlouva_id) && (
+                          <TooltipWrapper text="Odpojit od objednávky/smlouvy" preferredPosition="left">
+                            <ActionMenuButton 
+                              className="unlink"
+                              onClick={() => handleUnlinkInvoice(invoice)}
+                              title="Odpojit"
+                            >
+                              <FontAwesomeIcon icon={faUnlink} />
+                            </ActionMenuButton>
+                          </TooltipWrapper>
+                        )}
                         {(canManageInvoices || isAdmin) && (
                           <TooltipWrapper text="Smazat" preferredPosition="left">
                             <ActionMenuButton 
@@ -4235,6 +4321,33 @@ const Invoices25List = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </ConfirmDialog>
+      )}
+      
+      {/* Confirm Dialog - Unlink faktura od objednávky/smlouvy */}
+      {confirmDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={confirmDialog.isOpen}
+          onClose={() => {
+            if (confirmDialog.onCancel) {
+              confirmDialog.onCancel();
+            } else {
+              setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+            }
+          }}
+          onConfirm={() => {
+            if (confirmDialog.onConfirm) {
+              confirmDialog.onConfirm();
+            }
+          }}
+          title={confirmDialog.title}
+          confirmText="Ano, odpojit"
+          cancelText="Zrušit"
+          variant="warning"
+        >
+          <div style={{ whiteSpace: 'pre-line' }}>
+            {confirmDialog.message}
           </div>
         </ConfirmDialog>
       )}
