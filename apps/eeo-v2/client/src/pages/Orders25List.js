@@ -46,7 +46,7 @@ import {
   faBolt, faCalendarAlt, faUser, faBuilding, faMoneyBillWave,
   faCheckCircle, faTimesCircle, faHourglassHalf, faExclamationTriangle,
   faFilePen, faShield, faTruck, faXmark, faClock, faCircleNotch,
-  faEraser, faList, faPalette, faMinus, faInfoCircle,
+  faEraser, faList, faPalette, faMinus, faInfoCircle, faThumbsUp,
   faUsers, faPaperclip,
   faRocket, faBell, faArchive, faDatabase, faBoltLightning, faFileAlt,
   faFaceFrown, faLock, faEnvelope, faPhone, faFileContract,
@@ -4491,6 +4491,17 @@ const Orders25List = () => {
   const [activeStatusFilter, setActiveStatusFilter] = useState(() => {
     return getUserStorage('orders25List_activeStatusFilter', null);
   }); // Pro dashboard klikací filtry
+  
+  // Filtr pro schvalování objednávek - pole aktivních filtrů
+  const [approvalFilter, setApprovalFilter] = useState(() => {
+    const saved = getUserStorage('orders25List_approvalFilter', null);
+    // Migrace starého formátu na nový
+    if (saved === 'all' || saved === null) return [];
+    if (saved === 'pending') return ['pending'];
+    if (saved === 'approved') return ['approved'];
+    return Array.isArray(saved) ? saved : [];
+  });
+  
   const [rawData, setRawData] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
@@ -6879,10 +6890,14 @@ const Orders25List = () => {
         align: 'center'
       }
     },
-    // 🎯 Sloupec SCHVÁLIT - ikona pro rychlé schválení
-    {
+    // 🎯 Sloupec SCHVÁLIT - ikona pro rychlé schválení (pouze pro ADMINI a ORDER_APPROVE)
+    ...(hasAdminRole() || hasPermission('ORDER_APPROVE') ? [{
       id: 'approve',
-      header: '✅',
+      header: () => (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+          <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '0.9rem', opacity: 0.7 }} />
+        </div>
+      ),
       cell: ({ row }) => {
         const order = row.original;
         
@@ -6918,6 +6933,38 @@ const Orders25List = () => {
         
         if (!isAllowedState) return null;
         
+        // Určení ikony podle stavu
+        const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+        const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+        const isPending = pendingStates.includes(lastState);
+        const isApproved = approvedStates.includes(lastState);
+        
+        // Použití barev z STATUS_COLORS (jako v dashboardu) + křížek pro zamítnutou
+        let icon, iconColor, hoverBgColor, hoverBorderColor, hoverIconColor;
+        
+        if (isPending) {
+          // Ke schválení - červená + hodiny
+          icon = faHourglassHalf;
+          iconColor = '#dc2626'; // červená
+          hoverBgColor = '#fecaca';
+          hoverBorderColor = '#dc2626';
+          hoverIconColor = '#991b1b';
+        } else if (lastState === 'SCHVALENA') {
+          // Schválená - oranžová + fajfka
+          icon = faCheckCircle;
+          iconColor = '#ea580c'; // oranžová
+          hoverBgColor = '#fed7aa';
+          hoverBorderColor = '#ea580c';
+          hoverIconColor = '#c2410c';
+        } else {
+          // Zamítnutá - šedá + křížek
+          icon = faTimesCircle;
+          iconColor = '#6b7280'; // šedá
+          hoverBgColor = '#e5e7eb';
+          hoverBorderColor = '#6b7280';
+          hoverIconColor = '#4b5563';
+        }
+        
         return (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <button
@@ -6934,30 +6981,31 @@ const Orders25List = () => {
                 }
               }}
               style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                border: 'none',
-                borderRadius: '6px',
-                color: 'white',
+                background: 'transparent',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                color: iconColor,
                 cursor: 'pointer',
-                padding: '0.4rem 0.5rem',
-                fontSize: '1rem',
+                padding: '0.35rem 0.5rem',
+                fontSize: '1.1rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.3)'
+                transition: 'all 0.15s ease'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(5, 150, 105, 0.4)';
+                e.currentTarget.style.background = hoverBgColor;
+                e.currentTarget.style.borderColor = hoverBorderColor;
+                e.currentTarget.style.color = hoverIconColor;
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(5, 150, 105, 0.3)';
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = '#d1d5db';
+                e.currentTarget.style.color = iconColor;
               }}
-              title="Schválit objednávku"
+              title={isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)"}
             >
-              ✅
+              <FontAwesomeIcon icon={icon} />
             </button>
           </div>
         );
@@ -6966,7 +7014,7 @@ const Orders25List = () => {
       meta: {
         align: 'center'
       }
-    },
+    }] : []),
     {
       accessorKey: 'dt_objednavky',
       header: 'Datum objednávky',
@@ -8287,6 +8335,51 @@ const Orders25List = () => {
         return false;
       }
 
+      // 4.5. Filtr podle schvalování
+      if (approvalFilter.length > 0) {
+        let workflowStates = [];
+        try {
+          if (Array.isArray(order.stav_workflow_kod)) {
+            workflowStates = order.stav_workflow_kod;
+          } else if (typeof order.stav_workflow_kod === 'string') {
+            workflowStates = JSON.parse(order.stav_workflow_kod);
+          }
+        } catch (e) {
+          workflowStates = [];
+        }
+        
+        const lastState = workflowStates.length > 0 
+          ? (typeof workflowStates[workflowStates.length - 1] === 'string' 
+              ? workflowStates[workflowStates.length - 1] 
+              : (workflowStates[workflowStates.length - 1].kod_stavu || workflowStates[workflowStates.length - 1].nazev_stavu || '')
+            ).toUpperCase()
+          : '';
+        
+        const pendingStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+        const approvedStates = ['SCHVALENA', 'ZAMITNUTA'];
+        
+        const isPending = pendingStates.includes(lastState);
+        const isApproved = approvedStates.includes(lastState);
+        
+        const showPending = approvalFilter.includes('pending');
+        const showApproved = approvalFilter.includes('approved');
+        
+        // Pokud má filtr pending a objednávka není pending, skip
+        if (showPending && !isPending && !(showApproved && isApproved)) {
+          return false;
+        }
+        
+        // Pokud má filtr approved a objednávka není approved, skip
+        if (showApproved && !isApproved && !(showPending && isPending)) {
+          return false;
+        }
+        
+        // Pokud objednávka není ani pending ani approved, skip
+        if (!isPending && !isApproved) {
+          return false;
+        }
+      }
+
       // 5. ❌ ODSTRANĚNO: Filtr archivovaných - už jsou vyfiltrované společnou funkcí filterOrders()!
       // if (!filterByArchived(order, showArchived, getOrderSystemStatus)) return false;
 
@@ -8359,6 +8452,7 @@ const Orders25List = () => {
     multiselectFilters,
     globalFilter,
     statusFilter,
+    approvalFilter,
     userFilter,
     dateFromFilter,
     dateToFilter,
@@ -16226,6 +16320,55 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                         <FontAwesomeIcon icon={table.getIsSomeRowsExpanded() ? faMinus : faPlus} />
                       </FilterActionButton>
                     </div>
+                  ) : header.id === 'approve' ? (
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: '3px',
+                      height: '32px'
+                    }}>
+                      <FilterActionButton
+                        onClick={() => {
+                          const newFilter = approvalFilter.includes('pending')
+                            ? approvalFilter.filter(f => f !== 'pending')
+                            : [...approvalFilter, 'pending'];
+                          setApprovalFilter(newFilter);
+                          setUserStorage('orders25List_approvalFilter', newFilter);
+                        }}
+                        title={approvalFilter.includes('pending') 
+                          ? "Zrušit filtr: Ke schválení" 
+                          : "Filtrovat: Ke schválení"
+                        }
+                        className={approvalFilter.includes('pending') ? 'active' : ''}
+                        style={{
+                          color: approvalFilter.includes('pending') ? '#92400e' : undefined,
+                          background: approvalFilter.includes('pending') ? '#fef3c7' : undefined
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </FilterActionButton>
+                      <FilterActionButton
+                        onClick={() => {
+                          const newFilter = approvalFilter.includes('approved')
+                            ? approvalFilter.filter(f => f !== 'approved')
+                            : [...approvalFilter, 'approved'];
+                          setApprovalFilter(newFilter);
+                          setUserStorage('orders25List_approvalFilter', newFilter);
+                        }}
+                        title={approvalFilter.includes('approved')
+                          ? "Zrušit filtr: Vyřízené" 
+                          : "Filtrovat: Vyřízené"
+                        }
+                        className={approvalFilter.includes('approved') ? 'active' : ''}
+                        style={{
+                          color: approvalFilter.includes('approved') ? '#166534' : undefined,
+                          background: approvalFilter.includes('approved') ? '#dcfce7' : undefined
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </FilterActionButton>
+                    </div>
                   ) : header.id === 'actions' ? (
                     <div style={{
                       display: 'flex',
@@ -18157,6 +18300,55 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                             title={table.getIsSomeRowsExpanded() ? "Sbalit všechny řádky" : "Rozbalit všechny řádky"}
                           >
                             <FontAwesomeIcon icon={table.getIsSomeRowsExpanded() ? faMinus : faPlus} />
+                          </FilterActionButton>
+                        </div>
+                      ) : header.id === 'approve' ? (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '3px',
+                          height: '32px'
+                        }}>
+                          <FilterActionButton
+                            onClick={() => {
+                              const newFilter = approvalFilter.includes('pending')
+                                ? approvalFilter.filter(f => f !== 'pending')
+                                : [...approvalFilter, 'pending'];
+                              setApprovalFilter(newFilter);
+                              setUserStorage('orders25List_approvalFilter', newFilter);
+                            }}
+                            title={approvalFilter.includes('pending') 
+                              ? "Zrušit filtr: Ke schválení" 
+                              : "Filtrovat: Ke schválení"
+                            }
+                            className={approvalFilter.includes('pending') ? 'active' : ''}
+                            style={{
+                              color: approvalFilter.includes('pending') ? '#92400e' : undefined,
+                              background: approvalFilter.includes('pending') ? '#fef3c7' : undefined
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faHourglassHalf} />
+                          </FilterActionButton>
+                          <FilterActionButton
+                            onClick={() => {
+                              const newFilter = approvalFilter.includes('approved')
+                                ? approvalFilter.filter(f => f !== 'approved')
+                                : [...approvalFilter, 'approved'];
+                              setApprovalFilter(newFilter);
+                              setUserStorage('orders25List_approvalFilter', newFilter);
+                            }}
+                            title={approvalFilter.includes('approved')
+                              ? "Zrušit filtr: Vyřízené" 
+                              : "Filtrovat: Vyřízené"
+                            }
+                            className={approvalFilter.includes('approved') ? 'active' : ''}
+                            style={{
+                              color: approvalFilter.includes('approved') ? '#166534' : undefined,
+                              background: approvalFilter.includes('approved') ? '#dcfce7' : undefined
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faCheckCircle} />
                           </FilterActionButton>
                         </div>
                       ) : header.id === 'actions' ? (
