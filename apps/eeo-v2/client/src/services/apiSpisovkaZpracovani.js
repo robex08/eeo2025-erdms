@@ -27,8 +27,8 @@ const apiSpisovkaZpracovani = axios.create({
 apiSpisovkaZpracovani.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 401 Unauthorized - vyžaduje přihlášení
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -37,6 +37,9 @@ apiSpisovkaZpracovani.interceptors.response.use(
       }
     }
 
+    // 403 Forbidden - nedostatečná oprávnění (NE authError!)
+    // Jen propaguj error, komponenta zobrazí toast
+    
     // HTML response instead of JSON (login page)
     const responseText = error.response?.data || '';
     if (typeof responseText === 'string' && responseText.includes('<!doctype')) {

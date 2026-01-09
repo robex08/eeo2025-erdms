@@ -2306,7 +2306,8 @@ const Invoices25List = () => {
         `• Faktura zůstane v systému jako SAMOSTATNÁ\n` +
         `• ${entityType === 'objednávky' ? 'Objednávka' : 'Smlouva'} už nebude vidět tuto fakturu\n` +
         `• Workflow ${entityType === 'objednávky' ? 'objednávky' : 'smlouvy'} se může změnit\n` +
-        `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n\n` +
+        `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n` +
+        `• Věcná správnost bude VYMAZÁNA (datum, umístění, potvrzující uživatel)\n\n` +
         `⚠️ Tuto akci NELZE vzít zpět!`,
       onConfirm: async () => {
         try {
@@ -2323,6 +2324,14 @@ const Invoices25List = () => {
           if (invoice.smlouva_id) {
             updateData.smlouva_id = null; // Odpojit od smlouvy
           }
+          
+          // ✅ Vymazat všechny údaje o věcné kontrole při odpojení
+          // Protože věcná kontrola byla prováděna pro původní entitu
+          updateData.dt_potvrzeni_vecne_spravnosti = null;
+          updateData.vecna_spravnost_umisteni_majetku = null;
+          updateData.vecna_spravnost_poznamka = null;
+          updateData.potvrdil_vecnou_spravnost_id = null;
+          updateData.vecna_spravnost_potvrzeno = 0;
           
           await updateInvoiceV2({
             token,
