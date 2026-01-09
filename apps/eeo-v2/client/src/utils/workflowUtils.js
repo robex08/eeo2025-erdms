@@ -10,6 +10,34 @@ import {
   getWorkflowInfo
 } from '../constants/workflow25';
 
+/**
+ * Helper funkce pro parsování workflow stavů z JSON
+ */
+const parseWorkflowStates = (workflowCode) => {
+  if (!workflowCode) return ['ODESLANA_KE_SCHVALENI'];
+  if (typeof workflowCode === 'string') {
+    try {
+      const parsed = JSON.parse(workflowCode);
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 ? parsed : ['ODESLANA_KE_SCHVALENI'];
+      }
+      return [workflowCode];
+    } catch {
+      return [workflowCode];
+    }
+  }
+  const result = Array.isArray(workflowCode) ? workflowCode : [workflowCode];
+  return result.length > 0 ? result : ['ODESLANA_KE_SCHVALENI'];
+};
+
+/**
+ * Helper funkce pro kontrolu přítomnosti workflow stavu
+ */
+const hasWorkflowState = (workflowCode, state) => {
+  const states = parseWorkflowStates(workflowCode);
+  return states.includes(state);
+};
+
 // Mapa pro překlad systémových názvů polí na lidsky čitelné labely
 const FIELD_LABELS = {
   predmet: 'Předmět objednávky',
@@ -338,8 +366,9 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     }
   }
 
-  // Validace stornování - důvod je povinný při stornování
-  if (formData.stav_stornovano) {
+  // Validace stornování - důvod je povinný při stornování (kontrola workflow stavu ZRUSENA)
+  const isZrusena = hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA');
+  if (isZrusena) {
     if (!formData.odeslani_storno_duvod?.trim()) {
       errors.odeslani_storno_duvod = `${FIELD_LABELS.odeslani_storno_duvod} je povinný - uveďte, proč objednávku stornujete`;
     }

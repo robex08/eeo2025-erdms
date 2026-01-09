@@ -511,9 +511,9 @@ const calculateCurrentPhase = (formData) => {
 /**
  * 🎨 Určení téma barvy podle fáze
  */
-const getPhaseTheme = (workflowCode, isStorno) => {
-  // Storno má error téma
-  if (isStorno || hasWorkflowState(workflowCode, 'ZRUSENA')) {
+const getPhaseTheme = (workflowCode) => {
+  // Storno má error téma - kontrola přes workflow stav ZRUSENA
+  if (hasWorkflowState(workflowCode, 'ZRUSENA')) {
     return 'phase-error';
   }
 
@@ -558,8 +558,7 @@ const preparePhase2Unlock = (formData) => {
       ...formData,
       stav_odeslano: false,
       datum_odeslani: '',
-      stav_stornovano: false,
-      datum_storna: '',
+      // 🛑 ODSTRANĚNO: stav_stornovano, datum_storna - neexistují v DB
       odeslani_storno_duvod: '',
       stav_workflow_kod: newWorkflowCode,
       dodavatel_zpusob_potvrzeni: { potvrzeni: '', datum: '', zpusob: '', poznamka: '' },
@@ -754,12 +753,12 @@ export const useWorkflowManager = (formData, isArchived = false) => {
 
   // 🎯 Téma barvy pro fázi
   const phaseTheme = useMemo(() => {
-    return getPhaseTheme(formData.stav_workflow_kod, formData.stav_stornovano);
-  }, [formData.stav_workflow_kod, formData.stav_stornovano]);
+    return getPhaseTheme(formData.stav_workflow_kod);
+  }, [formData.stav_workflow_kod]);
 
   // 🎯 Progress bar data - kompletní informace o všech fázích
   const phaseProgress = useMemo(() => {
-    const isStorno = formData.stav_stornovano;
+    // 🛑 ODSTRANĚNO: isStorno proměnná - používáme hasWorkflowState(workflowCode, 'ZRUSENA')
     const workflowCode = formData.stav_workflow_kod;
 
     return {
@@ -770,7 +769,7 @@ export const useWorkflowManager = (formData, isArchived = false) => {
         let isVisible = false;
 
         // Určení viditelnosti a barvy segmentu
-        if ((isStorno || hasWorkflowState(workflowCode, 'ZRUSENA')) && phaseNum >= 2) {
+        if (hasWorkflowState(workflowCode, 'ZRUSENA') && phaseNum >= 2) {
           fillClass = 'phase-error';
           isVisible = phaseNum <= Math.max(currentPhase, 2);
         } else {
@@ -785,7 +784,7 @@ export const useWorkflowManager = (formData, isArchived = false) => {
         };
       })
     };
-  }, [currentPhase, formData.stav_stornovano, formData.stav_workflow_kod]);
+  }, [currentPhase, formData.stav_workflow_kod]);
 
   // 🎯 Helper funkce jako useCallback
   const getCurrentPhaseCallback = useCallback(() => currentPhase, [currentPhase]);

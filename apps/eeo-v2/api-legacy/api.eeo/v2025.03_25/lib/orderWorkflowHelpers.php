@@ -92,7 +92,7 @@ function hasWorkflowState($workflowCode, $state) {
 function updateWorkflowAfterInvoiceAdded($db, $orderId, $isPokladna = false) {
     try {
         // Načíst aktuální objednávku
-        $stmt = $db->prepare("SELECT stav_workflow_kod, stav_stornovano FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt = $db->prepare("SELECT stav_workflow_kod FROM " . get_orders_table_name() . " WHERE id = :id");
         $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
         $stmt->execute();
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -101,13 +101,11 @@ function updateWorkflowAfterInvoiceAdded($db, $orderId, $isPokladna = false) {
             return false;
         }
         
-        // Skip pokud je stornováno
-        if ($order['stav_stornovano']) {
+        // Skip pokud je stornováno (ZRUSENA stav)
+        $workflowStates = parseWorkflowStates($order['stav_workflow_kod']);
+        if (in_array('ZRUSENA', $workflowStates)) {
             return true; // Není chyba, jen nic neděláme
         }
-        
-        // Načíst aktuální workflow stavy
-        $workflowStates = parseWorkflowStates($order['stav_workflow_kod']);
         
         // LOGIKA Z OrderForm25.js - FAKTURACE workflow update
         // Pouze pokud NENÍ pokladna

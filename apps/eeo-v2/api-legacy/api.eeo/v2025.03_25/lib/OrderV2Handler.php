@@ -233,7 +233,11 @@ class OrderV2Handler {
             'lock_info',            // Virtuální pole (sestavené ze zamek_* polí)
             'enriched_data',        // Virtuální pole (JOIN data)
             'items',                // Alias pro polozky
-            'attachments'           // Alias pro prilohy
+            'attachments',          // Alias pro prilohy
+            'storno_provedl',       // 🛑 DEPRECATED: Pole neexistuje v DB (používáme odesilatel_id)
+            'datum_storna',         // 🛑 DEPRECATED: Pole neexistuje v DB (používáme dt_odeslani)
+            'stav_stornovano',      // 🛑 DEPRECATED: Pole neexistuje v DB (používáme workflow ZRUSENA)
+            'storno_uzivatel_id'    // 🛑 DEPRECATED: Pole neexistuje v DB (používáme odesilatel_id)
         );
         
         // 🔒 ONLY during UPDATE: Block core IDs from being changed
@@ -249,6 +253,11 @@ class OrderV2Handler {
                 if ($key === 'schvalil_uzivatel_id') {
                     // Frontend posílá schvalil_uzivatel_id, ale DB má schvalovatel_id
                     $result['schvalovatel_id'] = $value;
+                } elseif ($key === 'storno_uzivatel_id') {
+                    // 🛑 DEPRECATED: storno_uzivatel_id neexistuje v DB
+                    // Používáme odesilatel_id pro OBOJÍ (odeslání i storno)
+                    // IGNOROVAT - nepřepisovat odesilatel_id z frontendu
+                    error_log("WARNING: Frontend poslal deprecated pole storno_uzivatel_id - IGNOROVÁNO");
                 } else {
                     $result[$key] = $value;
                 }

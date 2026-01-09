@@ -35,10 +35,8 @@ export const getOrderPhaseFromDraft = (draftData) => {
     }
   };
 
-  // Zkontroluj zda je objednávka zrušená/stornovaná
-  const isZrusena = hasWorkflowState(actualData.stav_workflow_kod, 'ZRUSENA') ||
-                    actualData.stav_stornovano === true ||
-                    actualData.stav_stornovano === '1';
+  // Zkontroluj zda je objednávka zrušená/stornovaná (pouze workflow stav)
+  const isZrusena = hasWorkflowState(actualData.stav_workflow_kod, 'ZRUSENA');
 
   // Pokud je zrušená, vrať info že je zrušená (pro speciální zacházení)
   if (isZrusena) {

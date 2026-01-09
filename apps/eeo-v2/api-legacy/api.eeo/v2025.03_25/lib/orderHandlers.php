@@ -703,6 +703,44 @@ function getLPBudgetInfo($db, $lp_id) {
 }
 
 /**
+ * Načíst čerpání smlouvy podle čísla smlouvy
+ * @param PDO $db - Databázové spojení
+ * @param string $cislo_smlouvy - Číslo smlouvy
+ * @return array|null - Data čerpání smlouvy nebo null
+ */
+function getSmlouvaCerpaniInfo($db, $cislo_smlouvy) {
+    if (empty($cislo_smlouvy)) return null;
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT 
+                hodnota_s_dph as hodnota,
+                cerpano_pozadovano,
+                cerpano_planovano,
+                cerpano_skutecne,
+                zbyva_pozadovano,
+                zbyva_planovano,
+                zbyva_skutecne,
+                procento_pozadovano,
+                procento_planovano,
+                procento_skutecne
+            FROM " . TBL_SMLOUVY . " 
+            WHERE cislo_smlouvy = :cislo_smlouvy 
+            AND aktivni = 1
+            LIMIT 1
+        ");
+        $stmt->bindParam(':cislo_smlouvy', $cislo_smlouvy, PDO::PARAM_STR);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $result ? $result : null;
+    } catch (Exception $e) {
+        error_log("getSmlouvaCerpaniInfo Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
  * Obohacení financování o lidský název typu a LP názvů + zbývající budget
  * @param PDO $db - Databázové spojení
  * @param array $order - Reference na objednávku (bude upravena)
@@ -768,6 +806,47 @@ function enrichOrderFinancovani($db, &$order) {
                 $order['_enriched'] = array();
             }
             $order['_enriched']['lp_info'] = $lp_info_enriched;
+        }
+        
+        // 🆕 Přidat info o smlouvě (číslo a čerpání)
+        if (isset($order['financovani']['cislo_smlouvy']) && !empty($order['financovani']['cislo_smlouvy'])) {
+            $cislo_smlouvy = $order['financovani']['cislo_smlouvy'];
+            error_log("DEBUG enrichOrderFinancovani: Nacitam smlouvu cislo: " . $cislo_smlouvy);
+            $smlouva_cerpani = getSmlouvaCerpaniInfo($db, $cislo_smlouvy);
+            error_log("DEBUG enrichOrderFinancovani: Vysledek getSmlouvaCerpaniInfo: " . json_encode($smlouva_cerpani));
+            
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            
+            if ($smlouva_cerpani) {
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => $smlouva_cerpani['hodnota'],
+                    'cerpano_pozadovano' => $smlouva_cerpani['cerpano_pozadovano'],
+                    'cerpano_planovano' => $smlouva_cerpani['cerpano_planovano'],
+                    'cerpano_skutecne' => $smlouva_cerpani['cerpano_skutecne'],
+                    'zbyva_pozadovano' => $smlouva_cerpani['zbyva_pozadovano'],
+                    'zbyva_planovano' => $smlouva_cerpani['zbyva_planovano'],
+                    'zbyva_skutecne' => $smlouva_cerpani['zbyva_skutecne']
+                );
+                error_log("DEBUG enrichOrderFinancovani: Pridano smlouva_info do _enriched");
+            } else {
+                error_log("DEBUG enrichOrderFinancovani: Smlouva nenalezena v DB pro cislo: " . $cislo_smlouvy);
+                // Smlouva nenalezena v DB
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => null,
+                    'cerpano_pozadovano' => null,
+                    'cerpano_planovano' => null,
+                    'cerpano_skutecne' => null,
+                    'zbyva_pozadovano' => null,
+                    'zbyva_planovano' => null,
+                    'zbyva_skutecne' => null
+                );
+            }
+        } else {
+            error_log("DEBUG enrichOrderFinancovani: Cislo smlouvy neni nastaveno nebo je prazdne. financovani: " . json_encode($order['financovani'] ?? null));
         }
     }
 }
