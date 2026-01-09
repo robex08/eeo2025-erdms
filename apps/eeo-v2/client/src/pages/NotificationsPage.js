@@ -27,7 +27,13 @@ import {
   faCompressAlt,
   faExclamationTriangle,
   faBolt,
-  faExclamation
+  faExclamation,
+  faHourglassHalf,
+  faCheckCircle,
+  faTimesCircle,
+  faPlay,
+  faPaperPlane,
+  faChartBar
 } from '@fortawesome/free-solid-svg-icons';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { SmartTooltip } from '../styles/SmartTooltip';
@@ -469,6 +475,7 @@ const StatIcon = styled.div`
   right: 12px;
   font-size: 1.75rem;
   opacity: 0.7;
+  color: ${props => props.$color || 'inherit'};
 `;
 
 const StatLabel = styled.div`
@@ -1875,7 +1882,7 @@ export const NotificationsPage = () => {
             title="Kliknutím zrušíte všechny filtry"
           >
             <StatValue>{stats.total}</StatValue>
-            <StatIcon>📊</StatIcon>
+            <StatIcon $color="#3b82f6"><FontAwesomeIcon icon={faChartBar} /></StatIcon>
             <StatLabel>Celkem notifikací</StatLabel>
           </StatCard>
 
@@ -1887,43 +1894,43 @@ export const NotificationsPage = () => {
             title="Filtrovat: Objednávka vytvořena"
           >
             <StatValue>{stats.nova}</StatValue>
-            <StatIcon>📝</StatIcon>
+            <StatIcon $color="#64748b"><FontAwesomeIcon icon={faPlay} /></StatIcon>
             <StatLabel>Nová</StatLabel>
           </StatCard>
 
           <StatCard
-            $color="#3b82f6"
+            $color="#dc2626"
             $clickable={true}
             $isActive={activeStatFilter === 'keSchvaleni'}
             onClick={() => handleStatCardClick('keSchvaleni')}
             title="Filtrovat: Objednávka ke schválení"
           >
             <StatValue>{stats.keSchvaleni}</StatValue>
-            <StatIcon>📋</StatIcon>
+            <StatIcon $color="#dc2626"><FontAwesomeIcon icon={faHourglassHalf} /></StatIcon>
             <StatLabel>Ke schválení</StatLabel>
           </StatCard>
 
           <StatCard
-            $color="#16a34a"
+            $color="#ea580c"
             $clickable={true}
             $isActive={activeStatFilter === 'schvalena'}
             onClick={() => handleStatCardClick('schvalena')}
             title="Filtrovat: Objednávka schválena"
           >
             <StatValue>{stats.schvalena}</StatValue>
-            <StatIcon>👍</StatIcon>
+            <StatIcon $color="#ea580c"><FontAwesomeIcon icon={faCheckCircle} /></StatIcon>
             <StatLabel>Schválená</StatLabel>
           </StatCard>
 
           <StatCard
-            $color="#dc2626"
+            $color="#6b7280"
             $clickable={true}
             $isActive={activeStatFilter === 'zamitnuta'}
             onClick={() => handleStatCardClick('zamitnuta')}
             title="Filtrovat: Objednávka zamítnuta"
           >
             <StatValue>{stats.zamitnuta}</StatValue>
-            <StatIcon>❌</StatIcon>
+            <StatIcon $color="#6b7280"><FontAwesomeIcon icon={faTimesCircle} /></StatIcon>
             <StatLabel>Zamítnutá</StatLabel>
           </StatCard>
 
@@ -1935,7 +1942,7 @@ export const NotificationsPage = () => {
             title="Filtrovat: Objednávka čeká"
           >
             <StatValue>{stats.cekaSe}</StatValue>
-            <StatIcon>⏸️</StatIcon>
+            <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faClock} /></StatIcon>
             <StatLabel>Čeká se</StatLabel>
           </StatCard>
 
@@ -1947,7 +1954,7 @@ export const NotificationsPage = () => {
             title="Filtrovat: Objednávka odeslána dodavateli"
           >
             <StatValue>{stats.odeslana}</StatValue>
-            <StatIcon>📤</StatIcon>
+            <StatIcon $color="#3b82f6"><FontAwesomeIcon icon={faPaperPlane} /></StatIcon>
             <StatLabel>Odeslána dodavateli</StatLabel>
           </StatCard>
 
