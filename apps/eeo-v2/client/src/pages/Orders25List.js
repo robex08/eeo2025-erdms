@@ -14515,7 +14515,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.ke_schvaleni}</StatValue>
-                      <StatIcon>{getStatusEmoji('ke_schvaleni')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
@@ -14530,7 +14532,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.schvalena}</StatValue>
-                      <StatIcon>{getStatusEmoji('schvalena')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
@@ -14545,7 +14549,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.zamitnuta}</StatValue>
-                      <StatIcon>{getStatusEmoji('zamitnuta')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
+                        <FontAwesomeIcon icon={faTimesCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Zamítnutá</StatLabel>
                   </StatCard>
@@ -15361,7 +15367,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.ke_schvaleni}</StatValue>
-                      <StatIcon>{getStatusEmoji('ke_schvaleni')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
+                        <FontAwesomeIcon icon={faHourglassHalf} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
@@ -15376,7 +15384,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.schvalena}</StatValue>
-                      <StatIcon>{getStatusEmoji('schvalena')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
+                        <FontAwesomeIcon icon={faCheckCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
@@ -15391,7 +15401,9 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   >
                     <StatHeader>
                       <StatValue>{stats.zamitnuta}</StatValue>
-                      <StatIcon>{getStatusEmoji('zamitnuta')}</StatIcon>
+                      <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
+                        <FontAwesomeIcon icon={faTimesCircle} />
+                      </StatIcon>
                     </StatHeader>
                     <StatLabel>Zamítnutá</StatLabel>
                   </StatCard>
