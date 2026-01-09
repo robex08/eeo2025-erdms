@@ -1218,7 +1218,12 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
               <FontAwesomeIcon icon={faChevronDown} />
             </CollapseIcon>
           </SectionHeader>
-          <SectionContent $collapsed={collapsed.fakturace} $theme="blue">
+          <SectionContent $collapsed={collapsed.fakturace} $theme="blue" style={{
+            maxHeight: '600px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingRight: '0.5rem'
+          }}>
             {orderData.faktury.map((faktura, index) => {
               const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
               const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));

@@ -29,7 +29,10 @@ apiOrderV2.interceptors.response.use(
   (response) => response,
   (error) => {
     // Authentication errors
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // 🔥 DŮLEŽITÉ: 403 Forbidden NENÍ auth error - je to permission error
+    // 401 Unauthorized = token vypršel nebo není validní → ODHLÁSIT
+    // 403 Forbidden = uživatel nemá právo k resource → NEODHLAŠOVAT!
+    if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('authError', {
           detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
@@ -1340,7 +1343,8 @@ export async function getOrderTimestampV2(orderId, token, username) {
   } catch (err) {
 
     // Rozpoznat auth error
-    if (err.response?.status === 401 || err.response?.status === 403) {
+    // 🔥 DŮLEŽITÉ: 403 Forbidden není důvod k odhlášení
+    if (err.response?.status === 401) {
       throw new Error('Unauthorized - please login again');
     }
 
