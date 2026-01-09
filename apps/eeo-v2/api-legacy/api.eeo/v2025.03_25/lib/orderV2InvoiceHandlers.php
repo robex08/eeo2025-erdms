@@ -515,7 +515,22 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
         }
         
+        // ✅ SPECIÁLNÍ ZPRACOVÁNÍ: objednavka_id a smlouva_id - povolí nastavit null pro unlink
+        if (array_key_exists('objednavka_id', $input)) {
+            $updateFields[] = 'objednavka_id = ?';
+            $updateValues[] = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
+        }
+        if (array_key_exists('smlouva_id', $input)) {
+            $updateFields[] = 'smlouva_id = ?';
+            $updateValues[] = !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
+        }
+        
         foreach ($allowedFields as $field) {
+            // Skip objednavka_id a smlouva_id - už zpracované výše
+            if (in_array($field, array('objednavka_id', 'smlouva_id'))) {
+                continue;
+            }
+            
             if (isset($input[$field])) {
                 if ($field === 'fa_cislo_vema') {
                     $updateFields[] = $field . ' = ?';

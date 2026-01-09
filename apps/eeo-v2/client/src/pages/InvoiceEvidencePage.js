@@ -1556,6 +1556,9 @@ export default function InvoiceEvidencePage() {
   // ✅ Ref pro sledování resetu - blokuje useEffect během reset operace
   // POZNÁMKA: Tento pattern je OK - ref slouží jako synchronizační mechanismus
   const isResettingRef = useRef(false);
+  
+  // 🚫 Flag pro prevenci localStorage reload po úspěšném UPDATE/CREATE
+  const [justCompletedOperation, setJustCompletedOperation] = useState(false);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
