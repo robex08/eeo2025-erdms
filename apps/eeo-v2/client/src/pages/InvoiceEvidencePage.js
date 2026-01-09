@@ -1740,10 +1740,10 @@ export default function InvoiceEvidencePage() {
   }, [isReadOnlyMode, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
-  // Věcná správnost JE editovatelná dokud NENÍ potvrzena
-  // Po potvrzení (vecna_spravnost_potvrzeno === 1) se ZAMKNE
-  // 🔥 DŮLEŽITÉ: Uživatelé s INVOICE_MATERIAL_CORRECTNESS MOHOU editovat věcnou správnost
-  //             i když nemají INVOICE_MANAGE (to je jejich hlavní účel!)
+  // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI
+  // Po potvrzení (originalFormData.vecna_spravnost_potvrzeno === 1 V DB) se ZAMKNE
+  // 🔥 DŮLEŽITÉ: Kontrolujeme PŮVODNÍ stav z DB, ne aktuální formData!
+  //             Změny se projeví až po uložení do DB a reload
   const isVecnaSpravnostEditable = useMemo(() => {
     // Musí mít alespoň jedno z těchto oprávnění:
     // - INVOICE_MANAGE (plný přístup k fakturám)
@@ -1753,8 +1753,10 @@ export default function InvoiceEvidencePage() {
       return false; // Bez permission vůbec nemůže editovat
     }
     
-    // Pokud už JE potvrzena věcná správnost → ZAMČENO (kromě INVOICE_MANAGE_ALL)
-    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
+    // 🔥 KLÍČOVÁ ZMĚNA: Kontrolujeme PŮVODNÍ stav z DB, ne aktuální formData
+    // Pokud už JE potvrzena věcná správnost V DATABÁZI → ZAMČENO (kromě INVOICE_MANAGE_ALL)
+    const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+    if (vecnaPotvrzenaVDB && !hasPermission('INVOICE_MANAGE_ALL')) {
       return false;
     }
     
@@ -1763,7 +1765,7 @@ export default function InvoiceEvidencePage() {
     
     // Jinak ODEMČENO
     return true;
-  }, [formData.vecna_spravnost_potvrzeno, isOrderCompleted, hasPermission]);
+  }, [originalFormData, isOrderCompleted, hasPermission]);
 
   // � Načítání LP číselníků při mount
   useEffect(() => {
@@ -3582,6 +3584,14 @@ export default function InvoiceEvidencePage() {
     // 🆕 Uživatel klikl na Zaevidovat/Aktualizovat - nastavit flag
     setInvoiceUserConfirmed(true);
 
+    console.log('🔍 [SUBMIT] START:', {
+      editingInvoiceId,
+      isReadOnlyMode,
+      hasChangedVecnaSpravnost,
+      formData_vecna: formData.vecna_spravnost_potvrzeno,
+      originalFormData_vecna: originalFormData?.vecna_spravnost_potvrzeno
+    });
+
     // ✅ Kontrola stavu objednávky
     // - Pro NOVOU fakturu s objednávkou
     // - Pro EDITACI faktury, kde PŘIDÁVÁME objednávku (původně neměla)
@@ -3605,45 +3615,64 @@ export default function InvoiceEvidencePage() {
       message: 'Ověřuji zadané údaje a připravuji data k uložení...'
     });
 
-    // ✅ Validace povinných polí
+    // ✅ Validace povinných polí - PŘESKOČIT pro readonly uživatele ukládající pouze věcnou správnost
     const errors = {};
     
-    // Číslo faktury - POVINNÉ
-    if (!formData.fa_cislo_vema || !formData.fa_cislo_vema.trim()) {
-      errors.fa_cislo_vema = 'Vyplňte číslo faktury';
+    if (!isReadOnlyMode) {
+      // Běžná validace pro uživatele s INVOICE_MANAGE
+      // Číslo faktury - POVINNÉ
+      if (!formData.fa_cislo_vema || !formData.fa_cislo_vema.trim()) {
+        errors.fa_cislo_vema = 'Vyplňte číslo faktury';
+      }
+
+      // Typ faktury - POVINNÉ
+      if (!formData.fa_typ) {
+        errors.fa_typ = 'Vyberte typ faktury';
+      }
+
+      // Datum doručení - POVINNÉ
+      if (!formData.fa_datum_doruceni) {
+        errors.fa_datum_doruceni = 'Vyplňte datum doručení';
+      }
+
+      // Datum vystavení - POVINNÉ
+      if (!formData.fa_datum_vystaveni) {
+        errors.fa_datum_vystaveni = 'Vyplňte datum vystavení';
+      }
+
+      // Datum splatnosti - POVINNÉ
+      if (!formData.fa_datum_splatnosti) {
+        errors.fa_datum_splatnosti = 'Vyplňte datum splatnosti';
+      }
+
+      // Částka - POVINNÉ
+      if (!formData.fa_castka || parseFloat(formData.fa_castka) <= 0) {
+        errors.fa_castka = 'Vyplňte platnou částku faktury';
+      }
+
+      // Validace datumů předání/vrácení (nepovinné, ale pokud jsou vyplněné)
+      if (formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam) {
+        const predani = new Date(formData.fa_datum_predani_zam);
+        const vraceni = new Date(formData.fa_datum_vraceni_zam);
+        if (vraceni < predani) {
+          errors.fa_datum_vraceni_zam = 'Datum vrácení nemůže být dřívější než datum předání';
+        }
+      }
     }
 
-    // Typ faktury - POVINNÉ
-    if (!formData.fa_typ) {
-      errors.fa_typ = 'Vyberte typ faktury';
-    }
+    // 🔥 SPECIÁLNÍ VALIDACE PRO READONLY UŽIVATELE (věcná správnost)
+    // Kontrola překročení ceny - pokud faktura překračuje max. cenu objednávky, MUSÍ být poznámka
+    if (isReadOnlyMode && editingInvoiceId && orderData && formData.vecna_spravnost_potvrzeno === 1) {
+      const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
+      const fakturaCastka = parseFloat(formData.fa_castka) || 0;
+      const rozdil = fakturaCastka - maxCena;
+      const prekroceno = rozdil > 0;
 
-    // Datum doručení - POVINNÉ
-    if (!formData.fa_datum_doruceni) {
-      errors.fa_datum_doruceni = 'Vyplňte datum doručení';
-    }
-
-    // Datum vystavení - POVINNÉ
-    if (!formData.fa_datum_vystaveni) {
-      errors.fa_datum_vystaveni = 'Vyplňte datum vystavení';
-    }
-
-    // Datum splatnosti - POVINNÉ
-    if (!formData.fa_datum_splatnosti) {
-      errors.fa_datum_splatnosti = 'Vyplňte datum splatnosti';
-    }
-
-    // Částka - POVINNÉ
-    if (!formData.fa_castka || parseFloat(formData.fa_castka) <= 0) {
-      errors.fa_castka = 'Vyplňte platnou částku faktury';
-    }
-
-    // Validace datumů předání/vrácení (nepovinné, ale pokud jsou vyplněné)
-    if (formData.fa_datum_predani_zam && formData.fa_datum_vraceni_zam) {
-      const predani = new Date(formData.fa_datum_predani_zam);
-      const vraceni = new Date(formData.fa_datum_vraceni_zam);
-      if (vraceni < predani) {
-        errors.fa_datum_vraceni_zam = 'Datum vrácení nemůže být dřívější než datum předání';
+      if (prekroceno) {
+        // Pokud je cena překročena, MUSÍ být vyplněna poznámka k věcné správnosti
+        if (!formData.poznamka_vecne_spravnosti || formData.poznamka_vecne_spravnosti.trim() === '') {
+          errors.poznamka_vecne_spravnosti = `⚠️ Faktura překračuje max. cenu objednávky o ${rozdil.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč. Vyplňte prosím důvod překročení v poznámce k věcné správnosti.`;
+        }
       }
     }
 
@@ -3653,6 +3682,9 @@ export default function InvoiceEvidencePage() {
       setError('Opravte prosím chyby ve formuláři před odesláním');
       // Zavřít progress modal při chybě validace
       setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '' });
+      
+      console.log('🔍 [VALIDATION] Errors:', errors);
+      
       return;
     }
 
@@ -3736,10 +3768,23 @@ export default function InvoiceEvidencePage() {
           fa_datum_predani_zam: formData.fa_datum_predani_zam || null,
           fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
-          fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || [])
+          fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
+          // 🆕 VĚCNÁ SPRÁVNOST - přidat všechna pole
+          umisteni_majetku: formData.umisteni_majetku || '',
+          poznamka_vecne_spravnosti: formData.poznamka_vecne_spravnosti || '',
+          vecna_spravnost_potvrzeno: formData.vecna_spravnost_potvrzeno || 0,
+          potvrdil_vecnou_spravnost_id: formData.potvrdil_vecnou_spravnost_id || null,
+          dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti || null
         };
         
-        console.log('=== DEBUG UPDATE DATA ===', updateData);
+        console.log('🔍 [UPDATE] updateData:', updateData);
+        console.log('🔍 [UPDATE] Věcná správnost:', {
+          umisteni_majetku: updateData.umisteni_majetku,
+          poznamka: updateData.poznamka_vecne_spravnosti,
+          potvrzeno: updateData.vecna_spravnost_potvrzeno,
+          potvrdil_id: updateData.potvrdil_vecnou_spravnost_id,
+          dt_potvrzeni: updateData.dt_potvrzeni_vecne_spravnosti
+        });
 
         // 🎯 Progress - aktualizace faktury
         setProgressModal(prev => ({
@@ -3755,7 +3800,10 @@ export default function InvoiceEvidencePage() {
           updateData
         });
         
-        console.log('=== DEBUG UPDATE RESPONSE ===', result);
+        console.log('🔍 [UPDATE] API Response:', result);
+        console.log('🔍 [UPDATE] Response status:', result?.status);
+        console.log('🔍 [UPDATE] Response success:', result?.success);
+        console.log('🔍 [UPDATE] Response message:', result?.message);
         
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP pro fakturu (pokud je LP financování)
         
@@ -5571,6 +5619,8 @@ export default function InvoiceEvidencePage() {
           </CollapsibleSection>
 
           {/* 🆕 SEKCE 2: VĚCNÁ SPRÁVNOST K FAKTUŘE - collapsible */}
+          {/* Zobrazit JEN pokud editujeme existující fakturu (editingInvoiceId) */}
+          {editingInvoiceId && (
           <CollapsibleSection data-section="material-correctness">
             <CollapsibleHeader onClick={() => toggleSection('materialCorrectness')}>
               <HeaderLeft>
@@ -5957,7 +6007,7 @@ export default function InvoiceEvidencePage() {
                   </label>
                 </div>
 
-                {/* Tlačítko pro opuštění formuláře */}
+                {/* Tlačítka pro věcnou správnost */}
                 {editingInvoiceId && (
                   <div style={{
                     marginTop: '1.5rem',
@@ -5967,6 +6017,35 @@ export default function InvoiceEvidencePage() {
                     gap: '1rem',
                     justifyContent: 'flex-end'
                   }}>
+                    {/* Tlačítko Aktualizovat věcnou správnost - zobrazit JEN když NENÍ potvrzena V DB */}
+                    {originalFormData?.vecna_spravnost_potvrzeno !== 1 && (
+                      <button
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          background: loading ? '#d1d5db' : '#16a34a',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: '0.95rem',
+                          fontWeight: '600',
+                          cursor: loading ? 'not-allowed' : 'pointer',
+                          opacity: loading ? 0.6 : 1,
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                        onMouseEnter={(e) => !loading && (e.target.style.background = '#15803d')}
+                        onMouseLeave={(e) => !loading && (e.target.style.background = '#16a34a')}
+                      >
+                        <FontAwesomeIcon icon={loading ? faExclamationTriangle : faSave} />
+                        {loading ? 'Ukládám...' : 'Aktualizovat věcnou správnost'}
+                      </button>
+                    )}
+                    
+                    {/* Tlačítko Opustit formulář */}
                     <button
                       onClick={() => {
                         navigate('/invoices25-list');
@@ -5994,6 +6073,7 @@ export default function InvoiceEvidencePage() {
               </FakturaCard>
             </SectionContent>
           </CollapsibleSection>
+          )}
           </FormColumnContent>
         </FormColumn>
 

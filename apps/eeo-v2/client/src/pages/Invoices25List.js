@@ -2309,9 +2309,19 @@ const Invoices25List = () => {
           return; // Přeruš otevírání dialogu věcné kontroly
         }
       } catch (err) {
-        // ⚠️ DŮLEŽITÉ: Chyba při kontrole LOCK - zobraz dialog
+        // ⚠️ DŮLEŽITÉ: Rozlišit typ chyby
         console.error('⚠️ LOCK Invoices25List: Chyba kontroly LOCK obj #' + invoice.objednavka_id, err);
         
+        // 🔥 403 Forbidden - uživatel nemá právo vidět objednávku
+        if (err?.message?.includes('Nemáte oprávnění') || err?.message?.includes('oprávnění')) {
+          showToast?.(
+            `Nemáte oprávnění k zobrazení objednávky #${invoice.objednavka_id}. Faktura může být přiřazena k objednávce z jiné organizace.`,
+            { type: 'error', duration: 6000 }
+          );
+          return; // ⚠️ Nepokračuj - uživatel nemá právo
+        }
+        
+        // 🔥 Jiná chyba - zobraz locked dialog s chybovou hláškou
         const lockInfo = {
           lockedByUserName: 'Nedostupné',
           lockedByUserEmail: null,
