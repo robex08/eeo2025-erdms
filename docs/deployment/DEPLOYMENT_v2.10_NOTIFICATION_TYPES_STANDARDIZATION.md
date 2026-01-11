@@ -100,8 +100,53 @@ Doplnění chybějících notifikací pro potvrzení a žádost o kontrolu věcn
 
 ## 🔧 DEPLOYMENT POSTUP
 
-### **KROK 1: Příprava**
+### **KROK 1: Příprava a zálohy**
 
+#### **1a. Git záloha**
+```bash
+cd /var/www/erdms-dev
+git tag -a "v2.10-backup-$(date +%Y%m%d_%H%M)" -m "Backup před nasazením v2.10"
+git push origin "v2.10-backup-$(date +%Y%m%d_%H%M)"
+```
+**✅ PROVEDENO:** Tag `v2.10-backup-20260111_2042` vytvořen
+
+#### **1b. Databáze FULL dump (eeo2025 - PROD)**
+```bash
+# FULL dump produkční databáze
+mysqldump -h 10.3.172.11 -u erdms_user -p'AhchohTahnoh7eim' \
+  --single-transaction \
+  --routines \
+  --triggers \
+  --events \
+  --complete-insert \
+  --hex-blob \
+  eeo2025 > /backup/eeo2025_full_dump_$(date +%Y%m%d_%H%M%S).sql
+
+# Ověřit velikost dumpu
+ls -lh /backup/eeo2025_full_dump_*.sql | tail -1
+
+# Komprese pro úsporu místa
+gzip /backup/eeo2025_full_dump_*.sql
+```
+
+#### **1c. Backend a Frontend backup (BEZ dat)**
+```bash
+# Backup backend (bez data adresáře)
+rsync -av --exclude='data/' \
+  /var/www/erdms-platform/ \
+  /backup/erdms-platform_backup_$(date +%Y%m%d_%H%M%S)/
+
+# Backup pouze konfiguračních souborů z data
+rsync -av --include='*.json' --include='*.xml' --include='*.conf' \
+  --exclude='*' \
+  /var/www/erdms-platform/data/ \
+  /backup/erdms-data-config_backup_$(date +%Y%m%d_%H%M%S)/
+
+# Ověřit velikost backupů
+du -sh /backup/*$(date +%Y%m%d)* | tail -3
+```
+
+#### **1d. Frontend build backup**
 ```bash
 # Přepnout na production branch
 cd /var/www/erdms-platform
@@ -169,7 +214,7 @@ grep -o 'REACT_APP_VERSION:"[^"]*"' build/static/js/main.*.js | head -1
 # Očekávaný výsledek: REACT_APP_VERSION:"2.10.0"
 ```
 
-### **KROK 4: Nasazení**
+### **KROK 4: Nasazení a refresh hierarchie**
 
 ```bash
 # Restartovat Apache (pokud je potřeba cache clear)
@@ -177,6 +222,37 @@ sudo systemctl reload apache2
 
 # Nebo pouze clear cache
 sudo service apache2 reload
+```
+
+#### **4a. Refresh organizační hierarchie (NUTNÉ!)**
+
+Po frontendu rebuild je **nutné refreshnout profil PRIKAZCI** v org hierarchii, protože:
+- Frontend kód byl aktualizován (8 souborů)
+- Nové event types `INVOICE_MATERIAL_CHECK_*` potřebují být dostupné
+- Validace polí byla opravena (`fa_predana_zam_id`)
+
+**Postup:**
+1. **Přihlásit se jako admin** do aplikace
+2. **Otevřít:** Systém workflow a notifikací (Organizační hierarchie)  
+3. **Vybrat profil:** `PRIKAZCI` (pravý horní dropdown)
+4. **Kliknout tlačítko:** `🔄 Načíst profil`
+5. **Počkat** na načtení hierarchie
+6. **Zkontrolovat templates:** Měly by se zobrazit šablony:
+   - ID 115: "Věcná správnost faktury vyžadována"
+   - ID 117: "Věcná správnost faktury potvrzena"
+7. **Ověřit event types:** V dropdown by měly být nové typy:
+   - `INVOICE_MATERIAL_CHECK_REQUESTED`
+   - `INVOICE_MATERIAL_CHECK_APPROVED`
+
+**⚠️ Pokud se nové šablony nezobrazí:**
+```bash
+# Vyčistit cache
+sudo systemctl restart apache2
+
+# Zkontrolovat session cache v DB
+mysql -h 10.3.172.11 -u erdms_user -p'AhchohTahnoh7eim' eeo2025-dev -e "
+DELETE FROM 25_sessions WHERE dt_created < NOW() - INTERVAL 1 HOUR;
+"
 ```
 
 ### **KROK 5: Verifikace**
@@ -538,8 +614,12 @@ sudo tail -f /var/log/php/error.log | grep -i notif
 
 ### **Během nasazení:**
 - [x] Databázová migrace spuštěna (11.1.2026 18:47)
-- [ ] Frontend rebuild (volitelné)
+- [x] Git záloha vytvořena (v2.10-backup-20260111_2042)
+- [ ] DB FULL dump (eeo2025)  
+- [ ] Backend/Frontend backup (bez data)
+- [ ] Frontend rebuild (verze 2.10.0)
 - [ ] Apache reload
+- [ ] **Refresh org hierarchie profil PRIKAZCI**
 - [ ] Verifikace v prohlížeči
 
 ### **Po nasazení:**
