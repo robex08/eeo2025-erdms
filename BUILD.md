@@ -4,19 +4,21 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
+**Aktuální DEV verze:** `2.10.0` *(připraveno k nasazení)*
+
 ## 🚀 Quick Start
 
 ```bash
 # Dashboard build a deploy
 ./build-dashboard.sh --dev --deploy
 
-# EEO v2 frontend + backend
+# EEO v2 frontend + backend (verze 2.10.0)
 ./build-eeo-v2.sh --dev --all --deploy
 
 # Všechny aplikace najednou
 ./build-all.sh --dev --deploy
 
-# Production build
+# Production build (verze 2.10.0)
 ./build-dashboard.sh --prod --deploy
 ```
 
@@ -133,6 +135,39 @@ cd /var/www/erdms-dev/docs/scripts-shell
 # Dev build všech aplikací
 ./build-all.sh --dev
 ```
+
+## 🆕 Verze 2.10.0 - Připraveno k nasazení
+
+**Stav:** ✅ READY FOR DEPLOYMENT  
+**Datum:** 11. ledna 2026  
+**Git tag:** v2.10-backup-20260111_2042
+
+### Co je nového v 2.10.0:
+- 📧 **HTML Email šablony** pro věcnou kontrolu faktur (MS Outlook 365)
+- 🔄 **Standardizace notifikačních typů** (126 záznamů migrováno)
+- 🎨 **UI improvements** (tooltips, custom dialogs, field validation fix)
+- 🛡️ **Anti-spam notifikace** (pouze při změně workflow stavu)
+
+### Frontend změny:
+- **package.json:** 2.08 → 2.10.0
+- **8 souborů upraveno:** OrganizationHierarchy, InvoiceEvidencePage, CustomSelect, atd.
+- **2 nové notification triggery** pro invoice material check
+
+### Databáze:
+- ✅ **126 notifikací migrováno** (11.1.2026 18:47)
+- ✅ **HTML šablony nahrány** (11.1.2026 20:35)
+- ✅ **Event types standardizovány**
+
+### Deployment postup:
+```bash
+# 1. Build EEO v2 s novou verzí
+./build-eeo-v2.sh --prod --all --deploy
+
+# 2. Po deployment - refresh org hierarchie profil PRIKAZCI
+# (nutné pro načtení nových templates a event types)
+```
+
+**📖 Kompletní deployment guide:** [DEPLOYMENT_v2.10_*.md](./docs/deployment/)
 
 ## ⚡ Quick Commands
 
