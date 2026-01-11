@@ -3325,6 +3325,10 @@ const OrganizationHierarchy = () => {
       if (template) {
         const nodeId = `template-${notifId}-${Date.now()}`;
         
+        // 🔥 AUTOMATICKY NASTAVIT EVENT TYPE z template.typ
+        const templateEventType = template.typ || template.type;
+        const initialEventTypes = templateEventType ? [templateEventType] : [];
+        
         const newNode = {
           id: nodeId,
           type: 'custom',
@@ -3335,6 +3339,7 @@ const OrganizationHierarchy = () => {
             name: template.nazev || template.name,
             position: 'Notifikační šablona',
             initials: '🔔',
+            eventTypes: initialEventTypes, // ✅ Přidat event types hned při vytvoření
             metadata: {
               type: 'template',
               template: template.nazev || template.name
