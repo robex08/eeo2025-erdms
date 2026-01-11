@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "2.08",
+  "version": "2.10.0",
   "private": true,
   "homepage": "/eeo-v2",
   "dependencies": {
