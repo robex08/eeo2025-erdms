@@ -103,7 +103,7 @@ function getNotificationTemplate($db, $typ) {
 function replacePlaceholders($text, $data) {
     if (empty($text)) return $text;
     
-    // ✅ OPRAVA: I když je $data prázdné, stejně nahradit placeholdery pomlčkou
+    // ✅ OPRAVA: Podpora {{placeholder}} (dvojité složené závorky)
     if (!empty($data)) {
         foreach ($data as $key => $value) {
             // Konvertovat hodnotu na string (pokud je to pole nebo objekt)
@@ -115,17 +115,20 @@ function replacePlaceholders($text, $data) {
                 $value = (string)$value;
             }
             
-            // XSS prevence pro stringové hodnoty (stejně jako v notif_replacePlaceholders)
+            // XSS prevence pro stringové hodnoty
             if (is_string($value) && !is_numeric($value)) {
                 $value = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
             }
             
+            // ✅ NOVÉ: Nahradit {{key}} i {key} (podpora obou formátů)
+            $text = str_replace('{{' . $key . '}}', $value, $text);
             $text = str_replace('{' . $key . '}', $value, $text);
         }
     }
     
     // ✅ OPRAVA: Odstranit nenaplněné placeholdery (nahradit pomlčkou)
-    // Podporuje malá písmena, čísla a podtržítka
+    // Podporuje dvojité i jednoduché závorky
+    $text = preg_replace('/\{\{[a-z0-9_]+\}\}/', '-', $text);
     $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
     
     return $text;
@@ -2614,39 +2617,10 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         } catch (Exception $e) {}
         
         // ✅ OPRAVA: Načíst placeholders pro VŠECHNY typy objektů
-        if ($objectType === 'orders') {
-            // DEBUG do DB
-            try {
-                $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
-                $stmt->execute(['Before loadOrderPlaceholders', json_encode(['object_id' => $objectId])]);
-            } catch (Exception $e) {}
-            
-            $dbPlaceholders = loadOrderPlaceholders($db, $objectId, $triggerUserId);
-            error_log("📊 [NotificationRouter] DB placeholders loaded: " . count($dbPlaceholders) . " keys");
-            if (!empty($dbPlaceholders)) {
-                error_log("   Keys: " . implode(', ', array_keys($dbPlaceholders)));
-            }
-            
-            // DEBUG do DB
-            try {
-                $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
-                $stmt->execute(['After loadOrderPlaceholders', json_encode([
-                    'count' => count($dbPlaceholders),
-                    'keys' => array_keys($dbPlaceholders)
-                ])]);
-            } catch (Exception $e) {}
-        } elseif ($objectType === 'invoices') {
-            // Načti placeholders pro faktury
-            $dbPlaceholders = loadInvoicePlaceholders($db, $objectId, $triggerUserId);
-            error_log("📊 [NotificationRouter] Invoice placeholders loaded: " . count($dbPlaceholders) . " keys");
-        } elseif ($objectType === 'cashbook') {
-            // Načti placeholders pro pokladnu
-            $dbPlaceholders = loadCashbookPlaceholders($db, $objectId, $triggerUserId);
-            error_log("📊 [NotificationRouter] Cashbook placeholders loaded: " . count($dbPlaceholders) . " keys");
-        } else {
-            $dbPlaceholders = array();
-            error_log("⚠️ [NotificationRouter] No placeholder loader for object type: $objectType");
-        }
+        // ✅ NOVÉ: Použít CENTRÁLNÍ funkci pro načtení VŠECH placeholderů
+        error_log("📊 [NotificationRouter] Loading placeholders via UNIVERSAL loader for type: $objectType");
+        $dbPlaceholders = loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId);
+        error_log("✅ [NotificationRouter] Universal placeholders loaded: " . count($dbPlaceholders) . " keys");
         
         // Merguj: frontend data mají prioritu, ale DB data doplní chybějící
         $placeholderData = array_merge($dbPlaceholders, $placeholderData);
@@ -4292,31 +4266,231 @@ function handle_notifications_templates_list($input, $config, $queries) {
 // ==========================================
 
 /**
- * Načte placeholder data pro faktury
- * Používá se v notificationRouter pro typ 'invoices'
+ * 🎯 CENTRÁLNÍ FUNKCE PRO NAČTENÍ VŠECH PLACEHOLDERŮ
+ * Jedna funkce pro všechny typy notifikací - faktury, objednávky, pokladna
+ * 
+ * @param PDO $db Database connection
+ * @param string $objectType Typ objektu: 'invoices', 'orders', 'cashbook'
+ * @param int $objectId ID objektu (faktura/objednávka/pokladna)
+ * @param int $triggerUserId ID uživatele který spustil akci
+ * @return array Kompletní sada placeholderů pro všechny šablony
+ */
+function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId = null) {
+    $placeholders = array();
+    
+    try {
+        $invoices_table = TBL_FAKTURY;
+        $orders_table = TBL_OBJEDNAVKY;
+        $users_table = TBL_UZIVATELE;
+        $contracts_table = TBL_SMLOUVY;
+        
+        // 1. FAKTURA - pokud je to faktura nebo má objednávka fakturu
+        if ($objectType === 'invoices') {
+            // Nejdřív zjistíme, k čemu faktura patří (objednávka/smlouva/samostatná)
+            $checkStmt = $db->prepare("SELECT objednavka_id, smlouva_id FROM $invoices_table WHERE id = :invoice_id");
+            $checkStmt->execute([':invoice_id' => $objectId]);
+            $invoiceType = $checkStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$invoiceType) {
+                error_log("[loadUniversalPlaceholders] Invoice $objectId not found");
+                return array();
+            }
+            
+            $hasOrder = !empty($invoiceType['objednavka_id']);
+            $hasContract = !empty($invoiceType['smlouva_id']);
+            
+            // VARIANTA 1: Faktura k OBJEDNÁVCE
+            if ($hasOrder) {
+                error_log("[loadUniversalPlaceholders] Invoice $objectId → ORDER {$invoiceType['objednavka_id']}");
+                $sql = "
+                    SELECT f.*, 
+                           o.id as order_id,
+                           o.cislo_objednavky as order_number,
+                           o.predmet as order_subject,
+                           o.max_cena_s_dph as order_max_price,
+                           o.dodavatel_nazev as supplier_name,
+                           o.dodavatel_ico as supplier_ico,
+                           o.objednatel_id, o.garant_uzivatel_id, o.prikazce_id,
+                           CONCAT(TRIM(CONCAT(COALESCE(vytvoril.titul_pred,''), ' ', COALESCE(vytvoril.jmeno,''), ' ', COALESCE(vytvoril.prijmeni,''), ' ', COALESCE(vytvoril.titul_za,'')))) as fakturant_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(predano.titul_pred,''), ' ', COALESCE(predano.jmeno,''), ' ', COALESCE(predano.prijmeni,''), ' ', COALESCE(predano.titul_za,'')))) as predano_komu_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(vs_user.titul_pred,''), ' ', COALESCE(vs_user.jmeno,''), ' ', COALESCE(vs_user.prijmeni,''), ' ', COALESCE(vs_user.titul_za,'')))) as vecna_spravnost_kontroloval,
+                           CONCAT(TRIM(CONCAT(COALESCE(obj.titul_pred,''), ' ', COALESCE(obj.jmeno,''), ' ', COALESCE(obj.prijmeni,''), ' ', COALESCE(obj.titul_za,'')))) as objednatel_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(gar.titul_pred,''), ' ', COALESCE(gar.jmeno,''), ' ', COALESCE(gar.prijmeni,''), ' ', COALESCE(gar.titul_za,'')))) as garant_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(prik.titul_pred,''), ' ', COALESCE(prik.jmeno,''), ' ', COALESCE(prik.prijmeni,''), ' ', COALESCE(prik.titul_za,'')))) as prikazce_name
+                    FROM $invoices_table f
+                    INNER JOIN $orders_table o ON f.objednavka_id = o.id
+                    LEFT JOIN $users_table vytvoril ON f.vytvoril_uzivatel_id = vytvoril.id
+                    LEFT JOIN $users_table predano ON f.fa_predana_zam_id = predano.id
+                    LEFT JOIN $users_table vs_user ON f.potvrdil_vecnou_spravnost_id = vs_user.id
+                    LEFT JOIN $users_table obj ON o.objednatel_id = obj.id
+                    LEFT JOIN $users_table gar ON o.garant_uzivatel_id = gar.id
+                    LEFT JOIN $users_table prik ON o.prikazce_id = prik.id
+                    WHERE f.id = :object_id
+                ";
+            }
+            // VARIANTA 2: Faktura ke SMLOUVĚ
+            elseif ($hasContract) {
+                error_log("[loadUniversalPlaceholders] Invoice $objectId → CONTRACT {$invoiceType['smlouva_id']}");
+                $sql = "
+                    SELECT f.*,
+                           s.id as smlouva_id,
+                           s.nazev_smlouvy as smlouva_subject,
+                           s.nazev_firmy as supplier_name,
+                           s.ico as supplier_ico,
+                           CONCAT(TRIM(CONCAT(COALESCE(vytvoril.titul_pred,''), ' ', COALESCE(vytvoril.jmeno,''), ' ', COALESCE(vytvoril.prijmeni,''), ' ', COALESCE(vytvoril.titul_za,'')))) as fakturant_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(predano.titul_pred,''), ' ', COALESCE(predano.jmeno,''), ' ', COALESCE(predano.prijmeni,''), ' ', COALESCE(predano.titul_za,'')))) as predano_komu_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(vs_user.titul_pred,''), ' ', COALESCE(vs_user.jmeno,''), ' ', COALESCE(vs_user.prijmeni,''), ' ', COALESCE(vs_user.titul_za,'')))) as vecna_spravnost_kontroloval
+                    FROM $invoices_table f
+                    INNER JOIN $contracts_table s ON f.smlouva_id = s.id
+                    LEFT JOIN $users_table vytvoril ON f.vytvoril_uzivatel_id = vytvoril.id
+                    LEFT JOIN $users_table predano ON f.fa_predana_zam_id = predano.id
+                    LEFT JOIN $users_table vs_user ON f.potvrdil_vecnou_spravnost_id = vs_user.id
+                    WHERE f.id = :object_id
+                ";
+            }
+            // VARIANTA 3: SAMOSTATNÁ faktura (bez objednávky i smlouvy)
+            else {
+                error_log("[loadUniversalPlaceholders] Invoice $objectId → STANDALONE (no order/contract)");
+                $sql = "
+                    SELECT f.*,
+                           CONCAT(TRIM(CONCAT(COALESCE(vytvoril.titul_pred,''), ' ', COALESCE(vytvoril.jmeno,''), ' ', COALESCE(vytvoril.prijmeni,''), ' ', COALESCE(vytvoril.titul_za,'')))) as fakturant_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(predano.titul_pred,''), ' ', COALESCE(predano.jmeno,''), ' ', COALESCE(predano.prijmeni,''), ' ', COALESCE(predano.titul_za,'')))) as predano_komu_name,
+                           CONCAT(TRIM(CONCAT(COALESCE(vs_user.titul_pred,''), ' ', COALESCE(vs_user.jmeno,''), ' ', COALESCE(vs_user.prijmeni,''), ' ', COALESCE(vs_user.titul_za,'')))) as vecna_spravnost_kontroloval
+                    FROM $invoices_table f
+                    LEFT JOIN $users_table vytvoril ON f.vytvoril_uzivatel_id = vytvoril.id
+                    LEFT JOIN $users_table predano ON f.fa_predana_zam_id = predano.id
+                    LEFT JOIN $users_table vs_user ON f.potvrdil_vecnou_spravnost_id = vs_user.id
+                    WHERE f.id = :object_id
+                ";
+            }
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute([':object_id' => $objectId]);
+            $data = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($data) {
+                // Základní placeholdery faktury (platí vždy)
+                $placeholders = array(
+                    'invoice_id' => $objectId,
+                    'invoice_number' => $data['fa_cislo_vema'] ?? '-',
+                    'invoice_amount' => $data['fa_castka'] ? number_format((float)$data['fa_castka'], 2, ',', ' ') . ' Kč' : '-',
+                    'invoice_amount_raw' => $data['fa_castka'] ?? 0,
+                    'invoice_date' => $data['fa_datum_vystaveni'] ?? '-',
+                    'invoice_due_date' => $data['fa_datum_splatnosti'] ?? '-',
+                    'invoice_delivery_date' => $data['fa_datum_doruceni'] ?? '-',
+                    'invoice_handover_date' => $data['fa_datum_predani_zam'] ?? '-',
+                    'invoice_paid_date' => $data['fa_datum_zaplaceni'] ?? '-',
+                    'invoice_type' => $data['fa_typ'] ?? '-',
+                    'fakturant_name' => $data['fakturant_name'] ?? '-',
+                    'predano_komu_name' => $data['predano_komu_name'] ?? '-',
+                    'vecna_spravnost_kontroloval' => $data['vecna_spravnost_kontroloval'] ?? '-',
+                    'fa_predana_zam_id' => $data['fa_predana_zam_id'] ?? null,
+                    'uzivatel_id' => $data['vytvoril_uzivatel_id'] ?? null,
+                    'creator_name' => $data['fakturant_name'] ?? '-',
+                    'created_by_name' => $data['fakturant_name'] ?? '-'
+                );
+                
+                // Přidat placeholdery specifické pro OBJEDNÁVKU
+                if ($hasOrder) {
+                    $placeholders['order_id'] = $data['order_id'] ?? null;
+                    $placeholders['order_number'] = $data['order_number'] ?? '-';
+                    $placeholders['order_subject'] = $data['order_subject'] ?? '-';
+                    $placeholders['max_price'] = $data['order_max_price'] ? number_format((float)$data['order_max_price'], 2, ',', ' ') . ' Kč' : '-';
+                    $placeholders['supplier_name'] = $data['supplier_name'] ?? '-';
+                    $placeholders['supplier_ico'] = $data['supplier_ico'] ?? '-';
+                    $placeholders['objednatel_name'] = $data['objednatel_name'] ?? '-';
+                    $placeholders['garant_name'] = $data['garant_name'] ?? '-';
+                    $placeholders['prikazce_name'] = $data['prikazce_name'] ?? '-';
+                    $placeholders['objednatel_id'] = $data['objednatel_id'] ?? null;
+                    $placeholders['garant_uzivatel_id'] = $data['garant_uzivatel_id'] ?? null;
+                    $placeholders['prikazce_id'] = $data['prikazce_id'] ?? null;
+                }
+                // Přidat placeholdery specifické pro SMLOUVU
+                elseif ($hasContract) {
+                    $placeholders['smlouva_id'] = $data['smlouva_id'] ?? null;
+                    $placeholders['smlouva_subject'] = $data['smlouva_subject'] ?? '-';
+                    $placeholders['supplier_name'] = $data['supplier_name'] ?? '-';
+                    $placeholders['supplier_ico'] = $data['supplier_ico'] ?? '-';
+                    // Pro smlouvy nemáme hierarchii jako u objednávek
+                    $placeholders['order_id'] = null;
+                    $placeholders['order_number'] = '-';
+                    $placeholders['order_subject'] = '-';
+                }
+                // SAMOSTATNÁ faktura - bez objednávky i smlouvy
+                else {
+                    $placeholders['order_id'] = null;
+                    $placeholders['smlouva_id'] = null;
+                    $placeholders['order_number'] = '-';
+                    $placeholders['order_subject'] = '-';
+                    $placeholders['smlouva_subject'] = '-';
+                    $placeholders['supplier_name'] = '-';
+                    $placeholders['supplier_ico'] = '-';
+                }
+            }
+        }
+        
+        // 2. OBJEDNÁVKA - pokud je to objednávka
+        elseif ($objectType === 'orders') {
+            $placeholders = loadOrderPlaceholders($db, $objectId, $triggerUserId);
+        }
+        
+        // 3. POKLADNA
+        elseif ($objectType === 'cashbook') {
+            $placeholders = loadCashbookPlaceholders($db, $objectId, $triggerUserId);
+        }
+        
+        return $placeholders;
+        
+    } catch (Exception $e) {
+        error_log("[loadUniversalPlaceholders] Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * @deprecated Použij loadUniversalPlaceholders()
+ * Ponecháno pro zpětnou kompatibilitu
  */
 function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
     error_log("[loadInvoicePlaceholders] START for invoice $invoiceId");
+    
+    // DEBUG do DB
+    try {
+        $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+        $stmt->execute(['loadInvoicePlaceholders START', json_encode(['invoice_id' => $invoiceId])]);
+    } catch (Exception $e) {}
     
     try {
         // Načti fakturu s joiny
         // ✅ OPRAVA: Používám konstanty tabulek místo hardcoded názvů
         $invoices_table = TBL_FAKTURY; // 25a_objednavky_faktury
         $orders_table = TBL_OBJEDNAVKY; // 25a_objednavky
-        $suppliers_table = TBL_DODAVATELE; // 25_dodavatele
         $users_table = TBL_UZIVATELE; // 25_uzivatele
+        $suppliers_table = TBL_DODAVATELE; // 25_dodavatele
         
         $sql = "
             SELECT f.*, 
-                   o.cislo_objednavky as order_number,
+                   COALESCE(o.cislo_objednavky, '') as order_number,
                    o.id as order_id,
-                   o.nazev_objednavky as order_name,
-                   d.nazev as supplier_name,
-                   CONCAT(u.jmeno, ' ', u.prijmeni) as creator_name
+                   o.objednatel_id,
+                   o.garant_uzivatel_id,
+                   o.prikazce_id,
+                   COALESCE(o.dodavatel_nazev, '') as order_supplier_name,
+                   COALESCE(o.dodavatel_ico, '') as order_supplier_ico,
+                   COALESCE(o.predmet, '') as order_subject,
+                   COALESCE(o.max_cena_s_dph, 0) as max_price,
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(u.titul_pred, ''), ' ', COALESCE(u.jmeno, ''), ' ', COALESCE(u.prijmeni, ''), ' ', COALESCE(u.titul_za, '')))), '') as creator_name,
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(p.titul_pred, ''), ' ', COALESCE(p.jmeno, ''), ' ', COALESCE(p.prijmeni, ''), ' ', COALESCE(p.titul_za, '')))), '') as predano_komu_name,
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(vs_u.titul_pred, ''), ' ', COALESCE(vs_u.jmeno, ''), ' ', COALESCE(vs_u.prijmeni, ''), ' ', COALESCE(vs_u.titul_za, '')))), '') as vecna_spravnost_kontroloval,
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(objednatel.titul_pred, ''), ' ', COALESCE(objednatel.jmeno, ''), ' ', COALESCE(objednatel.prijmeni, ''), ' ', COALESCE(objednatel.titul_za, '')))), '') as objednatel_name,
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(garant.titul_pred, ''), ' ', COALESCE(garant.jmeno, ''), ' ', COALESCE(garant.prijmeni, ''), ' ', COALESCE(garant.titul_za, '')))), '') as garant_name
             FROM $invoices_table f
             LEFT JOIN $orders_table o ON f.objednavka_id = o.id
-            LEFT JOIN $suppliers_table d ON f.dodavatel_id = d.id
-            LEFT JOIN $users_table u ON f.uzivatel_id = u.id
+            LEFT JOIN $users_table u ON f.vytvoril_uzivatel_id = u.id
+            LEFT JOIN $users_table p ON f.fa_predana_zam_id = p.id
+            LEFT JOIN $users_table vs_u ON f.potvrdil_vecnou_spravnost_id = vs_u.id
+            LEFT JOIN $users_table objednatel ON o.objednatel_id = objednatel.id
+            LEFT JOIN $users_table garant ON o.garant_uzivatel_id = garant.id
             WHERE f.id = :invoice_id
         ";
         
@@ -4326,26 +4500,62 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
         
         if (!$invoice) {
             error_log("[loadInvoicePlaceholders] Invoice $invoiceId not found");
+            
+            // DEBUG do DB
+            try {
+                $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+                $stmt->execute(['loadInvoicePlaceholders INVOICE NOT FOUND', json_encode(['invoice_id' => $invoiceId])]);
+            } catch (Exception $e) {}
+            
             return array();
         }
         
         // Formátuj placeholders
         $placeholders = array(
+            // Základní info faktury
             'invoice_id' => $invoiceId,
-            'invoice_number' => $invoice['cislo_faktury'] ?? '',
-            'invoice_vs' => $invoice['vs'] ?? '',
-            'supplier_name' => $invoice['supplier_name'] ?? 'Neznámý dodavatel',
-            'amount' => number_format((float)($invoice['castka'] ?? 0), 2, ',', ' ') . ' Kč',
-            'amount_raw' => $invoice['castka'] ?? 0,
-            'due_date' => $invoice['datum_splatnosti'] ?? '',
-            'invoice_date' => $invoice['datum_vystaveni'] ?? '',
-            'order_number' => $invoice['order_number'] ?? '',
+            'invoice_number' => $invoice['fa_cislo_vema'] ?? '-',
+            'invoice_amount' => $invoice['fa_castka'] ? number_format((float)$invoice['fa_castka'], 2, ',', ' ') . ' Kč' : '0,00 Kč',
+            'invoice_amount_raw' => $invoice['fa_castka'] ?? 0,
+            'invoice_date' => $invoice['fa_datum_vystaveni'] ?? '-',
+            'invoice_due_date' => $invoice['fa_datum_splatnosti'] ?? '-',
+            'invoice_delivery_date' => $invoice['fa_datum_doruceni'] ?? '-',
+            'invoice_handover_date' => $invoice['fa_datum_predani_zam'] ?? '-',  // Datum předání
+            'invoice_paid_date' => $invoice['fa_datum_zaplaceni'] ?? '-',
+            'invoice_type' => $invoice['fa_typ'] ?? '-',
+            
+            // Dodavatel z objednávky (může být prázdný pokud faktura není přiřazena k objednávce)
+            'supplier_name' => $invoice['order_supplier_name'] ?: '-',
+            'supplier_ico' => $invoice['order_supplier_ico'] ?: '-',
+            
+            // Objednávka (může být prázdná pokud faktura není přiřazena)
+            'order_number' => $invoice['order_number'] ?: '-',
             'order_id' => $invoice['order_id'] ?? null,
-            'order_name' => $invoice['order_name'] ?? '',
-            'creator_name' => $invoice['creator_name'] ?? '',
-            'stav' => $invoice['stav'] ?? '',
-            'poznamka' => $invoice['poznamka'] ?? '',
-            'user_name' => '{user_name}', // placeholder pro pozdější nahrazení
+            'order_subject' => $invoice['order_subject'] ?: '-',
+            'max_price' => $invoice['max_price'] ? number_format((float)$invoice['max_price'], 2, ',', ' ') . ' Kč' : '-',
+            
+            // ✅ NOVÉ: Objednatel a Garant z objednávky
+            'objednatel_name' => $invoice['objednatel_name'] ?: '-',
+            'garant_name' => $invoice['garant_name'] ?: '-',
+            
+            // Uživatelé
+            'creator_name' => $invoice['creator_name'] ?: '-',
+            'created_by_name' => $invoice['creator_name'] ?: '-',  // Alias pro fakturanta
+            'fakturant_name' => $invoice['creator_name'] ?: '-',   // Alias pro fakturanta
+            'predano_komu_name' => $invoice['predano_komu_name'] ?: '-',
+            'vecna_spravnost_kontroloval' => $invoice['vecna_spravnost_kontroloval'] ?: '-',
+            
+            // Věcná správnost
+            'vecna_spravnost_poznamka' => $invoice['vecna_spravnost_poznamka'] ?? '-',
+            'dt_potvrzeni_vecne_spravnosti' => $invoice['dt_potvrzeni_vecne_spravnosti'] ?? '-',
+            'potvrzeni_vecne_spravnosti' => $invoice['potvrzeni_vecne_spravnosti'] ?? 0,
+            
+            // ✅ KLÍČOVÁ POLE PRO HIERARCHII - s NULL fallbacks
+            'fa_predana_zam_id' => $invoice['fa_predana_zam_id'] ?? null,
+            'uzivatel_id' => $invoice['vytvoril_uzivatel_id'] ?? null,
+            'objednatel_id' => $invoice['objednatel_id'] ?? null,
+            'garant_uzivatel_id' => $invoice['garant_uzivatel_id'] ?? null,
+            'prikazce_id' => $invoice['prikazce_id'] ?? null
         );
         
         error_log("[loadInvoicePlaceholders] Loaded placeholders for invoice $invoiceId");
@@ -4353,6 +4563,13 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
         
     } catch (Exception $e) {
         error_log("[loadInvoicePlaceholders] Error: " . $e->getMessage());
+        
+        // DEBUG do DB
+        try {
+            $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
+            $stmt->execute(['loadInvoicePlaceholders ERROR', json_encode(['error' => $e->getMessage()])]);
+        } catch (Exception $e2) {}
+        
         return array();
     }
 }
