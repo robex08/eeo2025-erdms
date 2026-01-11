@@ -236,6 +236,94 @@ const ModalButton = styled.button`
   `}
 `;
 
+// Warning Dialog Components
+const WarningDialogOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  animation: fadeIn 0.2s ease-in-out;
+  backdrop-filter: blur(2px);
+`;
+
+const WarningDialogContent = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-left: 6px solid #f59e0b;
+`;
+
+const WarningDialogHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+`;
+
+const WarningDialogIcon = styled.div`
+  font-size: 3rem;
+  line-height: 1;
+  animation: pulse 2s ease-in-out infinite;
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+`;
+
+const WarningDialogTitle = styled.h3`
+  margin: 0;
+  color: #1e293b;
+  font-size: 1.4rem;
+  font-weight: 700;
+  flex: 1;
+`;
+
+const WarningDialogMessage = styled.div`
+  color: #475569;
+  font-size: 1rem;
+  line-height: 1.7;
+  margin-bottom: 28px;
+  white-space: pre-wrap;
+`;
+
+const WarningDialogActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+`;
+
+const WarningDialogButton = styled.button`
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 
 const MainContent = styled.div`
   flex: 1;
@@ -1649,6 +1737,14 @@ const OrganizationHierarchy = () => {
   const [sourceInfoEnabled, setSourceInfoEnabled] = useState(true);
   const [sourceInfoFields, setSourceInfoFields] = useState(['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id']);
   
+  // Warning Dialog state
+  const [warningDialog, setWarningDialog] = useState({
+    show: false,
+    title: '',
+    message: '',
+    icon: '⚠️'
+  });
+  
   // Detail panel data - druh vztahu a scope
   const [relationshipType, setRelationshipType] = useState('prime'); // prime, zastupovani, delegovani, rozsirene
   const [relationshipScope, setRelationshipScope] = useState('OWN'); // OWN, TEAM, LOCATION, ALL
@@ -2591,11 +2687,12 @@ const OrganizationHierarchy = () => {
             { type: 'warning', timeout: 8000 }
           );
         } else {
-          alert(
-            `⚠️ Nelze vytvořit spojení!\n\n` +
-            `Šablona "${sourceNode.data?.label || 'Neznámá'}" nemá definované žádné události (Event Types).\n\n` +
-            `Nejprve klikněte na šablonu a přidejte alespoň jednu událost.`
-          );
+          setWarningDialog({
+            show: true,
+            title: 'Nelze vytvořit spojení!',
+            message: `Šablona "${sourceNode.data?.label || 'Neznámá'}" nemá definované žádné události (Event Types).\n\nNejprve klikněte na šablonu a přidejte alespoň jednu událost.`,
+            icon: '⚠️'
+          });
         }
         return; // ❌ Zrušit vytvoření edge
       }
@@ -4295,7 +4392,12 @@ const OrganizationHierarchy = () => {
       const statusText = newActiveState ? 'aktivován (viditelný v AppSettings)' : 'deaktivován (skrytý v AppSettings)';
     } catch (error) {
       console.error(`Chyba při pokusu ${action} profil:`, error);
-      alert(`Nepodařilo se ${action} profil: ${error.message}`);
+      setWarningDialog({
+        show: true,
+        title: `Nepodařilo se ${action} profil`,
+        message: error.message || 'Neznámá chyba',
+        icon: '❌'
+      });
     }
   };
   
@@ -8903,6 +9005,24 @@ const OrganizationHierarchy = () => {
           }}
           emailData={fullscreenEmailData}
         />
+      )}
+
+      {/* Warning Dialog */}
+      {warningDialog.show && (
+        <WarningDialogOverlay onClick={() => setWarningDialog({ ...warningDialog, show: false })}>
+          <WarningDialogContent onClick={(e) => e.stopPropagation()}>
+            <WarningDialogHeader>
+              <WarningDialogIcon>{warningDialog.icon}</WarningDialogIcon>
+              <WarningDialogTitle>{warningDialog.title}</WarningDialogTitle>
+            </WarningDialogHeader>
+            <WarningDialogMessage>{warningDialog.message}</WarningDialogMessage>
+            <WarningDialogActions>
+              <WarningDialogButton onClick={() => setWarningDialog({ ...warningDialog, show: false })}>
+                OK, rozumím
+              </WarningDialogButton>
+            </WarningDialogActions>
+          </WarningDialogContent>
+        </WarningDialogOverlay>
       )}
       </Container>
     </>
