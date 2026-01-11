@@ -1,0 +1,33 @@
+Verze formatu;1.10
+LKQ.CZ:BENESOV - faktura c.;1445050451
+Datum vystaveni;9.12.2025
+Datum splatnosti;8.1.2026
+Forma uhrady;prevodem
+Mena;Kč
+Zakaznik;Zdravotnická zachranná služba Středočeského kraje,
+Adresa sidla;Vančurova 1544, 272 01 Kladno
+Adresa pro doruceni;Máchova 400, 256 01 Benešov
+ICO;75030926        
+DIC;                
+Dodavatel;LKQ CZ BENESOV
+ICO;24787426
+DIC;CZ24787426
+Adresa;Erbenova 134, 256 01 Benešov
+Vystavil(a);kmul02
+Cislo;Kod;Nazev;Mnozstvi;MOC bez DPH/ks;VOC bez DPH/ks;Sleva (%);DPH (%);Cena/ks;Celkem s DPH;Merne mnozstvi;Merna velicina;poznámka zákazníka
+1;CA EDGELL030-5;CASTROL EDGE 0W-30 LL - 5 l;4;1989.00;1989.00;0.00;21;1790.10;8664.08;5.00;l;
+2;CT 6PK1555;Drážkový řemen CONTINENTAL;1;439.00;439.00;0.00;21;311.69;377.14;1.00;ks;
+3;IN 532046810;Vodící kladka INA;1;499.00;499.00;0.00;21;354.29;428.69;1.00;ks;
+4;IN 534072810;Napínací kladka INA;1;1419.00;1419.00;0.00;21;1007.49;1219.06;1.00;ks;
+5;LM 26935 01;Uložení ramene nápravy LEMFÖRDER;4;549.00;549.00;0.00;21;351.36;1700.58;1.00;ks;
+6;LM 26937 01;Uložení ramene nápravy LEMFÖRDER;4;539.00;539.00;0.00;21;344.96;1669.61;1.00;ks;
+7;MF PU8046Z;Palivový filtr MANN;1;1009.00;1009.00;0.00;21;645.76;781.37;1.00;ks;
+8;CA EDGELL030-5;CASTROL EDGE 0W-30 LL - 5 l;2;1989.00;1989.00;0.00;21;1790.10;4332.04;5.00;l;
+9;MF C35154;Vzduchový filtr MANN;1;429.00;429.00;0.00;21;274.56;332.22;1.00;ks;
+10;MF CU2939;Kabinový filtr MANN;1;379.00;379.00;0.00;21;242.56;293.50;1.00;ks;
+11;MF HU7008Z;Olejový filtr MANN;1;269.00;269.00;0.00;21;172.16;208.31;1.00;ks;
+12;ZZ 7LA407271F;HRIDEL KLOUBOVY;1;23161.00;23161.00;0.00;21;23161.00;28024.81;0.00;;
+Sazba DPH (%);Bez DPH;DPH;Cena s DPH
+21;39695.39;8336.02;48031.41
+Celkem;39695.39;8336.02;48031.41
+

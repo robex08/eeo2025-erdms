@@ -23,18 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/v2025.03_25/lib/env-loader.php';
 require_once __DIR__ . '/v2025.03_25/middleware/authentication.php';
 require_once __DIR__ . '/v2025.03_25/lib/handlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/environment-utils.php';
 
-// Cesta k manuálům - DEV vs PRODUKCE
-$isDev = strpos($_SERVER['REQUEST_URI'], '/dev/') !== false;
-$manualsPath = $isDev 
-    ? '/var/www/erdms-data/eeo-v2/manualy' 
-    : '/var/www/erdms-platform/manualy';
+// Cesta k manuálům - automatická detekce prostředí z ENV
+$manualsPath = get_manuals_path();
 
 // Routing
 $requestUri = $_SERVER['REQUEST_URI'];
 $pathInfo = parse_url($requestUri, PHP_URL_PATH);
 
-// Odstranění base path
+// Odstranění base path - detekce prostředí
+$isDev = is_dev_environment();
 $basePath = $isDev ? '/dev/api.eeo/api25/manuals' : '/api.eeo/api25/manuals';
 $route = str_replace($basePath, '', $pathInfo);
 $route = trim($route, '/');

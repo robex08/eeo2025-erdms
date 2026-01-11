@@ -123,7 +123,7 @@ class SystemInfoService {
     static getDefaultInfo() {
         const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const isDev = apiBase.includes('/dev/');
-        const dbName = isDev ? 'eeo2025-dev' : 'eeo2025';
+        const dbName = process.env.REACT_APP_DB_NAME || 'EEO2025'; // Použije .env hodnotu
         
         return {
             database: {

@@ -70,7 +70,15 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
     
     # Build frontend
     echo "🔨 Building React app..."
-    npm run build
+    if [ "$ENVIRONMENT" = "dev" ]; then
+        # ⚠️ KRITICKÉ: DEV build MUSÍ používat build:dev:explicit!!!
+        # build:dev:explicit = REACT_APP_DB_NAME=eeo2025-dev + REACT_APP_API2_BASE_URL=/dev/api.eeo/
+        # NIKDY NEPOUŽÍVEJ build:dev pro DEV (používá ostrou DB eeo2025)!
+        echo "⚠️  Using build:dev:explicit (DB: eeo2025-dev, API: /dev/api.eeo/)"
+        npm run build:dev:explicit
+    else
+        npm run build:prod
+    fi
     
     if [ "$ENVIRONMENT" = "dev" ]; then
         echo "🔄 DEV: Frontend build stays in dev environment"

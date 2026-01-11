@@ -10,20 +10,24 @@
 import { encryptData, decryptData } from './encryption.js';
 import { shouldEncryptData, ENCRYPTION_CONFIG } from './encryptionConfig.js';
 
+// 🔧 Detekce DEV prostředí (PUBLIC_URL obsahuje /dev/)
+const IS_DEV_ENV = window.location.pathname.startsWith('/dev/');
+const ENV_PREFIX = IS_DEV_ENV ? 'dev_' : '';
+
 // Klíče pro localStorage s persistent tokenem (24h expiration)
 const PERSISTENT_KEYS = {
-  TOKEN: 'auth_token_persistent',
-  USER: 'auth_user_persistent',
-  USER_DETAIL: 'auth_user_detail_persistent',
-  USER_PERMISSIONS: 'auth_user_permissions_persistent'
+  TOKEN: `${ENV_PREFIX}auth_token_persistent`,
+  USER: `${ENV_PREFIX}auth_user_persistent`,
+  USER_DETAIL: `${ENV_PREFIX}auth_user_detail_persistent`,
+  USER_PERMISSIONS: `${ENV_PREFIX}auth_user_permissions_persistent`
 };
 
 // Klíče pro sessionStorage (dočasná data)
 const SESSION_KEYS = {
-  TOKEN: 'auth_token',
-  USER: 'auth_user',
-  USER_DETAIL: 'auth_user_detail',
-  USER_PERMISSIONS: 'auth_user_permissions'
+  TOKEN: `${ENV_PREFIX}auth_token`,
+  USER: `${ENV_PREFIX}auth_user`,
+  USER_DETAIL: `${ENV_PREFIX}auth_user_detail`,
+  USER_PERMISSIONS: `${ENV_PREFIX}auth_user_permissions`
 };
 
 // Klíče pro localStorage (méně citlivá data)

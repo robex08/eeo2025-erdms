@@ -1,0 +1,26 @@
+Verze formatu;1.10
+LKQ.CZ:BENESOV - faktura c.;1445051983
+Datum vystaveni;19.12.2025
+Datum splatnosti;18.1.2026
+Forma uhrady;prevodem
+Mena;Kč
+Zakaznik;Zdravotnická zachranná služba Středočeského kraje,
+Adresa sidla;Vančurova 1544, 272 01 Kladno
+Adresa pro doruceni;Máchova 400, 256 01 Benešov
+ICO;75030926        
+DIC;                
+Dodavatel;LKQ CZ BENESOV
+ICO;24787426
+DIC;CZ24787426
+Adresa;Erbenova 134, 256 01 Benešov
+Vystavil(a);jutr01
+Cislo;Kod;Nazev;Mnozstvi;MOC bez DPH/ks;VOC bez DPH/ks;Sleva (%);DPH (%);Cena/ks;Celkem s DPH;Merne mnozstvi;Merna velicina;poznámka zákazníka
+1;ZZ04L131354;ELEMENT TESNICI;1;263.00;263.00;0.00;21;263.00;318.23;0.00;;
+2;ZZ04L131521BF;TRUBKA SPOJOVACI;1;605.00;605.00;0.00;21;605.00;732.05;0.00;;
+3;ZZ04L131512CF;CHLADIC PRO ZPETNÉ VEDENÍ SPLODIN;1;13377.00;13377.00;0.00;21;13377.00;16186.17;0.00;;
+4;ACST020;STARLINE Čistící pasta na ruce 4000g;1;238.84;238.84;0.00;21;229.29;277.44;4.00;kg;
+5;MPM 50001;MPM Power Steering Fluid SHVI Synthetic - 1 l;3;362.80;362.80;0.00;21;326.52;1185.27;1.00;l;
+Sazba DPH (%);Bez DPH;DPH;Cena s DPH
+21;15453.85;3245.31;18699.16
+Celkem;15453.85;3245.31;18699.16
+

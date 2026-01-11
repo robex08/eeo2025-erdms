@@ -17,7 +17,10 @@ function Dashboard() {
   const [filterWithEmail, setFilterWithEmail] = useState(false);
   const [filterLicense, setFilterLicense] = useState('all');
   const [filterAccountStatus, setFilterAccountStatus] = useState('all');
+  const [filterDepartment, setFilterDepartment] = useState('all');
   const [availableLicenses, setAvailableLicenses] = useState([]);
+  const [expandedSupervisors, setExpandedSupervisors] = useState(new Set());
+  const [expandedUnits, setExpandedUnits] = useState(new Set());
   const [darkMode, setDarkMode] = useState(() => {
     // Načíst z localStorage nebo použít systémové nastavení
     const saved = localStorage.getItem('darkMode');
@@ -31,13 +34,15 @@ function Dashboard() {
   const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [calendarHoverTimeout, setCalendarHoverTimeout] = useState(null);
   
-  // Kontrola zda je admin (u03924, u09721 nebo u09694)
+  // Kontrola zda je admin (u03924, u09721, u09694 nebo u09764)
   const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
                   user?.upn?.toLowerCase().startsWith('u03924@') ||
                   user?.username?.toLowerCase() === 'u09721' || 
                   user?.upn?.toLowerCase().startsWith('u09721@') ||
                   user?.username?.toLowerCase() === 'u09694' || 
-                  user?.upn?.toLowerCase().startsWith('u09694@');
+                  user?.upn?.toLowerCase().startsWith('u09694@') ||
+                  user?.username?.toLowerCase() === 'u09764' || 
+                  user?.upn?.toLowerCase().startsWith('u09764@');
   
   useEffect(() => {
     loadUser();
@@ -219,6 +224,26 @@ function Dashboard() {
       console.log(`🔍 Filtr licence "${filterLicense}": ${filtered.length} z ${beforeLicense}`);
     }
     
+    // Filtr pro úsek (department)
+    if (filterDepartment !== 'all') {
+      const beforeDept = filtered.length;
+      if (filterDepartment === 'with-department') {
+        // Pouze zaměstnanci s vyplněným úsekem
+        filtered = filtered.filter(emp => {
+          const dept = (emp.department || '').trim();
+          return dept.length > 0;
+        });
+        console.log(`🔍 Filtr s úsekem: ${filtered.length} z ${beforeDept}`);
+      } else if (filterDepartment === 'without-department') {
+        // Pouze zaměstnanci bez vyplněného úseku
+        filtered = filtered.filter(emp => {
+          const dept = (emp.department || '').trim();
+          return dept.length === 0;
+        });
+        console.log(`🔍 Filtr bez úseku: ${filtered.length} z ${beforeDept}`);
+      }
+    }
+    
     return filtered;
   };
 
@@ -287,6 +312,323 @@ function Dashboard() {
   
   const handleLogout = async () => {
     await authService.logout();
+  };
+
+  // Pokročilé parsování organizační struktury s AI přiřazováním
+  const parseDepartmentAdvanced = (department, jobTitle = '') => {
+    if (!department) return null;
+    
+    const dept = department.toLowerCase();
+    const job = (jobTitle || '').toLowerCase();
+    
+    // AI/Heuristické přiřazení k náměstkům na základě klíčových slov
+    const assignToSupervisor = (deptName) => {
+      const name = deptName.toLowerCase();
+      
+      // Lékařský náměstek (LN)
+      if (name.includes('lékař') || name.includes('lekar') || name.includes('medicín') || 
+          name.includes('primář') || name.includes('primar') || name.includes('ordinac') ||
+          name.includes('amb') || name.includes('rtg') || name.includes('lab')) {
+        return 'LN';
+      }
+      
+      // Ekonomický náměstek (EN) 
+      if (name.includes('ekonom') || name.includes('účet') || name.includes('ucet') ||
+          name.includes('majetek') || name.includes('pojišť') || name.includes('pojist') ||
+          name.includes('finance') || name.includes('rozpočet') || name.includes('rozpoct')) {
+        return 'EN';
+      }
+      
+      // Personální náměstek (PN) - HR, mzdy, zaměstnanci
+      if (name.includes('personal') || name.includes('mzd') || name.includes('hr') ||
+          name.includes('zaměstnanec') || name.includes('zamestnanec') ||
+          name.includes('kadry') || name.includes('pracovní') || name.includes('pracovni') ||
+          name.includes('lidsk') || name.includes('sociál') || name.includes('social')) {
+        return 'PN';
+      }
+      
+      // Náměstek pro dispečink (ND)
+      if (name.includes('disp') || name.includes('operac') || name.includes('voj') ||
+          name.includes('oznam') || name.includes('komunikac')) {
+        return 'ND';
+      }
+      
+      // NNLZP (Náměstek pro nelékařské zdravotnické pracovníky) - včetně řidičů a záchranářů
+      if (name.includes('záchran') || name.includes('zachran') || name.includes('zzp') ||
+          name.includes('nelékař') || name.includes('nelekar') || name.includes('zdravot') ||
+          name.includes('param') || name.includes('řidič') || name.includes('ridic') ||
+          name.includes('vozidl') || name.includes('doprav') || name.includes('sanitk') ||
+          name.includes('ambulanc')) {
+        return 'NNLZP';
+      }
+      
+      // Technický náměstek (PT/PTN) - Provozně technická správa
+      if (name.includes('technick') || name.includes('tech') || name.includes('údržb') || 
+          name.includes('udrzb') || name.includes('provoz') || name.includes('pt') ||
+          name.includes('ptn') || name.includes('thp') || name.includes('pes') ||
+          name.includes('provozně') || name.includes('provozne') || name.includes('správ') ||
+          name.includes('sprav') || name.includes('ekonomická správa') || name.includes('ekonomicka sprava')) {
+        return 'PT';
+      }
+      
+      // IT a informatika (NS) - oddělené od technického úseku
+      if (name.includes('it') || name.includes('informatik') || name.includes('počítač') ||
+          name.includes('pocitac') || name.includes('software') || name.includes('hardware') ||
+          name.includes('síť') || name.includes('sit') || name.includes('server')) {
+        return 'NS';
+      }
+      
+      return 'OTHER';
+    };
+
+    // Detekce hierarchie pozic
+    const detectPositionLevel = (jobTitle, department) => {
+      const job = (jobTitle || '').toLowerCase();
+      const dept = (department || '').toLowerCase();
+      
+      // Ředitel
+      if (job.includes('ředitel') || job.includes('reditel') || job.includes('generál')) {
+        return 'DIRECTOR';
+      }
+      
+      // Náměstek nebo zástupce
+      if (job.includes('náměst') || job.includes('namest') || job.includes('zást') || 
+          job.includes('zast') || job.includes('deputy') || job.includes('vice')) {
+        return 'DEPUTY';
+      }
+      
+      // Primář
+      if (job.includes('primář') || job.includes('primar') || job.includes('primár')) {
+        return 'PRIMARY';
+      }
+      
+      // Vedoucí - rozšířená detekce (ale NE zástupce vedoucího)
+      if ((job.includes('vedouc') || job.includes('šéf') || job.includes('sef') || 
+          job.includes('manag') || job.includes('koordin') || job.includes('head') ||
+          job.includes('chief') || job.includes('leader') || job.includes('supervisor')) &&
+          !job.includes('zást') && !job.includes('zast') && !job.includes('deputy')) {
+        return 'MANAGER';
+      }
+      
+      // Specializované pozice
+      if (job.includes('lékař') || job.includes('lekar') || job.includes('md') || job.includes('mudr')) {
+        return 'DOCTOR';
+      }
+      
+      if (job.includes('záchran') || job.includes('zachran') || job.includes('param')) {
+        return 'PARAMEDIC';
+      }
+      
+      if (job.includes('účet') || job.includes('ucet') || job.includes('ekonom')) {
+        return 'ACCOUNTANT';
+      }
+      
+      if (job.includes('personal') || job.includes('hr') || job.includes('mzd')) {
+        return 'HR';
+      }
+      
+      return 'EMPLOYEE';
+    };
+
+    // Parsing různých formátů
+    let unitNumber = null;
+    let unitName = department;
+    let supervisor = null;
+    
+    // Formát: "901 - Úsek ekonomický"
+    const match1 = department.match(/^(\d+)\s*-\s*(.+)$/);
+    if (match1) {
+      unitNumber = match1[1];
+      unitName = match1[2].trim();
+    }
+    
+    // Formát: "901-Personální a mzdové"
+    const match2 = department.match(/^(\d+)-(.+)$/);
+    if (match2) {
+      unitNumber = match2[1];
+      unitName = match2[2].trim();
+    }
+    
+    // AI přiřazení k náměstkovi
+    supervisor = assignToSupervisor(unitName);
+    
+    // Detekce pozice v hierarchii
+    const positionLevel = detectPositionLevel(jobTitle, department);
+    
+    return {
+      unitNumber,
+      unitName,
+      supervisor,
+      positionLevel,
+      original: department,
+      jobTitle: jobTitle
+    };
+  };
+
+  // Vytvoření pokročilé organizační hierarchie
+  const buildAdvancedOrganizationHierarchy = () => {
+    const hierarchy = {
+      reditelstvi: { 
+        name: 'Ředitelství',
+        employees: [],
+        totalCount: 0
+      },
+      namestci: {}
+    };
+
+    employees.forEach(emp => {
+      const parsed = parseDepartmentAdvanced(emp.department, emp.jobTitle);
+      
+      if (!parsed) {
+        // Nezařazení
+        if (!hierarchy.namestci['OTHER']) {
+          hierarchy.namestci['OTHER'] = {
+            name: 'OTHER',
+            fullName: 'Ostatní / Nezařazení',
+            employees: [],
+            units: {},
+            managers: {},
+            totalCount: 0
+          };
+        }
+        hierarchy.namestci['OTHER'].employees.push(emp);
+        hierarchy.namestci['OTHER'].totalCount++;
+        return;
+      }
+
+      // Ředitelé
+      if (parsed.positionLevel === 'DIRECTOR') {
+        hierarchy.reditelstvi.employees.push(emp);
+        hierarchy.reditelstvi.totalCount++;
+        return;
+      }
+
+      // Náměstci a jejich struktura
+      if (!hierarchy.namestci[parsed.supervisor]) {
+        hierarchy.namestci[parsed.supervisor] = {
+          name: parsed.supervisor,
+          fullName: getSupervisorFullName(parsed.supervisor),
+          employees: [], // Přímo podřízení náměstkovi
+          units: {},     // Úseky
+          managers: {},  // Vedoucí/Primáři
+          totalCount: 0
+        };
+      }
+
+      const supervisor = hierarchy.namestci[parsed.supervisor];
+
+      // Náměstci sami
+      if (parsed.positionLevel === 'DEPUTY') {
+        supervisor.employees.push(emp);
+        supervisor.totalCount++;
+        return;
+      }
+
+      // Úseky
+      if (parsed.unitNumber) {
+        const unitKey = `${parsed.unitNumber}-${parsed.unitName}`;
+        
+        if (!supervisor.units[unitKey]) {
+          supervisor.units[unitKey] = {
+            number: parsed.unitNumber,
+            name: parsed.unitName,
+            employees: [],
+            managers: {}, // Primáři/Vedoucí v úseku
+            totalCount: 0
+          };
+        }
+
+        const unit = supervisor.units[unitKey];
+
+        // Primáři/Vedoucí v úseku
+        if (parsed.positionLevel === 'PRIMARY' || parsed.positionLevel === 'MANAGER') {
+          const managerKey = `${emp.id}-${emp.displayName}`;
+          
+          if (!unit.managers[managerKey]) {
+            unit.managers[managerKey] = {
+              manager: emp,
+              subordinates: [],
+              totalCount: 1
+            };
+          }
+        } else {
+          // Běžní zaměstnanci - přiřadíme k primáři pokud existuje
+          let assignedToManager = false;
+          
+          // Pokud je to lékař, pokusíme se přiřadit k primáři
+          if (parsed.positionLevel === 'DOCTOR' && Object.keys(unit.managers).length > 0) {
+            const primaryKey = Object.keys(unit.managers)[0]; // Vezmi prvního primáře
+            unit.managers[primaryKey].subordinates.push(emp);
+            unit.managers[primaryKey].totalCount++;
+            assignedToManager = true;
+          }
+          
+          if (!assignedToManager) {
+            unit.employees.push(emp);
+          }
+        }
+        
+        unit.totalCount++;
+        supervisor.totalCount++;
+      } else {
+        // Bez čísla úseku - přímo pod náměstka
+        supervisor.employees.push(emp);
+        supervisor.totalCount++;
+      }
+    });
+
+    return hierarchy;
+  };
+
+  // Toggle funkce pro rozbalovací uzly
+  const toggleSupervisor = (supervisorCode) => {
+    const newExpanded = new Set(expandedSupervisors);
+    if (newExpanded.has(supervisorCode)) {
+      newExpanded.delete(supervisorCode);
+    } else {
+      newExpanded.add(supervisorCode);
+    }
+    setExpandedSupervisors(newExpanded);
+  };
+
+  const toggleUnit = (unitKey) => {
+    const newExpanded = new Set(expandedUnits);
+    if (newExpanded.has(unitKey)) {
+      newExpanded.delete(unitKey);
+    } else {
+      newExpanded.add(unitKey);
+    }
+    setExpandedUnits(newExpanded);
+  };
+
+  // Mapování zkratek na plné názvy
+  const getSupervisorFullName = (code) => {
+    const mapping = {
+      'NNLZP': 'Náměstek pro nelékařské zdravotnické pracovníky',
+      'LN': 'Lékařský náměstek',
+      'PN': 'Personální náměstek',
+      'EN': 'Ekonomický náměstek',
+      'PT': 'Technický náměstek (Provozně technická správa)', 
+      'NS': 'Náměstek pro IT a informatiku',
+      'ND': 'Náměstek pro dispečink',
+      'NE': 'Náměstek pro ekonomiku',
+      'ZZ': 'Zdravotnický záchranář',
+      'DIR': 'Ředitelství',
+      'OTHER': 'Ostatní'
+    };
+    return mapping[code] || code;
+  };
+
+  const getPositionFullName = (code) => {
+    const mapping = {
+      'ZZ': 'Zdravotnický záchranář',
+      'LN': 'Lékař',
+      'VED': 'Vedoucí',
+      'DIR': 'Ředitel',
+      'PN': 'Provozní pracovník',
+      'EN': 'Ekonom'
+    };
+    return mapping[code] || code;
   };
 
   const loadCalendarEvents = async (forceReload = false) => {
@@ -672,7 +1014,7 @@ function Dashboard() {
             👥 Zaměstnanci
           </button>
         )}
-        {isAdmin && (
+        {false && isAdmin && (
           <button
             className={`tab-button ${activeTab === 'org-structure' ? 'active' : ''}`}
             onClick={() => setActiveTab('org-structure')}
@@ -1136,29 +1478,239 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Tab: Organizační struktura (jen pro adminy) */}
-        {activeTab === 'org-structure' && isAdmin && (
+        {/* Tab: Organizační struktura - TEMPORARILY DISABLED */}
+        {false && activeTab === 'org-structure' && isAdmin && (
           <div className="org-structure-section">
             <div className="org-structure-header">
               <h2>🏢 Organizační struktura</h2>
-              <p className="org-structure-subtitle">Přehled organizační struktury ZZS MSK</p>
+              <p className="org-structure-subtitle">
+                Hierarchické zobrazení organizace ZZS SK podle úseků a nadřízených
+              </p>
             </div>
-            <div className="org-structure-placeholder">
-              <div className="placeholder-icon">🏗️</div>
-              <h3>Sekce je v přípravě</h3>
-              <p>Zde bude implementováno:</p>
-              <ul className="placeholder-features">
-                <li>📊 Vizualizace organizační struktury</li>
-                <li>🔄 Hierarchie oddělení a útvarů</li>
-                <li>👥 Přehled vedoucích a týmů</li>
-                <li>📈 Organizační schémata</li>
-                <li>🔍 Vyhledávání v organizační struktuře</li>
-              </ul>
-            </div>
+
+            {employees.length === 0 ? (
+              <div className="org-structure-empty">
+                <button onClick={loadEmployees} className="load-button">
+                  Načíst zaměstnance
+                </button>
+              </div>
+            ) : (
+              <div className="org-structure-content">
+                {(() => {
+                  const hierarchy = buildAdvancedOrganizationHierarchy();
+                  
+                  return (
+                    <div className="org-hierarchy-tree">
+                      {/* Ředitelství - vždy nahoře */}
+                      {hierarchy.reditelstvi.totalCount > 0 && (
+                        <div className="org-tree-node org-tree-root">
+                          <div 
+                            className="org-node-card org-card-director"
+                            onClick={() => toggleUnit('reditelstvi')}
+                          >
+                            <div className="org-node-icon">🏛️</div>
+                            <div className="org-node-content">
+                              <div className="org-node-title">{hierarchy.reditelstvi.name}</div>
+                              <div className="org-node-count">
+                                {hierarchy.reditelstvi.totalCount} zaměstnanců
+                              </div>
+                            </div>
+                            <div className="org-expand-icon">
+                              {expandedUnits.has('reditelstvi') ? '🔽' : '▶️'}
+                            </div>
+                          </div>
+
+                          {/* Zaměstnanci ředitelství */}
+                          {expandedUnits.has('reditelstvi') && (
+                            <div className="org-employees-list">
+                              {hierarchy.reditelstvi.employees.map(emp => (
+                                <div key={emp.id} className="org-employee-mini">
+                                  <div className="org-employee-avatar">
+                                    {emp.givenName?.[0]}{emp.surname?.[0]}
+                                  </div>
+                                  <div className="org-employee-info">
+                                    <div className="org-employee-name">{emp.displayName}</div>
+                                    {emp.jobTitle && (
+                                      <div className="org-employee-title">{emp.jobTitle}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Náměstci */}
+                      <div className="org-deputies-grid">
+                        {Object.entries(hierarchy.namestci)
+                          .filter(([_, deputy]) => deputy.totalCount > 0)
+                          .sort((a, b) => b[1].totalCount - a[1].totalCount) // Řazení podle počtu
+                          .map(([code, deputy]) => (
+                          <div key={code} className="org-tree-branch">
+                            <div 
+                              className="org-node-card org-card-deputy"
+                              onClick={() => toggleSupervisor(code)}
+                            >
+                              <div className="org-node-icon">
+                                {code === 'LN' ? '🩺' : 
+                                 code === 'NNLZP' ? '🚑' :
+                                 code === 'PN' ? '👥' :
+                                 code === 'EN' ? '💰' :
+                                 code === 'PT' ? '🔧' :
+                                 code === 'NS' ? '💻' :
+                                 code === 'ND' ? '📞' :
+                                 code === 'OTHER' ? '❓' : '👔'}
+                              </div>
+                              <div className="org-node-content">
+                                <div className="org-node-title">{deputy.fullName}</div>
+                                <div className="org-node-subtitle">{code}</div>
+                                <div className="org-node-count">
+                                  {Object.keys(deputy.units).length} úseků • {deputy.totalCount} zaměstnanců
+                                </div>
+                              </div>
+                              <div className="org-expand-icon">
+                                {expandedSupervisors.has(code) ? '🔽' : '▶️'}
+                              </div>
+                            </div>
+
+                            {/* Úseky a zaměstnanci pod náměstkem */}
+                            {expandedSupervisors.has(code) && (
+                              <div className="org-units-container">
+                                {/* Úseky s čísly */}
+                                {Object.keys(deputy.units).length > 0 && (
+                                  <div className="org-units-list">
+                                    <div className="org-section-title">📊 Úseky:</div>
+                                    {Object.entries(deputy.units).map(([unitKey, unit]) => (
+                                      <div key={unitKey} className="org-unit-item">
+                                        <div 
+                                          className="org-unit-card"
+                                          onClick={() => toggleUnit(unitKey)}
+                                        >
+                                          <div className="org-unit-number">{unit.number}</div>
+                                          <div className="org-unit-info">
+                                            <div className="org-unit-name">{unit.name}</div>
+                                            <div className="org-unit-count">
+                                              {unit.totalCount} zaměstnanců
+                                            </div>
+                                          </div>
+                                          <div className="org-expand-icon-small">
+                                            {expandedUnits.has(unitKey) ? '🔽' : '▶️'}
+                                          </div>
+                                        </div>
+
+                                        {/* Vedoucí a zaměstnanci v úseku */}
+                                        {expandedUnits.has(unitKey) && (
+                                          <div className="org-employees-list">
+                                            {/* VEDOUCÍ - zobrazit PRVNÍ */}
+                                            {Object.entries(unit.managers || {}).map(([managerKey, manager]) => (
+                                              <div key={managerKey} className="org-manager-section">
+                                                <div className="org-manager-card">
+                                                  <div className="org-employee-avatar org-manager-avatar">
+                                                    {manager.givenName?.[0]}{manager.surname?.[0]}
+                                                  </div>
+                                                  <div className="org-employee-info">
+                                                    <div className="org-employee-name org-manager-name">
+                                                      👑 {manager.displayName}
+                                                    </div>
+                                                    {manager.jobTitle && (
+                                                      <div className="org-employee-title org-manager-title">
+                                                        {manager.jobTitle}
+                                                      </div>
+                                                    )}
+                                                    {manager.subordinates?.length > 0 && (
+                                                      <div className="org-subordinates-count">
+                                                        {manager.subordinates.length} podřízených
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* Podřízení vedoucího */}
+                                                {manager.subordinates?.map(sub => (
+                                                  <div key={sub.id} className="org-employee-mini org-subordinate">
+                                                    <div className="org-employee-avatar">
+                                                      {sub.givenName?.[0]}{sub.surname?.[0]}
+                                                    </div>
+                                                    <div className="org-employee-info">
+                                                      <div className="org-employee-name">↳ {sub.displayName}</div>
+                                                      {sub.jobTitle && (
+                                                        <div className="org-employee-title">{sub.jobTitle}</div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ))}
+                                            
+                                            {/* OSTATNÍ ZAMĚSTNANCI - zobrazit PO vedoucích */}
+                                            {unit.employees.map(emp => (
+                                              <div key={emp.id} className="org-employee-mini">
+                                                <div className="org-employee-avatar">
+                                                  {emp.givenName?.[0]}{emp.surname?.[0]}
+                                                </div>
+                                                <div className="org-employee-info">
+                                                  <div className="org-employee-name">{emp.displayName}</div>
+                                                  {emp.jobTitle && (
+                                                    <div className="org-employee-title">{emp.jobTitle}</div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Zaměstnanci přímo pod náměstkem (bez úseku) */}
+                                {deputy.employees.length > 0 && (
+                                  <div className="org-direct-employees">
+                                    <div className="org-section-title">👥 Přímo podřízení:</div>
+                                    <div className="org-employees-list">
+                                      {deputy.employees.map(emp => (
+                                        <div key={emp.id} className="org-employee-mini">
+                                          <div className="org-employee-avatar">
+                                            {emp.givenName?.[0]}{emp.surname?.[0]}
+                                          </div>
+                                          <div className="org-employee-info">
+                                            <div className="org-employee-name">{emp.displayName}</div>
+                                            {emp.jobTitle && (
+                                              <div className="org-employee-title">{emp.jobTitle}</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Debug info */}
+                      <div className="org-debug">
+                        <details>
+                          <summary>🔧 Debug informace</summary>
+                          <div style={{fontSize: '0.8rem', color: '#666', marginTop: '0.5rem'}}>
+                            <div>Celkem zaměstnanců: {employees.length}</div>
+                            <div>Náměstci: {Object.keys(hierarchy.namestci).length}</div>
+                            <div>Ředitelství: {hierarchy.reditelstvi.totalCount}</div>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tab: Zaměstnanci (jen pro u03924, u09721 a u09694) */}
+        {/* Tab: Zaměstnanci (jen pro u03924, u09721, u09694 a u09764) */}
         {activeTab === 'employees' && isAdmin && (
           <div className="employees-section">
             <div className="employees-header">
@@ -1239,6 +1791,24 @@ function Dashboard() {
                         <span>Jen neaktivní</span>
                       </label>
                     </div>
+                    
+                    <label htmlFor="department-filter" className="filter-label" style={{marginTop: '1rem'}}>
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clipRule="evenodd"/>
+                      </svg>
+                      Úsek (901, 101 apod.)
+                    </label>
+                    <select
+                      id="department-filter"
+                      className="license-select"
+                      value={filterDepartment}
+                      onChange={(e) => setFilterDepartment(e.target.value)}
+                      style={{marginTop: '0.5rem'}}
+                    >
+                      <option value="all">Všichni (bez filtru)</option>
+                      <option value="with-department">Pouze s vyplněným úsekem</option>
+                      <option value="without-department">Pouze bez úseku</option>
+                    </select>
                   </div>
 
                   <div className="filter-group">
@@ -1335,14 +1905,16 @@ function Dashboard() {
                       <div className="employee-info">
                         <div className="employee-name">
                           {emp.displayName}
-                          {emp.employeeId && (
-                            <span className="employee-id-badge" title="Osobní číslo">
-                              {emp.employeeId}
-                            </span>
-                          )}
                         </div>
                         {emp.jobTitle && (
-                          <div className="employee-title">{emp.jobTitle}</div>
+                          <div className="employee-title">
+                            {emp.jobTitle}
+                            {emp.employeeId && (
+                              <span className="employee-id-badge" title="Osobní číslo">
+                                {emp.employeeId}
+                              </span>
+                            )}
+                          </div>
                         )}
                         {emp.userPrincipalName && (
                           <div className="employee-username">
