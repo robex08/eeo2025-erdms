@@ -51,11 +51,6 @@ const handleApiError = (error, operation) => {
     // Server odpověděl s chybovým kódem
     const status = error.response.status;
     const data = error.response.data;
-    
-    // 🔍 DEBUG: Výpis celé response pro diagnostiku
-    console.log('🔍 DEBUG Response Status:', status);
-    console.log('🔍 DEBUG Response Data:', data);
-    console.log('🔍 DEBUG Response Data Type:', typeof data);
 
     if (status === 401 || status === 403) {
       throw new Error('Nemáte oprávnění k této operaci');
