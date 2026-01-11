@@ -1914,12 +1914,8 @@ const OrganizationHierarchy = () => {
   // MULTI-FIELD: Synchronizace targetScopeFields do selectedNode při změně
   useEffect(() => {
     if (selectedNode && selectedNode.data?.scopeDefinition && targetScopeFields?.length > 0) {
-      // Validace fields
-      const validFields = [
-        'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
-        'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
-        'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
-      ];
+      // Validace fields - použít všechna pole z allUserFields
+      const validFields = allUserFields.map(f => f.value);
       
       const cleanedFields = targetScopeFields.filter(field => {
         const isValid = validFields.includes(field);
@@ -2168,11 +2164,7 @@ const OrganizationHierarchy = () => {
             
             // Validace fields array
             if (scope.fields && Array.isArray(scope.fields)) {
-              const validFields = [
-                'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
-                'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
-                'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
-              ];
+              const validFields = allUserFields.map(f => f.value);
               
               normalized.data.scopeDefinition.fields = scope.fields.filter(field => {
                 const isValid = validFields.includes(field);
@@ -2201,11 +2193,7 @@ const OrganizationHierarchy = () => {
             
             // Validace edge fields
             if (sourceInfo.fields && Array.isArray(sourceInfo.fields)) {
-              const validFields = [
-                'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
-                'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
-                'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
-              ];
+              const validFields = allUserFields.map(f => f.value);
               
               normalized.data.source_info_recipients.fields = sourceInfo.fields.filter(field => {
                 return validFields.includes(field);
