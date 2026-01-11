@@ -878,6 +878,7 @@ const CustomSelect = ({
 
               // Pro všechny multiselect používej speciální komponentu s checkboxem
               if (multiple) {
+                const optionLabel = getOptionLabel(option, field);
                 return (
                   <MultiSelectOption
                     key={option.id || option.user_id || option.value || index}
@@ -890,6 +891,7 @@ const CustomSelect = ({
                       handleToggleOption(option);
                     }}
                     onMouseEnter={() => setHighlightedIndex(index)}
+                    title={optionLabel}
                   >
                     <input
                       type="checkbox"
@@ -897,13 +899,14 @@ const CustomSelect = ({
                       readOnly
                     />
                     <span>
-                      {getOptionLabel(option, field)}
+                      {optionLabel}
                     </span>
                   </MultiSelectOption>
                 );
               }
 
               // Pro ostatní selecty používej CustomSelectOption
+              const optionLabel = getOptionLabel(option, field);
               return (
                 <CustomSelectOption
                   key={option.id || option.user_id || option.uzivatel_id || option.kod_stavu || option.kod || option.value || index}
@@ -918,8 +921,9 @@ const CustomSelect = ({
                     multiple ? handleToggleOption(option) : handleSelect(option);
                   }}
                   onMouseEnter={() => setHighlightedIndex(index)}
+                  title={optionLabel}
                 >
-                  {getOptionLabel(option, field)}
+                  {optionLabel}
                 </CustomSelectOption>
               );
             })

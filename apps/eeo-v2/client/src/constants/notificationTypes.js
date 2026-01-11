@@ -39,9 +39,9 @@ export const NOTIFICATION_TYPES = {
   // ====================================================================
   // FÁZE 7: Věcná správnost (NOVÉ)
   // ====================================================================
-  ORDER_STATUS_KONTROLA_CEKA: 'ORDER_VERIFICATION_PENDING', // ⚡ HIGH
-  ORDER_STATUS_KONTROLA_POTVRZENA: 'ORDER_VERIFICATION_APPROVED',
-  ORDER_STATUS_KONTROLA_ZAMITNUTA: 'ORDER_VERIFICATION_REJECTED', // ⚡ HIGH (reklamace)
+  ORDER_STATUS_KONTROLA_CEKA: 'INVOICE_MATERIAL_CHECK_REQUESTED', // ⚡ HIGH (faktury)
+  ORDER_STATUS_KONTROLA_POTVRZENA: 'INVOICE_MATERIAL_CHECK_APPROVED', // (faktury)
+  ORDER_STATUS_KONTROLA_ZAMITNUTA: 'INVOICE_MATERIAL_CHECK_REJECTED', // ⚡ HIGH (reklamace - zatím nepoužito)
 
   // ====================================================================
   // TODO ALARMY (připraveno pro budoucnost)
@@ -106,9 +106,9 @@ export const getNotificationTypeName = (type) => {
     'ORDER_INVOICE_PAID': 'Faktura uhrazena',
 
     // FÁZE 7
-    'ORDER_VERIFICATION_PENDING': 'Čeká na kontrolu věcné správnosti',
-    'ORDER_VERIFICATION_APPROVED': 'Věcná správnost potvrzena',
-    'ORDER_VERIFICATION_REJECTED': 'Věcná správnost zamítnuta (reklamace)',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'Čeká na kontrolu věcné správnosti faktury',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'Věcná správnost faktury potvrzena',
+    'INVOICE_MATERIAL_CHECK_REJECTED': 'Věcná správnost zamítnuta (reklamace)',
 
     // TODO
     'alarm_todo_normal': 'TODO - Připomínka',
@@ -175,9 +175,9 @@ export const getNotificationIcon = (type) => {
     'ORDER_INVOICE_PAID': '💵',
 
     // FÁZE 7
-    'ORDER_VERIFICATION_PENDING': '🔍',
-    'ORDER_VERIFICATION_APPROVED': '✔️',
-    'ORDER_VERIFICATION_REJECTED': '⚠️',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': '🔍',
+    'INVOICE_MATERIAL_CHECK_APPROVED': '✔️',
+    'INVOICE_MATERIAL_CHECK_REJECTED': '⚠️',
 
     // TODO
     'alarm_todo_normal': '🔔',
@@ -223,8 +223,8 @@ export const getNotificationPriority = (type) => {
     // HIGH (vysoká priorita)
     'ORDER_PENDING_APPROVAL': 'high',
     'ORDER_REJECTED': 'high',
-    'ORDER_VERIFICATION_PENDING': 'high',
-    'ORDER_VERIFICATION_REJECTED': 'high',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'high',
+    'INVOICE_MATERIAL_CHECK_REJECTED': 'high',
     'alarm_todo_expired': 'high',
     'system_maintenance_scheduled': 'high',
     'system_user_login_alert': 'high',
@@ -242,7 +242,7 @@ export const getNotificationPriority = (type) => {
     'ORDER_INVOICE_ADDED': 'normal',
     'ORDER_INVOICE_APPROVED': 'normal',
     'ORDER_INVOICE_PAID': 'normal',
-    'ORDER_VERIFICATION_APPROVED': 'normal',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'normal',
     'alarm_todo_normal': 'normal',
     'todo_assigned': 'normal',
     'system_maintenance_finished': 'normal',
