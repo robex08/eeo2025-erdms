@@ -25,8 +25,8 @@ const NotificationTester = ({ token, username, userId }) => {
     'ORDER_REGISTRY_PUBLISHED',
     'ORDER_INVOICE_ADDED',
     'ORDER_INVOICE_PAID',
-    'ORDER_VERIFICATION_APPROVED',
-    'ORDER_VERIFICATION_REJECTED'
+    'INVOICE_MATERIAL_CHECK_APPROVED',
+    'INVOICE_MATERIAL_CHECK_REJECTED'
   ];
 
   const handlePreview = async () => {

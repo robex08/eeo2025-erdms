@@ -3285,7 +3285,7 @@ export default function InvoiceEvidencePage() {
       // Backend automaticky najde správné příjemce podle hierarchie a notification profiles
       // Podporuje generické příjemce (OBJEDNATEL, GARANT, SCHVALOVATEL_1, SCHVALOVATEL_2, ...)
       const result = await notificationService.trigger(
-        'ORDER_MATERIAL_CORRECTNESS', // Event type code pro věcnou správnost
+        'INVOICE_MATERIAL_CHECK_REQUESTED', // 🔔 Faktura přidána - čeká na kontrolu věcné správnosti
         orderId,
         user_id // ID uživatele, který vytvořil/přiřadil fakturu
       );
@@ -4005,6 +4005,33 @@ export default function InvoiceEvidencePage() {
         } catch (updateErr) {
           console.error('⚠️ Nepodařilo se aktualizovat workflow objednávky:', updateErr);
           // Neblokujeme úspěch faktury, jen logujeme chybu
+        }
+      }
+
+      // 🔔 NOTIFIKACE: Změna "Předáno komu"
+      // Poslat notifikaci POUZE když:
+      // 1. Editujeme existující fakturu s objednávkou
+      // 2. Změnilo se "Předáno komu" (fa_predana_zam_id)
+      // 3. Je nastaveno datum předání (fa_datum_predani_zam)
+      // 4. NENÍ nastaveno datum vrácení (fa_datum_vraceni_zam)
+      if (editingInvoiceId && formData.order_id && orderData && originalFormData) {
+        const originalPredanoKomu = originalFormData.fa_predana_zam_id;
+        const currentPredanoKomu = formData.fa_predana_zam_id;
+        const hasDatePredani = !!formData.fa_datum_predani_zam;
+        const hasDateVraceni = !!formData.fa_datum_vraceni_zam;
+
+        // Detekce změny
+        const hasChanged = (originalPredanoKomu !== currentPredanoKomu);
+        
+        if (hasChanged && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
+          try {
+            // Poslat stejnou notifikaci jako při změně faktury (INVOICE_MATERIAL_CHECK_REQUESTED)
+            await sendInvoiceNotifications(formData.order_id, orderData);
+            console.log('📬 Notifikace: Faktura předána zaměstnanci ID:', currentPredanoKomu);
+          } catch (notifErr) {
+            console.error('⚠️ Nepodařilo se odeslat notifikaci při změně "Předáno komu":', notifErr);
+            // Neblokujeme úspěch faktury
+          }
         }
       }
 

@@ -68,7 +68,7 @@ export const NOTIFICATION_TYPES = {
   ORDER_STATUS_NEUVEREJNIT: 'order_status_neuverejnit',       // Nebude zveřejňovat (TODO: přidat do DB)
   ORDER_STATUS_FAKTURACE: 'order_status_faktura_prirazena',   // Fáze fakturace (DB: id 60)
   ORDER_STATUS_VECNA_SPRAVNOST: 'order_status_zkontrolovana', // Kontrola věcné správnosti (TODO: ověřit)
-  ORDER_STATUS_ZKONTROLOVANA: 'ORDER_VERIFICATION_PENDING',   // Zkontrolována (DB: id 19)
+  ORDER_STATUS_ZKONTROLOVANA: 'INVOICE_MATERIAL_CHECK_REQUESTED',   // Faktura - čeká na kontrolu věcné správnosti (DB: id 17)
 
   // OBECNÉ
   SYSTEM_MAINTENANCE: 'system_maintenance',
@@ -82,6 +82,10 @@ export const NOTIFICATION_TYPES = {
 
   // FORCE UNLOCK (Násilné převzetí objednávky)
   ORDER_UNLOCK_FORCED: 'order_unlock_forced', // Notifikace pro uživatele, kterému byla objednávka násilně odebrána
+
+  // FAKTURY - VĚCNÁ SPRÁVNOST (NOVÉ 2026-01-11)
+  INVOICE_MATERIAL_CHECK_REQUESTED: 'INVOICE_MATERIAL_CHECK_REQUESTED', // Faktura vyžaduje kontrolu věcné správnosti (DB: id 17)
+  INVOICE_MATERIAL_CHECK_APPROVED: 'INVOICE_MATERIAL_CHECK_APPROVED',   // Věcná správnost faktury potvrzena (DB: id 19)
 
   // SYSTÉMOVÉ NOTIFIKACE (NOVÉ z DB)
   SYSTEM_MAINTENANCE_SCHEDULED: 'system_maintenance_scheduled',

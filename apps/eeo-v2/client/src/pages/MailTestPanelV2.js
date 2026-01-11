@@ -1489,7 +1489,7 @@ const MailTestPanel = () => {
               {/* KONTROLA POTVRZENA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_APPROVED');
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1523,7 +1523,7 @@ const MailTestPanel = () => {
               {/* KONTROLA POTVRZENA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_APPROVED');
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_APPROVED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1557,7 +1557,7 @@ const MailTestPanel = () => {
               {/* KONTROLA ZAMÍTNUTA - RECIPIENT */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_REJECTED');
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_REJECTED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
@@ -1591,7 +1591,7 @@ const MailTestPanel = () => {
               {/* KONTROLA ZAMÍTNUTA - SUBMITTER */}
               <Button 
                 onClick={async () => {
-                  const template = templates.find(t => t.type === 'ORDER_VERIFICATION_REJECTED');
+                  const template = templates.find(t => t.type === 'INVOICE_MATERIAL_CHECK_REJECTED');
                   if (template) {
                     const demoData = {
                       '{order_number}': 'OBJ-2025-00123',
