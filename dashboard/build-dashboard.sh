@@ -1,0 +1,1 @@
+docs/scripts-shell/build-dashboard.sh

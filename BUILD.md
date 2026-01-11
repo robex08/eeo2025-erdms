@@ -2,7 +2,23 @@
 
 ## 📋 Overview
 
-ERDMS používá modulární build systém s oddělenými skripty pro každou aplikaci. Každý script podporuje DEV/PROD prostředí a volitelný deployment.
+ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
+
+## 🚀 Quick Start
+
+```bash
+# Dashboard build a deploy
+./build-dashboard.sh --dev --deploy
+
+# EEO v2 frontend + backend
+./build-eeo-v2.sh --dev --all --deploy
+
+# Všechny aplikace najednou
+./build-all.sh --dev --deploy
+
+# Production build
+./build-dashboard.sh --prod --deploy
+```
 
 ## 📚 Dokumentace
 
@@ -12,19 +28,20 @@ ERDMS používá modulární build systém s oddělenými skripty pro každou ap
 
 ### Lokace
 ```
-/var/www/erdms-dev/docs/scripts-shell/
+/var/www/erdms-dev/docs/scripts-shell/  (originály)
+/var/www/erdms-dev/                     (symlinky)
 ```
 
 ### Dostupné skripty
 
-| Script | Popis | Aplikace |
-|--------|--------|-----------|
-| `build-dashboard.sh` | Dashboard build + deploy | Dashboard + Auth API trigger |
-| `build-auth-api.sh` | Auth API deploy | Auth API standalone |
-| `build-dashboard-auth.sh` | Dashboard + Auth API combo | Dashboard + Auth API |
-| `build-eeo-v2.sh` | EEO v2 frontend/backend | EEO v2 |
-| `build-intranet-v26.sh` | Intranet v26 build + deploy | Intranet v26 |
-| `build-all.sh` | Master script pro všechny aplikace | All |
+| Script | Popis | Aplikace | Příklad použití |
+|--------|--------|-----------|------------------|
+| `build-dashboard.sh` | Dashboard build + deploy | Dashboard + Auth API trigger | `./build-dashboard.sh --dev --deploy` |
+| `build-auth-api.sh` | Auth API deploy | Auth API standalone | `./build-auth-api.sh --prod --deploy` |
+| `build-dashboard-auth.sh` | Dashboard + Auth API combo | Dashboard + Auth API | `./build-dashboard-auth.sh --dev --deploy` |
+| `build-eeo-v2.sh` | EEO v2 frontend/backend | EEO v2 | `./build-eeo-v2.sh --dev --all --deploy` |
+| `build-intranet-v26.sh` | Intranet v26 build + deploy | Intranet v26 | `./build-intranet-v26.sh --prod --deploy` |
+| `build-all.sh` | Master script pro všechny aplikace | All | `./build-all.sh --dev --deploy` |
 
 ## 🎛️ Parametry
 
@@ -56,7 +73,7 @@ ERDMS používá modulární build systém s oddělenými skripty pro každou ap
 │   │   ├── client/           # EEO v2 React frontend
 │   │   └── api/              # EEO v2 Node.js backend
 │   └── intranet-v26/         # Intranet v26 app
-└── _docs/scripts-shell/      # Build scripts
+└── docs/scripts-shell/       # Build scripts
 ```
 
 ### Production
@@ -78,7 +95,7 @@ ERDMS používá modulární build systém s oddělenými skripty pro každou ap
 
 ### Dashboard Development
 ```bash
-cd /var/www/erdms-dev/_docs/scripts-shell
+cd /var/www/erdms-dev/docs/scripts-shell
 
 # Build pro development (zůstává v dev)
 ./build-dashboard.sh --dev
@@ -121,7 +138,7 @@ cd /var/www/erdms-dev/_docs/scripts-shell
 
 ### Rychlý production deploy všeho
 ```bash
-cd /var/www/erdms-dev/_docs/scripts-shell
+cd /var/www/erdms-dev/docs/scripts-shell
 ./build-all.sh --prod --deploy
 ```
 

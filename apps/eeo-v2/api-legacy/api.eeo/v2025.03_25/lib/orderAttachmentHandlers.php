@@ -35,8 +35,9 @@ function get_orders25_upload_path($config, $objednavka_id, $user_id) {
     } else if (isset($uploadConfig['relative_path']) && !empty($uploadConfig['relative_path'])) {
         $basePath = $uploadConfig['relative_path'];
     } else {
-        // ✅ Fallback - použij cestu z .env (UPLOAD_ROOT_PATH)
-        $basePath = getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/';
+        // ✅ Fallback - použij centrální environment utility
+        require_once __DIR__ . '/environment-utils.php';
+        $basePath = get_upload_root_path();
     }
     
     // Přidání lomítka na konec pokud chybí

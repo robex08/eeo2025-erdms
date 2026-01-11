@@ -10702,6 +10702,12 @@ function OrderForm25() {
                 return stredisko ? stredisko.label : kod;
               });
               
+              console.log('🔔 [OrderForm25] Odesílám notifikaci ORDER_PENDING_APPROVAL');
+              console.log('   orderId:', orderId);
+              console.log('   user_id:', user_id);
+              console.log('   formData.objednatel_id:', formData.objednatel_id);
+              console.log('   orderNumber:', orderNumber);
+              
               // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
               const notifResponse = await triggerNotification(
                 'ORDER_PENDING_APPROVAL',
@@ -10721,8 +10727,18 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
+              console.log('✅ [OrderForm25] Notifikace ORDER_PENDING_APPROVAL ÚSPĚŠNĚ odeslána!');
+              console.log('   Response:', notifResponse);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-new', `Org-hierarchy notifikace triggernuta pro novou objednávku ${orderNumber}`);
             } catch (triggerError) {
+              console.error('❌ [OrderForm25] Chyba při odesílání notifikace ORDER_PENDING_APPROVAL!');
+              console.error('   Error:', triggerError);
+              console.error('   Error message:', triggerError.message);
+              console.error('   Error stack:', triggerError.stack);
+              if (triggerError.response) {
+                console.error('   HTTP Status:', triggerError.response.status);
+                console.error('   Response data:', triggerError.response.data);
+              }
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-new', `Chyba při trigger notifikaci: ${triggerError.message}`);
             }
           }
@@ -10734,6 +10750,10 @@ function OrderForm25() {
                 const stredisko = strediskaOptions.find(opt => opt.value === kod);
                 return stredisko ? stredisko.label : kod;
               });
+              
+              console.log('🔔 [OrderForm25] Odesílám notifikaci ORDER_SENT_TO_SUPPLIER');
+              console.log('   orderId:', orderId);
+              console.log('   orderNumber:', orderNumber);
               
               const notifResponse2 = await triggerNotification(
                 'ORDER_SENT_TO_SUPPLIER',
@@ -10753,8 +10773,12 @@ function OrderForm25() {
                   mimoradna_udalost: formData.mimoradna_udalost || false
                 }
               );
+              console.log('✅ [OrderForm25] Notifikace ORDER_SENT_TO_SUPPLIER ÚSPĚŠNĚ odeslána!');
+              console.log('   Response:', notifResponse2);
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-odeslana-new', `Org-hierarchy notifikace triggernuta pro nově odeslanou objednávku ${orderNumber}`);
             } catch (triggerError) {
+              console.error('❌ [OrderForm25] Chyba při odesílání notifikace ORDER_SENT_TO_SUPPLIER!');
+              console.error('   Error:', triggerError);
               addDebugLog('warning', 'NOTIFICATION', 'trigger-error-odeslana-new', `Chyba při trigger notifikaci ODESLANA: ${triggerError.message}`);
             }
           }

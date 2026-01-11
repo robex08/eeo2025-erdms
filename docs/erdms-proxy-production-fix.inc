@@ -40,7 +40,7 @@ Alias /api.eeo /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo
     ProxyPass !
 </Location>
 
-Alias /eeo-v2/prilohy /var/www/erdms-data/eeo-v2/prilohy
+Alias /eeo-v2/prilohy /var/www/erdms-dev/data/eeo-v2/prilohy
 
 <Directory /var/www/erdms-data/eeo-v2/prilohy>
     Options -Indexes +FollowSymLinks
