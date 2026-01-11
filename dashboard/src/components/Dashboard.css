@@ -1854,12 +1854,10 @@ body.dark-mode .app-card.inspektor-card {
   color: var(--text-primary);
   font-size: 1rem;
   margin-bottom: 0.25rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .employee-id-badge {
@@ -1878,11 +1876,12 @@ body.dark-mode .app-card.inspektor-card {
 }
 
 .employee-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.875rem;
   color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-wrap: wrap;
 }
 
 .employee-dates {
@@ -2545,59 +2544,6 @@ body.dark-mode .manager-email {
   font-size: 1rem;
 }
 
-.org-structure-placeholder {
-  background: var(--card-bg);
-  border-radius: 16px;
-  padding: 3rem 2rem;
-  box-shadow: var(--card-shadow);
-  text-align: center;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.placeholder-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-  opacity: 0.7;
-}
-
-.org-structure-placeholder h3 {
-  margin: 0 0 1rem 0;
-  color: var(--text-primary);
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.org-structure-placeholder p {
-  margin: 0 0 1.5rem 0;
-  color: var(--text-secondary);
-  font-size: 1rem;
-}
-
-.placeholder-features {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  text-align: left;
-}
-
-.placeholder-features li {
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.5rem;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  border-left: 3px solid transparent;
-}
-
-.placeholder-features li:hover {
-  background: var(--bg-tertiary);
-  border-left-color: #4299e1;
-  transform: translateX(4px);
-}
-
 /* === ZAMĚSTNANCI === */
 .employees-tab {
   width: 100%;
@@ -2792,9 +2738,10 @@ body.dark-mode .manager-email {
   color: var(--text-primary);
   font-size: 1rem;
   margin-bottom: 0.25rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .employee-title {
@@ -3364,3 +3311,567 @@ body.dark-mode .profile-item-groups {
   font-size: 0.875rem;
   font-weight: 600;
 }
+
+/* === ORGANIZAČNÍ STRUKTURA - STROMOVÁ VIZUALIZACE === */
+.org-structure-section {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.org-structure-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.org-structure-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: #1e293b;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.org-structure-subtitle {
+  margin: 0;
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.org-structure-empty {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 2rem;
+}
+
+.load-button {
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
+}
+
+.load-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.org-structure-content {
+  overflow-x: auto;
+  padding: 1rem 0;
+}
+
+/* Stromová hierarchie */
+.org-hierarchy-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  min-width: 800px;
+}
+
+.org-tree-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.org-tree-root {
+  margin-bottom: 2rem;
+}
+
+.org-deputies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 2rem;
+}
+
+.org-tree-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Karty uzlů */
+.org-node-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  min-height: 80px;
+}
+
+.org-node-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+}
+
+.org-card-director {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: white;
+  border-color: #f59e0b;
+  box-shadow: 0 4px 16px rgba(251, 191, 36, 0.3);
+}
+
+.org-card-deputy {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border-color: #2563eb;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
+.org-node-icon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.org-node-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.org-node-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  line-height: 1.3;
+}
+
+.org-node-subtitle {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.org-node-count {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.org-expand-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.org-expand-icon-small {
+  font-size: 1rem;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* Kontejnery pro podřízenost */
+.org-units-container {
+  margin-left: 2rem;
+  padding-left: 1.5rem;
+  border-left: 3px solid rgba(59, 130, 246, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.org-units-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.org-section-title {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+/* Úseky */
+.org-unit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.org-unit-card {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.org-unit-card:hover {
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  transform: translateX(4px);
+}
+
+.org-unit-number {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.org-unit-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.org-unit-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.org-unit-count {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+/* Seznam zaměstnanců */
+.org-employees-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-left: 1rem;
+}
+
+.org-employee-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid #f1f5f9;
+}
+
+.org-employee-mini:hover {
+  background: #f1f5f9;
+  transform: translateX(4px);
+  border-color: #e2e8f0;
+}
+
+.org-employee-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.org-employee-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.org-employee-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.org-employee-title {
+  font-size: 0.8rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Přímo podřízení */
+.org-direct-employees {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Debug */
+.org-debug {
+  margin-top: 2rem;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.org-debug summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* Hierarchie - Vedoucí/Primáři */
+.org-managers-section {
+  margin-bottom: 1rem;
+}
+
+.org-subsection-title {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: #f1f5f9;
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+}
+
+.org-manager-item {
+  margin-bottom: 1rem;
+}
+
+.org-manager-card {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: 2px solid #d97706;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.org-manager-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+  border-color: #92400e;
+}
+
+.org-manager-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.org-manager-info {
+  flex: 1;
+  min-width: 0;
+  color: white;
+}
+
+.org-manager-name {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.org-manager-title {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin-bottom: 0.25rem;
+}
+
+.org-manager-count {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.org-subordinates-list {
+  margin-left: 1.5rem;
+  padding-left: 1rem;
+  border-left: 3px solid #f59e0b;
+  background: #fefce8;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.org-subordinate {
+  border-left: 2px solid #f59e0b;
+  padding-left: 0.5rem;
+}
+
+.org-employees-section {
+  margin-top: 1rem;
+}
+
+.org-unit-content {
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid #e2e8f0;
+}
+
+/* Responzivní design */
+@media (max-width: 768px) {
+  .org-deputies-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .org-units-container {
+    margin-left: 1rem;
+    padding-left: 1rem;
+  }
+  
+  .org-node-card {
+    padding: 1rem;
+  }
+  
+  .org-node-icon {
+    font-size: 2rem;
+  }
+}
+
+/* Styly pro vedoucí a managers */
+.org-manager-section {
+  margin-bottom: 1rem;
+  border-left: 3px solid #fbbf24;
+  padding-left: 0.5rem;
+}
+
+.org-manager-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border-radius: 10px;
+  border: 2px solid #fbbf24;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);
+}
+
+.org-manager-avatar {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  border: 2px solid #fbbf24;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.org-manager-name {
+  font-weight: 700 !important;
+  color: #92400e !important;
+  font-size: 1rem !important;
+}
+
+.org-manager-title {
+  color: #b45309 !important;
+  font-weight: 600 !important;
+}
+
+.org-subordinates-count {
+  font-size: 0.75rem;
+  color: #d97706;
+  font-weight: 600;
+  background: #fef3c7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid #fbbf24;
+  margin-top: 0.25rem;
+  display: inline-block;
+}
+
+.org-subordinate {
+  margin-left: 1.5rem;
+  position: relative;
+  border-left: 2px solid #fde68a;
+  padding-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.org-subordinate::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  width: 12px;
+  height: 2px;
+  background: #fbbf24;
+}
+
+.org-subordinate .org-employee-name {
+  color: #b45309 !important;
+}
+
+/* Dark mode pro vedoucí */
+body.dark-mode .org-manager-card {
+  background: linear-gradient(135deg, #451a03, #7c2d12);
+  border-color: #ea580c;
+}
+
+body.dark-mode .org-manager-avatar {
+  background: linear-gradient(135deg, #ea580c, #dc2626) !important;
+  border-color: #f97316;
+}
+
+body.dark-mode .org-manager-name {
+  color: #fed7aa !important;
+}
+
+body.dark-mode .org-manager-title {
+  color: #fdba74 !important;
+}
+
+body.dark-mode .org-subordinates-count {
+  background: #431407;
+  color: #fb923c;
+  border-color: #ea580c;
+}
+
+body.dark-mode .org-subordinate {
+  border-left-color: #9a3412;
+}
+
+body.dark-mode .org-subordinate::before {
+  background: #ea580c;
+}
+
+body.dark-mode .org-subordinate .org-employee-name {
+  color: #fdba74 !important;
+}
+

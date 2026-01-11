@@ -1,0 +1,7 @@
+DEBUG: DB connection OK
+DEBUG: SQL prepared: SELECT originalni_nazev_souboru, systemova_cesta, velikost_souboru_b, typ_prilohy
+                FROM 25a_objednavky_prilohy 
+                WHERE id = :attachment_id AND objednavka_id = :objednavka_id
+DEBUG: Executing query...
+DEBUG: Query executed
+DEBUG: Fetched attachment: {"originalni_nazev_souboru":"zad\u00e1n\u00ed EEO.pdf","systemova_cesta":"obj-2025-12-05_fa4be95e0ecc5f41a94bc60c.pdf","velikost_souboru_b":165740,"typ_prilohy":"MANUALY"}

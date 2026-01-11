@@ -18,26 +18,14 @@ if (!function_exists('get_db')) {
 }
 
 require_once __DIR__ . '/TimezoneHelper.php';
+require_once __DIR__ . '/environment-utils.php';
 
 /**
- * Získá cestu k manuálům z ENV proměnné nebo fallback
- * Používá MANUALS_PATH z .env souboru (načteného v dbconfig.php)
+ * Získá cestu k manuálům s automatickou detekcí prostředí
+ * Používá centrální environment utility pro konzistentní správu cest
  */
 function get_manuals_path() {
-    // Priorita: ENV proměnná > fallback podle prostředí
-    $env_path = getenv('MANUALS_PATH');
-    if ($env_path) {
-        return rtrim($env_path, '/');
-    }
-    
-    // Fallback: detekce prostředí podle REQUEST_URI
-    $is_dev = isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], '/dev/') !== false;
-    
-    if ($is_dev) {
-        return '/var/www/erdms-data/eeo-v2/manualy';
-    } else {
-        return '/var/www/erdms-platform/data/eeo-v2/manualy';
-    }
+    return rtrim(get_env_path('MANUALS_PATH'), '/');
 }
 
 /**

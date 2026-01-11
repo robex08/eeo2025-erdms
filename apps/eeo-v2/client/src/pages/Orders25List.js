@@ -10754,11 +10754,13 @@ const Orders25List = () => {
     setSelectedObjednatel([]);
     setSelectedGarant([]);
     setSelectedSchvalovatel([]);
+    setSelectedPrikazce([]); // 🔧 Reset příkazce filtru
     setDateFromFilter('');
     setDateToFilter('');
     setAmountFromFilter('');
     setAmountToFilter('');
     setActiveStatusFilter(null); // Zruš také aktivní filter z dlaždic
+    setApprovalFilter([]); // 🔧 Reset toggle filtrů pro stav schválení (pending/approved)
     setColumnFilters({
       dt_objednavky: '',
       cislo_objednavky: '',
@@ -10769,20 +10771,28 @@ const Orders25List = () => {
       garant: '',
       schvalovatel: ''
     });
+    setMultiselectFilters({
+      objednatel: '',
+      garant: '',
+      prikazce: '',
+      schvalovatel: ''
+    }); // 🔧 Reset multiselect filtrů
 
-    // Vymaž všechny filtry z localStorage
-    const sid = user_id || 'anon';
-    localStorage.removeItem('orders25List_globalFilter');
-    localStorage.removeItem('orders25List_statusFilter');
-    localStorage.removeItem('orders25List_userFilter');
-    localStorage.removeItem('orders25List_selectedObjednatel');
-    localStorage.removeItem('orders25List_selectedGarant');
-    localStorage.removeItem('orders25List_selectedSchvalovatel');
-    localStorage.removeItem(`orders25_dateFrom_${sid}`);
-    localStorage.removeItem(`orders25_dateTo_${sid}`);
-    localStorage.removeItem('orders25List_amountFrom');
-    localStorage.removeItem('orders25List_amountTo');
-    localStorage.removeItem('orders25List_activeStatusFilter');
+    // Vymaž všechny filtry z localStorage (používáme getUserKey pro user-specific klíče)
+    localStorage.removeItem(getUserKey('orders25List_globalFilter'));
+    localStorage.removeItem(getUserKey('orders25List_statusFilter'));
+    localStorage.removeItem(getUserKey('orders25List_userFilter'));
+    localStorage.removeItem(getUserKey('orders25List_selectedObjednatel'));
+    localStorage.removeItem(getUserKey('orders25List_selectedGarant'));
+    localStorage.removeItem(getUserKey('orders25List_selectedSchvalovatel'));
+    localStorage.removeItem(getUserKey('orders25List_selectedPrikazce')); // 🔧 Vymaž příkazce filter
+    localStorage.removeItem(getUserKey('orders25_dateFrom'));
+    localStorage.removeItem(getUserKey('orders25_dateTo'));
+    localStorage.removeItem(getUserKey('orders25List_amountFrom'));
+    localStorage.removeItem(getUserKey('orders25List_amountTo'));
+    localStorage.removeItem(getUserKey('orders25List_activeStatusFilter'));
+    localStorage.removeItem(getUserKey('orders25List_approvalFilter')); // 🔧 Vymaž i approval filter z localStorage
+    localStorage.removeItem(getUserKey('orders25List_multiselectFilters')); // 🔧 Vymaž multiselect filtry
   };
 
   // Handlery pro jednoduché filtrování přes globalFilter
@@ -10923,12 +10933,16 @@ const Orders25List = () => {
     setSelectedSchvalovatel([]);
     setStatusFilter([]);
 
+    // 🐛 FIX: Resetuj také approvalFilter (Ke schválení/Vyřízené)
+    setApprovalFilter([]);
+
     // Vymaž také z localStorage
     setUserStorage('orders25List_selectedObjednatel', []);
     setUserStorage('orders25List_selectedGarant', []);
     setUserStorage('orders25List_selectedPrikazce', []);
     setUserStorage('orders25List_selectedSchvalovatel', []);
     setUserStorage('orders25List_statusFilter', []);
+    setUserStorage('orders25List_approvalFilter', []);
   };
 
   // Funkce pro vymazání jednotlivých filtrů

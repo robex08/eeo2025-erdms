@@ -383,7 +383,13 @@ function App() {
 
   // Registrace background tasks po přihlášení
   useEffect(() => {
+    console.log('🔧 [App.js] useEffect - registrace background tasks');
+    console.log('   isLoggedIn:', isLoggedIn);
+    console.log('   bgTasksRef.current:', !!bgTasksRef.current);
+    console.log('   tasksRegisteredRef.current:', tasksRegisteredRef.current);
+    
     if (!isLoggedIn || !bgTasksRef.current) {
+      console.log('   ⏭️ Skip - not logged in or bgTasks not ready');
       // Reset registrace při odhlášení
       tasksRegisteredRef.current = false;
       return;
@@ -391,15 +397,19 @@ function App() {
 
     // 🚫 CRITICAL: Zamezení infinite loop - registrovat pouze jednou
     if (tasksRegisteredRef.current) {
+      console.log('   ⏭️ Skip - tasks already registered');
       return;
     }
 
+    console.log('✅ [App.js] REGISTRUJI BACKGROUND TASKS...');
     const bgTasksInstance = bgTasksRef.current;
 
     // Vytvoření standardních tasků s callbacky
+    console.log('📋 [App.js] Vytvářím standardní tasky...');
     const tasks = createStandardTasks({
       // Callback pro refresh objednávek
       onOrdersRefreshed: (ordersData) => {
+        console.log('🔄 [App.js] onOrdersRefreshed callback volán');
         const ctx = bgTasksContextRef.current;
         if (ctx?.triggerOrdersRefresh) {
           ctx.triggerOrdersRefresh(ordersData);
@@ -418,18 +428,24 @@ function App() {
 
       // Callback pro změnu počtu nepřečtených notifikací
       onUnreadCountChange: (count) => {
+        console.log(`🔔 [App.js] onUnreadCountChange callback volán: ${count}`);
         const ctx = bgTasksContextRef.current;
         if (ctx?.handleUnreadCountChange) {
           ctx.handleUnreadCountChange(count);
+        } else {
+          console.warn('⚠️ [App.js] handleUnreadCountChange není k dispozici v contextu!');
         }
       },
 
       // Callback pro nové notifikace - pouze badge, bez toastu
       onNewNotifications: (notifications, unreadCount) => {
+        console.log(`🔔 [App.js] onNewNotifications callback volán: ${notifications?.length || 0} notifikací, unread: ${unreadCount}`);
         // Toast notifikace jsou zakázány - pouze badge se aktualizuje
         const ctx = bgTasksContextRef.current;
         if (ctx?.handleNewNotifications) {
           ctx.handleNewNotifications(notifications, unreadCount);
+        } else {
+          console.warn('⚠️ [App.js] handleNewNotifications není k dispozici v contextu!');
         }
       },
 
@@ -441,16 +457,22 @@ function App() {
       }
     });
 
+    console.log(`📋 [App.js] Vytvořeno ${tasks.length} tasků`);
+
     // Registrace všech tasků
     tasks.forEach(taskConfig => {
+      console.log(`   ➕ Registruji task: ${taskConfig.name}`);
       try {
         bgTasksInstance.register(taskConfig);
+        console.log(`   ✅ Task ${taskConfig.name} zaregistrován`);
       } catch (error) {
+        console.error(`   ❌ Chyba při registraci tasku ${taskConfig.name}:`, error);
       }
     });
 
     // Označit jako zaregistrováno
     tasksRegisteredRef.current = true;
+    console.log('🎉 [App.js] Background tasks ZAREGISTROVÁNY!');
 
     // Cleanup se provede automaticky při unmount díky autoCleanup
   }, [isLoggedIn]); // ✅ OPRAVENO: Pouze isLoggedIn - bgTasks je stabilní reference!

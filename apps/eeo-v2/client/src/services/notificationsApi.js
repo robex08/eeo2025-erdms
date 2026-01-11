@@ -369,22 +369,50 @@ const notificationsApi = axios.create({
  * Získání auth dat z šifrovaného storage
  */
 const getAuthData = async () => {
+  console.log('🔐 [getAuthData] START - Načítám autentizační data');
   try {
+    console.log('   Volám loadAuthData.token()...');
     const token = await loadAuthData.token();
+    console.log('   Token:', token ? `${token.substring(0, 20)}...` : 'NULL/UNDEFINED');
+    
+    console.log('   Volám loadAuthData.user()...');
     const user = await loadAuthData.user();
+    console.log('   User:', user ? {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      jmeno: user.jmeno,
+      prijmeni: user.prijmeni
+    } : 'NULL/UNDEFINED');
 
     if (!token || !user?.username) {
+      console.error('❌ [getAuthData] CHYBA: Chybí token nebo username!');
+      console.error('   token exists:', !!token);
+      console.error('   user exists:', !!user);
+      console.error('   user.username:', user?.username);
       throw new Error('Missing authentication data');
     }
 
-    // Backend potřebuje from_user_id pro identifikaci odesílatele notifikace
-    return {
+    const authData = {
       token,
       username: user.username,
       from_user_id: user.id,  // ✅ ID uživatele pro from_user_id
       from_user_name: user.fullName || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || user.username  // ✅ Celé jméno
     };
+    
+    console.log('✅ [getAuthData] SUCCESS - Auth data připravena:', {
+      hasToken: !!authData.token,
+      username: authData.username,
+      from_user_id: authData.from_user_id,
+      from_user_name: authData.from_user_name
+    });
+
+    // Backend potřebuje from_user_id pro identifikaci odesílatele notifikace
+    return authData;
   } catch (error) {
+    console.error('❌ [getAuthData] EXCEPTION:', error);
+    console.error('   Error message:', error.message);
+    console.error('   Error stack:', error.stack);
     throw new Error('Missing authentication data');
   }
 };
@@ -765,8 +793,21 @@ export const createNotification = async (notificationData) => {
  * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
  */
 export const triggerNotification = async (eventType, objectId, triggerUserId, placeholderData = {}) => {
+  console.log('🔔 [NotificationsAPI] triggerNotification START');
+  console.log('   eventType:', eventType);
+  console.log('   objectId:', objectId);
+  console.log('   triggerUserId:', triggerUserId);
+  console.log('   placeholderData keys:', Object.keys(placeholderData || {}));
+  
   try {
+    console.log('🔑 [NotificationsAPI] Načítám auth data...');
     const auth = await getAuthData();
+    console.log('✅ [NotificationsAPI] Auth data načtena:', {
+      hasToken: !!auth.token,
+      username: auth.username,
+      from_user_id: auth.from_user_id,
+      from_user_name: auth.from_user_name
+    });
 
     const payload = {
       ...auth,
@@ -776,13 +817,29 @@ export const triggerNotification = async (eventType, objectId, triggerUserId, pl
       placeholder_data: placeholderData
     };
 
+    console.log('📤 [NotificationsAPI] Odesílám request na /notifications/trigger');
+    console.log('   Payload keys:', Object.keys(payload));
+    
     const response = await notificationsApi.post('/notifications/trigger', payload);
+    
+    console.log('📥 [NotificationsAPI] Response received:', response.status);
+    console.log('   Response data:', response.data);
+    
     const result = handleApiResponse(response);
+    
+    console.log('✅ [NotificationsAPI] Trigger SUCCESS!');
+    console.log('   Result:', result);
 
     return result;
 
   } catch (error) {
     console.error('❌ [NotificationsAPI] Trigger CHYBA:', error);
+    console.error('   Error message:', error.message);
+    console.error('   Error stack:', error.stack);
+    if (error.response) {
+      console.error('   HTTP Status:', error.response.status);
+      console.error('   Response data:', error.response.data);
+    }
     throw error;
   }
 };

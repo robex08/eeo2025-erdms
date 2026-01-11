@@ -43,10 +43,13 @@ function normalize_invoice_attachment_path($systemova_cesta, $config) {
     
     // Zkusíme ještě alternativní cesty, pokud soubor na nové cestě neexistuje
     if (!file_exists($normalized_path)) {
+        // Načti centrální environment utility
+        require_once __DIR__ . '/environment-utils.php';
+        
         // Zkus staré umístění (migrace z legacy systému)
         $legacy_paths = [
             '/var/www/eeo2025/doc/prilohy/' . $filename,
-            (getenv('UPLOAD_ROOT_PATH') ?: '/var/www/erdms-platform/data/eeo-v2/prilohy/') . $filename
+            get_upload_root_path() . $filename
         ];
         
         foreach ($legacy_paths as $legacy_path) {
