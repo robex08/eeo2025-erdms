@@ -672,6 +672,14 @@ function Dashboard() {
             👥 Zaměstnanci
           </button>
         )}
+        {isAdmin && (
+          <button
+            className={`tab-button ${activeTab === 'org-structure' ? 'active' : ''}`}
+            onClick={() => setActiveTab('org-structure')}
+          >
+            🏢 Organizační struktura
+          </button>
+        )}
       </div>
 
       <div className="dashboard-content">
@@ -1124,6 +1132,28 @@ function Dashboard() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Organizační struktura (jen pro adminy) */}
+        {activeTab === 'org-structure' && isAdmin && (
+          <div className="org-structure-section">
+            <div className="org-structure-header">
+              <h2>🏢 Organizační struktura</h2>
+              <p className="org-structure-subtitle">Přehled organizační struktury ZZS MSK</p>
+            </div>
+            <div className="org-structure-placeholder">
+              <div className="placeholder-icon">🏗️</div>
+              <h3>Sekce je v přípravě</h3>
+              <p>Zde bude implementováno:</p>
+              <ul className="placeholder-features">
+                <li>📊 Vizualizace organizační struktury</li>
+                <li>🔄 Hierarchie oddělení a útvarů</li>
+                <li>👥 Přehled vedoucích a týmů</li>
+                <li>📈 Organizační schémata</li>
+                <li>🔍 Vyhledávání v organizační struktuře</li>
+              </ul>
             </div>
           </div>
         )}
