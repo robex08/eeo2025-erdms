@@ -414,7 +414,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'ORDER_VERIFICATION_APPROVED',
+      type: 'INVOICE_MATERIAL_CHECK_APPROVED',
       order_id,
       action_user_id,
       recipients,
@@ -436,7 +436,7 @@ class NotificationService {
     return this.sendBulk({
       token,
       username,
-      type: 'ORDER_VERIFICATION_REJECTED',
+      type: 'INVOICE_MATERIAL_CHECK_REJECTED', // TODO: implementovat nebo odstranit
       order_id,
       action_user_id,
       recipients,

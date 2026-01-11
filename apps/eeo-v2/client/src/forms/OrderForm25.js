@@ -8804,6 +8804,25 @@ function OrderForm25() {
         return { ...prev, faktury: updatedFaktury };
       });
 
+      // 🔔 TRIGGER 1: INVOICE_MATERIAL_CHECK_REQUESTED
+      // Faktura byla vytvořena a přiřazena k objednávce → vyžaduje kontrolu věcné správnosti
+      try {
+        await triggerNotification(
+          'INVOICE_MATERIAL_CHECK_REQUESTED',
+          realFakturaId,
+          user_id,
+          {
+            faktura_cislo: faktura.fa_cislo_vema,
+            objednavka_id: orderId,
+            objednavka_cislo: formData.cislo_objednavky
+          }
+        );
+        console.log(`✅ Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice ${realFakturaId}`);
+      } catch (notifErr) {
+        console.error('⚠️ Notification trigger failed:', notifErr);
+        // Neblokovat proces - notifikace je sekundární
+      }
+
       return realFakturaId;
 
     } catch (err) {
@@ -9324,7 +9343,7 @@ function OrderForm25() {
       const hadVecnaSpravnost = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'VECNA_SPRAVNOST') : false;
 
       if (hasVecnaSpravnost && !hadVecnaSpravnost) {
-        notificationType = 'ORDER_VERIFICATION_PENDING';
+        notificationType = 'INVOICE_MATERIAL_CHECK_REQUESTED';
 
 
         // Garant a objednatel (Set zajistí unikátnost pokud jsou stejní)
@@ -9339,7 +9358,7 @@ function OrderForm25() {
       const hadZkontrolovana = oldWorkflowState ? hasWorkflowState(oldWorkflowState, 'ZKONTROLOVANA') : false;
 
       if (hasZkontrolovana && !hadZkontrolovana) {
-        notificationType = 'ORDER_VERIFICATION_APPROVED'; // ✅ OPRAVENO: věcná správnost potvrzena
+        notificationType = 'INVOICE_MATERIAL_CHECK_APPROVED'; // ✅ OPRAVENO: věcná správnost potvrzena
 
 
         // Objednatel (pokud není garant - Set zajistí unikátnost)
@@ -24122,6 +24141,29 @@ function OrderForm25() {
                                               : f
                                           );
                                           updateFaktury(updatedFaktury);
+
+                                          // 🔔 TRIGGER 2: INVOICE_MATERIAL_CHECK_APPROVED
+                                          // Věcná správnost byla potvrzena (checkbox změněn z 0 na 1)
+                                          if (newValue === 1 && faktura.vecna_spravnost_potvrzeno !== 1) {
+                                            // Pouze pokud faktura má reálné ID (není temp)
+                                            const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
+                                            if (hasRealId) {
+                                              triggerNotification(
+                                                'INVOICE_MATERIAL_CHECK_APPROVED',
+                                                faktura.id,
+                                                user_id,
+                                                {
+                                                  faktura_cislo: faktura.fa_cislo_vema,
+                                                  objednavka_id: formData.id,
+                                                  objednavka_cislo: formData.cislo_objednavky
+                                                }
+                                              ).then(() => {
+                                                console.log(`✅ Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice ${faktura.id}`);
+                                              }).catch(notifErr => {
+                                                console.error('⚠️ Notification trigger failed:', notifErr);
+                                              });
+                                            }
+                                          }
                                         }}
                                         style={{
                                           width: '18px',

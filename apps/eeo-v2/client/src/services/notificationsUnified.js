@@ -189,25 +189,25 @@ export const NOTIFICATION_CONFIG = {
     priority: 'normal'
   },
 
-  // NOVÉ FÁZE - VĚCNÁ SPRÁVNOST
-  ORDER_VERIFICATION_PENDING: {
-    icon: '🔍',
+  // NOVÉ FÁZE - VĚCNÁ SPRÁVNOST FAKTURY
+  INVOICE_MATERIAL_CHECK_REQUESTED: {
+    icon: '📝',
     color: '#f59e0b',
-    category: 'orders',
-    label: 'Čeká na kontrolu',
+    category: 'invoices',
+    label: 'Čeká na kontrolu věcné správnosti',
     priority: 'high'
   },
-  ORDER_VERIFICATION_APPROVED: {
+  INVOICE_MATERIAL_CHECK_APPROVED: {
     icon: '✅',
     color: '#10b981',
-    category: 'orders',
-    label: 'Věcná správnost OK',
+    category: 'invoices',
+    label: 'Věcná správnost faktury OK',
     priority: 'normal'
   },
-  ORDER_VERIFICATION_REJECTED: {
+  INVOICE_MATERIAL_CHECK_REJECTED: {
     icon: '⚠️',
     color: '#ef4444',
-    category: 'orders',
+    category: 'invoices',
     label: 'Reklamace - věcná správnost',
     priority: 'high'
   },
@@ -1047,7 +1047,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'ORDER_VERIFICATION_APPROVED',
+      type: 'INVOICE_MATERIAL_CHECK_APPROVED',
       order_id,
       action_user_id,
       recipients
@@ -1061,7 +1061,7 @@ class NotificationService {
     return this.create({
       token,
       username,
-      type: 'ORDER_VERIFICATION_REJECTED',
+      type: 'INVOICE_MATERIAL_CHECK_REJECTED', // TODO: implementovat nebo odstranit
       order_id,
       action_user_id,
       recipients,
