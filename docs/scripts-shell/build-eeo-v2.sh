@@ -88,21 +88,27 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
         echo "🚀 PROD: Deploying frontend to production..."
         
         # Backup current production
-        if [ -d "/var/www/erdms-platform/apps/eeo-v2/client" ]; then
+        if [ -d "/var/www/erdms-platform/apps/eeo-v2" ]; then
             echo "💾 Creating frontend backup..."
+            mkdir -p /var/www/erdms-platform/backups
             cp -r /var/www/erdms-platform/apps/eeo-v2 /var/www/erdms-platform/backups/eeo-v2-backup-${VERSION}
         fi
         
-        # Deploy frontend
-        echo "📁 Copying frontend build to production..."
-        mkdir -p /var/www/erdms-platform/apps/eeo-v2/client
-        rm -rf /var/www/erdms-platform/apps/eeo-v2/client/*
-        cp -r build/* /var/www/erdms-platform/apps/eeo-v2/client/
+        # Deploy frontend - IMPORTANT: Frontend files go to ROOT, not client/ subdirectory!
+        echo "📁 Copying frontend build to production ROOT (not client/)..."
+        echo "   Using rsync to preserve api/ and api-legacy/ folders..."
+        
+        # Use rsync to deploy only frontend files, excluding API folders
+        rsync -av --delete \
+            --exclude='api/' \
+            --exclude='api-legacy/' \
+            --exclude='client/' \
+            build-prod/ /var/www/erdms-platform/apps/eeo-v2/
         
         # Set permissions
-        chown -R www-data:www-data /var/www/erdms-platform/apps/eeo-v2/client/
+        chown -R www-data:www-data /var/www/erdms-platform/apps/eeo-v2/
         
-        echo "✅ EEO v2 Frontend deployed to production"
+        echo "✅ EEO v2 Frontend deployed to production ROOT"
     fi
 fi
 
@@ -172,7 +178,7 @@ if [ "$ENVIRONMENT" = "dev" ]; then
     echo "Dev Backend: /var/www/erdms-dev/apps/eeo-v2/api"
 fi
 if [ "$ENVIRONMENT" = "prod" ] && [ "$DEPLOY" = "true" ]; then
-    echo "Prod Frontend: /var/www/erdms-platform/apps/eeo-v2/client"
+    echo "Prod Frontend: /var/www/erdms-platform/apps/eeo-v2/ (ROOT, not client/)"
     echo "Prod Backend: /var/www/erdms-platform/apps/eeo-v2/api"
     echo "🌐 URL: https://erdms.zachranka.cz/eeo-v2/"
 fi
