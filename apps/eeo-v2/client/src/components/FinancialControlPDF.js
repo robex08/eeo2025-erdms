@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Sekce schválení příkazcem operace
+  // Sekce schválení schvalovatelem
   approvalSection: {
     marginTop: 25,
     marginBottom: 15,
@@ -780,7 +780,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
           )}
 
           <View style={styles.controlRow}>
-            <Text style={styles.controlLabel}>Příkazce operace:</Text>
+            <Text style={styles.controlLabel}>Schvalovatel:</Text>
             <Text style={[styles.controlValue, getMissingStyle(schvalovatel)]}>{schvalovatel}</Text>
           </View>
 
