@@ -38,6 +38,14 @@ Doplnění chybějících notifikací pro potvrzení a žádost o kontrolu věcn
 - ID 115: `INVOICE_MATERIAL_CHECK_REQUESTED` - Žádost o kontrolu věcné správnosti
 - ID 117: `INVOICE_MATERIAL_CHECK_APPROVED` - Věcná správnost potvrzena
 
+#### **HTML Email šablony:**
+- ✅ **NOVĚ vytvořeno:** Kompletní HTML šablony pro MS Outlook 365
+- 🎨 **INVOICE_MATERIAL_CHECK_REQUESTED:** Modrý theme (#3b82f6) - 14,134 znaků
+- ✅ **INVOICE_MATERIAL_CHECK_APPROVED:** Zelený theme (#10b981) - 15,191 znaků  
+- 📧 **Kompatibilita:** Outlook 365, Gmail, Apple Mail, Thunderbird
+- 📱 **Responsive:** Optimalizováno pro mobilní zařízení (max-width: 600px)
+- 🎭 **Ikony:** Pouze v subject line, ne v HTML hlavičkách (H1)
+
 ---
 
 ## ⚠️ DŮLEŽITÉ INFORMACE
@@ -57,8 +65,11 @@ Doplnění chybějících notifikací pro potvrzení a žádost o kontrolu věcn
 - 📊 Notifikační systém
 - 📨 Databázová tabulka `25_notifikace` (126 záznamů)
 - 📋 Databázová tabulka `25_notifikace_typy_udalosti` (3 event types)
+- � **NOVÉ**: Databázová tabulka `25_notifikace_sablony` (2 HTML šablony)
 - 📦 **NOVÉ**: OrderForm25.js (faktury - věcná správnost)
 - 🎨 **NOVÉ**: CustomSelect.js (UI tooltip fix)
+- 🎪 **NOVÉ**: InvoiceEvidencePage.js (anti-spam logic + "Předáno komu")
+- 🔧 **NOVÉ**: OrganizationHierarchy.js (field validation fix)
 
 ---
 
@@ -80,7 +91,10 @@ Doplnění chybějících notifikací pro potvrzení a žádost o kontrolu věcn
   - `INVOICE_MATERIAL_CHECK_REQUESTED` (řádek ~8801)
   - `INVOICE_MATERIAL_CHECK_APPROVED` (řádek ~24131)
 - ✅ **UI FIX**: Přidán `title` atribut do CustomSelect pro zobrazení plného názvu event type
-- ⏳ **REBUILD FRONTENDU NUTNÝ** pro aktivaci invoice notifikací + UI fixu
+- ✅ **ANTI-SPAM**: InvoiceEvidencePage - notifikace jen při změně workflow stavu  
+- ✅ **BUG FIX**: OrganizationHierarchy - opravena validace polí (fa_predana_zam_id)
+- ✅ **HTML TEMPLATES**: Nahrány nové email šablony do DB (11.1.2026 20:35)
+- ⏳ **REBUILD FRONTENDU NUTNÝ** pro aktivaci invoice notifikací + všech UI fixů
 
 ---
 
@@ -140,14 +154,19 @@ WHERE kod LIKE '%MATERIAL_CHECK%';
 ```bash
 cd /var/www/erdms-platform/apps/eeo-v2/client
 
-# Zkontrolovat verzi v package.json
+# Zkontrolovat verzi v package.json - měla by být 2.10
 cat package.json | grep version
+# Očekávaný výsledek: "version": "2.10.0"
 
 # Build
 npm run build
 
 # Zkontrolovat build
 ls -lh build/static/js/main.*.js
+
+# Ověřit verzi v buildu
+grep -o 'REACT_APP_VERSION:"[^"]*"' build/static/js/main.*.js | head -1
+# Očekávaný výsledek: REACT_APP_VERSION:"2.10.0"
 ```
 
 ### **KROK 4: Nasazení**
@@ -305,6 +324,52 @@ LIMIT 5;
 
 **Celkem migrováno:** 126 notifikací
 
+### **3. Tabulka: `25_notifikace_sablony`**
+
+#### **HTML Email šablony (11.1.2026 20:35):**
+
+```sql
+-- Šablona 1: INVOICE_MATERIAL_CHECK_REQUESTED (ID 115)
+UPDATE 25_notifikace_sablony 
+SET email_telo = '[KOMPLETNÍ HTML - 14,134 znaků]'
+WHERE typ = 'INVOICE_MATERIAL_CHECK_REQUESTED';
+
+-- Šablona 2: INVOICE_MATERIAL_CHECK_APPROVED (ID 117)  
+UPDATE 25_notifikace_sablony 
+SET email_telo = '[KOMPLETNÍ HTML - 15,191 znaků]'
+WHERE typ = 'INVOICE_MATERIAL_CHECK_APPROVED';
+
+-- Ověření nahrání:
+SELECT 
+    typ,
+    nazev,
+    email_predmet,
+    LENGTH(email_telo) as html_length,
+    CASE 
+        WHEN email_telo LIKE '%OUTLOOK COMPATIBLE%' THEN '✅ HTML OK'
+        ELSE '❌ Text only'
+    END as format_status
+FROM 25_notifikace_sablony
+WHERE typ IN ('INVOICE_MATERIAL_CHECK_REQUESTED', 'INVOICE_MATERIAL_CHECK_APPROVED');
+```
+
+**HTML Features:**
+- 🎨 **Responsive design** (max-width: 600px)  
+- 💌 **MS Outlook 365 kompatibilní** (VML, MSO conditionals)
+- 🌈 **Barevné themes:** Modrá (#3b82f6) / Zelená (#10b981)
+- 📱 **Mobile-first** approach s fallbacky  
+- 🔗 **CTA buttony** s odkazy na fakturu
+- 📧 **Ikony pouze v subject**, ne v HTML hlavičkách
+
+**Email subjects:**
+- `🔍 Vyžadována kontrola věcné správnosti faktury {{invoice_number}}`
+- `✅ Věcná správnost faktury {{invoice_number}} potvrzena`
+
+**HTML placeholders:**
+- `{recipient_name}`, `{invoice_number}`, `{supplier_name}`, `{predmet}`
+- `{objednatel_name}`, `{garant_name}`, `{amount}`, `{date}`, `{invoice_id}`
+- `{approved_by}` (pouze APPROVED template)
+
 ### **2. Tabulka: `25_notifikace_typy_udalosti`**
 
 #### **Deprecated event types:**
@@ -323,6 +388,9 @@ LIMIT 5;
 25_notifikace_backup_zrusena_20260111       -- 3 záznamy (ORDER_CANCELLED)
 25_notifikace_backup_verification_20260111  -- 73 záznamů (MATERIAL_CHECK_REQUESTED)
 
+-- HTML šablony zálohovány automaticky při UPDATE (11.1.2026 20:35)
+-- Původní textové verze přepsány HTML verzemi
+
 -- Rollback ORDER_CANCELLED:
 UPDATE 25_notifikace n
 INNER JOIN 25_notifikace_backup_zrusena_20260111 b ON n.id = b.id
@@ -334,6 +402,15 @@ UPDATE 25_notifikace n
 INNER JOIN 25_notifikace_backup_verification_20260111 b ON n.id = b.id
 SET n.typ = 'ORDER_VERIFICATION_PENDING'
 WHERE n.typ = 'INVOICE_MATERIAL_CHECK_REQUESTED' AND b.typ = 'ORDER_VERIFICATION_PENDING';
+
+-- Rollback HTML šablon (návrat k textovým verzím):
+UPDATE 25_notifikace_sablony 
+SET email_telo = '<h2>Vyžadována kontrola věcné správnosti</h2><p>Je třeba provést kontrolu věcné správnosti faktury.</p><p><strong>Číslo faktury:</strong> {{invoice_number}}<br><strong>Dodavatel:</strong> {{supplier_name}}<br><strong>Částka:</strong> {{amount}} Kč</p><p>Prosím ověřte, zda faktura odpovídá objednanému zboží/službám.</p>'
+WHERE typ = 'INVOICE_MATERIAL_CHECK_REQUESTED';
+
+UPDATE 25_notifikace_sablony 
+SET email_telo = '<h2>Věcná správnost potvrzena</h2><p>Věcná správnost faktury byla ověřena a potvrzena.</p><p><strong>Číslo faktury:</strong> {{invoice_number}}<br><strong>Dodavatel:</strong> {{supplier_name}}<br><strong>Částka:</strong> {{amount}} Kč<br><strong>Potvrdil:</strong> {{approved_by}}</p><p>Faktura může pokračovat ke zpracování.</p>'
+WHERE typ = 'INVOICE_MATERIAL_CHECK_APPROVED';
 
 -- Rollback event types:
 UPDATE 25_notifikace_typy_udalosti
@@ -492,6 +569,8 @@ sudo tail -f /var/log/php/error.log | grep -i notif
 |-----|------|--------|
 | 11.1.2026 18:47 | Migrace spuštěna na PROD DB | ✅ Hotovo |
 | 11.1.2026 18:47 | Migrace spuštěna na DEV DB | ✅ Hotovo |
+| 11.1.2026 20:35 | HTML šablony nahrány do DB | ✅ Hotovo |
+| TBD | Aktualizace package.json na 2.10.0 | ⏳ Čeká |
 | TBD | Frontend rebuild | ⏳ Čeká |
 | TBD | Nasazení na PROD | ⏳ Čeká |
 | TBD | Verifikace | ⏳ Čeká |
@@ -520,13 +599,19 @@ sudo tail -f /var/log/php/error.log | grep -i notif
 
 ## 🎯 SHRNUTÍ
 
-**Verze 2.10** přináší drobnou, ale důležitou změnu v naming convention notifikačních typů. Migrace je **jednoduchá, bezpečná a nevyžaduje downtime**. Databázová změna byla již provedena na PROD databázi dne **11.1.2026 v 18:47**.
+**Verze 2.10** přináší významná vylepšení notifikačního systému včetně standardizace typů, implementace věcné kontroly faktur a profesionálních HTML email šablon. Migrace je **bezpečná a nevyžaduje downtime**. 
 
-Frontend rebuild je **volitelný**, protože kód již obsahuje správnou implementaci. Doporučuje se provést pro konzistenci, ale není kritický.
+**Klíčové novinky:**
+- ✅ **126 notifikací** migrováno na standardní naming  
+- 📧 **2 nové HTML email šablony** pro MS Outlook 365
+- 🔧 **4 frontend bugfixy** (validation, anti-spam, tooltips, custom dialogs)
+- 💌 **Profesionální email design** s responzivním layoutem
 
-**ETA celého deployme**: ~10 minut  
+Databázové změny byly již provedeny. **Frontend rebuild je nutný** pro aktivaci všech nových funkcí.
+
+**ETA celého deploymentu**: ~15 minut (včetně package.json update)  
 **Doporučený čas nasazení:** Kdykoli (není nutná údržbová okna)  
-**Rollback čas:** < 5 minut
+**Rollback čas:** < 10 minut
 
 ---
 
