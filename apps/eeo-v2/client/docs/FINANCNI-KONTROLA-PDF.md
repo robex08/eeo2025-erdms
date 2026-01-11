@@ -62,7 +62,7 @@ Deklarativní React komponenta pro generování PDF pomocí `@react-pdf/renderer
 │ - Středisko                         │
 └─────────────────────────────────────┘
 ┌─────────────────────────────────────┐
-│ SCHVÁLENÍ PŘÍKAZCEM OPERACE        │
+│ SCHVÁLENÍ SCHVALOVATELEM           │
 │ - Podpis                            │
 │ - Datum a razítko                   │
 └─────────────────────────────────────┘
@@ -140,7 +140,7 @@ Dokument je založen na:
 ### Důležité prvky finanční kontroly:
 
 1. **Kontrola před vznikem závazku** (ex-ante)
-   - Schválení příkazcem operace
+   - Schválení schvalovatelem
    - Ověření účelu a oprávněnosti výdaje
    - Kontrola dokladů
 
