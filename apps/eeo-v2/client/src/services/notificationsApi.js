@@ -793,21 +793,8 @@ export const createNotification = async (notificationData) => {
  * @returns {Promise<Object>} - Výsledek {status: 'ok', sent: number, errors: array}
  */
 export const triggerNotification = async (eventType, objectId, triggerUserId, placeholderData = {}) => {
-  console.log('🔔 [NotificationsAPI] triggerNotification START');
-  console.log('   eventType:', eventType);
-  console.log('   objectId:', objectId);
-  console.log('   triggerUserId:', triggerUserId);
-  console.log('   placeholderData keys:', Object.keys(placeholderData || {}));
-  
   try {
-    console.log('🔑 [NotificationsAPI] Načítám auth data...');
     const auth = await getAuthData();
-    console.log('✅ [NotificationsAPI] Auth data načtena:', {
-      hasToken: !!auth.token,
-      username: auth.username,
-      from_user_id: auth.from_user_id,
-      from_user_name: auth.from_user_name
-    });
 
     const payload = {
       ...auth,
@@ -816,30 +803,14 @@ export const triggerNotification = async (eventType, objectId, triggerUserId, pl
       trigger_user_id: triggerUserId,
       placeholder_data: placeholderData
     };
-
-    console.log('📤 [NotificationsAPI] Odesílám request na /notifications/trigger');
-    console.log('   Payload keys:', Object.keys(payload));
     
     const response = await notificationsApi.post('/notifications/trigger', payload);
-    
-    console.log('📥 [NotificationsAPI] Response received:', response.status);
-    console.log('   Response data:', response.data);
-    
     const result = handleApiResponse(response);
-    
-    console.log('✅ [NotificationsAPI] Trigger SUCCESS!');
-    console.log('   Result:', result);
 
     return result;
 
   } catch (error) {
-    console.error('❌ [NotificationsAPI] Trigger CHYBA:', error);
-    console.error('   Error message:', error.message);
-    console.error('   Error stack:', error.stack);
-    if (error.response) {
-      console.error('   HTTP Status:', error.response.status);
-      console.error('   Response data:', error.response.data);
-    }
+    console.error('Error triggering notification:', error);
     throw error;
   }
 };
