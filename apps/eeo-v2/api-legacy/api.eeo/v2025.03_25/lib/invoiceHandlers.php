@@ -1144,16 +1144,11 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
-    // 🐛 DEBUG: Funkce byla zavolána
-    error_log("🟢 handle_invoices25_list() STARTED");
-    error_log("🟢 Input keys: " . implode(', ', array_keys($input)));
-    
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     
     if (!$token || !$request_username) {
-        error_log("🔴 Missing token or username - returning 400");
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
         return;
@@ -2079,7 +2074,6 @@ function handle_invoices25_list($input, $config, $queries) {
         // FE očekává: { status: "ok", faktury: [...], pagination: {...}, statistiky: {...}, user_info: {...} }
         $response_data = array(
             'status' => 'ok',
-            'ahoj_svete' => '🟢 BACKEND RESPONSE FROM invoices25/list',
             'faktury' => $faktury,
             'pagination' => array(
                 'page' => $page,
@@ -2088,14 +2082,6 @@ function handle_invoices25_list($input, $config, $queries) {
                 'total_pages' => $total_pages
             ),
             'statistiky' => $statistiky,
-            '_debug' => array(
-                'filters_received' => $filters,
-                'castka_min_applied' => isset($filters['castka_min']) ? 'YES (' . $filters['castka_min'] . ')' : 'NO',
-                'castka_max_applied' => isset($filters['castka_max']) ? 'YES (' . $filters['castka_max'] . ')' : 'NO',
-                'sql_query' => $debug_sql,
-                'where_conditions_count' => count($where_conditions),
-                'params_count' => count($params)
-            ),
             'user_info' => array(
                 'user_id' => $user_id,
                 'is_admin' => $is_admin,
@@ -2106,26 +2092,20 @@ function handle_invoices25_list($input, $config, $queries) {
             )
         );
         
-        error_log("🟢 ABOUT TO SEND JSON RESPONSE - faktury count: " . count($faktury));
         http_response_code(200);
         // ⚠️ JSON_INVALID_UTF8_SUBSTITUTE nahradí nevalidní UTF-8 znaky za Unicode replacement character (U+FFFD)
         $json_output = json_encode($response_data, JSON_INVALID_UTF8_SUBSTITUTE);
         if ($json_output === false) {
-            $json_error = json_last_error_msg();
-            error_log("🔴 JSON ENCODE FAILED: " . $json_error);
-            error_log("🔴 Trying without debug and with partial data...");
-            // Zkusit bez _debug a statistik
+            // Fallback: pokud JSON encoding selže, vrátit minimální response
             $minimal_response = array(
-                'status' => 'ok',
+                'status' => 'error',
+                'message' => 'Chyba při kódování dat: ' . json_last_error_msg(),
                 'faktury' => array(),
-                'pagination' => $response_data['pagination'],
-                'error_debug' => 'JSON encoding failed: ' . $json_error
+                'pagination' => $response_data['pagination']
             );
             $json_output = json_encode($minimal_response, JSON_INVALID_UTF8_SUBSTITUTE);
         }
-        error_log("🟢 JSON encoded, length: " . strlen($json_output));
         echo $json_output;
-        error_log("🟢 JSON sent to output");
 
     } catch (Exception $e) {
         http_response_code(500);

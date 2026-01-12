@@ -2201,11 +2201,8 @@ switch ($endpoint) {
 
     // === FAKTURY SYSTÉM API ===
     case 'invoices25/list':
-        error_log("🟢 API.PHP: invoices25/list endpoint HIT, method: $request_method");
         if ($request_method === 'POST') {
-            error_log("🟢 API.PHP: Calling handle_invoices25_list()");
             handle_invoices25_list($input, $config, $queries);
-            error_log("🟢 API.PHP: handle_invoices25_list() FINISHED");
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Metoda není povolena'));
