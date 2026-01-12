@@ -1724,30 +1724,13 @@ export async function listInvoices25({
     // 📎 Filtr pro přílohy
     if (filter_ma_prilohy !== undefined && filter_ma_prilohy !== '') payload.filter_ma_prilohy = filter_ma_prilohy;
     
-    // 📋 Filtry pro věcnou kontrolu a předání zaměstnanci
+    // Filtry pro věcnou kontrolu a předání zaměstnanci
     if (filter_vecna_kontrola !== undefined && filter_vecna_kontrola !== '') payload.filter_vecna_kontrola = filter_vecna_kontrola;
     if (filter_vecnou_provedl !== undefined && filter_vecnou_provedl !== '') payload.filter_vecnou_provedl = filter_vecnou_provedl;
     if (filter_predano_zamestnanec !== undefined && filter_predano_zamestnanec !== '') payload.filter_predano_zamestnanec = filter_predano_zamestnanec;
 
-    // 🐛 DEBUG: Vypsat přesnou URL a payload před voláním
-    console.log('🌐 API CALL:', {
-      baseURL: api25invoices.defaults.baseURL,
-      endpoint: 'invoices25/list',
-      full_url: `${api25invoices.defaults.baseURL}invoices25/list`,
-      payload: payload,
-      timeout: 30000
-    });
-
     const response = await api25invoices.post('invoices25/list', payload, {
       timeout: 30000
-    });
-
-    // 🐛 DEBUG: Vypsat co přišlo zpět
-    console.log('📥 API RESPONSE:', {
-      status: response.status,
-      statusText: response.statusText,
-      data: response.data,
-      headers: response.headers
     });
 
     if (response.status !== 200) {
