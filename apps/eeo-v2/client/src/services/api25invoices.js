@@ -1729,8 +1729,25 @@ export async function listInvoices25({
     if (filter_vecnou_provedl !== undefined && filter_vecnou_provedl !== '') payload.filter_vecnou_provedl = filter_vecnou_provedl;
     if (filter_predano_zamestnanec !== undefined && filter_predano_zamestnanec !== '') payload.filter_predano_zamestnanec = filter_predano_zamestnanec;
 
+    // 🐛 DEBUG: Vypsat přesnou URL a payload před voláním
+    console.log('🌐 API CALL:', {
+      baseURL: api25invoices.defaults.baseURL,
+      endpoint: 'invoices25/list',
+      full_url: `${api25invoices.defaults.baseURL}invoices25/list`,
+      payload: payload,
+      timeout: 30000
+    });
+
     const response = await api25invoices.post('invoices25/list', payload, {
       timeout: 30000
+    });
+
+    // 🐛 DEBUG: Vypsat co přišlo zpět
+    console.log('📥 API RESPONSE:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+      headers: response.headers
     });
 
     if (response.status !== 200) {
@@ -1748,10 +1765,14 @@ export async function listInvoices25({
     // ✅ Vrátit data podle BE dokumentace (status: "ok")
     if (data.status === 'ok') {
       return {
+        status: data.status,
+        message: data.message,
+        test: data.test,
         faktury: data.faktury || [],
         pagination: data.pagination || { page: 1, per_page: 50, total: 0, total_pages: 0 },
         statistiky: data.statistiky || null,
-        user_info: data.user_info || null
+        user_info: data.user_info || null,
+        _debug: data._debug || null
       };
     }
 

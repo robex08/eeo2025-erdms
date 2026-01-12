@@ -655,7 +655,7 @@ class NotificationService {
       const payload = {
         token,
         username,
-        type,
+        typ: type, // Backend očekává 'typ', ne 'type'
         order_id,
         action_user_id,
         ...custom_placeholders
@@ -666,7 +666,7 @@ class NotificationService {
       if (recipients && Array.isArray(recipients) && recipients.length > 0) {
         payload.to_users = recipients; // Backend očekává "to_users", ne "recipients"
       } else if (to_user_id) {
-        payload.to_user_id = to_user_id;
+        payload.pro_uzivatele_id = to_user_id; // Backend očekává "pro_uzivatele_id", ne "to_user_id"
       }
 
       const response = await notificationsApi.post('/notifications/create', payload);
@@ -692,7 +692,7 @@ class NotificationService {
       const payload = {
         token,
         username,
-        type,
+        typ: type, // Backend očekává 'typ', ne 'type'
         order_id,
         action_user_id,
         ...custom_placeholders

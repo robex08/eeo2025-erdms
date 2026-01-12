@@ -66,6 +66,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { Search } from 'lucide-react';
 import draftManager from '../services/DraftManager';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
+import { triggerNotification } from '../services/notificationsApi';
 import SpisovkaInboxPanel from '../components/panels/SpisovkaInboxPanel';
 import { InvoiceAttachmentsCompact, LPCerpaniEditor } from '../components/invoices';
 import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/isdocParser';
@@ -3281,10 +3282,13 @@ export default function InvoiceEvidencePage() {
   // ✅ AKTUALIZOVÁNO: Používá organizační hierarchii místo ručního výběru příjemců
   const sendInvoiceNotifications = async (orderId, orderData) => {
     try {
+      const timestamp = new Date().toLocaleString('cs-CZ');
+      console.log(`🔔 [${timestamp}] Notifikace → Typ: INVOICE_MATERIAL_CHECK_REQUESTED | Order: ${orderId} | User: ${user_id}`);
+      
       // ✅ NOVÝ SYSTÉM: Použití organizační hierarchie
       // Backend automaticky najde správné příjemce podle hierarchie a notification profiles
       // Podporuje generické příjemce (OBJEDNATEL, GARANT, SCHVALOVATEL_1, SCHVALOVATEL_2, ...)
-      const result = await notificationService.trigger(
+      const result = await triggerNotification(
         'INVOICE_MATERIAL_CHECK_REQUESTED', // 🔔 Faktura přidána - čeká na kontrolu věcné správnosti
         orderId,
         user_id // ID uživatele, který vytvořil/přiřadil fakturu
@@ -3292,6 +3296,8 @@ export default function InvoiceEvidencePage() {
 
       if (result.errors && result.errors.length > 0) {
         console.warn('⚠️ Některé notifikace se nepodařilo odeslat:', result.errors);
+      } else {
+        console.log(`✅ [${timestamp}] Notifikace odeslána úspěšně`);
       }
 
     } catch (error) {
@@ -3604,6 +3610,20 @@ export default function InvoiceEvidencePage() {
                   token,
                   username
                 );
+
+                // 🔔 NOTIFIKACE: Poslat notifikaci o potvrzení věcné správnosti
+                try {
+                  const timestamp = new Date().toLocaleString('cs-CZ');
+                  console.log(`🔔 [${timestamp}] Notifikace → Typ: INVOICE_MATERIAL_CHECK_APPROVED | Order: ${formData.order_id} | User: ${user_id}`);
+                  
+                  await triggerNotification('INVOICE_MATERIAL_CHECK_APPROVED', formData.order_id, user_id, {
+                    order_number: orderData.ev_cislo || orderData.cislo_objednavky || formData.order_id,
+                    order_subject: orderData.predmet || ''
+                  });
+                  console.log(`✅ [${timestamp}] Notifikace ZKONTROLOVANA odeslána`);
+                } catch (notificationError) {
+                  console.error('⚠️ Chyba při odesílání notifikace ZKONTROLOVANA:', notificationError);
+                }
               }
             }
           } catch (orderUpdateError) {
@@ -3661,6 +3681,26 @@ export default function InvoiceEvidencePage() {
   const handleSubmit = async () => {
     setError(null);
     setFieldErrors({});
+    
+    console.log('🚀 ========================================');
+    console.log('🚀 HANDLE SUBMIT - START');
+    console.log('🚀 ========================================');
+    console.log('  editingInvoiceId:', editingInvoiceId);
+    console.log('  isOriginalEdit:', isOriginalEdit);
+    console.log('  originalFormData:', originalFormData ? 'EXISTS' : 'NULL');
+    console.log('  formData.fa_stav:', formData.fa_stav);
+    console.log('  formData.fa_predana_zam_id:', formData.fa_predana_zam_id);
+    console.log('  formData.order_id:', formData.order_id);
+    console.log('  orderData:', orderData ? 'EXISTS' : 'NULL');
+    console.log('  user_id:', user_id);
+    
+    if (originalFormData) {
+      console.log('📝 ORIGINAL DATA:');
+      console.log('  originalFormData.fa_stav:', originalFormData.fa_stav);
+      console.log('  originalFormData.fa_predana_zam_id:', originalFormData.fa_predana_zam_id);
+    }
+    
+    console.log('🚀 ========================================');
     
     // 🆕 Uživatel klikl na Zaevidovat/Aktualizovat - nastavit flag
     setInvoiceUserConfirmed(true);
@@ -3996,8 +4036,10 @@ export default function InvoiceEvidencePage() {
               username
             );
 
-            // 🔔 NOTIFIKACE: Odeslat notifikace objednateli, garantovi a schvalovateli
+            // 🔔 NOTIFIKACE: Odeslat notifikace přes organizační hierarchii
+            // Backend sám rozhodne komu poslat (garant, objednatel, příp. "předáno komu") a eliminuje duplicity
             await sendInvoiceNotifications(formData.order_id, orderData);
+            console.log('📬 Notifikace VECNA_SPRAVNOST: Odesláno přes organizační hierarchii pro objednávku:', formData.order_id);
 
             // ✅ Reload objednávky aby se zobrazil nový stav
             await loadOrderData(formData.order_id);
@@ -4008,31 +4050,199 @@ export default function InvoiceEvidencePage() {
         }
       }
 
+      // 🔔 NOTIFIKACE: Změna stavu faktury na PŘEDÁNA (PREDANA / PREDANA_PO)
+      // Poslat notifikaci když:
+      // 1. Editujeme existující fakturu
+      // 2. Změnil se stav faktury (fa_stav) na PREDANA nebo PREDANA_PO
+      // 3. Faktura je připojena k objednávce NEBO smlouvě
+      console.log('🐛 DEBUG NOTIFIKACE STAV - START');
+      console.log('  editingInvoiceId:', editingInvoiceId);
+      console.log('  originalFormData:', originalFormData ? 'EXISTS' : 'NULL');
+      console.log('  formData.fa_stav:', formData.fa_stav);
+      console.log('  formData.order_id:', formData.order_id);
+      console.log('  formData.smlouva_id:', formData.smlouva_id);
+      
+      if (editingInvoiceId && originalFormData) {
+        const originalStav = originalFormData.fa_stav;
+        const currentStav = formData.fa_stav;
+        const stavChanged = (originalStav !== currentStav);
+        const isPredanaStav = ['PREDANA', 'PREDANA_PO', 'PREDANA_VECNA'].includes(currentStav?.toUpperCase());
+        
+        console.log('🐛 DEBUG NOTIFIKACE STAV - PODMÍNKY:');
+        console.log('  originalStav:', originalStav);
+        console.log('  currentStav:', currentStav);
+        console.log('  stavChanged:', stavChanged);
+        console.log('  isPredanaStav:', isPredanaStav);
+        console.log('  formData.order_id:', formData.order_id);
+        console.log('  orderData:', orderData ? 'EXISTS' : 'NULL');
+        
+        if (stavChanged && isPredanaStav) {
+          try {
+            const timestamp = new Date().toLocaleString('cs-CZ');
+            // PRO OBJEDNÁVKY
+            if (formData.order_id && orderData) {
+              console.log(`🔔 [${timestamp}] ==========================================`);
+              console.log(`🔔 [${timestamp}] ODESÍLÁM NOTIFIKACI - ZMĚNA STAVU FAKTURY`);
+              console.log(`🔔 [${timestamp}] Typ: INVOICE_MATERIAL_CHECK_REQUESTED`);
+              console.log(`🔔 [${timestamp}] Stav změněn: ${originalStav} → ${currentStav}`);
+              console.log(`🔔 [${timestamp}] Order ID: ${formData.order_id}`);
+              console.log(`🔔 [${timestamp}] User ID: ${user_id}`);
+              console.log(`🔔 [${timestamp}] Číslo FA: ${formData.fa_cislo_vema || 'bez čísla'}`);
+              
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+                invoice_number: formData.fa_cislo_vema || 'bez čísla',
+                invoice_state: currentStav
+              });
+              
+              console.log(`✅ [${timestamp}] Notifikace úspěšně odeslána na backend`);
+              console.log(`🔔 [${timestamp}] ==========================================`);
+            }
+            // PRO SMLOUVY
+            else if (formData.smlouva_id && smlouvaData) {
+              console.log(`🔔 [${timestamp}] ==========================================`);
+              console.log(`🔔 [${timestamp}] ODESÍLÁM NOTIFIKACI - ZMĚNA STAVU FAKTURY (SMLOUVA)`);
+              console.log(`🔔 [${timestamp}] Typ: INVOICE_MATERIAL_CHECK_REQUESTED`);
+              console.log(`🔔 [${timestamp}] Stav změněn: ${originalStav} → ${currentStav}`);
+              console.log(`🔔 [${timestamp}] Smlouva ID: ${formData.smlouva_id}`);
+              console.log(`🔔 [${timestamp}] User ID: ${user_id}`);
+              
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+                smlouva_id: formData.smlouva_id,
+                invoice_number: formData.fa_cislo_vema || 'bez čísla',
+                invoice_state: currentStav
+              });
+              
+              console.log(`✅ [${timestamp}] Notifikace úspěšně odeslána na backend`);
+              console.log(`🔔 [${timestamp}] ==========================================`);
+            } else {
+              console.log('⚠️ DEBUG: Notifikace se NEPOSÍLÁ - chybí order_id nebo smlouva_id');
+            }
+          } catch (notifErr) {
+            console.error('❌ CHYBA při odesílání notifikace při změně stavu faktury:');
+            console.error('   Message:', notifErr.message);
+            console.error('   Stack:', notifErr.stack);
+            console.error('   Response:', notifErr.response?.data);
+          }
+        } else {
+          console.log('⚠️ DEBUG: Notifikace se NEPOSÍLÁ - podmínky nesplněny:');
+          if (!stavChanged) console.log('   - Stav se NEZMĚNIL');
+          if (!isPredanaStav) console.log('   - Stav NENÍ typu PREDANA/PREDANA_PO/PREDANA_VECNA');
+        }
+      } else {
+        console.log('⚠️ DEBUG: Notifikace se NEPOSÍLÁ - fakturu není editace nebo chybí originalFormData');
+        if (!editingInvoiceId) console.log('   - editingInvoiceId je NULL (není to editace)');
+        if (!originalFormData) console.log('   - originalFormData je NULL');
+      }
+
       // 🔔 NOTIFIKACE: Změna "Předáno komu"
-      // Poslat notifikaci POUZE když:
-      // 1. Editujeme existující fakturu s objednávkou
+      // Poslat notifikaci když:
+      // 1. Editujeme existující fakturu
       // 2. Změnilo se "Předáno komu" (fa_predana_zam_id)
-      // 3. Je nastaveno datum předání (fa_datum_predani_zam)
+      // 3. Je nastaveno datum předání (fa_datum_predani_zam) - POVINNÉ
       // 4. NENÍ nastaveno datum vrácení (fa_datum_vraceni_zam)
-      if (editingInvoiceId && formData.order_id && orderData && originalFormData) {
+      // 5. Faktura je připojena k objednávce NEBO smlouvě
+      console.log('🐛 DEBUG NOTIFIKACE PŘEDÁNO KOMU - START');
+      console.log('  editingInvoiceId:', editingInvoiceId);
+      console.log('  originalFormData:', originalFormData ? 'EXISTS' : 'NULL');
+      console.log('  formData.fa_predana_zam_id:', formData.fa_predana_zam_id);
+      console.log('  formData.fa_datum_predani_zam:', formData.fa_datum_predani_zam);
+      console.log('  formData.fa_datum_vraceni_zam:', formData.fa_datum_vraceni_zam);
+      
+      if (editingInvoiceId && originalFormData && formData.fa_predana_zam_id) {
         const originalPredanoKomu = originalFormData.fa_predana_zam_id;
         const currentPredanoKomu = formData.fa_predana_zam_id;
         const hasDatePredani = !!formData.fa_datum_predani_zam;
         const hasDateVraceni = !!formData.fa_datum_vraceni_zam;
-
-        // Detekce změny
         const hasChanged = (originalPredanoKomu !== currentPredanoKomu);
+        
+        console.log('🐛 DEBUG NOTIFIKACE PŘEDÁNO KOMU - PODMÍNKY:');
+        console.log('  originalPredanoKomu:', originalPredanoKomu);
+        console.log('  currentPredanoKomu:', currentPredanoKomu);
+        console.log('  hasChanged:', hasChanged);
+        console.log('  hasDatePredani:', hasDatePredani);
+        console.log('  hasDateVraceni:', hasDateVraceni);
         
         if (hasChanged && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
           try {
-            // Poslat stejnou notifikaci jako při změně faktury (INVOICE_MATERIAL_CHECK_REQUESTED)
-            await sendInvoiceNotifications(formData.order_id, orderData);
-            console.log('📬 Notifikace: Faktura předána zaměstnanci ID:', currentPredanoKomu);
+            const timestamp = new Date().toLocaleString('cs-CZ');
+            // PRO OBJEDNÁVKY
+            if (formData.order_id && orderData) {
+              console.log(`🔔 [${timestamp}] ==========================================`);
+              console.log(`🔔 [${timestamp}] ODESÍLÁM NOTIFIKACI - PŘEDÁNO KOMU (OBJEDNÁVKA)`);
+              console.log(`🔔 [${timestamp}] Typ: INVOICE_MATERIAL_CHECK_REQUESTED`);
+              console.log(`🔔 [${timestamp}] Změna: ${originalPredanoKomu} → ${currentPredanoKomu}`);
+              console.log(`🔔 [${timestamp}] Invoice ID: ${editingInvoiceId}`);
+              console.log(`🔔 [${timestamp}] Order ID: ${formData.order_id}`);
+              console.log(`🔔 [${timestamp}] User ID: ${user_id}`);
+              
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+                invoice_number: formData.fa_cislo_vema || 'bez čísla',
+                employee_id: currentPredanoKomu,
+                order_id: formData.order_id
+              });
+              
+              console.log(`✅ [${timestamp}] Notifikace úspěšně odeslána na backend`);
+              console.log(`🔔 [${timestamp}] ==========================================`);
+            }
+            // PRO SMLOUVY
+            else if (formData.smlouva_id && smlouvaData) {
+              console.log(`🔔 [${timestamp}] ==========================================`);
+              console.log(`🔔 [${timestamp}] ODESÍLÁM NOTIFIKACI - PŘEDÁNO KOMU (SMLOUVA)`);
+              console.log(`🔔 [${timestamp}] Typ: INVOICE_MATERIAL_CHECK_REQUESTED`);
+              console.log(`🔔 [${timestamp}] Změna: ${originalPredanoKomu} → ${currentPredanoKomu}`);
+              console.log(`🔔 [${timestamp}] Smlouva ID: ${formData.smlouva_id}`);
+              console.log(`🔔 [${timestamp}] Invoice ID: ${editingInvoiceId}`);
+              console.log(`🔔 [${timestamp}] User ID: ${user_id}`);
+              
+              // Použít triggerNotification - volá /notifications/trigger s loadUniversalPlaceholders()
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+                invoice_number: formData.fa_cislo_vema || 'bez čísla',
+                employee_id: currentPredanoKomu,
+                smlouva_id: formData.smlouva_id
+              });
+              
+              console.log(`✅ [${timestamp}] Notifikace úspěšně odeslána přímo zaměstnanci ${currentPredanoKomu}`);
+              console.log(`🔔 [${timestamp}] ==========================================`);
+            }
+            // PRO SAMOSTATNÉ FAKTURY (bez objednávky/smlouvy)
+            // 🆕 NOTIFIKACE přímo zaměstnanci (fa_predana_zam_id)
+            else if (editingInvoiceId) {
+              console.log(`🔔 [${timestamp}] ==========================================`);
+              console.log(`🔔 [${timestamp}] ODESÍLÁM NOTIFIKACI - PŘEDÁNO KOMU (SAMOSTATNÁ FAKTURA)`);
+              console.log(`🔔 [${timestamp}] Typ: INVOICE_MATERIAL_CHECK_REQUESTED`);
+              console.log(`🔔 [${timestamp}] Změna: ${originalPredanoKomu} → ${currentPredanoKomu}`);
+              console.log(`🔔 [${timestamp}] Invoice ID: ${editingInvoiceId}`);
+              console.log(`🔔 [${timestamp}] User ID: ${user_id}`);
+              
+              // Použít triggerNotification - volá /notifications/trigger s loadUniversalPlaceholders()
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+                invoice_number: formData.fa_cislo_vema || 'bez čísla',
+                employee_id: currentPredanoKomu
+              });
+              
+              console.log(`✅ [${timestamp}] Notifikace úspěšně odeslána přímo zaměstnanci ${currentPredanoKomu}`);
+              console.log(`🔔 [${timestamp}] ==========================================`);
+            } else {
+              console.log('⚠️ DEBUG: Notifikace se NEPOSÍLÁ - chybí editingInvoiceId (nová faktura?)');
+            }
           } catch (notifErr) {
-            console.error('⚠️ Nepodařilo se odeslat notifikaci při změně "Předáno komu":', notifErr);
-            // Neblokujeme úspěch faktury
+            console.error('❌ CHYBA při odesílání notifikace "Předáno komu":');
+            console.error('   Message:', notifErr.message);
+            console.error('   Stack:', notifErr.stack);
+            console.error('   Response:', notifErr.response?.data);
           }
+        } else {
+          console.log('⚠️ DEBUG: Notifikace PŘEDÁNO KOMU se NEPOSÍLÁ - podmínky nesplněny:');
+          if (!hasChanged) console.log('   - Předáno komu se NEZMĚNILO');
+          if (!currentPredanoKomu) console.log('   - Předáno komu není vyplněno');
+          if (!hasDatePredani) console.log('   - Chybí datum předání');
+          if (hasDateVraceni) console.log('   - Je vyplněno datum vrácení');
         }
+      } else {
+        console.log('⚠️ DEBUG: Notifikace PŘEDÁNO KOMU se NEPOSÍLÁ - základní podmínky nesplněny:');
+        if (!editingInvoiceId) console.log('   - editingInvoiceId je NULL (není to editace)');
+        if (!originalFormData) console.log('   - originalFormData je NULL');
+        if (!formData.fa_predana_zam_id) console.log('   - fa_predana_zam_id není vyplněno');
       }
 
       // 🎯 FINÁLNÍ SUCCESS MESSAGE - zobrazí se AŽ PO workflow update

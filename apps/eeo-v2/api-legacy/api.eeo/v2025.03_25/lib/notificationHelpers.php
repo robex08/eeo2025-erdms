@@ -233,8 +233,8 @@ function notif_replacePlaceholders($text, $data) {
     }
     
     // Odstranit nenaplněné placeholdery (nahradit pomlčkou)
-    // ✅ OPRAVA: Přidána podpora pro číslice (order_id, invoice_id, atd.)
-    $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
+    // ✅ OPRAVA: Přidána podpora pro číslice (order_id, invoice_id, atd.) A JAKÉKOLIV speciální znaky (?, !, atd.)
+    $text = preg_replace('/\{[^}]+\}/', '-', $text);
     
     return $text;
 }
@@ -492,5 +492,83 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
     } catch (Exception $e) {
         error_log("[NotificationHelpers] Error in getOrderPlaceholderData: " . $e->getMessage());
         return array('error' => 'Chyba při načítání dat objednávky: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Triggeruje notifikaci pro objednávku
+ * 
+ * @param string $notification_type Typ notifikace (INVOICE_MATERIAL_CHECK_REQUESTED, etc.)
+ * @param int $order_id ID objednávky
+ * @param int $action_user_id ID uživatele který spustil akci
+ * @param array $custom_placeholders Další data pro placeholdery
+ * @return array ['success' => bool, 'error' => string]
+ */
+function triggerOrderNotification($notification_type, $order_id, $action_user_id, $custom_placeholders = array()) {
+    try {
+        // Získej databázové připojení
+        global $config;
+        if (!isset($config)) {
+            // Fallback - načti config
+            require_once __DIR__ . '/../config.php';
+        }
+        $db = get_db($config);
+        
+        // Načti data objednávky pro placeholdery
+        $order_data = getOrderPlaceholderData($db, $order_id);
+        if (isset($order_data['error'])) {
+            return array('success' => false, 'error' => $order_data['error']);
+        }
+        
+        // Slouč s custom placeholders
+        $placeholders = array_merge($order_data, $custom_placeholders);
+        
+        // Připrav input pro notifications/create API
+        $notification_input = array(
+            'typ' => $notification_type,
+            'order_id' => $order_id,
+            'action_user_id' => $action_user_id,
+            'custom_placeholders' => $placeholders,
+            'send_email' => true,
+            'send_push' => false
+        );
+        
+        // Simuluj token data (pro interní volání)
+        // Získej username podle action_user_id
+        $stmt = $db->prepare("SELECT jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+        $stmt->execute(array($action_user_id));
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            return array('success' => false, 'error' => "Uživatel s ID $action_user_id neexistuje");
+        }
+        
+        // Přidej username a token placeholder (pro interní volání použijeme jméno)
+        $notification_input['username'] = trim($user['jmeno'] . ' ' . $user['prijmeni']);
+        $notification_input['token'] = 'internal_call'; // Pro interní volání
+        
+        // Zavolej notifications/create handler
+        require_once __DIR__ . '/notificationHandlers.php';
+        
+        // Zachyť output
+        ob_start();
+        handle_notifications_create($notification_input, $config, array());
+        $output = ob_get_clean();
+        
+        // Parse JSON response
+        $response = json_decode($output, true);
+        
+        if ($response && isset($response['status']) && $response['status'] === 'ok') {
+            error_log("[NotificationHelpers] Successfully triggered notification: $notification_type for order: $order_id");
+            return array('success' => true, 'notification_id' => $response['notification_id'] ?? null);
+        } else {
+            $error = isset($response['err']) ? $response['err'] : 'Neznámá chyba';
+            error_log("[NotificationHelpers] Failed to trigger notification: $error");
+            return array('success' => false, 'error' => $error);
+        }
+        
+    } catch (Exception $e) {
+        error_log("[NotificationHelpers] Exception in triggerOrderNotification: " . $e->getMessage());
+        return array('success' => false, 'error' => 'Exception: ' . $e->getMessage());
     }
 }
