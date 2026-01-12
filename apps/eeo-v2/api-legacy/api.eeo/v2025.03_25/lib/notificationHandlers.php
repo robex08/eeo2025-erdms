@@ -2566,11 +2566,22 @@ function getEntityApprover($db, $entityType, $entityId) {
  * @param array $placeholderData - Data pro placeholder replacement
  * @return array - Výsledek odesílání { success: bool, sent: int, errors: array }
  */
-function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData = array()) {
+function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData = array(), $debugMode = false) {
     $result = array(
         'success' => false,
         'sent' => 0,
         'errors' => array()
+    );
+    
+    // ✅ Initialize debug info array
+    $debugInfo = array(
+        'hierarchy_enabled' => false,
+        'profile_id' => null,
+        'profile_name' => null,
+        'event_type_found' => false,
+        'matching_edges' => 0,
+        'rules' => array(),
+        'recipients' => array()
     );
     
     error_log("");
@@ -2647,7 +2658,12 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         
         // ✅ NOVÝ SYSTÉM: Použít hierarchyTriggers.php místo starého findNotificationRecipients
         require_once(__DIR__ . '/hierarchyTriggers.php');
-        $hierarchyResult = resolveHierarchyNotificationRecipients($eventType, $placeholderData, $db);
+        $hierarchyResult = resolveHierarchyNotificationRecipients($eventType, $placeholderData, $db, $debugMode);
+        
+        // ✅ Extract debug info if present
+        if ($debugMode && is_array($hierarchyResult) && isset($hierarchyResult['debug_info'])) {
+            $debugInfo = array_merge($debugInfo, $hierarchyResult['debug_info']);
+        }
         
         // Konverze výstupu z hierarchyTriggers na formát očekávaný notificationRouter
         $recipients = array();
@@ -3035,6 +3051,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         }
         
         $result['success'] = ($result['sent'] > 0);
+        
+        // ✅ Add debug info to result if debug mode enabled
+        if ($debugMode) {
+            $result['debug_info'] = $debugInfo;
+        }
         
         // ═══════════════════════════════════════════════════════════════════
         // FINÁLNÍ SHRNUTÍ
@@ -4131,6 +4152,7 @@ function handle_notifications_trigger($input, $config, $queries) {
         $eventType = isset($input['event_type']) ? $input['event_type'] : null;
         $objectId = isset($input['object_id']) ? intval($input['object_id']) : null;
         $triggerUserId = isset($input['trigger_user_id']) ? intval($input['trigger_user_id']) : null;
+        $debugMode = isset($input['debug']) && $input['debug'] === true;  // ✅ Debug mode flag
         
         if (!$eventType || !$objectId || !$triggerUserId) {
             http_response_code(400);
@@ -4145,19 +4167,24 @@ function handle_notifications_trigger($input, $config, $queries) {
         $placeholderData = isset($input['placeholder_data']) ? $input['placeholder_data'] : array();
         
         // Zavolat notification router (hlavní logika)
-        error_log("[NotificationTrigger] Calling notificationRouter with event=$eventType, object=$objectId, user=$triggerUserId");
-        $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData);
+        error_log("[NotificationTrigger] Calling notificationRouter with event=$eventType, object=$objectId, user=$triggerUserId, debug=$debugMode");
+        $result = notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeholderData, $debugMode);
         error_log("[NotificationTrigger] Router returned: " . json_encode($result));
         
         if ($result['success']) {
             error_log("[NotificationTrigger] ✅ SUCCESS - Sent: " . $result['sent']);
             error_log("════════════════════════════════════════════════════════════════");
-            echo json_encode(array(
+            $response = array(
                 'status' => 'ok',
                 'zprava' => 'Notifikace odeslány',
                 'sent' => $result['sent'],
                 'errors' => $result['errors']
-            ));
+            );
+            // ✅ Add debug info if available
+            if (isset($result['debug_info'])) {
+                $response['debug_info'] = $result['debug_info'];
+            }
+            echo json_encode($response);
         } else {
             error_log("[NotificationTrigger] ❌ FAILED - sent=" . $result['sent'] . ", errors=" . json_encode($result['errors']));
             error_log("════════════════════════════════════════════════════════════════");
@@ -4165,12 +4192,17 @@ function handle_notifications_trigger($input, $config, $queries) {
             // 500 jen pokud je skutečná technická chyba
             if (empty($result['errors'])) {
                 // Žádní příjemci nalezeni - to není chyba serveru
-                echo json_encode(array(
+                $response = array(
                     'status' => 'ok',
                     'zprava' => 'Žádní příjemci nenalezeni',
                     'sent' => 0,
                     'errors' => array()
-                ));
+                );
+                // ✅ Add debug info if available
+                if (isset($result['debug_info'])) {
+                    $response['debug_info'] = $result['debug_info'];
+                }
+                echo json_encode($response);
             } else {
                 http_response_code(500);
                 echo json_encode(array(
