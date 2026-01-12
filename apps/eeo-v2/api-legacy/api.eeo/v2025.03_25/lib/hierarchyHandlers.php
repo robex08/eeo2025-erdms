@@ -1221,18 +1221,21 @@ function handle_hierarchy_notification_types($data, $pdo) {
     }
     
     $notificationTypes = array(
-        array('id' => 'order_created', 'name' => 'Nova objednavka', 'category' => 'orders'),
-        array('id' => 'order_approved', 'name' => 'Schvalena objednavka', 'category' => 'orders'),
-        array('id' => 'order_rejected', 'name' => 'Zamitnuta objednavka', 'category' => 'orders'),
-        array('id' => 'invoice_created', 'name' => 'Nova faktura', 'category' => 'invoices'),
-        array('id' => 'invoice_approved', 'name' => 'Schvalena faktura', 'category' => 'invoices'),
-        array('id' => 'invoice_paid', 'name' => 'Zaplacena faktura', 'category' => 'invoices'),
-        array('id' => 'contract_expiring', 'name' => 'Vyprseni smlouvy', 'category' => 'contracts'),
-        array('id' => 'contract_created', 'name' => 'Nova smlouva', 'category' => 'contracts'),
-        array('id' => 'budget_warning', 'name' => 'Upozorneni na rozpocet', 'category' => 'finance'),
-        array('id' => 'approval_required', 'name' => 'Vyzaduje schvaleni', 'category' => 'general'),
-        array('id' => 'mention', 'name' => 'Zminka v komentari', 'category' => 'general'),
-        array('id' => 'task_assigned', 'name' => 'Prirazeny ukol', 'category' => 'general')
+        array('id' => 'ORDER_PENDING_APPROVAL', 'name' => 'Objednávka vytvořena / odeslána ke schválení', 'category' => 'orders'),
+        array('id' => 'ORDER_APPROVED', 'name' => 'Objednávka schválena', 'category' => 'orders'),
+        array('id' => 'ORDER_REJECTED', 'name' => 'Objednávka zamítnuta', 'category' => 'orders'),
+        array('id' => 'ORDER_CANCELLED', 'name' => 'Objednávka zrušena', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_NOVA', 'name' => 'Nová objednávka', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_KONTROLA_CEKA', 'name' => 'Objednávka čeká na kontrolu', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_KONTROLA_POTVRZENA', 'name' => 'Objednávka potvrzena po kontrole', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_KONTROLA_ZAMITNUTA', 'name' => 'Objednávka zamítnuta po kontrole', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_ZAMITNUTO', 'name' => 'Objednávka zamítnuta', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_HOTOVA', 'name' => 'Objednávka hotová', 'category' => 'orders'),
+        array('id' => 'ORDER_STATUS_DODANO', 'name' => 'Objednávka dodána', 'category' => 'orders'),
+        array('id' => 'ORDER_COMMENT_NEW', 'name' => 'Nový komentář k objednávce', 'category' => 'orders'),
+        array('id' => 'ORDER_COMMENT_MENTION', 'name' => 'Zmínka v komentáři objednávky', 'category' => 'orders'),
+        array('id' => 'SYSTEM_USER_LOGIN_ALERT', 'name' => 'Upozornění na přihlášení uživatele', 'category' => 'system'),
+        array('id' => 'SYSTEM_USER_PROFILE_CHANGED', 'name' => 'Změna profilu uživatele', 'category' => 'system')
     );
     
     return array(
@@ -1539,7 +1542,8 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
                 $validFields = array(
                     'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id', 
                     'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id', 
-                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id',
+                    'fa_predana_zam_id'
                 );
                 
                 if (is_array($scopeDef['fields'])) {
@@ -1582,7 +1586,8 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
                 $validFields = array(
                     'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id', 
                     'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id', 
-                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+                    'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id',
+                    'fa_predana_zam_id'
                 );
                 
                 $cleanedFields = array();

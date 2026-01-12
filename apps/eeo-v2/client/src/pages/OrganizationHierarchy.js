@@ -47,6 +47,43 @@ import {
   faBullseye
 } from '@fortawesome/free-solid-svg-icons';
 
+// ✅ Helper funkce pro konzistentní zobrazení event types
+function getNotificationTypeLabel(englishCode) {
+  const labels = {
+    // ✅ HLAVNÍ NOTIFIKACE OBJEDNÁVEK
+    'ORDER_CREATED': 'Nová objednávka',
+    'ORDER_PENDING_APPROVAL': 'Ke schválení',
+    'ORDER_APPROVED': 'Schváleno',
+    'ORDER_REJECTED': 'Zamítnuto',
+    'ORDER_AWAITING_CHANGES': 'Čeká na doplnění',
+    'ORDER_SENT_TO_SUPPLIER': 'Odesláno dodavateli',
+    'ORDER_CONFIRMED_BY_SUPPLIER': 'Potvrzeno dodavatelem',
+    'ORDER_COMPLETED': 'Dokončeno',
+    'ORDER_CANCELLED': 'Zrušeno',
+    'ORDER_REGISTRY_PUBLISHED': 'Registr zveřejněn',
+    'ORDER_REGISTRY_PENDING': 'Čeká registr',
+    
+    // ✅ FAKTURY
+    'INVOICE_CREATED': 'Nová faktura',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'Čeká věcná kontrola',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'Věcná správnost OK',
+    'INVOICE_APPROVED': 'Faktura schválena',
+    'INVOICE_PAID': 'Faktura uhrazena',
+    
+    // ✅ SYSTÉMOVÉ
+    'system_maintenance': 'Údržba systému',
+    'user_mention': 'Zmínka v komentáři',
+    'deadline_reminder': 'Připomínka termínu',
+    
+    // ✅ TODO ALARMY
+    'alarm_todo_normal': 'TODO alarm',
+    'alarm_todo_high': 'TODO urgentní', 
+    'alarm_todo_expired': 'TODO prošlý termín'
+  };
+  
+  return labels[englishCode] || englishCode;
+}
+
 // API Configuration
 const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
 
@@ -1962,7 +1999,9 @@ const OrganizationHierarchy = () => {
       const validFields = [
         'uzivatel_id', 'uzivatel_akt_id', 'garant_uzivatel_id', 'objednatel_id',
         'schvalovatel_id', 'prikazce_id', 'zamek_uzivatel_id', 'vytvoril_uzivatel_id',
-        'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id'
+        'aktualizoval_uzivatel_id', 'potvrdil_dodavatel_id', 'prikazce_fakturace_id',
+        'fa_predana_zam_id', 'potvrdil_vecnou_spravnost_id', 'sml_id', 'obj_id',
+        'odesilatel_id', 'dodavatel_potvrdil_id', 'zverejnil_id', 'fakturant_id', 'dokoncil_id'
       ];
       
       const cleanedFields = sourceInfoFields.filter(field => validFields.includes(field));
@@ -6128,11 +6167,15 @@ const OrganizationHierarchy = () => {
                         multiple
                         value={templateEventTypes}
                         onChange={(value) => setTemplateEventTypes(value)}
-                        options={(notificationEventTypes || []).map(eventType => ({
-                          id: eventType.kod || eventType.code,
-                          value: eventType.kod || eventType.code,
-                          label: `${eventType.nazev || eventType.name} (${eventType.kod || eventType.code})`
-                        }))}
+                        options={(notificationEventTypes || []).map(eventType => {
+                          const code = eventType.kod || eventType.code;
+                          const czechLabel = getNotificationTypeLabel(code);
+                          return {
+                            id: code,
+                            value: code,
+                            label: `${czechLabel} (${code})`
+                          };
+                        })}
                         placeholder="Vyberte event types..."
                         field="templateEventTypes"
                         selectStates={selectStates}
@@ -8706,6 +8749,71 @@ const OrganizationHierarchy = () => {
                         </div>
                       </div>
                       
+                      {/* Scope Filter - určuje komu se posílá notifikace */}
+                      <FormGroup style={{ marginBottom: '16px' }}>
+                        <Label>
+                          🎯 Scope Filter - komu se pošle?
+                          <span style={{ color: '#f59e0b', marginLeft: '4px' }}>*</span>
+                        </Label>
+                        <Select 
+                          value={edgeScopeFilter}
+                          onChange={(e) => setEdgeScopeFilter(e.target.value)}
+                          title="Určuje, komu se bude notifikace posílat"
+                          style={{
+                            border: edgeScopeFilter === 'PARTICIPANTS_ALL' ? '2px solid #059669' :
+                                   edgeScopeFilter === 'PARTICIPANTS_PRIKAZCE' ? '2px solid #dc2626' : 
+                                   edgeScopeFilter === 'LOCATION' ? '2px solid #f59e0b' : 
+                                   edgeScopeFilter === 'NONE' ? '2px solid #9ca3af' : '2px solid #3b82f6'
+                          }}
+                        >
+                          <option value="NONE">🚫 NONE - nikdo nedostane notifikaci</option>
+                          <option value="PARTICIPANTS_ALL">👥 PARTICIPANTS_ALL - všichni z entity</option>
+                          <option value="PARTICIPANTS_PRIKAZCE">👤 PARTICIPANTS_PRIKAZCE - jen příkazce</option>
+                          <option value="LOCATION">📍 LOCATION - celá lokalita</option>
+                          <option value="ALL_IN_ROLE">🎭 ALL_IN_ROLE - všichni s touto rolí</option>
+                        </Select>
+                        <div style={{ 
+                          fontSize: '0.75rem', 
+                          color: edgeScopeFilter === 'PARTICIPANTS_ALL' ? '#065f46' : 
+                                 edgeScopeFilter === 'NONE' ? '#6b7280' : '#1e40af',
+                          marginTop: '8px',
+                          padding: '10px',
+                          background: edgeScopeFilter === 'PARTICIPANTS_ALL' ? '#d1fae5' : 
+                                     edgeScopeFilter === 'NONE' ? '#f3f4f6' : '#eff6ff',
+                          border: edgeScopeFilter === 'PARTICIPANTS_ALL' ? '1px solid #a7f3d0' : 
+                                 edgeScopeFilter === 'NONE' ? '1px solid #d1d5db' : '1px solid #93c5fd',
+                          borderRadius: '6px',
+                          lineHeight: '1.6'
+                        }}>
+                          {edgeScopeFilter === 'PARTICIPANTS_ALL' ? (
+                            <>
+                              <strong>👥 PARTICIPANTS_ALL:</strong><br/>
+                              Notifikace dostane příkazce, objednatel, garant a další účastníci uvedení v entitě (objednávce/faktuře)
+                            </>
+                          ) : edgeScopeFilter === 'PARTICIPANTS_PRIKAZCE' ? (
+                            <>
+                              <strong>👤 PARTICIPANTS_PRIKAZCE:</strong><br/>
+                              Notifikace dostane pouze příkazce entity
+                            </>
+                          ) : edgeScopeFilter === 'LOCATION' ? (
+                            <>
+                              <strong>📍 LOCATION:</strong><br/>
+                              Notifikace dostanouší všichni uživatelé v dané lokalitě
+                            </>
+                          ) : edgeScopeFilter === 'NONE' ? (
+                            <>
+                              <strong>🚫 NONE:</strong><br/>
+                              Notifikace se neposílá nikomu - pouze test režim
+                            </>
+                          ) : (
+                            <>
+                              <strong>Obecné nastavení</strong><br/>
+                              Specifické chování dle typu
+                            </>
+                          )}
+                        </div>
+                      </FormGroup>
+
                       {/* Priorita notifikace pro příjemce - NOVÝ SYSTÉM */}
                       <FormGroup style={{ marginBottom: '16px' }}>
                         <Label>

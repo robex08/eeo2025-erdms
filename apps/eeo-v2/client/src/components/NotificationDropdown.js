@@ -7,6 +7,7 @@ import {
   faBell,
   faCheck,
   faCheckDouble,
+  faCheckCircle,
   faTimes,
   faTrash,
   faExclamationCircle,
@@ -188,7 +189,10 @@ const NotificationIcon = styled.div(({ $priority }) => {
   const normalizedPriority = ($priority || 'INFO').toUpperCase();
   
   let bgColor, iconColor;
-  if (normalizedPriority === 'EXCEPTIONAL' || normalizedPriority === 'URGENT') {
+  if (normalizedPriority === 'SUCCESS') {
+    bgColor = '#f0fdf4';  // Světle zelená
+    iconColor = '#16a34a';  // Tmavě zelená
+  } else if (normalizedPriority === 'EXCEPTIONAL' || normalizedPriority === 'URGENT') {
     bgColor = '#fef2f2';  // Světle červená
     iconColor = '#dc2626';  // Tmavě červená
   } else if (normalizedPriority === 'APPROVAL' || normalizedPriority === 'HIGH' || normalizedPriority === 'WARNING') {
@@ -577,8 +581,9 @@ export const NotificationDropdown = ({
     if (!title) return title;
     
     const originalTitle = title;
-    // Odstraní emoji ikony na začátku včetně variation selectors (\uFE0F)
+    // Odstraní emoji ikony a otazníky na začátku včetně variation selectors (\uFE0F)
     const cleanedTitle = title
+      .replace(/^\?\s*/, '')     // Otazník na začátku
       .replace(/^ℹ️\s*/, '')     // Info emoji s variation selector
       .replace(/^ℹ\uFE0F\s*/, '') // Info emoji s explicit variation selector  
       .replace(/^⚠️\s*/, '')     // Warning emoji s variation selector
@@ -591,13 +596,19 @@ export const NotificationDropdown = ({
       .replace(/^📧\s*/, '')     // Email
       .replace(/^🎯\s*/, '')     // Target
       .replace(/^📦\s*/, '')     // Package
-      .replace(/^[ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
+      .replace(/^[?ℹ⚠🚨✅❌⏸📧🎯📦]\uFE0F?\s*/, ''); // Fallback regex
     
     return cleanedTitle;
   };
 
-  const getPriorityIcon = (priority, nadpis = '') => {
+  const getPriorityIcon = (priority, nadpis = '', notificationType = '') => {
     const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti zobraz zelenou fajfku
+    if (notificationType === 'invoice_material_check_approved' || 
+        notificationType === 'INVOICE_MATERIAL_CHECK_APPROVED') {
+      return faCheckCircle;  // ✅ Zelená fajfka
+    }
     
     // Určíme prioritu podle emoji v nadpisu, pokud priority není specifická
     if (nadpis.includes('🚨')) {
@@ -684,6 +695,12 @@ export const NotificationDropdown = ({
               const isUnread = !notification.precteno || notification.precteno === 0 || notification.precteno === false;
               let priority = notification.priorita || 'normal';
               
+              // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti nastav speciální priority
+              if (notification.typ === 'invoice_material_check_approved' || 
+                  notification.typ === 'INVOICE_MATERIAL_CHECK_APPROVED') {
+                priority = 'SUCCESS';
+              }
+              
               // 🚨 Detekce URGENT z emoji v nadpisu
               if (notification.nadpis && notification.nadpis.includes('🚨')) {
                 priority = 'URGENT';
@@ -716,7 +733,7 @@ export const NotificationDropdown = ({
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <NotificationIcon $priority={priority}>
-                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis)} />
+                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis, notification.typ)} />
                   </NotificationIcon>
                   <NotificationContent>
                     <NotificationTitle $isUnread={isUnread} $priority={priority}>
@@ -732,8 +749,8 @@ export const NotificationDropdown = ({
                         <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px' }} />
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
-                      {/* Zobraz informaci kdo poslal/provedl akci */}
-                      {(notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) ? (
+                      {/* Zobraz jméno uživatele, který provedl akci */}
+                      {(notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) && (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
@@ -744,17 +761,7 @@ export const NotificationDropdown = ({
                         }}>
                           👤 {notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by}
                         </span>
-                      ) : notification.typ ? (
-                        <span style={{
-                          background: '#e5e7eb',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: '500'
-                        }}>
-                          {notification.typ}
-                        </span>
-                      ) : null}
+                      )}
                     </NotificationMeta>
                   </NotificationContent>
                   <NotificationActions>

@@ -255,9 +255,23 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo, $d
                 $scopeType = 'N/A';
                 $scopeDetails = '';
                 
+                // 🔧 FIX: Použij skutečný scope z edge nebo node, ne hardcoded ALL_IN_ROLE
+                $edgeScopeFilter = $edge['data']['scope_filter'] ?? null;
+                $nodeScopeType = $targetNode['data']['scopeDefinition']['type'] ?? null;
+                
                 if ($targetNodeType === 'role') {
-                    $scopeType = 'ALL_IN_ROLE';
-                    $scopeDetails = $targetNode['data']['roleName'] ?? 'Unknown role';
+                    // Priorita: 1. edge scope_filter, 2. node scopeDefinition.type, 3. fallback
+                    if ($edgeScopeFilter === 'PARTICIPANTS_ALL' || $nodeScopeType === 'DYNAMIC_FROM_ENTITY') {
+                        $scopeType = 'DYNAMIC_FROM_ENTITY';
+                        $fields = $targetNode['data']['scopeDefinition']['fields'] ?? [];
+                        $scopeDetails = 'Dynamic fields: [' . implode(', ', $fields) . ']';
+                    } elseif ($edgeScopeFilter === 'ALL_USERS_IN_ROLE' || $nodeScopeType === 'ALL_IN_ROLE') {
+                        $scopeType = 'ALL_IN_ROLE';
+                        $scopeDetails = $targetNode['data']['name'] ?? $targetNode['data']['roleName'] ?? 'Unknown role';
+                    } else {
+                        $scopeType = 'ALL_IN_ROLE'; // fallback
+                        $scopeDetails = $targetNode['data']['name'] ?? $targetNode['data']['roleName'] ?? 'Unknown role';
+                    }
                 } elseif ($targetNodeType === 'department') {
                     $scopeData = $targetNode['data']['scopeDefinition'] ?? array();
                     $scopeType = $scopeData['type'] ?? 'SELECTED';
@@ -271,11 +285,15 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo, $d
                 } elseif ($targetNodeType === 'user') {
                     $scopeType = 'SINGLE_USER';
                     $scopeDetails = $targetNode['data']['userEmail'] ?? $targetNode['data']['userId'] ?? 'Unknown user';
+                } elseif ($targetNodeType === 'participant') {
+                    $scopeType = 'PARTICIPANT_ENTITY';
+                    $fields = $targetNode['data']['scopeDefinition']['fields'] ?? [];
+                    $scopeDetails = 'Entity participants: [' . implode(', ', $fields) . ']';
                 }
             }
             
-            // RESOLVE PŘÍJEMCE podle typu TARGET NODE
-            $recipients = resolveTargetNodeRecipients($targetNode, $eventData, $pdo);
+            // RESOLVE PŘÍJEMCE podle typu TARGET NODE - předat edge data pro správné scope mapování
+            $recipients = resolveTargetNodeRecipients($targetNode, $eventData, $pdo, $edge);
             
             // ✅ Add rule to debug info
             if ($debugMode) {
@@ -396,14 +414,15 @@ function resolveAutoPriority($eventData) {
 }
 
 /**
- * Resolve příjemce z TARGET NODE podle jeho scopeDefinition
+ * Resolve příjemce z TARGET NODE podle jeho scopeDefinition a edge scope_filter
  * 
  * @param array $targetNode - Node objekt z structure JSON
  * @param array $eventData - Data entity pro DYNAMIC resolution
  * @param PDO $pdo - Database connection
+ * @param array $edge - Edge objekt obsahující scope_filter
  * @return array Pole příjemců [{user_id, delivery: {email, inApp, sms}}]
  */
-function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
+function resolveTargetNodeRecipients($targetNode, $eventData, $pdo, $edge = null) {
     // Support both 'type' (new) and 'typ' (old) for backward compatibility
     $nodeType = $targetNode['type'] ?? $targetNode['typ'] ?? null;
     $nodeData = $targetNode['data'] ?? [];
@@ -423,8 +442,23 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
         $scopeDef['roleId'] = $nodeData['roleId'];
     }
     
-    // ✅ OPRAVA: Fallback pro scope type pokud chybí (pravděpodobně chyba při ukládání z editoru)
+    // 🔧 FIX: Přepsat scope type podle edge scope_filter (priorita edge > node)
     $scopeType = $scopeDef['type'] ?? null;
+    $edgeScopeFilter = $edge['data']['scope_filter'] ?? null;
+    
+    if ($edgeScopeFilter === 'PARTICIPANTS_ALL') {
+        $scopeType = 'DYNAMIC_FROM_ENTITY';
+        error_log("HIERARCHY TRIGGER: Edge scope_filter=PARTICIPANTS_ALL → using DYNAMIC_FROM_ENTITY");
+    } elseif ($edgeScopeFilter === 'ALL_USERS_IN_ROLE') {
+        $scopeType = 'ALL';
+        error_log("HIERARCHY TRIGGER: Edge scope_filter=ALL_USERS_IN_ROLE → using ALL");
+    } elseif ($edgeScopeFilter === 'SELECTED_USERS') {
+        $scopeType = 'SELECTED';
+        error_log("HIERARCHY TRIGGER: Edge scope_filter=SELECTED_USERS → using SELECTED");
+    } elseif ($edgeScopeFilter === 'NONE') {
+        error_log("HIERARCHY TRIGGER: Edge scope_filter=NONE → skipping recipients");
+        return [];
+    }
     
     // Pokud type chybí, ale jsou definované fields → DYNAMIC_FROM_ENTITY
     if (!$scopeType && (isset($scopeDef['fields']) || isset($scopeDef['field']))) {
@@ -447,7 +481,7 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
                 return [];
             }
             
-            if ($scopeType === 'ALL') {
+            if ($scopeType === 'ALL' || $scopeType === 'ALL_IN_ROLE') {
                 // Všichni uživatelé s touto rolí
                 $stmt = $pdo->prepare("
                     SELECT DISTINCT u.id as user_id, u.email, u.username
@@ -666,6 +700,67 @@ function resolveTargetNodeRecipients($targetNode, $eventData, $pdo) {
                     'delivery' => $delivery
                 ];
             }
+        
+        } elseif ($nodeType === 'participant') {
+            // ✅ NOVÝ TYP: Účastníci entity (bez kontroly role)
+            // Podobné jako role+DYNAMIC_FROM_ENTITY, ale BEZ kontroly role!
+            
+            $fields = [];
+            if (isset($scopeDef['fields']) && is_array($scopeDef['fields']) && !empty($scopeDef['fields'])) {
+                $fields = $scopeDef['fields'];
+                error_log("HIERARCHY TRIGGER: PARTICIPANT - using fields: " . implode(', ', $fields));
+            } else {
+                error_log("HIERARCHY TRIGGER: PARTICIPANT - no fields specified in scopeDefinition");
+                return [];
+            }
+            
+            $processedUserIds = [];
+            foreach ($fields as $field) {
+                if (!isset($eventData[$field])) {
+                    error_log("HIERARCHY TRIGGER: PARTICIPANT - field '$field' not found in event data, skipping");
+                    continue;
+                }
+                
+                $userId = (int)$eventData[$field];
+                
+                // NULL check
+                if ($userId === 0 || $eventData[$field] === null) {
+                    error_log("HIERARCHY TRIGGER: PARTICIPANT - field '$field' is null/0, skipping");
+                    continue;
+                }
+                
+                // Deduplikace
+                if (in_array($userId, $processedUserIds)) {
+                    error_log("HIERARCHY TRIGGER: PARTICIPANT - userId=$userId from field='$field' already processed, skipping");
+                    continue;
+                }
+                
+                error_log("HIERARCHY TRIGGER: PARTICIPANT - field='$field', userId=$userId");
+                
+                if ($userId > 0) {
+                    // ✅ BEZ kontroly role - jen ověř, že user existuje a je aktivní
+                    $stmt = $pdo->prepare("
+                        SELECT u.id as user_id, u.email, u.username
+                        FROM " . TBL_UZIVATELE . " u
+                        WHERE u.id = ? AND u.aktivni = 1
+                    ");
+                    $stmt->execute([$userId]);
+                    
+                    if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $recipients[] = [
+                            'user_id' => (int)$row['user_id'],
+                            'email' => $row['email'],
+                            'username' => $row['username'],
+                            'delivery' => $delivery
+                        ];
+                        $processedUserIds[] = $userId;
+                        error_log("HIERARCHY TRIGGER: PARTICIPANT - User $userId from field '$field' added");
+                    } else {
+                        error_log("HIERARCHY TRIGGER: PARTICIPANT - User $userId from field '$field' not found or inactive");
+                    }
+                }
+            }
+        
         }
         
     } catch (Exception $e) {
