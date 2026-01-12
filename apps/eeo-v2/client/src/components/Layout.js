@@ -1632,7 +1632,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, hierarchyStatus } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
@@ -1718,9 +1718,12 @@ const Layout = ({ children }) => {
 
   // Refresh system info after login
   useEffect(() => {
-    if (isLoggedIn && token) {
+    if (isLoggedIn && token && username) {
       const refreshSystemInfo = async () => {
         try {
+          // ⏱️ Malé zpoždění, aby se localStorage stihl naplnit
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           // Clear cache to force fresh load from API
           SystemInfoService.clearCache();
           const info = await SystemInfoService.getSystemInfo();
@@ -1729,6 +1732,8 @@ const Layout = ({ children }) => {
           if (info?.database?.display_name) {
             setDatabaseName(info.database.display_name);
           }
+          
+          console.log('✓ System info refreshed:', info.database?.name);
         } catch (error) {
           console.warn('Nepodařilo se aktualizovat systémové informace:', error);
         }
@@ -1736,7 +1741,17 @@ const Layout = ({ children }) => {
       
       refreshSystemInfo();
     }
-  }, [isLoggedIn, token]); // Refresh when user logs in
+  }, [isLoggedIn, token, username]); // Refresh when user logs in
+
+  // Refresh system info after logout (clear cache when user logs out)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      // Při odhlášení vyčistit cache a resetovat na fallback
+      SystemInfoService.clearCache();
+      setSystemInfo(null);
+      setDatabaseName(null);
+    }
+  }, [isLoggedIn]);
 
   // Check maintenance mode status periodically
   useEffect(() => {
@@ -3685,12 +3700,32 @@ const Layout = ({ children }) => {
                 fontSize: '0.8em'
               }} 
             />
-            <span style={{ 
-              fontFamily: 'monospace', 
-              fontSize: '0.85em',
-              color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
-              fontWeight: '500'
-            }}>
+            <span 
+              onClick={async () => {
+                try {
+                  SystemInfoService.clearCache();
+                  const info = await SystemInfoService.getSystemInfo();
+                  setSystemInfo(info);
+                  if (info?.database?.display_name) {
+                    setDatabaseName(info.database.display_name);
+                  }
+                  console.log('✓ System info refreshed manually:', info.database?.name);
+                } catch (error) {
+                  console.error('Chyba při refresh system info:', error);
+                }
+              }}
+              style={{ 
+                fontFamily: 'monospace', 
+                fontSize: '0.85em',
+                color: systemInfo?.environment?.is_dev ? '#22c55e' : '#6366f1',
+                fontWeight: '500',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                textDecorationStyle: 'dotted',
+                textDecorationColor: 'rgba(255,255,255,0.3)'
+              }}
+              title="Klikni pro aktualizaci názvu databáze z API"
+            >
               {systemInfo?.database?.display_name || 'NAČÍTÁ...'}
             </span>
           </span>

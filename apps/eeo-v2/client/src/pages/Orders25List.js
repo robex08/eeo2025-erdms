@@ -17369,20 +17369,10 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
               const isPrikazce = String(contextMenu.order.prikazce_id) === String(currentUserId);
               const isAdminRole = hasAdminRole();
               
-              console.log('🔍 canApprove check:', {
-                orderId: contextMenu.order.id,
-                cislo: contextMenu.order.cislo_objednavky,
-                prikazce_id: contextMenu.order.prikazce_id,
-                currentUserId: currentUserId,
-                isPrikazce,
-                isAdminRole
-              });
-              
               // 1. Zkontroluj oprávnění: Příkazce NEBO ADMINI (Superadmin/Administrator)
               const hasPermissionToApprove = isPrikazce || isAdminRole;
               
               if (!hasPermissionToApprove) {
-                console.log('❌ Nemá oprávnění ke schválení (není příkazce ani admin)');
                 return false;
               }
               
@@ -17407,14 +17397,6 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 : '';
               
               const isAllowedState = allowedStates.includes(lastState);
-              
-              console.log('🔍 Workflow stav check:', {
-                stav_workflow_kod: contextMenu.order.stav_workflow_kod,
-                workflowStates,
-                lastState,
-                allowedStates,
-                isAllowedState
-              });
               
               return isAllowedState;
             })()

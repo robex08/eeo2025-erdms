@@ -54,7 +54,7 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         // 1. ZKONTROLOVAT GLOBAL SETTINGS - je hierarchie zapnutá?
         $settingsStmt = $pdo->query("
             SELECT klic, hodnota 
-            FROM " . TBL_NASTAVENI_GLOBALNI . " 
+            FROM 25a_nastaveni_globalni
             WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id')
         ");
         
@@ -80,7 +80,7 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         // 2. NAČÍST STRUCTURE_JSON z profilu
         $stmt = $pdo->prepare("
             SELECT structure_json, nazev 
-            FROM " . TBL_HIERARCHIE_PROFILY . " 
+            FROM 25_hierarchie_profily 
             WHERE id = ? AND aktivni = 1
         ");
         $stmt->execute([$profileId]);

@@ -1358,7 +1358,13 @@ const Invoices25List = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
+  // Výchozí rok: aktuální rok (pokud není uložený v LS)
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const currentYear = new Date().getFullYear();
+    const savedYear = savedState?.selectedYear;
+    // Pokud je uložený rok validní (>= 2025), použij ho, jinak použij aktuální rok
+    return savedYear && savedYear >= 2025 ? savedYear : currentYear;
+  });
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   
   // Filters state pro dashboard cards
@@ -1751,6 +1757,9 @@ const Invoices25List = () => {
       return;
     }
 
+    // 🐛 DEBUG: Zaloguj začátek načítání
+    console.log('🔄 loadData() STARTED - Načítám faktury...');
+
     try {
       setLoading(true);
       showProgress?.();
@@ -1762,6 +1771,9 @@ const Invoices25List = () => {
         page: currentPage,
         per_page: itemsPerPage
       };
+      
+      // 🐛 DEBUG: API parametry PŘED odesláním
+      console.log('📤 API PARAMS:', apiParams);
       
       // Rok -> datum_od/datum_do
       if (selectedYear) {
@@ -1862,6 +1874,27 @@ const Invoices25List = () => {
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
+
+      // 🐛 DEBUG: RAW RESPONSE Z BE
+      console.log('🔍 RAW API RESPONSE (invoices25/list):', {
+        status: response?.status,
+        faktury_count: response?.faktury?.length || 0,
+        pagination: response?.pagination,
+        response_keys: Object.keys(response || {}),
+        user_info: response?.user_info,
+        debug_info: response?._debug,
+        full_response: response
+      });
+      
+      // � DEBUG: SQL DOTAZ PRO TESTOVÁNÍ
+      if (response?._debug?.sql_query) {
+        console.log('📋 SQL DOTAZ (zkopíruj a spusť v DB):\n\n' + response._debug.sql_query + '\n');
+      }
+      
+      // �🚨 DEBUG: Pokud je admin ale nemá faktury
+      if (response?.user_info?.is_admin && response?.faktury?.length === 0) {
+        console.warn('⚠️ ADMIN VID Í 0 FAKTUR - možný problém s JOINy nebo WHERE podmínkami!', response?.user_info);
+      }
 
       // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
@@ -2045,6 +2078,15 @@ const Invoices25List = () => {
 
     } catch (err) {
       console.error('❌ Chyba při načítání faktur:', err);
+      
+      // 🐛 DEBUG: Detailní info o chybě
+      console.error('❌ ERROR DETAILS:', {
+        message: err?.message,
+        response: err?.response,
+        status: err?.response?.status,
+        data: err?.response?.data,
+        full_error: err
+      });
       
       // Speciální handling pro 404 - endpoint ještě není implementován na BE
       let errorMsg;
@@ -2636,11 +2678,12 @@ const Invoices25List = () => {
     }
   };
 
-  // Generate years for select
+  // Generate years for select (od 2025 do aktuálního roku)
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let year = currentYear; year >= 2020; year--) {
+    // Od aktuálního roku zpět do roku 2025 (včetně)
+    for (let year = currentYear; year >= 2025; year--) {
       years.push(year);
     }
     return years;

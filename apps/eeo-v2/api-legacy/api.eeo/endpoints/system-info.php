@@ -27,34 +27,28 @@ $input = json_decode(file_get_contents('php://input'), true);
 $token = $input['token'] ?? '';
 $username = $input['username'] ?? '';
 
-if (!$token || !$username) {
-    http_response_code(400);
-    echo json_encode([
-        'status' => 'error',
-        'message' => 'Chybí povinné parametry: token a username'
-    ]);
-    exit;
+// 3. Načtení konfigurace a funkcí
+require_once __DIR__ . '/../v2025.03_25/lib/dbconfig.php';
+$config = require __DIR__ . '/../v2025.03_25/lib/dbconfig.php';
+
+// 4. Pokud jsou credentials, ověřit token (optional auth)
+$isAuthenticated = false;
+if ($token && $username) {
+    try {
+        require_once __DIR__ . '/../v2025.03_25/lib/auth.php';
+        $token_data = verify_token($token);
+        if ($token_data && $token_data['username'] === $username) {
+            $isAuthenticated = true;
+        }
+    } catch (Exception $e) {
+        // Token není validní, ale můžeme pokračovat s basic info
+    }
 }
 
-// 3. Načtení konfigurace a funkcí
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../v2025.03_25/lib/auth.php';
-
 try {
-    // 4. Ověření tokenu
-    $token_data = verify_token($token);
-    if (!$token_data || $token_data['username'] !== $username) {
-        http_response_code(401);
-        echo json_encode([
-            'status' => 'error',
-            'message' => 'Neplatný token nebo uživatelské jméno'
-        ]);
-        exit;
-    }
-
-    // 5. Získání informací o systému
-    $dbName = DB_NAME;
-    $isDevEnvironment = (strpos($dbName, '-dev') !== false);
+    // 5. Získání informací o systému - SKUTEČNÁ DATABÁZE Z CONFIG!
+    $dbName = $config['mysql']['database'];
+    $isDevEnvironment = (strpos($dbName, '-dev') !== false || strpos($dbName, 'DEV') !== false);
     
     $systemInfo = [
         'database' => [
@@ -67,7 +61,8 @@ try {
         ],
         'api' => [
             'version' => defined('VERSION') ? VERSION : '1.94',
-            'host' => $_SERVER['HTTP_HOST'] ?? 'unknown'
+            'host' => $_SERVER['HTTP_HOST'] ?? 'unknown',
+            'authenticated' => $isAuthenticated
         ],
         'timestamp' => date('c')
     ];
@@ -77,7 +72,9 @@ try {
     echo json_encode([
         'status' => 'success',
         'data' => $systemInfo,
-        'message' => 'Systémové informace načteny úspěšně'
+        'message' => $isAuthenticated 
+            ? 'Systémové informace načteny úspěšně (authenticated)' 
+            : 'Systémové informace načteny úspěšně (public)'
     ], JSON_UNESCAPED_UNICODE);
     
 } catch (Exception $e) {

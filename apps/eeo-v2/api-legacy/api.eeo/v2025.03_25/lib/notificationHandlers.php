@@ -127,9 +127,9 @@ function replacePlaceholders($text, $data) {
     }
     
     // ✅ OPRAVA: Odstranit nenaplněné placeholdery (nahradit pomlčkou)
-    // Podporuje dvojité i jednoduché závorky
-    $text = preg_replace('/\{\{[a-z0-9_]+\}\}/', '-', $text);
-    $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
+    // Podporuje dvojité i jednoduché závorky A JAKÉKOLIV znaky uvnitř (včetně ?, !, atd.)
+    $text = preg_replace('/\{\{[^}]+\}\}/', '-', $text);
+    $text = preg_replace('/\{[^}]+\}/', '-', $text);
     
     return $text;
 }
