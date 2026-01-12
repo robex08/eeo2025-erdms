@@ -1144,11 +1144,16 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
+    // 🐛 DEBUG: Funkce byla zavolána
+    error_log("🟢 handle_invoices25_list() STARTED");
+    error_log("🟢 Input keys: " . implode(', ', array_keys($input)));
+    
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     
     if (!$token || !$request_username) {
+        error_log("🔴 Missing token or username - returning 400");
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
         return;
@@ -1256,16 +1261,50 @@ function handle_invoices25_list($input, $config, $queries) {
         $user_usek_id = $usek_data ? (int)$usek_data['usek_id'] : null;
         $user_usek_zkr = $usek_data ? $usek_data['usek_zkr'] : null;
         
-        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR nebo UCETNI = plný přístup (vidí VŠE)
+        // Načíst permissions uživatele z DB (pro kontrolu INVOICE_MANAGE)
+        $perms_sql = "
+            SELECT DISTINCT p.kod_prava
+            FROM " . TBL_PRAVA . " p
+            WHERE p.kod_prava LIKE 'INVOICE_%'
+            AND p.id IN (
+                -- Přímá práva (user_id v 25_role_prava)
+                SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
+                WHERE rp.user_id = ?
+                
+                UNION
+                
+                -- Práva z rolí (user_id = -1 znamená právo z role)
+                SELECT rp.pravo_id 
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                WHERE ur.uzivatel_id = ?
+            )
+        ";
+        $perms_stmt = $db->prepare($perms_sql);
+        $perms_stmt->execute(array($user_id, $user_id));
+        $user_permissions = array();
+        while ($row = $perms_stmt->fetch(PDO::FETCH_ASSOC)) {
+            $user_permissions[] = $row['kod_prava'];
+        }
+        
+        // Kontrola INVOICE_MANAGE práva
+        $has_invoice_manage = in_array('INVOICE_MANAGE', $user_permissions);
+        
+        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR, UCETNI nebo INVOICE_MANAGE = plný přístup (vidí VŠE)
         // Role UCETNI má automatický přístup ke všem fakturám pro účetní operace
+        // Právo INVOICE_MANAGE umožňuje správu všech faktur v systému
         $is_admin = in_array('SUPERADMIN', $user_roles) || 
                     in_array('ADMINISTRATOR', $user_roles) || 
-                    in_array('UCETNI', $user_roles);
+                    in_array('UCETNI', $user_roles) ||
+                    in_array('HLAVNI_UCETNI', $user_roles) ||
+                    $has_invoice_manage;
         
         // DEBUG logging
         error_log("Invoices25 LIST: User $user_id roles: " . implode(', ', $user_roles));
+        error_log("Invoices25 LIST: User $user_id permissions: " . implode(', ', $user_permissions));
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
-        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI): " . ($is_admin ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Has INVOICE_MANAGE: " . ($has_invoice_manage ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI/HLAVNI_UCETNI/INVOICE_MANAGE): " . ($is_admin ? 'YES' : 'NO'));
 
         // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem
         if (!$is_admin) {
@@ -1779,6 +1818,23 @@ function handle_invoices25_list($input, $config, $queries) {
             $sql .= " LIMIT $per_page OFFSET $offset";
         }
 
+        // 🐛 DEBUG: Sestavit plný SQL dotaz s vloženými parametry (pro test v DB)
+        $debug_sql = $sql;
+        $debug_params_escaped = array();
+        foreach ($params as $param) {
+            if (is_null($param)) {
+                $debug_params_escaped[] = 'NULL';
+            } elseif (is_numeric($param)) {
+                $debug_params_escaped[] = $param;
+            } else {
+                $debug_params_escaped[] = "'" . addslashes($param) . "'";
+            }
+        }
+        // Nahradit ? za skutečné hodnoty (jednoduchá náhrada)
+        foreach ($debug_params_escaped as $param_value) {
+            $debug_sql = preg_replace('/\?/', $param_value, $debug_sql, 1);
+        }
+        
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1815,7 +1871,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Vytvoril uzivatel - zkrácené jméno (Bezoušková T.)
             $vytvoril_jmeno_zkracene = '';
             if (!empty($faktura['vytvoril_jmeno']) && !empty($faktura['vytvoril_prijmeni'])) {
-                $vytvoril_jmeno_zkracene = trim($faktura['vytvoril_prijmeni'] . ' ' . substr($faktura['vytvoril_jmeno'], 0, 1) . '.');
+                $vytvoril_jmeno_zkracene = trim($faktura['vytvoril_prijmeni'] . ' ' . mb_substr($faktura['vytvoril_jmeno'], 0, 1, 'UTF-8') . '.');
             }
             $faktura['vytvoril_uzivatel_zkracene'] = $vytvoril_jmeno_zkracene;
             
@@ -1885,7 +1941,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Potvrdil věcnou správnost - zkrácené jméno (Bezoušková T.)
             $potvrdil_vecnou_spravnost_zkracene = '';
             if (!empty($faktura['potvrdil_vecnou_spravnost_jmeno']) && !empty($faktura['potvrdil_vecnou_spravnost_prijmeni'])) {
-                $potvrdil_vecnou_spravnost_zkracene = trim($faktura['potvrdil_vecnou_spravnost_prijmeni'] . ' ' . substr($faktura['potvrdil_vecnou_spravnost_jmeno'], 0, 1) . '.');
+                $potvrdil_vecnou_spravnost_zkracene = trim($faktura['potvrdil_vecnou_spravnost_prijmeni'] . ' ' . mb_substr($faktura['potvrdil_vecnou_spravnost_jmeno'], 0, 1, 'UTF-8') . '.');
             }
             $faktura['potvrdil_vecnou_spravnost_zkracene'] = $potvrdil_vecnou_spravnost_zkracene;
             
@@ -1940,6 +1996,7 @@ function handle_invoices25_list($input, $config, $queries) {
                 p.systemova_cesta,
                 p.velikost_souboru_b,
                 p.je_isdoc,
+                p.nahrano_uzivatel_id,
                 p.dt_vytvoreni,
                 p.dt_aktualizace,
                 u.jmeno AS nahrano_jmeno,
@@ -2020,9 +2077,9 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // Response - OrderV2 formát s pagination + statistiky + user metadata
         // FE očekává: { status: "ok", faktury: [...], pagination: {...}, statistiky: {...}, user_info: {...} }
-        http_response_code(200);
-        echo json_encode(array(
+        $response_data = array(
             'status' => 'ok',
+            'ahoj_svete' => '🟢 BACKEND RESPONSE FROM invoices25/list',
             'faktury' => $faktury,
             'pagination' => array(
                 'page' => $page,
@@ -2034,7 +2091,10 @@ function handle_invoices25_list($input, $config, $queries) {
             '_debug' => array(
                 'filters_received' => $filters,
                 'castka_min_applied' => isset($filters['castka_min']) ? 'YES (' . $filters['castka_min'] . ')' : 'NO',
-                'castka_max_applied' => isset($filters['castka_max']) ? 'YES (' . $filters['castka_max'] . ')' : 'NO'
+                'castka_max_applied' => isset($filters['castka_max']) ? 'YES (' . $filters['castka_max'] . ')' : 'NO',
+                'sql_query' => $debug_sql,
+                'where_conditions_count' => count($where_conditions),
+                'params_count' => count($params)
             ),
             'user_info' => array(
                 'user_id' => $user_id,
@@ -2044,7 +2104,28 @@ function handle_invoices25_list($input, $config, $queries) {
                 'usek_zkr' => $user_usek_zkr,
                 'filter_applied' => !$is_admin
             )
-        ));
+        );
+        
+        error_log("🟢 ABOUT TO SEND JSON RESPONSE - faktury count: " . count($faktury));
+        http_response_code(200);
+        // ⚠️ JSON_INVALID_UTF8_SUBSTITUTE nahradí nevalidní UTF-8 znaky za Unicode replacement character (U+FFFD)
+        $json_output = json_encode($response_data, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($json_output === false) {
+            $json_error = json_last_error_msg();
+            error_log("🔴 JSON ENCODE FAILED: " . $json_error);
+            error_log("🔴 Trying without debug and with partial data...");
+            // Zkusit bez _debug a statistik
+            $minimal_response = array(
+                'status' => 'ok',
+                'faktury' => array(),
+                'pagination' => $response_data['pagination'],
+                'error_debug' => 'JSON encoding failed: ' . $json_error
+            );
+            $json_output = json_encode($minimal_response, JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+        error_log("🟢 JSON encoded, length: " . strlen($json_output));
+        echo $json_output;
+        error_log("🟢 JSON sent to output");
 
     } catch (Exception $e) {
         http_response_code(500);

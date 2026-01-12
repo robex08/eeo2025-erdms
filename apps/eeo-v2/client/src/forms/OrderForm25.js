@@ -11385,6 +11385,38 @@ function OrderForm25() {
             }
           }
 
+          // 🆕 Věcná správnost - čeká na kontrolu
+          const hasVecnaSpravnost = hasWorkflowState(result.stav_workflow_kod, 'VECNA_SPRAVNOST');
+          const hadVecnaSpravnost = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'VECNA_SPRAVNOST') : false;
+          
+          if (hasVecnaSpravnost && !hadVecnaSpravnost) {
+            try {
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-vecna-spravnost', `Notifikace odeslána: věcná správnost vyžadována ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-vecna-spravnost', `Chyba při notifikaci VECNA_SPRAVNOST: ${triggerError.message}`);
+            }
+          }
+
+          // 🆕 Věcná správnost potvrzena
+          const hasZkontrolovana = hasWorkflowState(result.stav_workflow_kod, 'ZKONTROLOVANA');
+          const hadZkontrolovana = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ZKONTROLOVANA') : false;
+          
+          if (hasZkontrolovana && !hadZkontrolovana) {
+            try {
+              await triggerNotification('INVOICE_MATERIAL_CHECK_APPROVED', formData.id, user_id || formData.objednatel_id, {
+                order_number: orderNumber,
+                order_subject: formData.predmet || ''
+              });
+              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zkontrolovana', `Notifikace odeslána: věcná správnost potvrzena ${orderNumber}`);
+            } catch (triggerError) {
+              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zkontrolovana', `Chyba při notifikaci ZKONTROLOVANA: ${triggerError.message}`);
+            }
+          }
+
           // 🆕 Dokončení objednávky
           const hasDokoncena = hasWorkflowState(result.stav_workflow_kod, 'DOKONCENA');
           const hadDokoncena = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'DOKONCENA') : false;

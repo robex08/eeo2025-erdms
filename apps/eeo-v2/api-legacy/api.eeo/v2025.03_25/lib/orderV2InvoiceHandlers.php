@@ -363,6 +363,33 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                         ));
                         
                         error_log("📋 INVOICE CREATE: Workflow objednávky #{$order_id} aktualizováno: " . implode(' → ', $workflow_states));
+                        
+                        // 🔔 NOTIFIKACE: Poslat notifikaci při přechodu na VECNA_SPRAVNOST
+                        if (in_array('VECNA_SPRAVNOST', $workflow_states)) {
+                            try {
+                                // Import notification helpers
+                                require_once __DIR__ . '/notificationHelpers.php';
+                                
+                                // Triggerovat notifikaci pro věcnou správnost
+                                $notification_result = triggerOrderNotification(
+                                    'INVOICE_MATERIAL_CHECK_REQUESTED',
+                                    $order_id,
+                                    $token_data['id'],
+                                    array(
+                                        'invoice_number' => $fa_cislo_vema,
+                                        'invoice_amount' => $fa_castka
+                                    )
+                                );
+                                
+                                if ($notification_result['success']) {
+                                    error_log("✅ NOTIFIKACE: Věcná správnost notifikace odeslána pro objednávku #{$order_id}");
+                                } else {
+                                    error_log("⚠️ NOTIFIKACE: Chyba při odesílání věcné správnosti: " . ($notification_result['error'] ?? 'Neznámá chyba'));
+                                }
+                            } catch (Exception $notif_error) {
+                                error_log("❌ NOTIFIKACE: Exception při odesílání notifikace: " . $notif_error->getMessage());
+                            }
+                        }
                     }
                 }
             } catch (Exception $order_update_error) {

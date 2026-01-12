@@ -42,11 +42,6 @@ class SystemInfoService {
         const token = localStorage.getItem('token');
         const username = localStorage.getItem('username');
         
-        // Pokud nejsou credentials, vrátíme fallback
-        if (!token || !username) {
-            return this.getDefaultInfo();
-        }
-        
         try {
             const response = await fetch(`${apiBase}endpoints/system-info.php`, {
                 method: 'POST',
@@ -54,8 +49,8 @@ class SystemInfoService {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    token,
-                    username
+                    token: token || '',
+                    username: username || ''
                 })
             });
             
@@ -118,17 +113,17 @@ class SystemInfoService {
     }
 
     /**
-     * Fallback informace
+     * Fallback informace - VAROVÁNÍ: Používá se pouze když API není dostupné!
+     * Správné jméno databáze by mělo přijít vždy z backendu (system-info.php)
      */
     static getDefaultInfo() {
         const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const isDev = apiBase.includes('/dev/');
-        const dbName = process.env.REACT_APP_DB_NAME || 'EEO2025'; // Použije .env hodnotu
         
         return {
             database: {
-                name: dbName,
-                display_name: dbName.toUpperCase()
+                name: 'UNKNOWN-DB',
+                display_name: '⚠️ API NEDOSTUPNÉ'
             },
             environment: {
                 is_dev: isDev,
