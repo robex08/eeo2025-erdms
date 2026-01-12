@@ -729,6 +729,23 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
         }
         
+        // =========================================================================
+        // 🔔 NOTIFIKACE: Věcná správnost potvrzena
+        // =========================================================================
+        // ✅ TRIGGER: INVOICE_MATERIAL_CHECK_APPROVED - pokud se potvrdila věcná správnost
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+            // Zkontrolovat, zda nebyla již dříve potvrzena (předchozí stav byl 0)
+            if ((int)$current_invoice['vecna_spravnost_potvrzeno'] === 0) {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $invoice_id, $token_data['id']);
+                    error_log("🔔 ORDER FORM: Triggered INVOICE_MATERIAL_CHECK_APPROVED for invoice #{$invoice_id}");
+                } catch (Exception $e) {
+                    error_log("⚠️ ORDER FORM: Notification trigger failed: " . $e->getMessage());
+                }
+            }
+        }
+        
         // Return updated fields for confirmation
         $updatedFieldNames = array();
         foreach ($allowedFields as $field) {

@@ -9736,6 +9736,39 @@ const Orders25List = () => {
       // Zvýrazni objednávku (stejně jako při ukládání z formuláře)
       setHighlightOrderId(orderToApprove.id);
 
+      // 🔔 TRIGGER NOTIFICATION - Pošli notifikaci podle akce
+      try {
+        const eventTypeMap = {
+          approve: 'ORDER_APPROVED',
+          reject: 'ORDER_REJECTED', 
+          postpone: 'ORDER_PENDING_APPROVAL' // Odložení = stále čeká na schválení
+        };
+        
+        const eventType = eventTypeMap[action];
+        if (eventType) {
+          console.log(`🔔 Triggering notification: ${eventType} for order ${orderToApprove.id}`);
+          
+          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+          await fetch(`${baseURL}notifications/trigger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token,
+              username,
+              event_type: eventType,
+              object_id: orderToApprove.id,
+              trigger_user_id: currentUserId,
+              debug: false
+            })
+          });
+          
+          console.log(`✅ Notification triggered successfully: ${eventType}`);
+        }
+      } catch (notifError) {
+        console.error('❌ Failed to trigger notification:', notifError);
+        // Nekritická chyba - pokračuj normálně
+      }
+
       // Obnov seznam objednávek (tiše na pozadí bez loading gate)
       ordersCacheService.invalidate(user_id);
       await loadData(true, true); // forceRefresh=true, silent=true

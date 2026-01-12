@@ -57,6 +57,80 @@ import { getOrderV2 } from '../services/apiOrderV2'; // ✅ Pro kontrolu zamčen
 import { safeToast } from '../utils/globalToast'; // ✅ Pro toast notifikace
 
 // =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Vrátí český label pro anglický kód notifikace
+ */
+function getNotificationTypeLabel(englishCode) {
+  const labels = {
+    // ✅ HLAVNÍ NOTIFIKACE OBJEDNÁVEK (podle DB)
+    'ORDER_CREATED': 'Nová objednávka',
+    'ORDER_PENDING_APPROVAL': 'Ke schválení',
+    'ORDER_APPROVED': 'Schváleno',
+    'ORDER_REJECTED': 'Zamítnuto',
+    'ORDER_AWAITING_CHANGES': 'Čeká na doplnění',
+    'ORDER_SENT_TO_SUPPLIER': 'Odesláno dodavateli',
+    'ORDER_CONFIRMED_BY_SUPPLIER': 'Potvrzeno dodavatelem',
+    'ORDER_COMPLETED': 'Dokončeno',
+    'ORDER_CANCELLED': 'Zrušeno',
+    'ORDER_REGISTRY_PUBLISHED': 'Registr zveřejněn',
+    'ORDER_REGISTRY_PENDING': 'Čeká registr',
+    
+    // ✅ FAKTURY
+    'INVOICE_CREATED': 'Nová faktura',
+    'INVOICE_MATERIAL_CHECK_REQUESTED': 'Čeká věcná kontrola',
+    'INVOICE_MATERIAL_CHECK_APPROVED': 'Věcná správnost OK',
+    'INVOICE_APPROVED': 'Faktura schválena',
+    'INVOICE_PAID': 'Faktura uhrazena',
+    
+    // ✅ SYSTÉMOVÉ NOTIFIKACE
+    'system_maintenance': 'Údržba systému',
+    'user_mention': 'Zmínka v komentáři',
+    'deadline_reminder': 'Připomínka termínu',
+    
+    // ✅ TODO ALARMY
+    'alarm_todo_normal': 'TODO alarm',
+    'alarm_todo_high': 'TODO urgentní',
+    'alarm_todo_expired': 'TODO prošlý termín',
+    
+    // ⚠️ FALLBACK pro staré kódy (postupně odstraněno)
+    'order_status_nova': 'Nová objednávka',
+    'order_status_ke_schvaleni': 'Ke schválení', 
+    'order_status_schvalena': 'Schváleno',
+    'order_status_zamitnuta': 'Zamítnuto',
+    'order_status_ceka_se': 'Čeká na doplnění',
+    'order_status_odeslana': 'Odesláno dodavateli',
+    'order_status_potvrzena': 'Potvrzeno dodavatelem',
+    'order_status_dokoncena': 'Dokončeno',
+    'order_status_zrusena': 'Zrušeno'
+  };
+  
+  return labels[englishCode] || englishCode;
+}
+
+/**
+ * Generuje uživatelsky přívětivý nadpis notifikace:
+ * "Ke schválení O-2025-142" (bez anglického kódu)
+ */
+function generateNotificationTitle(notification) {
+  const typ = notification.typ || 'UNKNOWN';
+  const czechLabel = getNotificationTypeLabel(typ);
+  
+  // Extrahuj ev_cislo z original nadpisu nebo dat
+  let evCislo = '';
+  if (notification.data?.order_number) {
+    evCislo = ` ${notification.data.order_number}`;
+  } else if (notification.nadpis) {
+    const match = notification.nadpis.match(/(O-[^\s:,]+)/);
+    if (match) evCislo = ` ${match[1]}`;
+  }
+  
+  return `${czechLabel}${evCislo}`;
+}
+
+// =============================================================================
 // ANIMATIONS
 // =============================================================================
 
@@ -1050,7 +1124,9 @@ export const NotificationsPage = () => {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
+      const generatedTitle = generateNotificationTitle(notification).toLowerCase();
       const matchesSearch =
+        generatedTitle.includes(query) ||
         notification.nadpis?.toLowerCase().includes(query) ||
         notification.zprava?.toLowerCase().includes(query);
       if (!matchesSearch) return false;
@@ -2200,13 +2276,15 @@ export const NotificationsPage = () => {
                         <NotificationHeader>
                           <NotificationTitle $isUnread={isUnread}>
                             {(() => {
-                              if (mainNotification.typ?.includes('order') && mainNotification.data?.order_id && mainNotification.nadpis) {
-                                const cleanedTitle = cleanNotificationTitle(mainNotification.nadpis);
-                                const evCisloMatch = cleanedTitle.match(/(O-[^\s:]+)/);
+                              // ✅ Používáme nový konzistentní formát s anglickými kódy
+                              const displayTitle = generateNotificationTitle(mainNotification);
+                              
+                              if (mainNotification.typ?.includes('order') && mainNotification.data?.order_id && displayTitle) {
+                                const evCisloMatch = displayTitle.match(/(O-[^\s:]+)/);
                                 if (evCisloMatch) {
                                   const evCislo = evCisloMatch[1];
-                                  const textBefore = cleanedTitle.substring(0, evCisloMatch.index);
-                                  const textAfter = cleanedTitle.substring(evCisloMatch.index + evCislo.length);
+                                  const textBefore = displayTitle.substring(0, evCisloMatch.index);
+                                  const textAfter = displayTitle.substring(evCisloMatch.index + evCislo.length);
 
                                   return (
                                     <>
@@ -2246,7 +2324,7 @@ export const NotificationsPage = () => {
                               }
                               return (
                                 <>
-                                  {cleanNotificationTitle(mainNotification.nadpis)}
+                                  {generateNotificationTitle(mainNotification)}
                                   {!detailMode && (
                                     <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                       | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
@@ -2318,9 +2396,9 @@ export const NotificationsPage = () => {
                         )}
 
                         <NotificationMeta>
-                          {mainNotification.category && (
-                            <TypeBadge $type={mainNotification.category}>
-                              {getCategoryLabel(mainNotification.category)}
+                          {mainNotification.typ && (
+                            <TypeBadge $type={mainNotification.kategorie}>
+                              {getNotificationTypeLabel(mainNotification.typ)}
                             </TypeBadge>
                           )}
                           {mainNotification.data?.placeholders?.action_date && (
@@ -2470,7 +2548,7 @@ export const NotificationsPage = () => {
                                   }
                                   return (
                                     <>
-                                      {olderNotif.title}
+                                      {generateNotificationTitle(olderNotif)}
                                       {!detailMode && (
                                         <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.85em', marginLeft: '0.5em' }}>
                                           | <FontAwesomeIcon icon={faClock} style={{ fontSize: '10px', marginRight: '4px' }} />
@@ -2512,9 +2590,9 @@ export const NotificationsPage = () => {
                             )}
 
                             <NotificationMeta style={{ gap: '10px', marginTop: '6px' }}>
-                              {olderNotif.category && (
-                                <TypeBadge $type={olderNotif.category} style={{ fontSize: '10px', padding: '2px 6px' }}>
-                                  {getCategoryLabel(olderNotif.category)}
+                              {olderNotif.typ && (
+                                <TypeBadge $type={olderNotif.kategorie} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                                  {getNotificationTypeLabel(olderNotif.typ)}
                                 </TypeBadge>
                               )}
                               {olderNotif.data?.placeholders?.action_date && (
@@ -2607,14 +2685,16 @@ export const NotificationsPage = () => {
                     <NotificationHeader>
                       <NotificationTitle $isUnread={isUnread}>
                         {(() => {
+                          // ✅ Používáme nový konzistentní formát s anglickými kódy
+                          const displayTitle = generateNotificationTitle(notification);
+                          
                           // Parsing ev. čísla začínajícího na "O-" a vytvoření odkazu
-                          if (notification.typ?.includes('order') && notification.data?.order_id && notification.nadpis) {
-                            const cleanedTitle = cleanNotificationTitle(notification.nadpis);
-                            const evCisloMatch = cleanedTitle.match(/(O-[^\s:]+)/);
+                          if (notification.typ?.includes('order') && notification.data?.order_id && displayTitle) {
+                            const evCisloMatch = displayTitle.match(/(O-[^\s:]+)/);
                             if (evCisloMatch) {
                               const evCislo = evCisloMatch[1];
-                              const textBefore = cleanedTitle.substring(0, evCisloMatch.index);
-                              const textAfter = cleanedTitle.substring(evCisloMatch.index + evCislo.length);
+                              const textBefore = displayTitle.substring(0, evCisloMatch.index);
+                              const textAfter = displayTitle.substring(evCisloMatch.index + evCislo.length);
 
                               return (
                                 <>
@@ -2654,7 +2734,7 @@ export const NotificationsPage = () => {
                           }
                           return (
                             <>
-                              {cleanNotificationTitle(notification.nadpis)}
+                              {generateNotificationTitle(notification)}
                               {!detailMode && (
                                 <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '0.9em', marginLeft: '0.5em' }}>
                                   | <FontAwesomeIcon icon={faClock} style={{ fontSize: '11px', marginRight: '4px' }} />
@@ -2702,9 +2782,9 @@ export const NotificationsPage = () => {
                           {getTimeAgo(notification.dt_created || notification.created_at)}
                         </MetaItem>
                       )}
-                      {detailMode && notification.kategorie && (
+                      {detailMode && notification.typ && (
                         <TypeBadge $type={notification.kategorie}>
-                          {getCategoryLabel(notification.kategorie)}
+                          {getNotificationTypeLabel(notification.typ)}
                         </TypeBadge>
                       )}
                       {/* Datum akce jako badge */}

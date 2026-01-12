@@ -276,6 +276,25 @@ function handle_invoices25_create($input, $config, $queries) {
 
         $new_id = $db->lastInsertId();
 
+        // 🔔 TRIGGER: INVOICE_MATERIAL_CHECK_REQUESTED - pokud má faktura objednávku NEBO předáno komu (s datem) NEBO smlouvu
+        // ⚠️ DŮLEŽITÉ: Stav faktury NEkontrolujeme - faktura NEMÁ workflow! (stav je jen informační poznámka)
+        $hasFaPredana = $fa_predana_zam_id > 0 && !empty($fa_datum_predani_zam);
+        $shouldTrigger = ($objednavka_id > 0 || $hasFaPredana || $smlouva_id > 0);
+        
+        if ($shouldTrigger) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $new_id, $token_data['id']);
+                $reason = [];
+                if ($objednavka_id > 0) $reason[] = "order #{$objednavka_id}";
+                if ($hasFaPredana) $reason[] = "fa_predana_zam #{$fa_predana_zam_id} (datum: {$fa_datum_predani_zam})";
+                if ($smlouva_id > 0) $reason[] = "smlouva #{$smlouva_id}";
+                error_log("🔔 CREATE INVOICE: Triggered INVOICE_MATERIAL_CHECK_REQUESTED for invoice #{$new_id} (" . implode(', ', $reason) . ")");
+            } catch (Exception $e) {
+                error_log("⚠️ CREATE INVOICE: Notification trigger failed: " . $e->getMessage());
+            }
+        }
+
         http_response_code(201);
         echo json_encode([
             'status' => 'ok',
@@ -530,11 +549,23 @@ function handle_invoices25_update($input, $config, $queries) {
             }
         }
         
-        // TRIGGER 2: INVOICE_SUBMITTED - Pokud se změnil stav na určité hodnoty
+        // TRIGGER 2: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnil stav na věcnou správnost
         if ($stavChanged) {
             $newStav = $input['stav'];
-            $submitStates = ['PREDANA', 'KE_KONTROLE', 'SUBMITTED'];
             
+            // Specifický trigger pro věcnou správnost faktury
+            if (strtoupper($newStav) === 'VECNA_SPRAVNOST') {
+                try {
+                    require_once __DIR__ . '/notificationHandlers.php';
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id");
+                } catch (Exception $e) {
+                    error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+                }
+            }
+            
+            // Obecný trigger pro ostatní stavy předání
+            $submitStates = ['PREDANA', 'KE_KONTROLE', 'SUBMITTED'];
             if (in_array(strtoupper($newStav), $submitStates)) {
                 try {
                     require_once __DIR__ . '/notificationHandlers.php';
@@ -590,7 +621,41 @@ function handle_invoices25_update($input, $config, $queries) {
             try {
                 require_once __DIR__ . '/notificationHandlers.php';
                 triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
-                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id");
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (order assigned)");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        }
+        
+        // TRIGGER 7: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnilo fa_predana_zam_id (a je datum_predani)
+        $faPredanaChanged = isset($input['fa_predana_zam_id']) && 
+                            (string)$input['fa_predana_zam_id'] !== (string)$oldInvoiceData['fa_predana_zam_id'];
+        
+        // Načíst aktuální datum_predani (buď z inputu nebo z DB)
+        $currentDatumPredani = isset($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : $oldInvoiceData['fa_datum_predani_zam'];
+        $hasDatumPredani = !empty($currentDatumPredani) && $currentDatumPredani !== '0000-00-00';
+        
+        if ($faPredanaChanged && $hasDatumPredani) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (fa_predana_zam_id changed: {$oldInvoiceData['fa_predana_zam_id']} → {$input['fa_predana_zam_id']}, datum: {$currentDatumPredani})");
+            } catch (Exception $e) {
+                error_log("⚠️ Notification trigger failed: " . $e->getMessage());
+            }
+        } elseif ($faPredanaChanged && !$hasDatumPredani) {
+            error_log("⚠️ SKIP TRIGGER: fa_predana_zam_id changed but fa_datum_predani_zam is missing for invoice $faktura_id");
+        }
+        
+        // TRIGGER 8: INVOICE_MATERIAL_CHECK_REQUESTED - Pokud se změnilo smlouva_id
+        $smlouvaChanged = isset($input['smlouva_id']) && 
+                          (string)$input['smlouva_id'] !== (string)$oldInvoiceData['smlouva_id'];
+        
+        if ($smlouvaChanged) {
+            try {
+                require_once __DIR__ . '/notificationHandlers.php';
+                triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $currentUserId);
+                error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (smlouva_id changed: {$oldInvoiceData['smlouva_id']} → {$input['smlouva_id']})");
             } catch (Exception $e) {
                 error_log("⚠️ Notification trigger failed: " . $e->getMessage());
             }
