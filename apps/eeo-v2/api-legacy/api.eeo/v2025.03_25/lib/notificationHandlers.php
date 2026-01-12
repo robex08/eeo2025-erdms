@@ -2120,15 +2120,27 @@ function getEntityParticipants($db, $entityType, $entityId) {
                 break;
                 
             case 'invoices':
-                // Faktura: autor + schvalovatel + účetní
+                // Faktura: vytvoril + garant + príkazce + objednatel + SML/OBJ gestori + fa_predana + potvrdil_vecnou + aktualizoval
                 $stmt = $db->prepare("
                     SELECT DISTINCT user_id
                     FROM (
-                        SELECT created_by_user_id as user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id
+                        SELECT vytvoril_uzivatel_id as user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id
                         UNION
-                        SELECT approver_user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND approver_user_id IS NOT NULL
+                        SELECT garant_uzivatel_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND garant_uzivatel_id IS NOT NULL
                         UNION
-                        SELECT accountant_user_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND accountant_user_id IS NOT NULL
+                        SELECT prikazce_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND prikazce_id IS NOT NULL
+                        UNION
+                        SELECT objednatel_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND objednatel_id IS NOT NULL
+                        UNION
+                        SELECT sml_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND sml_id IS NOT NULL
+                        UNION  
+                        SELECT obj_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND obj_id IS NOT NULL
+                        UNION
+                        SELECT fa_predana_zam_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND fa_predana_zam_id IS NOT NULL
+                        UNION
+                        SELECT potvrdil_vecnou_spravnost_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND potvrdil_vecnou_spravnost_id IS NOT NULL
+                        UNION
+                        SELECT aktualizoval_uzivatel_id FROM " . TBL_FAKTURY . " WHERE id = :entity_id AND aktualizoval_uzivatel_id IS NOT NULL
                     ) as participants
                     WHERE user_id IS NOT NULL
                 ");
@@ -2325,7 +2337,7 @@ function getEntityLocation($db, $entityType, $entityId) {
                 $stmt = $db->prepare("SELECT lokalita_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT location_id FROM " . TBL_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT lokalita_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2348,7 +2360,7 @@ function getEntityDepartment($db, $entityType, $entityId) {
                 $stmt = $db->prepare("SELECT usek_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT department_id FROM " . TBL_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT usek_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2476,7 +2488,7 @@ function getEntityAuthor($db, $entityType, $entityId) {
                 $stmt = $db->prepare("SELECT uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT created_by_user_id FROM " . TBL_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT vytvoril_uzivatel_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             case 'cashbook':
                 $stmt = $db->prepare("SELECT created_by_user_id FROM " . TBL_POKLADNI_KNIHA . " WHERE id = ?");
@@ -2500,6 +2512,9 @@ function getEntityOwner($db, $entityType, $entityId) {
         switch ($entityType) {
             case 'orders':
                 $stmt = $db->prepare("SELECT prikazce_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
+                break;
+            case 'invoices':
+                $stmt = $db->prepare("SELECT prikazce_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2542,7 +2557,7 @@ function getEntityApprover($db, $entityType, $entityId) {
                 $stmt = $db->prepare("SELECT schvalovatel_uzivatel_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                 break;
             case 'invoices':
-                $stmt = $db->prepare("SELECT approver_user_id FROM " . TBL_FAKTURY . " WHERE id = ?");
+                $stmt = $db->prepare("SELECT garant_uzivatel_id FROM " . TBL_FAKTURY . " WHERE id = ?");
                 break;
             default:
                 return null;
@@ -2581,7 +2596,8 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         'event_type_found' => false,
         'matching_edges' => 0,
         'rules' => array(),
-        'recipients' => array()
+        'recipients' => array(),
+        'invoice_debug' => array("🚀 DEBUG TEST: notificationRouter started for event $eventType, object $objectId")
     );
     
     error_log("");
@@ -2665,6 +2681,13 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             $debugInfo = array_merge($debugInfo, $hierarchyResult['debug_info']);
         }
         
+        // ✅ Add manual debug info from invoice processing 
+        if ($debugMode && $objectType === 'invoices') {
+            if (!isset($debugInfo['invoice_debug'])) {
+                $debugInfo['invoice_debug'] = array();
+            }
+        }
+        
         // Konverze výstupu z hierarchyTriggers na formát očekávaný notificationRouter
         $recipients = array();
         if ($hierarchyResult && isset($hierarchyResult['recipients'])) {
@@ -2719,6 +2742,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
                 $stmt->execute(['NO RECIPIENTS FOUND', json_encode(['event' => $eventType, 'object_id' => $objectId])]);
             } catch (Exception $e) {}
+            
+            // ✅ Vrátit debug info i když nejsou příjemci
+            if ($debugMode && !empty($debugInfo)) {
+                $result['debug_info'] = $debugInfo;
+            }
             
             return $result;
         }
@@ -2876,6 +2904,21 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 $recipientFullName = $user_data ? trim($user_data['jmeno'] . ' ' . $user_data['prijmeni']) : 'Uživatel';
                 $placeholderDataWithUser['recipient_name'] = $recipientFullName;
                 $placeholderDataWithUser['user_name'] = $recipientFullName; // Backward compatibility
+                
+                // ✅ NOVÉ: Přidat jméno uživatele který provedl akci (trigger user)
+                if (!isset($placeholderDataWithUser['action_performed_by']) || empty($placeholderDataWithUser['action_performed_by'])) {
+                    $stmt_trigger_user = $db->prepare("SELECT jmeno, prijmeni, titul_pred, titul_za FROM " . TBL_UZIVATELE . " WHERE id = :user_id");
+                    $stmt_trigger_user->execute([':user_id' => $triggerUserId]);
+                    $trigger_user_data = $stmt_trigger_user->fetch(PDO::FETCH_ASSOC);
+                    if ($trigger_user_data) {
+                        $triggerUserFullName = trim(
+                            ($trigger_user_data['titul_pred'] ? $trigger_user_data['titul_pred'] . ' ' : '') .
+                            $trigger_user_data['jmeno'] . ' ' . $trigger_user_data['prijmeni'] .
+                            ($trigger_user_data['titul_za'] ? ', ' . $trigger_user_data['titul_za'] : '')
+                        );
+                        $placeholderDataWithUser['action_performed_by'] = $triggerUserFullName;
+                    }
+                }
                 
                 // ✅ IKONA podle recipientRole a urgentnosti
                 if ($recipient['recipientRole'] === 'EXCEPTIONAL') {
@@ -3087,6 +3130,11 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         error_log("");
     }
     
+    // ✅ VŽDY vrátit debug info pokud je debugMode
+    if ($debugMode && !empty($debugInfo)) {
+        $result['debug_info'] = $debugInfo;
+    }
+    
     return $result;
 }
 
@@ -3289,6 +3337,26 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                     $stmt = $db->prepare("SELECT uzivatel_id, garant_uzivatel_id, objednatel_id, schvalovatel_id, prikazce_id FROM " . TBL_OBJEDNAVKY . " WHERE id = ?");
                     $stmt->execute([$objectId]);
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
+                } elseif ($objectType === 'invoices') {
+                    // Načíst data faktury s možnými údaji z objednávky
+                    $stmt = $db->prepare("
+                        SELECT 
+                            f.fa_predana_zam_id,
+                            f.objednavka_id,
+                            f.vytvoril_uzivatel_id,
+                            o.garant_uzivatel_id,
+                            o.objednatel_id,
+                            o.prikazce_id
+                        FROM " . TBL_FAKTURY . " f
+                        LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                        WHERE f.id = ?
+                    ");
+                    $stmt->execute([$objectId]);
+                    $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($debugMode) {
+                        $debugInfo['invoice_debug'][] = "🔍 Invoice data for ID $objectId: " . json_encode($entityData);
+                    }
                 }
                 
                 // ═══════════════════════════════════════════════════════════════════
@@ -3497,30 +3565,49 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                 
                 // 9. 🆕 Přidat tvůrce notifikace (source účastníky) s INFO prioritou
                 // Tito dostanou notifikaci BEZ OHLEDU na NODE filtr (roli)
-                if ($objectType === 'orders' && !empty($entityData)) {
+                if (($objectType === 'orders' || $objectType === 'invoices') && !empty($entityData)) {
                     // Kontrola, zda je zapnuto odesílání INFO tvůrcům
                     $sourceInfoEnabled = isset($edge['data']['source_info_recipients']['enabled'])
                         ? (bool)$edge['data']['source_info_recipients']['enabled']
                         : true;  // Default: zapnuto pro zpětnou kompatibilitu
                     
                     if (!$sourceInfoEnabled) {
-                        error_log("         ⚠️ Source INFO recipients vypnuto v EDGE konfiguraci");
+                        if ($debugMode) {
+                            $debugInfo[] = "⚠️ Source INFO recipients vypnuto v EDGE konfiguraci";
+                        }
                     } else {
-                        error_log("         🔄 Přidávám source účastníky (tvůrce notifikace) s INFO prioritou...");
+                        if ($debugMode) {
+                            $debugInfo['invoice_debug'][] = "🔄 Přidávám source účastníky (tvůrce notifikace) s INFO prioritou...";
+                        }
                         
-                        // Pokud není definováno pole 'fields', použij default seznam
-                        $defaultFields = ['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id'];
+                        // Pole pro faktury a objednávky
+                        $defaultFields = $objectType === 'invoices' 
+                            ? ['fa_predana_zam_id', 'vytvoril_uzivatel_id', 'garant_uzivatel_id', 'objednatel_id'] 
+                            : ['uzivatel_id', 'garant_uzivatel_id', 'objednatel_id'];
                         $selectedFields = isset($edge['data']['source_info_recipients']['fields'])
                             ? $edge['data']['source_info_recipients']['fields']
                             : $defaultFields;
                         
-                        error_log("         → Selected fields: " . implode(', ', $selectedFields));
+                        if ($debugMode) {
+                            $debugInfo['invoice_debug'][] = "→ Selected fields: " . implode(', ', $selectedFields);
+                        }
                         
                         $sourceParticipants = array();
                         foreach ($selectedFields as $field) {
                             if (!empty($entityData[$field])) {  // NULL se automaticky přeskočí
                                 $sourceParticipants[] = $entityData[$field];
+                                if ($debugMode) {
+                                    $debugInfo['invoice_debug'][] = "→ Added from field '$field': " . $entityData[$field];
+                                }
+                            } else {
+                                if ($debugMode) {
+                                    $debugInfo['invoice_debug'][] = "→ Skipped field '$field': empty/null";
+                                }
                             }
+                        }
+                        
+                        if ($debugMode) {
+                            $debugInfo['invoice_debug'][] = "→ Source participants found: " . json_encode($sourceParticipants);
                         }
                         
                         $sourceParticipants = array_unique($sourceParticipants);  // Odstranit duplicity
@@ -4405,17 +4492,19 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
                 $placeholders = array(
                     'invoice_id' => $objectId,
                     'invoice_number' => $data['fa_cislo_vema'] ?? '-',
+                    'amount' => $data['fa_castka'] ? number_format((float)$data['fa_castka'], 2, ',', ' ') : '0,00',
                     'invoice_amount' => $data['fa_castka'] ? number_format((float)$data['fa_castka'], 2, ',', ' ') . ' Kč' : '-',
                     'invoice_amount_raw' => $data['fa_castka'] ?? 0,
-                    'invoice_date' => $data['fa_datum_vystaveni'] ?? '-',
-                    'invoice_due_date' => $data['fa_datum_splatnosti'] ?? '-',
-                    'invoice_delivery_date' => $data['fa_datum_doruceni'] ?? '-',
+                    'invoice_date' => $data['fa_datum_vystaveni'] ? date('d.m.Y', strtotime($data['fa_datum_vystaveni'])) : '-',
+                    'invoice_due_date' => $data['fa_datum_splatnosti'] ? date('d.m.Y', strtotime($data['fa_datum_splatnosti'])) : '-',
+                    'invoice_delivery_date' => $data['fa_datum_doruceni'] ? date('d.m.Y', strtotime($data['fa_datum_doruceni'])) : '-',
                     'invoice_handover_date' => $data['fa_datum_predani_zam'] ?? '-',
                     'invoice_paid_date' => $data['fa_datum_zaplaceni'] ?? '-',
                     'invoice_type' => $data['fa_typ'] ?? '-',
                     'fakturant_name' => $data['fakturant_name'] ?? '-',
                     'predano_komu_name' => $data['predano_komu_name'] ?? '-',
                     'vecna_spravnost_kontroloval' => $data['vecna_spravnost_kontroloval'] ?? '-',
+                    'vecna_spravnost_datum_potvrzeni' => date('d.m.Y H:i'),  // Aktuální systémový čas
                     'fa_predana_zam_id' => $data['fa_predana_zam_id'] ?? null,
                     'uzivatel_id' => $data['vytvoril_uzivatel_id'] ?? null,
                     'creator_name' => $data['fakturant_name'] ?? '-',
@@ -4515,7 +4604,9 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
                    COALESCE(CONCAT(TRIM(CONCAT(COALESCE(p.titul_pred, ''), ' ', COALESCE(p.jmeno, ''), ' ', COALESCE(p.prijmeni, ''), ' ', COALESCE(p.titul_za, '')))), '') as predano_komu_name,
                    COALESCE(CONCAT(TRIM(CONCAT(COALESCE(vs_u.titul_pred, ''), ' ', COALESCE(vs_u.jmeno, ''), ' ', COALESCE(vs_u.prijmeni, ''), ' ', COALESCE(vs_u.titul_za, '')))), '') as vecna_spravnost_kontroloval,
                    COALESCE(CONCAT(TRIM(CONCAT(COALESCE(objednatel.titul_pred, ''), ' ', COALESCE(objednatel.jmeno, ''), ' ', COALESCE(objednatel.prijmeni, ''), ' ', COALESCE(objednatel.titul_za, '')))), '') as objednatel_name,
-                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(garant.titul_pred, ''), ' ', COALESCE(garant.jmeno, ''), ' ', COALESCE(garant.prijmeni, ''), ' ', COALESCE(garant.titul_za, '')))), '') as garant_name
+                   COALESCE(CONCAT(TRIM(CONCAT(COALESCE(garant.titul_pred, ''), ' ', COALESCE(garant.jmeno, ''), ' ', COALESCE(garant.prijmeni, ''), ' ', COALESCE(garant.titul_za, '')))), '') as garant_name,
+                   f.dt_potvrzeni_vecne_spravnosti,
+                   f.vecna_spravnost_poznamka
             FROM $invoices_table f
             LEFT JOIN $orders_table o ON f.objednavka_id = o.id
             LEFT JOIN $users_table u ON f.vytvoril_uzivatel_id = u.id
@@ -4547,11 +4638,12 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
             // Základní info faktury
             'invoice_id' => $invoiceId,
             'invoice_number' => $invoice['fa_cislo_vema'] ?? '-',
+            'amount' => $invoice['fa_castka'] ? number_format((float)$invoice['fa_castka'], 2, ',', ' ') : '0,00',
             'invoice_amount' => $invoice['fa_castka'] ? number_format((float)$invoice['fa_castka'], 2, ',', ' ') . ' Kč' : '0,00 Kč',
             'invoice_amount_raw' => $invoice['fa_castka'] ?? 0,
-            'invoice_date' => $invoice['fa_datum_vystaveni'] ?? '-',
-            'invoice_due_date' => $invoice['fa_datum_splatnosti'] ?? '-',
-            'invoice_delivery_date' => $invoice['fa_datum_doruceni'] ?? '-',
+            'invoice_date' => $invoice['fa_datum_vystaveni'] ? date('d.m.Y', strtotime($invoice['fa_datum_vystaveni'])) : '-',
+            'invoice_due_date' => $invoice['fa_datum_splatnosti'] ? date('d.m.Y', strtotime($invoice['fa_datum_splatnosti'])) : '-',
+            'invoice_delivery_date' => $invoice['fa_datum_doruceni'] ? date('d.m.Y', strtotime($invoice['fa_datum_doruceni'])) : '-',
             'invoice_handover_date' => $invoice['fa_datum_predani_zam'] ?? '-',  // Datum předání
             'invoice_paid_date' => $invoice['fa_datum_zaplaceni'] ?? '-',
             'invoice_type' => $invoice['fa_typ'] ?? '-',
@@ -4579,6 +4671,7 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
             
             // Věcná správnost
             'vecna_spravnost_poznamka' => $invoice['vecna_spravnost_poznamka'] ?? '-',
+            'vecna_spravnost_datum_potvrzeni' => date('d.m.Y H:i'),  // Aktuální systémový čas při vytvoření notifikace
             'dt_potvrzeni_vecne_spravnosti' => $invoice['dt_potvrzeni_vecne_spravnosti'] ?? '-',
             'potvrzeni_vecne_spravnosti' => $invoice['potvrzeni_vecne_spravnosti'] ?? 0,
             

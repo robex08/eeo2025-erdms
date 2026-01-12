@@ -285,10 +285,13 @@ const NotificationTestPanel = () => {
   const [recipientUserIds, setRecipientUserIds] = useState('3,5,8');
   const [testOrderId, setTestOrderId] = useState(''); // ID objednávky pro testování
   const [loadingLastOrder, setLoadingLastOrder] = useState(false);
+  const [testInvoiceId, setTestInvoiceId] = useState(''); // ID faktury pro testování
+  const [loadingLastInvoice, setLoadingLastInvoice] = useState(false);
 
   useEffect(() => {
     checkAuth();
     loadLastOrderId(); // Automaticky načti poslední objednávku
+    loadLastInvoiceId(); // Automaticky načti poslední fakturu
   }, []);
 
   const checkAuth = async () => {
@@ -352,6 +355,53 @@ const NotificationTestPanel = () => {
       setTestOrderId('1'); // Fallback
     } finally {
       setLoadingLastOrder(false);
+    }
+  };
+
+  const loadLastInvoiceId = async () => {
+    setLoadingLastInvoice(true);
+    try {
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+
+      if (!token || !user?.username) {
+        addLog('⚠️ Cannot load invoice - not authenticated', 'warning');
+        setLoadingLastInvoice(false);
+        return;
+      }
+
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+
+      // Načti seznam faktur (poslední první)
+      const response = await fetch(`${baseURL}invoices25/list`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username: user.username,
+          limit: 1,
+          offset: 0,
+          sort_by: 'id',
+          sort_order: 'DESC'
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === 'ok' && data.faktury && data.faktury.length > 0) {
+        const lastInvoiceId = data.faktury[0].id;
+        setTestInvoiceId(lastInvoiceId.toString());
+        addLog(`✅ Auto-loaded last invoice ID: ${lastInvoiceId}`, 'success');
+      } else {
+        addLog('⚠️ No invoices found in database', 'warning');
+        setTestInvoiceId('38'); // Fallback k známé faktuře
+      }
+
+    } catch (error) {
+      addLog(`❌ Failed to load last invoice: ${error.message}`, 'error');
+      setTestInvoiceId('38'); // Fallback k známé faktuře
+    } finally {
+      setLoadingLastInvoice(false);
     }
   };
 
@@ -487,8 +537,17 @@ const NotificationTestPanel = () => {
         return;
       }
       
-      const orderIdToUse = parseInt(testOrderId) || 1;
-      addLog(`📋 Using order_id: ${orderIdToUse}`, 'info');
+      // Determine which object ID to use based on event type
+      let objectIdToUse, objectType;
+      if (eventType.startsWith('INVOICE_')) {
+        objectIdToUse = parseInt(testInvoiceId) || 38; // Use invoice ID for invoice events
+        objectType = 'invoice';
+        addLog(`🧾 Using invoice_id: ${objectIdToUse}`, 'info');
+      } else {
+        objectIdToUse = parseInt(testOrderId) || 1; // Use order ID for order events
+        objectType = 'order';
+        addLog(`📋 Using order_id: ${objectIdToUse}`, 'info');
+      }
       addLog(`👤 Trigger user: ${user.username} (ID: ${user.id})`, 'info');
       
       const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
@@ -500,7 +559,7 @@ const NotificationTestPanel = () => {
         token: token,
         username: user.username,
         event_type: eventType,
-        object_id: orderIdToUse,
+        object_id: objectIdToUse,
         trigger_user_id: user.id,
         debug: true  // ✅ Request debug info from backend
       };
@@ -777,6 +836,29 @@ const NotificationTestPanel = () => {
           <ButtonRow>
             <Button onClick={loadLastOrderId} disabled={loadingLastOrder}>
               🔄 Načíst poslední objednávku
+            </Button>
+          </ButtonRow>
+        </RecipientSelector>
+
+        <RecipientSelector>
+          <h3>🧾 ID Faktury pro testování</h3>
+          <InputGroup>
+            <input
+              type="number"
+              placeholder="např. 38"
+              value={testInvoiceId}
+              onChange={(e) => setTestInvoiceId(e.target.value)}
+              disabled={loadingLastInvoice}
+            />
+            <small>
+              {loadingLastInvoice ? '⏳ Načítám poslední fakturu...' :
+               testInvoiceId ? `✅ Backend načte data z faktury ID: ${testInvoiceId}` :
+               '⚠️ Zadej ID existující faktury z databáze'}
+            </small>
+          </InputGroup>
+          <ButtonRow>
+            <Button onClick={loadLastInvoiceId} disabled={loadingLastInvoice}>
+              🔄 Načíst poslední fakturu
             </Button>
           </ButtonRow>
         </RecipientSelector>
