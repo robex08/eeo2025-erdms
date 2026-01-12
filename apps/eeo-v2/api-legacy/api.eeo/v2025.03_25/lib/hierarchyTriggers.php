@@ -34,10 +34,22 @@ function debugHierarchy($message) {
  * @param string $eventType - EVENT_TYPE string (např. "ORDER_APPROVED")
  * @param array $eventData - Data z události (objednávka, faktura, etc.)
  * @param PDO $pdo - Database connection
- * @return array|false ['recipients' => [...], 'variant_id' => X, 'priority' => 'URGENT'] nebo false pokud hierarchie není aktivní
+ * @param bool $debugMode - Pokud true, vrací debug_info
+ * @return array|false ['recipients' => [...], 'variant_id' => X, 'priority' => 'URGENT', 'debug_info' => [...]] nebo false pokud hierarchie není aktivní
  */
-function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
+function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo, $debugMode = false) {
     debugHierarchy("=== START RESOLVE === EventType: $eventType, Data keys: " . implode(',', array_keys($eventData)));
+    
+    // ✅ Initialize debug info
+    $debugInfo = array(
+        'hierarchy_enabled' => false,
+        'profile_id' => null,
+        'profile_name' => null,
+        'event_type_found' => false,
+        'matching_edges' => 0,
+        'rules' => array(),
+        'recipients' => array()
+    );
     
     try {
         // 🔍 DEBUG: Log incoming event data
@@ -66,16 +78,20 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         // Pokud hierarchie není zapnutá, vrátit false
         if (empty($settings['hierarchy_enabled']) || $settings['hierarchy_enabled'] !== '1') {
             error_log("HIERARCHY TRIGGER: Hierarchy is disabled in global settings");
-            return false;
+            $debugInfo['hierarchy_enabled'] = false;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
+        
+        $debugInfo['hierarchy_enabled'] = true;
         
         // Pokud není vybraný profil, vrátit false
         if (empty($settings['hierarchy_profile_id'])) {
             error_log("HIERARCHY TRIGGER: No profile selected in global settings");
-            return false;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
         
         $profileId = (int)$settings['hierarchy_profile_id'];
+        $debugInfo['profile_id'] = $profileId;
         
         // 2. NAČÍST STRUCTURE_JSON z profilu
         $stmt = $pdo->prepare("
@@ -88,13 +104,15 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         
         if (!$profile) {
             error_log("HIERARCHY TRIGGER: Profile $profileId not found or inactive");
-            return false;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
+        
+        $debugInfo['profile_name'] = $profile['nazev'];
         
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure || !isset($structure['nodes']) || !isset($structure['edges'])) {
             error_log("HIERARCHY TRIGGER: Invalid structure_json in profile $profileId");
-            return false;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
         
         error_log("HIERARCHY TRIGGER: Using profile '{$profile['nazev']}' (ID: $profileId)");
@@ -110,9 +128,11 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         
         if (!$eventTypeRow) {
             error_log("HIERARCHY TRIGGER: Event type '$eventType' not found in database");
-            return false;
+            $debugInfo['event_type_found'] = false;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
         
+        $debugInfo['event_type_found'] = true;
         $eventTypeId = (int)$eventTypeRow['id'];
         
         // 4. NAJÍT EDGES které mají tento eventType (nový systém 2025.03_25)
@@ -176,9 +196,11 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         
         if (empty($matchingEdges)) {
             error_log("HIERARCHY TRIGGER: No edges found for event type '$eventType' (ID: $eventTypeId)");
-            return false;
+            $debugInfo['matching_edges'] = 0;
+            return $debugMode ? array('recipients' => array(), 'debug_info' => $debugInfo) : false;
         }
         
+        $debugInfo['matching_edges'] = count($matchingEdges);
         error_log("HIERARCHY TRIGGER: Found " . count($matchingEdges) . " edges for event '$eventType'");
         
         // 5. PRO KAŽDÝ EDGE RESOLVE PŘÍJEMCE
@@ -227,8 +249,45 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
                 continue;
             }
             
+            // ✅ Collect debug info about this rule
+            if ($debugMode) {
+                $targetNodeType = $targetNode['type'] ?? $targetNode['typ'] ?? 'unknown';
+                $scopeType = 'N/A';
+                $scopeDetails = '';
+                
+                if ($targetNodeType === 'role') {
+                    $scopeType = 'ALL_IN_ROLE';
+                    $scopeDetails = $targetNode['data']['roleName'] ?? 'Unknown role';
+                } elseif ($targetNodeType === 'department') {
+                    $scopeData = $targetNode['data']['scopeDefinition'] ?? array();
+                    $scopeType = $scopeData['type'] ?? 'SELECTED';
+                    if ($scopeType === 'SELECTED' && isset($scopeData['selectedUsers'])) {
+                        $scopeDetails = count($scopeData['selectedUsers']) . ' selected users';
+                    } elseif ($scopeType === 'ALL_IN_DEPARTMENT') {
+                        $scopeDetails = $targetNode['data']['label'] ?? 'Unknown department';
+                    } elseif ($scopeType === 'DYNAMIC_FROM_ENTITY') {
+                        $scopeDetails = 'Dynamic (garant/příkazce/vytvořil)';
+                    }
+                } elseif ($targetNodeType === 'user') {
+                    $scopeType = 'SINGLE_USER';
+                    $scopeDetails = $targetNode['data']['userEmail'] ?? $targetNode['data']['userId'] ?? 'Unknown user';
+                }
+            }
+            
             // RESOLVE PŘÍJEMCE podle typu TARGET NODE
             $recipients = resolveTargetNodeRecipients($targetNode, $eventData, $pdo);
+            
+            // ✅ Add rule to debug info
+            if ($debugMode) {
+                $debugInfo['rules'][] = array(
+                    'node_label' => $targetNode['data']['label'] ?? $targetNode['label'] ?? 'Unknown',
+                    'node_type' => $targetNodeType,
+                    'scope_type' => $scopeType,
+                    'scope_details' => $scopeDetails,
+                    'priority' => $edgePriority,
+                    'recipients_count' => count($recipients)
+                );
+            }
             
             if (!empty($recipients)) {
                 error_log("HIERARCHY TRIGGER: Resolved " . count($recipients) . " recipients from node '{$targetNode['id']}' (Priority: $edgePriority)");
@@ -284,7 +343,22 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
         
         error_log("HIERARCHY TRIGGER: Total unique recipients: " . count($uniqueRecipients) . ", Template ID: $variantId");
         
-        return [
+        // ✅ Add recipients to debug info
+        if ($debugMode) {
+            foreach ($uniqueRecipients as $recipient) {
+                $debugInfo['recipients'][] = array(
+                    'user_id' => $recipient['user_id'],
+                    'name' => ($recipient['username'] ?? 'User ' . $recipient['user_id']),
+                    'email' => $recipient['email'] ?? null,
+                    'in_app' => $recipient['delivery']['inApp'] ?? true,
+                    'email_enabled' => $recipient['delivery']['email'] ?? false,
+                    'sms' => $recipient['delivery']['sms'] ?? false,
+                    'priority' => $recipient['priority'] ?? 'INFO'
+                );
+            }
+        }
+        
+        $result = [
             'recipients' => $uniqueRecipients,
             'variant_id' => $variantId,
             'variant_key' => $priority,
@@ -292,6 +366,13 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo) {
             'profile_id' => $profileId,
             'profile_name' => $profile['nazev']
         ];
+        
+        // ✅ Add debug_info if debug mode enabled
+        if ($debugMode) {
+            $result['debug_info'] = $debugInfo;
+        }
+        
+        return $result;
         
     } catch (Exception $e) {
         error_log("HIERARCHY TRIGGER ERROR: " . $e->getMessage());

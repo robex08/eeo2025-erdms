@@ -474,6 +474,127 @@ const NotificationTestPanel = () => {
     }
   };
 
+  // === 🎯 NOVÉ: TEST ORG HIERARCHY TRIGGER ===
+  const testOrgHierarchyTrigger = async (eventType) => {
+    addLog(`🎯 Testing ORG HIERARCHY trigger: ${eventType}`, 'info');
+    
+    try {
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+      
+      if (!token || !user?.username) {
+        addLog('ERROR: Not authenticated!', 'error');
+        return;
+      }
+      
+      const orderIdToUse = parseInt(testOrderId) || 1;
+      addLog(`📋 Using order_id: ${orderIdToUse}`, 'info');
+      addLog(`👤 Trigger user: ${user.username} (ID: ${user.id})`, 'info');
+      
+      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+      const url = `${baseURL}notifications/trigger`;
+      
+      addLog(`📤 POST ${url}`, 'info');
+      
+      const payload = {
+        token: token,
+        username: user.username,
+        event_type: eventType,
+        object_id: orderIdToUse,
+        trigger_user_id: user.id,
+        debug: true  // ✅ Request debug info from backend
+      };
+      
+      addLog(`📦 Payload: ${JSON.stringify(payload, null, 2)}`, 'info');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+      
+      // ✅ ENHANCED: Show hierarchy debug info
+      if (data.debug_info) {
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        addLog(`🔍 ORG HIERARCHY DEBUG INFO`, 'info');
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        
+        const debug = data.debug_info;
+        
+        if (debug.hierarchy_enabled !== undefined) {
+          addLog(`⚙️ Hierarchy enabled: ${debug.hierarchy_enabled ? '✅ YES' : '❌ NO'}`, debug.hierarchy_enabled ? 'success' : 'warning');
+        }
+        
+        if (debug.profile_name) {
+          addLog(`📋 Active profile: "${debug.profile_name}" (ID: ${debug.profile_id})`, 'info');
+        }
+        
+        if (debug.event_type_found !== undefined) {
+          addLog(`🎯 Event type in DB: ${debug.event_type_found ? '✅ FOUND' : '❌ NOT FOUND'} (${eventType})`, debug.event_type_found ? 'success' : 'error');
+        }
+        
+        if (debug.matching_edges !== undefined) {
+          addLog(`🔗 Matching edges: ${debug.matching_edges} edge(s) found`, debug.matching_edges > 0 ? 'success' : 'warning');
+        }
+        
+        if (debug.rules && debug.rules.length > 0) {
+          addLog(`📜 Hierarchy rules applied (${debug.rules.length}):`, 'info');
+          debug.rules.forEach((rule, index) => {
+            addLog(`   ${index + 1}. ${rule.node_label || 'Unknown node'}`, 'info');
+            addLog(`      └─ Type: ${rule.node_type || 'N/A'}`, 'info');
+            addLog(`      └─ Scope: ${rule.scope_type || 'N/A'}`, 'info');
+            if (rule.scope_details) {
+              addLog(`      └─ Details: ${rule.scope_details}`, 'info');
+            }
+            if (rule.recipients_count !== undefined) {
+              addLog(`      └─ Recipients found: ${rule.recipients_count}`, rule.recipients_count > 0 ? 'success' : 'warning');
+            }
+          });
+        } else if (debug.matching_edges === 0) {
+          addLog(`⚠️ No hierarchy rules configured for event type "${eventType}"`, 'warning');
+          addLog(`   → Configure in: Administrace → Workflow hierarchie`, 'warning');
+        }
+        
+        if (debug.recipients && debug.recipients.length > 0) {
+          addLog(`👥 Recipients resolved (${debug.recipients.length}):`, 'success');
+          debug.recipients.forEach(recipient => {
+            const name = recipient.name || `User ID ${recipient.user_id}`;
+            const email = recipient.email ? ` <${recipient.email}>` : '';
+            const delivery = [];
+            if (recipient.in_app) delivery.push('📱 App');
+            if (recipient.email_enabled) delivery.push('📧 Email');
+            if (recipient.sms) delivery.push('💬 SMS');
+            const deliveryStr = delivery.length > 0 ? ` [${delivery.join(', ')}]` : '';
+            addLog(`   • ${name}${email}${deliveryStr}`, 'success');
+          });
+        }
+        
+        addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+      } else {
+        // Fallback - show raw response
+        addLog(`📦 Response: ${JSON.stringify(data, null, 2)}`, 'info');
+      }
+      
+      // Show result summary
+      if (data.status === 'ok') {
+        addLog(`✅ SUCCESS: ${data.zprava}`, 'success');
+        addLog(`📊 Recipients sent: ${data.sent}`, data.sent > 0 ? 'success' : 'warning');
+        if (data.errors && data.errors.length > 0) {
+          addLog(`⚠️ Errors: ${JSON.stringify(data.errors)}`, 'warning');
+        }
+      } else {
+        addLog(`❌ FAILED: ${data.err || 'Unknown error'}`, 'error');
+      }
+      
+    } catch (error) {
+      addLog(`❌ ERROR: ${error.message}`, 'error');
+    }
+  };
+
   // === 2️⃣ CREATE ALL NOTIFICATIONS (for bulk testing) ===
   const createAllNotifications = async () => {
     addLog('🚀 Creating all notification types...', 'info');
@@ -906,6 +1027,90 @@ const NotificationTestPanel = () => {
             <span className="icon">🔔</span>
             <span>Vytvořit všechny typy notifikací najednou</span>
           </BtnAll>
+        </Section>
+
+        <Section>
+          <h2>🎯 TEST ORG HIERARCHY TRIGGER (Backend Routing)</h2>
+          <p style={{fontSize: '14px', color: '#64748b', marginBottom: '16px'}}>
+            ⚙️ Tyto tlačítka volají <code>/api.eeo/notifications/trigger</code> endpoint,
+            který <strong>použije organizační hierarchii</strong> pro určení příjemců.
+            Na rozdíl od přímého vytváření notifikací výše, tento způsob emuluje reálný workflow.
+          </p>
+          
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>📋 OBJEDNÁVKY (Order Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_PENDING_APPROVAL')}>
+              <span className="icon">⏳</span>
+              <span>Čeká na schválení</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_APPROVED')}>
+              <span className="icon">✅</span>
+              <span>Schváleno</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_REJECTED')}>
+              <span className="icon">❌</span>
+              <span>Zamítnuto</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #f97316, #ea580c)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_AWAITING_CHANGES')}>
+              <span className="icon">🔄</span>
+              <span>Čeká na úpravy</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_SENT_TO_SUPPLIER')}>
+              <span className="icon">📤</span>
+              <span>Odesláno dodavateli</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('ORDER_COMPLETED')}>
+              <span className="icon">🏁</span>
+              <span>Dokončeno</span>
+            </TestButton>
+          </ButtonGrid>
+
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>🧾 FAKTURY & VĚCNÁ SPRÁVNOST (Invoice Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_MATERIAL_CHECK_REQUESTED')}>
+              <span className="icon">📨</span>
+              <span>Faktura přiřazena - čeká na věcnou kontrolu</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_MATERIAL_CHECK_APPROVED')}>
+              <span className="icon">✅</span>
+              <span>Věcná správnost potvrzena</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('INVOICE_OVERDUE')}>
+              <span className="icon">⚠️</span>
+              <span>Faktura po splatnosti</span>
+            </TestButton>
+          </ButtonGrid>
+
+          <h3 style={{fontSize: '16px', marginTop: '24px', marginBottom: '12px'}}>📄 SMLOUVY & POKLADNA (Contract & Cashbook Events)</h3>
+          <ButtonGrid>
+            <TestButton style={{background: 'linear-gradient(135deg, #f97316, #ea580c)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('CONTRACT_EXPIRING')}>
+              <span className="icon">📅</span>
+              <span>Smlouva vypršela</span>
+            </TestButton>
+            
+            <TestButton style={{background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: 'white'}}
+                        onClick={() => testOrgHierarchyTrigger('CASHBOOK_PAYMENT_RECEIVED')}>
+              <span className="icon">💰</span>
+              <span>Platba přijata</span>
+            </TestButton>
+          </ButtonGrid>
         </Section>
 
         <Section>
