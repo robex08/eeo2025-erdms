@@ -4505,6 +4505,7 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
                     'predano_komu_name' => $data['predano_komu_name'] ?? '-',
                     'vecna_spravnost_kontroloval' => $data['vecna_spravnost_kontroloval'] ?? '-',
                     'vecna_spravnost_datum_potvrzeni' => date('d.m.Y H:i'),  // Aktuální systémový čas
+                    'datum_zaevidovani' => date('d.m.Y H:i'),  // Datum a čas zaevidování (trigger time)
                     'fa_predana_zam_id' => $data['fa_predana_zam_id'] ?? null,
                     'uzivatel_id' => $data['vytvoril_uzivatel_id'] ?? null,
                     'creator_name' => $data['fakturant_name'] ?? '-',
