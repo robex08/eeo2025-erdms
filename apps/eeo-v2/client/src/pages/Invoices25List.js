@@ -1757,23 +1757,17 @@ const Invoices25List = () => {
       return;
     }
 
-    // 🐛 DEBUG: Zaloguj začátek načítání
-    console.log('🔄 loadData() STARTED - Načítám faktury...');
-
     try {
       setLoading(true);
       showProgress?.();
 
-      // 📥 Sestavení API parametrů podle BE dokumentace (flat struktura)
+      // Sestavení API parametrů podle BE dokumentace (flat struktura)
       const apiParams = {
         token, 
         username,
         page: currentPage,
         per_page: itemsPerPage
       };
-      
-      // 🐛 DEBUG: API parametry PŘED odesláním
-      console.log('📤 API PARAMS:', apiParams);
       
       // Rok -> datum_od/datum_do
       if (selectedYear) {
@@ -1876,27 +1870,6 @@ const Invoices25List = () => {
       const response = await listInvoices25(apiParams);
 
       // 🐛 DEBUG: RAW RESPONSE Z BE
-      console.log('🔍 RAW API RESPONSE (invoices25/list):', {
-        status: response?.status,
-        faktury_count: response?.faktury?.length || 0,
-        pagination: response?.pagination,
-        response_keys: Object.keys(response || {}),
-        user_info: response?.user_info,
-        debug_info: response?._debug,
-        full_response: response
-      });
-      
-      // � DEBUG: SQL DOTAZ PRO TESTOVÁNÍ
-      if (response?._debug?.sql_query) {
-        console.log('📋 SQL DOTAZ (zkopíruj a spusť v DB):\n\n' + response._debug.sql_query + '\n');
-      }
-      
-      // �🚨 DEBUG: Pokud je admin ale nemá faktury
-      if (response?.user_info?.is_admin && response?.faktury?.length === 0) {
-        console.warn('⚠️ ADMIN VID Í 0 FAKTUR - možný problém s JOINy nebo WHERE podmínkami!', response?.user_info);
-      }
-
-      // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
       
       // ✅ Ulož pagination info z BE (server-side pagination)
