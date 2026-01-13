@@ -1422,13 +1422,8 @@ const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoU
           objednavka_id: objednavkaId || null
         });
 
-        console.log('📎 Načtené přílohy pro fakturu:', invoiceId, attachmentsData);
-
         // Backend vrací data.attachments podle console logu
         const attachmentsList = attachmentsData.data?.attachments || [];
-        
-        console.log('📎 Parsed attachments list:', attachmentsList);
-        console.log('📎 First attachment structure:', attachmentsList[0]);
 
         setAttachments(attachmentsList);
       } catch (err) {
