@@ -873,7 +873,8 @@ function handle_users_generate_temp_password($input, $config, $queries) {
             $user_id = (int)$user_id;
             
             try {
-                $user_sql = "SELECT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za FROM " . TBL_UZIVATELE . " u WHERE u.id = ? AND u.aktivni = 1";
+                // Načíst uživatele (i neaktivní - při resetu hesla s emailem je aktivujeme)
+                $user_sql = "SELECT u.id, u.username, u.jmeno, u.prijmeni, u.email, u.titul_pred, u.titul_za, u.aktivni FROM " . TBL_UZIVATELE . " u WHERE u.id = ?";
                 $stmt = $db->prepare($user_sql);
                 $stmt->execute([$user_id]);
                 $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -891,7 +892,8 @@ function handle_users_generate_temp_password($input, $config, $queries) {
                 $temp_password = substr(str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%'), 0, 8);
                 $hashed_password = password_hash($temp_password, PASSWORD_DEFAULT);
                 
-                $update_sql = "UPDATE " . TBL_UZIVATELE . " SET password_hash = ?, vynucena_zmena_hesla = 1 WHERE id = ?";
+                // Aktualizovat heslo, vynucení změny a AKTIVOVAT uživatele (pokud nebyl aktivní)
+                $update_sql = "UPDATE " . TBL_UZIVATELE . " SET password_hash = ?, vynucena_zmena_hesla = 1, aktivni = 1 WHERE id = ?";
                 $stmt = $db->prepare($update_sql);
                 $stmt->execute([$hashed_password, $user_id]);
                 
@@ -908,15 +910,22 @@ function handle_users_generate_temp_password($input, $config, $queries) {
                 }
                 
                 require_once __DIR__ . '/mail.php';
-                $email_sent = eeo_mail_send($user['email'], $email_subject, $email_body, array('html' => true));
+                $email_result = eeo_mail_send($user['email'], $email_subject, $email_body, array('html' => true));
+                $email_sent = (is_array($email_result) && isset($email_result['ok'])) ? $email_result['ok'] : false;
                 
                 if ($email_sent) {
                     $results[] = array('success' => true, 'user_id' => $user_id, 'username' => $user['username'], 'user_name' => $full_name, 'email' => $user['email'], 'temp_password' => $temp_password);
                 } else {
-                    $rollback_sql = "UPDATE " . TBL_UZIVATELE . " SET vynucena_zmena_hesla = 0 WHERE id = ?";
+                    // Rollback - vrátit původní stav (vynucení změny hesla a aktivitu)
+                    $original_aktivni = (int)$user['aktivni']; // Původní stav aktivity
+                    $rollback_sql = "UPDATE " . TBL_UZIVATELE . " SET vynucena_zmena_hesla = 0, aktivni = ? WHERE id = ?";
                     $stmt = $db->prepare($rollback_sql);
-                    $stmt->execute([$user_id]);
-                    $results[] = array('success' => false, 'user_id' => $user_id, 'username' => $user['username'], 'user_name' => $full_name, 'error' => 'Nepodařilo se odeslat email');
+                    $stmt->execute([$original_aktivni, $user_id]);
+                    $error_msg = (is_array($email_result) && isset($email_result['debug'])) 
+                        ? 'Email nelze odeslat - zkontrolujte SMTP konfiguraci' 
+                        : 'Nepodařilo se odeslat email';
+                    $results[] = array('success' => false, 'user_id' => $user_id, 'username' => $user['username'], 'user_name' => $full_name, 'error' => $error_msg);
+                    error_log("[Users] Failed to send email to {$user['email']}: " . print_r($email_result, true));
                 }
                 
             } catch (Exception $e) {

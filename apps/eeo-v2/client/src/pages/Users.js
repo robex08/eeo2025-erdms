@@ -2388,6 +2388,7 @@ const Users = () => {
       setGlobalProgress(40);
 
       // Pokud má být zaslán email s novým heslem
+      let emailResult = null;
       if (options.option === 'with-email' && options.templateId) {
         try {
           const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
@@ -2406,7 +2407,7 @@ const Users = () => {
 
           setGlobalProgress(70);
 
-          const emailResult = await response.json();
+          emailResult = await response.json();
           
           if (emailResult.status !== 'ok') {
             throw new Error(emailResult.err || 'Nepodařilo se odeslat email s novým heslem');
@@ -2415,10 +2416,13 @@ const Users = () => {
           if (showToast) {
             const results = emailResult.results || [];
             const userResult = results.find(r => r.user_id === user.id);
-            if (userResult && userResult.email_sent) {
+            if (userResult && userResult.success) {
               showToast(`✓ Nové heslo bylo vygenerováno a odesláno na ${user.email}`, { type: 'success' });
+              // Refresh seznamu uživatelů (mohli jsme aktivovat neaktivního uživatele)
+              await fetchUsers();
             } else {
-              showToast(`⚠️ Heslo bylo vygenerováno, ale email se nepodařilo odeslat`, { type: 'warning' });
+              const errorMsg = userResult?.error || 'Email se nepodařilo odeslat';
+              showToast(`⚠️ Heslo bylo vygenerováno, ale ${errorMsg}`, { type: 'warning' });
             }
           }
         } catch (emailError) {
@@ -2428,13 +2432,15 @@ const Users = () => {
         }
       }
 
-      // Update local data
-      const updatedUsers = users.map(u => 
-        u.id === user.id 
-          ? { ...u, vynucena_zmena_hesla: 1 }
-          : u
-      );
-      setUsers(updatedUsers);
+      // Update local data - pokud nebyl reload (při chybě emailu)
+      if (options.option !== 'with-email' || !emailResult?.results?.find(r => r.user_id === user.id && r.success)) {
+        const updatedUsers = users.map(u => 
+          u.id === user.id 
+            ? { ...u, vynucena_zmena_hesla: 1 }
+            : u
+        );
+        setUsers(updatedUsers);
+      }
 
       setGlobalProgress(100);
       doneGlobalProgress();
