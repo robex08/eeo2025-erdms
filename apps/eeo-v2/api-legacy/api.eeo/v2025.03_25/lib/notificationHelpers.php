@@ -32,12 +32,24 @@ function formatNumber($number) {
  * @param string $datetime
  * @return string
  */
+/**
+ * Formátuje datum a čas pro notifikace (používá Czech timezone)
+ * @param string $datetime
+ * @return string
+ */
 function formatDateTime($datetime) {
     if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
         return '-';
     }
+    // ✅ Použij TimezoneHelper pro konzistentní timezone
+    $original_timezone = date_default_timezone_get();
+    date_default_timezone_set('Europe/Prague');
+    
     $dt = new DateTime($datetime);
-    return $dt->format('d.m.Y H:i');
+    $formatted = $dt->format('d.m.Y H:i');
+    
+    date_default_timezone_set($original_timezone);
+    return $formatted;
 }
 
 /**
@@ -49,8 +61,14 @@ function formatDate($datetime) {
     if (empty($datetime) || $datetime === '0000-00-00 00:00:00' || $datetime === '0000-00-00') {
         return '-';
     }
+    $original_timezone = date_default_timezone_get();
+    date_default_timezone_set('Europe/Prague');
+    
     $dt = new DateTime($datetime);
-    return $dt->format('d.m.Y');
+    $formatted = $dt->format('d.m.Y');
+    
+    date_default_timezone_set($original_timezone);
+    return $formatted;
 }
 
 /**
@@ -62,8 +80,14 @@ function formatTime($datetime) {
     if (empty($datetime) || $datetime === '0000-00-00 00:00:00') {
         return '-';
     }
+    $original_timezone = date_default_timezone_get();
+    date_default_timezone_set('Europe/Prague');
+    
     $dt = new DateTime($datetime);
-    return $dt->format('H:i');
+    $formatted = $dt->format('H:i');
+    
+    date_default_timezone_set($original_timezone);
+    return $formatted;
 }
 
 // ==========================================
@@ -233,8 +257,8 @@ function notif_replacePlaceholders($text, $data) {
     }
     
     // Odstranit nenaplněné placeholdery (nahradit pomlčkou)
-    // ✅ OPRAVA: Přidána podpora pro číslice (order_id, invoice_id, atd.) A JAKÉKOLIV speciální znaky (?, !, atd.)
-    $text = preg_replace('/\{[^}]+\}/', '-', $text);
+    // ✅ OPRAVA: Přidána podpora pro číslice (order_id, invoice_id, atd.)
+    $text = preg_replace('/\{[a-z0-9_]+\}/', '-', $text);
     
     return $text;
 }
@@ -283,11 +307,13 @@ function generateItemsSummary($items, $maxLines = 3) {
  * @param array $additionalData
  * @return array
  */
-function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additionalData = array()) {
+function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additionalData = array(), $invoiceId = null) {
     try {
         // Načtení názvů tabulek pomocí helper funkcí (stejně jako Order V2)
         $ordersTable = get_orders_table_name();
         $usersTable = get_users_table_name();
+        
+        error_log("[NotificationHelpers] Loading data for order: $orderId" . ($invoiceId ? ", invoice: $invoiceId" : ""));
         
         // Načtení základních dat objednávky přes standardní SQL (Order V2 struktura)
         // Poznámka: 25a_objednavky + 25_uzivatele (jmeno + prijmeni jako samostatné sloupce)
@@ -336,6 +362,27 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
             $itemsTotalWithDph += isset($item['cena_celkem_s_dph']) ? (float)$item['cena_celkem_s_dph'] : 0;
         }
         
+        // ✅ NOVÉ: Načtení dat faktury (pokud je zadané invoice_id)
+        $invoiceData = array();
+        if ($invoiceId) {
+            error_log("[NotificationHelpers] Loading invoice data for ID: $invoiceId");
+            $fakturyTable = get_invoices_table_name();
+            $invoiceSql = "SELECT f.*,
+                                  CONCAT(COALESCE(potvrdil.titul_pred, ''), ' ', COALESCE(potvrdil.jmeno, ''), ' ', COALESCE(potvrdil.prijmeni, ''), ' ', COALESCE(potvrdil.titul_za, '')) as potvrdil_full_name
+                           FROM {$fakturyTable} f
+                           LEFT JOIN {$usersTable} potvrdil ON f.potvrdil_vecnou_spravnost_id = potvrdil.id
+                           WHERE f.fa_id = :invoice_id";
+            $invoiceStmt = $db->prepare($invoiceSql);
+            $invoiceStmt->execute(array(':invoice_id' => $invoiceId));
+            $invoiceData = $invoiceStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($invoiceData) {
+                error_log("[NotificationHelpers] ✅ Invoice loaded: " . $invoiceData['fa_cislo'] . ", potvrdil: " . ($invoiceData['potvrdil_full_name'] ?: 'NULL'));
+            } else {
+                error_log("[NotificationHelpers] ⚠️ Invoice not found for ID: $invoiceId");
+            }
+        }
+        
         // Načtení dat uživatele, který provedl akci
         $actionUserData = array(
             'action_performed_by' => '-',
@@ -358,31 +405,56 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
         
         // Načtení faktur (25a_objednavky_faktury)
         $invoicesTable = get_invoices_table_name();
-        $invoicesSql = "SELECT * FROM {$invoicesTable} WHERE objednavka_id = :order_id ORDER BY dt_vytvoreni DESC";
+        $invoicesSql = "SELECT * FROM {$invoicesTable} WHERE obj_id = :order_id ORDER BY dt_vytvoreni DESC";
         $invoicesStmt = $db->prepare($invoicesSql);
         $invoicesStmt->execute(array(':order_id' => $orderId));
         $invoices = $invoicesStmt->fetchAll(PDO::FETCH_ASSOC);
         
-        $invoiceData = array(
+        $invoicePlaceholders = array(
             'invoices_count' => count($invoices),
             'invoice_number' => '-',
             'invoice_amount' => '-',
             'invoice_date' => '-',
             'invoice_due_date' => '-',
             'invoice_paid_date' => '-',
-            'invoice_status' => '-'
+            'invoice_status' => '-',
+            'vecna_spravnost_kontroloval' => '-',
+            'vecna_spravnost_datum_potvrzeni' => '-'
         );
         
-        // Pokud existuje faktura, použijeme první (poslední přidanou)
-        // Poznámka: Tabulka 25a_objednavky_faktury používá prefixy fa_*
-        if (!empty($invoices)) {
-            $invoice = $invoices[0];
-            $invoiceData['invoice_number'] = isset($invoice['fa_cislo_vema']) ? $invoice['fa_cislo_vema'] : '-';
-            $invoiceData['invoice_amount'] = formatNumber(isset($invoice['fa_castka']) ? $invoice['fa_castka'] : 0);
-            $invoiceData['invoice_date'] = formatDate(isset($invoice['fa_datum_vystaveni']) ? $invoice['fa_datum_vystaveni'] : null);
-            $invoiceData['invoice_due_date'] = formatDate(isset($invoice['fa_datum_splatnosti']) ? $invoice['fa_datum_splatnosti'] : null);
-            $invoiceData['invoice_paid_date'] = formatDate(isset($invoice['fa_datum_uhrazeni']) ? $invoice['fa_datum_uhrazeni'] : null);
-            $invoiceData['invoice_status'] = getInvoiceStatusName(isset($invoice['fa_stav']) ? $invoice['fa_stav'] : 'nova');
+        // ✅ PRIORITA: Pokud je zadané konkrétní invoiceId (z načtených dat výše), použij tu fakturu
+        $invoice_to_use = null;
+        if ($invoiceData && isset($invoiceData['fa_id'])) {
+            // Máme konkrétní fakturu načtenou pomocí invoiceId
+            $invoice_to_use = $invoiceData;
+            error_log("[NotificationHelpers] Using specific invoice: " . $invoiceData['fa_cislo']);
+        } elseif (!empty($invoices)) {
+            // Jinak použijeme první (nejnovější) fakturu
+            $invoice_to_use = $invoices[0];
+            error_log("[NotificationHelpers] Using first invoice from list");
+        }
+        
+        // Naplň placeholdery z vybrané faktury
+        if ($invoice_to_use) {
+            $invoicePlaceholders['invoice_number'] = isset($invoice_to_use['fa_cislo']) ? $invoice_to_use['fa_cislo'] : '-';
+            $invoicePlaceholders['invoice_amount'] = formatNumber(isset($invoice_to_use['fa_castka_celkem']) ? $invoice_to_use['fa_castka_celkem'] : 0);
+            $invoicePlaceholders['invoice_date'] = formatDate(isset($invoice_to_use['fa_datum_vystaveni']) ? $invoice_to_use['fa_datum_vystaveni'] : null);
+            $invoicePlaceholders['invoice_due_date'] = formatDate(isset($invoice_to_use['fa_datum_splatnosti']) ? $invoice_to_use['fa_datum_splatnosti'] : null);
+            $invoicePlaceholders['invoice_paid_date'] = formatDate(isset($invoice_to_use['fa_datum_uhrazeni']) ? $invoice_to_use['fa_datum_uhrazeni'] : null);
+            $invoicePlaceholders['invoice_status'] = 'Vystavena'; // TODO: getInvoiceStatusName()
+            
+            // ✅ VĚCNÁ SPRÁVNOST z konkrétní faktury
+            if (isset($invoice_to_use['potvrdil_full_name']) && $invoice_to_use['potvrdil_full_name']) {
+                $invoicePlaceholders['vecna_spravnost_kontroloval'] = trim($invoice_to_use['potvrdil_full_name']);
+            }
+            if (isset($invoice_to_use['dt_potvrzeni_vecne_spravnosti']) && $invoice_to_use['dt_potvrzeni_vecne_spravnosti']) {
+                $invoicePlaceholders['vecna_spravnost_datum_potvrzeni'] = formatDateTime($invoice_to_use['dt_potvrzeni_vecne_spravnosti']);
+            }
+            
+            error_log("[NotificationHelpers] Invoice placeholders: number=" . $invoicePlaceholders['invoice_number'] . 
+                      ", amount=" . $invoicePlaceholders['invoice_amount'] .
+                      ", potvrdil=" . $invoicePlaceholders['vecna_spravnost_kontroloval'] .
+                      ", datum=" . $invoicePlaceholders['vecna_spravnost_datum_potvrzeni']);
         }
         
         // Příprava placeholder dat
@@ -444,34 +516,23 @@ function getOrderPlaceholderData($db, $orderId, $actionUserId = null, $additiona
             'ma_byt_zverejnena' => (isset($order['zverejnit']) && $order['zverejnit'] == 1) ? 'Ano' : 'Ne',
             
             // FAKTURACE
-            'invoices_count' => $invoiceData['invoices_count'],
-            'invoice_number' => $invoiceData['invoice_number'],
-            'invoice_amount' => $invoiceData['invoice_amount'],
-            'invoice_date' => $invoiceData['invoice_date'],
-            'invoice_due_date' => $invoiceData['invoice_due_date'],
-            'invoice_paid_date' => $invoiceData['invoice_paid_date'],
-            'invoice_status' => $invoiceData['invoice_status'],
+            'invoices_count' => $invoicePlaceholders['invoices_count'],
+            'invoice_number' => $invoicePlaceholders['invoice_number'],
+            'invoice_amount' => $invoicePlaceholders['invoice_amount'],
+            'invoice_date' => $invoicePlaceholders['invoice_date'],
+            'invoice_due_date' => $invoicePlaceholders['invoice_due_date'],
+            'invoice_paid_date' => $invoicePlaceholders['invoice_paid_date'],
+            'invoice_status' => $invoicePlaceholders['invoice_status'],
             
-            // VĚCNÁ SPRÁVNOST
+            // VĚCNÁ SPRÁVNOST (z faktury pokud je načtená, jinak z objednávky)
             'asset_location' => isset($order['vecna_spravnost_umisteni_majetku']) ? $order['vecna_spravnost_umisteni_majetku'] : '-',
             'vecna_spravnost_poznamka' => isset($order['vecna_spravnost_poznamka']) ? $order['vecna_spravnost_poznamka'] : '-',
-            'kontroloval_name' => '-',
-            'dt_potvrzeni_vecne_spravnosti' => formatDate(isset($order['dt_potvrzeni_vecne_spravnosti']) ? $order['dt_potvrzeni_vecne_spravnosti'] : null)
+            'kontroloval_name' => $invoicePlaceholders['vecna_spravnost_kontroloval'],
+            'vecna_spravnost_kontroloval' => $invoicePlaceholders['vecna_spravnost_kontroloval'],  // Alias
+            'potvrdil_name' => $invoicePlaceholders['vecna_spravnost_kontroloval'],  // Alias pro šablonu
+            'vecna_spravnost_datum_potvrzeni' => $invoicePlaceholders['vecna_spravnost_datum_potvrzeni'],
+            'dt_potvrzeni_vecne_spravnosti' => $invoicePlaceholders['vecna_spravnost_datum_potvrzeni']  // Alias
         );
-        
-        // Načtení kontrolora věcné správnosti
-        if (isset($order['potvrdil_vecnou_spravnost_id']) && $order['potvrdil_vecnou_spravnost_id']) {
-            $kontrolorSql = "SELECT CONCAT(COALESCE(titul_pred, ''), ' ', COALESCE(jmeno, ''), ' ', COALESCE(prijmeni, ''), ' ', COALESCE(titul_za, '')) as full_name 
-                             FROM {$usersTable} 
-                             WHERE id = :uzivatel_id";
-            $kontrolorStmt = $db->prepare($kontrolorSql);
-            $kontrolorStmt->execute(array(':uzivatel_id' => $order['potvrdil_vecnou_spravnost_id']));
-            $kontrolor = $kontrolorStmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($kontrolor) {
-                $placeholderData['kontroloval_name'] = trim($kontrolor['full_name']);
-            }
-        }
         
         // Přidání dodatečných dat z parametru
         if (!empty($additionalData)) {
