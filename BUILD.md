@@ -4,7 +4,17 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.10.0` *(připraveno k nasazení)*
+**Aktuální DEV verze:** `2.12` *(aktivní verze)*
+
+## ⚠️ KRITICKÉ UPOZORNĚNÍ - PRODUCTION URL ⚠️
+
+**NIKDY** nepoužívej `eeo.zachranka.cz` pro production!  
+**VŽDY** používej `erdms.zachranka.cz` pro production!
+
+```bash
+❌ ŠPATNĚ: REACT_APP_API_BASE_URL=https://eeo.zachranka.cz/api
+✅ SPRÁVNĚ: REACT_APP_API_BASE_URL=https://erdms.zachranka.cz/api
+```
 
 ## 🚀 Quick Start
 
@@ -12,13 +22,13 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 # Dashboard build a deploy
 ./build-dashboard.sh --dev --deploy
 
-# EEO v2 frontend + backend (verze 2.10.0)
+# EEO v2 frontend + backend (verze 2.12.0)
 ./build-eeo-v2.sh --dev --all --deploy
 
 # Všechny aplikace najednou
 ./build-all.sh --dev --deploy
 
-# Production build (verze 2.10.0)
+# Production build (verze 2.12.0)
 ./build-dashboard.sh --prod --deploy
 ```
 
