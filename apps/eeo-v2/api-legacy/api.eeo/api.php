@@ -3650,6 +3650,17 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/order-v2/invoices/check-duplicate - kontrola duplicity čísla faktury
+        if ($endpoint === 'order-v2/invoices/check-duplicate') {
+            if ($request_method === 'POST') {
+                handle_order_v2_check_duplicate_invoice($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // ===========================================================================
         // CASHBOOK API - Pokladní knihy
         // ===========================================================================

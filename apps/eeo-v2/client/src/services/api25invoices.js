@@ -1875,6 +1875,54 @@ export async function getInvoiceById25({ token, username, id }) {
 }
 
 /**
+ * Check if invoice number (fa_cislo_vema) already exists
+ * 
+ * @param {string} username 
+ * @param {string} token 
+ * @param {string} faCisloVema - Invoice number to check
+ * @param {number|null} excludeInvoiceId - ID faktury k vynechání (při editaci)
+ * @returns {Promise<{exists: boolean, invoice?: object}>}
+ */
+export async function checkInvoiceDuplicate(username, token, faCisloVema, excludeInvoiceId = null) {
+  try {
+    const payload = {
+      username,
+      token,
+      fa_cislo_vema: faCisloVema
+    };
+    
+    if (excludeInvoiceId) {
+      payload.exclude_invoice_id = excludeInvoiceId;
+    }
+
+    const response = await api25invoices.post('order-v2/invoices/check-duplicate', payload, {
+      timeout: 5000
+    });
+
+    if (response.status !== 200) {
+      throw new Error('Neočekávaný kód odpovědi při kontrole duplicity');
+    }
+
+    const data = response.data;
+
+    // Kontrola chyb
+    if (data.status === 'error' || data.err || data.error) {
+      const errorMsg = data.message || data.err || data.error || 'Chyba při kontrole duplicity';
+      throw new Error(errorMsg);
+    }
+
+    // Vrátit výsledek
+    return {
+      exists: data.exists === true,
+      invoice: data.invoice || null
+    };
+
+  } catch (error) {
+    throw new Error(normalizeApi25InvoicesError(error));
+  }
+}
+
+/**
  * Export všech funkcí
  */
 export default {
@@ -1896,6 +1944,7 @@ export default {
   listInvoices25,
   getInvoicesByOrder25,
   getInvoiceById25,
+  checkInvoiceDuplicate,
   // Utils
   isAllowedInvoiceFileType,
   isAllowedInvoiceFileSize,

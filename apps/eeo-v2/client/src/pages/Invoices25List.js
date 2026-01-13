@@ -1358,13 +1358,7 @@ const Invoices25List = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // Výchozí rok: aktuální rok (pokud není uložený v LS)
-  const [selectedYear, setSelectedYear] = useState(() => {
-    const currentYear = new Date().getFullYear();
-    const savedYear = savedState?.selectedYear;
-    // Pokud je uložený rok validní (>= 2025), použij ho, jinak použij aktuální rok
-    return savedYear && savedYear >= 2025 ? savedYear : currentYear;
-  });
+  const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   
   // Filters state pro dashboard cards
@@ -1761,7 +1755,7 @@ const Invoices25List = () => {
       setLoading(true);
       showProgress?.();
 
-      // Sestavení API parametrů podle BE dokumentace (flat struktura)
+      // 📥 Sestavení API parametrů podle BE dokumentace (flat struktura)
       const apiParams = {
         token, 
         username,
@@ -1869,7 +1863,7 @@ const Invoices25List = () => {
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
 
-      // 🐛 DEBUG: RAW RESPONSE Z BE
+      // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
       
       // ✅ Ulož pagination info z BE (server-side pagination)
@@ -2051,15 +2045,6 @@ const Invoices25List = () => {
 
     } catch (err) {
       console.error('❌ Chyba při načítání faktur:', err);
-      
-      // 🐛 DEBUG: Detailní info o chybě
-      console.error('❌ ERROR DETAILS:', {
-        message: err?.message,
-        response: err?.response,
-        status: err?.response?.status,
-        data: err?.response?.data,
-        full_error: err
-      });
       
       // Speciální handling pro 404 - endpoint ještě není implementován na BE
       let errorMsg;
@@ -2651,12 +2636,11 @@ const Invoices25List = () => {
     }
   };
 
-  // Generate years for select (od 2025 do aktuálního roku)
+  // Generate years for select
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const years = [];
-    // Od aktuálního roku zpět do roku 2025 (včetně)
-    for (let year = currentYear; year >= 2025; year--) {
+    for (let year = currentYear; year >= 2020; year--) {
       years.push(year);
     }
     return years;
@@ -2912,7 +2896,7 @@ const Invoices25List = () => {
                   </StatIcon>
                 </StatHeader>
                 <StatValue>{stats.myInvoices}</StatValue>
-                <StatLabel>Mnou zaevidované</StatLabel>
+                <StatLabel>Předané / Věcná</StatLabel>
               </DashboardCard>
             )}
             </DashboardGrid>

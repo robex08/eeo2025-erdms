@@ -634,7 +634,8 @@ const InvoiceAttachmentsTestPanel = () => {
       missingFields.push('Číslo faktury VEMA');
     }
     
-    if (!faktura.fa_castka || parseFloat(faktura.fa_castka) <= 0) {
+    // Částka - povolit i záporné hodnoty a nulu (zálohové faktury, dobropisy)
+    if (!faktura.fa_castka || isNaN(parseFloat(faktura.fa_castka))) {
       missingFields.push('Částka');
     }
     
