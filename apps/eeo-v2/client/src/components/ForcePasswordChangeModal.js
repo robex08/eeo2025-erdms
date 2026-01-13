@@ -255,19 +255,34 @@ const ForcePasswordChangeModal = ({ isOpen, onClose, onConfirm, userData, templa
   const [selectedOption, setSelectedOption] = useState(null); // 'with-email', 'without-email', 'cancel'
   const [selectedTemplate, setSelectedTemplate] = useState('');
 
+  // Filtrovat pouze relevantní šablony pro reset hesla (welcome, password)
+  const relevantTemplates = templates.filter(t => {
+    const typ = (t.typ || '').toLowerCase();
+    const nazev = (t.nazev || '').toLowerCase();
+    const predmet = (t.email_predmet || '').toLowerCase();
+    
+    return typ.includes('welcome') || 
+           typ.includes('password') || 
+           nazev.includes('uvítací') ||
+           nazev.includes('heslo') ||
+           predmet.includes('heslo');
+  });
+
   useEffect(() => {
-    if (isOpen && templates.length > 0) {
-      // Najít default šablonu (první šablona nebo ta s názvem obsahujícím "heslo")
-      const defaultTemplate = templates.find(t => 
-        t.nazev?.toLowerCase().includes('heslo') || 
-        t.email_predmet?.toLowerCase().includes('heslo')
-      ) || templates[0];
+    if (isOpen && relevantTemplates.length > 0) {
+      // Najít default šablonu - preferovat welcome_new_user
+      const defaultTemplate = relevantTemplates.find(t => t.typ === 'welcome_new_user') ||
+                             relevantTemplates.find(t => 
+                               t.nazev?.toLowerCase().includes('uvítací') || 
+                               t.nazev?.toLowerCase().includes('heslo')
+                             ) || 
+                             relevantTemplates[0];
       
       if (defaultTemplate) {
         setSelectedTemplate(defaultTemplate.id.toString());
       }
     }
-  }, [isOpen, templates]);
+  }, [isOpen, relevantTemplates]);
 
   const handleOptionClick = (option) => {
     setSelectedOption(option);
@@ -338,7 +353,7 @@ const ForcePasswordChangeModal = ({ isOpen, onClose, onConfirm, userData, templa
                     onClick={(e) => e.stopPropagation()}
                   >
                     <option value="">-- Vyberte šablonu --</option>
-                    {templates.map(template => (
+                    {relevantTemplates.map(template => (
                       <option key={template.id} value={template.id}>
                         {template.nazev || template.email_predmet || `Šablona ${template.id}`}
                       </option>
