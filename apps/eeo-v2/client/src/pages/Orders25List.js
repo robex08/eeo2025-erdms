@@ -7304,7 +7304,7 @@ const Orders25List = () => {
 
         return normalizedObjednatel.includes(normalizedFilter) || normalizedGarant.includes(normalizedFilter);
       },
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         const order = row.original;
         let objednatelName = '---';
         let garantName = '---';
@@ -7353,10 +7353,18 @@ const Orders25List = () => {
           garantName = getUserDisplayName(order.garant_uzivatel_id);
         }
 
+        // Získej aktuální filtr pro tento sloupec
+        const columnFilter = columnFilters['objednatel_garant'] || '';
+        const searchTerm = columnFilter || globalFilter;
+
         return (
           <div style={{ lineHeight: '1.3' }} title={`Objednatel: ${objednatelName}\nGarant: ${garantName}`}>
-            <div style={{ fontWeight: 500 }}>{objednatelName}</div>
-            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{garantName}</div>
+            <div style={{ fontWeight: 500 }}>
+              {searchTerm ? highlightText(objednatelName, searchTerm) : objednatelName}
+            </div>
+            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              {searchTerm ? highlightText(garantName, searchTerm) : garantName}
+            </div>
           </div>
         );
       },
@@ -7450,7 +7458,7 @@ const Orders25List = () => {
 
         return normalizedPrikazce.includes(normalizedFilter) || normalizedSchvalovatel.includes(normalizedFilter);
       },
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         const order = row.original;
         let prikazceName = '---';
         let schvalovatelName = '---';
@@ -7491,10 +7499,18 @@ const Orders25List = () => {
           schvalovatelName = getUserDisplayName(order.schvalovatel_id);
         }
 
+        // Získej aktuální filtr pro tento sloupec
+        const columnFilter = columnFilters['prikazce_schvalovatel'] || '';
+        const searchTerm = columnFilter || globalFilter;
+
         return (
           <div style={{ lineHeight: '1.3' }} title={`Příkazce: ${prikazceName}\nSchvalovatel: ${schvalovatelName}`}>
-            <div style={{ fontWeight: 500 }}>{prikazceName}</div>
-            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{schvalovatelName}</div>
+            <div style={{ fontWeight: 500 }}>
+              {searchTerm ? highlightText(prikazceName, searchTerm) : prikazceName}
+            </div>
+            <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+              {searchTerm ? highlightText(schvalovatelName, searchTerm) : schvalovatelName}
+            </div>
           </div>
         );
       },
@@ -8163,7 +8179,7 @@ const Orders25List = () => {
       minSize: 120,
       maxSize: 140
     }
-  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName, hasPermission]);
+  ], [getOrderDate, getOrderWorkflowStatus, getOrderSystemStatus, globalFilter, highlightText, handleActionClick, getUserDisplayName, hasPermission, columnFilters]);
   // 🔥 CRITICAL: Removed currentPageIndex, pageSize from deps
   // orderIndex is calculated inside cell renderer, doesn't need to be in deps
   // handleActionClick has stable reference (no deps) - won't cause re-render
