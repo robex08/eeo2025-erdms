@@ -11401,19 +11401,37 @@ function OrderForm25() {
             }
           }
 
-          // 🆕 Věcná správnost potvrzena
+          // 🆕 Věcná správnost potvrzena - POSLAT PRO KAŽDOU FAKTURU ZVLÁŠŤ
           const hasZkontrolovana = hasWorkflowState(result.stav_workflow_kod, 'ZKONTROLOVANA');
           const hadZkontrolovana = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ZKONTROLOVANA') : false;
           
+          // ✅ OPRAVA: Notifikace pro KAŽDOU fakturu, která byla právě potvrzena
+          // Backend dostane invoice_id a načte si z něj order_id
           if (hasZkontrolovana && !hadZkontrolovana) {
-            try {
-              await triggerNotification('INVOICE_MATERIAL_CHECK_APPROVED', formData.id, user_id || formData.objednatel_id, {
-                order_number: orderNumber,
-                order_subject: formData.predmet || ''
-              });
-              addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zkontrolovana', `Notifikace odeslána: věcná správnost potvrzena ${orderNumber}`);
-            } catch (triggerError) {
-              addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zkontrolovana', `Chyba při notifikaci ZKONTROLOVANA: ${triggerError.message}`);
+            // Načíst faktury z výsledku (aktualizované stavy z DB)
+            const fakturyPoUlozeni = result.faktury || [];
+            const potvrzeneVecne = fakturyPoUlozeni.filter(f => 
+              f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true
+            );
+
+            // Poslat notifikaci PRO KAŽDOU POTVRRZENOU FAKTURU
+            for (const faktura of potvrzeneVecne) {
+              try {
+                await triggerNotification(
+                  'INVOICE_MATERIAL_CHECK_APPROVED', 
+                  faktura.id, // ⚠️ INVOICE ID, ne order ID!
+                  user_id || formData.objednatel_id, 
+                  {
+                    order_number: orderNumber,
+                    order_subject: formData.predmet || '',
+                    invoice_number: faktura.fa_cislo_vema || '',
+                    invoice_id: faktura.id
+                  }
+                );
+                addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zkontrolovana', `✅ Notifikace odeslána: věcná správnost potvrzena FA #${faktura.id} (${faktura.fa_cislo_vema}) pro OBJ ${orderNumber}`);
+              } catch (triggerError) {
+                addDebugLog('warning', 'NOTIFICATION', 'trigger-error-zkontrolovana', `⚠️ Chyba při notifikaci ZKONTROLOVANA pro FA #${faktura.id}: ${triggerError.message}`);
+              }
             }
           }
 
