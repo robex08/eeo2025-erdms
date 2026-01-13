@@ -1023,19 +1023,83 @@ function handle_notifications_create($input, $config, $queries) {
         // NOVÉ: Podpora order_id pro automatické naplnění placeholderů
         $placeholderData = array();
         $order_id = isset($input['order_id']) ? (int)$input['order_id'] : null;
+        $invoice_id = isset($input['invoice_id']) ? (int)$input['invoice_id'] : null;
         $action_uzivatel_id = isset($input['action_uzivatel_id']) ? (int)$input['action_uzivatel_id'] : $current_uzivatel_id;
         $additional_data = isset($input['additional_data']) ? $input['additional_data'] : array();
         
         error_log("[Notifications] order_id from input: " . ($order_id ? $order_id : 'NULL'));
+        error_log("[Notifications] invoice_id from input: " . ($invoice_id ? $invoice_id : 'NULL'));
         error_log("[Notifications] action_uzivatel_id: $action_uzivatel_id");
+        
+        // ✅ SPECIÁLNÍ LOGIKA PRO VĚCNOU SPRÁVNOST:
+        // Když se volá order_status_kontrola_potvrzena BEZ invoice_id (z OrderForm25),
+        // načti všechny faktury objednávky s potvrzenou věcnou správností a pošli notifikaci pro každou
+        if ($typ === 'order_status_kontrola_potvrzena' && $order_id && !$invoice_id) {
+            error_log("[Notifications] ⚠️ SPECIÁLNÍ PŘÍPAD: Věcná správnost potvrzena bez invoice_id - načítám faktury objednávky $order_id");
+            
+            // Načti faktury s potvrzenou věcnou správností
+            $faktury_table = get_invoices_table_name();
+            $faktury_stmt = $db->prepare("
+                SELECT fa_id, fa_cislo, fa_vecna_spravnost_potvrzena, 
+                       fa_datum_vystaveni, fa_datum_splatnosti, fa_castka_celkem,
+                       potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti
+                FROM {$faktury_table}
+                WHERE obj_id = ? AND fa_vecna_spravnost_potvrzena = 1
+            ");
+            $faktury_stmt->execute(array($order_id));
+            $potvrzene_faktury = $faktury_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($potvrzene_faktury)) {
+                error_log("[Notifications] ⚠️ Nenalezeny žádné faktury s potvrzenou věcnou správností pro objednávku $order_id - pokračuji bez fakturních dat");
+                // Pokračuj standardním způsobem (pošli notifikaci bez fakturních dat)
+            } else {
+                error_log("[Notifications] ✅ Nalezeno " . count($potvrzene_faktury) . " faktur s potvrzenou věcnou správností");
+                
+                // Pro každou fakturu odešli samostatnou notifikaci - rekurzivním voláním
+                $notifications_sent = array();
+                foreach ($potvrzene_faktury as $faktura) {
+                    $faktura_invoice_id = $faktura['fa_id'];
+                    error_log("[Notifications] 📧 Odesílám notifikaci pro fakturu ID: $faktura_invoice_id, číslo: " . $faktura['fa_cislo']);
+                    
+                    // Připrav input pro rekurzivní volání s invoice_id
+                    $faktura_input = $input;  // Kopie vstupu
+                    $faktura_input['invoice_id'] = $faktura_invoice_id;
+                    
+                    // Rekurzivně zavolej handle_notifications_create - zpracuje notifikaci s invoice_id
+                    try {
+                        // Buffer output aby se nezobrazovalo multiple JSON outputs
+                        ob_start();
+                        handle_notifications_create($faktura_input, $config, $queries);
+                        $output = ob_get_clean();
+                        
+                        $notifications_sent[] = array(
+                            'invoice_id' => $faktura_invoice_id,
+                            'invoice_number' => $faktura['fa_cislo']
+                        );
+                        error_log("[Notifications] ✅ Notifikace pro fakturu $faktura_invoice_id odeslána");
+                    } catch (Exception $e) {
+                        error_log("[Notifications] ❌ Chyba při odesílání notifikace pro fakturu $faktura_invoice_id: " . $e->getMessage());
+                    }
+                }
+                
+                // Vrať úspěšný response a skonči
+                echo json_encode(array(
+                    'status' => 'ok',
+                    'zprava' => 'Notifikace odeslány pro ' . count($notifications_sent) . ' faktur',
+                    'invoices_processed' => $notifications_sent,
+                    'total_invoices' => count($potvrzene_faktury)
+                ));
+                return;
+            }
+        }
         
         if ($order_id) {
             error_log("[Notifications] ===== LOADING ORDER DATA START =====");
-            error_log("[Notifications] Loading placeholder data for order_id: $order_id");
+            error_log("[Notifications] Loading placeholder data for order_id: $order_id" . ($invoice_id ? ", invoice_id: $invoice_id" : ""));
             
             // Načti data objednávky a připrav placeholdery (s error handlingem)
             try {
-                $placeholderData = getOrderPlaceholderData($db, $order_id, $action_uzivatel_id, $additional_data);
+                $placeholderData = getOrderPlaceholderData($db, $order_id, $action_uzivatel_id, $additional_data, $invoice_id);
                 
                 error_log("[Notifications] getOrderPlaceholderData returned: " . (is_array($placeholderData) ? count($placeholderData) . " keys" : "NOT ARRAY"));
                 
@@ -1047,6 +1111,8 @@ function handle_notifications_create($input, $config, $queries) {
                     error_log("[Notifications] ✅ Placeholder data loaded successfully!");
                     error_log("[Notifications] Keys: " . implode(', ', array_keys($placeholderData)));
                     error_log("[Notifications] order_number: " . (isset($placeholderData['order_number']) ? $placeholderData['order_number'] : 'NOT_SET'));
+                    error_log("[Notifications] invoice_number: " . (isset($placeholderData['invoice_number']) ? $placeholderData['invoice_number'] : 'NOT_SET'));
+                    error_log("[Notifications] potvrdil_name: " . (isset($placeholderData['potvrdil_name']) ? $placeholderData['potvrdil_name'] : 'NOT_SET'));
                     error_log("[Notifications] order_subject: " . (isset($placeholderData['order_subject']) ? substr($placeholderData['order_subject'], 0, 30) : 'NOT_SET'));
                 }
                 
@@ -4488,10 +4554,21 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
             $data = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($data) {
+                // ✅ FIX: Správné datum potvrzení věcné správnosti z DB
+                $dtPotvrzeni = '-';
+                if (!empty($data['dt_potvrzeni_vecne_spravnosti'])) {
+                    try {
+                        $dtPotvrzeni = date('d.m.Y H:i', strtotime($data['dt_potvrzeni_vecne_spravnosti']));
+                    } catch (Exception $e) {
+                        error_log("[loadUniversalPlaceholders] Error parsing dt_potvrzeni_vecne_spravnosti: " . $e->getMessage());
+                    }
+                }
+                
                 // Základní placeholdery faktury (platí vždy)
                 $placeholders = array(
                     'invoice_id' => $objectId,
                     'invoice_number' => $data['fa_cislo_vema'] ?? '-',
+                    'cislo_faktury' => $data['fa_cislo_vema'] ?? '-',  // ✅ Alias pro češtinu
                     'amount' => $data['fa_castka'] ? number_format((float)$data['fa_castka'], 2, ',', ' ') : '0,00',
                     'invoice_amount' => $data['fa_castka'] ? number_format((float)$data['fa_castka'], 2, ',', ' ') . ' Kč' : '-',
                     'invoice_amount_raw' => $data['fa_castka'] ?? 0,
@@ -4503,8 +4580,15 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
                     'invoice_type' => $data['fa_typ'] ?? '-',
                     'fakturant_name' => $data['fakturant_name'] ?? '-',
                     'predano_komu_name' => $data['predano_komu_name'] ?? '-',
+                    
+                    // ✅ VĚCNÁ SPRÁVNOST - kdo potvrdil + kdy (Z DB, NE systémový čas!)
                     'vecna_spravnost_kontroloval' => $data['vecna_spravnost_kontroloval'] ?? '-',
-                    'vecna_spravnost_datum_potvrzeni' => date('d.m.Y H:i'),  // Aktuální systémový čas
+                    'potvrdil_name' => $data['vecna_spravnost_kontroloval'] ?? '-',  // ✅ Alias pro šablonu
+                    'potvrdil_vecnou_spravnost' => $data['vecna_spravnost_kontroloval'] ?? '-',  // ✅ Další alias
+                    'vecna_spravnost_datum_potvrzeni' => $dtPotvrzeni,  // ✅ FIX: Z DB!
+                    'dt_potvrzeni' => $dtPotvrzeni,  // ✅ Alias pro šablonu
+                    'dt_potvrzeni_vecne_spravnosti' => $dtPotvrzeni,  // ✅ Plný název
+                    
                     'datum_zaevidovani' => date('d.m.Y H:i'),  // Datum a čas zaevidování (trigger time)
                     'fa_predana_zam_id' => $data['fa_predana_zam_id'] ?? null,
                     'uzivatel_id' => $data['vytvoril_uzivatel_id'] ?? null,
@@ -4672,7 +4756,10 @@ function loadInvoicePlaceholders($db, $invoiceId, $triggerUserId = null) {
             
             // Věcná správnost
             'vecna_spravnost_poznamka' => $invoice['vecna_spravnost_poznamka'] ?? '-',
-            'vecna_spravnost_datum_potvrzeni' => date('d.m.Y H:i'),  // Aktuální systémový čas při vytvoření notifikace
+            // ✅ OPRAVA: Použít čas z DB, pokud existuje, jinak aktuální čas
+            'vecna_spravnost_datum_potvrzeni' => $invoice['dt_potvrzeni_vecne_spravnosti'] 
+                ? date('d.m.Y H:i', strtotime($invoice['dt_potvrzeni_vecne_spravnosti'])) 
+                : '-',
             'dt_potvrzeni_vecne_spravnosti' => $invoice['dt_potvrzeni_vecne_spravnosti'] ?? '-',
             'potvrzeni_vecne_spravnosti' => $invoice['potvrzeni_vecne_spravnosti'] ?? 0,
             

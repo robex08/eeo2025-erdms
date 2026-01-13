@@ -11412,11 +11412,13 @@ const Orders25List = () => {
               </InfoValue>
             </InfoRow>
 
-            {order.schvaleni_komentar && (
+            {(order.schvaleni_komentar || order.odeslani_storno_duvod) && (
               <InfoRow>
-                <InfoLabel>Komentář:</InfoLabel>
+                <InfoLabel>Stav komentář:</InfoLabel>
                 <InfoValue style={{ fontStyle: 'italic', color: '#64748b' }}>
-                  {order.schvaleni_komentar}
+                  {[order.schvaleni_komentar, order.odeslani_storno_duvod]
+                    .filter(Boolean)
+                    .join(', ')}
                 </InfoValue>
               </InfoRow>
             )}
