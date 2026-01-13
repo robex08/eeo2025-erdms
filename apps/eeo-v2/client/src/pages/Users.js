@@ -2390,29 +2390,36 @@ const Users = () => {
       // Pokud má být zaslán email s novým heslem
       if (options.option === 'with-email' && options.templateId) {
         try {
-          const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3200/';
-          const response = await fetch(`${API_BASE_URL}auth/generate-and-send-password`, {
+          const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+          const response = await fetch(`${API_BASE_URL}users/generate-temp-password`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-Auth-Token': token,
-              'X-Auth-Username': username,
             },
             body: JSON.stringify({
-              user_id: user.id,
+              token,
+              username,
+              user_ids: [user.id],
               template_id: options.templateId,
             }),
           });
 
           setGlobalProgress(70);
 
-          if (!response.ok) {
-            throw new Error('Nepodařilo se odeslat email s novým heslem');
+          const emailResult = await response.json();
+          
+          if (emailResult.status !== 'ok') {
+            throw new Error(emailResult.err || 'Nepodařilo se odeslat email s novým heslem');
           }
 
-          const emailResult = await response.json();
           if (showToast) {
-            showToast(`✓ Nové heslo bylo vygenerováno a odesláno na ${user.email}`, { type: 'success' });
+            const results = emailResult.results || [];
+            const userResult = results.find(r => r.user_id === user.id);
+            if (userResult && userResult.email_sent) {
+              showToast(`✓ Nové heslo bylo vygenerováno a odesláno na ${user.email}`, { type: 'success' });
+            } else {
+              showToast(`⚠️ Heslo bylo vygenerováno, ale email se nepodařilo odeslat`, { type: 'warning' });
+            }
           }
         } catch (emailError) {
           if (showToast) {
