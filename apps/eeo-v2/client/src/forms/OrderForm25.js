@@ -24192,28 +24192,8 @@ function OrderForm25() {
                                           );
                                           updateFaktury(updatedFaktury);
 
-                                          // 🔔 TRIGGER 2: INVOICE_MATERIAL_CHECK_APPROVED
-                                          // Věcná správnost byla potvrzena (checkbox změněn z 0 na 1)
-                                          if (newValue === 1 && faktura.vecna_spravnost_potvrzeno !== 1) {
-                                            // Pouze pokud faktura má reálné ID (není temp)
-                                            const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
-                                            if (hasRealId) {
-                                              triggerNotification(
-                                                'INVOICE_MATERIAL_CHECK_APPROVED',
-                                                faktura.id,
-                                                user_id,
-                                                {
-                                                  faktura_cislo: faktura.fa_cislo_vema,
-                                                  objednavka_id: formData.id,
-                                                  objednavka_cislo: formData.cislo_objednavky
-                                                }
-                                              ).then(() => {
-                                                console.log(`✅ Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice ${faktura.id}`);
-                                              }).catch(notifErr => {
-                                                console.error('⚠️ Notification trigger failed:', notifErr);
-                                              });
-                                            }
-                                          }
+                                          // ❌ ZRUŠENO: Trigger se volá pouze při uložení objednávky, ne při checked
+                                          // Notifikace se pošle v saveOrderToAPI při detekci změny workflow stavu
                                         }}
                                         style={{
                                           width: '18px',
