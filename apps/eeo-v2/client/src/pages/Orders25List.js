@@ -241,6 +241,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Smazaná': 'SMAZANA',
     'Koncept': 'NOVA' // Koncepty se mapují jako nové objednávky
@@ -6486,33 +6487,16 @@ const Orders25List = () => {
     return 0;
   }, [orders]);
 
-  // Stats calculation
-  const stats = useMemo(() => {
-    // ✅ OPRAVA: orders už jsou vyfiltrované společnou funkcí (včetně archivovaných pokud showArchived=false)
-    // Už NENÍ potřeba filtrovat archivované znovu!
-    const dataToCount = orders; // Už jsou vyfiltrované!
+  // 📊 GLOBAL Stats calculation - ALWAYS from orders (before user filters)
+  // Used ONLY for total amount display
+  const globalStats = useMemo(() => {
+    const dataToCount = orders;
     
-    const total = dataToCount.length;
-    const byStatus = dataToCount.reduce((acc, order) => {
-      const systemStatus = getOrderSystemStatus(order);
-      const displayStatus = getOrderDisplayStatus(order);
-      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
-
-      // Debug: loguj stav pro první pár objednávek
-      if (acc._debug < 5) {
-
-        acc._debug = (acc._debug || 0) + 1;
-      }
-
-      return acc;
-    }, {});
-
     const totalAmount = dataToCount.reduce((sum, order) => {
       const amount = getOrderTotalPriceWithDPH(order);
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
 
-    // Počítání cen dokončených a nedokončených
     const completedAmount = dataToCount.reduce((sum, order) => {
       const status = getOrderSystemStatus(order);
       const isCompleted = ['DOKONCENA', 'VYRIZENA', 'COMPLETED'].includes(status);
@@ -6534,6 +6518,25 @@ const Orders25List = () => {
       return sum;
     }, 0);
 
+    return {
+      totalAmount,
+      completedAmount,
+      incompleteAmount
+    };
+  }, [orders, getOrderSystemStatus, getOrderTotalPriceWithDPH]);
+
+  // 📊 Stats calculation - from base orders for tiles
+  const stats = useMemo(() => {
+    // ✅ Count from orders (before filters) for initial dashboard state
+    const dataToCount = orders;
+    
+    const total = dataToCount.length;
+    const byStatus = dataToCount.reduce((acc, order) => {
+      const systemStatus = getOrderSystemStatus(order);
+      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
+      return acc;
+    }, {});
+
     // 📄 Počítání objednávek s fakturami (min. 1 faktura)
     const withInvoices = dataToCount.reduce((count, order) => {
       const faktury = order.faktury || [];
@@ -6553,12 +6556,10 @@ const Orders25List = () => {
       return order.mimoradna_udalost ? count + 1 : count;
     }, 0);
 
-    // Debug: ukáž celý byStatus objekt
-
     return {
       total,
       nova: byStatus.NOVA || 0,
-      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0, // ✅ FIX: Backend používá ODESLANA_KE_SCHVALENI
+      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0,
       schvalena: byStatus.SCHVALENA || 0,
       zamitnuta: byStatus.ZAMITNUTA || 0,
       ceka_se: byStatus.CEKA_SE || 0,
@@ -6566,6 +6567,7 @@ const Orders25List = () => {
       odeslana: byStatus.ODESLANA || 0,
       potvrzena: byStatus.POTVRZENA || 0,
       uverejnena: byStatus.UVEREJNENA || 0,
+      fakturace: byStatus.FAKTURACE || 0,
       vecna_spravnost: byStatus.VECNA_SPRAVNOST || 0,
       dokoncena: byStatus.DOKONCENA || 0,
       vyrizena: byStatus.VYRIZENA || 0,
@@ -6579,14 +6581,14 @@ const Orders25List = () => {
       approved: byStatus.APPROVED || 0,
       completed: byStatus.COMPLETED || 0,
       cancelled: byStatus.CANCELLED || 0,
-      totalAmount,
-      completedAmount,
-      incompleteAmount,
+      totalAmount: globalStats.totalAmount,
+      completedAmount: globalStats.completedAmount,
+      incompleteAmount: globalStats.incompleteAmount,
       withInvoices,
       withAttachments,
       mimoradneUdalosti
     };
-  }, [orders, showArchived, getOrderSystemStatus, getOrderDisplayStatus, getOrderTotalPriceWithDPH]);
+  }, [orders, globalStats, getOrderSystemStatus]);
 
   // Pomocná funkce pro získání data objednávky (skutečné nebo dočasné pro koncepty)
   // Získání full datetime pro objednávku
@@ -8413,6 +8415,114 @@ const Orders25List = () => {
     userDetail,
     currentUserId,
     getOrderWorkflowStatus
+  ]);
+
+  // 📊 FILTERED Stats - recalculate stats from filteredData when filters are active
+  const filteredStats = useMemo(() => {
+    // Check if any filter is active (except showArchived which is handled in orders)
+    const hasActiveFilters = 
+      globalFilter ||
+      statusFilter.length > 0 ||
+      userFilter.length > 0 ||
+      dateFromFilter ||
+      dateToFilter ||
+      amountFromFilter ||
+      amountToFilter ||
+      filterMaBytZverejneno ||
+      filterByloZverejneno ||
+      filterMimoradneObjednavky ||
+      filterWithInvoices ||
+      filterWithAttachments ||
+      showOnlyMyOrders ||
+      Object.keys(columnFilters).length > 0 ||
+      Object.keys(multiselectFilters).length > 0;
+
+    // If no filters active, use base stats
+    if (!hasActiveFilters) {
+      return stats;
+    }
+
+    // Otherwise, recalculate from filteredData
+    const dataToCount = filteredData;
+    const total = dataToCount.length;
+    
+    const byStatus = dataToCount.reduce((acc, order) => {
+      const systemStatus = getOrderSystemStatus(order);
+      acc[systemStatus] = (acc[systemStatus] || 0) + 1;
+      return acc;
+    }, {});
+
+    // 📄 Počítání objednávek s fakturami (min. 1 faktura)
+    const withInvoices = dataToCount.reduce((count, order) => {
+      const faktury = order.faktury || [];
+      const fakturyCount = order.faktury_count || faktury.length || 0;
+      return fakturyCount > 0 ? count + 1 : count;
+    }, 0);
+
+    // 📎 Počítání objednávek s přílohami (min. 1 příloha)
+    const withAttachments = dataToCount.reduce((count, order) => {
+      const prilohy = order.prilohy || [];
+      const prilohyCount = order.prilohy_count || prilohy.length || 0;
+      return prilohyCount > 0 ? count + 1 : count;
+    }, 0);
+
+    // ⚠ Počítání mimořádných událostí
+    const mimoradneUdalosti = dataToCount.reduce((count, order) => {
+      return order.mimoradna_udalost ? count + 1 : count;
+    }, 0);
+
+    return {
+      total,
+      nova: byStatus.NOVA || 0,
+      ke_schvaleni: byStatus.ODESLANA_KE_SCHVALENI || 0,
+      schvalena: byStatus.SCHVALENA || 0,
+      zamitnuta: byStatus.ZAMITNUTA || 0,
+      ceka_se: byStatus.CEKA_SE || 0,
+      rozpracovana: byStatus.ROZPRACOVANA || 0,
+      odeslana: byStatus.ODESLANA || 0,
+      potvrzena: byStatus.POTVRZENA || 0,
+      uverejnena: byStatus.UVEREJNENA || 0,
+      fakturace: byStatus.FAKTURACE || 0,
+      vecna_spravnost: byStatus.VECNA_SPRAVNOST || 0,
+      dokoncena: byStatus.DOKONCENA || 0,
+      vyrizena: byStatus.VYRIZENA || 0,
+      zrusena: byStatus.ZRUSENA || 0,
+      stornova: byStatus.STORNOVA || 0,
+      smazana: byStatus.SMAZANA || 0,
+      archivovano: byStatus.ARCHIVOVANO || 0,
+      k_uverejneni_do_registru: byStatus.K_UVEREJNENI_DO_REGISTRU || 0,
+      ceka_potvrzeni: byStatus.CEKA_POTVRZENI || 0,
+      draft: byStatus.DRAFT || 0,
+      approved: byStatus.APPROVED || 0,
+      completed: byStatus.COMPLETED || 0,
+      cancelled: byStatus.CANCELLED || 0,
+      totalAmount: globalStats.totalAmount, // Keep global total
+      completedAmount: globalStats.completedAmount, // Keep global
+      incompleteAmount: globalStats.incompleteAmount, // Keep global
+      withInvoices,
+      withAttachments,
+      mimoradneUdalosti
+    };
+  }, [
+    filteredData,
+    stats,
+    globalStats,
+    getOrderSystemStatus,
+    globalFilter,
+    statusFilter,
+    userFilter,
+    dateFromFilter,
+    dateToFilter,
+    amountFromFilter,
+    amountToFilter,
+    filterMaBytZverejneno,
+    filterByloZverejneno,
+    filterMimoradneObjednavky,
+    filterWithInvoices,
+    filterWithAttachments,
+    showOnlyMyOrders,
+    columnFilters,
+    multiselectFilters
   ]);
 
   // 🧪 DEBUG: Ulož filtered data pro test panel
@@ -11095,6 +11205,7 @@ const Orders25List = () => {
         'potvrzena': 'Potvrzená dodavatelem',
         'k_uverejneni_do_registru': 'Ke zveřejnění', //  FIX: Změněno z "Má být zveřejněna"
         'uverejnena': 'Zveřejněno', //  FIX: Opraveno na "Zveřejněno" (tak jak je v DB)
+        'fakturace': 'Fakturace',
         'vecna_spravnost': 'Věcná správnost',
         'dokoncena': 'Dokončená',
         'nova': 'Nová',
@@ -14416,10 +14527,10 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div>
                     <LargeStatValue>
-                      {Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                      {Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                     </LargeStatValue>
                     <LargeStatLabel>
-                      Celková cena s DPH za období ({stats.total})
+                      Celková cena s DPH za období ({filteredStats.total})
                     </LargeStatLabel>
                     {(() => {
                       const hasActiveFilters =
@@ -14530,7 +14641,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('nova')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.nova}</StatValue>
+                      <StatValue>{filteredStats.nova}</StatValue>
                       <StatIcon>{getStatusEmoji('nova')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Nová / Koncept</StatLabel>
@@ -14545,7 +14656,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
                       <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                         <FontAwesomeIcon icon={faHourglassHalf} />
                       </StatIcon>
@@ -14562,7 +14673,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                         <FontAwesomeIcon icon={faCheckCircle} />
                       </StatIcon>
@@ -14579,7 +14690,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zamitnuta')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zamitnuta}</StatValue>
+                      <StatValue>{filteredStats.zamitnuta}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
                         <FontAwesomeIcon icon={faTimesCircle} />
                       </StatIcon>
@@ -14596,7 +14707,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon>{getStatusEmoji('rozpracovana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Rozpracovaná</StatLabel>
@@ -14611,7 +14722,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon>{getStatusEmoji('odeslana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
@@ -14626,7 +14737,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon>{getStatusEmoji('potvrzena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Potvrzená dodavatelem</StatLabel>
@@ -14641,7 +14752,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Ke zveřejnění</StatLabel>
@@ -14656,7 +14767,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zveřejněno</StatLabel>
@@ -14671,7 +14782,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_potvrzeni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_potvrzeni}</StatValue>
+                      <StatValue>{filteredStats.ceka_potvrzeni}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_potvrzeni')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká na potvrzení</StatLabel>
@@ -14686,10 +14797,25 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_se')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_se}</StatValue>
+                      <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká se</StatLabel>
+                  </StatCard>
+                )}
+
+                {isTileVisible('fakturace') && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon>{getStatusEmoji('fakturace')}</StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
                   </StatCard>
                 )}
 
@@ -14701,7 +14827,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon>{getStatusEmoji('vecna_spravnost')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Věcná správnost</StatLabel>
@@ -14716,7 +14842,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon>{getStatusEmoji('dokoncena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Dokončená</StatLabel>
@@ -14731,7 +14857,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zrusena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zrusena}</StatValue>
+                      <StatValue>{filteredStats.zrusena}</StatValue>
                       <StatIcon>{getStatusEmoji('zrusena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zrušená</StatLabel>
@@ -14746,7 +14872,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('smazana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.smazana}</StatValue>
+                      <StatValue>{filteredStats.smazana}</StatValue>
                       <StatIcon>{getStatusEmoji('smazana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Smazaná</StatLabel>
@@ -14761,7 +14887,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('archivovano')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.archivovano}</StatValue>
+                      <StatValue>{filteredStats.archivovano}</StatValue>
                       <StatIcon>{getStatusEmoji('archivovano')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Archivováno / Import</StatLabel>
@@ -14776,7 +14902,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon>📄</StatIcon>
                     </StatHeader>
                     <StatLabel>S fakturou</StatLabel>
@@ -14791,7 +14917,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon>📎</StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
@@ -14806,7 +14932,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>
@@ -14969,7 +15095,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
               <>
                 <StatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div style={{ width: '100%' }}>
-                    <StatValue style={{ textAlign: 'left' }}>{Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč</StatValue>
+                    <StatValue style={{ textAlign: 'left' }}>{Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč</StatValue>
                     <StatLabel style={{ textAlign: 'left' }}>Celková cena s DPH za období ({stats.total})</StatLabel>
                     {(() => {
                       const hasActiveFilters =
@@ -15031,7 +15157,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <StatLabel>Počet objednávek</StatLabel>
                 </StatCard>
 
-                {stats.ke_schvaleni > 0 && (
+                {filteredStats.ke_schvaleni > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.KE_SCHVALENI.dark}
                     $clickable={true}
@@ -15039,7 +15165,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
                       <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('ke_schvaleni')} />
                       </StatIcon>
@@ -15047,7 +15173,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Ke schválení</StatLabel>
                   </StatCard>
                 )}
-                {stats.schvalena > 0 && (
+                {filteredStats.schvalena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.SCHVALENA.dark}
                     $clickable={true}
@@ -15055,7 +15181,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('schvalena')} />
                       </StatIcon>
@@ -15063,7 +15189,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Schválená</StatLabel>
                   </StatCard>
                 )}
-                {stats.rozpracovana > 0 && (
+                {filteredStats.rozpracovana > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.ROZPRACOVANA.dark}
                     $clickable={true}
@@ -15071,7 +15197,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ROZPRACOVANA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('rozpracovana')} />
                       </StatIcon>
@@ -15079,7 +15205,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Rozpracovaná</StatLabel>
                   </StatCard>
                 )}
-                {stats.odeslana > 0 && (
+                {filteredStats.odeslana > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.ODESLANA.dark}
                     $clickable={true}
@@ -15087,7 +15213,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ODESLANA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('odeslana')} />
                       </StatIcon>
@@ -15095,7 +15221,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
                   </StatCard>
                 )}
-                {stats.potvrzena > 0 && (
+                {filteredStats.potvrzena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.POTVRZENA.dark}
                     $clickable={true}
@@ -15103,7 +15229,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.POTVRZENA.dark}>
                       <FontAwesomeIcon icon={getStatusIcon('potvrzena')} />
                     </StatIcon>
@@ -15111,7 +15237,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   <StatLabel>Potvrzená dodavatelem</StatLabel>
                 </StatCard>
                 )}
-                {stats.k_uverejneni_do_registru > 0 && (
+                {filteredStats.k_uverejneni_do_registru > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}
                     $clickable={true}
@@ -15119,7 +15245,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon $color={STATUS_COLORS.K_UVEREJNENI_DO_REGISTRU.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('k_uverejneni_do_registru')} />
                       </StatIcon>
@@ -15127,7 +15253,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Ke zveřejnění</StatLabel>
                   </StatCard>
                 )}
-                {stats.uverejnena > 0 && (
+                {filteredStats.uverejnena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.UVEREJNENA.dark}
                     $clickable={true}
@@ -15135,7 +15261,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.UVEREJNENA.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('uverejnena')} />
                       </StatIcon>
@@ -15143,7 +15269,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Zveřejněno</StatLabel>
                   </StatCard>
                 )}
-                {stats.vecna_spravnost > 0 && (
+                {filteredStats.vecna_spravnost > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}
                     $clickable={true}
@@ -15151,7 +15277,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon $color={STATUS_COLORS.VECNA_SPRAVNOST.dark}>
                         <FontAwesomeIcon icon={getStatusIcon('vecna_spravnost')} />
                       </StatIcon>
@@ -15159,7 +15285,23 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Věcná správnost</StatLabel>
                   </StatCard>
                 )}
-                {stats.dokoncena > 0 && (
+                {filteredStats.fakturace > 0 && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon $color={STATUS_COLORS.FAKTURACE.dark}>
+                        <FontAwesomeIcon icon={getStatusIcon('fakturace')} />
+                      </StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
+                  </StatCard>
+                )}
+                {filteredStats.dokoncena > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.DOKONCENA.dark}
                     $clickable={true}
@@ -15167,7 +15309,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.DOKONCENA.dark}>
                         🎯
                       </StatIcon>
@@ -15175,7 +15317,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>Dokončená</StatLabel>
                   </StatCard>
                 )}
-                {stats.withInvoices > 0 && (
+                {filteredStats.withInvoices > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.WITH_INVOICES.dark}
                     $clickable={true}
@@ -15183,7 +15325,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon $color={STATUS_COLORS.WITH_INVOICES.dark}>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </StatIcon>
@@ -15191,7 +15333,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     <StatLabel>S fakturou</StatLabel>
                   </StatCard>
                 )}
-                {stats.withAttachments > 0 && (
+                {filteredStats.withAttachments > 0 && (
                   <StatCard
                     $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}
                     $clickable={true}
@@ -15199,7 +15341,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}>
                         <FontAwesomeIcon icon={faPaperclip} />
                       </StatIcon>
@@ -15216,7 +15358,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>
@@ -15270,7 +15412,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                 <LargeStatCard $color={STATUS_COLORS.TOTAL.dark}>
                   <div>
                     <LargeStatValue>
-                      {Math.round(stats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
+                      {Math.round(filteredStats.totalAmount).toLocaleString('cs-CZ')}&nbsp;Kč
                     </LargeStatValue>
                     <LargeStatLabel>
                       Celková cena s DPH za období ({stats.total})
@@ -15382,7 +15524,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('nova')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.nova}</StatValue>
+                      <StatValue>{filteredStats.nova}</StatValue>
                       <StatIcon>{getStatusEmoji('nova')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Nová / Koncept</StatLabel>
@@ -15397,7 +15539,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ke_schvaleni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ke_schvaleni}</StatValue>
+                      <StatValue>{filteredStats.ke_schvaleni}</StatValue>
                       <StatIcon $color={STATUS_COLORS.KE_SCHVALENI.dark}>
                         <FontAwesomeIcon icon={faHourglassHalf} />
                       </StatIcon>
@@ -15414,7 +15556,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('schvalena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.schvalena}</StatValue>
+                      <StatValue>{filteredStats.schvalena}</StatValue>
                       <StatIcon $color={STATUS_COLORS.SCHVALENA.dark}>
                         <FontAwesomeIcon icon={faCheckCircle} />
                       </StatIcon>
@@ -15431,7 +15573,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zamitnuta')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zamitnuta}</StatValue>
+                      <StatValue>{filteredStats.zamitnuta}</StatValue>
                       <StatIcon $color={STATUS_COLORS.ZAMITNUTA.dark}>
                         <FontAwesomeIcon icon={faTimesCircle} />
                       </StatIcon>
@@ -15448,7 +15590,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('rozpracovana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.rozpracovana}</StatValue>
+                      <StatValue>{filteredStats.rozpracovana}</StatValue>
                       <StatIcon>{getStatusEmoji('rozpracovana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Rozpracovaná</StatLabel>
@@ -15463,7 +15605,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('odeslana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.odeslana}</StatValue>
+                      <StatValue>{filteredStats.odeslana}</StatValue>
                       <StatIcon>{getStatusEmoji('odeslana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Odeslaná dodavateli</StatLabel>
@@ -15478,7 +15620,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('potvrzena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.potvrzena}</StatValue>
+                      <StatValue>{filteredStats.potvrzena}</StatValue>
                       <StatIcon>{getStatusEmoji('potvrzena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Potvrzená dodavatelem</StatLabel>
@@ -15493,7 +15635,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('k_uverejneni_do_registru')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.k_uverejneni_do_registru}</StatValue>
+                      <StatValue>{filteredStats.k_uverejneni_do_registru}</StatValue>
                       <StatIcon>{getStatusEmoji('k_uverejneni_do_registru')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Ke zveřejnění</StatLabel>
@@ -15508,7 +15650,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('uverejnena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.uverejnena}</StatValue>
+                      <StatValue>{filteredStats.uverejnena}</StatValue>
                       <StatIcon>{getStatusEmoji('uverejnena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zveřejněno</StatLabel>
@@ -15523,7 +15665,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_potvrzeni')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_potvrzeni}</StatValue>
+                      <StatValue>{filteredStats.ceka_potvrzeni}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_potvrzeni')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká na potvrzení</StatLabel>
@@ -15538,10 +15680,25 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('ceka_se')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.ceka_se}</StatValue>
+                      <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Čeká se</StatLabel>
+                  </StatCard>
+                )}
+
+                {isTileVisible('fakturace') && (
+                  <StatCard
+                    $color={STATUS_COLORS.FAKTURACE.dark}
+                    $clickable={true}
+                    $isActive={activeStatusFilter === 'fakturace'}
+                    onClick={() => handleStatusFilterClick('fakturace')}
+                  >
+                    <StatHeader>
+                      <StatValue>{filteredStats.fakturace}</StatValue>
+                      <StatIcon>{getStatusEmoji('fakturace')}</StatIcon>
+                    </StatHeader>
+                    <StatLabel>Fakturace</StatLabel>
                   </StatCard>
                 )}
 
@@ -15553,7 +15710,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('vecna_spravnost')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.vecna_spravnost}</StatValue>
+                      <StatValue>{filteredStats.vecna_spravnost}</StatValue>
                       <StatIcon>{getStatusEmoji('vecna_spravnost')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Věcná správnost</StatLabel>
@@ -15568,7 +15725,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('dokoncena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.dokoncena}</StatValue>
+                      <StatValue>{filteredStats.dokoncena}</StatValue>
                       <StatIcon>{getStatusEmoji('dokoncena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Dokončená</StatLabel>
@@ -15583,7 +15740,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('zrusena')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.zrusena}</StatValue>
+                      <StatValue>{filteredStats.zrusena}</StatValue>
                       <StatIcon>{getStatusEmoji('zrusena')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Zrušená</StatLabel>
@@ -15598,7 +15755,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('smazana')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.smazana}</StatValue>
+                      <StatValue>{filteredStats.smazana}</StatValue>
                       <StatIcon>{getStatusEmoji('smazana')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Smazaná</StatLabel>
@@ -15613,7 +15770,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={() => handleStatusFilterClick('archivovano')}
                   >
                     <StatHeader>
-                      <StatValue>{stats.archivovano}</StatValue>
+                      <StatValue>{filteredStats.archivovano}</StatValue>
                       <StatIcon>{getStatusEmoji('archivovano')}</StatIcon>
                     </StatHeader>
                     <StatLabel>Archivováno / Import</StatLabel>
@@ -15628,7 +15785,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleInvoicesFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withInvoices}</StatValue>
+                      <StatValue>{filteredStats.withInvoices}</StatValue>
                       <StatIcon>📄</StatIcon>
                     </StatHeader>
                     <StatLabel>S fakturou</StatLabel>
@@ -15643,7 +15800,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleAttachmentsFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.withAttachments}</StatValue>
+                      <StatValue>{filteredStats.withAttachments}</StatValue>
                       <StatIcon>📎</StatIcon>
                     </StatHeader>
                     <StatLabel>S přílohami</StatLabel>
@@ -15658,7 +15815,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                     onClick={handleToggleMimoradneFilter}
                   >
                     <StatHeader>
-                      <StatValue>{stats.mimoradneUdalosti}</StatValue>
+                      <StatValue>{filteredStats.mimoradneUdalosti}</StatValue>
                       <StatIcon $color="#dc2626">
                         <FontAwesomeIcon icon={faBoltLightning} />
                       </StatIcon>

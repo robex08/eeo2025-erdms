@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { createPortal } from 'react-dom';
 import { unstable_batchedUpdates } from 'react-dom';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
@@ -46,12 +47,13 @@ import {
   faBookOpen,
   faEnvelope,
   faPhone,
-  faClock
+  faClock,
+  faExternalLinkAlt
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
-import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2, deleteInvoiceAttachment25 } from '../services/api25invoices';
+import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2, deleteInvoiceAttachment25, checkInvoiceDuplicate, listInvoiceAttachments25, downloadInvoiceAttachment25 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2, lockOrderV2, unlockOrderV2 } from '../services/apiOrderV2';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
 import { universalSearch } from '../services/apiUniversalSearch';
@@ -1405,6 +1407,307 @@ const MultiSelectOption = styled.div`
   }
 `;
 
+// Attachments bubble component
+const DuplicateAttachmentsLoader = ({ invoiceId, objednavkaId, splatnost, jmenoUzivatele, username, token, onOpenPdf, showToast }) => {
+  const [attachments, setAttachments] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const loadAttachments = async () => {
+      try {
+        const attachmentsData = await listInvoiceAttachments25({
+          token: token,
+          username: username,
+          faktura_id: invoiceId,
+          objednavka_id: objednavkaId || null
+        });
+
+        console.log('📎 Načtené přílohy pro fakturu:', invoiceId, attachmentsData);
+
+        // Backend vrací data.attachments podle console logu
+        const attachmentsList = attachmentsData.data?.attachments || [];
+        
+        console.log('📎 Parsed attachments list:', attachmentsList);
+        console.log('📎 First attachment structure:', attachmentsList[0]);
+
+        setAttachments(attachmentsList);
+      } catch (err) {
+        console.error('❌ Chyba při načítání příloh:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAttachments();
+  }, [invoiceId, objednavkaId, username, token]);
+
+  const handleOpenAttachment = async (attachment, index) => {
+    try {
+      // Získat blob data
+      const blobData = await downloadInvoiceAttachment25({
+        username: username,
+        token: token,
+        faktura_id: invoiceId,
+        priloha_id: attachment.id,
+        objednavka_id: objednavkaId || null
+      });
+
+      // Vytvořit blob se správným MIME typem
+      const blob = new Blob([blobData], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      // Otevřít v PDF vieweru
+      onOpenPdf(blobUrl, attachment.originalni_nazev_souboru || `priloha-${index + 1}.pdf`);
+    } catch (err) {
+      console.error('❌ Chyba při načítání přílohy:', err);
+      showToast(err.message || 'Nepodařilo se načíst přílohu', 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr auto', 
+        gap: '1rem',
+        fontSize: '0.8rem',
+        color: '#78350f'
+      }}>
+        <span>Načítám přílohy...</span>
+        <span></span>
+      </div>
+    );
+  }
+
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {/* První příloha + splatnost */}
+      {attachments.length > 0 && (
+        <div 
+          style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr auto', 
+            gap: '1rem',
+            fontSize: '0.8rem',
+            color: '#78350f',
+            alignItems: 'center'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            <span style={{ fontSize: '0.8rem', color: '#78350f' }}>Příloha č. 1</span>
+            <button
+              type="button"
+              onClick={() => handleOpenAttachment(attachments[0], 0)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '0.125rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#1e40af'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#1e3a8a';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#1e40af';
+              }}
+              title={attachments[0].originalni_nazev_souboru || 'Otevřít přílohu 1'}
+            >
+              <FontAwesomeIcon icon={faExternalLinkAlt} style={{ fontSize: '0.75rem' }} />
+            </button>
+          </div>
+          
+          {splatnost && (
+            <span style={{ fontSize: '0.8rem', color: '#78350f' }}>
+              Splatnost do: {formatDateOnly(splatnost)}
+            </span>
+          )}
+        </div>
+      )}
+      
+      {/* Druhá příloha + Zaevidoval na stejném řádku */}
+      {attachments.length > 1 && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr auto', 
+          gap: '1rem',
+          fontSize: '0.8rem',
+          color: '#78350f',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            <span style={{ fontSize: '0.8rem', color: '#78350f' }}>Příloha č. 2</span>
+            <button
+              type="button"
+              onClick={() => handleOpenAttachment(attachments[1], 1)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '0.125rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#1e40af'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#1e3a8a';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#1e40af';
+              }}
+              title={attachments[1].originalni_nazev_souboru || 'Otevřít přílohu 2'}
+            >
+              <FontAwesomeIcon icon={faExternalLinkAlt} style={{ fontSize: '0.75rem' }} />
+            </button>
+          </div>
+          
+          {jmenoUzivatele && (
+            <span style={{ fontSize: '0.75rem', color: '#92400e', fontStyle: 'italic' }}>
+              Zaevidoval: {jmenoUzivatele}
+            </span>
+          )}
+        </div>
+      )}
+      
+      {/* Pokud je jen 1 příloha, zobrazit Zaevidoval samostatně */}
+      {attachments.length === 1 && jmenoUzivatele && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr auto', 
+          gap: '1rem',
+          fontSize: '0.75rem',
+          color: '#92400e',
+          fontStyle: 'italic'
+        }}>
+          <span></span>
+          <span>Zaevidoval: {jmenoUzivatele}</span>
+        </div>
+      )}
+      
+      {/* Zbylé přílohy (od třetí dál) */}
+      {attachments.slice(2).map((att, index) => (
+        <div 
+          key={att.id}
+          style={{ 
+            fontSize: '0.8rem',
+            color: '#78350f'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+            <span style={{ fontSize: '0.8rem', color: '#78350f' }}>Příloha č. {index + 3}</span>
+            <button
+              type="button"
+              onClick={() => handleOpenAttachment(att, index + 2)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '0.125rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                color: '#1e40af'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#1e3a8a';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#1e40af';
+              }}
+              title={att.originalni_nazev_souboru || `Otevřít přílohu ${index + 3}`}
+            >
+              <FontAwesomeIcon icon={faExternalLinkAlt} style={{ fontSize: '0.75rem' }} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+};
+
+// PDF Viewer Modal Styles
+const PDFViewerOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+`;
+
+const PDFViewerModal = styled.div`
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 90vw;
+  max-height: 90vh;
+  width: 900px;
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const PDFViewerHeader = styled.div`
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 12px 12px 0 0;
+`;
+
+const PDFViewerTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+`;
+
+const PDFViewerCloseButton = styled.button`
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+  }
+`;
+
+const PDFViewerContent = styled.div`
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  background: #f9fafb;
+`;
+
+const PDFViewerObject = styled.object`
+  width: 100%;
+  height: 100%;
+  border: none;
+`;
+
 // ===================================================================
 // MAIN COMPONENT
 // ===================================================================
@@ -1698,6 +2001,22 @@ export default function InvoiceEvidencePage() {
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasChangedCriticalField, setHasChangedCriticalField] = useState(false);
 
+  // Duplicate invoice number warning
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
+  const duplicateCheckTimeoutRef = useRef(null);
+  
+  // PDF Viewer state for duplicate invoice attachment preview
+  const [pdfViewer, setPdfViewer] = useState({ visible: false, url: '', filename: '' });
+  
+  // Cleanup blob URL when viewer closes
+  useEffect(() => {
+    return () => {
+      if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
+        window.URL.revokeObjectURL(pdfViewer.url);
+      }
+    };
+  }, [pdfViewer.url]);
+
   // 🆕 Detekce změny POUZE polí věcné správnosti (pro readonly uživatele)
   const hasChangedVecnaSpravnost = useMemo(() => {
     if (!editingInvoiceId || !originalFormData) return false;
@@ -1956,6 +2275,67 @@ export default function InvoiceEvidencePage() {
     
     loadAllCiselniky();
   }, [token, username]); // ✅ Ale jen pokud se změní token/username
+
+  // 🔍 Debounced kontrola duplicity čísla faktury (fa_cislo_vema)
+  // ⚠️ Zobrazí se pouze pokud:
+  //    - Je to nová faktura NEBO
+  //    - Uživatel změnil VS symbol na jiné číslo než bylo původně
+  useEffect(() => {
+    // Vyčistit předchozí timeout
+    if (duplicateCheckTimeoutRef.current) {
+      clearTimeout(duplicateCheckTimeoutRef.current);
+    }
+    
+    // Vyčistit warning pokud není zadáno číslo
+    if (!formData.fa_cislo_vema || formData.fa_cislo_vema.trim() === '') {
+      setDuplicateWarning(null);
+      return;
+    }
+    
+    // ⚠️ Pokud je editace a číslo se nezměnilo oproti původnímu → nezobrazovat
+    if (editingInvoiceId && originalFormData.current?.fa_cislo_vema === formData.fa_cislo_vema) {
+      setDuplicateWarning(null);
+      return;
+    }
+    
+    // Pokud není token/username, nevolat API
+    if (!token || !username) {
+      return;
+    }
+    
+    // Nastavit nový timeout (debouncing - 800ms)
+    duplicateCheckTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await checkInvoiceDuplicate(
+          username,
+          token,
+          formData.fa_cislo_vema.trim(),
+          editingInvoiceId || null // Při editaci exclude_invoice_id je ID aktuální faktury
+        );
+        
+        if (result.exists && result.invoice) {
+          // Faktura s tímto číslem již existuje
+          setDuplicateWarning({
+            message: `Faktura s číslem ${result.invoice.fa_cislo_vema} již existuje v systému`,
+            invoice: result.invoice
+          });
+        } else {
+          // Číslo je unikátní
+          setDuplicateWarning(null);
+        }
+      } catch (err) {
+        console.warn('⚠️ Chyba při kontrole duplicity čísla faktury:', err);
+        // Při chybě nevypisovat varování, pouze logovat
+      }
+    }, 800); // 800ms debounce
+    
+    // Cleanup
+    return () => {
+      if (duplicateCheckTimeoutRef.current) {
+        clearTimeout(duplicateCheckTimeoutRef.current);
+      }
+    };
+  }, [formData.fa_cislo_vema, token, username, editingInvoiceId]);
 
   // Detekce změny kritických polí faktury
   // Varování má smysl POUZE pokud:
@@ -3758,8 +4138,8 @@ export default function InvoiceEvidencePage() {
         errors.fa_datum_splatnosti = 'Vyplňte datum splatnosti';
       }
 
-      // Částka - POVINNÉ
-      if (!formData.fa_castka || parseFloat(formData.fa_castka) <= 0) {
+      // Částka - POVINNÉ (povolit i záporné hodnoty a nulu pro zálohové faktury a dobropisy)
+      if (!formData.fa_castka || isNaN(parseFloat(formData.fa_castka))) {
         errors.fa_castka = 'Vyplňte platnou částku faktury';
       }
 
@@ -5470,6 +5850,60 @@ export default function InvoiceEvidencePage() {
                     {fieldErrors.fa_cislo_vema}
                   </FieldError>
                 )}
+                {duplicateWarning && (
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    background: '#fef3c7',
+                    border: '1px solid #fbbf24',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    color: '#92400e',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '0.5rem'
+                  }}>
+                    <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginTop: '0.125rem', color: '#f59e0b' }} />
+                    <div style={{ flex: 1 }}>
+                      {duplicateWarning.invoice && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                          {/* První řádek: FA číslo již existuje | Částka */}
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '1fr auto', 
+                            gap: '1rem',
+                            fontWeight: '700',
+                            fontSize: '0.875rem',
+                            color: '#92400e'
+                          }}>
+                            <span style={{ color: '#dc2626', fontWeight: '700' }}>{duplicateWarning.invoice.fa_cislo_vema} již existuje</span>
+                            <span>{duplicateWarning.invoice.fa_castka} Kč</span>
+                          </div>
+                          
+                          {/* Další řádky: Přílohy + Splatnost */}
+                          {duplicateWarning.invoice.id && (
+                            <DuplicateAttachmentsLoader 
+                              invoiceId={duplicateWarning.invoice.id}
+                              objednavkaId={duplicateWarning.invoice.objednavka_id}
+                              splatnost={duplicateWarning.invoice.fa_splatnost}
+                              jmenoUzivatele={duplicateWarning.invoice.jmeno_uzivatele}
+                              username={username}
+                              token={token}
+                              onOpenPdf={(blobUrl, filename) => {
+                                setPdfViewer({
+                                  visible: true,
+                                  url: blobUrl,
+                                  filename: filename
+                                });
+                              }}
+                              showToast={showToast}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </FieldGroup>
 
               <FieldGroup>
@@ -5507,10 +5941,10 @@ export default function InvoiceEvidencePage() {
                     const value = e.target.value;
                     if (value) {
                       const num = parseFloat(value);
-                      if (isNaN(num) || num <= 0) {
+                      if (isNaN(num)) {
                         setFieldErrors(prev => ({
                           ...prev,
-                          fa_castka: 'Zadejte platnou částku (číslo větší než 0)'
+                          fa_castka: 'Zadejte platnou částku'
                         }));
                       } else {
                         // Vymazat chybu pokud je číslo v pořádku
@@ -7077,6 +7511,69 @@ export default function InvoiceEvidencePage() {
             </ProgressActions>
           </ProgressModal>
         </ProgressOverlay>,
+        document.body
+      )}
+
+      {/* PDF Viewer Modal */}
+      {pdfViewer.visible && ReactDOM.createPortal(
+        <PDFViewerOverlay onClick={() => {
+          // Cleanup blob URL
+          if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
+            window.URL.revokeObjectURL(pdfViewer.url);
+          }
+          setPdfViewer({ visible: false, url: '', filename: '' });
+        }}>
+          <PDFViewerModal onClick={(e) => e.stopPropagation()}>
+            <PDFViewerHeader>
+              <PDFViewerTitle>
+                <FontAwesomeIcon icon={faFileInvoice} />
+                {pdfViewer.filename}
+              </PDFViewerTitle>
+              <PDFViewerCloseButton onClick={() => {
+                // Cleanup blob URL
+                if (pdfViewer.url && pdfViewer.url.startsWith('blob:')) {
+                  window.URL.revokeObjectURL(pdfViewer.url);
+                }
+                setPdfViewer({ visible: false, url: '', filename: '' });
+              }}>
+                <FontAwesomeIcon icon={faTimes} />
+              </PDFViewerCloseButton>
+            </PDFViewerHeader>
+            <PDFViewerContent>
+              <PDFViewerObject
+                data={pdfViewer.url}
+                type="application/pdf"
+                title={pdfViewer.filename}
+              >
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                  <FontAwesomeIcon icon={faFileInvoice} size="3x" style={{ marginBottom: '1rem' }} />
+                  <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                    PDF nelze zobrazit v prohlížeči
+                  </div>
+                  <div style={{ fontSize: '0.9rem' }}>
+                    Váš prohlížeč nepodporuje zobrazení PDF souborů.
+                  </div>
+                  <a 
+                    href={pdfViewer.url} 
+                    download={pdfViewer.filename}
+                    style={{
+                      marginTop: '1.5rem',
+                      display: 'inline-block',
+                      padding: '0.75rem 1.5rem',
+                      background: '#667eea',
+                      color: 'white',
+                      borderRadius: '8px',
+                      textDecoration: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    Stáhnout PDF
+                  </a>
+                </div>
+              </PDFViewerObject>
+            </PDFViewerContent>
+          </PDFViewerModal>
+        </PDFViewerOverlay>,
         document.body
       )}
     </>
