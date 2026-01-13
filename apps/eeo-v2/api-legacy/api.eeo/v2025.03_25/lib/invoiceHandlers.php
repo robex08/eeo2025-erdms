@@ -1687,8 +1687,10 @@ function handle_invoices25_list($input, $config, $queries) {
                     break;
                     
                 case 'my_invoices':
-                    // Moje faktury (které jsem zaevidoval)
-                    $where_conditions[] = 'f.vytvoril_uzivatel_id = ?';
+                    // Moje faktury (kde se vyskytuju - OR logika: zaevidoval, předáno, věcná správnost)
+                    $where_conditions[] = '(f.vytvoril_uzivatel_id = ? OR f.fa_predana_zam_id = ? OR f.potvrdil_vecnou_spravnost_id = ?)';
+                    $params[] = $user_id;
+                    $params[] = $user_id;
                     $params[] = $user_id;
                     break;
                     
@@ -1772,8 +1774,8 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
             COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
             COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
-            COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN 1 END) as pocet_moje_faktury,
-            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
+            COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
+            COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
             COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,

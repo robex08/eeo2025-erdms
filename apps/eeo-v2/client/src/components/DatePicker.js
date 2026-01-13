@@ -11,6 +11,7 @@ import { Calendar } from 'lucide-react';
 
 function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false, limitToMonth, limitToYear }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(''); // Lokální stav pro ruční zadání
   
   // 🆕 Inicializace currentMonth na měsíc knihy, pokud je limitToMonth nastaveno
   const getInitialMonth = () => {
@@ -300,46 +301,86 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   const today = new Date();
   const calendarDays = getCalendarDays();
 
-  const displayText = value ? formatDisplayDate(value) : placeholder;
+  // Display text - použít inputValue pokud uživatel píše, jinak formátované datum
+  const displayText = inputValue !== '' ? inputValue : (value ? formatDisplayDate(value) : '');
+  
+  // Synchronizovat inputValue s value při změně value zvenčí
+  useEffect(() => {
+    if (inputValue === '') {
+      // Neměnit inputValue pokud uživatel právě píše
+      setInputValue(value ? formatDisplayDate(value) : '');
+    }
+  }, [value]);
+  
+  // Handler pro ruční zadání z klávesnice
+  const handleManualInput = (e) => {
+    const newValue = e.target.value;
+    setInputValue(newValue); // Aktualizovat lokální stav pro zobrazení při psaní
+  };
+  
+  // Handler pro blur - validace a zpracování ručně zadaného data
+  const handleManualBlur = (e) => {
+    const typedValue = e.target.value;
+    
+    // Zavřít dropdown při ztrátě fokusu
+    setIsOpen(false);
+    
+    if (!typedValue.trim()) {
+      setInputValue('');
+      onChange('');
+      if (onBlur) onBlur('');
+      return;
+    }
+    
+    // Pokus o parsování formátu dd.mm.rrrr nebo d.m.rrrr
+    const match = typedValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (match) {
+      const day = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      const year = parseInt(match[3], 10);
+      
+      // Validace (základní kontrola)
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const date = new Date(year, month - 1, day);
+        
+        // Kontrola, zda je datum platné (např. 31.2. by bylo neplatné)
+        if (date.getDate() === day) {
+          const formattedDate = formatInputDate(date);
+          setInputValue(''); // Vyčistit lokální stav - použije se formátované datum
+          onChange(formattedDate);
+          if (onBlur) onBlur(formattedDate);
+          return;
+        }
+      }
+    }
+    
+    // Pokud se nepodařilo parsovat, vrátit původní hodnotu
+    setInputValue('');
+    if (value) {
+      // Ponechat původní hodnotu beze změny
+    } else {
+      onChange('');
+    }
+    if (onBlur) onBlur(value || '');
+  };
 
   return (
     <DatePickerWrapper ref={wrapperRef} data-field={fieldName}>
       <InputWithIcon hasIcon={!isCompact}>
         {!isCompact && <Calendar />}
-        <DateInputButton
-          type="button"
-          onClick={() => {
-            if (disabled) return;
-            
-            // Pokud ještě není vyplněné datum a máme limitToMonth/Year, nastav výchozí
-            if (!value && limitToMonth && limitToYear) {
-              const today = new Date();
-              const currentMonthInBook = parseInt(limitToMonth, 10);
-              const currentYearInBook = parseInt(limitToYear, 10);
-              
-              // Pokud jsme ve stejném měsíci, použij dnešní datum
-              if (today.getMonth() + 1 === currentMonthInBook && today.getFullYear() === currentYearInBook) {
-                const formattedDate = formatInputDate(today);
-                onChange(formattedDate);
-              } else {
-                // Jinak poslední den měsíce knihy
-                const lastDay = new Date(currentYearInBook, currentMonthInBook, 0);
-                const formattedDate = formatInputDate(lastDay);
-                onChange(formattedDate);
-              }
-            }
-            
-            setIsOpen(!isOpen);
-          }}
+        <DateInputField
+          type="text"
+          value={displayText}
+          onChange={handleManualInput}
+          onBlur={handleManualBlur}
+          onFocus={() => !disabled && setIsOpen(true)}
           disabled={disabled}
           hasError={hasError}
           $highlight={highlight}
-          hasValue={!!value}
+          placeholder={placeholder}
           data-datepicker={fieldName}
           $variant={variant}
-        >
-          {displayText}
-        </DateInputButton>
+        />
 
         {/* Křížek na zrušení data odstraněn - zbytečný */}
         {/* Tlačítko "Dnes" odstraněno - výchozí hodnota se nastavuje při otevření */}
@@ -442,27 +483,28 @@ const InputWithIcon = styled.div`
   }
 `;
 
-const DateInputButton = styled.button`
+const DateInputField = styled.input`
   width: 100%;
   display: block;
   height: ${props => props.$variant === 'compact' ? '38px' : '48px'};
   padding: ${props => props.$variant === 'compact' ? '0.375rem 0.5rem' : '0.5rem 2.75rem'};
   padding-left: ${props => props.$variant === 'compact' ? '0.5rem' : '2.75rem'};
-  padding-right: ${props => props.$variant === 'compact' ? '0.5rem' : (props.disabled ? '0.75rem' : props.hasValue ? '4.5rem' : '3rem')};
+  padding-right: ${props => props.$variant === 'compact' ? '0.5rem' : '0.75rem'};
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
   border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
-  color: ${props => props.disabled ? '#6b7280' : props.hasValue ? '#1e293b' : '#94a3af'};
+  color: ${props => props.disabled ? '#6b7280' : '#1e293b'};
   font-size: ${props => props.$variant === 'compact' ? '0.75rem' : '0.95rem'};
-  font-weight: ${props => props.hasValue ? '600' : '400'};
+  font-weight: 400;
   line-height: 1;
-  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  cursor: text;
   transition: all 0.2s ease;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   box-sizing: border-box;
+
+  &::placeholder {
+    color: #94a3af;
+    font-weight: 400;
+  }
 
   &:hover:not(:disabled) {
     border-color: #3b82f6;

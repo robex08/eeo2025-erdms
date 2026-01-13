@@ -283,6 +283,7 @@ export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) =
     'Potvrzená dodavatelem': 'POTVRZENA',
     'Ke zveřejnění': 'K_UVEREJNENI_DO_REGISTRU',
     'Zveřejněno': 'UVEREJNENA',
+    'Fakturace': 'FAKTURACE',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Dokončená': 'DOKONCENA',

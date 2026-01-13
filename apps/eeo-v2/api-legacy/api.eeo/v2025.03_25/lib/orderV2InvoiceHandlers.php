@@ -958,3 +958,95 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
     }
 }
 
+/**
+ * POST - Kontrola existence čísla faktury (fa_cislo_vema)
+ * Endpoint: order-v2/invoices/check-duplicate
+ * POST: {token, username, fa_cislo_vema, exclude_invoice_id (optional)}
+ * 
+ * @param array $input POST data including token, username, fa_cislo_vema
+ * @param array $config Database configuration
+ * @return JSON Response with exists flag and invoice details if found
+ */
+function handle_order_v2_check_duplicate_invoice($input, $config, $queries) {
+    // Token verification
+    $token_data = verify_token_v2($input['username'], $input['token']);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+    
+    // Validate fa_cislo_vema
+    if (!isset($input['fa_cislo_vema']) || trim($input['fa_cislo_vema']) === '') {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí číslo faktury'));
+        return;
+    }
+    
+    $fa_cislo_vema = trim($input['fa_cislo_vema']);
+    $exclude_invoice_id = isset($input['exclude_invoice_id']) && (int)$input['exclude_invoice_id'] > 0 
+        ? (int)$input['exclude_invoice_id'] 
+        : null;
+    
+    try {
+        $db = get_db($config);
+        
+        // Check if fa_cislo_vema already exists (exclude current invoice if editing)
+        // JOIN s tabulkou uživatelů pro získání jména
+        $sql_check = "SELECT 
+                        f.id, 
+                        f.fa_cislo_vema, 
+                        f.objednavka_id, 
+                        f.fa_castka, 
+                        f.fa_datum_vystaveni, 
+                        f.fa_datum_splatnosti,
+                        u.jmeno,
+                        u.prijmeni,
+                        CONCAT(u.jmeno, ' ', u.prijmeni) as jmeno_uzivatele
+                      FROM " . TBL_FAKTURY . " f
+                      LEFT JOIN " . TBL_UZIVATELE . " u ON f.vytvoril_uzivatel_id = u.id
+                      WHERE f.fa_cislo_vema = ? AND f.aktivni = 1";
+        
+        $params = array($fa_cislo_vema);
+        
+        // If editing existing invoice, exclude it from check
+        if ($exclude_invoice_id !== null) {
+            $sql_check .= " AND f.id != ?";
+            $params[] = $exclude_invoice_id;
+        }
+        
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->execute($params);
+        $existing = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        
+        if ($existing) {
+            // Faktura existuje - vrátit info
+            http_response_code(200);
+            echo json_encode(array(
+                'status' => 'ok',
+                'exists' => true,
+                'invoice' => array(
+                    'id' => (int)$existing['id'],
+                    'fa_cislo_vema' => $existing['fa_cislo_vema'],
+                    'objednavka_id' => $existing['objednavka_id'] ? (int)$existing['objednavka_id'] : null,
+                    'fa_castka' => $existing['fa_castka'],
+                    'fa_datum_vystaveni' => $existing['fa_datum_vystaveni'],
+                    'fa_splatnost' => $existing['fa_datum_splatnosti'], // Pro frontend kompatibilitu
+                    'fa_datum_splatnosti' => $existing['fa_datum_splatnosti'],
+                    'jmeno_uzivatele' => $existing['jmeno_uzivatele']
+                )
+            ));
+        } else {
+            // Faktura neexistuje - OK
+            http_response_code(200);
+            echo json_encode(array(
+                'status' => 'ok',
+                'exists' => false
+            ));
+        }
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při kontrole duplicity: ' . $e->getMessage()));
+    }
+}
