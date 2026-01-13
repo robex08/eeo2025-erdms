@@ -1395,6 +1395,22 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_values[] = $faktura['dt_potvrzeni_vecne_spravnosti'];
                         }
                         
+                        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+                        // Stejná logika jako v InvoiceEvidence modulu
+                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] === 1) {
+                            // Načíst aktuální stav faktury
+                            $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
+                            $current_check->execute(array($faktura_id));
+                            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
+                            
+                            if ($current_row && $current_row['stav'] === 'ZAEVIDOVANA') {
+                                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                                $update_fields[] = 'stav = ?';
+                                $update_values[] = 'VECNA_SPRAVNOST';
+                                error_log("🔄 [OrderV2] Auto změna stavu faktury #{$faktura_id}: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+                            }
+                        }
+                        
                         // Pokud jsou nějaká pole k aktualizaci
                         if (!empty($update_fields)) {
                             // Automatické pole
