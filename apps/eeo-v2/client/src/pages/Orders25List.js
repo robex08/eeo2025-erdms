@@ -9803,7 +9803,7 @@ const Orders25List = () => {
       );
 
       let orderUpdate = {
-        schvaleni_komentar: approvalComment || ''
+        schvaleni_komentar: approvalComment || '' // ✅ Ukládá se vždy - i prázdný pro schválení
       };
 
       const timestamp = new Date().toISOString();
