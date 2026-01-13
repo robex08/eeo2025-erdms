@@ -52,20 +52,18 @@ function check_spisovka_permission($pdo, $user_id) {
         return true; // ✅ SUPERADMIN/ADMINISTRATOR má přístup automaticky
     }
     
-    // 2️⃣ Kontrola konkrétního práva FILE_REGISTRY_MANAGE
+    // 2️⃣ Kontrola konkrétního práva FILE_REGISTRY_MANAGE přes role
     $stmt_perm = $pdo->prepare("
         SELECT COUNT(*) as count
         FROM 25_prava p
+        JOIN 25_role_prava rp ON p.id = rp.pravo_id
+        JOIN 25_uzivatele_role ur ON rp.role_id = ur.role_id
         WHERE p.kod_prava = 'FILE_REGISTRY_MANAGE'
         AND p.aktivni = 1
-        AND p.id IN (
-            -- Přímá práva uživatele
-            SELECT rp.pravo_id 
-            FROM 25_role_prava rp 
-            WHERE rp.user_id = :user_id1 AND rp.aktivni = 1
-        )
+        AND rp.aktivni = 1
+        AND ur.uzivatel_id = :user_id
     ");
-    $stmt_perm->execute([':user_id1' => $user_id]);
+    $stmt_perm->execute([':user_id' => $user_id]);
     $has_permission = $stmt_perm->fetch(PDO::FETCH_ASSOC);
     
     return $has_permission && $has_permission['count'] > 0;

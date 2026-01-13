@@ -11083,6 +11083,8 @@ const Orders25List = () => {
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
       //  MAPUJ DASHBOARD KÓDY NA ČESKÉ NÁZVY (ne systémové kódy!)
       const statusToCzechName = {
@@ -11107,6 +11109,8 @@ const Orders25List = () => {
       // Zruš všechny ostatní filtry
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       
       // Aktivuj pouze tento stav
       setActiveStatusFilter(status);
@@ -11124,12 +11128,16 @@ const Orders25List = () => {
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
       // Zruš všechny ostatní filtry a aktivuj faktury
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setFilterWithInvoices(true);
     }
   };
@@ -11142,28 +11150,39 @@ const Orders25List = () => {
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
     } else {
       // Zruš všechny ostatní filtry a aktivuj přílohy
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setFilterWithAttachments(true);
     }
   };
 
   const handleToggleMimoradneFilter = () => {
-    const newFilterMimoradne = !filterMimoradneObjednavky;
-    setFilterMimoradneObjednavky(newFilterMimoradne);
-    setUserStorage('orders25List_filterMimoradneObjednavky', newFilterMimoradne);
-    
-    if (newFilterMimoradne) {
-      // Zruš ostatní filtry pokud aktivujeme mimořádné
+    if (filterMimoradneObjednavky) {
+      // Opakovaný klik - zruš všechny filtry
+      setFilterMimoradneObjednavky(false);
+      setUserStorage('orders25List_filterMimoradneObjednavky', false);
       setActiveStatusFilter(null);
       setStatusFilter([]);
       setUserStorage('orders25List_statusFilter', []);
       setFilterWithInvoices(false);
       setFilterWithAttachments(false);
+    } else {
+      // Zruš všechny ostatní filtry a aktivuj mimořádné
+      setActiveStatusFilter(null);
+      setStatusFilter([]);
+      setUserStorage('orders25List_statusFilter', []);
+      setFilterWithInvoices(false);
+      setFilterWithAttachments(false);
+      setFilterMimoradneObjednavky(true);
+      setUserStorage('orders25List_filterMimoradneObjednavky', true);
     }
   };
 
