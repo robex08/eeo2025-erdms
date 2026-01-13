@@ -1732,8 +1732,6 @@ const Layout = ({ children }) => {
           if (info?.database?.display_name) {
             setDatabaseName(info.database.display_name);
           }
-          
-          console.log('✓ System info refreshed:', info.database?.name);
         } catch (error) {
           console.warn('Nepodařilo se aktualizovat systémové informace:', error);
         }
@@ -3709,7 +3707,6 @@ const Layout = ({ children }) => {
                   if (info?.database?.display_name) {
                     setDatabaseName(info.database.display_name);
                   }
-                  console.log('✓ System info refreshed manually:', info.database?.name);
                 } catch (error) {
                   console.error('Chyba při refresh system info:', error);
                 }

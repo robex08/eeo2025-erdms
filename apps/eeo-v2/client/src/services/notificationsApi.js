@@ -373,21 +373,9 @@ const notificationsApi = axios.create({
  * Získání auth dat z šifrovaného storage
  */
 const getAuthData = async () => {
-  console.log('🔐 [getAuthData] START - Načítám autentizační data');
   try {
-    console.log('   Volám loadAuthData.token()...');
     const token = await loadAuthData.token();
-    console.log('   Token:', token ? `${token.substring(0, 20)}...` : 'NULL/UNDEFINED');
-    
-    console.log('   Volám loadAuthData.user()...');
     const user = await loadAuthData.user();
-    console.log('   User:', user ? {
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      jmeno: user.jmeno,
-      prijmeni: user.prijmeni
-    } : 'NULL/UNDEFINED');
 
     if (!token || !user?.username) {
       console.error('❌ [getAuthData] CHYBA: Chybí token nebo username!');
@@ -400,18 +388,10 @@ const getAuthData = async () => {
     const authData = {
       token,
       username: user.username,
-      from_user_id: user.id,  // ✅ ID uživatele pro from_user_id
-      from_user_name: user.fullName || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || user.username  // ✅ Celé jméno
+      from_user_id: user.id,
+      from_user_name: user.fullName || `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() || user.username
     };
-    
-    console.log('✅ [getAuthData] SUCCESS - Auth data připravena:', {
-      hasToken: !!authData.token,
-      username: authData.username,
-      from_user_id: authData.from_user_id,
-      from_user_name: authData.from_user_name
-    });
 
-    // Backend potřebuje from_user_id pro identifikaci odesílatele notifikace
     return authData;
   } catch (error) {
     console.error('❌ [getAuthData] EXCEPTION:', error);
