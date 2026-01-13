@@ -9890,14 +9890,14 @@ function OrderForm25() {
       if (formData.dt_schvaleni) orderData.dt_schvaleni = formData.dt_schvaleni;
 
       // Komentář ke schválení
-      // ✅ Při schválení (stav_schvaleni === 'schvaleno') poslat prázdný string nebo null
-      // Pro zamítnutí a čeká_se poslat hodnotu (povinné pole)
-      if (formData.stav_schvaleni === 'schvaleno') {
-        // Při schválení VŽDY poslat prázdný string (vymazat komentář)
-        orderData.schvaleni_komentar = '';
-      } else if (formData.schvaleni_komentar) {
-        // Pro ostatní stavy poslat hodnotu (pokud existuje)
+      // ✅ ZMĚNA: Ukládat komentář i při schválení (volitelný)
+      // Pro zamítnutí a čeká_se je komentář povinný, pro schválení volitelný
+      if (formData.schvaleni_komentar) {
+        // Poslat hodnotu komentáře pro VŠECHNY stavy (schvaleno, neschvaleno, ceka_se)
         orderData.schvaleni_komentar = formData.schvaleni_komentar;
+      } else {
+        // Pokud není vyplněný, poslat prázdný string
+        orderData.schvaleni_komentar = '';
       }
 
       // stav_workflow_kod - SESTAVUJ SPRÁVNOU POSLOUPNOST PODLE WORKFLOW KONCEPTU
@@ -20822,8 +20822,8 @@ function OrderForm25() {
                       )}
                     </label>
 
-                    {/* Důvod na stejném řádku */}
-                    {(formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') && (
+                    {/* Komentář/Důvod - zobrazuje se pro VŠECHNY stavy */}
+                    {formData.stav_schvaleni && (
                       <div style={{ flex: '1', minWidth: '300px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <label style={{
@@ -20832,8 +20832,11 @@ function OrderForm25() {
                             fontSize: '0.875rem',
                             whiteSpace: 'nowrap'
                           }}>
-                            Důvod:
-                            <span style={{ color: '#dc2626', marginLeft: '2px' }}>*</span>
+                            {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' : 'Důvod:'}
+                            {/* Povinný pouze pro neschvaleno a ceka_se */}
+                            {(formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') && (
+                              <span style={{ color: '#dc2626', marginLeft: '2px' }}>*</span>
+                            )}
                           </label>
                           <InputWithIcon hasIcon style={{ flex: 1 }}>
                             <FileText />
@@ -20843,7 +20846,9 @@ function OrderForm25() {
                               onChange={(e) => handleInputChange('schvaleni_komentar', e.target.value)}
                               onBlur={() => handleFieldBlur('schvaleni_komentar', formData.schvaleni_komentar)}
                               placeholder={
-                                formData.stav_schvaleni === 'neschvaleno'
+                                formData.stav_schvaleni === 'schvaleno'
+                                  ? "Volitelná poznámka ke schválení..."
+                                  : formData.stav_schvaleni === 'neschvaleno'
                                   ? "Uveďte důvod neschválení..."
                                   : "Uveďte důvod čekání na schválení..."
                               }
@@ -20897,11 +20902,12 @@ function OrderForm25() {
                              formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                           </strong> {getUserNameById(formData.schvalovatel_id)}
                         </div>
-                        {/* Komentář se NEZOBRAZUJE pro stav schvaleno (schválení nepotřebuje zdůvodnění) */}
-                        {formData.schvaleni_komentar && formData.stav_schvaleni !== 'schvaleno' && (
+                        {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
+                        {formData.schvaleni_komentar && (
                           <div>
                             <strong>
-                              {formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
+                              {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' :
+                               formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
                                formData.stav_schvaleni === 'ceka_se' ? 'Důvod vrácení:' : 'Komentář:'}
                             </strong> {formData.schvaleni_komentar}
                           </div>
@@ -20953,11 +20959,12 @@ function OrderForm25() {
                          formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                       </strong> {getUserNameById(formData.schvalovatel_id)}
                     </div>
-                    {/* Komentář se NEZOBRAZUJE pro stav schvaleno (schválení nepotřebuje zdůvodnění) */}
-                    {formData.schvaleni_komentar && formData.stav_schvaleni !== 'schvaleno' && (
+                    {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
+                    {formData.schvaleni_komentar && (
                       <div>
                         <strong>
-                          {formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
+                          {formData.stav_schvaleni === 'schvaleno' ? 'Poznámka:' :
+                           formData.stav_schvaleni === 'neschvaleno' ? 'Důvod zamítnutí:' :
                            formData.stav_schvaleni === 'ceka_se' ? 'Důvod vrácení:' : 'Komentář:'}
                         </strong> {formData.schvaleni_komentar}
                       </div>
