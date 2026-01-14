@@ -1669,6 +1669,7 @@ export async function listInvoices25({
   filter_status,  // Dashboard filter (paid/unpaid/overdue/without_order/my_invoices)
   search_term,    // 🔍 Globální vyhledávání
   cislo_objednavky,  // 📋 Sloupcový filtr - číslo objednávky
+  filter_datum_doruceni,  // 📋 Sloupcový filtr - datum doručení
   filter_datum_vystaveni,  // 📋 Sloupcový filtr - datum vystavení
   filter_datum_splatnosti,  // 📋 Sloupcový filtr - datum splatnosti
   filter_stav,  // 📋 Sloupcový filtr - stav faktury
@@ -1711,6 +1712,7 @@ export async function listInvoices25({
     
     // 📋 Sloupcové filtry
     if (cislo_objednavky !== undefined && cislo_objednavky !== '') payload.cislo_objednavky = cislo_objednavky;
+    if (filter_datum_doruceni !== undefined && filter_datum_doruceni !== '') payload.filter_datum_doruceni = filter_datum_doruceni;
     if (filter_datum_vystaveni !== undefined && filter_datum_vystaveni !== '') payload.filter_datum_vystaveni = filter_datum_vystaveni;
     if (filter_datum_splatnosti !== undefined && filter_datum_splatnosti !== '') payload.filter_datum_splatnosti = filter_datum_splatnosti;
     if (filter_stav !== undefined && filter_stav !== '') payload.filter_stav = filter_stav;
@@ -1755,6 +1757,7 @@ export async function listInvoices25({
         pagination: data.pagination || { page: 1, per_page: 50, total: 0, total_pages: 0 },
         statistiky: data.statistiky || null,
         user_info: data.user_info || null,
+        debug: data.debug || null,
         _debug: data._debug || null
       };
     }

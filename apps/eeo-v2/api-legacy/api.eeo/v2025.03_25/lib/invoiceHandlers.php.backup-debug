@@ -873,10 +873,6 @@ function handle_invoices25_by_id($input, $config, $queries) {
             return;
         }
 
-        // 🔧 FIX: Nastavit UTF-8 encoding pro MySQL připojení
-        $db->exec("SET NAMES utf8mb4");
-        $db->exec("SET CHARACTER SET utf8mb4");
-
         $faktury_table = get_invoices_table_name();
         $states_table = get_states_table_name();
         $users_table = get_users_table_name();
@@ -926,29 +922,8 @@ function handle_invoices25_by_id($input, $config, $queries) {
             $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
         }
 
-        // � FIX: Ošetření nevalidních UTF-8 znaků před json_encode
-        array_walk_recursive($faktura, function(&$value) {
-            if (is_string($value)) {
-                // Odstranit nevalidní UTF-8 znaky
-                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
-            }
-        });
-
-        // Enkódovat s podporou UTF-8
-        $json_string = json_encode($faktura, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        
-        if (json_last_error() !== JSON_ERROR_NONE || !$json_string) {
-            // Fallback: vrátit error zprávu
-            http_response_code(500);
-            echo json_encode([
-                'err' => 'Chyba při zpracování dat faktury',
-                'detail' => json_last_error_msg()
-            ]);
-            return;
-        }
-        
         http_response_code(200);
-        echo $json_string;
+        echo json_encode($faktura);
 
     } catch (Exception $e) {
         http_response_code(500);
@@ -2180,13 +2155,6 @@ function handle_invoices25_list($input, $config, $queries) {
                 'usek_id' => $user_usek_id,
                 'usek_zkr' => $user_usek_zkr,
                 'filter_applied' => !$is_admin
-            ),
-            'debug' => array(
-                'sql_query' => $debug_sql,
-                'where_conditions' => $where_conditions,
-                'params_count' => count($params),
-                'filters_received' => $filters,
-                'input_keys' => array_keys($input)
             )
         );
         
