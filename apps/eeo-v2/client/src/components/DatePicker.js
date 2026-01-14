@@ -318,6 +318,23 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     setInputValue(newValue); // Aktualizovat lokální stav pro zobrazení při psaní
   };
   
+  // Handler pro klávesové zkratky (DELETE, BACKSPACE pro smazání)
+  const handleKeyDown = (e) => {
+    // DELETE nebo BACKSPACE = smazat celé datum když je pole prázdné nebo na začátku
+    if ((e.key === 'Delete' || e.key === 'Backspace') && e.target.selectionStart === 0 && e.target.selectionEnd === e.target.value.length) {
+      e.preventDefault();
+      setInputValue('');
+      onChange('');
+      if (onBlur) onBlur('');
+      return;
+    }
+    
+    // ESC = zavřít kalendář
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+    }
+  };
+  
   // Handler pro blur - validace a zpracování ručně zadaného data
   const handleManualBlur = (e) => {
     const typedValue = e.target.value;
@@ -372,6 +389,7 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           type="text"
           value={displayText}
           onChange={handleManualInput}
+          onKeyDown={handleKeyDown}
           onBlur={handleManualBlur}
           onFocus={() => !disabled && setIsOpen(true)}
           disabled={disabled}
