@@ -397,15 +397,15 @@ function handle_invoices25_update($input, $config, $queries) {
         }
         if (isset($input['fa_datum_vystaveni'])) {
             $fields[] = 'fa_datum_vystaveni = ?';
-            $values[] = $input['fa_datum_vystaveni'];
+            $values[] = ($input['fa_datum_vystaveni'] === '' || $input['fa_datum_vystaveni'] === null) ? null : $input['fa_datum_vystaveni'];
         }
         if (isset($input['fa_datum_splatnosti'])) {
             $fields[] = 'fa_datum_splatnosti = ?';
-            $values[] = $input['fa_datum_splatnosti'];
+            $values[] = ($input['fa_datum_splatnosti'] === '' || $input['fa_datum_splatnosti'] === null) ? null : $input['fa_datum_splatnosti'];
         }
         if (isset($input['fa_datum_doruceni'])) {
             $fields[] = 'fa_datum_doruceni = ?';
-            $values[] = $input['fa_datum_doruceni'];
+            $values[] = ($input['fa_datum_doruceni'] === '' || $input['fa_datum_doruceni'] === null) ? null : $input['fa_datum_doruceni'];
         }
         // ✅ NORMALIZACE: fa_strediska_kod → JSON array stringů (UPPERCASE)
         if (isset($input['fa_strediska_kod'])) {
@@ -873,6 +873,10 @@ function handle_invoices25_by_id($input, $config, $queries) {
             return;
         }
 
+        // 🔧 FIX: Nastavit UTF-8 encoding pro MySQL připojení
+        $db->exec("SET NAMES utf8mb4");
+        $db->exec("SET CHARACTER SET utf8mb4");
+
         $faktury_table = get_invoices_table_name();
         $states_table = get_states_table_name();
         $users_table = get_users_table_name();
@@ -922,8 +926,29 @@ function handle_invoices25_by_id($input, $config, $queries) {
             $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
         }
 
+        // � FIX: Ošetření nevalidních UTF-8 znaků před json_encode
+        array_walk_recursive($faktura, function(&$value) {
+            if (is_string($value)) {
+                // Odstranit nevalidní UTF-8 znaky
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+
+        // Enkódovat s podporou UTF-8
+        $json_string = json_encode($faktura, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        
+        if (json_last_error() !== JSON_ERROR_NONE || !$json_string) {
+            // Fallback: vrátit error zprávu
+            http_response_code(500);
+            echo json_encode([
+                'err' => 'Chyba při zpracování dat faktury',
+                'detail' => json_last_error_msg()
+            ]);
+            return;
+        }
+        
         http_response_code(200);
-        echo json_encode($faktura);
+        echo $json_string;
 
     } catch (Exception $e) {
         http_response_code(500);
@@ -1264,7 +1289,7 @@ function handle_invoices25_list($input, $config, $queries) {
             'objednavka_id', 'fa_dorucena', 'fa_cislo_vema', 'datum_od', 'datum_do', 
             'stredisko', 'organizace_id', 'usek_id', 'filter_status',
             // Nové filtry pro globální vyhledávání a sloupcové filtry
-            'search_term', 'cislo_objednavky', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
+            'search_term', 'cislo_objednavky', 'filter_datum_doruceni', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
             'filter_stav', 'filter_vytvoril_uzivatel', 'filter_fa_typ',
             // Filtry pro částku a přílohy
             'castka_min', 'castka_max', 'filter_ma_prilohy',
@@ -1515,7 +1540,6 @@ function handle_invoices25_list($input, $config, $queries) {
         if (isset($filters['filter_datum_doruceni']) && !empty($filters['filter_datum_doruceni'])) {
             $where_conditions[] = 'DATE(f.fa_datum_doruceni) = ?';
             $params[] = $filters['filter_datum_doruceni'];
-            error_log("Invoices25 LIST: Applying filter_datum_doruceni = " . $filters['filter_datum_doruceni']);
         }
         
         // Filtr: filter_dt_aktualizace (přesná shoda na den - datum aktualizace)
