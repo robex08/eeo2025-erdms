@@ -1756,9 +1756,7 @@ export async function listInvoices25({
         faktury: data.faktury || [],
         pagination: data.pagination || { page: 1, per_page: 50, total: 0, total_pages: 0 },
         statistiky: data.statistiky || null,
-        user_info: data.user_info || null,
-        debug: data.debug || null,
-        _debug: data._debug || null
+        user_info: data.user_info || null
       };
     }
 

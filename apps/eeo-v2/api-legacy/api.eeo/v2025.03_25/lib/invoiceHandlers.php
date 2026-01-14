@@ -2180,19 +2180,20 @@ function handle_invoices25_list($input, $config, $queries) {
                 'usek_id' => $user_usek_id,
                 'usek_zkr' => $user_usek_zkr,
                 'filter_applied' => !$is_admin
-            ),
-            'debug' => array(
-                'sql_query' => $debug_sql,
-                'where_conditions' => $where_conditions,
-                'params_count' => count($params),
-                'filters_received' => $filters,
-                'input_keys' => array_keys($input)
             )
         );
         
+        // 🛡️ SANITIZACE UTF-8 - předejdeme JSON encoding chybám
+        array_walk_recursive($response_data, function(&$value) {
+            if (is_string($value)) {
+                // Odstranit nevalidní UTF-8 znaky
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+        
         http_response_code(200);
-        // ⚠️ JSON_INVALID_UTF8_SUBSTITUTE nahradí nevalidní UTF-8 znaky za Unicode replacement character (U+FFFD)
-        $json_output = json_encode($response_data, JSON_INVALID_UTF8_SUBSTITUTE);
+        // ⚠️ Kompletní ošetření českých znaků pro JSON
+        $json_output = json_encode($response_data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         if ($json_output === false) {
             // Fallback: pokud JSON encoding selže, vrátit minimální response
             $minimal_response = array(
@@ -2201,13 +2202,14 @@ function handle_invoices25_list($input, $config, $queries) {
                 'faktury' => array(),
                 'pagination' => $response_data['pagination']
             );
-            $json_output = json_encode($minimal_response, JSON_INVALID_UTF8_SUBSTITUTE);
+            $json_output = json_encode($minimal_response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
         echo $json_output;
 
     } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání faktur: ' . $e->getMessage()));
+        $error_message = mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8');
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání faktur: ' . $error_message), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 }
 
