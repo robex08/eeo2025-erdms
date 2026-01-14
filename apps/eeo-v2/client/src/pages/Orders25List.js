@@ -12918,7 +12918,15 @@ const Orders25List = () => {
 
                       <ListItemHeader style={{ marginTop: '8px' }}>
                         <ListItemTitle style={{ fontSize: '0.9em', color: '#64748b' }}>
-                          Číslo faktury: {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `Faktura ${index + 1}`, globalFilter)}
+                          {/* Evidoval: Jméno uživatele */}
+                          {(faktura.vytvoril_uzivatel?.cele_jmeno || faktura.vytvoril_uzivatel_detail?.cele_jmeno) && (
+                            <span style={{ fontWeight: 500 }}>
+                              Evidoval: {highlightSearchText(
+                                faktura.vytvoril_uzivatel?.cele_jmeno || faktura.vytvoril_uzivatel_detail?.cele_jmeno,
+                                globalFilter
+                              )}
+                            </span>
+                          )}
                         </ListItemTitle>
 
                         {/* Stav faktury */}
@@ -12935,13 +12943,6 @@ const Orders25List = () => {
                       </ListItemHeader>
 
                       <ListItemMeta>
-                        {/* Číslo faktury VEMA */}
-                        {faktura.fa_cislo_vema && (
-                          <ListItemMetaItem>
-                            <span style={{ fontWeight: 500 }}>Číslo faktury: {highlightSearchText(faktura.fa_cislo_vema, globalFilter)}</span>
-                          </ListItemMetaItem>
-                        )}
-
                         {/* Datum vystavení */}
                         {(faktura.fa_datum_vystaveni || faktura.dt_vystaveni) && (
                           <ListItemMetaItem>

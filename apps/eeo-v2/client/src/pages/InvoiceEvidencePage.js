@@ -2288,7 +2288,7 @@ export default function InvoiceEvidencePage() {
     }
     
     // ⚠️ Pokud je editace a číslo se nezměnilo oproti původnímu → nezobrazovat
-    if (editingInvoiceId && originalFormData.current?.fa_cislo_vema === formData.fa_cislo_vema) {
+    if (editingInvoiceId && originalFormData?.fa_cislo_vema === formData.fa_cislo_vema) {
       setDuplicateWarning(null);
       return;
     }
