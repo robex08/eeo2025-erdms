@@ -2489,7 +2489,10 @@ export default function InvoiceEvidencePage() {
             dt_potvrzeni_vecne_spravnosti: invoiceData.dt_potvrzeni_vecne_spravnosti || ''
           };
           
-          // 🚀 BATCH všechny setState operace najednou (méně re-renderů)
+          // � DEBUG: Kontrola loadedFormData před setFormData
+          
+          
+          // �🚀 BATCH všechny setState operace najednou (méně re-renderů)
           unstable_batchedUpdates(() => {
             setFormData(loadedFormData);
             // Uložit originální data pro detekci změn
@@ -3190,15 +3193,15 @@ export default function InvoiceEvidencePage() {
       smlouva_id: faktura.smlouva_id || null,
       fa_cislo_vema: faktura.fa_cislo_vema || '',
       fa_typ: faktura.fa_typ || 'BEZNA',
-      fa_datum_vystaveni: faktura.fa_datum_vystaveni || '',
-      fa_datum_splatnosti: faktura.fa_datum_splatnosti || '',
-      fa_datum_doruceni: faktura.fa_datum_doruceni || '',
+      fa_datum_vystaveni: formatDateForPicker(faktura.fa_datum_vystaveni),
+      fa_datum_splatnosti: formatDateForPicker(faktura.fa_datum_splatnosti),
+      fa_datum_doruceni: formatDateForPicker(faktura.fa_datum_doruceni),
       fa_castka: faktura.fa_castka || '',
       fa_variabilni_symbol: faktura.fa_variabilni_symbol || '',
       fa_poznamka: faktura.fa_poznamka || '',
       fa_predana_zam_id: faktura.fa_predana_zam_id || null,
-      fa_datum_predani_zam: faktura.fa_datum_predani_zam || '',
-      fa_datum_vraceni_zam: faktura.fa_datum_vraceni_zam || '',
+      fa_datum_predani_zam: formatDateForPicker(faktura.fa_datum_predani_zam),
+      fa_datum_vraceni_zam: formatDateForPicker(faktura.fa_datum_vraceni_zam),
       file: null,
       invoice_id: faktura.id // Uložíme ID faktury pro update místo create
     });
