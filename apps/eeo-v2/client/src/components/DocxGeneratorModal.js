@@ -702,17 +702,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
     const selectedUser = availableUsers[selectedUserIndex];
     const selectedUserId = selectedUser.id;
 
-    console.log('📋 Vybraná šablona:', selectedTemplate);
-    console.log('👤 Vybraný uživatel pro podpis:', {
-      index: selectedUserIndex,
-      user: selectedUser,
-      userId: selectedUserId,
-      userName: selectedUser.cele_jmeno,
-      role: selectedUser.role
-    });
-    console.log('📦 Order objekt:', order);
-    console.log('👥 Dostupní uživatelé:', availableUsers);
-
     try {
       setGenerating(true);
 
@@ -729,14 +718,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
       // ✅ orderData parametr už NENÍ POTŘEBA - používáme enriched endpoint!
       // Backend vrací KOMPLETNÍ data včetně všech enriched uživatelů
       
-      console.log('🚀 Volám generateDocxDocument s parametry:', {
-        templateId: selectedTemplate.id,
-        orderId: orderId,
-        selectedUserId: selectedUserId,
-        templateName: selectedTemplate.nazev,
-        mapping: selectedTemplate.mapovani_json
-      });
-      
       const generatedDocx = await generateDocxDocument({
         templateId: selectedTemplate.id,
         orderId: orderId,
@@ -744,11 +725,6 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         username: user?.username,
         template: selectedTemplate,
         selectedUserId: selectedUserId // ✅ ID vybraného uživatele pro podpis
-      });
-
-      console.log('Generated docx metadata:', {
-        size: generatedDocx.size,
-        type: generatedDocx.type
       });
 
       // Stáhni vygenerovaný dokument
