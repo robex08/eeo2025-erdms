@@ -2597,7 +2597,7 @@ const InvoiceAttachmentsCompact = ({
                     fontSize: '0.6875rem',
                     fontWeight: '500'
                   }}>
-                    Nahráno: {getUserDisplayName(file.uploadedByUserId)}
+                    Nahráno: {getUserDisplayName(file.nahrano_uzivatel_id)}
                   </span>
                   {file.faktura_typ_nazev && (
                     <>

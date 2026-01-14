@@ -1008,7 +1008,8 @@ function handle_sablona_docx_order_enriched_data($input, $config, $queries) {
             'financovani' => $order['financovani'] ? json_decode($order['financovani'], true) : null,
             'druh_objednavky_kod' => $order['druh_objednavky_kod'] ? $order['druh_objednavky_kod'] : '',
             'stav_workflow_kod' => $order['stav_workflow_kod'] ? $order['stav_workflow_kod'] : '',
-            'dt_predpokladany_termin_dodani' => $order['dt_predpokladany_termin_dodani'] ? $order['dt_predpokladany_termin_dodani'] : '',
+            // ✅ TERMÍN DODÁNÍ - formátovat do CZE formátu DD.MM.YYYY (POUZE pro DOCX)
+            'dt_predpokladany_termin_dodani' => $order['dt_predpokladany_termin_dodani'] ? date('d.m.Y', strtotime($order['dt_predpokladany_termin_dodani'])) : '',
             'misto_dodani' => $order['misto_dodani'] ? $order['misto_dodani'] : '',
             'zaruka' => $order['zaruka'] ? $order['zaruka'] : '',
             
