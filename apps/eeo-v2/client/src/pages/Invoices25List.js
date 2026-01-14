@@ -1860,19 +1860,8 @@ const Invoices25List = () => {
         apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
       }
 
-      // DEBUG: Co posíláme na BE
-      console.log('🚀 REQUEST NA BE:', JSON.stringify(apiParams, null, 2));
-
-      //  Načtení faktur z BE (server-side pagination + user isolation)
+      // 📥 Načtení faktur z BE (server-side pagination + user isolation)
       const response = await listInvoices25(apiParams);
-
-      // DEBUG: Co dostáváme z BE
-      console.log('📥 RESPONSE Z BE - celkem záznamů:', response.faktury?.length || 0);
-      console.log('🔍 DEBUG INFO Z BE:', response.debug);
-      if (response.faktury && response.faktury.length > 0) {
-        console.log('📋 První faktura celá:', response.faktury[0]);
-        console.log('📋 fa_datum_doruceni první faktury:', response.faktury[0].fa_datum_doruceni);
-      }
 
       // Transformace dat z BE formátu
       const invoicesList = response.faktury || [];
