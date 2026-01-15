@@ -2648,13 +2648,18 @@ const CashBookPage = () => {
   const handleConfirmDeleteDetail = async () => {
     if (entryToDeleteDetail) {
       try {
+        console.log('🗑️ Mazání rozpadu LP pro entry:', entryToDeleteDetail);
+        
         // ✅ Připravit payload s prázdným detail_items[] pro backend
         const payload = transformFrontendEntryToDB(entryToDeleteDetail, currentBookId);
-        payload.entry_id = entryToDeleteDetail.id;
         payload.detail_items = []; // Explicitně prázdné pole = smazat detail položky
         
-        // Poslat na backend - smaže detail položky v DB a přepočítá čerpání LP
-        const response = await cashbookAPI.updateEntry(payload);
+        console.log('📤 Odesílám payload:', payload);
+        
+        // ✅ FIX: Použít db_id (databázové ID), ne frontend id (localStorage)
+        const response = await cashbookAPI.updateEntry(entryToDeleteDetail.db_id, payload);
+        
+        console.log('📥 Odpověď z backendu:', response);
         
         if (response && response.entry) {
           toast.success('✅ Rozpad LP kódů byl smazán', {
@@ -2665,12 +2670,14 @@ const CashBookPage = () => {
           setExpandedDetailEntryId(null);
           setDetailEditBuffer([]);
           
+          console.log('🔄 Spouštím silent reload...');
           // ✅ Tichý reload z DB - zajistí aktuální stav bez refresh stránky
           await silentReloadFromDB();
+          console.log('✅ Silent reload dokončen');
         }
       } catch (error) {
-        console.error('Chyba při mazání rozpadu LP:', error);
-        toast.error('❌ Chyba při mazání rozpadu LP', {
+        console.error('❌ Chyba při mazání rozpadu LP:', error);
+        toast.error('❌ Chyba při mazání rozpadu LP: ' + error.message, {
           position: "top-right",
           autoClose: 3000
         });
