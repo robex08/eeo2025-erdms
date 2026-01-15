@@ -1244,10 +1244,12 @@ const CashBookPage = () => {
     if (entry.detailItems && entry.detailItems.length > 0) {
       payload.detail_items = entry.detailItems;
       payload.castka_celkem = entry.detailItems.reduce((sum, item) => sum + (item.castka || 0), 0);
-      // Master LP kód je prázdný, když jsou detaily
-    } else if (entry.lpCode) {
-      // Původní flow - pouze pokud NENÍ multi-LP
-      payload.lp_kod = entry.lpCode;
+      // ✅ FIX: Vždy poslat lp_kod, i když je prázdný (aby se smazal v DB)
+      payload.lp_kod = entry.lpCode || null;
+    } else {
+      // ✅ FIX: VŽDY poslat lp_kod, i když je prázdný string nebo null
+      // Backend musí vědět, že má LP kód smazat (když je null/prázdný)
+      payload.lp_kod = entry.lpCode || null;
     }
     
     return payload;
