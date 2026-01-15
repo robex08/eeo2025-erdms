@@ -814,12 +814,13 @@ function handle_cashbook_entry_update_post($config, $input) {
             }
         }
         
-        // 🆕 DETEKCE MULTI-LP
-        $hasDetailItems = isset($input['detail_items']) && is_array($input['detail_items']) && !empty($input['detail_items']);
+        // 🆕 DETEKCE MULTI-LP: Pokud existuje detail_items klíč (i když prázdné pole), použít multi-LP flow
+        // ✅ FIX: Prázdné pole [] znamená "smazat detail položky", ne "použít starý flow"
+        $hasDetailItemsKey = isset($input['detail_items']) && is_array($input['detail_items']);
         
         // Aktualizovat
-        if ($hasDetailItems) {
-            // 🆕 MULTI-LP UPDATE - model má vlastní transakci
+        if ($hasDetailItemsKey) {
+            // 🆕 MULTI-LP UPDATE - model má vlastní transakci (i pro prázdné pole)
             $validator = new EntryValidator($db);
             
             // ✅ FIX: Předat lpKodPovinny flag do validátoru
@@ -871,6 +872,11 @@ function handle_cashbook_entry_update_post($config, $input) {
                 $book['mesic']
             );
         }
+        
+        // ✅ FIX: Přepočítat čerpání LP kódů po změně detail položek
+        require_once __DIR__ . '/../services/LPCalculationService.php';
+        $lpService = new LPCalculationService($db);
+        $lpService->recalculateLPForUserYear($book['uzivatel_id'], $book['rok']);
         
         return api_ok(array(
             'entry' => $updatedEntry,
