@@ -5346,6 +5346,18 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/ciselniky/smlouvy/inicializace
+        // Inicializace systému čerpání - přepočítá všechny smlouvy a vrátí statistiky
+        if ($endpoint === 'ciselniky/smlouvy/inicializace') {
+            if ($request_method === 'POST') {
+                handle_ciselniky_smlouvy_inicializace($input, $config, $queries);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // POST /api.eeo/ciselniky/smlouvy/import-csv
         // CSV/Excel import smluv - parsuje soubor a normalizuje "platnost_do" na 31.12.2099 pokud chybí
         if ($endpoint === 'ciselniky/smlouvy/import-csv') {

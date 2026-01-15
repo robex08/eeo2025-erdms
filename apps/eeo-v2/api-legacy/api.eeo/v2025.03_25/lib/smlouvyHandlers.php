@@ -1690,4 +1690,124 @@ function handle_ciselniky_smlouvy_import_csv($input, $config, $queries) {
     }
 }
 
+/**
+ * 8. INICIALIZACE SYSTÉMU ČERPÁNÍ
+ * POST /ciselniky/smlouvy/inicializace
+ * 
+ * Provede kompletní inicializaci systému čerpání smluv:
+ * 1. Přepočítá všechny aktivní smlouvy (CALL sp_prepocet_cerpani_smluv)
+ * 2. Identifikuje smlouvy s problematickými hodnotami (negativní zbytky, nelogické procenta)
+ * 3. Vrátí statistiky a upozornění
+ * 
+ * Použití: Po migraci databáze, po velkých změnách v datech
+ */
+function handle_ciselniky_smlouvy_inicializace($input, $config, $queries) {
+    $username = isset($input['username']) ? $input['username'] : '';
+    $token = isset($input['token']) ? $input['token'] : '';
+    
+    $auth_result = verify_token_v2($username, $token);
+    if (!$auth_result) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatny nebo chybejici token'));
+        return;
+    }
+    
+    $start_time = microtime(true);
+    
+    try {
+        $db = get_db($config);
+        
+        // 1. Přepočítat všechny smlouvy
+        $sql = "CALL sp_prepocet_cerpani_smluv(NULL, NULL)";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        
+        // 2. Získat statistiky
+        $stats = array();
+        
+        // Celkový počet aktivních smluv
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkem_smluv'] = (int)$result['pocet'];
+        
+        // Smlouvy s omezením (hodnota_s_dph > 0)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph > 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_s_omezenim'] = (int)$result['pocet'];
+        
+        // Neomezené smlouvy (hodnota_s_dph = 0)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph = 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_neomezene'] = (int)$result['pocet'];
+        
+        // Smlouvy s překročeným limitem (procento_cerpani > 100)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND procento_cerpani > 100";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_prekroceny_limit'] = (int)$result['pocet'];
+        
+        // Smlouvy s čerpáním > 90% (varování)
+        $sql = "SELECT COUNT(*) as pocet FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND procento_cerpani > 90 AND procento_cerpani <= 100";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['smlouvy_varovani'] = (int)$result['pocet'];
+        
+        // Celkové čerpání skutečně (všechny smlouvy)
+        $sql = "SELECT SUM(cerpano_skutecne) as celkem FROM " . TBL_SMLOUVY . " WHERE aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkove_cerpani_skutecne'] = (float)$result['celkem'];
+        
+        // Celková hodnota smluv (jen s omezením)
+        $sql = "SELECT SUM(hodnota_s_dph) as celkem FROM " . TBL_SMLOUVY . " WHERE aktivni = 1 AND hodnota_s_dph > 0";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stats['celkova_hodnota_smluv'] = (float)$result['celkem'];
+        
+        // 3. Seznam smluv s problémy (překročené limity)
+        $sql = "SELECT cislo_smlouvy, hodnota_s_dph, cerpano_skutecne, procento_cerpani 
+                FROM " . TBL_SMLOUVY . " 
+                WHERE aktivni = 1 AND procento_cerpani > 100 
+                ORDER BY procento_cerpani DESC 
+                LIMIT 10";
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $problematic = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $elapsed_ms = round((microtime(true) - $start_time) * 1000);
+        
+        echo json_encode(array(
+            'status' => 'ok',
+            'data' => array(
+                'statistiky' => $stats,
+                'problematicke_smlouvy' => $problematic,
+                'cas_vypoctu_ms' => $elapsed_ms,
+                'dt_inicializace' => date('c'),
+                '_info' => 'Systém čerpání byl úspěšně inicializován. Všechny smlouvy přepočteny (3 typy: požadováno, plánováno, skutečně).'
+            ),
+            'meta' => array(
+                'version' => 'v2',
+                'standardized' => true,
+                'endpoint' => 'inicializace',
+                'timestamp' => date('c')
+            )
+        ));
+        
+    } catch (Exception $e) {
+        error_log('SMLOUVY INICIALIZACE ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při inicializaci: ' . $e->getMessage()));
+    }
+}
+
 ?>
