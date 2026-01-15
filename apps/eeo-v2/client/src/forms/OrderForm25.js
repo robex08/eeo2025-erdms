@@ -11227,7 +11227,7 @@ function OrderForm25() {
 
         // Odeslat notifikace při změně workflow stavu
         try {
-          const orderNumber = formData.ev_cislo || formData.cislo_objednavky || formData.id;
+          const orderNumber = result.ev_cislo || result.cislo_objednavky || formData.ev_cislo || formData.cislo_objednavky || formData.id;
           
           // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
           await sendOrderNotifications(formData.id, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);

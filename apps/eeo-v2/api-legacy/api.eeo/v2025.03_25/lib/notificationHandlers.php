@@ -1771,7 +1771,7 @@ function handle_notifications_event_types_list($input, $config, $queries) {
                 'kategorie' => 'orders',
                 'description' => 'Objednávka byla úspěšně dokončena',
                 'urgencyLevel' => 'NORMAL',
-                'recipientRoles' => array('INFO')
+                'recipientRoles' => array('CREATOR', 'OBJEDNATEL', 'GARANT', 'PRIKAZCE')
             ),
             
             // FAKTURY
