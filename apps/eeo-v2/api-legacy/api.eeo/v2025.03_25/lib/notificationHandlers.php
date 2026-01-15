@@ -920,8 +920,6 @@ function handle_notifications_unread_count($input, $config, $queries) {
     try {
         $db = get_db($config);
         $uzivatel_id = $token_data['id'];
-        
-        error_log("🔔 [UnreadCount] Počítám nepřečtené pro user_id=$uzivatel_id...");
 
         // Spočítej nepřečtené z " . TBL_NOTIFIKACE_PRECTENI . "
         // MUSÍ být: nepřečtené (precteno=0), NEsmazané (smazano=0), NEdismissnuté (skryto=0)
@@ -939,8 +937,6 @@ function handle_notifications_unread_count($input, $config, $queries) {
 
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         $count = (int)$result['unread_count'];
-        
-        error_log("   ✅ Výsledek: $count nepřečtených notifikací");
 
         echo json_encode(array(
             'status' => 'ok',
@@ -998,16 +994,12 @@ function handle_notifications_create($input, $config, $queries) {
             return;
         }
     }
-    
-    error_log("[Notifications] Token verified, required fields present");
 
     try {
         $db = get_db($config);
         $typ = $input['typ'];
         $current_uzivatel_id = $token_data['id'];
         $username = $token_data['username'];
-        
-        error_log("[Notifications] Processing typ: $typ for user: $username (ID: $current_uzivatel_id)");
         
         // Načti template z databáze
         $template = getNotificationTemplate($db, $typ);
@@ -1018,18 +1010,12 @@ function handle_notifications_create($input, $config, $queries) {
             return;
         }
         
-        error_log("[Notifications] Template loaded: " . $template['nazev']);
-        
         // NOVÉ: Podpora order_id pro automatické naplnění placeholderů
         $placeholderData = array();
         $order_id = isset($input['order_id']) ? (int)$input['order_id'] : null;
         $invoice_id = isset($input['invoice_id']) ? (int)$input['invoice_id'] : null;
         $action_uzivatel_id = isset($input['action_uzivatel_id']) ? (int)$input['action_uzivatel_id'] : $current_uzivatel_id;
         $additional_data = isset($input['additional_data']) ? $input['additional_data'] : array();
-        
-        error_log("[Notifications] order_id from input: " . ($order_id ? $order_id : 'NULL'));
-        error_log("[Notifications] invoice_id from input: " . ($invoice_id ? $invoice_id : 'NULL'));
-        error_log("[Notifications] action_uzivatel_id: $action_uzivatel_id");
         
         // ✅ SPECIÁLNÍ LOGIKA PRO VĚCNOU SPRÁVNOST:
         // Když se volá order_status_kontrola_potvrzena BEZ invoice_id (z OrderForm25),
@@ -1050,16 +1036,13 @@ function handle_notifications_create($input, $config, $queries) {
             $potvrzene_faktury = $faktury_stmt->fetchAll(PDO::FETCH_ASSOC);
             
             if (empty($potvrzene_faktury)) {
-                error_log("[Notifications] ⚠️ Nenalezeny žádné faktury s potvrzenou věcnou správností pro objednávku $order_id - pokračuji bez fakturních dat");
                 // Pokračuj standardním způsobem (pošli notifikaci bez fakturních dat)
             } else {
-                error_log("[Notifications] ✅ Nalezeno " . count($potvrzene_faktury) . " faktur s potvrzenou věcnou správností");
                 
                 // Pro každou fakturu odešli samostatnou notifikaci - rekurzivním voláním
                 $notifications_sent = array();
                 foreach ($potvrzene_faktury as $faktura) {
                     $faktura_invoice_id = $faktura['fa_id'];
-                    error_log("[Notifications] 📧 Odesílám notifikaci pro fakturu ID: $faktura_invoice_id, číslo: " . $faktura['fa_cislo']);
                     
                     // Připrav input pro rekurzivní volání s invoice_id
                     $faktura_input = $input;  // Kopie vstupu
@@ -1076,9 +1059,7 @@ function handle_notifications_create($input, $config, $queries) {
                             'invoice_id' => $faktura_invoice_id,
                             'invoice_number' => $faktura['fa_cislo']
                         );
-                        error_log("[Notifications] ✅ Notifikace pro fakturu $faktura_invoice_id odeslána");
                     } catch (Exception $e) {
-                        error_log("[Notifications] ❌ Chyba při odesílání notifikace pro fakturu $faktura_invoice_id: " . $e->getMessage());
                     }
                 }
                 
@@ -1094,26 +1075,15 @@ function handle_notifications_create($input, $config, $queries) {
         }
         
         if ($order_id) {
-            error_log("[Notifications] ===== LOADING ORDER DATA START =====");
-            error_log("[Notifications] Loading placeholder data for order_id: $order_id" . ($invoice_id ? ", invoice_id: $invoice_id" : ""));
-            
             // Načti data objednávky a připrav placeholdery (s error handlingem)
             try {
                 $placeholderData = getOrderPlaceholderData($db, $order_id, $action_uzivatel_id, $additional_data, $invoice_id);
                 
-                error_log("[Notifications] getOrderPlaceholderData returned: " . (is_array($placeholderData) ? count($placeholderData) . " keys" : "NOT ARRAY"));
-                
                 if (isset($placeholderData['error'])) {
                     // ZMĚNA: Místo http 400 jen logujeme warning a pokračujeme bez placeholderů
-                    error_log("[Notifications] ⚠️ WARNING: Could not load order data: " . $placeholderData['error']);
                     $placeholderData = array();
                 } else {
-                    error_log("[Notifications] ✅ Placeholder data loaded successfully!");
-                    error_log("[Notifications] Keys: " . implode(', ', array_keys($placeholderData)));
-                    error_log("[Notifications] order_number: " . (isset($placeholderData['order_number']) ? $placeholderData['order_number'] : 'NOT_SET'));
-                    error_log("[Notifications] invoice_number: " . (isset($placeholderData['invoice_number']) ? $placeholderData['invoice_number'] : 'NOT_SET'));
-                    error_log("[Notifications] potvrdil_name: " . (isset($placeholderData['potvrdil_name']) ? $placeholderData['potvrdil_name'] : 'NOT_SET'));
-                    error_log("[Notifications] order_subject: " . (isset($placeholderData['order_subject']) ? substr($placeholderData['order_subject'], 0, 30) : 'NOT_SET'));
+                    // Placeholder data loaded successfully
                 }
                 
                 // Přidej ikonu a label akce VŽDY (i když order data selhala)
@@ -1123,14 +1093,12 @@ function handle_notifications_create($input, $config, $queries) {
                     isset($input['priorita']) ? $input['priorita'] : $template['priorita_vychozi']
                 );
                 
-                error_log("[Notifications] ===== LOADING ORDER DATA END =====");
             } catch (Exception $e) {
-                error_log("[Notifications] ❌ EXCEPTION loading order data: " . $e->getMessage());
-                error_log("[Notifications] Stack trace: " . $e->getTraceAsString());
+                error_log("[Notifications] Error loading order data: " . $e->getMessage());
                 $placeholderData = array();
             }
         } else {
-            error_log("[Notifications] ⚠️ No order_id provided - skipping placeholder data loading");
+            // No order_id provided
         }
         
         // Získej data pro nahrazení placeholderů (fallback na FE data)
@@ -1193,17 +1161,14 @@ function handle_notifications_create($input, $config, $queries) {
             $stmt->execute();
             $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $recipient_uzivatel_ids = array_column($users, 'id');
-            error_log("[Notifications] Broadcasting '$typ' to " . count($recipient_uzivatel_ids) . " users");
             
         } elseif (!empty($to_users) && is_array($to_users)) {
             // Skupina uživatelů
             $recipient_uzivatel_ids = array_map('intval', $to_users);
-            error_log("[Notifications] Sending '$typ' to group: " . implode(',', $recipient_uzivatel_ids));
             
         } elseif (!empty($pro_uzivatele_id)) {
             // Konkrétní uživatel
             $recipient_uzivatel_ids = array($pro_uzivatele_id);
-            error_log("[Notifications] Sending '$typ' to user: $pro_uzivatele_id");
             
         } else {
             error_log("[Notifications] No recipients specified!");
@@ -3217,19 +3182,8 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
 function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, $placeholderData = array()) {
     $recipients = array();
     
-    error_log("");
-    error_log("┌──────────────────────────────────────────────────────────────┐");
-    error_log("│  📊 ORGANIZATIONAL HIERARCHY - Finding Recipients             │");
-    error_log("├──────────────────────────────────────────────────────────────┤");
-    error_log("│  Event Type:   " . str_pad($eventType, 46) . "│");
-    error_log("│  Object ID:    " . str_pad($objectId, 46) . "│");
-    error_log("│  Trigger User: " . str_pad($triggerUserId, 46) . "│");
-    error_log("└──────────────────────────────────────────────────────────────┘");
-    error_log("");
-    
     try {
         // 1. Najít aktivní profil hierarchie
-        error_log("   🔍 Hledám aktivní hierarchický profil...");
         $stmt = $db->prepare("
             SELECT id, structure_json 
             FROM " . TBL_HIERARCHIE_PROFILY . " 
