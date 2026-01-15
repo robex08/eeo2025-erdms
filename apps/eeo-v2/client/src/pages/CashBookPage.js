@@ -2663,12 +2663,14 @@ const CashBookPage = () => {
         
         console.log('📥 Odpověď z backendu:', response);
         
-        if (response && response.entry) {
+        // ✅ FIX: Backend vrací {status: 'ok', data: {entry: ...}}
+        if (response && (response.entry || response.data?.entry)) {
           toast.success('✅ Rozpad LP kódů byl smazán', {
             position: "top-right",
             autoClose: 2000
           });
           
+          // ✅ KRITICKÉ: Zavřít panel s podřádky PŘED reload
           setExpandedDetailEntryId(null);
           setDetailEditBuffer([]);
           
