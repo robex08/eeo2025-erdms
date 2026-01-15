@@ -1026,6 +1026,8 @@ const CashBookPage = () => {
   // State pro ConfirmDialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState(null);
+  const [deleteDetailDialogOpen, setDeleteDetailDialogOpen] = useState(false); // 🆕 Pro smazání rozpadu LP
+  const [entryToDeleteDetail, setEntryToDeleteDetail] = useState(null); // 🆕 Pro smazání rozpadu LP
   const [closeMonthDialogOpen, setCloseMonthDialogOpen] = useState(false);
   const [lockBookDialogOpen, setLockBookDialogOpen] = useState(false);
   const [reopenMonthDialogOpen, setReopenMonthDialogOpen] = useState(false);
@@ -2640,6 +2642,49 @@ const CashBookPage = () => {
   const handleCancelDelete = () => {
     setDeleteDialogOpen(false);
     setEntryToDelete(null);
+  };
+
+  // 🆕 Potvrzení smazání rozpadu LP kódů
+  const handleConfirmDeleteDetail = async () => {
+    if (entryToDeleteDetail) {
+      try {
+        // ✅ Připravit payload s prázdným detail_items[] pro backend
+        const payload = transformFrontendEntryToDB(entryToDeleteDetail, currentBookId);
+        payload.entry_id = entryToDeleteDetail.id;
+        payload.detail_items = []; // Explicitně prázdné pole = smazat detail položky
+        
+        // Poslat na backend - smaže detail položky v DB a přepočítá čerpání LP
+        const response = await cashbookAPI.updateEntry(payload);
+        
+        if (response && response.entry) {
+          toast.success('✅ Rozpad LP kódů byl smazán', {
+            position: "top-right",
+            autoClose: 2000
+          });
+          
+          setExpandedDetailEntryId(null);
+          setDetailEditBuffer([]);
+          
+          // ✅ Tichý reload z DB - zajistí aktuální stav bez refresh stránky
+          await silentReloadFromDB();
+        }
+      } catch (error) {
+        console.error('Chyba při mazání rozpadu LP:', error);
+        toast.error('❌ Chyba při mazání rozpadu LP', {
+          position: "top-right",
+          autoClose: 3000
+        });
+      }
+    }
+    
+    setDeleteDetailDialogOpen(false);
+    setEntryToDeleteDetail(null);
+  };
+
+  // 🆕 Zrušení smazání rozpadu LP kódů
+  const handleCancelDeleteDetail = () => {
+    setDeleteDetailDialogOpen(false);
+    setEntryToDeleteDetail(null);
   };
 
   // Zapnutí editace řádku
@@ -4611,30 +4656,8 @@ const CashBookPage = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={() => {
-                              if (window.confirm('Opravdu chcete smazat rozpad LP kódů a vrátit se k jednoduché položce?')) {
-                                // Smazat všechny detail položky - vrátit se na jednoduchou položku
-                                setCashBookEntries(prev => prev.map(e => 
-                                  e.id === entry.id 
-                                    ? { 
-                                        ...e, 
-                                        detailItems: [],
-                                        hasDetails: false,
-                                        lpCode: '', // Vymazat i master LP kód
-                                        changed: true,
-                                        sync_status: 'pending'
-                                      }
-                                    : e
-                                ));
-                                
-                                toast.success('✅ Rozpad LP kódů byl smazán', {
-                                  position: "top-right",
-                                  autoClose: 2000
-                                });
-                                
-                                setExpandedDetailEntryId(null);
-                                setDetailEditBuffer([]);
-                                autoSave();
-                              }
+                              setEntryToDeleteDetail(entry);
+                              setDeleteDetailDialogOpen(true);
                             }}
                             style={{ 
                               padding: '8px 16px', 
@@ -4935,6 +4958,19 @@ const CashBookPage = () => {
         onClose={handleCancelDelete}
       >
         Opravdu chcete odstranit tento záznam z pokladní knihy? Tato akce je nevratná.
+      </ConfirmDialog>
+
+      {/* ConfirmDialog pro smazání rozpadu LP kódů */}
+      <ConfirmDialog
+        isOpen={deleteDetailDialogOpen}
+        title="Smazat rozpad LP kódů"
+        icon={faTrash}
+        variant="warning"
+        onConfirm={handleConfirmDeleteDetail}
+        onClose={handleCancelDeleteDetail}
+      >
+        Opravdu chcete smazat rozpad LP kódů a vrátit se k jednoduché položce? 
+        Všechny podřádky budou odstraněny a LP kód bude vymazán.
       </ConfirmDialog>
 
       {/* ConfirmDialog pro uzavření měsíce */}
