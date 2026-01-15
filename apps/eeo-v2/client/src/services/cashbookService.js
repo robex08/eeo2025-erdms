@@ -950,6 +950,37 @@ const cashbookAPI = {
     } catch (error) {
       handleApiError(error, 'načítání nastavení LP kódu');
     }
+  },
+
+  // ========================================================================
+  // 🆕 PŘEPOČET ZŮSTATKŮ - Utility pro opravy dat
+  // ========================================================================
+
+  /**
+   * Přepočítat zůstatky všech lednových knih dané pokladny
+   * Volá backend endpoint, který přepočítá zustatek_po_operaci všech položek
+   * @param {number} pokladnaId - ID pokladny
+   * @param {number} year - Rok (volitelné, default aktuální)
+   * @returns {Promise} Response s počtem přepočítaných knih
+   */
+  recalculateJanuaryBalances: async (pokladnaId, year = null) => {
+    try {
+      const auth = await getAuthData();
+      
+      const payload = {
+        username: auth.username,
+        token: auth.token,
+        pokladna_id: pokladnaId
+      };
+      
+      if (year) payload.year = year;
+      
+      const response = await axios.post(`${API_BASE}/cashbox-recalculate-january`, payload);
+      return response.data;
+    } catch (error) {
+      handleApiError(error, 'přepočtu zůstatků lednových knih');
+      throw error;
+    }
   }
 };
 

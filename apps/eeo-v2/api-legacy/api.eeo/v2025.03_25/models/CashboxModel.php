@@ -398,6 +398,11 @@ class CashboxModel {
             if ($result) {
                 $updated++;
                 
+                // 🆕 KRITICKÉ: Přepočítat zůstatky POLOŽEK v knize
+                require_once __DIR__ . '/../services/BalanceCalculator.php';
+                $balanceCalc = new BalanceCalculator($this->db);
+                $balanceCalc->recalculateBookBalances($book['id']);
+                
                 // Přepočítat všechny následující měsíce pro tohoto uživatele
                 $this->recalculateFollowingMonths(
                     $book['uzivatel_id'], 
@@ -505,6 +510,11 @@ class CashboxModel {
                 $novyKoncovyStav,
                 $book['id']
             ));
+            
+            // 🆕 KRITICKÉ: Přepočítat zůstatky POLOŽEK v knize
+            require_once __DIR__ . '/../services/BalanceCalculator.php';
+            $balanceCalc = new BalanceCalculator($this->db);
+            $balanceCalc->recalculateBookBalances($book['id']);
         }
     }
 }
