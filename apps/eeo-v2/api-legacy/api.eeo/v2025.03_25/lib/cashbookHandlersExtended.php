@@ -1363,3 +1363,120 @@ function handle_cashbox_sync_users_post($config, $input) {
         return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
     }
 }
+
+/**
+ * POST /cashbook-force-recalculate
+ * 🆕 UTILITY ENDPOINT: Force přepočet zůstatků položek v knize
+ * 
+ * Použití: Po opravě logiky počátečního stavu pro přepočet existujících dat
+ * Vyžaduje oprávnění CASH_BOOK_MANAGE
+ */
+function handle_cashbook_force_recalculate_post($config, $input) {
+    try {
+        if (empty($input['username']) || empty($input['token'])) {
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        if (empty($input['book_id'])) {
+            return api_error(400, 'Chybí book_id');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            return api_error(401, 'Neplatný token');
+        }
+        
+        // Kontrola oprávnění - pouze CASH_BOOK_MANAGE (admin)
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canManageCashbooks()) {
+            return api_error(403, 'Nedostatečná oprávnění - vyžadováno CASH_BOOK_MANAGE');
+        }
+        
+        require_once __DIR__ . '/../models/CashbookModel.php';
+        require_once __DIR__ . '/../services/BalanceCalculator.php';
+        
+        $bookModel = new CashbookModel($db);
+        $book = $bookModel->getBookById($input['book_id']);
+        
+        if (!$book) {
+            return api_error(404, 'Pokladní kniha nenalezena');
+        }
+        
+        // Přepočítat zůstatky všech položek
+        $balanceCalc = new BalanceCalculator($db);
+        $success = $balanceCalc->recalculateBookBalances($input['book_id']);
+        
+        if (!$success) {
+            return api_error(500, 'Chyba při přepočítávání zůstatků');
+        }
+        
+        // Načíst aktualizovanou knihu
+        $updatedBook = $bookModel->getBookById($input['book_id']);
+        
+        return api_ok(array(
+            'message' => 'Zůstatky položek byly úspěšně přepočítány',
+            'book_id' => $input['book_id'],
+            'book' => $updatedBook
+        ));
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbook_force_recalculate_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}
+/**
+ * POST /cashbox-recalculate-january
+ * 🆕 UTILITY ENDPOINT: Přepočet zůstatků všech lednových knih dané pokladny
+ * 
+ * Použití: Po změně pocatecni_stav_rok pro opravu všech lednových zůstatků najednou
+ * Vyžaduje oprávnění CASH_BOOK_MANAGE
+ * 
+ * @param int pokladna_id - ID pokladny
+ * @param int year - Rok (volitelné, default aktuální)
+ */
+function handle_cashbox_recalculate_january_post($config, $input) {
+    try {
+        if (empty($input['username']) || empty($input['token'])) {
+            return api_error(401, 'Chybí username nebo token');
+        }
+        
+        if (empty($input['pokladna_id'])) {
+            return api_error(400, 'Chybí pokladna_id');
+        }
+        
+        $db = get_db($config);
+        $userData = verify_token_v2($input['username'], $input['token'], $db);
+        
+        if (!$userData) {
+            return api_error(401, 'Neplatný token');
+        }
+        
+        // Kontrola oprávnění - pouze CASH_BOOK_MANAGE (admin)
+        $permissions = new CashbookPermissions($userData, $db);
+        if (!$permissions->canManageCashbooks()) {
+            return api_error(403, 'Nedostatečná oprávnění - vyžadováno CASH_BOOK_MANAGE');
+        }
+        
+        require_once __DIR__ . '/../models/CashboxModel.php';
+        
+        $cashboxModel = new CashboxModel($db);
+        $pokladnaId = (int)$input['pokladna_id'];
+        $year = isset($input['year']) ? (int)$input['year'] : date('Y');
+        
+        // Zavolat existující metodu z CashboxModel
+        $recalculatedCount = $cashboxModel->recalculateJanuaryBooks($pokladnaId, $year);
+        
+        return api_ok(array(
+            'message' => sprintf('Byly přepočítány zůstatky %d lednových knih', $recalculatedCount),
+            'pokladna_id' => $pokladnaId,
+            'year' => $year,
+            'recalculated_books' => $recalculatedCount
+        ));
+        
+    } catch (Exception $e) {
+        error_log("handle_cashbox_recalculate_january_post error: " . $e->getMessage());
+        return api_error(500, 'Interní chyba serveru: ' . $e->getMessage());
+    }
+}

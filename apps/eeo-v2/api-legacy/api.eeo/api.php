@@ -3815,6 +3815,30 @@ switch ($endpoint) {
             break;
         }
         
+        // POST /api.eeo/cashbook-force-recalculate - ADMIN force přepočet zůstatků položek
+        // ⚠️ UTILITY - přepočítá zustatek_po_operaci všech položek v knize od počátečního stavu
+        if ($endpoint === 'cashbook-force-recalculate') {
+            if ($request_method === 'POST') {
+                handle_cashbook_force_recalculate_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
+        // POST /api.eeo/cashbox-recalculate-january - ADMIN přepočet všech lednových knih pokladny
+        // ⚠️ UTILITY - přepočítá zustatek_po_operaci všech položek v lednových knihách dané pokladny
+        if ($endpoint === 'cashbox-recalculate-january') {
+            if ($request_method === 'POST') {
+                handle_cashbox_recalculate_january_post($config, $input);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+        
         // POST /api.eeo/cashbook-lp-summary - přehled čerpání LP kódů (včetně multi-LP)
         if ($endpoint === 'cashbook-lp-summary') {
             if ($request_method === 'POST') {

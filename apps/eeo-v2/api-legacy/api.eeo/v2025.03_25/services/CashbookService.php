@@ -94,8 +94,10 @@ class CashbookService {
             // Vložit položku
             $entryId = $this->entryModel->createEntry($entryData, $userId);
             
-            // Přepočítat všechny následující balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($bookId, $data['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku, ne jen od data!
+            // Důvod: calculateNewEntryBalance() může mít neaktuální pocatecni_stav
+            // nebo předchozí položky mohly mít špatné zůstatky
+            $this->balanceCalculator->recalculateBookBalances($bookId);
             
             // Možná budeme muset přečíslovat (pokud vkládáme mezi existující položky)
             $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
@@ -138,8 +140,8 @@ class CashbookService {
             
             // Pokud se změnila částka nebo datum, přepočítat balances
             if (isset($data['castka_prijem']) || isset($data['castka_vydaj']) || isset($data['datum_zapisu'])) {
-                $recalcDate = isset($data['datum_zapisu']) ? $data['datum_zapisu'] : $entry['datum_zapisu'];
-                $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $recalcDate);
+                // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku místo jen od data
+                $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             }
             
             // Audit log
@@ -175,8 +177,8 @@ class CashbookService {
             // Soft delete
             $this->entryModel->deleteEntry($entryId, $userId);
             
-            // Přepočítat balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
+            $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
             // Přečíslovat doklady
             $this->docNumberService->renumberUserYearDocuments($book['uzivatel_id'], $book['rok']);
@@ -206,8 +208,8 @@ class CashbookService {
             // Obnovit
             $this->entryModel->restoreEntry($entryId);
             
-            // Přepočítat balances
-            $this->balanceCalculator->recalculateBalancesAfterDate($entry['pokladni_kniha_id'], $entry['datum_zapisu']);
+            // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku
+            $this->balanceCalculator->recalculateBookBalances($entry['pokladni_kniha_id']);
             
             // Načíst knihu pro přečíslování
             $book = $this->bookModel->getBookById($entry['pokladni_kniha_id']);
