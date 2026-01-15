@@ -2646,6 +2646,8 @@ const CashBookPage = () => {
 
   // 🆕 Potvrzení smazání rozpadu LP kódů
   const handleConfirmDeleteDetail = async () => {
+    console.log('🔵 handleConfirmDeleteDetail ZAČÁTEK, entryToDeleteDetail:', entryToDeleteDetail);
+    
     if (entryToDeleteDetail) {
       try {
         console.log('🗑️ Mazání rozpadu LP pro entry:', entryToDeleteDetail);
@@ -2682,6 +2684,8 @@ const CashBookPage = () => {
           autoClose: 3000
         });
       }
+    } else {
+      console.warn('⚠️ entryToDeleteDetail je NULL - nelze smazat!');
     }
     
     setDeleteDetailDialogOpen(false);
