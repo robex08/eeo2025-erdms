@@ -834,15 +834,24 @@ function handle_cashbook_entry_update_post($config, $input) {
                 error_log("LP warnings: " . implode(', ', $validation['warnings']));
             }
             
-            // ✅ OPRAVA: Spočítat celkovou částku z detail_items a nastavit správně castka_prijem/castka_vydaj
-            $amount = array_sum(array_column($input['detail_items'], 'castka'));
-            
-            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model + nastavit správné částky
-            $masterData = array_merge($input, [
-                'pokladni_kniha_id' => $input['book_id'],
-                'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
-                'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
-            ]);
+            // ✅ FIX: Pokud je detail_items prázdné, NEMĚNIT částku - použít původní z payloadu
+            // Prázdné detail_items = "smazat rozpad LP", ale zachovat původní částku
+            if (empty($input['detail_items'])) {
+                // Použít částky z payloadu (původní hodnoty)
+                $masterData = array_merge($input, [
+                    'pokladni_kniha_id' => $input['book_id']
+                ]);
+            } else {
+                // ✅ OPRAVA: Spočítat celkovou částku z detail_items a nastavit správně castka_prijem/castka_vydaj
+                $amount = array_sum(array_column($input['detail_items'], 'castka'));
+                
+                // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id pro model + nastavit správné částky
+                $masterData = array_merge($input, [
+                    'pokladni_kniha_id' => $input['book_id'],
+                    'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
+                    'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
+                ]);
+            }
             
             // Update master + details (model má vlastní transakci)
             $entryModel->updateEntryWithDetails($input['entry_id'], $masterData, $input['detail_items'], $userData['id']);
