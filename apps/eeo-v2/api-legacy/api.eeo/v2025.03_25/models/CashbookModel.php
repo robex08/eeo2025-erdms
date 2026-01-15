@@ -497,7 +497,16 @@ class CashbookModel {
                 koncovy_stav = ?
             WHERE id = ?
         ");
-        return $stmt->execute(array($transfer, $transfer, $koncovyStav, $bookId));
+        $result = $stmt->execute(array($transfer, $transfer, $koncovyStav, $bookId));
+        
+        // 🆕 KRITICKÉ: Přepočítat zůstatky POLOŽEK v knize po změně počátečního stavu
+        if ($result) {
+            require_once __DIR__ . '/../services/BalanceCalculator.php';
+            $balanceCalc = new BalanceCalculator($this->db);
+            $balanceCalc->recalculateBookBalances($bookId);
+        }
+        
+        return $result;
     }
     
     /**

@@ -4780,7 +4780,8 @@ const Orders25List = () => {
     return getUserStorage('orders25List_showArchived', false);
   });
 
-  // "JEN MOJE" filter - pouze pro SUPERADMIN a ADMINISTRATOR
+  // "JEN MOJE" filter - dostupný pro všechny uživatele
+  // Filtruje objednávky kde je přihlášený uživatel: objednatel, uživatel, garant, příkazce, schvalovatel, fakturant, zveřejnil, dokončil, potvrdil věcnou správnost
   const [showOnlyMyOrders, setShowOnlyMyOrders] = useState(() => {
     return getUserStorage('orders25List_showOnlyMyOrders', false);
   });
@@ -10906,52 +10907,47 @@ const Orders25List = () => {
   };
 
   const clearFilters = () => {
-    // Vymaž všechny filtry ve stavu (pole = prázdné pole)
+    // 🔧 Vymaž column filtry (volá clearColumnFilters logiku)
+    clearColumnFilters();
+    
+    // 🔧 Dodatečné filtry, které clearColumnFilters() neresetuje
     setGlobalFilter('');
-    setStatusFilter([]);
     setUserFilter('');
-    setSelectedObjednatel([]);
-    setSelectedGarant([]);
-    setSelectedSchvalovatel([]);
-    setSelectedPrikazce([]); // 🔧 Reset příkazce filtru
     setDateFromFilter('');
     setDateToFilter('');
     setAmountFromFilter('');
     setAmountToFilter('');
-    setActiveStatusFilter(null); // Zruš také aktivní filter z dlaždic
-    setApprovalFilter([]); // 🔧 Reset toggle filtrů pro stav schválení (pending/approved)
-    setColumnFilters({
-      dt_objednavky: '',
-      cislo_objednavky: '',
-      predmet: '',
-      objednatel: '',
-      stav_objednavky: '',
-      max_cena_s_dph: '',
-      garant: '',
-      schvalovatel: ''
-    });
-    setMultiselectFilters({
-      objednatel: '',
-      garant: '',
-      prikazce: '',
-      schvalovatel: ''
-    }); // 🔧 Reset multiselect filtrů
+    setActiveStatusFilter(null); // Zruš také aktivní filter z dlaždic (dashboard karty)
+    
+    // ⚠️ ROK a MĚSÍC se NERESETUJE - jsou uložené v profilu uživatele
+    // setSelectedYear() - NEMĚNÍME
+    // setSelectedMonth() - NEMĚNÍME
+    
+    // 🔧 Reset dalších filtrů
+    setFilterMaBytZverejneno(false);
+    setFilterByloZverejneno(false);
+    setFilterMimoradneObjednavky(false);
+    setFilterWithInvoices(false);
+    setFilterWithAttachments(false);
+    setShowArchived(false);
+    setShowOnlyMyOrders(false);
 
     // Vymaž všechny filtry z localStorage (používáme getUserKey pro user-specific klíče)
     localStorage.removeItem(getUserKey('orders25List_globalFilter'));
-    localStorage.removeItem(getUserKey('orders25List_statusFilter'));
     localStorage.removeItem(getUserKey('orders25List_userFilter'));
-    localStorage.removeItem(getUserKey('orders25List_selectedObjednatel'));
-    localStorage.removeItem(getUserKey('orders25List_selectedGarant'));
-    localStorage.removeItem(getUserKey('orders25List_selectedSchvalovatel'));
-    localStorage.removeItem(getUserKey('orders25List_selectedPrikazce')); // 🔧 Vymaž příkazce filter
     localStorage.removeItem(getUserKey('orders25_dateFrom'));
     localStorage.removeItem(getUserKey('orders25_dateTo'));
     localStorage.removeItem(getUserKey('orders25List_amountFrom'));
     localStorage.removeItem(getUserKey('orders25List_amountTo'));
     localStorage.removeItem(getUserKey('orders25List_activeStatusFilter'));
-    localStorage.removeItem(getUserKey('orders25List_approvalFilter')); // 🔧 Vymaž i approval filter z localStorage
-    localStorage.removeItem(getUserKey('orders25List_multiselectFilters')); // 🔧 Vymaž multiselect filtry
+    // ⚠️ ROK a MĚSÍC se z localStorage NEMAŽOU - jsou pevně nastavené
+    // localStorage.removeItem(getUserKey('orders25List_selectedYear')); - NEMAZEME
+    // localStorage.removeItem(getUserKey('orders25List_selectedMonth')); - NEMAZEME
+    localStorage.removeItem(getUserKey('orders25List_filterMaBytZverejneno')); // 🔧 Vymaž filtr zveřejnění
+    localStorage.removeItem(getUserKey('orders25List_filterByloZverejneno')); // 🔧 Vymaž filtr zveřejnění
+    localStorage.removeItem(getUserKey('orders25List_filterMimoradneObjednavky')); // 🔧 Vymaž filtr mimořádných objednávek
+    localStorage.removeItem(getUserKey('orders25List_showArchived')); // 🔧 Vymaž filtr archivovaných
+    localStorage.removeItem(getUserKey('orders25List_showOnlyMyOrders')); // 🔧 Vymaž filtr "jen moje"
   };
 
   // Handlery pro jednoduché filtrování přes globalFilter
