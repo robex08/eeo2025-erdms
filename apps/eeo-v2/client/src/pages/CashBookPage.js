@@ -2646,22 +2646,14 @@ const CashBookPage = () => {
 
   // 🆕 Potvrzení smazání rozpadu LP kódů
   const handleConfirmDeleteDetail = async () => {
-    console.log('🔵 handleConfirmDeleteDetail ZAČÁTEK, entryToDeleteDetail:', entryToDeleteDetail);
-    
     if (entryToDeleteDetail) {
       try {
-        console.log('🗑️ Mazání rozpadu LP pro entry:', entryToDeleteDetail);
-        
         // ✅ Připravit payload s prázdným detail_items[] pro backend
         const payload = transformFrontendEntryToDB(entryToDeleteDetail, currentBookId);
         payload.detail_items = []; // Explicitně prázdné pole = smazat detail položky
         
-        console.log('📤 Odesílám payload:', payload);
-        
         // ✅ FIX: Použít db_id (databázové ID), ne frontend id (localStorage)
         const response = await cashbookAPI.updateEntry(entryToDeleteDetail.db_id, payload);
-        
-        console.log('📥 Odpověď z backendu:', response);
         
         // ✅ FIX: Backend vrací {status: 'ok', data: {entry: ...}}
         if (response && (response.entry || response.data?.entry)) {
@@ -2674,10 +2666,8 @@ const CashBookPage = () => {
           setExpandedDetailEntryId(null);
           setDetailEditBuffer([]);
           
-          console.log('🔄 Spouštím silent reload...');
           // ✅ Tichý reload z DB - zajistí aktuální stav bez refresh stránky
           await silentReloadFromDB();
-          console.log('✅ Silent reload dokončen');
         }
       } catch (error) {
         console.error('❌ Chyba při mazání rozpadu LP:', error);
@@ -2686,8 +2676,6 @@ const CashBookPage = () => {
           autoClose: 3000
         });
       }
-    } else {
-      console.warn('⚠️ entryToDeleteDetail je NULL - nelze smazat!');
     }
     
     setDeleteDetailDialogOpen(false);
