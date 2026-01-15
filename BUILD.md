@@ -4,7 +4,7 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.12` *(aktivní verze)*
+**Aktuální DEV verze:** `2.13` *(aktivní verze)*
 
 ## ⚠️ KRITICKÉ UPOZORNĚNÍ - PRODUCTION URL ⚠️
 
@@ -22,13 +22,13 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 # Dashboard build a deploy
 ./build-dashboard.sh --dev --deploy
 
-# EEO v2 frontend + backend (verze 2.12.0)
+# EEO v2 frontend + backend (verze 2.13.0)
 ./build-eeo-v2.sh --dev --all --deploy
 
 # Všechny aplikace najednou
 ./build-all.sh --dev --deploy
 
-# Production build (verze 2.12.0)
+# Production build (verze 2.13.0)
 ./build-dashboard.sh --prod --deploy
 ```
 
@@ -146,9 +146,100 @@ cd /var/www/erdms-dev/docs/scripts-shell
 ./build-all.sh --dev
 ```
 
+## 🆕 Verze 2.13 - DEPLOYED (15.1.2026)
+
+**Stav:** ✅ DEPLOYED TO PRODUCTION  
+**Datum:** 15. ledna 2026  
+**Backup DB:** `/var/www/__BCK_PRODUKCE/2026-01-15/eeo2025_backup_*.sql.gz` (2.9M)
+
+### ⚠️ KRITICKÉ: Správné nastavení verzí při buildu
+
+**PROBLÉM:** Verze se musí aktualizovat na VŠECH místech, ne jen v package.json!
+
+**ŘEŠENÍ - Kontrolní seznam pro změnu verze:**
+
+1. ✅ **BUILD.md** - řádek 7: `**Aktuální DEV verze:** \`2.13\``
+2. ✅ **Client .env soubory:**
+   - `/apps/eeo-v2/client/.env` → `REACT_APP_VERSION=2.13-DEV`
+   - `/apps/eeo-v2/client/.env.development` → `REACT_APP_VERSION=2.13-DEV`
+   - `/apps/eeo-v2/client/.env.production` → `REACT_APP_VERSION=2.13`
+3. ✅ **Client package.json:**
+   - `"version": "2.13.0"`
+   - **HARDCODED ve scriptu:** `build:dev:explicit` → `REACT_APP_VERSION=2.13-DEV`
+4. ✅ **API Legacy .env soubory:**
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env` → `REACT_APP_VERSION=2.13-DEV`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env.production` → `REACT_APP_VERSION=2.13`
+   - `/apps/eeo-v2/api-legacy/api.eeo/.env.example` → aktualizovat komentáře
+
+**PŘÍKAZ pro hromadnou kontrolu:**
+```bash
+grep -r "REACT_APP_VERSION\|\"version\":" \
+  apps/eeo-v2/client/.env* \
+  apps/eeo-v2/client/package.json \
+  apps/eeo-v2/api-legacy/api.eeo/.env* \
+  | grep -v ".example" | grep -v "backup"
+```
+
+### Co je nového v 2.13:
+- 🔧 **API Legacy deployment** - automatické kopírování včetně .env.production
+- ✅ **Oprava verzování** - všechny .env soubory synchronizovány
+- 📧 **Šablony notifikací** - aktualizace URL pro věcnou správnost faktur (ID 115, 117)
+- 🛡️ **Data protection** - datové složky (prilohy, sablony, manualy) nejsou přepisovány
+
+### Deployment postup 2.13:
+
+**Před buildem:**
+```bash
+# 1. Záloha produkční databáze
+mkdir -p /var/www/__BCK_PRODUKCE/$(date +%Y-%m-%d)
+mysqldump -h 10.3.172.11 -u erdms_user -p'***' eeo2025 | \
+  gzip > /var/www/__BCK_PRODUKCE/$(date +%Y-%m-%d)/eeo2025_backup_$(date +%Y%m%d_%H%M%S).sql.gz
+
+# 2. Update verzí VŠUDE (viz kontrolní seznam výše)
+
+# 3. Pokud jsou změny v notifikačních šablonách - sync do produkce:
+mysqldump -h 10.3.172.11 -u erdms_user -p'***' --no-create-info \
+  --skip-add-drop-table --replace EEO-OSTRA-DEV 25_notifikace_sablony \
+  --where="id IN (115, 117)" > /tmp/templates_export.sql
+mysql -h 10.3.172.11 -u erdms_user -p'***' eeo2025 < /tmp/templates_export.sql
+```
+
+**Build a deploy:**
+```bash
+cd /var/www/erdms-dev/docs/scripts-shell
+
+# DEV build (DB: EEO-OSTRA-DEV)
+./build-eeo-v2.sh --dev --all
+
+# PROD build a deploy (DB: eeo2025)
+./build-eeo-v2.sh --prod --all --deploy
+```
+
+**Build script nyní zahrnuje:**
+- ✅ Frontend deployment (rsync, zachovává api/ a api-legacy/)
+- ✅ Node.js Backend deployment
+- ✅ **API Legacy (PHP)** deployment s production .env
+- ✅ Automatické vyloučení datových složek (cache/, logs/, uploads/)
+- ✅ Správné oprávnění (www-data:www-data)
+
+### Databázové změny v 2.13:
+- ✅ Šablony #115, #117: URL změněno z `/invoices-page-25` na `/invoice-evidence`
+- ✅ DB: eeo2025 (produkce), EEO-OSTRA-DEV (vývoj)
+
+### 📖 Deployment checklist:
+- [ ] Záloha DB vytvořena
+- [ ] Verze změněna VŠUDE (6 souborů + BUILD.md)
+- [ ] DEV build otestován
+- [ ] Šablony synchronizovány (pokud byly změny)
+- [ ] PROD build s --deploy
+- [ ] Verifikace verze v aplikaci
+- [ ] Test kritických funkcí
+
+---
+
 ## 🆕 Verze 2.10.0 - Připraveno k nasazení
 
-**Stav:** ✅ READY FOR DEPLOYMENT  
+**Stav:** ✅ SUPERSEDED by 2.13  
 **Datum:** 11. ledna 2026  
 **Git tag:** v2.10-backup-20260111_2042
 
