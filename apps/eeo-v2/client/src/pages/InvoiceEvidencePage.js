@@ -5664,7 +5664,7 @@ export default function InvoiceEvidencePage() {
               {/* Celková cena - dynamicky podle typu entity */}
               <FieldGroup>
                 <FieldLabel>
-                  {selectedType === 'smlouva' ? 'Celkem plnění s DPH' : 'Celková cena'}
+                  {selectedType === 'smlouva' ? 'Celkem čerpáno s DPH' : 'Celková cena'}
                 </FieldLabel>
                 <div style={{ 
                   height: '48px',
@@ -5681,20 +5681,45 @@ export default function InvoiceEvidencePage() {
                   boxSizing: 'border-box'
                 }}>
                   {(() => {
-                    let amount = null;
                     if (selectedType === 'order' && orderData?.max_cena_s_dph) {
-                      amount = orderData.max_cena_s_dph;
-                    } else if (selectedType === 'smlouva' && smlouvaData) {
-                      amount = smlouvaData.hodnota_s_dph || smlouvaData.celkova_castka;
+                      const amount = orderData.max_cena_s_dph;
+                      return new Intl.NumberFormat('cs-CZ', { 
+                        style: 'decimal', 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      }).format(parseFloat(amount)) + ' Kč';
+                    } 
+                    
+                    if (selectedType === 'smlouva' && smlouvaData) {
+                      const cerpano = smlouvaData.cerpano_skutecne || smlouvaData.cerpano_celkem || 0;
+                      const strop = smlouvaData.hodnota_s_dph || 0;
+                      
+                      const formatAmount = (val) => new Intl.NumberFormat('cs-CZ', { 
+                        style: 'decimal', 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      }).format(parseFloat(val));
+                      
+                      if (strop > 0) {
+                        // Smlouva se stropem
+                        return (
+                          <>
+                            {formatAmount(cerpano)} Kč
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 4px' }}>
+                              /
+                            </span>
+                            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                              {formatAmount(strop)} Kč
+                            </span>
+                          </>
+                        );
+                      } else {
+                        // Neomezená smlouva
+                        return formatAmount(cerpano) + ' Kč';
+                      }
                     }
                     
-                    return amount
-                      ? new Intl.NumberFormat('cs-CZ', { 
-                          style: 'decimal', 
-                          minimumFractionDigits: 2, 
-                          maximumFractionDigits: 2 
-                        }).format(parseFloat(amount)) + ' Kč'
-                      : '—';
+                    return '—';
                   })()}
                 </div>
               </FieldGroup>
