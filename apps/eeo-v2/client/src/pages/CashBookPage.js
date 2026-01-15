@@ -4479,6 +4479,8 @@ const CashBookPage = () => {
                         <tbody>
                           {detailEditBuffer.map((item, idx) => {
                             const isValidLp = !item.lp_kod || lpCodes.find(lp => lp.code === item.lp_kod);
+                            // ✅ FIX: Použít lpKodPovinny state (automaticky detekována z pokladny)
+                            const isLpMissing = lpKodPovinny && !item.lp_kod;
                             return (
                               <tr key={idx}>
                                 <td style={{ padding: '8px', border: '1px solid #ddd' }}>
@@ -4527,12 +4529,17 @@ const CashBookPage = () => {
                                     placeholder={lpLoading ? 'Načítání...' : 'LP kód (např. LPIT01)'}
                                     disabled={lpLoading}
                                     loading={lpLoading}
-                                    hasError={!isValidLp}
+                                    hasError={!isValidLp || isLpMissing}
                                     strictSelect={true}
                                   />
                                   {!isValidLp && (
                                     <div style={{ color: '#f44336', fontSize: '10px', marginTop: '2px' }}>
                                       ⚠ Neplatný kód
+                                    </div>
+                                  )}
+                                  {isLpMissing && isValidLp && (
+                                    <div style={{ color: '#f44336', fontSize: '10px', marginTop: '2px' }}>
+                                      ⚠ LP kód je povinný
                                     </div>
                                   )}
                                 </td>
@@ -4604,6 +4611,46 @@ const CashBookPage = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             onClick={() => {
+                              if (window.confirm('Opravdu chcete smazat rozpad LP kódů a vrátit se k jednoduché položce?')) {
+                                // Smazat všechny detail položky - vrátit se na jednoduchou položku
+                                setCashBookEntries(prev => prev.map(e => 
+                                  e.id === entry.id 
+                                    ? { 
+                                        ...e, 
+                                        detailItems: [],
+                                        hasDetails: false,
+                                        lpCode: '', // Vymazat i master LP kód
+                                        changed: true,
+                                        sync_status: 'pending'
+                                      }
+                                    : e
+                                ));
+                                
+                                toast.success('✅ Rozpad LP kódů byl smazán', {
+                                  position: "top-right",
+                                  autoClose: 2000
+                                });
+                                
+                                setExpandedDetailEntryId(null);
+                                setDetailEditBuffer([]);
+                                autoSave();
+                              }
+                            }}
+                            style={{ 
+                              padding: '8px 16px', 
+                              background: '#f44336', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '4px', 
+                              cursor: 'pointer',
+                              fontSize: '13px'
+                            }}
+                            title="Smazat rozpad LP a vrátit se k jednoduché položce"
+                          >
+                            🗑️ Smazat rozpad LP
+                          </button>
+                          <button
+                            onClick={() => {
                               setExpandedDetailEntryId(null);
                               setDetailEditBuffer([]);
                             }}
@@ -4630,15 +4677,15 @@ const CashBookPage = () => {
                                 return;
                               }
                               
+                              // ✅ FIX: Validace LP kódů - použít lpKodPovinny state
                               for (const item of detailEditBuffer) {
-                                if (!item.lp_kod) {
-                                  toast.warning('⚠️ Všechny položky musí mít vybraný LP kód', {
-                                    position: "top-center",
-                                    autoClose: 3000
-                                  });
+                                // Kontrola povinnosti LP kódu (červeně zobrazeno přímo u políčka)
+                                if (lpKodPovinny && !item.lp_kod) {
+                                  // Už je červeně označeno u políčka, nepotřebujeme toast
                                   return;
                                 }
-                                if (!lpCodes.find(lp => lp.code === item.lp_kod)) {
+                                // Kontrola platnosti LP kódu (pokud je vyplněný)
+                                if (item.lp_kod && !lpCodes.find(lp => lp.code === item.lp_kod)) {
                                   toast.error(`❌ LP kód '${item.lp_kod}' není platný`, {
                                     position: "top-center",
                                     autoClose: 3000

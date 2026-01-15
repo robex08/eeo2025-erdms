@@ -664,8 +664,8 @@ function handle_cashbook_entry_create_post($config, $input) {
             // 🆕 MULTI-LP FLOW - model má vlastní transakci
             $validator = new EntryValidator($db);
             
-            // Validace multi-LP
-            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            // ✅ FIX: Předat lpKodPovinny flag do validátoru
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok'], $lpKodPovinny);
             
             if (!$validation['valid']) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));
@@ -822,7 +822,8 @@ function handle_cashbook_entry_update_post($config, $input) {
             // 🆕 MULTI-LP UPDATE - model má vlastní transakci
             $validator = new EntryValidator($db);
             
-            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok']);
+            // ✅ FIX: Předat lpKodPovinny flag do validátoru
+            $validation = $validator->validateEntryWithDetails($input, $input['detail_items'], (int)$book['rok'], $lpKodPovinny);
             
             if (!$validation['valid']) {
                 return api_error(400, 'Validace selhala: ' . implode(', ', $validation['errors']));

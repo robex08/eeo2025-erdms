@@ -78,11 +78,12 @@ class CashbookEntryModel {
             $fields[] = "castka = ?";
             $params[] = $data['castka'];
         }
-        if (isset($data['lp_kod'])) {
+        // ✅ FIX: array_key_exists místo isset - aby se dalo nastavit lp_kod na NULL
+        if (array_key_exists('lp_kod', $data)) {
             $fields[] = "lp_kod = ?";
             $params[] = $data['lp_kod'];
         }
-        if (isset($data['lp_popis'])) {
+        if (array_key_exists('lp_popis', $data)) {
             $fields[] = "lp_popis = ?";
             $params[] = $data['lp_popis'];
         }
@@ -339,11 +340,12 @@ class CashbookEntryModel {
             $fields[] = "ma_detail = ?";
             $params[] = $data['ma_detail'];
         }
-        if (isset($data['lp_kod'])) {
+        // ✅ FIX: array_key_exists místo isset - aby se dalo nastavit lp_kod na NULL
+        if (array_key_exists('lp_kod', $data)) {
             $fields[] = "lp_kod = ?";
             $params[] = $data['lp_kod'];
         }
-        if (isset($data['lp_popis'])) {
+        if (array_key_exists('lp_popis', $data)) {
             $fields[] = "lp_popis = ?";
             $params[] = $data['lp_popis'];
         }
