@@ -1524,11 +1524,7 @@ const CashBookPage = () => {
         prevAssignmentIdRef.current = currentAssignmentId;
 
         if (isCashboxChange) {
-          console.log('🔄 Detekce změny pokladny:', {
-            prev: prevAssignmentIdRef.current,
-            current: currentAssignmentId,
-            action: 'FORCE RELOAD Z DB'
-          });
+          // Force reload z DB při změně pokladny
         }
 
         // 2. Načíst localStorage pro porovnání (pouze pokud NENÍ page reload ANI změna pokladny)
@@ -2447,8 +2443,6 @@ const CashBookPage = () => {
     if (!currentBookId) return;
 
     try {
-      console.log('🔄 Tichý reload z DB...');
-      
       // Načíst čerstvá data z DB (s force_recalc pro přepočet převodu)
       const bookResult = await cashbookAPI.getBook(currentBookId, true);
 
@@ -2481,11 +2475,6 @@ const CashBookPage = () => {
         );
         
         setLastSyncTimestamp(new Date().toISOString());
-        
-        console.log('✅ Tichý reload dokončen:', {
-          entries: transformedEntries.length,
-          balance: book.koncovy_stav
-        });
       }
     } catch (error) {
       console.error('❌ Chyba při tichém reloadu:', error);
@@ -2513,11 +2502,8 @@ const CashBookPage = () => {
 
     // Smazat všechny nalezené klíče
     keysToRemove.forEach(key => {
-      console.log('🗑️ Čištění cache:', key);
       localStorage.removeItem(key);
     });
-
-    console.log(`✅ Vyčištěno ${keysToRemove.length} cache klíčů pro pokladnu ${assignmentId}`);
   }, [userDetail]);
 
   // 🆕 CASHBOX SELECTOR: Handler pro změnu pokladny
@@ -2525,12 +2511,6 @@ const CashBookPage = () => {
     if (!newAssignment || newAssignment.id === mainAssignment?.id) {
       return; // Stejná pokladna, nic nedělat
     }
-
-    console.log('🔄 Přepínání pokladny:', {
-      from: mainAssignment?.id,
-      to: newAssignment.id,
-      cashbox: newAssignment.cislo_pokladny
-    });
 
     // 1️⃣ VYČISTIT CACHE STARÉ POKLADNY (pokud existuje)
     if (mainAssignment?.id) {

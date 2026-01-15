@@ -18,8 +18,6 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
   const [resultData, setResultData] = useState(null); // ✨ Uložení výsledku přepočtu
 
   const handleConfirm = async (e) => {
-    console.log('🔘 KLIKNUTO NA PROVÉST PŘEPOČET - handleConfirm() volán');
-
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -38,11 +36,8 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
 
       // ✅ PO ZMĚNĚ (commit 945cc8e): Používá se pokladna_id místo assignment.id
       const pokladnaId = assignment.pokladna_id;
-      console.log('🔧 Force přepočet START:', { pokladnaId, year });
 
       const result = await onConfirm(pokladnaId, year);
-
-      console.log('🔧 Force přepočet RESPONSE:', result);
 
       if (result && result.status === 'ok') {
         let finalResult = { ...result.data };
@@ -121,7 +116,6 @@ const ForceRenumberDialog = ({ isOpen, onClose, assignment, onConfirm }) => {
   };
 
   const handleClose = () => {
-    console.log('🚪 ZAVÍRÁM DIALOG - handleClose() volán');
     // Reset state při zavírání
     setIsProcessing(false);
     setIsCompleted(false);
