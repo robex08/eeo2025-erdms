@@ -12445,7 +12445,28 @@ const Orders25List = () => {
                 borderBottom: '1px dashed #e2e8f0'
               }}>
                 <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#ea580c', marginBottom: '0.5rem' }}>
-                  6. Přidání faktur
+                  {(() => {
+                    // Zkontrolovat stav workflow objednávky
+                    let workflowStates = [];
+                    try {
+                      if (order.stav_workflow_kod) {
+                        if (typeof order.stav_workflow_kod === 'string') {
+                          workflowStates = JSON.parse(order.stav_workflow_kod);
+                        } else if (Array.isArray(order.stav_workflow_kod)) {
+                          workflowStates = order.stav_workflow_kod;
+                        }
+                      }
+                    } catch (e) {
+                      workflowStates = [];
+                    }
+                    
+                    // Pokud obsahuje ZKONTROLOVANA nebo DOKONCENA, zobrazit plný nadpis
+                    if (workflowStates.includes('ZKONTROLOVANA') || workflowStates.includes('DOKONCENA')) {
+                      return '6.-7. Přidání faktur, ověření věcné správnosti';
+                    }
+                    // Jinak jen "Přidání faktur"
+                    return '6. Přidání faktur';
+                  })()}
                 </div>
                 
                 {/* Seznam všech faktur */}
@@ -12486,42 +12507,116 @@ const Orders25List = () => {
                       }}>
                         {prettyDate(faktura.dt_vytvoreni)}
                       </div>
+                      
+                      {/* Věcná správnost faktury */}
+                      {faktura.dt_potvrzeni_vecne_spravnosti && (
+                        <div style={{
+                          marginTop: '0.35rem',
+                          paddingTop: '0.35rem',
+                          borderTop: '1px dashed #cbd5e1'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1px'
+                          }}>
+                            <div style={{
+                              fontSize: '0.75em',
+                              color: '#0891b2',
+                              fontWeight: 500,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}>
+                              <span>✓</span>
+                              <span>Věcná správnost</span>
+                            </div>
+                            <div style={{ fontSize: '0.85em', fontWeight: 500 }}>
+                              {(() => {
+                                // Sestavit celé jméno s tituly
+                                if (!faktura.potvrdil_vecnou_spravnost_prijmeni) return 'N/A';
+                                const parts = [];
+                                if (faktura.potvrdil_vecnou_spravnost_titul_pred) {
+                                  parts.push(faktura.potvrdil_vecnou_spravnost_titul_pred);
+                                }
+                                if (faktura.potvrdil_vecnou_spravnost_jmeno) {
+                                  parts.push(faktura.potvrdil_vecnou_spravnost_jmeno);
+                                }
+                                parts.push(faktura.potvrdil_vecnou_spravnost_prijmeni);
+                                let fullName = parts.join(' ');
+                                if (faktura.potvrdil_vecnou_spravnost_titul_za) {
+                                  fullName += ', ' + faktura.potvrdil_vecnou_spravnost_titul_za;
+                                }
+                                return fullName;
+                              })()}
+                            </div>
+                          </div>
+                          <div style={{
+                            fontSize: '0.75em',
+                            color: '#64748b',
+                            textAlign: 'right'
+                          }}>
+                            {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
               </div>
             )}
 
-            {/* Potvrdil věcnou správnost */}
-            {order.potvrdil_vecnou_spravnost && (
-              <div style={{
-                marginBottom: '0.75rem',
-                paddingBottom: '0.75rem',
-                borderBottom: '1px dashed #e2e8f0'
-              }}>
+            {/* Potvrdil věcnou správnost - zobrazit pouze pokud NENÍ ve stavu ZKONTROLOVANA nebo DOKONCENA */}
+            {order.potvrdil_vecnou_spravnost && (() => {
+              let workflowStates = [];
+              try {
+                if (order.stav_workflow_kod) {
+                  if (typeof order.stav_workflow_kod === 'string') {
+                    workflowStates = JSON.parse(order.stav_workflow_kod);
+                  } else if (Array.isArray(order.stav_workflow_kod)) {
+                    workflowStates = order.stav_workflow_kod;
+                  }
+                }
+              } catch (e) {
+                workflowStates = [];
+              }
+              
+              // Nezobrazovat samostatný blok, pokud je už zkontrolováno nebo dokončeno
+              if (workflowStates.includes('ZKONTROLOVANA') || workflowStates.includes('DOKONCENA')) {
+                return null;
+              }
+              
+              return (
                 <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '2px'
+                  marginBottom: '0.75rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px dashed #e2e8f0'
                 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#0891b2' }}>
-                    7. Potvrdil věcnou správnost
-                  </div>
-                  <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
-                    {order.potvrdil_vecnou_spravnost.cele_jmeno}
-                  </div>
-                </div>
-                {order.potvrdil_vecnou_spravnost.datum && (
                   <div style={{
-                    fontSize: '0.75em',
-                    color: '#64748b',
-                    textAlign: 'right'
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '2px'
                   }}>
-                    {prettyDate(order.potvrdil_vecnou_spravnost.datum)}
+                    <div style={{ fontWeight: 600, fontSize: '0.85em', color: '#0891b2' }}>
+                      7. Potvrdil věcnou správnost
+                    </div>
+                    <div style={{ fontSize: '0.9em', fontWeight: 500 }}>
+                      {order.potvrdil_vecnou_spravnost.cele_jmeno}
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
+                  {order.potvrdil_vecnou_spravnost.datum && (
+                    <div style={{
+                      fontSize: '0.75em',
+                      color: '#64748b',
+                      textAlign: 'right'
+                    }}>
+                      {prettyDate(order.potvrdil_vecnou_spravnost.datum)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Dokončil */}
             {order.dokoncil && (
