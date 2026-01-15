@@ -124,8 +124,8 @@ if [ "$COMPONENT" = "backend" ] || [ "$COMPONENT" = "all" ]; then
         echo "🛑 Stopping EEO API service..."
         systemctl stop erdms-eeo-api.service 2>/dev/null || echo "⚠️ EEO API service not running"
         
-        # Deploy backend
-        echo "📁 Copying backend to production..."
+        # Deploy backend (Node.js API)
+        echo "📁 Copying Node.js backend to production..."
         mkdir -p /var/www/erdms-platform/apps/eeo-v2/api
         cp -r /var/www/erdms-dev/apps/eeo-v2/api/src /var/www/erdms-platform/apps/eeo-v2/api/
         cp /var/www/erdms-dev/apps/eeo-v2/api/package*.json /var/www/erdms-platform/apps/eeo-v2/api/
@@ -153,6 +153,32 @@ if [ "$COMPONENT" = "backend" ] || [ "$COMPONENT" = "all" ]; then
         # Start EEO API service
         echo "▶️ Starting EEO API service..."
         systemctl start erdms-eeo-api.service 2>/dev/null || echo "⚠️ EEO API service not configured"
+        
+        # Deploy API Legacy (PHP API)
+        echo ""
+        echo "🔧 Deploying API Legacy (PHP) to production..."
+        mkdir -p /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo
+        
+        # Copy PHP files (excluding data folders)
+        echo "📁 Copying PHP API files (excluding data folders)..."
+        rsync -av --delete \
+            --exclude='cache/' \
+            --exclude='logs/' \
+            --exclude='uploads/' \
+            --exclude='temp/' \
+            --exclude='.env' \
+            /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/ \
+            /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/
+        
+        # Copy production .env for API Legacy
+        echo "🔐 Copying production .env for API Legacy..."
+        cp /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.production \
+           /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
+        
+        # Set permissions for API Legacy
+        chown -R www-data:www-data /var/www/erdms-platform/apps/eeo-v2/api-legacy/
+        
+        echo "✅ API Legacy deployed (DB: eeo2025, Version: 2.13)"
         
         echo "✅ EEO v2 Backend deployed to production"
         
