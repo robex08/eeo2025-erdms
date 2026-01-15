@@ -117,27 +117,31 @@ BEGIN
     -- ========================================
     -- AKTUALIZACE SMLOUVY - TŘI TYPY ČERPÁNÍ
     -- ========================================
+    -- LOGIKA:
+    -- - Smlouvy se stropem (hodnota > 0): zbyva = hodnota - cerpano, procento = (cerpano/hodnota)*100
+    -- - Smlouvy bez stropu (hodnota = 0): zbyva = NULL, procento = NULL
+    
     UPDATE 25_smlouvy
     SET 
       -- Požadované čerpání (max_cena_s_dph)
       cerpano_pozadovano = v_cerpano_pozadovano,
-      zbyva_pozadovano = hodnota_s_dph - v_cerpano_pozadovano,
-      procento_pozadovano = IF(hodnota_s_dph > 0, (v_cerpano_pozadovano / hodnota_s_dph) * 100, 0),
+      zbyva_pozadovano = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_pozadovano, NULL),
+      procento_pozadovano = IF(hodnota_s_dph > 0, (v_cerpano_pozadovano / hodnota_s_dph) * 100, NULL),
       
       -- Plánované čerpání (suma položek)
       cerpano_planovano = v_cerpano_planovano,
-      zbyva_planovano = hodnota_s_dph - v_cerpano_planovano,
-      procento_planovano = IF(hodnota_s_dph > 0, (v_cerpano_planovano / hodnota_s_dph) * 100, 0),
+      zbyva_planovano = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_planovano, NULL),
+      procento_planovano = IF(hodnota_s_dph > 0, (v_cerpano_planovano / hodnota_s_dph) * 100, NULL),
       
       -- Skutečné čerpání (faktury)
       cerpano_skutecne = v_cerpano_skutecne,
-      zbyva_skutecne = hodnota_s_dph - v_cerpano_skutecne,
-      procento_skutecne = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, 0),
+      zbyva_skutecne = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_skutecne, NULL),
+      procento_skutecne = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, NULL),
       
       -- Zpětná kompatibilita: cerpano_celkem = skutečné čerpání
       cerpano_celkem = v_cerpano_skutecne,
-      zbyva = hodnota_s_dph - v_cerpano_skutecne,
-      procento_cerpani = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, 0),
+      zbyva = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_skutecne, NULL),
+      procento_cerpani = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, NULL),
       
       posledni_prepocet = NOW()
     WHERE id = v_smlouva_id;
