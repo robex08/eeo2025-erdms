@@ -624,7 +624,16 @@ export async function updateOrderV2(orderId, orderData, token, username) {
       if (errorData.error_code === 'VALIDATION_ERROR') {
 
         const validationMsg = errorData.validation_errors?.join('\n• ') || 'Neznámá validační chyba';
-        throw new Error(`Validační chyba:\n• ${validationMsg}`);
+        const err = new Error(`Validační chyba:\n• ${validationMsg}`);
+        
+        // ✅ Připojit pole errors pro strukturované zobrazení v toast
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          err.validationErrors = errorData.errors;
+        } else if (errorData.validation_errors && Array.isArray(errorData.validation_errors)) {
+          err.validationErrors = errorData.validation_errors;
+        }
+        
+        throw err;
       }
 
       // TRANSFORM_ERROR

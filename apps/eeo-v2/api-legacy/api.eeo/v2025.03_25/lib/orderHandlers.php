@@ -75,6 +75,7 @@ function getUserDataForLockInfo($db, $user_id) {
  */
 function validateAndParseOrderItems($input) {
     $items = [];
+    $errors = [];
     
     // Kontrola, zda existují položky v input datech - podporujeme oba formáty
     $polozky_data = null;
@@ -90,13 +91,13 @@ function validateAndParseOrderItems($input) {
         if (is_string($polozky_data)) {
             $polozky_data = json_decode($polozky_data, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                return false; // Chybný JSON
+                return ['valid' => false, 'errors' => ['Chybný formát JSON pro položky objednávky']]; // Chybný JSON
             }
         }
         
         // Kontrola, že je to pole nebo objekt s polem 'polozky'
         if (!is_array($polozky_data)) {
-            return false;
+            return ['valid' => false, 'errors' => ['Položky objednávky musí být ve formátu pole']];
         }
         
         // Pokud je struktura {"polozky": [...]} (FE formát)
@@ -124,6 +125,18 @@ function validateAndParseOrderItems($input) {
                 // LP na úrovni položky
                 'lp_id' => isset($item['lp_id']) && $item['lp_id'] > 0 ? intval($item['lp_id']) : null
             ];
+            
+            // ✅ VALIDACE DÉLKY LOKALIZAČNÍCH KÓDŮ (max 20 znaků v DB)
+            $item_number = $index + 1;
+            if ($validatedItem['usek_kod'] !== null && mb_strlen($validatedItem['usek_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód ÚSEKU je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['usek_kod']) . ")";
+            }
+            if ($validatedItem['budova_kod'] !== null && mb_strlen($validatedItem['budova_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód BUDOVY je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['budova_kod']) . ")";
+            }
+            if ($validatedItem['mistnost_kod'] !== null && mb_strlen($validatedItem['mistnost_kod']) > 20) {
+                $errors[] = "Položka #{$item_number}: Kód MÍSTNOSTI je příliš dlouhý (max. 20 znaků, zadáno: " . mb_strlen($validatedItem['mistnost_kod']) . ")";
+            }
             
             // Pokud není zadána cena s DPH, vypočítáme ji
             if ($validatedItem['cena_s_dph'] <= 0 && $validatedItem['cena_bez_dph'] > 0) {
@@ -155,7 +168,13 @@ function validateAndParseOrderItems($input) {
         }
     }
     
-    return $items;
+    // ✅ Vrátit chyby pokud nějaké vznikly
+    if (!empty($errors)) {
+        return ['valid' => false, 'errors' => $errors];
+    }
+    
+    // ✅ Zpětná kompatibilita: pokud jsou validní položky, vrátit pole, jinak false
+    return empty($items) ? false : $items;
 }
 
 /**
@@ -3392,6 +3411,21 @@ function handle_orders25_partial_insert($input, $config, $queries) {
         $items_errors = [];
         
         $order_items = validateAndParseOrderItems($input);
+        
+        // ✅ Zpracování chyb validace položek
+        if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+            // Validace selhala - vrátit chyby
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(array(
+                'status' => 'error', 
+                'error_code' => 'VALIDATION_ERROR',
+                'message' => 'Chyba validace položek objednávky',
+                'errors' => $order_items['errors']
+            ));
+            return;
+        }
+        
         if ($order_items !== false && !empty($order_items)) {
             if (insertOrderItems($db, $order_id, $order_items)) {
                 $items_processed = count($order_items);
@@ -3602,6 +3636,21 @@ function handle_orders25_partial_update($input, $config, $queries) {
         // Kontrola, zda jsou v input datech položky k aktualizaci (oba formáty)
         if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
             $order_items = validateAndParseOrderItems($input);
+            
+            // ✅ Zpracování chyb validace položek
+            if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+                // Validace selhala - vrátit chyby
+                $db->rollBack();
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error', 
+                    'error_code' => 'VALIDATION_ERROR',
+                    'message' => 'Chyba validace položek objednávky',
+                    'errors' => $order_items['errors']
+                ));
+                return;
+            }
+            
             if ($order_items !== false) {
                 // saveOrderItems() nejprve smaže všechny stávající položky, pak vloží nové
                 if (saveOrderItems($db, $order_id, $order_items)) {
