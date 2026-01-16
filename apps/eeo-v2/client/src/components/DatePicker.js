@@ -398,10 +398,24 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
           placeholder={placeholder}
           data-datepicker={fieldName}
           $variant={variant}
+          $hasValue={!!value}
         />
 
-        {/* Křížek na zrušení data odstraněn - zbytečný */}
-        {/* Tlačítko "Dnes" odstraněno - výchozí hodnota se nastavuje při otevření */}
+        {/* Tlačítko pro smazání - zobrazuje se pouze když je hodnota vyplněná */}
+        {value && !disabled && (
+          <ClearButtonCompact
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClear(e);
+            }}
+            title="Smazat datum"
+            $variant={variant}
+          >
+            ×
+          </ClearButtonCompact>
+        )}
       </InputWithIcon>
 
       {isOpen && !disabled && createPortal(
@@ -471,6 +485,31 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
               );
             })}
           </CalendarGrid>
+
+          <CalendarFooter>
+            <CalendarButton 
+              type="button"
+              className="today" 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleToday(e);
+              }}
+            >
+              📅 Dnes
+            </CalendarButton>
+            <CalendarButton 
+              type="button"
+              className="clear" 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleClear(e);
+              }}
+            >
+              🗑️ Smazat
+            </CalendarButton>
+          </CalendarFooter>
         </DateCalendarPopup>,
         document.body
       )}
@@ -504,17 +543,15 @@ const InputWithIcon = styled.div`
 const DateInputField = styled.input`
   width: 100%;
   display: block;
-  height: ${props => props.$variant === 'compact' ? '38px' : '48px'};
-  padding: ${props => props.$variant === 'compact' ? '0.375rem 0.5rem' : '0.5rem 2.75rem'};
-  padding-left: ${props => props.$variant === 'compact' ? '0.5rem' : '2.75rem'};
-  padding-right: ${props => props.$variant === 'compact' ? '0.5rem' : '0.75rem'};
+  padding: ${props => props.$variant === 'compact' ? '0.375rem 0.625rem' : '0.5rem 2.75rem'};
+  padding-left: ${props => props.$variant === 'compact' ? '0.625rem' : '2.75rem'};
+  padding-right: ${props => props.$variant === 'compact' && props.$hasValue ? '1.5rem' : props.$variant === 'compact' ? '0.625rem' : '0.75rem'};
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#cbd5e1'};
   border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : 'white'};
   color: ${props => props.disabled ? '#6b7280' : '#1e293b'};
   font-size: ${props => props.$variant === 'compact' ? '0.75rem' : '0.95rem'};
-  font-weight: 400;
-  line-height: 1;
+  font-weight: ${props => props.$hasValue ? '500' : '400'};
   cursor: text;
   transition: all 0.2s ease;
   box-sizing: border-box;
@@ -533,6 +570,41 @@ const DateInputField = styled.input`
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const ClearButtonCompact = styled.button`
+  position: absolute;
+  right: ${props => props.$variant === 'compact' ? '4px' : '8px'};
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  border-radius: ${props => props.$variant === 'compact' ? '3px' : '4px'};
+  width: ${props => props.$variant === 'compact' ? '18px' : '24px'};
+  height: ${props => props.$variant === 'compact' ? '18px' : '24px'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: ${props => props.$variant === 'compact' ? '16px' : '18px'};
+  font-weight: normal;
+  line-height: 1;
+  transition: all 0.15s ease;
+  z-index: 2;
+  padding: 0;
+  opacity: 0.7;
+
+  &:hover {
+    background: transparent;
+    color: #64748b;
+    transform: translateY(-50%) scale(1.15);
+    opacity: 1;
+  }
+
+  &:active {
+    transform: translateY(-50%) scale(0.9);
   }
 `;
 
