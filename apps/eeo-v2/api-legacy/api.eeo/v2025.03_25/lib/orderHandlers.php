@@ -211,7 +211,13 @@ function insertOrderItems($db, $order_id, $items) {
             $params[":usek_kod_{$index}"] = $item['usek_kod'];
             $params[":budova_kod_{$index}"] = $item['budova_kod'];
             $params[":mistnost_kod_{$index}"] = $item['mistnost_kod'];
-            $params[":poznamka_{$index}"] = $item['poznamka'];
+            
+            // ✅ Uložit poznamka jako JSON s poznamka_lokalizace
+            $poznamkaJson = json_encode([
+                'poznamka_lokalizace' => isset($item['poznamka']) ? $item['poznamka'] : ''
+            ], JSON_UNESCAPED_UNICODE);
+            $params[":poznamka_{$index}"] = $poznamkaJson;
+            
             // LP na úrovni položky
             $params[":lp_id_{$index}"] = isset($item['lp_id']) ? $item['lp_id'] : null;
         }
@@ -284,18 +290,19 @@ function loadOrderItems($db, $order_id) {
         
         error_log("loadOrderItems: Found " . count($items) . " items for order_id = " . $order_id);
         
-        // Obohacení každé položky o parsovaná data z poznámky
+        // ✅ poznamka vrátit jako plain text (extrahovat poznamka_lokalizace z JSON)
         foreach ($items as &$item) {
-            // Přidání parsovaných dat z poznámky pro pohodlí FE (přejmenováno na poznamka_umisteni)
             if (!empty($item['poznamka'])) {
                 $poznamkaData = json_decode($item['poznamka'], true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($poznamkaData)) {
-                    $item['poznamka_umisteni'] = $poznamkaData;
+                    // ✅ Extrahovat poznamka_lokalizace a vrátit jako plain string
+                    $item['poznamka'] = isset($poznamkaData['poznamka_lokalizace']) ? $poznamkaData['poznamka_lokalizace'] : '';
                 } else {
-                    $item['poznamka_umisteni'] = null;
+                    // Není validní JSON → nech to jak je (fallback pro stará data)
+                    // už je to string, tak OK
                 }
             } else {
-                $item['poznamka_umisteni'] = null;
+                $item['poznamka'] = '';
             }
         }
         
