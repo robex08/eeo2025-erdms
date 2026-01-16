@@ -1966,8 +1966,16 @@ const Invoices25List = () => {
       
       // Stav faktury - pouze pokud není "Všechny stavy"
       const stavValue = typeof columnFilters.stav === 'object' ? columnFilters.stav?.value : columnFilters.stav;
+      console.log('🔍 DEBUG STAV:', { 
+        'columnFilters.stav': columnFilters.stav, 
+        'typeof': typeof columnFilters.stav, 
+        'stavValue': stavValue 
+      });
       if (stavValue && stavValue.toString().trim() !== '') {
         apiParams.filter_stav = stavValue;
+        console.log('✅ Odesílám filter_stav:', stavValue);
+      } else {
+        console.log('❌ Stav filtr prázdný nebo neplatný');
       }
       
       // Uživatel - celé jméno (LIKE - hledá v jméně i příjmení)
@@ -3442,7 +3450,10 @@ const Invoices25List = () => {
                     <div className="select-filter-wrapper">
                       <CustomSelect
                         value={columnFilters.stav || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, stav: value})}
+                        onChange={(value) => {
+                          console.log('🔄 STAV onChange:', value, typeof value);
+                          setColumnFilters({...columnFilters, stav: value});
+                        }}
                         options={stavOptions}
                         field="stav"
                         selectStates={selectStates}

@@ -104,9 +104,9 @@ const CustomSelectDropdown = styled.div`
   position: fixed;
   z-index: 99999;
   background: white;
-  border: 2px solid #3b82f6;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   max-height: 300px;
   overflow-y: auto;
   min-width: 200px;
@@ -120,26 +120,27 @@ const CustomSelectDropdown = styled.div`
   will-change: scroll-position;
   transform: translateZ(0); /* Force hardware acceleration */
 
-  /* Lepší scrollbar styling */
+  /* Stylový scrollbar */
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f9fafb;
+  scrollbar-color: #cbd5e1 #f8fafc;
 
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
   }
 
   &::-webkit-scrollbar-track {
-    background: #f9fafb;
-    border-radius: 4px;
+    background: #f8fafc;
+    border-radius: 3px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
+    background: #cbd5e1;
+    border-radius: 3px;
+    transition: background 0.2s;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
+    background: #94a3b8;
   }
 `;
 
