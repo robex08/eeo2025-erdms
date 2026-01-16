@@ -52,12 +52,12 @@ const PERMISSION_HIERARCHY_MAP = {
   
   // EDIT permissions
   'ORDER_EDIT_OWN': {
-    expand: 'ORDER_EDIT_ALL',      // Rozšíření: může editovat i jiné
-    upgrade: 'ORDER_CREATE'        // Povýšení: může vytvářet
+    expand: null,                  // ❌ NESMÍ auto-expand na ALL (subordinate práva řeší department-based)
+    upgrade: null                  // ❌ NESMÍ auto-upgrade (subordinate práva řeší department-based)
   },
   'ORDER_EDIT_ALL': {
     expand: null,                  // Už je ALL
-    upgrade: 'ORDER_DELETE_ALL'    // Může povýšit na mazání všech
+    upgrade: null                  // ❌ NESMÍ upgradovat (příliš nebezpečné)
   },
   
   // DELETE permissions
