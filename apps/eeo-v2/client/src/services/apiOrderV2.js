@@ -401,16 +401,11 @@ export async function getOrderV2(orderId, token, username, enriched = true, arch
       ? `/order-v2/${orderId}/enriched`
       : `/order-v2/${orderId}`;
 
-    // 🔍 DEBUG: Celý URL endpoint
-    // const fullUrl = `${process.env.REACT_APP_API2_BASE_URL}${endpoint}`;
-
     const response = await apiOrderV2.post(endpoint, {
       token,
       username,
       archivovano: archivovano // ✅ Použití parametru místo hardcoded 0
     });
-
-    // 🔍🔍🔍 DEBUG: RAW RESPONSE Z BACKENDU - KOMPLETNÍ DATA 🔍🔍🔍
 
     const result = validateAPIResponse(response, 'getOrderV2');
 
