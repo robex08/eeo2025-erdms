@@ -1189,6 +1189,21 @@ function handle_order_v2_update($input, $config, $queries) {
             if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
                 // Validace a parsování položek (lp_id je součástí validateAndParseOrderItems)
                 $order_items = validateAndParseOrderItems($input);
+                
+                // ✅ Zpracování chyb validace položek
+                if (is_array($order_items) && isset($order_items['valid']) && $order_items['valid'] === false) {
+                    // Validace selhala - vrátit chyby
+                    $db->rollBack();
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error', 
+                        'error_code' => 'VALIDATION_ERROR',
+                        'message' => 'Chyba validace položek objednávky',
+                        'errors' => $order_items['errors']
+                    ));
+                    return;
+                }
+                
                 if ($order_items !== false) {
                     // saveOrderItems pattern: smaž stávající + vlož nové
                     if (saveOrderV2Items($db, $order_id, $order_items)) {
