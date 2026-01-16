@@ -1672,6 +1672,7 @@ export async function listInvoices25({
   filter_datum_doruceni,  // 📋 Sloupcový filtr - datum doručení
   filter_datum_vystaveni,  // 📋 Sloupcový filtr - datum vystavení
   filter_datum_splatnosti,  // 📋 Sloupcový filtr - datum splatnosti
+  filter_dt_aktualizace,  // 📋 Sloupcový filtr - datum aktualizace
   filter_stav,  // 📋 Sloupcový filtr - stav faktury
   filter_vytvoril_uzivatel,  // 📋 Sloupcový filtr - uživatel
   filter_fa_typ,  // 📋 Sloupcový filtr - typ faktury (BEZNA, ZALOHOVA, ...)
@@ -1715,6 +1716,7 @@ export async function listInvoices25({
     if (filter_datum_doruceni !== undefined && filter_datum_doruceni !== '') payload.filter_datum_doruceni = filter_datum_doruceni;
     if (filter_datum_vystaveni !== undefined && filter_datum_vystaveni !== '') payload.filter_datum_vystaveni = filter_datum_vystaveni;
     if (filter_datum_splatnosti !== undefined && filter_datum_splatnosti !== '') payload.filter_datum_splatnosti = filter_datum_splatnosti;
+    if (filter_dt_aktualizace !== undefined && filter_dt_aktualizace !== '') payload.filter_dt_aktualizace = filter_dt_aktualizace;
     if (filter_stav !== undefined && filter_stav !== '') payload.filter_stav = filter_stav;
     if (filter_vytvoril_uzivatel !== undefined && filter_vytvoril_uzivatel !== '') payload.filter_vytvoril_uzivatel = filter_vytvoril_uzivatel;
     if (filter_fa_typ !== undefined && filter_fa_typ !== '') payload.filter_fa_typ = filter_fa_typ;

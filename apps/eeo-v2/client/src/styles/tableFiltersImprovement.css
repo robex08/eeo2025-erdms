@@ -1,0 +1,248 @@
+/* KONZISTENTNÍ FILTROVACÍ ŘÁDEK - NOVÝ DESIGN */
+.filter-row {
+  background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%) !important;
+  border-top: 3px solid #2563eb !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1) !important;
+}
+
+.filter-cell {
+  padding: 1rem 0.75rem !important;
+  min-height: 70px !important;
+  vertical-align: middle !important;
+  background: inherit !important;
+  border: none !important;
+}
+
+/* KONZISTENTNÍ WRAPPER STYLY */
+.text-filter-wrapper,
+.date-filter-wrapper,
+.select-filter-wrapper,
+.amount-filter-wrapper,
+.action-filter-wrapper {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+/* TEXT FILTRY */
+.text-filter-wrapper {
+  position: relative;
+}
+
+.filter-icon {
+  position: absolute;
+  left: 0.75rem;
+  color: #64748b;
+  font-size: 0.875rem;
+  z-index: 2;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.filter-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 2.5rem 0 2.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: white;
+  color: #1f2937;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.filter-input:hover {
+  border-color: #2563eb;
+}
+
+.filter-input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.filter-clear {
+  position: absolute;
+  right: 0.5rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 3;
+}
+
+.filter-clear:hover {
+  background: #dc2626;
+  transform: scale(1.1);
+}
+
+/* DATUM FILTRY */
+.date-filter-wrapper input {
+  width: 100%;
+  height: 48px !important;
+  padding: 0.75rem 1rem !important;
+  border: 2px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  background: white !important;
+  transition: all 0.2s ease !important;
+  box-sizing: border-box !important;
+}
+
+.date-filter-wrapper input:hover {
+  border-color: #2563eb !important;
+}
+
+.date-filter-wrapper input:focus {
+  outline: none !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+}
+
+/* SELECT FILTRY */
+.select-filter-wrapper > div {
+  width: 100%;
+}
+
+.select-filter-wrapper div[data-custom-select] {
+  height: 48px !important;
+}
+
+.select-filter-wrapper > div > div:first-of-type {
+  height: 48px !important;
+  min-height: 48px !important;
+  padding: 0.75rem 3rem 0.75rem 1rem !important;
+  border: 2px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  background: white !important;
+  transition: all 0.2s ease !important;
+  box-sizing: border-box !important;
+}
+
+.select-filter-wrapper > div > div:first-of-type:hover {
+  border-color: #2563eb !important;
+}
+
+/* ČÁSTKA FILTRY */
+.amount-filter-wrapper {
+  gap: 0.5rem;
+  position: relative;
+}
+
+.amount-input {
+  flex: 1;
+  height: 48px;
+  padding: 0.75rem 0.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: white;
+  color: #1f2937;
+  text-align: center;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.amount-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.amount-input:hover {
+  border-color: #2563eb;
+}
+
+.amount-input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.amount-separator {
+  color: #64748b;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.amount-clear {
+  position: absolute;
+  right: -0.5rem;
+  top: -0.5rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 3;
+}
+
+.amount-clear:hover {
+  background: #dc2626;
+  transform: scale(1.1);
+}
+
+/* AKCE TLAČÍTKO */
+.clear-all-button {
+  width: 48px;
+  height: 48px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-all-button:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+/* RESPONSIVE DESIGN */
+@media (max-width: 1200px) {
+  .filter-cell {
+    padding: 0.75rem 0.5rem !important;
+    min-height: 60px !important;
+  }
+  
+  .filter-input, .amount-input, .clear-all-button,
+  .select-filter-wrapper > div > div:first-of-type,
+  .date-filter-wrapper input {
+    height: 42px !important;
+    min-height: 42px !important;
+    font-size: 0.8rem !important;
+  }
+}

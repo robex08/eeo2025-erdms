@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE VZORU Z OrderForm25.js
@@ -37,7 +37,7 @@ const CustomSelectButton = styled.div`
   width: 100%;
   height: 48px;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '1px 1.75rem 1px 2.5rem' : '1px 1.75rem 1px 0.875rem'};
+  padding: ${props => props.hasIcon ? '1px 2.5rem 1px 2.5rem' : '1px 2.5rem 1px 0.875rem'};
   border: 2px solid ${props => props.hasError ? '#dc2626' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
@@ -66,28 +66,28 @@ const CustomSelectButton = styled.div`
   position: relative;
   transition: all 0.2s ease;
 
-  /* Custom arrow */
+  /* Custom arrow - větší a lépe viditelná */
   appearance: none;
   -moz-appearance: none;
   -webkit-appearance: none;
   background-image: ${props => {
     if (props.disabled) {
       return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
     } else if (props.hasError) {
       return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
     } else {
       return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
+        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
+        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
     }
   }};
   background-repeat: no-repeat;
-  background-position: right 0.5rem center;
-  background-size: 16px 16px;
+  background-position: right 0.75rem center;
+  background-size: 20px 20px;
 
   &:hover {
     border-color: ${props => props.disabled ? '#e5e7eb' : (props.hasError ? '#dc2626' : '#3b82f6')};
@@ -338,7 +338,7 @@ const CustomSelect = ({
   const filteredOptions = filterOptions(options, searchTerm, field);
   
   // Aktualizuj pozici dropdownu při otevření a při scrollu/resize
-  useEffect(() => {
+  React.useLayoutEffect(() => {
     const updatePosition = () => {
       if (isOpen && buttonRef.current) {
         const rect = buttonRef.current.getBoundingClientRect();
@@ -395,9 +395,10 @@ const CustomSelect = ({
       if (field === 'druh_objednavky_kod') {
         return (opt.value || opt.kod || opt.id) === value || opt === value;
       }
-      // Pro typ faktury porovnávej podle id
-      if (field === 'fa_typ') {
-        return opt.id === value || opt === value;
+      // Pro filtry faktur porovnávej podle value
+      if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' ||
+          field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola') {
+        return (opt.value || opt.id) === value || opt === value;
       }
       // Pro rok, období a sekci (ProfilePage) porovnávej podle value
       if (field === 'vychozi_rok' || field === 'vychozi_obdobi' || field === 'vychozi_sekce_po_prihlaseni') {
@@ -546,9 +547,20 @@ const CustomSelect = ({
     } else if (field === 'druh_objednavky_kod') {
       // Pro druhy objednávky ukládej value (což je kod_stavu)
       optionValue = option.value || option.kod || option.id || option;
-    } else if (field === 'fa_typ') {
-      // Pro typ faktury ukládej id
-      optionValue = option.id || option;
+    } else if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
+               field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating') {
+      // Pro faktury - vracíme PŘÍMO hodnotu (string)
+      optionValue = option.value || option.id || option;
+      onChange(optionValue); // PŘÍMO hodnota, ne event wrapper
+      setSelectStates(prev => ({ ...prev, [field]: false }));
+      setSearchStates(prev => ({ ...prev, [field]: '' }));
+      if (setTouchedSelectFields) {
+        setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
+      }
+      if (onBlur) {
+        onBlur(field, optionValue);
+      }
+      return;
     } else if (field === 'vychozi_garant_id' || field === 'vychozi_prikazce_id') {
       // 🆕 Pro garanta a příkazce (ProfilePage) ukládej value
       optionValue = option.value || option.id || option.user_id || option;
@@ -757,6 +769,21 @@ const CustomSelect = ({
             <X />
           </ClearButton>
         )}
+        {!disabled && (
+          <span style={{
+            position: 'absolute',
+            right: '12px',
+            top: '50%',
+            transform: `translateY(-50%) rotate(${isOpen ? '180deg' : '0deg'})`,
+            transition: 'transform 0.2s ease',
+            color: '#6b7280',
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            <ChevronDown size={16} />
+          </span>
+        )}
       </CustomSelectButton>
 
       {isOpen && !disabled && createPortal(
@@ -870,8 +897,9 @@ const CustomSelect = ({
                 ? ((option.id || option.kod) === value || option === value)
                 : field === 'druh_objednavky_kod'
                 ? ((option.value || option.kod || option.id) === value || option === value)
-                : field === 'fa_typ'
-                ? (option.id === value || option === value)
+                : field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
+                  field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating'
+                ? ((option.value || option.id) === value || option === value)
                 : ((option.id || option.user_id || option.uzivatel_id) === value || option === value);
 
               const isHighlighted = highlightedIndex === index;
