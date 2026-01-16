@@ -7,8 +7,8 @@
 }
 
 .filter-cell {
-  padding: 1rem 0.75rem !important;
-  min-height: 70px !important;
+  padding: 0.5rem 0.5rem !important;
+  min-height: 50px !important;
   vertical-align: middle !important;
   background: inherit !important;
   border: none !important;
@@ -22,7 +22,7 @@
 .action-filter-wrapper {
   position: relative;
   width: 100%;
-  height: 48px;
+  height: 36px;
   display: flex;
   align-items: center;
 }
@@ -45,10 +45,10 @@
 .filter-input {
   width: 100%;
   height: 100%;
-  padding: 0 2.5rem 0 2.5rem;
+  padding: 0 2rem 0 2rem;
   border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: 6px;
+  font-size: 0.825rem;
   font-weight: 500;
   background: white;
   color: #1f2937;
@@ -73,35 +73,35 @@
 
 .filter-clear {
   position: absolute;
-  right: 0.5rem;
-  background: #ef4444;
-  color: white;
+  right: 0.4rem;
+  background: transparent;
+  color: #9ca3af;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   cursor: pointer;
   transition: all 0.2s ease;
   z-index: 3;
 }
 
 .filter-clear:hover {
-  background: #dc2626;
+  color: #6b7280;
   transform: scale(1.1);
 }
 
 /* DATUM FILTRY */
 .date-filter-wrapper input {
   width: 100%;
-  height: 48px !important;
-  padding: 0.75rem 1rem !important;
+  height: 36px !important;
+  padding: 0.5rem 0.75rem !important;
   border: 2px solid #e2e8f0 !important;
-  border-radius: 8px !important;
-  font-size: 0.875rem !important;
+  border-radius: 6px !important;
+  font-size: 0.825rem !important;
   font-weight: 500 !important;
   background: white !important;
   transition: all 0.2s ease !important;
@@ -124,24 +124,39 @@
 }
 
 .select-filter-wrapper div[data-custom-select] {
-  height: 48px !important;
+  height: 36px !important;
 }
 
-.select-filter-wrapper > div > div:first-of-type {
-  height: 48px !important;
-  min-height: 48px !important;
-  padding: 0.75rem 3rem 0.75rem 1rem !important;
+/* CustomSelect button styling override */
+.select-filter-wrapper > div > div:first-of-type,
+.filter-row .select-filter-wrapper > div > div:first-of-type {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0.5rem 2.5rem 0.5rem 0.75rem !important;
   border: 2px solid #e2e8f0 !important;
-  border-radius: 8px !important;
-  font-size: 0.875rem !important;
+  border-radius: 6px !important;
+  font-size: 0.825rem !important;
   font-weight: 500 !important;
   background: white !important;
   transition: all 0.2s ease !important;
   box-sizing: border-box !important;
+  line-height: 1.2 !important;
 }
 
 .select-filter-wrapper > div > div:first-of-type:hover {
   border-color: #2563eb !important;
+}
+
+/* CustomSelect dropdown arrow */
+.select-filter-wrapper svg[data-lucide="chevron-down"] {
+  width: 16px !important;
+  height: 16px !important;
+  right: 0.75rem !important;
+}
+
+/* CustomSelect dropdown positioning */
+.select-filter-wrapper .dropdown-container {
+  margin-top: 2px !important;
 }
 
 /* ČÁSTKA FILTRY */
@@ -152,11 +167,11 @@
 
 .amount-input {
   flex: 1;
-  height: 48px;
-  padding: 0.75rem 0.5rem;
+  height: 36px;
+  padding: 0.5rem 0.4rem;
   border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: 6px;
+  font-size: 0.825rem;
   font-weight: 500;
   background: white;
   color: #1f2937;
@@ -188,36 +203,36 @@
 
 .amount-clear {
   position: absolute;
-  right: -0.5rem;
-  top: -0.5rem;
-  background: #ef4444;
-  color: white;
+  right: -0.4rem;
+  top: -0.4rem;
+  background: transparent;
+  color: #9ca3af;
   border: none;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   cursor: pointer;
   transition: all 0.2s ease;
   z-index: 3;
 }
 
 .amount-clear:hover {
-  background: #dc2626;
+  color: #6b7280;
   transform: scale(1.1);
 }
 
 /* AKCE TLAČÍTKO */
 .clear-all-button {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   background: #ef4444;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
