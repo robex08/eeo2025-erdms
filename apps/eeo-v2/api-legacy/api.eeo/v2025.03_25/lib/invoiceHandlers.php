@@ -1234,6 +1234,14 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
+    // 🐛 DEBUG: Log úplný payload
+    error_log("INVOICE LIST PAYLOAD DEBUG: " . json_encode($input, JSON_UNESCAPED_UNICODE));
+    if (isset($input['filter_dt_aktualizace'])) {
+        error_log("PAYLOAD CONTAINS filter_dt_aktualizace: " . $input['filter_dt_aktualizace']);
+    } else {
+        error_log("PAYLOAD MISSING filter_dt_aktualizace!");
+    }
+    
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
@@ -1289,12 +1297,14 @@ function handle_invoices25_list($input, $config, $queries) {
             'objednavka_id', 'fa_dorucena', 'fa_cislo_vema', 'datum_od', 'datum_do', 
             'stredisko', 'organizace_id', 'usek_id', 'filter_status',
             // Nové filtry pro globální vyhledávání a sloupcové filtry
-            'search_term', 'cislo_objednavky', 'filter_datum_doruceni', 'filter_datum_vystaveni', 'filter_datum_splatnosti',
+            'search_term', 'cislo_objednavky', 'filter_datum_doruceni', 'filter_datum_vystaveni', 'filter_datum_splatnosti', 'filter_dt_aktualizace',
             'filter_stav', 'filter_vytvoril_uzivatel', 'filter_fa_typ',
             // Filtry pro částku a přílohy
             'castka_min', 'castka_max', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
-            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec'
+            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
+            // ŘAZENÍ - order_by a order_direction  
+            'order_by', 'order_direction'
         );
         foreach ($filter_keys as $key) {
             if (isset($input[$key]) && !isset($filters[$key])) {
@@ -1896,8 +1906,39 @@ function handle_invoices25_list($input, $config, $queries) {
             $sql .= " HAVING $having_ma_prilohy";
         }
         
-        // Řazení podle data aktualizace (nejnovější změny nahoře)
-        $sql .= " ORDER BY f.dt_aktualizace DESC, f.id DESC";
+        // Řazení podle FE parametrů (order_by + order_direction)
+        $order_by = isset($filters['order_by']) ? $filters['order_by'] : 'dt_aktualizace';
+        $order_direction = isset($filters['order_direction']) ? strtoupper($filters['order_direction']) : 'DESC';
+        
+        // Validace order_direction
+        if (!in_array($order_direction, array('ASC', 'DESC'))) {
+            $order_direction = 'DESC';
+        }
+        
+        // Mapování FE pole na DB sloupce + validace
+        $valid_order_fields = array(
+            'dt_aktualizace' => 'f.dt_aktualizace',
+            'cislo_faktury' => 'f.fa_cislo_vema', 
+            'fa_typ' => 'f.fa_typ',
+            'cislo_objednavky' => 'o.cislo',
+            'datum_doruceni' => 'f.fa_datum_doruceni',
+            'datum_vystaveni' => 'f.fa_datum_vystaveni',
+            'datum_splatnosti' => 'f.fa_datum_splatnosti',
+            'castka' => 'f.fa_castka',
+            'status' => 'f.fa_zaplacena', // status se počítá podle fa_zaplacena + splatnosti
+            'vytvoril_uzivatel' => 'u_vytvoril.prijmeni',
+            'fa_predana_zam_jmeno' => 'u_predana.prijmeni'
+        );
+        
+        if (isset($valid_order_fields[$order_by])) {
+            $db_field = $valid_order_fields[$order_by];
+            $sql .= " ORDER BY $db_field $order_direction, f.id DESC";
+            error_log("Invoices25 LIST: Using ORDER BY: $db_field $order_direction");
+        } else {
+            // Neplatné pole -> default řazení 
+            $sql .= " ORDER BY f.dt_aktualizace DESC, f.id DESC";
+            error_log("Invoices25 LIST: Invalid order_by '$order_by', using default ORDER BY f.dt_aktualizace DESC");
+        }
         
         // Přidat LIMIT pouze pokud FE požaduje stránkování
         if ($use_pagination) {
