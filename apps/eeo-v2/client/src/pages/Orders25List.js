@@ -12810,7 +12810,31 @@ const Orders25List = () => {
                     </ListItemHeader>
 
                     {/* Tagy pod názvem - úsek, budova, místnost, poznámka umístění */}
-                    {(polozka.mistnost_kod || polozka.budova_kod || polozka.usek_kod || polozka.poznamka_umisteni) && (
+                    {(() => {
+                      // Parsování poznámky k místu z poznamka_umisteni objektu nebo JSON pole poznamka
+                      let poznamkaKMistu = null;
+                      
+                      // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
+                      if (polozka.poznamka_umisteni && typeof polozka.poznamka_umisteni === 'object') {
+                        poznamkaKMistu = polozka.poznamka_umisteni.poznamka_lokalizace || null;
+                      }
+                      // 2. Fallback: parsovat z JSON pole poznamka
+                      else if (polozka.poznamka) {
+                        try {
+                          const parsed = JSON.parse(polozka.poznamka);
+                          poznamkaKMistu = parsed.poznamka_lokalizace || null;
+                        } catch {
+                          // Pokud parsování selže, poznámku nepoužít
+                          poznamkaKMistu = null;
+                        }
+                      }
+                      
+                      // Zobraz pouze pokud existuje alespoň jeden lokalizační údaj
+                      if (!polozka.mistnost_kod && !polozka.budova_kod && !polozka.usek_kod && !poznamkaKMistu && !polozka.poznamka_umisteni) {
+                        return null;
+                      }
+                      
+                      return (
                       <div style={{
                         display: 'flex',
                         flexWrap: 'wrap',
@@ -12862,23 +12886,9 @@ const Orders25List = () => {
                             Místnost: {highlightSearchText(polozka.mistnost_kod, globalFilter)}
                           </span>
                         )}
-
-                        {polozka.poznamka_umisteni && (
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            fontSize: '0.75em',
-                            fontStyle: 'italic',
-                            backgroundColor: '#fef3c7',
-                            color: '#92400e',
-                            borderRadius: '4px',
-                            border: '1px solid #fde68a'
-                          }}>
-                            {highlightSearchText(polozka.poznamka_umisteni, globalFilter)}
-                          </span>
-                        )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     <ListItemMeta>
                       {/* Počet */}
@@ -12905,15 +12915,51 @@ const Orders25List = () => {
                         </ListItemMetaItem>
                       )}
 
-                      {/* Cena bez DPH celkem */}
-                      {polozka.cena_bez_dph && (
-                        <ListItemMetaItem>
-                          <span style={{ fontWeight: 500 }}>Bez DPH:</span>
-                          <span style={{ color: '#64748b' }}>
-                            {parseFloat(polozka.cena_bez_dph).toLocaleString('cs-CZ')}&nbsp;Kč
-                          </span>
-                        </ListItemMetaItem>
-                      )}
+                      {/* Poznámka k místu NEBO Cena bez DPH celkem */}
+                      {(() => {
+                        // Parsování poznámky k místu
+                        let poznamkaKMistu = null;
+                        
+                        // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
+                        if (polozka.poznamka_umisteni && typeof polozka.poznamka_umisteni === 'object') {
+                          poznamkaKMistu = polozka.poznamka_umisteni.poznamka_lokalizace || null;
+                        }
+                        // 2. Fallback: parsovat z JSON pole poznamka
+                        else if (polozka.poznamka) {
+                          try {
+                            const parsed = JSON.parse(polozka.poznamka);
+                            poznamkaKMistu = parsed.poznamka_lokalizace || null;
+                          } catch {
+                            poznamkaKMistu = null;
+                          }
+                        }
+                        
+                        // Pokud existuje poznámka, zobraz ji MÍSTO ceny bez DPH
+                        if (poznamkaKMistu && poznamkaKMistu.trim()) {
+                          return (
+                            <ListItemMetaItem>
+                              <span style={{ fontWeight: 500 }}>Poznámka k místu:</span>
+                              <span style={{ color: '#92400e', fontStyle: 'italic' }}>
+                                {poznamkaKMistu}
+                              </span>
+                            </ListItemMetaItem>
+                          );
+                        }
+                        
+                        // Jinak zobraz cenu bez DPH (původní chování)
+                        if (polozka.cena_bez_dph) {
+                          return (
+                            <ListItemMetaItem>
+                              <span style={{ fontWeight: 500 }}>Bez DPH:</span>
+                              <span style={{ color: '#64748b' }}>
+                                {parseFloat(polozka.cena_bez_dph).toLocaleString('cs-CZ')}&nbsp;Kč
+                              </span>
+                            </ListItemMetaItem>
+                          );
+                        }
+                        
+                        return null;
+                      })()}
 
                       {/* DPH procento */}
                       {polozka.dph_procento && (

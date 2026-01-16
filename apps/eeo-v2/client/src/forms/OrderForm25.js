@@ -3909,16 +3909,37 @@ const transformBackendDataToFrontend = (backendData) => {
   if (backendData.polozky && !backendData.polozky_objednavky) {
     // 🔧 FIX: Normalizovat ceny z DB - zajistit že jsou ve formátu "12345.67" (string s tečkou, 2 des. místa)
     transformed.polozky_objednavky = Array.isArray(backendData.polozky) 
-      ? backendData.polozky.map(item => ({
-          ...item,
-          cena_bez_dph: typeof item.cena_bez_dph === 'number' 
-            ? item.cena_bez_dph.toFixed(2) 
-            : (parseFloat((item.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
-          cena_s_dph: typeof item.cena_s_dph === 'number' 
-            ? item.cena_s_dph.toFixed(2) 
-            : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
-          sazba_dph: parseInt(item.sazba_dph) || 21
-        }))
+      ? backendData.polozky.map(item => {
+          // ✅ Parsovat poznámku STEJNĚ jako v OrderList25
+          let poznamkaText = null;
+          
+          // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
+          if (item.poznamka_umisteni && typeof item.poznamka_umisteni === 'object') {
+            poznamkaText = item.poznamka_umisteni.poznamka_lokalizace || null;
+          }
+          // 2. Fallback: parsovat z JSON pole poznamka
+          else if (item.poznamka) {
+            try {
+              const parsed = JSON.parse(item.poznamka);
+              poznamkaText = parsed.poznamka_lokalizace || null;
+            } catch {
+              // Pokud parsování selže, poznámku nepoužít
+              poznamkaText = null;
+            }
+          }
+          
+          return {
+            ...item,
+            cena_bez_dph: typeof item.cena_bez_dph === 'number' 
+              ? item.cena_bez_dph.toFixed(2) 
+              : (parseFloat((item.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
+            cena_s_dph: typeof item.cena_s_dph === 'number' 
+              ? item.cena_s_dph.toFixed(2) 
+              : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
+            sazba_dph: parseInt(item.sazba_dph) || 21,
+            poznamka: poznamkaText  // ✅ Rozparsovaná poznámka jako plain text
+          };
+        })
       : [];
     delete transformed.polozky; // Vyčistit BE pole
   }
@@ -6378,7 +6399,9 @@ function OrderForm25() {
             async (orderId) => {
               try {
                 const response = await getOrderV2(orderId, token, username);
-                return response?.data || null;
+                // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+                const rawData = response?.data || null;
+                return rawData ? transformBackendDataToFrontend(rawData) : null;
               } catch (error) {
                 // 🌲 HIERARCHIE: Pokud backend vrátil 403, nemáme právo
                 if (error?.status === 403 || error?.response?.status === 403) {
@@ -6420,6 +6443,37 @@ function OrderForm25() {
 
         // 🧹 VYČISTIT objekty ve fa_strediska_kod (pokud tam jsou)
         const cleanedDraftData = { ...draftData.formData };
+        
+        // ✅ TRANSFORMOVAT POLOŽKY Z DRAFTU - parsovat poznámky z JSON
+        if (cleanedDraftData.polozky_objednavky && Array.isArray(cleanedDraftData.polozky_objednavky)) {
+          cleanedDraftData.polozky_objednavky = cleanedDraftData.polozky_objednavky.map(item => {
+            // Parsovat poznámku stejně jako při načítání z backendu
+            let poznamkaText = null;
+            
+            if (item.poznamka_umisteni && typeof item.poznamka_umisteni === 'object') {
+              poznamkaText = item.poznamka_umisteni.poznamka_lokalizace || null;
+            } else if (item.poznamka) {
+              // Pokud je poznámka JSON string, parsuj
+              if (typeof item.poznamka === 'string' && item.poznamka.trim().startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(item.poznamka);
+                  poznamkaText = parsed.poznamka_lokalizace || null;
+                } catch {
+                  // Pokud parsování selže, použij jako plain text
+                  poznamkaText = item.poznamka;
+                }
+              } else {
+                // Už je plain text
+                poznamkaText = item.poznamka;
+              }
+            }
+            
+            return {
+              ...item,
+              poznamka: poznamkaText  // ✅ Vždy plain text
+            };
+          });
+        }
 
         // 🛡️ CRITICAL: Pokud je to NOVÁ objednávka (bez ID), vyčisti faktury!
         // Faktury z předchozí objednávky by se NIKDY neměly dostat do nové objednávky
@@ -9486,7 +9540,53 @@ function OrderForm25() {
       return;
     }
 
-    // � INTERCEPT: Kontrola zda uživatel chce dokončit objednávku
+    // ✅ VALIDACE DÉLEK LOKALIZAČNÍCH POLÍ (max 20 znaků)
+    const newValidationErrors = {};
+    let hasLocationLengthErrors = false;
+    
+    if (formData.polozky_objednavky && Array.isArray(formData.polozky_objednavky)) {
+      formData.polozky_objednavky.forEach((polozka, index) => {
+        // Kontrola ÚSEK
+        if (polozka.usek_kod && polozka.usek_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_usek_kod`] = `Kód ÚSEKU je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.usek_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+        
+        // Kontrola BUDOVA
+        if (polozka.budova_kod && polozka.budova_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_budova_kod`] = `Kód BUDOVY je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.budova_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+        
+        // Kontrola MÍSTNOST
+        if (polozka.mistnost_kod && polozka.mistnost_kod.length > 20) {
+          newValidationErrors[`polozka_${index}_mistnost_kod`] = `Kód MÍSTNOSTI je příliš dlouhý (max. 20 znaků, zadáno: ${polozka.mistnost_kod.length})`;
+          hasLocationLengthErrors = true;
+        }
+      });
+    }
+    
+    if (hasLocationLengthErrors) {
+      setValidationErrors(newValidationErrors);
+      setHasTriedToSubmit(true);
+      
+      // Najít první chybné pole a scrollovat k němu
+      const firstErrorField = Object.keys(newValidationErrors)[0];
+      if (firstErrorField) {
+        setTimeout(() => {
+          const element = document.querySelector(`[name="${firstErrorField}"]`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+      
+      showToast && showToast(formatToastMessage('Některá pole obsahují příliš dlouhé hodnoty. Zkontrolujte označená pole.', 'error'), { type: 'error' });
+      setIsSaving(false);
+      return;
+    }
+
+    // 🛡️ INTERCEPT: Kontrola zda uživatel chce dokončit objednávku
     // Pokud je zaškrtnutý checkbox dokončení a objednávka NENÍ ve stavu DOKONCENA,
     // otevře se modal s náhledem finanční kontroly před potvrzením
     const jeCheckboxZaskrtnut = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
@@ -9550,19 +9650,21 @@ function OrderForm25() {
 
         // Položky (pokud existují)
         if (formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-          orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-            popis: polozka.popis || '',
-            // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
-            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            sazba_dph: parseInt(polozka.sazba_dph) || 21,
-            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            usek_kod: polozka.usek_kod || null,
-            budova_kod: polozka.budova_kod || null,
-            mistnost_kod: polozka.mistnost_kod || null,
-            poznamka: polozka.poznamka || null,
-            // 🎯 LP kód na úrovni položky
-            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-          }));
+          orderData.polozky = formData.polozky_objednavky.map(polozka => {
+            return {
+              popis: polozka.popis || '',
+              // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
+              cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              sazba_dph: parseInt(polozka.sazba_dph) || 21,
+              cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              usek_kod: polozka.usek_kod || null,
+              budova_kod: polozka.budova_kod || null,
+              mistnost_kod: polozka.mistnost_kod || null,
+              poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+              // 🎯 LP kód na úrovni položky
+              lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+            };
+          });
         }
 
         // ✅ KRITICKÉ: dt_objednavky = aktuální datum a čas VŽDY při každém uložení
@@ -9590,11 +9692,14 @@ function OrderForm25() {
           const freshOrderData = await getOrderV2(parseInt(formData.id || formData.id), token, username, true);
 
           if (freshOrderData?.id) {
+            // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+            const transformedFreshData = transformBackendDataToFrontend(freshOrderData);
+            
             // Aktualizovat formData s novými daty z DB
             setFormData(prev => {
               const updatedData = {
                 ...prev,
-                ...freshOrderData
+                ...transformedFreshData
               };
               
               // 📸 AKTUALIZOVAT SNAPSHOT po úspěšném uložení archivované objednávky
@@ -9604,7 +9709,7 @@ function OrderForm25() {
             });
 
             // Uložit do konceptu
-            saveDraft(freshOrderData, {
+            saveDraft(transformedFreshData, {
               isOrderSavedToDB: true,
               savedOrderId: freshOrderData.id,
               isChanged: false
@@ -9788,20 +9893,22 @@ function OrderForm25() {
       if (isUpdateOperation) {
         // UPDATE - poslat položky pokud existují (i ve fázi 2)
         if (formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
-          orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-            popis: polozka.popis || '',
-            // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
-            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            sazba_dph: parseInt(polozka.sazba_dph) || 21,
-            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
-            usek_kod: polozka.usek_kod || null,
-            budova_kod: polozka.budova_kod || null,
-            mistnost_kod: polozka.mistnost_kod || null,
-            poznamka: polozka.poznamka || null,
-            // 🎯 LP kód na úrovni položky
-            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-          }));
+          orderData.polozky = formData.polozky_objednavky.map(polozka => {
+            return {
+              popis: polozka.popis || '',
+              // 🔧 FIX: Odstranit mezery a formátování před parseFloat (parseFloat("67 000") vrací 67, ne 67000!)
+              cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              sazba_dph: parseInt(polozka.sazba_dph) || 21,
+              cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+              // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
+              usek_kod: polozka.usek_kod || null,
+              budova_kod: polozka.budova_kod || null,
+              mistnost_kod: polozka.mistnost_kod || null,
+              poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+              // 🎯 LP kód na úrovni položky
+              lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+            };
+          });
 
           addDebugLog('info', 'SAVE', 'polozky-transform', `Transformace položek objednávky (UPDATE fáze ${currentPhase}): ${formData.polozky_objednavky.length} položek -> přímo do root jako 'polozky' pole`);
         } else {
@@ -9811,17 +9918,19 @@ function OrderForm25() {
         }
       } else if (currentPhase >= 3 && formData.polozky_objednavky && formData.polozky_objednavky.length > 0) {
         // INSERT ve fázi 3+ - poslat položky
-        orderData.polozky = formData.polozky_objednavky.map(polozka => ({
-          popis: polozka.popis || '',
-          cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-          sazba_dph: parseInt(polozka.sazba_dph) || 21,
-          cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-          usek_kod: polozka.usek_kod || null,
-          budova_kod: polozka.budova_kod || null,
-          mistnost_kod: polozka.mistnost_kod || null,
-          poznamka: polozka.poznamka || null,
-          lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
-        }));
+        orderData.polozky = formData.polozky_objednavky.map(polozka => {
+          return {
+            popis: polozka.popis || '',
+            cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+            sazba_dph: parseInt(polozka.sazba_dph) || 21,
+            cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
+            usek_kod: polozka.usek_kod || null,
+            budova_kod: polozka.budova_kod || null,
+            mistnost_kod: polozka.mistnost_kod || null,
+            poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
+            lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
+          };
+        });
         addDebugLog('info', 'SAVE', 'polozky-transform-insert', `Transformace položek objednávky (INSERT fáze ${currentPhase}): ${formData.polozky_objednavky.length} položek`);
       } else {
         addDebugLog('info', 'SAVE', 'polozky-skip', `Položky se neposílají - INSERT v FÁZI ${currentPhase}`);
@@ -11657,7 +11766,9 @@ function OrderForm25() {
         // 🎯 OPRAVA: RELOAD objednávky po UPDATE pro získání enriched dat (včetně financovani.lp_nazvy)
         // Backend UPDATE nevrací enriched financování → musíme zavolat GET s enriched=true
         try {
-          const freshOrderData = await getOrderV2(formData.id, token, username, true); // enriched=true
+          const freshOrderDataRaw = await getOrderV2(formData.id, token, username, true); // enriched=true
+          // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+          const freshOrderData = transformBackendDataToFrontend(freshOrderDataRaw);
           
           if (freshOrderData?.financovani?.lp_nazvy && Array.isArray(freshOrderData.financovani.lp_nazvy)) {
             const lpOptions = freshOrderData.financovani.lp_nazvy
@@ -11749,14 +11860,14 @@ function OrderForm25() {
         try {
           draftManager.setCurrentUser(user_id);
 
-          // 🔥 FIX: Mergovat updatedFormDataImmediate (obsahuje položky + financování) + parsedUpdateData (DB data)
+          // 🔥 FIX: Mergovat parsedUpdateData (transformovaná data) + updatedFormDataImmediate
           // 🔧 BUGFIX: Zachovat objednatel_id z původního formData, protože backend ho při UPDATE NEVRACÍ
           // 🔥 KRITICKÁ OPRAVA: Zachovat financování z PŮVODNÍHO formData (před UPDATE), ne z odpovědi BE
           const mergedDraftData = {
-            ...updatedFormDataImmediate, // Původní data s položkami
-            ...parsedUpdateData,         // Přepsat DB daty (workflow, atd.) + PARSOVANÉ FINANCOVÁNÍ!
-            // Zachovat položky a faktury z původního formData
-            polozky_objednavky: updatedFormDataImmediate.polozky_objednavky || [],
+            ...parsedUpdateData,         // ✅ TRANSFORMOVANÁ data (poznámky už parsované)
+            ...updatedFormDataImmediate, // Původní data pokud něco chybí
+            // ✅ POUŽÍT TRANSFORMOVANÉ položky z parsedUpdateData (obsahují rozparsované poznámky)
+            polozky_objednavky: parsedUpdateData.polozky_objednavky || updatedFormDataImmediate.polozky_objednavky || [],
             faktury: fakturyWithAttachments.length > 0 ? fakturyWithAttachments : updatedFormDataImmediate.faktury || [], // ✅ PŘÍLOHY!
             // ✅ ZACHOVAT objednatel_id + osobní údaje objednatele z původního formData
             objednatel_id: updatedFormDataImmediate.objednatel_id || parsedUpdateData.objednatel_id,
@@ -11965,7 +12076,58 @@ function OrderForm25() {
           
           addDebugLog('info', 'LOCK', 'order-owned-by-me', `Lock info přítomen, ale locked=false (moje objednávka)`);
         }
-      } else {
+      } 
+      // ✅ Validační chyby - zobrazit strukturovaně jako na screenu
+      else if (error.validationErrors && Array.isArray(error.validationErrors) && error.validationErrors.length > 0) {
+        const formattedErrors = (
+          <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+            <div style={{ 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              marginBottom: '12px', 
+              color: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <AlertCircle size={20} color="#ff4d4f" style={{ flexShrink: 0 }} />
+              <span>Pro uložení je nutné vyplnit následující položky:</span>
+            </div>
+            <div style={{ 
+              marginBottom: '10px',
+              padding: '10px',
+              backgroundColor: '#fff1f0',
+              borderRadius: '4px'
+            }}>
+              <div style={{ 
+                fontWeight: '600', 
+                fontSize: '13px',
+                color: '#d32f2f',
+                marginBottom: '6px'
+              }}>
+                Detaily objednávky
+              </div>
+              {error.validationErrors.map((err, errIdx) => (
+                <div key={errIdx} style={{ 
+                  fontSize: '12px',
+                  color: '#666',
+                  marginLeft: '8px',
+                  marginTop: '4px',
+                  display: 'flex',
+                  alignItems: 'flex-start'
+                }}>
+                  <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+                  <span>{err}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+        
+        showToast && showToast(formattedErrors, { type: 'error' });
+        addDebugLog('error', 'VALIDATION', 'field-errors', `Validační chyby: ${error.validationErrors.join(', ')}`);
+      }
+      else {
         const errorMsg = translateErrorMessageShort(error.message);
         showToast && showToast(`Nepodařilo se uložit objednávku: ${errorMsg}`, { type: 'error' });
       }
@@ -12291,7 +12453,9 @@ function OrderForm25() {
 
 
       // ✅ V2 API: Načti objednávku s enriched daty
-      const dbOrder = await getOrderV2(orderId, token, username, true);
+      const dbOrderRaw = await getOrderV2(orderId, token, username, true);
+      // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+      const dbOrder = transformBackendDataToFrontend(dbOrderRaw);
 
       addDebugLog('info', 'REVALIDATE', 'api-response', `API odpověď pro ID ${orderId}: ${JSON.stringify(dbOrder, null, 2)}`);
 
@@ -14890,9 +15054,30 @@ function OrderForm25() {
   const updatePolozka = (id, field, value) => {
     setFormData(prev => ({
       ...prev,
-      polozky_objednavky: (prev.polozky_objednavky || []).map(polozka => {
+      polozky_objednavky: (prev.polozky_objednavky || []).map((polozka, index) => {
         if (polozka.id === id) {
           const updatedPolozka = { ...polozka, [field]: value };
+
+          // ✅ Validace délky lokalizačních polí při změně
+          if (field === 'usek_kod' || field === 'budova_kod' || field === 'mistnost_kod') {
+            const fieldKey = `polozka_${index}_${field}`;
+            
+            // Pokud je hodnota v pořádku (≤ 20 znaků), odebrat případnou chybu
+            if (!value || value.length <= 20) {
+              setValidationErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[fieldKey];
+                return newErrors;
+              });
+            } 
+            // Pokud je hodnota příliš dlouhá, přidat chybu
+            else if (value.length > 20) {
+              setValidationErrors(prev => ({
+                ...prev,
+                [fieldKey]: `Kód ${field === 'usek_kod' ? 'ÚSEKU' : field === 'budova_kod' ? 'BUDOVY' : 'MÍSTNOSTI'} je příliš dlouhý (max. 20 znaků, zadáno: ${value.length})`
+              }));
+            }
+          }
 
           // Pokud se mění cena bez DPH nebo DPH sazba, přepočítej cenu s DPH
           if (field === 'cena_bez_dph' || field === 'sazba_dph') {
@@ -16325,7 +16510,9 @@ function OrderForm25() {
       addDebugLog('info', 'STATUS-RELOAD', 'start', `Načítám aktuální stav objednávky ID: ${formData.id}, uživatel: ${userDetail.id}`);
 
       // ✅ V2 API: GET order by ID (enriched=false pro rychlejší reload)
-      const orderData = await getOrderV2(parseInt(formData.id), token, username, false);
+      const orderDataRaw = await getOrderV2(parseInt(formData.id), token, username, false);
+      // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
+      const orderData = transformBackendDataToFrontend(orderDataRaw);
 
       if (!orderData || !orderData.id) {
         throw new Error('Nepodařilo se načíst stav objednávky z databáze');
