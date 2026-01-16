@@ -8773,51 +8773,27 @@ const Orders25List = () => {
 
   // Permission checks
   const canEdit = (order) => {
-    // 🐛🐛🐛 GLOBAL DEBUG - ODSTRAŇ PO OPRAVĚ 🐛🐛🐛
-    const isDebugOrder = order.cislo_objednavky?.includes('0124') || order.cislo_objednavky?.includes('0121');
-    
-    if (isDebugOrder) {
-      console.log('⚠️ canEdit CALLED:', { 
-        cislo: order.cislo_objednavky, 
-        id: order.id,
-        currentUserId,
-        schvalovatel: order.schvalovatel_id,
-        permissions: {
-          EDIT_ALL: hasPermission('ORDER_EDIT_ALL'),
-          MANAGE: hasPermission('ORDER_MANAGE'),
-          EDIT_SUB: hasPermission('ORDER_EDIT_SUBORDINATE'),
-          READ_SUB: hasPermission('ORDER_READ_SUBORDINATE'),
-          EDIT_OWN: hasPermission('ORDER_EDIT_OWN'),
-          ORDER_2025: hasPermission('ORDER_2025')
-        }
-      });
-    }
-    
     if (!hasPermission) return false;
 
     // Koncepty může editovat každý kdo má základní práva (je to jeho vlastní koncept)
     if (order.isDraft || order.je_koncept) {
-      if (isDebugOrder) console.log('🔍 DRAFT block');
       return hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_EDIT_OWN');
     }
 
     // Uživatelé s ORDER_*_ALL oprávněními mohou editovat všechny objednávky
     if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE')) {
-      if (isDebugOrder) console.log('🔍 EDIT_ALL block - returning TRUE');
       return true;
     }
 
     // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS
     // ORDER_EDIT_SUBORDINATE = plná editace objednávek kolegů z úseku
     if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      if (isDebugOrder) console.log('🔍 EDIT_SUBORDINATE block - returning TRUE');
       return true;
     }
 
     // 🏢 ORDER_READ_SUBORDINATE = POUZE čtení, ŽÁDNÁ editace
     // KRITICKÉ: Pokud má READ_SUBORDINATE a NENÍ v roli → FALSE (read-only)
     if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
-      if (isDebugOrder) console.log('🔍 Vstupuji do ORDER_READ_SUBORDINATE bloku');
       // Zkontrolovat, zda je v roli na této konkrétní objednávce
       const isInOrderRole = (
         order.objednatel_id === currentUserId ||
@@ -8834,61 +8810,19 @@ const Orders25List = () => {
         order.potvrdil_vecnou_spravnost_id === currentUserId
       );
       
-      // 🐛 DEBUG logging (odstraň po opravě)
-      if (order.cislo_objednavky?.includes('0124') || order.cislo_objednavky?.includes('0121')) {
-        console.log('🔍 canEdit DEBUG ORDER_READ_SUB block:', {
-          order_id: order.cislo_objednavky,
-          currentUserId,
-          isInOrderRole,
-          hasREAD_SUB: hasPermission('ORDER_READ_SUBORDINATE'),
-          hasEDIT_SUB: hasPermission('ORDER_EDIT_SUBORDINATE'),
-          hasEDIT_OWN: hasPermission('ORDER_EDIT_OWN'),
-          all_role_fields: {
-            objednatel: order.objednatel_id,
-            uzivatel: order.uzivatel_id,
-            garant: order.garant_uzivatel_id,
-            schvalovatel: order.schvalovatel_id,
-            prikazce: order.prikazce_id,
-            uzivatel_akt: order.uzivatel_akt_id,
-            odesilatel: order.odesilatel_id,
-            dodavatel_potvrdil: order.dodavatel_potvrdil_id,
-            zverejnil: order.zverejnil_id,
-            fakturant: order.fakturant_id,
-            dokoncil: order.dokoncil_id,
-            potvrdil_vecnou: order.potvrdil_vecnou_spravnost_id
-          }
-        });
-      }
-      
       // Pokud NENÍ v roli → FALSE (nesmí editovat, i když má ORDER_EDIT_OWN)
       if (!isInOrderRole) {
-        if (order.cislo_objednavky?.includes('0124') || order.cislo_objednavky?.includes('0121')) {
-          console.log('🚫 RETURN FALSE - není v roli:', order.cislo_objednavky);
-        }
         return false;
       }
       // Pokud JE v roli → pokračuj normální kontrolou (ORDER_EDIT_OWN apod.)
-      if (order.cislo_objednavky?.includes('0124') || order.cislo_objednavky?.includes('0121')) {
-        console.log('✅ JE v roli, pokračuji na ORDER_EDIT_OWN check:', order.cislo_objednavky);
-      }
     }
 
     // Uživatelé s ORDER_*_OWN oprávněními (včetně ORDER_2025) mohou editovat pouze své objednávky
     if (hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_2025')) {
-      const canEditOwn = order.objednatel_id === currentUserId ||
+      return order.objednatel_id === currentUserId ||
              order.uzivatel_id === currentUserId ||
              order.garant_uzivatel_id === currentUserId ||
              order.schvalovatel_id === currentUserId;
-      
-      if (order.cislo_objednavky?.includes('0124') || order.cislo_objednavky?.includes('0121')) {
-        console.log('🔍 ORDER_EDIT_OWN block:', {
-          order_id: order.cislo_objednavky,
-          canEditOwn,
-          returning: canEditOwn
-        });
-      }
-      
-      return canEditOwn;
     }
 
     return false;
