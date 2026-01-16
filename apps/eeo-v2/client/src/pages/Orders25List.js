@@ -12824,8 +12824,8 @@ const Orders25List = () => {
                           const parsed = JSON.parse(polozka.poznamka);
                           poznamkaKMistu = parsed.poznamka_lokalizace || null;
                         } catch {
-                          // Pokud parsování selže, poznámku nepoužít
-                          poznamkaKMistu = null;
+                          // Pokud parsování selže, použij jako plain text
+                          poznamkaKMistu = polozka.poznamka;
                         }
                       }
                       
@@ -12930,7 +12930,8 @@ const Orders25List = () => {
                             const parsed = JSON.parse(polozka.poznamka);
                             poznamkaKMistu = parsed.poznamka_lokalizace || null;
                           } catch {
-                            poznamkaKMistu = null;
+                            // Pokud parsování selže, použij jako plain text
+                            poznamkaKMistu = polozka.poznamka;
                           }
                         }
                         

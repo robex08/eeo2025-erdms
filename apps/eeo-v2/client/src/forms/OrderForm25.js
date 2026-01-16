@@ -3910,24 +3910,6 @@ const transformBackendDataToFrontend = (backendData) => {
     // 🔧 FIX: Normalizovat ceny z DB - zajistit že jsou ve formátu "12345.67" (string s tečkou, 2 des. místa)
     transformed.polozky_objednavky = Array.isArray(backendData.polozky) 
       ? backendData.polozky.map(item => {
-          // ✅ Parsovat poznámku STEJNĚ jako v OrderList25
-          let poznamkaText = null;
-          
-          // 1. Priorita: poznamka_umisteni.poznamka_lokalizace (backend enriched formát)
-          if (item.poznamka_umisteni && typeof item.poznamka_umisteni === 'object') {
-            poznamkaText = item.poznamka_umisteni.poznamka_lokalizace || null;
-          }
-          // 2. Fallback: parsovat z JSON pole poznamka
-          else if (item.poznamka) {
-            try {
-              const parsed = JSON.parse(item.poznamka);
-              poznamkaText = parsed.poznamka_lokalizace || null;
-            } catch {
-              // Pokud parsování selže, poznámku nepoužít
-              poznamkaText = null;
-            }
-          }
-          
           return {
             ...item,
             cena_bez_dph: typeof item.cena_bez_dph === 'number' 
@@ -3937,7 +3919,7 @@ const transformBackendDataToFrontend = (backendData) => {
               ? item.cena_s_dph.toFixed(2) 
               : (parseFloat((item.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2),
             sazba_dph: parseInt(item.sazba_dph) || 21,
-            poznamka: poznamkaText  // ✅ Rozparsovaná poznámka jako plain text
+            poznamka: item.poznamka || ''  // ✅ Backend vrací poznamka přímo jako plain text
           };
         })
       : [];
@@ -6447,19 +6429,16 @@ function OrderForm25() {
         // ✅ TRANSFORMOVAT POLOŽKY Z DRAFTU - parsovat poznámky z JSON
         if (cleanedDraftData.polozky_objednavky && Array.isArray(cleanedDraftData.polozky_objednavky)) {
           cleanedDraftData.polozky_objednavky = cleanedDraftData.polozky_objednavky.map(item => {
-            // Parsovat poznámku stejně jako při načítání z backendu
-            let poznamkaText = null;
+            // ✅ JEDNODUŠE: Pokud je poznámka JSON string, parsuj a extrahuj poznamka_lokalizace
+            let poznamkaText = '';
             
-            if (item.poznamka_umisteni && typeof item.poznamka_umisteni === 'object') {
-              poznamkaText = item.poznamka_umisteni.poznamka_lokalizace || null;
-            } else if (item.poznamka) {
-              // Pokud je poznámka JSON string, parsuj
+            if (item.poznamka) {
               if (typeof item.poznamka === 'string' && item.poznamka.trim().startsWith('{')) {
                 try {
                   const parsed = JSON.parse(item.poznamka);
-                  poznamkaText = parsed.poznamka_lokalizace || null;
+                  poznamkaText = parsed.poznamka_lokalizace || '';
                 } catch {
-                  // Pokud parsování selže, použij jako plain text
+                  // Není JSON → použij jak je
                   poznamkaText = item.poznamka;
                 }
               } else {
@@ -6933,17 +6912,23 @@ function OrderForm25() {
   const canShowUnlockPhase3Button = canUnlockAnything || (currentPhase >= 3 && currentPhase <= 6);
 
   // 🎯 NOVÝ useEffect: Reset stavu při změně editOrderId (proklik z jiné objednávky)
+  const previousEditOrderIdRef = useRef(null);
+  
   useEffect(() => {
     // Pokud se změní editOrderId (např. z notifikace nebo universal search), resetuj stav
-    if (editOrderId) {
-      // NOTE: unlockOrderIdRef removed - previous order unlock no longer tracked
+    // ALE pouze pokud se skutečně změnilo ID (ne při mount nebo stejné ID)
+    if (editOrderId && previousEditOrderIdRef.current !== null && previousEditOrderIdRef.current !== editOrderId) {
+      console.log('🔄 EditOrderId se změnilo:', previousEditOrderIdRef.current, '→', editOrderId);
       
       setIsDraftLoaded(false);
       setIsInitialized(false);
       // 🔧 KRITICKÉ: Reset protection flag aby se při F5 správně načetl draft
       onDataLoadedCalledRef.current = null;
     }
-  }, [editOrderId, token, username]);
+    
+    // Zapamatuj si current ID
+    previousEditOrderIdRef.current = editOrderId;
+  }, [editOrderId]);
 
   // Zpracování editace objednávky z URL parametru
   // 🚨 DEPRECATED: Data se nyní načítají v initializeForm() PŘED prvním renderem
@@ -7021,8 +7006,19 @@ function OrderForm25() {
           // ✅ V2 API: Načti objednávku s enriched daty
           let dbOrder;
           try {
+            console.log('🔥🔥🔥 VOLÁM getOrderV2 s ID:', editOrderId);
             dbOrder = await getOrderV2(editOrderId, token, username, true);
+            console.log('🔥🔥🔥 ODPOVĚĎ Z getOrderV2:', dbOrder);
+            if (dbOrder && dbOrder.polozky) {
+              console.log('🔥🔥🔥 POLOŽKY Z API - RAW DATA:', dbOrder.polozky);
+              dbOrder.polozky.forEach((item, idx) => {
+                console.log(`🔥🔥🔥 POLOŽKA ${idx + 1}:`, item);
+              });
+            } else {
+              console.log('⚠️⚠️⚠️ ŽÁDNÉ POLOŽKY V ODPOVĚDI Z API!');
+            }
           } catch (error) {
+            console.error('❌❌❌ CHYBA PŘI VOLÁNÍ getOrderV2:', error);
             // 🌲 HIERARCHIE: Zachyť 403 error (hierarchie zamítla přístup)
             if (error?.status === 403 || error?.response?.status === 403) {
               showToast?.(
@@ -7115,10 +7111,9 @@ function OrderForm25() {
 
           addDebugLog('success', 'EDIT', 'url-loaded', `Objednávka načtena z URL parametru: ${dbOrder.cislo_objednavky || dbOrder.ev_cislo}`);
 
-          // 🐛 DEBUG: Co BE vrací
-          if (dbOrder.faktury && dbOrder.faktury.length > 0) {
-            if (dbOrder.faktury[0].fa_polozky && dbOrder.faktury[0].fa_polozky.length > 0) {
-            }
+          // � DEBUG RAW DATA POLOŽEK Z API
+          }
+
           }
           // Vytvoř draft pro editaci (stejně jako v Orders25List.js)
           const orderId = dbOrder.id;
