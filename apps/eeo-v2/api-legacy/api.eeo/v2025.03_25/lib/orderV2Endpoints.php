@@ -193,6 +193,54 @@ function getUserRoles($user_id, $db) {
  * @param PDO $db Databázové spojení
  * @return array Pole permissions (kod_prava)
  */
+/**
+ * Získá všechny user ID kolegů ze stejného úseku (usek_id)
+ * 
+ * Pomocná funkce pro department-based subordinate permissions.
+ * Použití: ORDER_READ_SUBORDINATE, ORDER_EDIT_SUBORDINATE
+ * 
+ * @param int $user_id ID uživatele
+ * @param PDO $db Database connection
+ * @return array Pole user IDs ze stejného úseku
+ */
+function getUserDepartmentColleagueIds($user_id, $db) {
+    try {
+        // Načíst usek_id aktuálního uživatele
+        $sql = "SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = :user_id LIMIT 1";
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user || empty($user['usek_id'])) {
+            error_log("Order V2 getDepartmentColleagues: User $user_id has no usek_id assigned");
+            return array();
+        }
+        
+        $usek_id = $user['usek_id'];
+        error_log("Order V2 getDepartmentColleagues: User $user_id is in usek $usek_id");
+        
+        // Načíst všechny kolegy ze stejného úseku
+        $sql = "SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id = :usek_id AND aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':usek_id', $usek_id, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        $colleague_ids = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $colleague_ids[] = $row['id'];
+        }
+        
+        error_log("Order V2 getDepartmentColleagues: Found " . count($colleague_ids) . " colleagues in usek $usek_id");
+        
+        return $colleague_ids;
+        
+    } catch (Exception $e) {
+        error_log("Order V2 getDepartmentColleagues ERROR: " . $e->getMessage());
+        return array();
+    }
+}
+
 function getUserOrderPermissions($user_id, $db) {
     try {
         // SQL pro získání všech ORDER permissions uživatele (přímé + role + zastupování)
@@ -325,6 +373,52 @@ function handle_order_v2_list($input, $config, $queries) {
         }
         // ============================================================================
         
+        // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS: Úsek-based viditelnost
+        // ============================================================================
+        // ORDER_READ_SUBORDINATE (ID: 4) - Read-only přístup k objednávkám kolegů z úseku
+        // ORDER_EDIT_SUBORDINATE (ID: 20) - Plná editace objednávek kolegů z úseku
+        // Funguje NEZÁVISLE na hierarchii (i když hierarchie není zapnutá)
+        // ============================================================================
+        $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
+        $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
+        
+        $departmentFilterApplied = false;
+        
+        if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+            // Načíst kolegy ze stejného úseku
+            $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
+            
+            if (!empty($departmentColleagueIds)) {
+                // Vytvořit SQL podmínku pro viditelnost objednávek kolegů z úseku
+                // Uživatel vidí objednávky kde JAKÝKOLIV z 12 rolí je kolega z jeho úseku
+                $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
+                
+                $departmentCondition = "(
+                    o.uzivatel_id IN ($departmentColleagueIdsStr)
+                    OR o.objednatel_id IN ($departmentColleagueIdsStr)
+                    OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
+                    OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
+                    OR o.prikazce_id IN ($departmentColleagueIdsStr)
+                    OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
+                    OR o.odesilatel_id IN ($departmentColleagueIdsStr)
+                    OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
+                    OR o.zverejnil_id IN ($departmentColleagueIdsStr)
+                    OR o.fakturant_id IN ($departmentColleagueIdsStr)
+                    OR o.dokoncil_id IN ($departmentColleagueIdsStr)
+                    OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
+                )";
+                
+                $whereConditions[] = $departmentCondition;
+                $departmentFilterApplied = true;
+                
+                $permission_type = $hasOrderEditSubordinate ? 'ORDER_EDIT_SUBORDINATE' : 'ORDER_READ_SUBORDINATE';
+                error_log("✅ DEPARTMENT SUBORDINATE: Applied $permission_type filter for " . count($departmentColleagueIds) . " colleagues");
+            } else {
+                error_log("⚠️ DEPARTMENT SUBORDINATE: User $current_user_id has no usek_id or no colleagues in department");
+            }
+        }
+        // ============================================================================
+        
         // � KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
         $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
         
@@ -432,9 +526,9 @@ function handle_order_v2_list($input, $config, $queries) {
             
         } else {
             // 🔥 Běžný uživatel (ORDER_READ_OWN) - aplikuj 12-role WHERE filter
-            // POKUD NENÍ HIERARCHIE! (hierarchie ji nahrazuje)
+            // POKUD NENÍ HIERARCHIE ANI DEPARTMENT SUBORDINATE! (ty je nahrazují)
             
-            if (!$hierarchyApplied) {
+            if (!$hierarchyApplied && !$departmentFilterApplied) {
                 error_log("Order V2 LIST: Regular user (ORDER_READ_OWN) - applying role-based filter for user ID: $current_user_id");
                 
                 // Multi-role WHERE podmínka podle všech 12 user ID polí
@@ -455,8 +549,10 @@ function handle_order_v2_list($input, $config, $queries) {
                 
                 $whereConditions[] = $roleBasedCondition;
                 $params['role_user_id'] = $current_user_id;
-            } else {
+            } else if ($hierarchyApplied) {
                 error_log("Order V2 LIST: Regular user - SKIPPING role-based filter (hierarchy REPLACES it)");
+            } else if ($departmentFilterApplied) {
+                error_log("Order V2 LIST: Regular user - SKIPPING role-based filter (department subordinate REPLACES it)");
             }
             
             // Běžný user: archivované jen pokud archivovano=1
