@@ -25,6 +25,7 @@ import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel
 import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25 } from '../services/api25orders';
 
@@ -1983,12 +1984,27 @@ const Invoices25List = () => {
         apiParams.filter_vytvoril_uzivatel = columnFilters.vytvoril_uzivatel.trim();
       }
       
-      // Částka - rozsahový filtr (min/max)
-      if (columnFilters.castka_min) {
-        apiParams.castka_min = parseFloat(columnFilters.castka_min);
-      }
-      if (columnFilters.castka_max) {
-        apiParams.castka_max = parseFloat(columnFilters.castka_max);
+      // Částka - operátor-based filtr (=, <, >)
+      // Format: "=5000" nebo ">1000" nebo "<500"
+      if (columnFilters.castka && columnFilters.castka.trim()) {
+        const castkaTrimmed = columnFilters.castka.trim();
+        const match = castkaTrimmed.match(/^([=<>])(.+)$/);
+        
+        if (match) {
+          const operator = match[1];
+          const amount = parseFloat(match[2].replace(/\s/g, '').replace(/,/g, ''));
+          
+          if (!isNaN(amount)) {
+            // Přeložit operátor na API parametry
+            if (operator === '=') {
+              apiParams.castka_eq = amount;
+            } else if (operator === '<') {
+              apiParams.castka_lt = amount;
+            } else if (operator === '>') {
+              apiParams.castka_gt = amount;
+            }
+          }
+        }
       }
       
       // Přílohy - filtr podle existence příloh
@@ -3412,36 +3428,13 @@ const Invoices25List = () => {
 
                   {/* Částka */}
                   <TableHeader className="filter-cell">
-                    <div className="amount-filter-wrapper">
-                      <input
-                        type="text"
-                        className="amount-input"
-                        placeholder="Min"
-                        value={columnFilters.castka_min || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_min: newVal});
-                        }}
+                    <div className="operator-filter-wrapper">
+                      <OperatorInput
+                        value={columnFilters.castka || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
+                        placeholder="Částka"
+                        icon={<FontAwesomeIcon icon={faMoneyBillWave} />}
                       />
-                      <span className="amount-separator">—</span>
-                      <input
-                        type="text"
-                        className="amount-input"
-                        placeholder="Max"
-                        value={columnFilters.castka_max || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_max: newVal});
-                        }}
-                      />
-                      {(columnFilters.castka_min || columnFilters.castka_max) && (
-                        <button
-                          className="filter-clear amount-clear"
-                          onClick={() => setColumnFilters({...columnFilters, castka_min: '', castka_max: ''})}
-                        >
-                          <FontAwesomeIcon icon={faTimes} />
-                        </button>
-                      )}
                     </div>
                   </TableHeader>
 

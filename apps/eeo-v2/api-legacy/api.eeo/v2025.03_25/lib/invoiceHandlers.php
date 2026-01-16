@@ -1299,8 +1299,8 @@ function handle_invoices25_list($input, $config, $queries) {
             // Nové filtry pro globální vyhledávání a sloupcové filtry
             'search_term', 'cislo_objednavky', 'filter_datum_doruceni', 'filter_datum_vystaveni', 'filter_datum_splatnosti', 'filter_dt_aktualizace',
             'filter_stav', 'filter_vytvoril_uzivatel', 'filter_fa_typ',
-            // Filtry pro částku a přílohy
-            'castka_min', 'castka_max', 'filter_ma_prilohy',
+            // Filtry pro částku (operator-based: =, <, >)
+            'castka_gt', 'castka_lt', 'castka_eq', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
             'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
             // ŘAZENÍ - order_by a order_direction  
@@ -1628,20 +1628,25 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . $search_user . '%';
         }
         
-        // Filtr: castka_min (minimální částka faktury)
-        error_log("Invoices25 LIST: DEBUG castka_min - isset: " . (isset($filters['castka_min']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_min'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_min']) && is_numeric($filters['castka_min']) ? 'YES' : 'NO'));
-        if (isset($filters['castka_min']) && $filters['castka_min'] !== '' && is_numeric($filters['castka_min'])) {
-            $where_conditions[] = 'f.fa_castka >= ?';
-            $params[] = (float)$filters['castka_min'];
-            error_log("Invoices25 LIST: ✅ Applying castka_min filter = " . (float)$filters['castka_min']);
+        // Filtr: castka_gt, castka_lt, castka_eq (operator-based filtrování částky)
+        // Formát z FE: castka_gt = 5000 (větší než), castka_lt = 1000 (menší než), castka_eq = 1234 (rovná se)
+        if (isset($filters['castka_gt']) && $filters['castka_gt'] !== '' && is_numeric($filters['castka_gt'])) {
+            $where_conditions[] = 'f.fa_castka > ?';
+            $params[] = (float)$filters['castka_gt'];
+            error_log("Invoices25 LIST: ✅ Applying castka > " . (float)$filters['castka_gt']);
         }
         
-        // Filtr: castka_max (maximální částka faktury)
-        error_log("Invoices25 LIST: DEBUG castka_max - isset: " . (isset($filters['castka_max']) ? 'YES' : 'NO') . ", value: " . ($filters['castka_max'] ?? 'NULL') . ", is_numeric: " . (isset($filters['castka_max']) && is_numeric($filters['castka_max']) ? 'YES' : 'NO'));
-        if (isset($filters['castka_max']) && $filters['castka_max'] !== '' && is_numeric($filters['castka_max'])) {
-            $where_conditions[] = 'f.fa_castka <= ?';
-            $params[] = (float)$filters['castka_max'];
-            error_log("Invoices25 LIST: ✅ Applying castka_max filter = " . (float)$filters['castka_max']);
+        if (isset($filters['castka_lt']) && $filters['castka_lt'] !== '' && is_numeric($filters['castka_lt'])) {
+            $where_conditions[] = 'f.fa_castka < ?';
+            $params[] = (float)$filters['castka_lt'];
+            error_log("Invoices25 LIST: ✅ Applying castka < " . (float)$filters['castka_lt']);
+        }
+        
+        if (isset($filters['castka_eq']) && $filters['castka_eq'] !== '' && is_numeric($filters['castka_eq'])) {
+            // Pro rovnost použijeme malou toleranci (0.01 Kč) kvůli floating point aritmetice
+            $where_conditions[] = 'ABS(f.fa_castka - ?) < 0.01';
+            $params[] = (float)$filters['castka_eq'];
+            error_log("Invoices25 LIST: ✅ Applying castka = " . (float)$filters['castka_eq']);
         }
         
         // Filtr: filter_ma_prilohy (filtrace podle přítomnosti příloh)
