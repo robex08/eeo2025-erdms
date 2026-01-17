@@ -1799,7 +1799,6 @@ const Invoices25List = () => {
         setOrdersReadyForInvoice(orders);
         setOrdersReadyCount(orders.length);
       } else {
-        console.log('⚠️ DEBUG - Response not OK or no data');
         setOrdersReadyForInvoice([]);
         setOrdersReadyCount(0);
       }
@@ -2452,20 +2451,13 @@ const Invoices25List = () => {
   
   // 📋 Načtení počtu objednávek připravených k fakturaci (pouze při mount)
   useEffect(() => {
-    console.log('🚀 useEffect START - Orders ready for invoice');
-    console.log('🔑 token:', !!token, 'username:', !!username, 'canManageInvoices:', canManageInvoices, 'isAdmin:', isAdmin);
-    
     const loadCount = async () => {
       if (!token || !username || !(canManageInvoices || isAdmin)) {
-        console.log('⚠️ useEffect BLOCKED - missing permissions or auth');
         return;
       }
       
-      console.log('✅ useEffect EXECUTING - loading orders...');
-      
       try {
         const currentYear = new Date().getFullYear();
-        console.log('📅 Loading orders for year:', currentYear, 'with state: FAKTURACE');
         
         const response = await getOrdersList25({
           token,
@@ -2476,18 +2468,13 @@ const Invoices25List = () => {
           }
         });
 
-        console.log('📦 API Response:', response);
-
         if (Array.isArray(response)) {
-          console.log('📊 Total FAKTURACE orders loaded:', response.length);
-          
           // Filtruj na FE: pouze bez faktury
           const count = response.filter(order => 
             (!order.faktury || order.faktury.length === 0) && 
             (!order.faktury_count || order.faktury_count === 0)
           ).length;
           
-          console.log('✨ Orders ready for invoice (bez faktury):', count);
           setOrdersReadyCount(count);
         } else {
           console.log('❌ Response not array');
@@ -6416,12 +6403,12 @@ const Invoices25List = () => {
       )}
       
       {/* 📋 Sidebar s objednávkami připravenými k fakturaci */}
-      {showOrdersSidebar && (
-        <SlideInDetailPanel
-          title="Objednávky připravené k fakturaci"
-          onClose={handleCloseOrdersSidebar}
-          width="700px"
-        >
+      <SlideInDetailPanel
+        isOpen={showOrdersSidebar}
+        title="Objednávky připravené k fakturaci"
+        onClose={handleCloseOrdersSidebar}
+        width="700px"
+      >
           <div style={{ padding: '1.5rem' }}>
             {loadingOrdersReady ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
@@ -6500,7 +6487,6 @@ const Invoices25List = () => {
             )}
           </div>
         </SlideInDetailPanel>
-      )}
     </>
   );
 };
