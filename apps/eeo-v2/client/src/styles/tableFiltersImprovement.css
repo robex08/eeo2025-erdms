@@ -1,4 +1,4 @@
-/* KONZISTENTNÍ FILTROVACÍ ŘÁDEK - NOVÝ DESIGN */
+/* KONCISTENTNÍ FILTROVACÍ ŘÁDEK - NOVÝ DESIGN */
 .filter-row {
   background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%) !important;
   border-top: 3px solid #2563eb !important;
@@ -12,6 +12,13 @@
   vertical-align: middle !important;
   background: inherit !important;
   border: none !important;
+}
+
+/* SLOUPEC ČÁSTKA - ŠIRŠÍ A CENTROVANÝ */
+.amount-column {
+  min-width: 180px !important;
+  width: 180px !important;
+  text-align: center !important;
 }
 
 /* KONZISTENTNÍ WRAPPER STYLY */
@@ -236,7 +243,7 @@
 }
 
 .operator-filter-wrapper > div {
-  max-width: 135px !important;
+  max-width: 168px !important;
   height: 36px !important;
 }
 

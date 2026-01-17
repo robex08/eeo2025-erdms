@@ -1236,6 +1236,15 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
 function handle_invoices25_list($input, $config, $queries) {
     // 🐛 DEBUG: Log úplný payload
     error_log("INVOICE LIST PAYLOAD DEBUG: " . json_encode($input, JSON_UNESCAPED_UNICODE));
+    
+    // 🔍 DEBUG: Specifically log amount filter parameters
+    if (isset($input['castka_gt']) || isset($input['castka_lt']) || isset($input['castka_eq'])) {
+        error_log("🔥 AMOUNT FILTERS DETECTED:");
+        if (isset($input['castka_gt'])) error_log("  castka_gt = " . $input['castka_gt']);
+        if (isset($input['castka_lt'])) error_log("  castka_lt = " . $input['castka_lt']);
+        if (isset($input['castka_eq'])) error_log("  castka_eq = " . $input['castka_eq']);
+    }
+    
     if (isset($input['filter_dt_aktualizace'])) {
         error_log("PAYLOAD CONTAINS filter_dt_aktualizace: " . $input['filter_dt_aktualizace']);
     } else {
@@ -1633,20 +1642,17 @@ function handle_invoices25_list($input, $config, $queries) {
         if (isset($filters['castka_gt']) && $filters['castka_gt'] !== '' && is_numeric($filters['castka_gt'])) {
             $where_conditions[] = 'f.fa_castka > ?';
             $params[] = (float)$filters['castka_gt'];
-            error_log("Invoices25 LIST: ✅ Applying castka > " . (float)$filters['castka_gt']);
         }
         
         if (isset($filters['castka_lt']) && $filters['castka_lt'] !== '' && is_numeric($filters['castka_lt'])) {
             $where_conditions[] = 'f.fa_castka < ?';
             $params[] = (float)$filters['castka_lt'];
-            error_log("Invoices25 LIST: ✅ Applying castka < " . (float)$filters['castka_lt']);
         }
         
         if (isset($filters['castka_eq']) && $filters['castka_eq'] !== '' && is_numeric($filters['castka_eq'])) {
             // Pro rovnost použijeme malou toleranci (0.01 Kč) kvůli floating point aritmetice
             $where_conditions[] = 'ABS(f.fa_castka - ?) < 0.01';
             $params[] = (float)$filters['castka_eq'];
-            error_log("Invoices25 LIST: ✅ Applying castka = " . (float)$filters['castka_eq']);
         }
         
         // Filtr: filter_ma_prilohy (filtrace podle přítomnosti příloh)
