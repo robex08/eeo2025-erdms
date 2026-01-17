@@ -1467,6 +1467,9 @@ function handle_orders25_list($input, $config, $queries) {
     // Volitelný parametr archivovano (1 = jen archivované objednávky se stavem ARCHIVOVANO)
     $archivovano = isset($input['archivovano']) && $input['archivovano'] == 1 ? 1 : 0;
     
+    // 📋 Volitelný filtr podle stavu objednávky (např. 'FAKTURACE')
+    $stav_objednavky = isset($input['stav_objednavky']) && $input['stav_objednavky'] !== '' ? trim($input['stav_objednavky']) : null;
+    
     // Parsing měsíce - může být jednotlivý (10) nebo interval (10-12)
     $mesic_od = null;
     $mesic_do = null;
@@ -1525,6 +1528,11 @@ function handle_orders25_list($input, $config, $queries) {
     }
     // Pokud archivovano = 1, necháme všechny objednávky (i archivované)
     
+    // 📋 Filtr podle konkrétního stavu objednávky
+    if ($stav_objednavky !== null) {
+        $sql .= " AND stav_objednavky = :stav_objednavky";
+    }
+    
     $sql .= " ORDER BY dt_vytvoreni DESC";
 
     // Select all orders with optional year/month filter
@@ -1549,6 +1557,11 @@ function handle_orders25_list($input, $config, $queries) {
         if ($mesic_do !== null) {
             $stmt->bindParam(':mesic_do', $mesic_do, PDO::PARAM_INT);
         }
+    }
+    
+    // 📋 Bind parametr pro stav objednávky
+    if ($stav_objednavky !== null) {
+        $stmt->bindParam(':stav_objednavky', $stav_objednavky, PDO::PARAM_STR);
     }
     
         $stmt->execute();
