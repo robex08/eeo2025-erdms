@@ -3359,14 +3359,19 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
                     $entityData = $stmt->fetch(PDO::FETCH_ASSOC);
                 } elseif ($objectType === 'invoices') {
                     // Načíst data faktury s možnými údaji z objednávky
+                    // ✅ OPRAVA: Přidány všechny potřebné sloupce pro source_info_recipients
                     $stmt = $db->prepare("
                         SELECT 
                             f.fa_predana_zam_id,
                             f.objednavka_id,
                             f.vytvoril_uzivatel_id,
+                            f.aktualizoval_uzivatel_id,
+                            f.potvrdil_vecnou_spravnost_id,
+                            o.uzivatel_id,
                             o.garant_uzivatel_id,
                             o.objednatel_id,
-                            o.prikazce_id
+                            o.prikazce_id,
+                            o.fakturant_id
                         FROM " . TBL_FAKTURY . " f
                         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                         WHERE f.id = ?
