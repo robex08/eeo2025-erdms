@@ -1676,8 +1676,9 @@ export async function listInvoices25({
   filter_stav,  // 📋 Sloupcový filtr - stav faktury
   filter_vytvoril_uzivatel,  // 📋 Sloupcový filtr - uživatel
   filter_fa_typ,  // 📋 Sloupcový filtr - typ faktury (BEZNA, ZALOHOVA, ...)
-  castka_min,  // 💰 Sloupcový filtr - minimální částka
-  castka_max,  // 💰 Sloupcový filtr - maximální částka
+  castka_gt,   // 💰 Operátorový filtr - částka větší než (>)
+  castka_lt,   // 💰 Operátorový filtr - částka menší než (<) 
+  castka_eq,   // 💰 Operátorový filtr - částka rovná se (=)
   filter_ma_prilohy,  // 📎 Sloupcový filtr - přílohy
   filter_vecna_kontrola,  // 📋 Sloupcový filtr - věcná kontrola
   filter_vecnou_provedl,  // 📋 Sloupcový filtr - kdo provedl věcnou kontrolu
@@ -1721,9 +1722,10 @@ export async function listInvoices25({
     if (filter_vytvoril_uzivatel !== undefined && filter_vytvoril_uzivatel !== '') payload.filter_vytvoril_uzivatel = filter_vytvoril_uzivatel;
     if (filter_fa_typ !== undefined && filter_fa_typ !== '') payload.filter_fa_typ = filter_fa_typ;
     
-    // 💰 Filtry pro částku
-    if (castka_min !== undefined && castka_min !== '') payload.castka_min = castka_min;
-    if (castka_max !== undefined && castka_max !== '') payload.castka_max = castka_max;
+    // 💰 Operátorové filtry pro částku (>, <, =)
+    if (castka_gt !== undefined && castka_gt !== '') payload.castka_gt = castka_gt;
+    if (castka_lt !== undefined && castka_lt !== '') payload.castka_lt = castka_lt;
+    if (castka_eq !== undefined && castka_eq !== '') payload.castka_eq = castka_eq;
     
     // 📎 Filtr pro přílohy
     if (filter_ma_prilohy !== undefined && filter_ma_prilohy !== '') payload.filter_ma_prilohy = filter_ma_prilohy;
