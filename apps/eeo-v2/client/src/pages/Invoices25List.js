@@ -28,6 +28,7 @@ import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25 } from '../services/api25orders';
+import { getOrderV2 } from '../services/apiOrderV2';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -1660,6 +1661,78 @@ const Invoices25List = () => {
     });
   };
 
+  // 🎯 Handler pro editaci objednávky - PŘESNĚ podle Orders25List
+  const handleEditOrder = async (invoice) => {
+    // Zabránit vícenásobnému kliknutí
+    if (isCheckingLock) {
+      return;
+    }
+
+    if (!invoice.objednavka_id) {
+      showToast('Faktura není přiřazena k objednávce', { type: 'warning' });
+      return;
+    }
+
+    setIsCheckingLock(true);
+
+    try {
+      // 🔒 KONTROLA LOCK - načti aktuální data z DB
+      const dbOrder = await getOrderV2(invoice.objednavka_id, token, username, true);
+
+      if (!dbOrder) {
+        showToast('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // 🔒 Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        // Zjisti, zda má uživatel právo na force unlock
+        const canForceUnlock = hasPermission && (
+          hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR')
+        );
+
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock,
+          orderId: invoice.objednavka_id,
+          userRoleName: canForceUnlock ? 'administrátor' : null
+        });
+        setShowLockedOrderDialog(true);
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // ✅ Není zamčená - naviguj na editaci objednávky
+      setIsCheckingLock(false);
+      navigate(`/order-form-25?edit=${invoice.objednavka_id}`);
+
+    } catch (error) {
+      console.error('❌ Chyba při kontrole zámku objednávky:', error);
+      showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+      setIsCheckingLock(false);
+    }
+  };
+
+  // 🎯 Handler pro zobrazení faktur přiřazených ke smlouvě
+  const handleViewContractInvoices = (invoice) => {
+    if (!invoice.smlouva_id) {
+      showToast('Faktura není přiřazena ke smlouvě', { type: 'warning' });
+      return;
+    }
+
+    // Otevřít stránku s filtrem na faktury této smlouvy
+    // TODO: Implementovat po vytvoření stránky pro správu smluv
+    showToast('Zobrazení faktur ke smlouvě bude brzy dostupné', { type: 'info' });
+  };
+
   // Handler: Otevřít fakturu k náhledu kliknutím na číslo objednávky/smlouvy
   // 🔒 Handler pro zavření LOCK dialogu
   const handleLockedOrderCancel = () => {
@@ -2294,10 +2367,11 @@ const Invoices25List = () => {
     { value: '', label: 'Vše' },
     { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
     { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
-    { value: 'PREDANA_PO', label: 'Předaná PO' },
     { value: 'V_RESENI', label: 'V řešení' },
+    { value: 'PREDANA_PO', label: 'Předaná PO' },
     { value: 'K_ZAPLACENI', label: 'K zaplacení' },
     { value: 'ZAPLACENO', label: 'Zaplaceno' },
+    { value: 'DOKONCENA', label: 'Dokončená' },
     { value: 'STORNO', label: 'Storno' },
   ], []);
   
@@ -3707,48 +3781,76 @@ const Invoices25List = () => {
                       <span className="storno-content">
                         {invoice.cislo_smlouvy || invoice.cislo_objednavky ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                            {/* První řádek - číslo smlouvy/objednávky */}
+                            {/* První řádek - číslo smlouvy/objednávky s ikonami */}
                             {invoice.cislo_smlouvy ? (
-                              <div 
-                                style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center',
-                                  cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                                  opacity: invoiceTypesLoading ? 0.7 : 1,
-                                  color: '#3b82f6',
-                                  transition: 'opacity 0.2s'
-                                }}
-                                onClick={() => handleAddInvoiceToEntity(invoice)}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                                title="Klikněte zde pro otevření přidružené faktury"
-                              >
-                                <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                                {invoice.cislo_smlouvy}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#3b82f6' }}>
+                                  <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem' }} />
+                                  {invoice.cislo_smlouvy}
+                                </span>
+                                {/* Ikona pro faktury ke smlouvě */}
+                                <FontAwesomeIcon 
+                                  icon={faEdit}
+                                  style={{ 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewContractInvoices(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu ke smlouvě"
+                                />
                               </div>
                             ) : (
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                                  opacity: invoiceTypesLoading ? 0.7 : 1,
-                                  color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6', // Zelená pro dokončené, modrá pro ostatní
-                                  transition: 'opacity 0.2s'
-                                }}
-                                onClick={() => handleAddInvoiceToEntity(invoice)}
-                                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                                title="Klikněte zde pro otevření přidružené faktury"
-                              >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {/* Číslo objednávky - KLIKATELNÉ pro editaci */}
+                                <span
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6',
+                                    transition: 'opacity 0.2s'
+                                  }}
+                                  onClick={() => handleEditOrder(invoice)}
+                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                  title="Klikněte pro editaci objednávky"
+                                >
+                                  <FontAwesomeIcon 
+                                    icon={faFileInvoice} 
+                                    style={{ 
+                                      marginRight: '0.5rem', 
+                                      color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6'
+                                    }} 
+                                  />
+                                  {invoice.cislo_objednavky}
+                                </span>
+                                {/* Ikona pro faktury k objednávce */}
                                 <FontAwesomeIcon 
-                                  icon={faFileInvoice} 
+                                  icon={faEdit}
                                   style={{ 
-                                    marginRight: '0.5rem', 
-                                    color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6' // Zelená pro dokončené, modrá pro ostatní
-                                  }} 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddInvoiceToEntity(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu k objednávce"
                                 />
-                                {invoice.cislo_objednavky}
                               </div>
                             )}
                             
@@ -3757,7 +3859,6 @@ const Invoices25List = () => {
                               <div style={{ 
                                 fontSize: '0.8em', 
                                 color: '#64748b',
-                                fontStyle: 'italic',
                                 marginLeft: '1.5rem'
                               }}>
                                 {invoice.dodavatel_nazev || 'Název nedostupný'}{invoice.dodavatel_ico ? ` | ${invoice.dodavatel_ico}` : ''}
@@ -3766,7 +3867,6 @@ const Invoices25List = () => {
                               <div style={{ 
                                 fontSize: '0.8em', 
                                 color: '#94a3b8',
-                                fontStyle: 'italic',
                                 marginLeft: '1.5rem'
                               }}>
                                 Dodavatel nespecifikován
