@@ -303,6 +303,9 @@ class OrderV2Handler {
                     // Backwards compatibility
                     $financovaniData['lp_kody'] = $standardData['financovani']['lp_kod'];
                 }
+                if (isset($standardData['financovani']['lp_poznamka'])) {
+                    $financovaniData['lp_poznamka'] = $standardData['financovani']['lp_poznamka'];
+                }
                 
                 if (isset($standardData['financovani']['cislo_smlouvy'])) {
                     $financovaniData['cislo_smlouvy'] = $standardData['financovani']['cislo_smlouvy'];
