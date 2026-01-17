@@ -1599,12 +1599,12 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // Filtr: filter_stav (sloupcový filtr stavu workflow)
         // POZNÁMKA: Toto je sloupcový filtr, ne dashboard filter_status!
-        // Podporuje nové workflow stavy: ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, STORNO
+        // Podporuje nové workflow stavy: ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, DOKONCENA, STORNO
         if (isset($filters['filter_stav']) && !empty($filters['filter_stav'])) {
             $filter_stav = strtoupper(trim($filters['filter_stav']));
             
             // Workflow stavy - přesná shoda ENUM hodnoty
-            $valid_workflow_states = array('ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'STORNO');
+            $valid_workflow_states = array('ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'DOKONCENA', 'STORNO');
             if (in_array($filter_stav, $valid_workflow_states)) {
                 $where_conditions[] = 'f.stav = ?';
                 $params[] = $filter_stav;
