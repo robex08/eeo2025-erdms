@@ -773,6 +773,14 @@ function getSmlouvaCerpaniInfo($db, $cislo_smlouvy) {
  * @return void
  */
 function enrichOrderFinancovani($db, &$order) {
+    // 🔥 FIX: Pokud je financování JSON string, naparsovat ho na array
+    if (isset($order['financovani']) && is_string($order['financovani'])) {
+        $decoded = json_decode($order['financovani'], true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            $order['financovani'] = $decoded;
+        }
+    }
+    
     if (isset($order['financovani']) && is_array($order['financovani'])) {
         // Přidat název typu financování
         if (isset($order['financovani']['typ'])) {
@@ -1575,6 +1583,12 @@ function handle_orders25_list($input, $config, $queries) {
         
         // Přidání enriched číselníků k objednávkám  
         enrichOrdersWithCodebooks($db, $orders);
+        
+        // 🔥 Přidání enriched financování (načtení názvů LP z tabulky 25_limitovane_prisliby)
+        foreach ($orders as &$order) {
+            enrichOrderFinancovani($db, $order);
+        }
+        unset($order); // Uvolnění reference
 
         echo json_encode([
             'status' => 'ok',
@@ -1736,6 +1750,9 @@ function handle_orders25_by_id($input, $config, $queries) {
         
         // Přidání enriched číselníků k objednávce
         enrichOrderWithCodebooks($db, $order);
+        
+        // 🔥 Přidání enriched financování (načtení názvů LP z tabulky 25_limitovane_prisliby)
+        enrichOrderFinancovani($db, $order);
         
         // NOVÉ: Sestavení lock_info objektu z dat dotazu
         // DŮLEŽITÉ: locked = true POUZE když je zamčená JINÝM uživatelem (lock_status === 'locked')
