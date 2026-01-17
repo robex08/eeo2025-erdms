@@ -1864,8 +1864,13 @@ function handle_invoices25_list($input, $config, $queries) {
             f.*,
             o.cislo_objednavky,
             o.uzivatel_id AS objednavka_uzivatel_id,
+            o.dodavatel_nazev AS objednavka_dodavatel_nazev,
+            o.dodavatel_ico AS objednavka_dodavatel_ico,
+            o.stav_workflow_kod AS objednavka_stav_workflow_kod,
             sm.cislo_smlouvy,
             sm.nazev_smlouvy,
+            sm.nazev_firmy AS smlouva_nazev_firmy,
+            sm.ico AS smlouva_ico,
             u_vytvoril.jmeno AS vytvoril_jmeno,
             u_vytvoril.prijmeni AS vytvoril_prijmeni,
             u_vytvoril.titul_pred AS vytvoril_titul_pred,
@@ -1976,6 +1981,14 @@ function handle_invoices25_list($input, $config, $queries) {
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 🐛 KRITICKÝ DEBUG - surová data z DB
+        if (!empty($faktury)) {
+            file_put_contents('/tmp/invoice_debug.json', json_encode([
+                'first_invoice_raw' => $faktury[0],
+                'fields' => array_keys($faktury[0])
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
 
         // Formátování dat pro FE kompatibilitu
         foreach ($faktury as &$faktura) {
@@ -2096,6 +2109,44 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             $faktura['fa_predana_zam_jmeno_cele'] = $predana_jmeno_cele;
             
+            // 🎯 DODAVATEL - sestavit info o dodavateli (přednost má objednávka před smlouvou)
+            // Pokud je faktura přiřazena k objednávce, použij dodavatele z objednávky
+            // Pokud je přiřazena ke smlouvě, použij dodavatele ze smlouvy
+            $dodavatel_nazev = null;
+            $dodavatel_ico = null;
+            
+            if (!empty($faktura['objednavka_dodavatel_nazev'])) {
+                // Dodavatel z objednávky má přednost
+                $dodavatel_nazev = $faktura['objednavka_dodavatel_nazev'];
+                $dodavatel_ico = $faktura['objednavka_dodavatel_ico'];
+            } elseif (!empty($faktura['smlouva_nazev_firmy'])) {
+                // Dodavatel ze smlouvy jako fallback
+                $dodavatel_nazev = $faktura['smlouva_nazev_firmy'];
+                $dodavatel_ico = $faktura['smlouva_ico'];
+            }
+            
+            // Přidat informace o dodavateli do struktury faktury
+            $faktura['dodavatel_nazev'] = $dodavatel_nazev;
+            $faktura['dodavatel_ico'] = $dodavatel_ico;
+            
+            // 🎯 STAV OBJEDNÁVKY - pro určení barvy prokliku
+            $objednavka_je_dokoncena = false;
+            if (!empty($faktura['objednavka_stav_workflow_kod'])) {
+                // Stav workflow je uložen jako JSON array, např. ["DOKONCENA"]
+                $workflow_states = json_decode($faktura['objednavka_stav_workflow_kod'], true);
+                if (is_array($workflow_states) && in_array('DOKONCENA', $workflow_states)) {
+                    $objednavka_je_dokoncena = true;
+                }
+            }
+            $faktura['objednavka_je_dokoncena'] = $objednavka_je_dokoncena;
+            
+            // Odstraníme pomocné sloupce pro dodavatele a stav
+            unset($faktura['objednavka_dodavatel_nazev']);
+            unset($faktura['objednavka_dodavatel_ico']);
+            unset($faktura['smlouva_nazev_firmy']);
+            unset($faktura['smlouva_ico']);
+            unset($faktura['objednavka_stav_workflow_kod']);
+            
             // Spisovka tracking - přidat informaci o původu ze Spisovky
             $faktura['from_spisovka'] = !empty($faktura['spisovka_tracking_id']);
             $faktura['spisovka_dokument_id'] = $faktura['from_spisovka'] ? $faktura['spisovka_dokument_id'] : null;
@@ -2215,6 +2266,20 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // Response - OrderV2 formát s pagination + statistiky + user metadata
         // FE očekává: { status: "ok", faktury: [...], pagination: {...}, statistiky: {...}, user_info: {...} }
+        
+        // 🐛 KRITICKÝ DEBUG - zpracovaná data před odesláním
+        if (!empty($faktury)) {
+            file_put_contents('/tmp/invoice_debug_processed.json', json_encode([
+                'first_invoice_processed' => $faktury[0],
+                'has_dodavatel_nazev' => isset($faktury[0]['dodavatel_nazev']),
+                'dodavatel_nazev_value' => $faktury[0]['dodavatel_nazev'] ?? 'NOT_SET',
+                'has_dodavatel_ico' => isset($faktury[0]['dodavatel_ico']),
+                'dodavatel_ico_value' => $faktury[0]['dodavatel_ico'] ?? 'NOT_SET',
+                'has_objednavka_je_dokoncena' => isset($faktury[0]['objednavka_je_dokoncena']),
+                'objednavka_je_dokoncena_value' => $faktury[0]['objednavka_je_dokoncena'] ?? 'NOT_SET'
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+        
         $response_data = array(
             'status' => 'ok',
             'faktury' => $faktury,
