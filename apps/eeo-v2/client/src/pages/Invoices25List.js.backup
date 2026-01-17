@@ -17,14 +17,18 @@ import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { translateErrorMessage } from '../utils/errorTranslation';
 import { TooltipWrapper } from '../styles/GlobalTooltip';
+import '../styles/tableFiltersImprovement.css';
 import DatePicker from '../components/DatePicker';
+import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
 import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
-import { getInvoiceTypes25 } from '../services/api25orders';
+import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
+import { getOrderV2 } from '../services/apiOrderV2';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -777,20 +781,22 @@ const ColumnFilterWrapper = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 0.25rem;
+  padding: 0.5rem;
+  min-height: 45px;
 
   & > svg {
     position: absolute;
-    left: 0.75rem;
-    color: #94a3b8;
-    font-size: 0.75rem;
+    left: 1rem;
+    color: #4285f4;
+    font-size: 0.875rem;
     pointer-events: none;
+    z-index: 2;
   }
 `;
 
-const ColumnFilterInput = styled.input`
+const ColumnFilterSelect = styled.select`
   width: 100%;
-  padding: 0.375rem 0.625rem 0.375rem 2rem;
+  padding: 0.375rem 0.625rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.75rem;
@@ -798,6 +804,11 @@ const ColumnFilterInput = styled.input`
   color: #1e293b;
   transition: all 0.2s ease;
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 2rem;
 
   &:focus {
     outline: none;
@@ -805,8 +816,66 @@ const ColumnFilterInput = styled.input`
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
+  &:disabled {
+    opacity: 0.7;
+    cursor: wait;
+    background-color: #f8f9fa;
+  }
+`;
+
+// Wrapper pro kompaktní CustomSelect v tabulce
+const CompactSelectWrapper = styled.div`
+  width: 100%;
+  
+  /* Override CustomSelect styles pro tabulku */
+  & [data-custom-select] {
+    width: 100%;
+  }
+  
+  & > div > div:first-of-type {
+    height: auto !important;
+    min-height: 42px;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+    transition: all 0.2s ease !important;
+    
+    &:hover {
+      border-color: #4285f4 !important;
+    }
+  }
+`;
+
+const ColumnFilterInput = styled.input`
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: white;
+  color: #1e293b;
+  transition: all 0.2s ease;
+  cursor: text;
+  min-height: 42px;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #4285f4;
+    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+  }
+
+  &:hover {
+    border-color: #4285f4;
+  }
+
   &::placeholder {
-    color: #94a3b8;
+    color: #9ca3af;
+    font-weight: 400;
   }
 
   &[type="date"] {
@@ -1360,6 +1429,37 @@ const Invoices25List = () => {
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
+  
+  // Debouncing pro filtry - 400ms delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedColumnFilters(columnFilters);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [columnFilters]);
+  
+  // State pro CustomSelect komponenty
+  const [selectStates, setSelectStates] = useState({
+    fa_typ: false,
+    stav: false,
+    vecna_kontrola: false,
+    ma_prilohy: false,
+    ma_prilohy_floating: false,
+  });
+  
+  // Search states pro CustomSelect
+  const [searchStates, setSearchStates] = useState({
+    fa_typ: '',
+    stav: '',
+    vecna_kontrola: '',
+    ma_prilohy: '',
+    ma_prilohy_floating: '',
+  });
+  
+  // Tracking které Custom Select fields byly "touched"
+  const [touchedSelectFields, setTouchedSelectFields] = useState(new Set());
   
   // Filters state pro dashboard cards
   const [filters, setFilters] = useState(savedState?.filters || {
@@ -1546,6 +1646,12 @@ const Invoices25List = () => {
   const [invoiceTypes, setInvoiceTypes] = useState([]);
   const [invoiceTypesLoading, setInvoiceTypesLoading] = useState(false);
   
+  // 📋 State pro sidebar s objednávkami připravenými k fakturaci
+  const [showOrdersSidebar, setShowOrdersSidebar] = useState(false);
+  const [ordersReadyForInvoice, setOrdersReadyForInvoice] = useState([]);
+  const [ordersReadyCount, setOrdersReadyCount] = useState(0);
+  const [loadingOrdersReady, setLoadingOrdersReady] = useState(false);
+  
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
     // Vymazat localStorage aby se otevřel čistý formulář
@@ -1561,12 +1667,173 @@ const Invoices25List = () => {
     });
   };
 
+  // 🎯 Handler pro editaci objednávky - PŘESNĚ podle Orders25List
+  const handleEditOrder = async (invoice) => {
+    // Zabránit vícenásobnému kliknutí
+    if (isCheckingLock) {
+      return;
+    }
+
+    if (!invoice.objednavka_id) {
+      showToast('Faktura není přiřazena k objednávce', { type: 'warning' });
+      return;
+    }
+
+    setIsCheckingLock(true);
+
+    try {
+      // 🔒 KONTROLA LOCK - načti aktuální data z DB
+      const dbOrder = await getOrderV2(invoice.objednavka_id, token, username, true);
+
+      if (!dbOrder) {
+        showToast('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // 🔒 Blokuj pouze pokud locked=true A NENÍ můj zámek A NENÍ expired
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+
+        // Zjisti, zda má uživatel právo na force unlock
+        const canForceUnlock = hasPermission && (
+          hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR')
+        );
+
+        setLockedOrderInfo({
+          lockedByUserName,
+          lockedByUserEmail: lockInfo.locked_by_user_email || null,
+          lockedByUserTelefon: lockInfo.locked_by_user_telefon || null,
+          lockedAt: lockInfo.locked_at || null,
+          lockAgeMinutes: lockInfo.lock_age_minutes || null,
+          canForceUnlock,
+          orderId: invoice.objednavka_id,
+          userRoleName: canForceUnlock ? 'administrátor' : null
+        });
+        setShowLockedOrderDialog(true);
+        setIsCheckingLock(false);
+        return;
+      }
+
+      // ✅ Není zamčená - naviguj na editaci objednávky
+      setIsCheckingLock(false);
+      navigate(`/order-form-25?edit=${invoice.objednavka_id}`);
+
+    } catch (error) {
+      console.error('❌ Chyba při kontrole zámku objednávky:', error);
+      showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+      setIsCheckingLock(false);
+    }
+  };
+
+  // 🎯 Handler pro zobrazení faktur přiřazených ke smlouvě
+  const handleViewContractInvoices = (invoice) => {
+    if (!invoice.smlouva_id) {
+      showToast('Faktura není přiřazena ke smlouvě', { type: 'warning' });
+      return;
+    }
+
+    // Otevřít stránku s filtrem na faktury této smlouvy
+    // TODO: Implementovat po vytvoření stránky pro správu smluv
+    showToast('Zobrazení faktur ke smlouvě bude brzy dostupné', { type: 'info' });
+  };
+
   // Handler: Otevřít fakturu k náhledu kliknutím na číslo objednávky/smlouvy
   // 🔒 Handler pro zavření LOCK dialogu
   const handleLockedOrderCancel = () => {
     setShowLockedOrderDialog(false);
     setLockedOrderInfo(null);
     setIsCheckingLock(false); // Odemknout pro další pokus
+  };
+  
+  // 📋 Handler: Načíst objednávky připravené k fakturaci (DOKONCENA, bez faktury)
+  const loadOrdersReadyForInvoice = async () => {
+    setLoadingOrdersReady(true);
+    try {
+      // Načti všechny aktivní objednávky aktuálního roku
+      const currentYear = new Date().getFullYear();
+      const response = await getOrdersList25({
+        token,
+        username,
+        filters: {
+          rok: currentYear,
+          stav_objednavky: 'FAKTURACE'
+        }
+      });
+
+      console.log('� API Response:', response);
+      console.log('📊 Is array?', Array.isArray(response));
+
+      if (Array.isArray(response)) {
+        console.log('📊 Total FAKTURACE orders loaded:', response.length);
+        
+        // Debug: Ukázkové objednávky
+        const sampleOrders = response.slice(0, 3);
+        console.log('🔍 DEBUG - Sample FAKTURACE orders:', sampleOrders.map(o => ({
+          id: o.id,
+          cislo: o.cislo_objednavky,
+          stav: o.stav_objednavky,
+          faktury: o.faktury,
+          faktury_count: o.faktury_count,
+          hasInvoices: o.faktury?.length > 0 || o.faktury_count > 0
+        })));
+
+        // Filtruj na FE: pouze objednávky BEZ faktury
+        const filteredOrders = response.filter(order => {
+          const hasNoInvoice = (!order.faktury || order.faktury.length === 0) && (!order.faktury_count || order.faktury_count === 0);
+          return hasNoInvoice;
+        });
+        
+        console.log('🔍 DEBUG - Filtered orders (bez faktury):', filteredOrders.length);
+        
+        const orders = filteredOrders.map(order => ({
+          id: order.id,
+          cislo_objednavky: order.cislo_objednavky,
+          predmet: order.predmet,
+          dodavatel_nazev: order._enriched?.dodavatel?.nazev || order.dodavatel_nazev,
+          max_cena_s_dph: order.max_cena_s_dph,
+          dt_vytvoreni: order.dt_vytvoreni
+        }));
+        
+        setOrdersReadyForInvoice(orders);
+        setOrdersReadyCount(orders.length);
+      } else {
+        setOrdersReadyForInvoice([]);
+        setOrdersReadyCount(0);
+      }
+    } catch (error) {
+      console.error('❌ Chyba při načítání objednávek připravených k fakturaci:', error);
+      setOrdersReadyForInvoice([]);
+      setOrdersReadyCount(0);
+    } finally {
+      setLoadingOrdersReady(false);
+    }
+  };
+
+  // 📋 Handler: Otevřít sidebar s objednávkami
+  const handleOpenOrdersSidebar = () => {
+    setShowOrdersSidebar(true);
+    loadOrdersReadyForInvoice(); // Načti aktuální seznam
+  };
+
+  // 📋 Handler: Zavřít sidebar
+  const handleCloseOrdersSidebar = () => {
+    setShowOrdersSidebar(false);
+  };
+
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  const handleSelectOrderForInvoice = (order) => {
+    setShowOrdersSidebar(false);
+    // Naviguj na evidenci faktury s předvyplněným order ID v URL
+    navigate(`/invoice-evidence/${order.id}`, {
+      state: {
+        fromOrdersReadyList: true,
+        orderNumber: order.cislo_objednavky,
+        timestamp: Date.now()
+      }
+    });
   };
   
   const handleAddInvoiceToEntity = async (invoice) => {
@@ -1681,6 +1948,65 @@ const Invoices25List = () => {
     setShowDashboard(prev => !prev);
   }, []);
   
+  // Helper funkce pro CustomSelect komponenty
+  const toggleSelect = useCallback((selectName) => {
+    setSelectStates(prev => {
+      // Zavři všechny selecty
+      const newState = {
+        fa_typ: false,
+        stav: false,
+        vecna_kontrola: false,
+        ma_prilohy: false,
+        ma_prilohy_floating: false,
+      };
+      // Otevři pouze vybraný select (pokud byl zavřený)
+      newState[selectName] = !prev[selectName];
+      return newState;
+    });
+  }, []);
+  
+  const closeAllSelects = useCallback(() => {
+    setSelectStates({
+      fa_typ: false,
+      stav: false,
+      vecna_kontrola: false,
+      ma_prilohy: false,
+      ma_prilohy_floating: false,
+    });
+  }, []);
+  
+  // Funkce pro filtraci možností podle vyhledávání
+  const filterOptions = useCallback((options, searchTerm, searchField) => {
+    if (!searchTerm) return options;
+    const filtered = options.filter(option => {
+      const label = getOptionLabel(option, searchField);
+      return label.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+    return filtered;
+  }, []);
+  
+  // Funkce pro získání labelu možnosti
+  const getOptionLabel = useCallback((option, field) => {
+    if (!option) return '';
+    
+    switch (field) {
+      case 'fa_typ':
+      case 'floating_fa_typ':
+        return option.nazev || option.label || '';
+      case 'stav':
+      case 'floating_stav':
+        return option.label || option.value || '';
+      case 'vecna_kontrola':
+      case 'floating_vecna_kontrola':
+        return option.label || option.value || '';
+      case 'ma_prilohy':
+      case 'ma_prilohy_floating':
+        return option.label || option.value || '';
+      default:
+        return option.label || option.nazev || option.value || '';
+    }
+  }, []);
+  
   // 🧹 Vyčistit všechny filtry (sloupcové + dashboard + fulltext)
   const handleClearAllFilters = useCallback(() => {
     setColumnFilters({});
@@ -1782,83 +2108,108 @@ const Invoices25List = () => {
       // 📋 Sloupcové filtry - OPRAVENÉ!
       
       // Datum doručení (přesná shoda)
-      if (columnFilters.datum_doruceni) {
-        apiParams.filter_datum_doruceni = columnFilters.datum_doruceni;
-        console.log('🔍 DORUCENI FILTER:', columnFilters.datum_doruceni, '-> API param:', apiParams.filter_datum_doruceni);
+      if (debouncedColumnFilters.datum_doruceni && typeof debouncedColumnFilters.datum_doruceni === 'string' && debouncedColumnFilters.datum_doruceni.trim()) {
+        apiParams.filter_datum_doruceni = debouncedColumnFilters.datum_doruceni.trim();
       }
       
       // Datum aktualizace (přesná shoda)
-      if (columnFilters.dt_aktualizace) {
-        apiParams.filter_dt_aktualizace = columnFilters.dt_aktualizace;
+      if (debouncedColumnFilters.dt_aktualizace && typeof debouncedColumnFilters.dt_aktualizace === 'string' && debouncedColumnFilters.dt_aktualizace.trim()) {
+        apiParams.filter_dt_aktualizace = debouncedColumnFilters.dt_aktualizace.trim();
       }
       
-      // Typ faktury (přesná shoda)
-      if (columnFilters.fa_typ) {
-        apiParams.filter_fa_typ = columnFilters.fa_typ;
+      // Typ faktury (přesná shoda) - pouze pokud není "Všechny typy"
+      const faTypValue = typeof debouncedColumnFilters.fa_typ === 'object' ? debouncedColumnFilters.fa_typ?.value : debouncedColumnFilters.fa_typ;
+      if (faTypValue && faTypValue.toString().trim() !== '') {
+        apiParams.filter_fa_typ = faTypValue;
       }
       
       // Číslo faktury (LIKE - částečná shoda)
-      if (columnFilters.cislo_faktury && columnFilters.cislo_faktury.trim()) {
-        apiParams.fa_cislo_vema = columnFilters.cislo_faktury.trim();
+      if (debouncedColumnFilters.cislo_faktury && typeof debouncedColumnFilters.cislo_faktury === 'string' && debouncedColumnFilters.cislo_faktury.trim()) {
+        apiParams.fa_cislo_vema = debouncedColumnFilters.cislo_faktury.trim();
       }
       
       // Číslo objednávky (LIKE - částečná shoda)
-      if (columnFilters.cislo_objednavky && columnFilters.cislo_objednavky.trim()) {
-        apiParams.cislo_objednavky = columnFilters.cislo_objednavky.trim();
+      if (debouncedColumnFilters.cislo_objednavky && typeof debouncedColumnFilters.cislo_objednavky === 'string' && debouncedColumnFilters.cislo_objednavky.trim()) {
+        apiParams.cislo_objednavky = debouncedColumnFilters.cislo_objednavky.trim();
       }
       
       // Datum vystavení (přesná shoda)
-      if (columnFilters.datum_vystaveni) {
-        apiParams.filter_datum_vystaveni = columnFilters.datum_vystaveni;
+      if (debouncedColumnFilters.datum_vystaveni && typeof debouncedColumnFilters.datum_vystaveni === 'string' && debouncedColumnFilters.datum_vystaveni.trim()) {
+        apiParams.filter_datum_vystaveni = debouncedColumnFilters.datum_vystaveni.trim();
       }
       
       // Datum splatnosti (přesná shoda)
-      if (columnFilters.datum_splatnosti) {
-        apiParams.filter_datum_splatnosti = columnFilters.datum_splatnosti;
+      if (debouncedColumnFilters.datum_splatnosti && typeof debouncedColumnFilters.datum_splatnosti === 'string' && debouncedColumnFilters.datum_splatnosti.trim()) {
+        apiParams.filter_datum_splatnosti = debouncedColumnFilters.datum_splatnosti.trim();
       }
       
-      // Stav faktury (paid/unpaid/overdue)
-      if (columnFilters.stav) {
-        apiParams.filter_stav = columnFilters.stav;
+      // Stav faktury - pouze pokud není "Všechny stavy"
+      const stavValue = typeof debouncedColumnFilters.stav === 'object' ? debouncedColumnFilters.stav?.value : debouncedColumnFilters.stav;
+      if (stavValue && stavValue.toString().trim() !== '') {
+        apiParams.filter_stav = stavValue;
       }
       
       // Uživatel - celé jméno (LIKE - hledá v jméně i příjmení)
-      if (columnFilters.vytvoril_uzivatel && columnFilters.vytvoril_uzivatel.trim()) {
-        apiParams.filter_vytvoril_uzivatel = columnFilters.vytvoril_uzivatel.trim();
+      if (debouncedColumnFilters.vytvoril_uzivatel && typeof debouncedColumnFilters.vytvoril_uzivatel === 'string' && debouncedColumnFilters.vytvoril_uzivatel.trim()) {
+        apiParams.filter_vytvoril_uzivatel = debouncedColumnFilters.vytvoril_uzivatel.trim();
       }
       
-      // Částka - rozsahový filtr (min/max)
-      if (columnFilters.castka_min) {
-        apiParams.castka_min = parseFloat(columnFilters.castka_min);
-      }
-      if (columnFilters.castka_max) {
-        apiParams.castka_max = parseFloat(columnFilters.castka_max);
+      // Částka - operátor-based filtr (=, <, >)
+      // Format: "=5000" nebo ">1000" nebo "<500"
+      if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
+        const castkaTrimmed = debouncedColumnFilters.castka.trim();
+        const match = castkaTrimmed.match(/^([=<>])(.+)$/);
+        
+        if (match) {
+          const operator = match[1];
+          const amount = parseFloat(match[2].replace(/\s/g, '').replace(/,/g, ''));
+          
+          if (!isNaN(amount)) {
+            // Přeložit operátor na API parametry
+            if (operator === '=') {
+              apiParams.castka_eq = amount;
+            } else if (operator === '<') {
+              apiParams.castka_lt = amount;
+            } else if (operator === '>') {
+              apiParams.castka_gt = amount;
+            }
+          }
+        }
       }
       
       // Přílohy - filtr podle existence příloh
-      if (columnFilters.ma_prilohy === 'with') {
+      const maPrilobyValue = typeof debouncedColumnFilters.ma_prilohy === 'object' ? debouncedColumnFilters.ma_prilohy?.value : debouncedColumnFilters.ma_prilohy;
+      if (maPrilobyValue === 'with') {
         apiParams.filter_ma_prilohy = 1; // Pouze s přílohami
-      } else if (columnFilters.ma_prilohy === 'without') {
+      } else if (maPrilobyValue === 'without') {
         apiParams.filter_ma_prilohy = 0; // Pouze bez příloh
-      } else if (columnFilters.ma_prilohy === 'spisovka') {
+      } else if (maPrilobyValue === 'spisovka') {
         apiParams.filter_ma_prilohy = 2; // Pouze ze spisovky
       }
       
       // Věcná kontrola - filtr
-      if (columnFilters.vecna_kontrola === 'yes') {
+      const vecnaKontrolaValue = typeof debouncedColumnFilters.vecna_kontrola === 'object' ? debouncedColumnFilters.vecna_kontrola?.value : debouncedColumnFilters.vecna_kontrola;
+      if (vecnaKontrolaValue === 'yes') {
         apiParams.filter_vecna_kontrola = 1; // Pouze provedena
-      } else if (columnFilters.vecna_kontrola === 'no') {
+      } else if (vecnaKontrolaValue === 'no') {
         apiParams.filter_vecna_kontrola = 0; // Pouze neprovedena
       }
+      // Jinak (prázdný string nebo '') neposílej nic
       
       // Věcnou provedl - text filtr
-      if (columnFilters.vecnou_provedl) {
-        apiParams.filter_vecnou_provedl = columnFilters.vecnou_provedl.trim();
+      if (debouncedColumnFilters.vecnou_provedl && typeof debouncedColumnFilters.vecnou_provedl === 'string') {
+        apiParams.filter_vecnou_provedl = debouncedColumnFilters.vecnou_provedl.trim();
       }
       
       // Předáno zaměstnanci - text filtr
-      if (columnFilters.predano_zamestnanec) {
-        apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
+      if (debouncedColumnFilters.predano_zamestnanec && typeof debouncedColumnFilters.predano_zamestnanec === 'string') {
+        apiParams.filter_predano_zamestnanec = debouncedColumnFilters.predano_zamestnanec.trim();
+      }
+      
+      // 📥 ŘAZENÍ - podle sortField a sortDirection
+      if (sortField && sortField.trim()) {
+        apiParams.order_by = sortField.trim();
+        apiParams.order_direction = sortDirection || 'desc'; // default DESC
       }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
@@ -1967,6 +2318,13 @@ const Invoices25List = () => {
         vytvoril_uzivatel_zkracene: invoice.vytvoril_uzivatel_zkracene || null,
         potvrdil_vecnou_spravnost_zkracene: invoice.potvrdil_vecnou_spravnost_zkracene || null,
         
+        // 🎯 DODAVATEL - info z objednávky nebo smlouvy
+        dodavatel_nazev: invoice.dodavatel_nazev || null,
+        dodavatel_ico: invoice.dodavatel_ico || null,
+        
+        // 🎯 STAV OBJEDNÁVKY - pro zelené/modré zbarvení
+        objednavka_je_dokoncena: invoice.objednavka_je_dokoncena || false,
+        
         // Vypočítaný status pro UI
         status: getInvoiceStatus(invoice)
       }));
@@ -2063,7 +2421,7 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, columnFilters, filters, globalSearchTerm, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
@@ -2090,6 +2448,112 @@ const Invoices25List = () => {
 
     loadInvoiceTypes();
   }, [token, username, invoiceTypes.length]);
+  
+  // 📋 Načtení počtu objednávek připravených k fakturaci (pouze při mount)
+  useEffect(() => {
+    const loadCount = async () => {
+      if (!token || !username || !(canManageInvoices || isAdmin)) {
+        return;
+      }
+      
+      try {
+        const currentYear = new Date().getFullYear();
+        
+        const response = await getOrdersList25({
+          token,
+          username,
+          filters: {
+            rok: currentYear,
+            stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE - jen objednávky ve stavu FAKTURACE
+          }
+        });
+
+        if (Array.isArray(response)) {
+          // Filtruj na FE: pouze bez faktury
+          const count = response.filter(order => 
+            (!order.faktury || order.faktury.length === 0) && 
+            (!order.faktury_count || order.faktury_count === 0)
+          ).length;
+          
+          setOrdersReadyCount(count);
+        } else {
+          console.log('❌ Response not array');
+        }
+      } catch (error) {
+        console.error('❌ Chyba při načítání počtu objednávek:', error);
+      }
+    };
+    
+    loadCount();
+  }, [token, username, canManageInvoices, isAdmin]);
+  
+  // 📋 Refresh count při návratu na stránku (například po evidenci faktury)
+  useEffect(() => {
+    // Pokud se uživatel vrátí na stránku, aktualizuj počet
+    const handleVisibilityChange = () => {
+      if (!document.hidden && token && username && (canManageInvoices || isAdmin)) {
+        // Stránka se stala viditelnou, refresh count
+        const loadCount = async () => {
+          try {
+            const currentYear = new Date().getFullYear();
+            const response = await getOrdersList25({
+              token,
+              username,
+              filters: {
+                rok: currentYear,
+                stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE
+              }
+            });
+
+            if (Array.isArray(response)) {
+              const count = response.filter(order => 
+                (!order.faktury || order.faktury.length === 0) && 
+                (!order.faktury_count || order.faktury_count === 0)
+              ).length;
+              setOrdersReadyCount(count);
+            }
+          } catch (error) {
+            console.error('❌ Chyba při aktualizaci počtu objednávek:', error);
+          }
+        };
+        loadCount();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [token, username, canManageInvoices, isAdmin]);
+  
+  // Připravit options pro CustomSelect komponenty
+  const invoiceTypeOptions = useMemo(() => {
+    const types = invoiceTypes.map(type => ({
+      value: type.id,
+      label: type.nazev.toUpperCase(),
+      nazev: type.nazev
+    }));
+    return [{ value: '', label: 'Vše', nazev: 'Vše' }, ...types];
+  }, [invoiceTypes]);
+  
+  const stavOptions = useMemo(() => {
+    const options = [
+      { value: '', label: 'Vše' },
+      { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
+      { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
+      { value: 'V_RESENI', label: 'V řešení' },
+      { value: 'PREDANA_PO', label: 'Předaná PO' },
+      { value: 'K_ZAPLACENI', label: 'K zaplacení' },
+      { value: 'ZAPLACENO', label: 'Zaplaceno' },
+      { value: 'DOKONCENA', label: 'Dokončená' },
+      { value: 'STORNO', label: 'Storno' },
+    ];
+    return options;
+  }, []);
+  
+  const vecnaKontrolaOptions = useMemo(() => [
+    { value: '', label: 'Vše' },
+    { value: 'yes', label: 'Provedena' },
+    { value: 'no', label: 'Neprovedena' },
+  ], []);
 
   // Reset na první stránku při změně filtrů
   useEffect(() => {
@@ -2167,34 +2631,11 @@ const Invoices25List = () => {
     }
   }, [sortField]);
 
-  // Třídění faktur (client-side)
+  // ⚠️ ŘAZENÍ DĚLÁ BACKEND - invoices už jsou seřazené podle sortField a sortDirection!
+  // Client-side řazení je zakázáno - používáme data přímo z BE
   const sortedInvoices = useMemo(() => {
-    if (!sortField) return invoices;
-
-    return [...invoices].sort((a, b) => {
-      let aVal = a[sortField];
-      let bVal = b[sortField];
-
-      // Speciální handling pro různé typy dat
-      if (sortField === 'castka') {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
-      } else if (sortField.includes('datum')) {
-        aVal = aVal ? new Date(aVal).getTime() : 0;
-        bVal = bVal ? new Date(bVal).getTime() : 0;
-      } else if (sortField === 'pocet_priloh') {
-        aVal = parseInt(aVal) || 0;
-        bVal = parseInt(bVal) || 0;
-      } else if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = (bVal || '').toLowerCase();
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [invoices, sortField, sortDirection]);
+    return invoices; // Backend už vrací seřazená data
+  }, [invoices]);
 
   // ⚠️ Filtrování a pagination dělá BE - invoices už jsou filtrované a stránkované!
   
@@ -2697,6 +3138,20 @@ const Invoices25List = () => {
             </ActionButton>
           )}
           
+          {/* 📋 Tlačítko pro objednávky připravené k fakturaci */}
+          {(canManageInvoices || isAdmin) && (
+            <TooltipWrapper text="Zobrazit seznam objednávek připravených k fakturaci" preferredPosition="bottom">
+              <ActionButton 
+                onClick={handleOpenOrdersSidebar}
+                disabled={ordersReadyCount === 0}
+                style={{ opacity: ordersReadyCount === 0 ? 0.5 : 1, cursor: ordersReadyCount === 0 ? 'not-allowed' : 'pointer' }}
+              >
+                <FontAwesomeIcon icon={faFileInvoice} />
+                Zaevidovat fakturu k objednávce ({ordersReadyCount})
+              </ActionButton>
+            </TooltipWrapper>
+          )}
+          
           {!showDashboard && (
             <TooltipWrapper text="Zobrazit přehledový dashboard s grafy" preferredPosition="bottom">
               <ActionButton onClick={handleToggleDashboard}>
@@ -2989,9 +3444,11 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
-                    style={{ whiteSpace: 'nowrap' }}
+                    style={{ whiteSpace: 'nowrap', textAlign: 'center' }}
                   >
-                    Objednávka/Smlouva
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <span>Obj/SML/Dodavatel</span>
+                    </div>
                     {sortField === 'cislo_objednavky' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -3034,7 +3491,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
                     onClick={() => handleSort('castka')}
-                    style={{ textAlign: 'right' }}
+                    style={{ textAlign: 'center', minWidth: '180px', width: '180px' }}
                   >
                     Částka
                     {sortField === 'castka' && (
@@ -3071,7 +3528,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('fa_predana_zam_jmeno')}
                     style={{ minWidth: '120px' }}
                   >
-                    Předáno zaměstnanci
+                    Předáno
                     {sortField === 'fa_predana_zam_jmeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -3116,13 +3573,13 @@ const Invoices25List = () => {
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
-                {/* Druhý řádek s filtry ve sloupcích */}
-                <tr>
-                  {/* Aktualizováno - datum filtr - PRVNÍ SLOUPEC */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
+                {/* NOVÝ KONZISTENTNÍ FILTROVACÍ ŘÁDEK */}
+                <tr className="filter-row">
+                  {/* Aktualizováno */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
                       <DatePicker
-                        fieldName="filter_dt_aktualizace"
+                        fieldName="dt_aktualizace"
                         value={columnFilters.dt_aktualizace || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, dt_aktualizace: value})}
                         placeholder="Datum"
@@ -3130,296 +3587,294 @@ const Invoices25List = () => {
                       />
                     </div>
                   </TableHeader>
-                  {/* Faktura VS - text filtr */}
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
+
+                  {/* Číslo faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Hledat číslo..."
+                        className="filter-input"
+                        placeholder="Číslo faktury..."
                         value={columnFilters.cislo_faktury || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
                       />
                       {columnFilters.cislo_faktury && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  {/* Typ faktury - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.fa_typ || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
-                      disabled={invoiceTypesLoading}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white',
-                        cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1
-                      }}
-                    >
-                      <option value="">{invoiceTypesLoading ? 'Načítám...' : 'Všechny typy'}</option>
-                      {invoiceTypes.map(type => (
-                        <option key={type.id} value={type.id}>
-                          {type.nazev.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </TableHeader>
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
-                        type="text"
-                        placeholder="Obj/Sml..."
-                        value={columnFilters.cislo_objednavky || ''}
-                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-                        title="Hledá v číslech objednávek i smluv"
-                      />
-                      {columnFilters.cislo_objednavky && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  {/* Doručení - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_doruceni"
-                        value={columnFilters.datum_doruceni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Vystavení - datum filtr (přesunuto sem) */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_vystaveni"
-                        value={columnFilters.datum_vystaveni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Splatnost - datum filtr (přesunuto před částku) */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_splatnosti"
-                        value={columnFilters.datum_splatnosti || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Částka - rozsahový filtr */}
-                  <TableHeader className="amount-column" style={{ padding: '0.5rem 0.25rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Min"
-                        value={columnFilters.castka_min || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_min: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>-</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Max"
-                        value={columnFilters.castka_max || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_max: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      {(columnFilters.castka_min || columnFilters.castka_max) && (
                         <button
-                          onClick={() => setColumnFilters({...columnFilters, castka_min: '', castka_max: ''})}
-                          style={{
-                            position: 'absolute',
-                            right: '-0.25rem',
-                            top: '-0.25rem',
-                            background: '#dc2626',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '16px',
-                            height: '16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1,
-                            color: 'white',
-                            fontSize: '0.6rem',
-                            padding: 0
-                          }}
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}
                         >
                           <FontAwesomeIcon icon={faTimes} />
                         </button>
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr pro workflow stavy */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.stav || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, stav: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Všechny stavy</option>
-                      <option value="ZAEVIDOVANA">Zaevidovaná</option>
-                      <option value="VECNA_SPRAVNOST">Věcná správnost</option>
-                      <option value="PREDANA_PO">Předaná PO</option>
-                      <option value="V_RESENI">V řešení</option>
-                      <option value="K_ZAPLACENI">K zaplacení</option>
-                      <option value="ZAPLACENO">Zaplaceno</option>
-                      <option value="STORNO">Storno</option>
-                    </select>
+
+                  {/* Typ faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.fa_typ || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, fa_typ: value})}
+                        options={invoiceTypeOptions}
+                        field="fa_typ"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny typy"
+                        disabled={invoiceTypesLoading}
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Zaevidoval - filtr uživatele */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Objednávka/Smlouva */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
                         type="text"
+                        className="filter-input"
+                        placeholder="Obj./Smlouva..."
+                        value={columnFilters.cislo_objednavky || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
+                        title="Hledá v číslech objednávek i smluv"
+                      />
+                      {columnFilters.cislo_objednavky && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Doručení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_doruceni"
+                        value={columnFilters.datum_doruceni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        placeholder="Doručení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Vystavení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_vystaveni"
+                        value={columnFilters.datum_vystaveni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
+                        placeholder="Vystavení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Splatnost */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_splatnosti"
+                        value={columnFilters.datum_splatnosti || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
+                        placeholder="Splatnost"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Částka */}
+                  <TableHeader className="filter-cell amount-column">
+                    <div className="operator-filter-wrapper">
+                      <OperatorInput
+                        value={columnFilters.castka || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
+                        placeholder="Částka"
+                        clearButton={true}
+                        onClear={() => {
+                          setColumnFilters({...columnFilters, castka: ''});
+                        }}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Stav */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.stav || ''}
+                        onChange={(value) => {
+                          console.log('🔄 STAV onChange:', value, typeof value);
+                          setColumnFilters({...columnFilters, stav: value});
+                        }}
+                        options={stavOptions}
+                        field="stav"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny stavy"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Zaevidoval */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
                         placeholder="Jméno..."
                         value={columnFilters.vytvoril_uzivatel || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vytvoril_uzivatel: e.target.value})}
                       />
                       {columnFilters.vytvoril_uzivatel && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Předáno zaměstnanci - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Předáno zaměstnanci */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.predano_zamestnanec || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
                       />
                       {columnFilters.predano_zamestnanec && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcnou provedl - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Věcnou provedl */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.vecnou_provedl || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vecnou_provedl: e.target.value})}
                       />
                       {columnFilters.vecnou_provedl && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcná kontrola - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.vecna_kontrola || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="yes">Provedena</option>
-                      <option value="no">Neprovedena</option>
-                    </select>
+
+                  {/* Věcná kontrola */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.vecna_kontrola || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, vecna_kontrola: value})}
+                        options={vecnaKontrolaOptions}
+                        field="vecna_kontrola"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Přílohy - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
-                      onChange={(e) => { const value = e.target.value; if (value === 'spisovka') { setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' })); setActiveFilterStatus('from_spisovka'); setColumnFilters({...columnFilters, ma_prilohy: ''}); } else { setFilters(prev => ({ ...prev, filter_status: '' })); setActiveFilterStatus(null); setColumnFilters({...columnFilters, ma_prilohy: value}); } setCurrentPage(1); }}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="without">Bez příloh</option>
-                      <option value="with">S přílohami</option>
-                      <option value="spisovka">Ze spisovky</option>
-                    </select>
+
+                  {/* Přílohy */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                        onChange={(value) => {
+                          if (value === 'spisovka') {
+                            setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' }));
+                            setActiveFilterStatus('from_spisovka');
+                            setColumnFilters({...columnFilters, ma_prilohy: ''});
+                          } else {
+                            setFilters(prev => ({ ...prev, filter_status: '' }));
+                            setActiveFilterStatus(null);
+                            setColumnFilters({...columnFilters, ma_prilohy: value});
+                          }
+                          setCurrentPage(1);
+                        }}
+                        options={[
+                          { value: '', label: 'Vše' },
+                          { value: 'without', label: 'Bez příloh' },
+                          { value: 'with', label: 'S přílohami' },
+                          { value: 'spisovka', label: 'Ze spisovky' }
+                        ]}
+                        field="ma_prilohy"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Akce - tlačítko pro vymazání filtrů */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                      <ActionButton 
+
+                  {/* Akce */}
+                  <TableHeader className="filter-cell">
+                    <div className="action-filter-wrapper">
+                      <button
+                        className="clear-all-button"
                         onClick={() => setColumnFilters({})}
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
                         title="Vymazat všechny filtry"
                       >
                         <FontAwesomeIcon icon={faEraser} />
-                      </ActionButton>
+                      </button>
                     </div>
                   </TableHeader>
                 </tr>
@@ -3512,46 +3967,99 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell style={{ whiteSpace: 'nowrap' }}>
                       <span className="storno-content">
-                        {invoice.cislo_smlouvy ? (
-                          <div 
-                            style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '0.25rem',
-                              cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1,
-                              color: '#3b82f6'
-                            }}
-                            onClick={() => handleAddInvoiceToEntity(invoice)}
-                            title="Klikněte zde pro otevření přidružené faktury"
-                          >
-                            <div style={{ 
-                              display: 'flex', 
-                              alignItems: 'center',
-                              transition: 'opacity 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                            >
-                              <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                              {invoice.cislo_smlouvy}
-                            </div>
-                          </div>
-                        ) : invoice.cislo_objednavky ? (
-                          <div
-                            style={{
-                              cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1,
-                              color: '#3b82f6',
-                              transition: 'opacity 0.2s'
-                            }}
-                            onClick={() => handleAddInvoiceToEntity(invoice)}
-                            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-                            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                            title="Klikněte zde pro otevření přidružené faktury"
-                          >
-                            <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem', color: '#3b82f6' }} />
-                            {invoice.cislo_objednavky}
+                        {invoice.cislo_smlouvy || invoice.cislo_objednavky ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                            {/* První řádek - číslo smlouvy/objednávky s ikonami */}
+                            {invoice.cislo_smlouvy ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#3b82f6' }}>
+                                  <FontAwesomeIcon icon={faFileContract} style={{ marginRight: '0.5rem' }} />
+                                  {invoice.cislo_smlouvy}
+                                </span>
+                                {/* Ikona pro faktury ke smlouvě */}
+                                <FontAwesomeIcon 
+                                  icon={faEdit}
+                                  style={{ 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewContractInvoices(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu ke smlouvě"
+                                />
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {/* Číslo objednávky - KLIKATELNÉ pro editaci */}
+                                <span
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6',
+                                    transition: 'opacity 0.2s'
+                                  }}
+                                  onClick={() => handleEditOrder(invoice)}
+                                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                  title="Klikněte pro editaci objednávky"
+                                >
+                                  <FontAwesomeIcon 
+                                    icon={faFileInvoice} 
+                                    style={{ 
+                                      marginRight: '0.5rem', 
+                                      color: invoice.objednavka_je_dokoncena ? '#059669' : '#3b82f6'
+                                    }} 
+                                  />
+                                  {invoice.cislo_objednavky}
+                                </span>
+                                {/* Ikona pro faktury k objednávce */}
+                                <FontAwesomeIcon 
+                                  icon={faEdit}
+                                  style={{ 
+                                    color: '#64748b',
+                                    cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                                    opacity: invoiceTypesLoading ? 0.7 : 1,
+                                    transition: 'opacity 0.2s, color 0.2s',
+                                    fontSize: '0.875rem'
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddInvoiceToEntity(invoice);
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                                  onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                                  title="Editovat přidruženou fakturu k objednávce"
+                                />
+                              </div>
+                            )}
+                            
+                            {/* Druhý řádek - dodavatel název | IČO */}
+                            {(invoice.dodavatel_nazev || invoice.dodavatel_ico) ? (
+                              <div style={{ 
+                                fontSize: '0.8em', 
+                                color: '#64748b',
+                                marginLeft: '1.5rem'
+                              }}>
+                                {invoice.dodavatel_nazev || 'Název nedostupný'}{invoice.dodavatel_ico ? ` | ${invoice.dodavatel_ico}` : ''}
+                              </div>
+                            ) : (
+                              <div style={{ 
+                                fontSize: '0.8em', 
+                                color: '#94a3b8',
+                                marginLeft: '1.5rem'
+                              }}>
+                                Dodavatel nespecifikován
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>Nepřiřazena</span>
@@ -3576,7 +4084,7 @@ const Invoices25List = () => {
                     <TableCell className="center">
                       <span className="storno-content">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
                     </TableCell>
-                    <TableCell className="right">
+                    <TableCell className="amount-column">
                       <span className="storno-content"><strong>{formatCurrency(invoice.castka)}</strong></span>
                     </TableCell>
                     <TableCell className="center">
@@ -4294,7 +4802,7 @@ const Invoices25List = () => {
                    statusChangeDialog.newStatus === 'V_RESENI' ? 'V řešení' :
                    statusChangeDialog.newStatus === 'PREDANA_PO' ? 'Předaná PO' :
                    statusChangeDialog.newStatus === 'K_ZAPLACENI' ? 'K zaplacení' :
-                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno' : statusChangeDialog.newStatus}
+                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno+' : statusChangeDialog.newStatus}
                 </strong>?
               </p>
             </div>
@@ -5425,8 +5933,11 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
+                    style={{ textAlign: 'center' }}
                   >
-                    Objednávka/Smlouva
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <span>Obj/SML/Dodavatel</span>
+                    </div>
                     {sortField === 'cislo_objednavky' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -5504,7 +6015,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('fa_predana_zam_jmeno')}
                     style={{ minWidth: '120px' }}
                   >
-                    Předáno zaměstnanci
+                    Předáno
                     {sortField === 'fa_predana_zam_jmeno' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -5549,13 +6060,13 @@ const Invoices25List = () => {
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
                 </tr>
-                {/* Druhý řádek s filtry ve sloupcích */}
-                <tr>
-                  {/* Aktualizováno - datum filtr - PRVNÍ SLOUPEC */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
+                {/* FILTROVACÍ ŘÁDEK - IDENTICKÁ STRUKTURA JAKO V HLAVNÍ TABULCE */}
+                <tr className="filter-row">
+                  {/* Aktualizováno */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
                       <DatePicker
-                        fieldName="filter_dt_aktualizace"
+                        fieldName="dt_aktualizace"
                         value={columnFilters.dt_aktualizace || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, dt_aktualizace: value})}
                         placeholder="Datum"
@@ -5563,288 +6074,285 @@ const Invoices25List = () => {
                       />
                     </div>
                   </TableHeader>
-                  {/* Faktura VS - text filtr */}
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
+
+                  {/* Číslo faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Hledat číslo..."
+                        className="filter-input"
+                        placeholder="Číslo faktury..."
                         value={columnFilters.cislo_faktury || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
                       />
                       {columnFilters.cislo_faktury && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  {/* Typ faktury - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.fa_typ || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, fa_typ: e.target.value})}
-                      disabled={invoiceTypesLoading}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white',
-                        cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1
-                      }}
-                    >
-                      <option value="">{invoiceTypesLoading ? 'Načítám...' : 'Všechny typy'}</option>
-                      {invoiceTypes.map(type => (
-                        <option key={type.id} value={type.id}>
-                          {type.nazev.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </TableHeader>
-                  <TableHeader className="wide-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faSearch} />
-                      <ColumnFilterInput
-                        type="text"
-                        placeholder="Obj/Sml..."
-                        value={columnFilters.cislo_objednavky || ''}
-                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-                        title="Hledá v číslech objednávek i smluv"
-                      />
-                      {columnFilters.cislo_objednavky && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}>
-                          <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
-                      )}
-                    </ColumnFilterWrapper>
-                  </TableHeader>
-                  {/* Doručení - datum filtr */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_doruceni"
-                        value={columnFilters.datum_doruceni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Vystavení - datum filtr (přesunuto sem) */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_vystaveni"
-                        value={columnFilters.datum_vystaveni || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Splatnost - datum filtr (přesunuto před částku) */}
-                  <TableHeader className="date-column" style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ position: 'relative' }}>
-                      <DatePicker
-                        fieldName="filter_datum_splatnosti"
-                        value={columnFilters.datum_splatnosti || ''}
-                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
-                        placeholder="Datum"
-                        variant="compact"
-                      />
-                    </div>
-                  </TableHeader>
-                  {/* Částka - rozsahový filtr */}
-                  <TableHeader className="amount-column" style={{ padding: '0.5rem 0.25rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Min"
-                        value={columnFilters.castka_min || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_min: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>-</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="Max"
-                        value={columnFilters.castka_max || ''}
-                        onChange={(e) => {
-                          const newVal = e.target.value.replace(/[^0-9]/g, '');
-                          setColumnFilters({...columnFilters, castka_max: newVal});
-                        }}
-                        style={{
-                          width: '45px',
-                          padding: '0.35rem 0.25rem',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'white',
-                          textAlign: 'center'
-                        }}
-                      />
-                      {(columnFilters.castka_min || columnFilters.castka_max) && (
                         <button
-                          onClick={() => setColumnFilters({...columnFilters, castka_min: '', castka_max: ''})}
-                          style={{
-                            position: 'absolute',
-                            right: '-0.25rem',
-                            top: '-0.25rem',
-                            background: '#dc2626',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '16px',
-                            height: '16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: invoiceTypesLoading ? 'wait' : 'pointer',
-                        opacity: invoiceTypesLoading ? 0.7 : 1,
-                            color: 'white',
-                            fontSize: '0.6rem',
-                            padding: 0
-                          }}
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_faktury: ''})}
                         >
                           <FontAwesomeIcon icon={faTimes} />
                         </button>
                       )}
                     </div>
                   </TableHeader>
-                  {/* Stav - select filtr pro workflow stavy */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.stav || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, stav: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Všechny stavy</option>
-                      <option value="ZAEVIDOVANA">Zaevidovaná</option>
-                      <option value="VECNA_SPRAVNOST">Věcná správnost</option>
-                      <option value="PREDANA_PO">Předaná PO</option>
-                      <option value="V_RESENI">V řešení</option>
-                      <option value="K_ZAPLACENI">K zaplacení</option>
-                      <option value="ZAPLACENO">Zaplaceno</option>
-                      <option value="STORNO">Storno</option>
-                    </select>
+
+                  {/* Typ faktury */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.fa_typ || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, fa_typ: value})}
+                        options={invoiceTypeOptions}
+                        field="floating_fa_typ"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny typy"
+                        disabled={invoiceTypesLoading}
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Zaevidoval - filtr uživatele */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Objednávka/Smlouva */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                      <input
                         type="text"
+                        className="filter-input"
+                        placeholder="Obj./Smlouva..."
+                        value={columnFilters.cislo_objednavky || ''}
+                        onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
+                        title="Hledá v číslech objednávek i smluv"
+                      />
+                      {columnFilters.cislo_objednavky && (
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, cislo_objednavky: ''})}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      )}
+                    </div>
+                  </TableHeader>
+
+                  {/* Doručení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_doruceni"
+                        value={columnFilters.datum_doruceni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_doruceni: value})}
+                        placeholder="Doručení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Vystavení */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_vystaveni"
+                        value={columnFilters.datum_vystaveni || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_vystaveni: value})}
+                        placeholder="Vystavení"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Splatnost */}
+                  <TableHeader className="filter-cell">
+                    <div className="date-filter-wrapper">
+                      <DatePicker
+                        fieldName="datum_splatnosti"
+                        value={columnFilters.datum_splatnosti || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, datum_splatnosti: value})}
+                        placeholder="Splatnost"
+                        variant="compact"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Částka */}
+                  <TableHeader className="filter-cell amount-column">
+                    <div className="operator-filter-wrapper">
+                      <OperatorInput
+                        value={columnFilters.castka || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
+                        placeholder="Částka"
+                        clearButton={true}
+                        onClear={() => {
+                          setColumnFilters({...columnFilters, castka: ''});
+                        }}
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Stav */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.stav || ''}
+                        onChange={(value) => {
+                          setColumnFilters({...columnFilters, stav: value});
+                        }}
+                        options={stavOptions}
+                        field="floating_stav"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Všechny stavy"
+                      />
+                    </div>
+                  </TableHeader>
+
+                  {/* Zaevidoval */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
+                        type="text"
+                        className="filter-input"
                         placeholder="Jméno..."
                         value={columnFilters.vytvoril_uzivatel || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vytvoril_uzivatel: e.target.value})}
                       />
                       {columnFilters.vytvoril_uzivatel && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vytvoril_uzivatel: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Předáno zaměstnanci - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)', minWidth: '120px' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Předáno zaměstnanci */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.predano_zamestnanec || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, predano_zamestnanec: e.target.value})}
                       />
                       {columnFilters.predano_zamestnanec && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, predano_zamestnanec: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcnou provedl - text filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <ColumnFilterWrapper>
-                      <FontAwesomeIcon icon={faUser} />
-                      <ColumnFilterInput
+
+                  {/* Věcnou provedl */}
+                  <TableHeader className="filter-cell">
+                    <div className="text-filter-wrapper">
+                      <FontAwesomeIcon icon={faUser} className="filter-icon" />
+                      <input
                         type="text"
-                        placeholder="Celé jméno..."
+                        className="filter-input"
+                        placeholder="Jméno..."
                         value={columnFilters.vecnou_provedl || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, vecnou_provedl: e.target.value})}
                       />
                       {columnFilters.vecnou_provedl && (
-                        <ColumnClearButton onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}>
+                        <button
+                          className="filter-clear"
+                          onClick={() => setColumnFilters({...columnFilters, vecnou_provedl: ''})}
+                        >
                           <FontAwesomeIcon icon={faTimes} />
-                        </ColumnClearButton>
+                        </button>
                       )}
-                    </ColumnFilterWrapper>
+                    </div>
                   </TableHeader>
-                  {/* Věcná kontrola - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={columnFilters.vecna_kontrola || ''}
-                      onChange={(e) => setColumnFilters({...columnFilters, vecna_kontrola: e.target.value})}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="yes">Provedena</option>
-                      <option value="no">Neprovedena</option>
-                    </select>
+
+                  {/* Věcná kontrola */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={columnFilters.vecna_kontrola || ''}
+                        onChange={(value) => setColumnFilters({...columnFilters, vecna_kontrola: value})}
+                        options={vecnaKontrolaOptions}
+                        field="floating_vecna_kontrola"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Přílohy - select filtr */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                    <select
-                      value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
-                      onChange={(e) => { const value = e.target.value; if (value === 'spisovka') { setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' })); setActiveFilterStatus('from_spisovka'); setColumnFilters({...columnFilters, ma_prilohy: ''}); } else { setFilters(prev => ({ ...prev, filter_status: '' })); setActiveFilterStatus(null); setColumnFilters({...columnFilters, ma_prilohy: value}); } setCurrentPage(1); }}
-                      style={{
-                        width: '100%',
-                        padding: '0.375rem 0.625rem',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        backgroundColor: 'white'
-                      }}
-                    >
-                      <option value="">Vše</option>
-                      <option value="without">Bez příloh</option>
-                      <option value="with">S přílohami</option>
-                      <option value="spisovka">Ze spisovky</option>
-                    </select>
+
+                  {/* Přílohy */}
+                  <TableHeader className="filter-cell">
+                    <div className="select-filter-wrapper">
+                      <CustomSelect
+                        value={activeFilterStatus === 'from_spisovka' ? 'spisovka' : (columnFilters.ma_prilohy || '')}
+                        onChange={(value) => {
+                          if (value === 'spisovka') {
+                            setFilters(prev => ({ ...prev, filter_status: 'from_spisovka' }));
+                            setActiveFilterStatus('from_spisovka');
+                            setColumnFilters({...columnFilters, ma_prilohy: ''});
+                          } else {
+                            setFilters(prev => ({ ...prev, filter_status: '' }));
+                            setActiveFilterStatus(null);
+                            setColumnFilters({...columnFilters, ma_prilohy: value});
+                          }
+                          setCurrentPage(1);
+                        }}
+                        options={[
+                          { value: '', label: 'Vše' },
+                          { value: 'without', label: 'Bez příloh' },
+                          { value: 'with', label: 'S přílohami' },
+                          { value: 'spisovka', label: 'Ze spisovky' }
+                        ]}
+                        field="ma_prilohy_floating"
+                        selectStates={selectStates}
+                        setSelectStates={setSelectStates}
+                        searchStates={searchStates}
+                        setSearchStates={setSearchStates}
+                        touchedSelectFields={touchedSelectFields}
+                        setTouchedSelectFields={setTouchedSelectFields}
+                        toggleSelect={toggleSelect}
+                        filterOptions={filterOptions}
+                        getOptionLabel={getOptionLabel}
+                        enableSearch={false}
+                        placeholder="Vše"
+                      />
+                    </div>
                   </TableHeader>
-                  {/* Akce - tlačítko pro vymazání filtrů */}
-                  <TableHeader style={{ padding: '0.5rem', backgroundColor: '#f8f9fa', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+
+                  {/* Akce */}
+                  <TableHeader className="filter-cell">
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                       <ActionButton 
                         onClick={() => setColumnFilters({})}
@@ -5893,6 +6401,92 @@ const Invoices25List = () => {
           onClose={() => setViewerAttachment(null)}
         />
       )}
+      
+      {/* 📋 Sidebar s objednávkami připravenými k fakturaci */}
+      <SlideInDetailPanel
+        isOpen={showOrdersSidebar}
+        title="Objednávky připravené k fakturaci"
+        onClose={handleCloseOrdersSidebar}
+        width="700px"
+      >
+          <div style={{ padding: '1.5rem' }}>
+            {loadingOrdersReady ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faSyncAlt} spin style={{ fontSize: '2rem', marginBottom: '1rem' }} />
+                <p>Načítám objednávky...</p>
+              </div>
+            ) : ordersReadyForInvoice.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '2rem', marginBottom: '1rem', color: '#10b981' }} />
+                <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>Nejsou žádné objednávky připravené k fakturaci</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Všechny dokončené objednávky již mají přiřazenou fakturu.</p>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                  <p style={{ margin: 0, color: '#0c4a6e', fontSize: '0.95rem' }}>
+                    <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
+                    Nalezeno <strong>{ordersReadyForInvoice.length}</strong> {ordersReadyForInvoice.length === 1 ? 'objednávka' : ordersReadyForInvoice.length <= 4 ? 'objednávky' : 'objednávek'} bez faktury
+                  </p>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {ordersReadyForInvoice.map(order => (
+                    <div
+                      key={order.id}
+                      onClick={() => handleSelectOrderForInvoice(order)}
+                      style={{
+                        padding: '1rem',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: '#fff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#3b82f6';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
+                        e.currentTarget.style.transform = 'translateX(4px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 600, fontSize: '1.05rem', color: '#1e293b' }}>
+                          #{order.cislo_objednavky}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                          {formatDateOnly(order.dt_vytvoreni)}
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '0.5rem' }}>
+                        {order.predmet}
+                      </div>
+                      
+                      {order.dodavatel_nazev && (
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                          <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.4rem', width: '14px' }} />
+                          {order.dodavatel_nazev}
+                        </div>
+                      )}
+                      
+                      {order.max_cena_s_dph && (
+                        <div style={{ fontSize: '0.9rem', color: '#059669', fontWeight: 600 }}>
+                          <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px' }} />
+                          {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </SlideInDetailPanel>
     </>
   );
 };
