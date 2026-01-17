@@ -1756,16 +1756,36 @@ const Invoices25List = () => {
       const response = await getOrdersList25({
         token,
         username,
-        rok: currentYear
+        filters: {
+          rok: currentYear,
+          stav_objednavky: 'FAKTURACE'
+        }
       });
 
-      if (response.status === 'ok' && response.data) {
-        // Filtruj na FE: pouze DOKONCENA objednávky BEZ faktury
-        const filteredOrders = response.data.filter(order => {
-          const isDokoncena = order.stav_objednavky === 'DOKONCENA';
-          const hasNoInvoice = !order._invoices || order._invoices.length === 0;
-          return isDokoncena && hasNoInvoice;
+      console.log('� API Response:', response);
+      console.log('📊 Is array?', Array.isArray(response));
+
+      if (Array.isArray(response)) {
+        console.log('📊 Total FAKTURACE orders loaded:', response.length);
+        
+        // Debug: Ukázkové objednávky
+        const sampleOrders = response.slice(0, 3);
+        console.log('🔍 DEBUG - Sample FAKTURACE orders:', sampleOrders.map(o => ({
+          id: o.id,
+          cislo: o.cislo_objednavky,
+          stav: o.stav_objednavky,
+          faktury: o.faktury,
+          faktury_count: o.faktury_count,
+          hasInvoices: o.faktury?.length > 0 || o.faktury_count > 0
+        })));
+
+        // Filtruj na FE: pouze objednávky BEZ faktury
+        const filteredOrders = response.filter(order => {
+          const hasNoInvoice = (!order.faktury || order.faktury.length === 0) && (!order.faktury_count || order.faktury_count === 0);
+          return hasNoInvoice;
         });
+        
+        console.log('🔍 DEBUG - Filtered orders (bez faktury):', filteredOrders.length);
         
         const orders = filteredOrders.map(order => ({
           id: order.id,
@@ -1779,6 +1799,7 @@ const Invoices25List = () => {
         setOrdersReadyForInvoice(orders);
         setOrdersReadyCount(orders.length);
       } else {
+        console.log('⚠️ DEBUG - Response not OK or no data');
         setOrdersReadyForInvoice([]);
         setOrdersReadyCount(0);
       }
@@ -2431,23 +2452,45 @@ const Invoices25List = () => {
   
   // 📋 Načtení počtu objednávek připravených k fakturaci (pouze při mount)
   useEffect(() => {
+    console.log('🚀 useEffect START - Orders ready for invoice');
+    console.log('🔑 token:', !!token, 'username:', !!username, 'canManageInvoices:', canManageInvoices, 'isAdmin:', isAdmin);
+    
     const loadCount = async () => {
-      if (!token || !username || !canManageInvoices) return;
+      if (!token || !username || !(canManageInvoices || isAdmin)) {
+        console.log('⚠️ useEffect BLOCKED - missing permissions or auth');
+        return;
+      }
+      
+      console.log('✅ useEffect EXECUTING - loading orders...');
       
       try {
         const currentYear = new Date().getFullYear();
+        console.log('📅 Loading orders for year:', currentYear, 'with state: FAKTURACE');
+        
         const response = await getOrdersList25({
           token,
           username,
-          rok: currentYear
+          filters: {
+            rok: currentYear,
+            stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE - jen objednávky ve stavu FAKTURACE
+          }
         });
 
-        if (response.status === 'ok' && response.data) {
-          // Filtruj na FE: DOKONCENA bez faktury
-          const count = response.data.filter(order => 
-            order.stav_objednavky === 'DOKONCENA' && (!order._invoices || order._invoices.length === 0)
+        console.log('📦 API Response:', response);
+
+        if (Array.isArray(response)) {
+          console.log('📊 Total FAKTURACE orders loaded:', response.length);
+          
+          // Filtruj na FE: pouze bez faktury
+          const count = response.filter(order => 
+            (!order.faktury || order.faktury.length === 0) && 
+            (!order.faktury_count || order.faktury_count === 0)
           ).length;
+          
+          console.log('✨ Orders ready for invoice (bez faktury):', count);
           setOrdersReadyCount(count);
+        } else {
+          console.log('❌ Response not array');
         }
       } catch (error) {
         console.error('❌ Chyba při načítání počtu objednávek:', error);
@@ -2455,13 +2498,13 @@ const Invoices25List = () => {
     };
     
     loadCount();
-  }, [token, username, canManageInvoices]);
+  }, [token, username, canManageInvoices, isAdmin]);
   
   // 📋 Refresh count při návratu na stránku (například po evidenci faktury)
   useEffect(() => {
     // Pokud se uživatel vrátí na stránku, aktualizuj počet
     const handleVisibilityChange = () => {
-      if (!document.hidden && token && username && canManageInvoices) {
+      if (!document.hidden && token && username && (canManageInvoices || isAdmin)) {
         // Stránka se stala viditelnou, refresh count
         const loadCount = async () => {
           try {
@@ -2469,12 +2512,16 @@ const Invoices25List = () => {
             const response = await getOrdersList25({
               token,
               username,
-              rok: currentYear
+              filters: {
+                rok: currentYear,
+                stav_objednavky: 'FAKTURACE' // 📋 Filtr na BE
+              }
             });
 
-            if (response.status === 'ok' && response.data) {
-              const count = response.data.filter(order => 
-                order.stav_objednavky === 'DOKONCENA' && (!order._invoices || order._invoices.length === 0)
+            if (Array.isArray(response)) {
+              const count = response.filter(order => 
+                (!order.faktury || order.faktury.length === 0) && 
+                (!order.faktury_count || order.faktury_count === 0)
               ).length;
               setOrdersReadyCount(count);
             }
@@ -2488,7 +2535,7 @@ const Invoices25List = () => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [token, username, canManageInvoices]);
+  }, [token, username, canManageInvoices, isAdmin]);
   
   // Připravit options pro CustomSelect komponenty
   const invoiceTypeOptions = useMemo(() => {
@@ -3105,9 +3152,13 @@ const Invoices25List = () => {
           )}
           
           {/* 📋 Tlačítko pro objednávky připravené k fakturaci */}
-          {canManageInvoices && ordersReadyCount > 0 && (
+          {(canManageInvoices || isAdmin) && (
             <TooltipWrapper text="Zobrazit seznam objednávek připravených k fakturaci" preferredPosition="bottom">
-              <ActionButton onClick={handleOpenOrdersSidebar}>
+              <ActionButton 
+                onClick={handleOpenOrdersSidebar}
+                disabled={ordersReadyCount === 0}
+                style={{ opacity: ordersReadyCount === 0 ? 0.5 : 1, cursor: ordersReadyCount === 0 ? 'not-allowed' : 'pointer' }}
+              >
                 <FontAwesomeIcon icon={faFileInvoice} />
                 Zaevidovat fakturu k objednávce ({ordersReadyCount})
               </ActionButton>
