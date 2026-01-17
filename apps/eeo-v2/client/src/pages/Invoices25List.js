@@ -1833,6 +1833,8 @@ const Invoices25List = () => {
       state: {
         fromOrdersReadyList: true,
         orderNumber: order.cislo_objednavky,
+        orderIdForLoad: order.id, // Přidat ID objednávky pro načtení
+        prefillSearchTerm: order.cislo_objednavky || `#${order.id}`, // Předvyplnit našeptávač
         timestamp: Date.now()
       }
     });

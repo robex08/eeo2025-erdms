@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -242,10 +242,25 @@ const formatFileSize = (bytes) => {
 
 const OrderAttachmentsTooltip = ({ attachments, position, onClose, token, username, orderId, onView }) => {
   const [errorDialog, setErrorDialog] = useState(null);
+
+  // Zavřít tooltip při scrollování
+  useEffect(() => {
+    const handleScroll = () => {
+      if (onClose) {
+        onClose();
+      }
+    };
+
+    // Přidat scroll listener na window i na scrollovací kontejnery
+    window.addEventListener('scroll', handleScroll, true);
+    
+    // Cleanup při unmount
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [onClose]);
   const handleAttachmentClick = async (attachment) => {
     try {
-      console.log('🔍 Zobrazení přílohy objednávky:', attachment);
-      
       // Import download funkce z API pro objednávky
       const { downloadAttachment25 } = await import('../../services/api25orders');
       
@@ -319,10 +334,7 @@ const OrderAttachmentsTooltip = ({ attachments, position, onClose, token, userna
         onClose();
       }
       
-      console.log('✅ Příloha objednávky úspěšně zobrazena:', filename);
-      
     } catch (error) {
-      console.error('❌ Chyba při zobrazování přílohy objednávky:', error);
       setErrorDialog({
         title: 'Chyba při zobrazování přílohy',
         message: error.message || 'Nepodařilo se zobrazit přílohu. Zkuste to prosím znovu.'
