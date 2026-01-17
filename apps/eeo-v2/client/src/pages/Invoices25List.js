@@ -1946,7 +1946,6 @@ const Invoices25List = () => {
       // Datum aktualizace (přesná shoda)
       if (debouncedColumnFilters.dt_aktualizace && typeof debouncedColumnFilters.dt_aktualizace === 'string' && debouncedColumnFilters.dt_aktualizace.trim()) {
         apiParams.filter_dt_aktualizace = debouncedColumnFilters.dt_aktualizace.trim();
-        console.log('📅 DEBUG: Odesílám filter_dt_aktualizace:', debouncedColumnFilters.dt_aktualizace.trim());
       }
       
       // Typ faktury (přesná shoda) - pouze pokud není "Všechny typy"
@@ -1977,16 +1976,8 @@ const Invoices25List = () => {
       
       // Stav faktury - pouze pokud není "Všechny stavy"
       const stavValue = typeof debouncedColumnFilters.stav === 'object' ? debouncedColumnFilters.stav?.value : debouncedColumnFilters.stav;
-      console.log('🔍 DEBUG STAV:', { 
-        'debouncedColumnFilters.stav': debouncedColumnFilters.stav, 
-        'typeof': typeof debouncedColumnFilters.stav, 
-        'stavValue': stavValue 
-      });
       if (stavValue && stavValue.toString().trim() !== '') {
         apiParams.filter_stav = stavValue;
-        console.log('✅ Odesílám filter_stav:', stavValue);
-      } else {
-        console.log('❌ Stav filtr prázdný nebo neplatný');
       }
       
       // Uživatel - celé jméno (LIKE - hledá v jméně i příjmení)
@@ -2000,12 +1991,6 @@ const Invoices25List = () => {
         const castkaTrimmed = debouncedColumnFilters.castka.trim();
         const match = castkaTrimmed.match(/^([=<>])(.+)$/);
         
-        console.log('🔍 CASTKA FILTER DEBUG:', {
-          original: debouncedColumnFilters.castka,
-          trimmed: castkaTrimmed,
-          match: match
-        });
-        
         if (match) {
           const operator = match[1];
           const amount = parseFloat(match[2].replace(/\s/g, '').replace(/,/g, ''));
@@ -2014,13 +1999,10 @@ const Invoices25List = () => {
             // Přeložit operátor na API parametry
             if (operator === '=') {
               apiParams.castka_eq = amount;
-              console.log('✅ CASTKA EQ:', amount);
             } else if (operator === '<') {
               apiParams.castka_lt = amount;
-              console.log('✅ CASTKA LT:', amount);
             } else if (operator === '>') {
               apiParams.castka_gt = amount;
-              console.log('✅ CASTKA GT:', amount);
             }
           }
         }
@@ -2059,11 +2041,9 @@ const Invoices25List = () => {
       if (sortField && sortField.trim()) {
         apiParams.order_by = sortField.trim();
         apiParams.order_direction = sortDirection || 'desc'; // default DESC
-        console.log('🔄 DEBUG: Odesílám řazení:', sortField, sortDirection);
       }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
-      console.log('📡 DEBUG: API parametry:', JSON.stringify(apiParams, null, 2));
       const response = await listInvoices25(apiParams);
 
       // Transformace dat z BE formátu
@@ -3454,7 +3434,6 @@ const Invoices25List = () => {
                         placeholder="Částka"
                         clearButton={true}
                         onClear={() => {
-                          console.log('🗑️ Clearing castka filter');
                           setColumnFilters({...columnFilters, castka: ''});
                         }}
                       />
