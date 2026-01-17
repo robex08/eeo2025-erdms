@@ -11624,7 +11624,7 @@ const Orders25List = () => {
             {(order.schvaleni_komentar || order.odeslani_storno_duvod) && (
               <InfoRow>
                 <InfoLabel>Stav komentář:</InfoLabel>
-                <InfoValue style={{ fontStyle: 'italic', color: '#64748b' }}>
+                <InfoValue style={{ color: '#64748b' }}>
                   {[order.schvaleni_komentar, order.odeslani_storno_duvod]
                     .filter(Boolean)
                     .join(', ')}
@@ -13008,7 +13008,7 @@ const Orders25List = () => {
                           return (
                             <ListItemMetaItem>
                               <span style={{ fontWeight: 500 }}>Poznámka k místu:</span>
-                              <span style={{ color: '#92400e', fontStyle: 'italic' }}>
+                              <span style={{ color: '#92400e' }}>
                                 {poznamkaKMistu}
                               </span>
                             </ListItemMetaItem>
