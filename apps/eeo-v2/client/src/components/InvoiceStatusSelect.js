@@ -271,9 +271,16 @@ const INVOICE_STATES = {
     color: 'background-color: #ecfdf5; color: #047857; border-color: #a7f3d0;',
     icon: CheckCircle
   },
+  DOKONCENA: {
+    id: 'DOKONCENA',
+    label: 'Dokončená',
+    description: 'Faktura zcela dokončena',
+    color: 'background-color: #f0fdf4; color: #15803d; border-color: #bbf7d0;',
+    icon: CheckCircle
+  },
   STORNO: {
     id: 'STORNO',
-    label: 'Storno',
+    label: 'Storno+',
     description: 'Faktura stažena dodavatelem',
     color: 'background-color: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; text-decoration: line-through;',
     icon: XCircle
