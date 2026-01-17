@@ -356,35 +356,53 @@ function handle_order_v2_list($input, $config, $queries) {
         // Filter: aktivni objednávky (vždy)
         $whereConditions[] = "o.aktivni = 1";
         
-        // 🌲 HIERARCHIE WORKFLOW: REPLACES role-based filter
-        // ============================================================================
-        error_log("🔍 TEST: Before calling applyHierarchyFilterToOrders");
-        global $HIERARCHY_DEBUG_INFO; // 🔥 Načti debug info z funkce
-        $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
-        error_log("🔍 TEST: After calling applyHierarchyFilterToOrders, result=" . ($hierarchyFilter === null ? 'NULL' : $hierarchyFilter));
+        // 🔥 KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
+        $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
         
-        $hierarchyApplied = false; // 🔥 Flag pro skip role-based filtru
-        if ($hierarchyFilter !== null) {
-            $whereConditions[] = $hierarchyFilter;
-            $hierarchyApplied = true; // 🔥 Hierarchie NAHRAZUJE role-based filter
-            error_log("✅ TEST: HIERARCHY filter APPLIED - will SKIP role-based filter");
+        // 🔐 PERMISSIONS: Načtení ORDER_* permissions pro detailní kontrolu
+        $hasOrderManage = in_array('ORDER_MANAGE', $user_permissions);
+        $hasOrderReadAll = in_array('ORDER_READ_ALL', $user_permissions);
+        $hasOrderViewAll = in_array('ORDER_VIEW_ALL', $user_permissions);
+        $hasOrderApproveAll = in_array('ORDER_APPROVE_ALL', $user_permissions);
+        $hasOrderEditAll = in_array('ORDER_EDIT_ALL', $user_permissions);
+        $hasOrderDeleteAll = in_array('ORDER_DELETE_ALL', $user_permissions);
+        
+        // 🔥 KRITICKÉ FIX: Full admin = POUZE role SUPERADMIN nebo ADMINISTRATOR
+        $isFullAdmin = $isAdminByRole;
+        
+        error_log("Order V2 LIST: Role check - SUPERADMIN/ADMINISTRATOR: " . ($isAdminByRole ? 'YES' : 'NO'));
+        
+        // 🌲 HIERARCHIE WORKFLOW: REPLACES role-based filter (ale POUZE pro non-admins!)
+        // ============================================================================
+        $hierarchyApplied = false;
+        
+        if (!$isFullAdmin) { // 🔥 SUPERADMIN/ADMINISTRATOR jsou osvobozeni od hierarchie
+            error_log("🔍 TEST: User is NOT admin, checking hierarchy filter");
+            global $HIERARCHY_DEBUG_INFO;
+            $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
+            error_log("🔍 TEST: After calling applyHierarchyFilterToOrders, result=" . ($hierarchyFilter === null ? 'NULL' : $hierarchyFilter));
+            
+            if ($hierarchyFilter !== null) {
+                $whereConditions[] = $hierarchyFilter;
+                $hierarchyApplied = true;
+                error_log("✅ TEST: HIERARCHY filter APPLIED - will SKIP role-based filter");
+            } else {
+                error_log("ℹ️ TEST: HIERARCHY filter NOT applied - will use role-based filter");
+            }
         } else {
-            error_log("ℹ️ TEST: HIERARCHY filter NOT applied - will use role-based filter");
+            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING hierarchy filter completely");
         }
         // ============================================================================
         
-        // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS: Úsek-based viditelnost
-        // ============================================================================
-        // ORDER_READ_SUBORDINATE (ID: 4) - Read-only přístup k objednávkám kolegů z úseku
-        // ORDER_EDIT_SUBORDINATE (ID: 20) - Plná editace objednávek kolegů z úseku
-        // Funguje NEZÁVISLE na hierarchii (i když hierarchie není zapnutá)
+        // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS: Úsek-based viditelnost (ale POUZE pro non-admins!)
         // ============================================================================
         $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
         $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
         
         $departmentFilterApplied = false;
         
-        if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+        if (!$isFullAdmin && ($hasOrderReadSubordinate || $hasOrderEditSubordinate)) {
+            // 🔥 SUPERADMIN/ADMINISTRATOR jsou osvobozeni od department filtru
             // Načíst kolegy ze stejného úseku
             $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
             
@@ -416,23 +434,10 @@ function handle_order_v2_list($input, $config, $queries) {
             } else {
                 error_log("⚠️ DEPARTMENT SUBORDINATE: User $current_user_id has no usek_id or no colleagues in department");
             }
+        } else if ($isFullAdmin) {
+            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING department subordinate filter");
         }
         // ============================================================================
-        
-        // � KRITICKÉ FIX: Kontrola ADMIN ROLÍ (SUPERADMIN, ADMINISTRATOR = automaticky admin)
-        $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
-        
-        // 🔐 PERMISSIONS: Načtení ORDER_* permissions pro detailní kontrolu
-        $hasOrderManage = in_array('ORDER_MANAGE', $user_permissions);
-        $hasOrderReadAll = in_array('ORDER_READ_ALL', $user_permissions);
-        $hasOrderViewAll = in_array('ORDER_VIEW_ALL', $user_permissions);
-        $hasOrderApproveAll = in_array('ORDER_APPROVE_ALL', $user_permissions);
-        $hasOrderEditAll = in_array('ORDER_EDIT_ALL', $user_permissions);
-        $hasOrderDeleteAll = in_array('ORDER_DELETE_ALL', $user_permissions);
-        
-        // 🔥 KRITICKÉ FIX: Full admin = POUZE role SUPERADMIN nebo ADMINISTRATOR
-        // ORDER_*_ALL permissions NEJSOU admin práva! Jsou to jen rozšířená práva pro konkrétní operace.
-        $isFullAdmin = $isAdminByRole;
         
         // 🔥 ORDER_OLD = Speciální právo pro přístup k VŠEM archivovaným objednávkám
         $hasOrderOld = in_array('ORDER_OLD', $user_permissions);
