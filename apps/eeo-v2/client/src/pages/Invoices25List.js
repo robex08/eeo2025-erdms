@@ -1638,6 +1638,7 @@ const Invoices25List = () => {
   
   // State pro attachments tooltip
   const [attachmentsTooltip, setAttachmentsTooltip] = useState(null);
+  const [orderAttachmentsTooltip, setOrderAttachmentsTooltip] = useState(null);
   
   // State pro attachment viewer
   const [viewerAttachment, setViewerAttachment] = useState(null);
@@ -1762,39 +1763,48 @@ const Invoices25List = () => {
         }
       });
 
-      console.log('� API Response:', response);
-      console.log('📊 Is array?', Array.isArray(response));
-
       if (Array.isArray(response)) {
-        console.log('📊 Total FAKTURACE orders loaded:', response.length);
-        
-        // Debug: Ukázkové objednávky
-        const sampleOrders = response.slice(0, 3);
-        console.log('🔍 DEBUG - Sample FAKTURACE orders:', sampleOrders.map(o => ({
-          id: o.id,
-          cislo: o.cislo_objednavky,
-          stav: o.stav_objednavky,
-          faktury: o.faktury,
-          faktury_count: o.faktury_count,
-          hasInvoices: o.faktury?.length > 0 || o.faktury_count > 0
-        })));
-
         // Filtruj na FE: pouze objednávky BEZ faktury
         const filteredOrders = response.filter(order => {
           const hasNoInvoice = (!order.faktury || order.faktury.length === 0) && (!order.faktury_count || order.faktury_count === 0);
           return hasNoInvoice;
         });
         
-        console.log('🔍 DEBUG - Filtered orders (bez faktury):', filteredOrders.length);
-        
-        const orders = filteredOrders.map(order => ({
-          id: order.id,
-          cislo_objednavky: order.cislo_objednavky,
-          predmet: order.predmet,
-          dodavatel_nazev: order._enriched?.dodavatel?.nazev || order.dodavatel_nazev,
-          max_cena_s_dph: order.max_cena_s_dph,
-          dt_vytvoreni: order.dt_vytvoreni
-        }));
+        const orders = filteredOrders.map(order => {
+          // Financování - převést na string pokud je objekt
+          let financovaniText = null;
+          if (order.financovani) {
+            if (typeof order.financovani === 'string') {
+              financovaniText = order.financovani;
+            } else if (typeof order.financovani === 'object') {
+              financovaniText = order.financovani.typ_nazev || order.financovani.nazev_stavu || order.financovani.nazev || order.financovani.typ || null;
+            }
+          } else if (order._enriched?.financovani) {
+            const fin = order._enriched.financovani;
+            financovaniText = fin.typ_nazev || fin.nazev_stavu || fin.nazev || fin.typ || null;
+          }
+          
+          return {
+            id: order.id,
+            cislo_objednavky: order.cislo_objednavky,
+            predmet: order.predmet,
+            dodavatel_nazev: order._enriched?.dodavatel?.nazev || order.dodavatel_nazev,
+            dodavatel_ico: order._enriched?.dodavatel?.ico || order.dodavatel_ico,
+            max_cena_s_dph: order.max_cena_s_dph,
+            polozky_celkova_cena_s_dph: order.polozky_celkova_cena_s_dph,
+            dt_vytvoreni: order.dt_vytvoreni,
+            // Financování - vždy jako string
+            financovani: financovaniText,
+            // Účastníci
+            objednatel: order._enriched?.objednatel || order._enriched?.uzivatel || null,
+            garant: order._enriched?.garant_uzivatel || order._enriched?.garant || null,
+            prikazce: order._enriched?.prikazce || null,
+            schvalovatel: order._enriched?.schvalovatel || null,
+            // Přílohy
+            prilohy: order.prilohy || order._enriched?.prilohy || [],
+            pocet_priloh: order.pocet_priloh || order.prilohy?.length || 0
+          };
+        });
         
         setOrdersReadyForInvoice(orders);
         setOrdersReadyCount(orders.length);
@@ -6463,23 +6473,113 @@ const Invoices25List = () => {
                         </div>
                       </div>
                       
-                      <div style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '0.75rem', fontWeight: 500 }}>
                         {order.predmet}
                       </div>
                       
-                      {order.dodavatel_nazev && (
-                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
-                          <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.4rem', width: '14px' }} />
-                          {order.dodavatel_nazev}
+                      {/* Účastníci */}
+                      {(order.objednatel || order.garant || order.prikazce || order.schvalovatel) && (
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.75rem', padding: '0.5rem', background: '#f8fafc', borderRadius: '4px' }}>
+                          {order.objednatel && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Objednatel:</strong> {order.objednatel.cele_jmeno || `${order.objednatel.jmeno} ${order.objednatel.prijmeni}`}
+                            </div>
+                          )}
+                          {order.garant && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Garant:</strong> {order.garant.cele_jmeno || `${order.garant.jmeno} ${order.garant.prijmeni}`}
+                            </div>
+                          )}
+                          {order.prikazce && (
+                            <div style={{ marginBottom: '0.25rem' }}>
+                              <strong>Příkazce:</strong> {order.prikazce.cele_jmeno || `${order.prikazce.jmeno} ${order.prikazce.prijmeni}`}
+                            </div>
+                          )}
+                          {order.schvalovatel && (
+                            <div>
+                              <strong>Schvalovatel:</strong> {order.schvalovatel.cele_jmeno || `${order.schvalovatel.jmeno} ${order.schvalovatel.prijmeni}`}
+                            </div>
+                          )}
                         </div>
                       )}
                       
-                      {order.max_cena_s_dph && (
-                        <div style={{ fontSize: '0.9rem', color: '#059669', fontWeight: 600 }}>
-                          <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px' }} />
-                          {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                      {/* Dodavatel s IČO */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        {order.dodavatel_nazev && (
+                          <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                            <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.4rem', width: '14px' }} />
+                            {order.dodavatel_nazev}
+                            {order.dodavatel_ico && (
+                              <span style={{ marginLeft: '0.5rem', color: '#94a3b8' }}>
+                                (IČO: {order.dodavatel_ico})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Ikona s počtem příloh */}
+                        {order.pocet_priloh > 0 && (
+                          <div
+                            style={{ cursor: 'pointer', padding: '0.25rem' }}
+                            onMouseEnter={(e) => {
+                              if (order.prilohy && order.prilohy.length > 0) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const tooltipHeight = 250;
+                                const spaceBelow = window.innerHeight - rect.bottom;
+                                
+                                setOrderAttachmentsTooltip({
+                                  attachments: order.prilohy,
+                                  orderId: order.id,
+                                  position: {
+                                    top: spaceBelow > tooltipHeight ? rect.bottom + 5 : rect.top - tooltipHeight - 5,
+                                    left: rect.left - 200
+                                  }
+                                });
+                              }
+                            }}
+                            onMouseLeave={() => {
+                              setTimeout(() => {
+                                if (!document.querySelector('[data-order-tooltip-hover]')) {
+                                  setOrderAttachmentsTooltip(null);
+                                }
+                              }, 500);
+                            }}
+                          >
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#64748b' }}>
+                              <FontAwesomeIcon icon={faPaperclip} />
+                              <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{order.pocet_priloh}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Financování */}
+                      {order.financovani && (
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                          <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px', color: '#6366f1' }} />
+                          <strong>Financování:</strong> {order.financovani}
                         </div>
                       )}
+                      
+                      {/* Ceny */}
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                        {order.max_cena_s_dph && (
+                          <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '0.25rem' }}>
+                            <strong>Max. cena s DPH:</strong>{' '}
+                            <span style={{ color: '#059669', fontWeight: 600 }}>
+                              {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                            </span>
+                          </div>
+                        )}
+                        {order.polozky_celkova_cena_s_dph && (
+                          <div style={{ fontSize: '0.85rem', color: '#475569' }}>
+                            <strong>Cena položek s DPH:</strong>{' '}
+                            <span style={{ color: '#059669', fontWeight: 600 }}>
+                              {parseFloat(order.polozky_celkova_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -6487,6 +6587,29 @@ const Invoices25List = () => {
             )}
           </div>
         </SlideInDetailPanel>
+      
+      {/* Tooltip pro přílohy objednávek */}
+      {orderAttachmentsTooltip && (
+        <div
+          onMouseEnter={(e) => e.currentTarget.setAttribute('data-order-tooltip-hover', 'true')}
+          onMouseLeave={(e) => {
+            e.currentTarget.removeAttribute('data-order-tooltip-hover');
+            setOrderAttachmentsTooltip(null);
+          }}
+        >
+          <InvoiceAttachmentsTooltip
+            attachments={orderAttachmentsTooltip.attachments}
+            position={orderAttachmentsTooltip.position}
+            onClose={() => setOrderAttachmentsTooltip(null)}
+            onView={(attachmentWithBlob) => {
+              setViewerAttachment(attachmentWithBlob);
+              setOrderAttachmentsTooltip(null);
+            }}
+            token={token}
+            username={username}
+          />
+        </div>
+      )}
     </>
   );
 };
