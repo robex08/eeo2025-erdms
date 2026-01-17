@@ -2209,7 +2209,7 @@ function handle_orders25_insert($input, $config, $queries) {
                     // Re-encode s čistou strukturou
                     $financovaniData = array('typ' => isset($parsed['typ']) ? $parsed['typ'] : (isset($parsed['kod_stavu']) ? $parsed['kod_stavu'] : null));
                     
-                    foreach (array('lp_kody', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
+                    foreach (array('lp_kody', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
                         if (isset($parsed[$key])) {
                             $financovaniData[$key] = $parsed[$key];
                         }
@@ -2644,6 +2644,9 @@ function handle_orders25_update($input, $config, $queries) {
                     // Backwards compatibility
                     $financovaniData['lp_kody'] = $input['financovani']['lp_kod'];
                 }
+                if (isset($input['financovani']['lp_poznamka'])) {
+                    $financovaniData['lp_poznamka'] = $input['financovani']['lp_poznamka'];
+                }
                 
                 if (isset($input['financovani']['cislo_smlouvy'])) {
                     $financovaniData['cislo_smlouvy'] = $input['financovani']['cislo_smlouvy'];
@@ -2672,7 +2675,7 @@ function handle_orders25_update($input, $config, $queries) {
                     // Re-encode s čistou strukturou
                     $financovaniData = array('typ' => isset($parsed['typ']) ? $parsed['typ'] : (isset($parsed['kod_stavu']) ? $parsed['kod_stavu'] : null));
                     
-                    foreach (array('lp_kody', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
+                    foreach (array('lp_kody', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka', 'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka') as $key) {
                         if (isset($parsed[$key])) {
                             $financovaniData[$key] = $parsed[$key];
                         }
