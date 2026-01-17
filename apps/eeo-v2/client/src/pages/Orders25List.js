@@ -11902,6 +11902,7 @@ const Orders25List = () => {
                     const labelMap = {
                       'cislo': 'Číslo',
                       'poznamka': 'Poznámka',
+                      'lp_poznamka': 'Poznámka k LP',
                       'cislo_smlouvy': 'Číslo smlouvy',
                       'smlouva_cislo': 'Číslo smlouvy',
                       'poznamka_smlouvy': 'Poznámka smlouvy',
@@ -17692,6 +17693,11 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           return <div style={{ color: '#64748b', fontSize: '0.875rem' }}>{orderToApprove.financovani.lp_kody.join(', ')}</div>;
                         }
                       })()}
+                      {orderToApprove.financovani?.lp_poznamka && (
+                        <div style={{ marginTop: '0.5rem', color: '#64748b', fontSize: '0.875rem' }}>
+                          <strong>Poznámka:</strong> {orderToApprove.financovani.lp_poznamka}
+                        </div>
+                      )}
                     </>
                   )}
 

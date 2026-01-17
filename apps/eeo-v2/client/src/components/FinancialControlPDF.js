@@ -568,6 +568,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     lp_kody: order.financovani.lp_kody,
     lp_kod: order.financovani.lp_kody,
     lp_nazvy: order.financovani.lp_nazvy, // ✨ Už enriched!
+    lp_poznamka: order.financovani.lp_poznamka || order.lp_poznamka,
     cislo_smlouvy: order.financovani.cislo_smlouvy || order.cislo_smlouvy,
     smlouva_poznamka: order.financovani.smlouva_poznamka || order.smlouva_poznamka,
     individualni_schvaleni: order.financovani.individualni_schvaleni || order.individualni_schvaleni,
@@ -810,6 +811,12 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                             ? financovaniData.lp_kod.join(', ')
                             : (financovaniData.lp_kody || financovaniData.lp_kod || '---'))}
                   </Text>
+                </View>
+              )}
+              {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && financovaniData.lp_poznamka && (
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Poznámka k LP:</Text>
+                  <Text style={styles.controlValue}>{financovaniData.lp_poznamka}</Text>
                 </View>
               )}
 
