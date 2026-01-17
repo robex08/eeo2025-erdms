@@ -1428,6 +1428,16 @@ const Invoices25List = () => {
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
+  
+  // Debouncing pro filtry - 400ms delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedColumnFilters(columnFilters);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [columnFilters]);
   
   // State pro CustomSelect komponenty
   const [selectStates, setSelectStates] = useState({
@@ -1929,47 +1939,47 @@ const Invoices25List = () => {
       // 📋 Sloupcové filtry - OPRAVENÉ!
       
       // Datum doručení (přesná shoda)
-      if (columnFilters.datum_doruceni && typeof columnFilters.datum_doruceni === 'string' && columnFilters.datum_doruceni.trim()) {
-        apiParams.filter_datum_doruceni = columnFilters.datum_doruceni.trim();
+      if (debouncedColumnFilters.datum_doruceni && typeof debouncedColumnFilters.datum_doruceni === 'string' && debouncedColumnFilters.datum_doruceni.trim()) {
+        apiParams.filter_datum_doruceni = debouncedColumnFilters.datum_doruceni.trim();
       }
       
       // Datum aktualizace (přesná shoda)
-      if (columnFilters.dt_aktualizace && typeof columnFilters.dt_aktualizace === 'string' && columnFilters.dt_aktualizace.trim()) {
-        apiParams.filter_dt_aktualizace = columnFilters.dt_aktualizace.trim();
-        console.log('📅 DEBUG: Odesílám filter_dt_aktualizace:', columnFilters.dt_aktualizace.trim());
+      if (debouncedColumnFilters.dt_aktualizace && typeof debouncedColumnFilters.dt_aktualizace === 'string' && debouncedColumnFilters.dt_aktualizace.trim()) {
+        apiParams.filter_dt_aktualizace = debouncedColumnFilters.dt_aktualizace.trim();
+        console.log('📅 DEBUG: Odesílám filter_dt_aktualizace:', debouncedColumnFilters.dt_aktualizace.trim());
       }
       
       // Typ faktury (přesná shoda) - pouze pokud není "Všechny typy"
-      const faTypValue = typeof columnFilters.fa_typ === 'object' ? columnFilters.fa_typ?.value : columnFilters.fa_typ;
+      const faTypValue = typeof debouncedColumnFilters.fa_typ === 'object' ? debouncedColumnFilters.fa_typ?.value : debouncedColumnFilters.fa_typ;
       if (faTypValue && faTypValue.toString().trim() !== '') {
         apiParams.filter_fa_typ = faTypValue;
       }
       
       // Číslo faktury (LIKE - částečná shoda)
-      if (columnFilters.cislo_faktury && typeof columnFilters.cislo_faktury === 'string' && columnFilters.cislo_faktury.trim()) {
-        apiParams.fa_cislo_vema = columnFilters.cislo_faktury.trim();
+      if (debouncedColumnFilters.cislo_faktury && typeof debouncedColumnFilters.cislo_faktury === 'string' && debouncedColumnFilters.cislo_faktury.trim()) {
+        apiParams.fa_cislo_vema = debouncedColumnFilters.cislo_faktury.trim();
       }
       
       // Číslo objednávky (LIKE - částečná shoda)
-      if (columnFilters.cislo_objednavky && typeof columnFilters.cislo_objednavky === 'string' && columnFilters.cislo_objednavky.trim()) {
-        apiParams.cislo_objednavky = columnFilters.cislo_objednavky.trim();
+      if (debouncedColumnFilters.cislo_objednavky && typeof debouncedColumnFilters.cislo_objednavky === 'string' && debouncedColumnFilters.cislo_objednavky.trim()) {
+        apiParams.cislo_objednavky = debouncedColumnFilters.cislo_objednavky.trim();
       }
       
       // Datum vystavení (přesná shoda)
-      if (columnFilters.datum_vystaveni && typeof columnFilters.datum_vystaveni === 'string' && columnFilters.datum_vystaveni.trim()) {
-        apiParams.filter_datum_vystaveni = columnFilters.datum_vystaveni.trim();
+      if (debouncedColumnFilters.datum_vystaveni && typeof debouncedColumnFilters.datum_vystaveni === 'string' && debouncedColumnFilters.datum_vystaveni.trim()) {
+        apiParams.filter_datum_vystaveni = debouncedColumnFilters.datum_vystaveni.trim();
       }
       
       // Datum splatnosti (přesná shoda)
-      if (columnFilters.datum_splatnosti && typeof columnFilters.datum_splatnosti === 'string' && columnFilters.datum_splatnosti.trim()) {
-        apiParams.filter_datum_splatnosti = columnFilters.datum_splatnosti.trim();
+      if (debouncedColumnFilters.datum_splatnosti && typeof debouncedColumnFilters.datum_splatnosti === 'string' && debouncedColumnFilters.datum_splatnosti.trim()) {
+        apiParams.filter_datum_splatnosti = debouncedColumnFilters.datum_splatnosti.trim();
       }
       
       // Stav faktury - pouze pokud není "Všechny stavy"
-      const stavValue = typeof columnFilters.stav === 'object' ? columnFilters.stav?.value : columnFilters.stav;
+      const stavValue = typeof debouncedColumnFilters.stav === 'object' ? debouncedColumnFilters.stav?.value : debouncedColumnFilters.stav;
       console.log('🔍 DEBUG STAV:', { 
-        'columnFilters.stav': columnFilters.stav, 
-        'typeof': typeof columnFilters.stav, 
+        'debouncedColumnFilters.stav': debouncedColumnFilters.stav, 
+        'typeof': typeof debouncedColumnFilters.stav, 
         'stavValue': stavValue 
       });
       if (stavValue && stavValue.toString().trim() !== '') {
@@ -1980,18 +1990,18 @@ const Invoices25List = () => {
       }
       
       // Uživatel - celé jméno (LIKE - hledá v jméně i příjmení)
-      if (columnFilters.vytvoril_uzivatel && typeof columnFilters.vytvoril_uzivatel === 'string' && columnFilters.vytvoril_uzivatel.trim()) {
-        apiParams.filter_vytvoril_uzivatel = columnFilters.vytvoril_uzivatel.trim();
+      if (debouncedColumnFilters.vytvoril_uzivatel && typeof debouncedColumnFilters.vytvoril_uzivatel === 'string' && debouncedColumnFilters.vytvoril_uzivatel.trim()) {
+        apiParams.filter_vytvoril_uzivatel = debouncedColumnFilters.vytvoril_uzivatel.trim();
       }
       
       // Částka - operátor-based filtr (=, <, >)
       // Format: "=5000" nebo ">1000" nebo "<500"
-      if (columnFilters.castka && columnFilters.castka.trim()) {
-        const castkaTrimmed = columnFilters.castka.trim();
+      if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
+        const castkaTrimmed = debouncedColumnFilters.castka.trim();
         const match = castkaTrimmed.match(/^([=<>])(.+)$/);
         
         console.log('🔍 CASTKA FILTER DEBUG:', {
-          original: columnFilters.castka,
+          original: debouncedColumnFilters.castka,
           trimmed: castkaTrimmed,
           match: match
         });
@@ -2017,7 +2027,7 @@ const Invoices25List = () => {
       }
       
       // Přílohy - filtr podle existence příloh
-      const maPrilobyValue = typeof columnFilters.ma_prilohy === 'object' ? columnFilters.ma_prilohy?.value : columnFilters.ma_prilohy;
+      const maPrilobyValue = typeof debouncedColumnFilters.ma_prilohy === 'object' ? debouncedColumnFilters.ma_prilohy?.value : debouncedColumnFilters.ma_prilohy;
       if (maPrilobyValue === 'with') {
         apiParams.filter_ma_prilohy = 1; // Pouze s přílohami
       } else if (maPrilobyValue === 'without') {
@@ -2027,7 +2037,7 @@ const Invoices25List = () => {
       }
       
       // Věcná kontrola - filtr
-      const vecnaKontrolaValue = typeof columnFilters.vecna_kontrola === 'object' ? columnFilters.vecna_kontrola?.value : columnFilters.vecna_kontrola;
+      const vecnaKontrolaValue = typeof debouncedColumnFilters.vecna_kontrola === 'object' ? debouncedColumnFilters.vecna_kontrola?.value : debouncedColumnFilters.vecna_kontrola;
       if (vecnaKontrolaValue === 'yes') {
         apiParams.filter_vecna_kontrola = 1; // Pouze provedena
       } else if (vecnaKontrolaValue === 'no') {
@@ -2036,13 +2046,13 @@ const Invoices25List = () => {
       // Jinak (prázdný string nebo '') neposílej nic
       
       // Věcnou provedl - text filtr
-      if (columnFilters.vecnou_provedl && typeof columnFilters.vecnou_provedl === 'string') {
-        apiParams.filter_vecnou_provedl = columnFilters.vecnou_provedl.trim();
+      if (debouncedColumnFilters.vecnou_provedl && typeof debouncedColumnFilters.vecnou_provedl === 'string') {
+        apiParams.filter_vecnou_provedl = debouncedColumnFilters.vecnou_provedl.trim();
       }
       
       // Předáno zaměstnanci - text filtr
-      if (columnFilters.predano_zamestnanec && typeof columnFilters.predano_zamestnanec === 'string') {
-        apiParams.filter_predano_zamestnanec = columnFilters.predano_zamestnanec.trim();
+      if (debouncedColumnFilters.predano_zamestnanec && typeof debouncedColumnFilters.predano_zamestnanec === 'string') {
+        apiParams.filter_predano_zamestnanec = debouncedColumnFilters.predano_zamestnanec.trim();
       }
       
       // 📥 ŘAZENÍ - podle sortField a sortDirection
@@ -2255,7 +2265,7 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, columnFilters, filters, globalSearchTerm, sortField, sortDirection, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
@@ -3442,7 +3452,11 @@ const Invoices25List = () => {
                         value={columnFilters.castka || ''}
                         onChange={(value) => setColumnFilters({...columnFilters, castka: value})}
                         placeholder="Částka"
-                        icon={<FontAwesomeIcon icon={faMoneyBillWave} />}
+                        clearButton={true}
+                        onClear={() => {
+                          console.log('🗑️ Clearing castka filter');
+                          setColumnFilters({...columnFilters, castka: ''});
+                        }}
                       />
                     </div>
                   </TableHeader>
