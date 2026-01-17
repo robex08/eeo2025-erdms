@@ -1883,10 +1883,11 @@ const Invoices25List = () => {
   // Funkce pro filtraci možností podle vyhledávání
   const filterOptions = useCallback((options, searchTerm, searchField) => {
     if (!searchTerm) return options;
-    return options.filter(option => {
+    const filtered = options.filter(option => {
       const label = getOptionLabel(option, searchField);
       return label.toLowerCase().includes(searchTerm.toLowerCase());
     });
+    return filtered;
   }, []);
   
   // Funkce pro získání labelu možnosti
@@ -2363,17 +2364,20 @@ const Invoices25List = () => {
     return [{ value: '', label: 'Vše', nazev: 'Vše' }, ...types];
   }, [invoiceTypes]);
   
-  const stavOptions = useMemo(() => [
-    { value: '', label: 'Vše' },
-    { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
-    { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
-    { value: 'V_RESENI', label: 'V řešení' },
-    { value: 'PREDANA_PO', label: 'Předaná PO' },
-    { value: 'K_ZAPLACENI', label: 'K zaplacení' },
-    { value: 'ZAPLACENO', label: 'Zaplaceno' },
-    { value: 'DOKONCENA', label: 'Dokončená' },
-    { value: 'STORNO', label: 'Storno' },
-  ], []);
+  const stavOptions = useMemo(() => {
+    const options = [
+      { value: '', label: 'Vše' },
+      { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
+      { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
+      { value: 'V_RESENI', label: 'V řešení' },
+      { value: 'PREDANA_PO', label: 'Předaná PO' },
+      { value: 'K_ZAPLACENI', label: 'K zaplacení' },
+      { value: 'ZAPLACENO', label: 'Zaplaceno' },
+      { value: 'DOKONCENA', label: 'Dokončená' },
+      { value: 'STORNO', label: 'Storno' },
+    ];
+    return options;
+  }, []);
   
   const vecnaKontrolaOptions = useMemo(() => [
     { value: '', label: 'Vše' },
@@ -4614,7 +4618,7 @@ const Invoices25List = () => {
                    statusChangeDialog.newStatus === 'V_RESENI' ? 'V řešení' :
                    statusChangeDialog.newStatus === 'PREDANA_PO' ? 'Předaná PO' :
                    statusChangeDialog.newStatus === 'K_ZAPLACENI' ? 'K zaplacení' :
-                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno' : statusChangeDialog.newStatus}
+                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno+' : statusChangeDialog.newStatus}
                 </strong>?
               </p>
             </div>
@@ -6016,7 +6020,6 @@ const Invoices25List = () => {
                       <CustomSelect
                         value={columnFilters.stav || ''}
                         onChange={(value) => {
-                          console.log('🔄 STAV onChange:', value, typeof value);
                           setColumnFilters({...columnFilters, stav: value});
                         }}
                         options={stavOptions}
