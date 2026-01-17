@@ -1490,6 +1490,28 @@ const Invoices25List = () => {
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0       // Moje faktury (jen pro admin/invoice_manage)
   });
+  
+  // 🔍 Sidebar search pro objednávky bez faktury
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [debouncedSidebarSearch, setDebouncedSidebarSearch] = useState('');
+  
+  // Debouncing pro sidebar search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSidebarSearch(sidebarSearch);
+    }, 300); // 300ms delay
+    
+    return () => clearTimeout(timer);
+  }, [sidebarSearch]);
+  
+  // Helper funkce pro normalizaci textu (bez diakritiky + lowercase)
+  const normalizeSearchText = useCallback((text) => {
+    if (!text) return '';
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }, []);
 
   // Helper: Save state to localStorage
   const saveToLS = useCallback((state) => {
@@ -4053,7 +4075,7 @@ const Invoices25List = () => {
                                 color: '#64748b',
                                 marginLeft: '1.5rem'
                               }}>
-                                {invoice.dodavatel_nazev || 'Název nedostupný'}{invoice.dodavatel_ico ? ` | ${invoice.dodavatel_ico}` : ''}
+                                {invoice.dodavatel_nazev || 'Název nedostupný'}{invoice.dodavatel_ico ? ` | IČO: ${invoice.dodavatel_ico}` : ''}
                               </div>
                             ) : (
                               <div style={{ 
@@ -6430,12 +6452,105 @@ const Invoices25List = () => {
                 <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
                   <p style={{ margin: 0, color: '#0c4a6e', fontSize: '0.95rem' }}>
                     <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
-                    Nalezeno <strong>{ordersReadyForInvoice.length}</strong> {ordersReadyForInvoice.length === 1 ? 'objednávka' : ordersReadyForInvoice.length <= 4 ? 'objednávky' : 'objednávek'} bez faktury
+                    Nalezeno <strong>{ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length}</strong> {ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length === 1 ? 'objednávka' : ordersReadyForInvoice.filter(order => {
+                      if (!debouncedSidebarSearch.trim()) return true;
+                      const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                      return (
+                        normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                        normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                        normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                        normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                      );
+                    }).length <= 4 ? 'objednávky' : 'objednávek'} bez faktury
                   </p>
                 </div>
                 
+                {/* 🔍 Search box pro sidebar */}
+                <div style={{ marginBottom: '1rem', position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Hledat v objednávkách (číslo obj., název, dodavatel, IČO...)"
+                    value={sidebarSearch}
+                    onChange={(e) => setSidebarSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 2rem 0.6rem 0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: '0.9rem',
+                      background: 'white',
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                  />
+                  {sidebarSearch && (
+                    <button
+                      onClick={() => setSidebarSearch('')}
+                      style={{
+                        position: 'absolute',
+                        right: '0.5rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#9ca3af',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        padding: '0.25rem',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseOver={(e) => e.target.style.color = '#6b7280'}
+                      onMouseOut={(e) => e.target.style.color = '#9ca3af'}
+                      title="Vymazat hledání"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {ordersReadyForInvoice.map(order => (
+                  {ordersReadyForInvoice.filter(order => {
+                    if (!debouncedSidebarSearch.trim()) return true;
+                    const searchTerm = normalizeSearchText(debouncedSidebarSearch);
+                    return (
+                      normalizeSearchText(order.jmeno || '').includes(searchTerm) ||
+                      normalizeSearchText(order.nazev || '').includes(searchTerm) ||
+                      normalizeSearchText(order.cislo_obj || '').includes(searchTerm) ||
+                      normalizeSearchText(order.cislo_objednavky || '').includes(searchTerm) ||
+                      normalizeSearchText(order.dodavatel_nazev || '').includes(searchTerm) ||
+                      normalizeSearchText(order.dodavatel_ico || '').includes(searchTerm)
+                    );
+                  }).map(order => (
                     <div
                       key={order.id}
                       onClick={() => handleSelectOrderForInvoice(order)}
