@@ -6,7 +6,7 @@
 import React from 'react';
 import styled from '@emotion/styled';
 
-const OperatorInput = ({ value = '', onChange, placeholder = '0', icon }) => {
+const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearButton, onClear }) => {
   // Rozdělit value na operátor a číslo
   // Formát: "=5000" nebo ">1000" nebo "<500"
   const parseValue = (val) => {
@@ -63,13 +63,18 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon }) => {
         <option value=">">&gt;</option>
       </OperatorSelect>
       <Separator>|</Separator>
-      {icon && <IconWrapper>{icon}</IconWrapper>}
+      {clearButton && value ? (
+        <ClearButton onClick={onClear} title="Vymazat filtr">
+          ×
+        </ClearButton>
+      ) : (
+        icon && <IconWrapper>{icon}</IconWrapper>
+      )}
       <NumberInput
         type="text"
         placeholder={placeholder}
         value={formatNumberWithSpaces(number)}
         onChange={handleNumberChange}
-        hasIcon={!!icon}
       />
     </Wrapper>
   );
@@ -131,11 +136,33 @@ const IconWrapper = styled.div`
   pointer-events: none;
 `;
 
+const ClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: bold;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  
+  &:hover {
+    color: #dc2626;
+  }
+`;
+
 const NumberInput = styled.input`
   flex: 1;
   border: none;
   padding: 0.4rem 0.3rem;
-  padding-right: ${props => props.hasIcon ? '2rem' : '0.3rem'};
+  padding-right: 2rem; /* Vždy místo pro clear button */
   font-size: 0.8125rem;
   color: #1e293b;
   outline: none;
