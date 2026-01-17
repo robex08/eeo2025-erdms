@@ -151,6 +151,7 @@ export function normalizeFinancovaniFromBackend(data) {
   // LP kódy
   if (financing.lp_kody) result.lp_kod = financing.lp_kody;
   else if (financing.lp_kod) result.lp_kod = financing.lp_kod;
+  if (financing.lp_poznamka) result.lp_poznamka = financing.lp_poznamka;
 
   // SMLOUVA pole
   if (financing.cislo_smlouvy) result.cislo_smlouvy = financing.cislo_smlouvy;
@@ -225,11 +226,14 @@ export function normalizeFinancovaniForBackend(formData, financovaniOptions = []
   // 🔥 KRITICKÉ: Posílat POUZE pole odpovídající vybranému typu!
   const typ = formData.zpusob_financovani;
   
-  // LP: posílat POUZE lp_kody
+  // LP: posílat POUZE lp_kody a lp_poznamka
   if (typ === 'LP') {
     if (formData.lp_kod && Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0) {
       // Backend očekává array čísel: [3, 5], NE ["3", "5"]
       result.lp_kody = formData.lp_kod.map(id => parseInt(id, 10));
+    }
+    if (formData.lp_poznamka) {
+      result.lp_poznamka = formData.lp_poznamka;
     }
   }
   // SMLOUVA: posílat POUZE cislo_smlouvy a smlouva_poznamka

@@ -55,6 +55,7 @@ const FIELD_LABELS = {
   polozky_objednavky: 'Položky objednávky',
   zpusob_financovani: 'Způsob financování',
   lp_kod: 'LP kód',
+  lp_poznamka: 'Poznámka k LP',
   cislo_smlouvy: 'Číslo smlouvy',
   smlouva_poznamka: 'Poznámka ke smlouvě',
   individualni_schvaleni: 'Identifikátor schválení',
@@ -122,6 +123,7 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     // Financování: Samostatná sekce (viditelná ve FÁZI 1, validovaná podle svého stavu)
     zpusob_financovani: 'financovani',
     lp_kod: 'financovani',
+    lp_poznamka: 'financovani',
     cislo_smlouvy: 'financovani',
     smlouva_poznamka: 'financovani',
     individualni_schvaleni: 'financovani',
