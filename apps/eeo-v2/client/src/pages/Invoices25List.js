@@ -27,7 +27,7 @@ import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachments
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
-import { getInvoiceTypes25 } from '../services/api25orders';
+import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
 import { getOrderV2 } from '../services/apiOrderV2';
 
 // =============================================================================
@@ -1646,6 +1646,12 @@ const Invoices25List = () => {
   const [invoiceTypes, setInvoiceTypes] = useState([]);
   const [invoiceTypesLoading, setInvoiceTypesLoading] = useState(false);
   
+  // 📋 State pro sidebar s objednávkami připravenými k fakturaci
+  const [showOrdersSidebar, setShowOrdersSidebar] = useState(false);
+  const [ordersReadyForInvoice, setOrdersReadyForInvoice] = useState([]);
+  const [ordersReadyCount, setOrdersReadyCount] = useState(0);
+  const [loadingOrdersReady, setLoadingOrdersReady] = useState(false);
+  
   // Handler: Navigace na evidenci faktury
   const handleNavigateToEvidence = () => {
     // Vymazat localStorage aby se otevřel čistý formulář
@@ -1739,6 +1745,75 @@ const Invoices25List = () => {
     setShowLockedOrderDialog(false);
     setLockedOrderInfo(null);
     setIsCheckingLock(false); // Odemknout pro další pokus
+  };
+  
+  // 📋 Handler: Načíst objednávky připravené k fakturaci (DOKONCENA, bez faktury)
+  const loadOrdersReadyForInvoice = async () => {
+    setLoadingOrdersReady(true);
+    try {
+      // Načti všechny aktivní objednávky aktuálního roku
+      const currentYear = new Date().getFullYear();
+      const response = await getOrdersList25({
+        token,
+        username,
+        rok: currentYear
+      });
+
+      if (response.status === 'ok' && response.data) {
+        // Filtruj na FE: pouze DOKONCENA objednávky BEZ faktury
+        const filteredOrders = response.data.filter(order => {
+          const isDokoncena = order.stav_objednavky === 'DOKONCENA';
+          const hasNoInvoice = !order._invoices || order._invoices.length === 0;
+          return isDokoncena && hasNoInvoice;
+        });
+        
+        const orders = filteredOrders.map(order => ({
+          id: order.id,
+          cislo_objednavky: order.cislo_objednavky,
+          predmet: order.predmet,
+          dodavatel_nazev: order._enriched?.dodavatel?.nazev || order.dodavatel_nazev,
+          max_cena_s_dph: order.max_cena_s_dph,
+          dt_vytvoreni: order.dt_vytvoreni
+        }));
+        
+        setOrdersReadyForInvoice(orders);
+        setOrdersReadyCount(orders.length);
+      } else {
+        setOrdersReadyForInvoice([]);
+        setOrdersReadyCount(0);
+      }
+    } catch (error) {
+      console.error('❌ Chyba při načítání objednávek připravených k fakturaci:', error);
+      setOrdersReadyForInvoice([]);
+      setOrdersReadyCount(0);
+    } finally {
+      setLoadingOrdersReady(false);
+    }
+  };
+
+  // 📋 Handler: Otevřít sidebar s objednávkami
+  const handleOpenOrdersSidebar = () => {
+    setShowOrdersSidebar(true);
+    loadOrdersReadyForInvoice(); // Načti aktuální seznam
+  };
+
+  // 📋 Handler: Zavřít sidebar
+  const handleCloseOrdersSidebar = () => {
+    setShowOrdersSidebar(false);
+  };
+
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  // 📋 Handler: Vybrat objednávku a přejít na evidenci faktury
+  const handleSelectOrderForInvoice = (order) => {
+    setShowOrdersSidebar(false);
+    // Naviguj na evidenci faktury s předvyplněným order ID v URL
+    navigate(`/invoice-evidence/${order.id}`, {
+      state: {
+        fromOrdersReadyList: true,
+        orderNumber: order.cislo_objednavky,
+        timestamp: Date.now()
+      }
+    });
   };
   
   const handleAddInvoiceToEntity = async (invoice) => {
@@ -2354,6 +2429,67 @@ const Invoices25List = () => {
     loadInvoiceTypes();
   }, [token, username, invoiceTypes.length]);
   
+  // 📋 Načtení počtu objednávek připravených k fakturaci (pouze při mount)
+  useEffect(() => {
+    const loadCount = async () => {
+      if (!token || !username || !canManageInvoices) return;
+      
+      try {
+        const currentYear = new Date().getFullYear();
+        const response = await getOrdersList25({
+          token,
+          username,
+          rok: currentYear
+        });
+
+        if (response.status === 'ok' && response.data) {
+          // Filtruj na FE: DOKONCENA bez faktury
+          const count = response.data.filter(order => 
+            order.stav_objednavky === 'DOKONCENA' && (!order._invoices || order._invoices.length === 0)
+          ).length;
+          setOrdersReadyCount(count);
+        }
+      } catch (error) {
+        console.error('❌ Chyba při načítání počtu objednávek:', error);
+      }
+    };
+    
+    loadCount();
+  }, [token, username, canManageInvoices]);
+  
+  // 📋 Refresh count při návratu na stránku (například po evidenci faktury)
+  useEffect(() => {
+    // Pokud se uživatel vrátí na stránku, aktualizuj počet
+    const handleVisibilityChange = () => {
+      if (!document.hidden && token && username && canManageInvoices) {
+        // Stránka se stala viditelnou, refresh count
+        const loadCount = async () => {
+          try {
+            const currentYear = new Date().getFullYear();
+            const response = await getOrdersList25({
+              token,
+              username,
+              rok: currentYear
+            });
+
+            if (response.status === 'ok' && response.data) {
+              const count = response.data.filter(order => 
+                order.stav_objednavky === 'DOKONCENA' && (!order._invoices || order._invoices.length === 0)
+              ).length;
+              setOrdersReadyCount(count);
+            }
+          } catch (error) {
+            console.error('❌ Chyba při aktualizaci počtu objednávek:', error);
+          }
+        };
+        loadCount();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [token, username, canManageInvoices]);
+  
   // Připravit options pro CustomSelect komponenty
   const invoiceTypeOptions = useMemo(() => {
     const types = invoiceTypes.map(type => ({
@@ -2966,6 +3102,16 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faPlus} />
               Zaevidovat fakturu
             </ActionButton>
+          )}
+          
+          {/* 📋 Tlačítko pro objednávky připravené k fakturaci */}
+          {canManageInvoices && ordersReadyCount > 0 && (
+            <TooltipWrapper text="Zobrazit seznam objednávek připravených k fakturaci" preferredPosition="bottom">
+              <ActionButton onClick={handleOpenOrdersSidebar}>
+                <FontAwesomeIcon icon={faFileInvoice} />
+                Zaevidovat fakturu k objednávce ({ordersReadyCount})
+              </ActionButton>
+            </TooltipWrapper>
           )}
           
           {!showDashboard && (
@@ -6216,6 +6362,93 @@ const Invoices25List = () => {
           attachment={viewerAttachment}
           onClose={() => setViewerAttachment(null)}
         />
+      )}
+      
+      {/* 📋 Sidebar s objednávkami připravenými k fakturaci */}
+      {showOrdersSidebar && (
+        <SlideInDetailPanel
+          title="Objednávky připravené k fakturaci"
+          onClose={handleCloseOrdersSidebar}
+          width="700px"
+        >
+          <div style={{ padding: '1.5rem' }}>
+            {loadingOrdersReady ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faSyncAlt} spin style={{ fontSize: '2rem', marginBottom: '1rem' }} />
+                <p>Načítám objednávky...</p>
+              </div>
+            ) : ordersReadyForInvoice.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <FontAwesomeIcon icon={faCheckCircle} style={{ fontSize: '2rem', marginBottom: '1rem', color: '#10b981' }} />
+                <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>Nejsou žádné objednávky připravené k fakturaci</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Všechny dokončené objednávky již mají přiřazenou fakturu.</p>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                  <p style={{ margin: 0, color: '#0c4a6e', fontSize: '0.95rem' }}>
+                    <FontAwesomeIcon icon={faFileInvoice} style={{ marginRight: '0.5rem' }} />
+                    Nalezeno <strong>{ordersReadyForInvoice.length}</strong> {ordersReadyForInvoice.length === 1 ? 'objednávka' : ordersReadyForInvoice.length <= 4 ? 'objednávky' : 'objednávek'} bez faktury
+                  </p>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {ordersReadyForInvoice.map(order => (
+                    <div
+                      key={order.id}
+                      onClick={() => handleSelectOrderForInvoice(order)}
+                      style={{
+                        padding: '1rem',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: '#fff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = '#3b82f6';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.15)';
+                        e.currentTarget.style.transform = 'translateX(4px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = '#e2e8f0';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                        <div style={{ fontWeight: 600, fontSize: '1.05rem', color: '#1e293b' }}>
+                          #{order.cislo_objednavky}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                          {formatDateOnly(order.dt_vytvoreni)}
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '0.5rem' }}>
+                        {order.predmet}
+                      </div>
+                      
+                      {order.dodavatel_nazev && (
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                          <FontAwesomeIcon icon={faBuilding} style={{ marginRight: '0.4rem', width: '14px' }} />
+                          {order.dodavatel_nazev}
+                        </div>
+                      )}
+                      
+                      {order.max_cena_s_dph && (
+                        <div style={{ fontSize: '0.9rem', color: '#059669', fontWeight: 600 }}>
+                          <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.4rem', width: '14px' }} />
+                          {parseFloat(order.max_cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </SlideInDetailPanel>
       )}
     </>
   );
