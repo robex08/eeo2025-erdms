@@ -4631,6 +4631,7 @@ function OrderForm25() {
     financovani: '', // JSON pole pro uložení do DB
     // Dynamická pole pro financování
     lp_kod: [], // LP kódy pro Limitovaný příslib (multiselect)
+    lp_poznamka: '', // Poznámka k LP
     cislo_smlouvy: '', // Číslo smlouvy pro Smlouva
     smlouva_poznamka: '', // Poznámka ke smlouvě
     individualni_schvaleni: '', // Identifikátor pro Individuální schválení
@@ -16113,6 +16114,7 @@ function OrderForm25() {
       if (field === 'zpusob_financovani') {
         // Vyčistit VŠECHNY dynamické fieldy z všech typů financování
         newData.lp_kod = [];
+        newData.lp_poznamka = '';
         newData.cislo_smlouvy = '';
         newData.smlouva_poznamka = '';
         newData.individualni_schvaleni = '';
@@ -18348,7 +18350,7 @@ function OrderForm25() {
   // Helper: Mapování polí na sekce (FÁZE 2)
   const getFieldsForSections = () => ({
     financovani: [
-      'zpusob_financovani', 'financovani', 'lp_kod', 'cislo_smlouvy', 'smlouva_poznamka',
+      'zpusob_financovani', 'financovani', 'lp_kod', 'lp_poznamka', 'cislo_smlouvy', 'smlouva_poznamka',
       'individualni_schvaleni', 'individualni_poznamka', 'pojistna_udalost_cislo', 'pojistna_udalost_poznamka'
     ],
     dodavatel: [
@@ -18414,6 +18416,7 @@ function OrderForm25() {
     // ✅ Zachovat financování (součást PO sekce ve FÁZI 1)
     next.zpusob_financovani = prev.zpusob_financovani;
     next.lp_kod = prev.lp_kod;
+    next.lp_poznamka = prev.lp_poznamka;
     next.cislo_smlouvy = prev.cislo_smlouvy;
     next.smlouva_poznamka = prev.smlouva_poznamka;
     next.individualni_schvaleni = prev.individualni_schvaleni;
@@ -20409,54 +20412,77 @@ function OrderForm25() {
                 const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
                 return nazev.includes('Limitovan') || nazev.includes('příslib');
               })() && (
-                <FormRow>
-                  <FormGroup style={{gridColumn: '1 / -1'}}>
-                    <LabelWithClear>
-                      <LabelText required>LP KÓD</LabelText>
-                      <ClearSelectButton
-                        type="button"
-                        $visible={Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0}
-                        onClick={() => handleInputChange('lp_kod', [])}
-                        title="Vymazat výběr"
-                      >
-                        <X size={12} />
-                      </ClearSelectButton>
-                    </LabelWithClear>
-                    <StableCustomSelect
-                      value={formData.lp_kod || []}
-                      onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
-                      onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
-                      options={filteredLpKodyOptions}
-                      placeholder={(() => {
-                        if (!formData.prikazce_id) return "Nejprve vyberte příkazce";
-                        if (filteredLpKodyOptions.length === 0) return "Žádné dostupné LP kódy";
-                        
-                        // Zobrazit prvních 4-5 LP kódů
-                        const maxShow = 5;
-                        const lpCodes = filteredLpKodyOptions
-                          .slice(0, maxShow)
-                          .map(lp => lp.cislo_lp || lp.kod)
-                          .join(', ');
-                        
-                        const hasMore = filteredLpKodyOptions.length > maxShow;
-                        return hasMore ? `např. ${lpCodes}, ...` : `např. ${lpCodes}`;
-                      })()}
-                      field="lp_kod"
-                      loading={false}
-                      loadingText=""
-                      icon={<Hash />}
-                      disabled={shouldLockFinancovaniSection || !formData.prikazce_id}
-                      hasError={!!validationErrors.lp_kod}
-                      required={true}
-                      multiple={true}
-                      getOptionLabel={getOptionLabel}
-                      // getOptionValue ODEBRÁN - použij default (opt.id || opt.value || opt)
-                    />
-                    {validationErrors.lp_kod && (
-                      <ErrorText>{validationErrors.lp_kod}</ErrorText>
-                    )}
-                  </FormGroup>
-                </FormRow>
+                <>
+                  <FormRow>
+                    <FormGroup style={{gridColumn: '1 / -1'}}>
+                      <LabelWithClear>
+                        <LabelText required>LP KÓD</LabelText>
+                        <ClearSelectButton
+                          type="button"
+                          $visible={Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0}
+                          onClick={() => handleInputChange('lp_kod', [])}
+                          title="Vymazat výběr"
+                        >
+                          <X size={12} />
+                        </ClearSelectButton>
+                      </LabelWithClear>
+                      <StableCustomSelect
+                        value={formData.lp_kod || []}
+                        onChange={(selectedValues) => handleInputChange('lp_kod', selectedValues)}
+                        onBlur={(field, value) => handleFieldBlur('lp_kod', value)}
+                        options={filteredLpKodyOptions}
+                        placeholder={(() => {
+                          if (!formData.prikazce_id) return "Nejprve vyberte příkazce";
+                          if (filteredLpKodyOptions.length === 0) return "Žádné dostupné LP kódy";
+                          
+                          // Zobrazit prvních 4-5 LP kódů
+                          const maxShow = 5;
+                          const lpCodes = filteredLpKodyOptions
+                            .slice(0, maxShow)
+                            .map(lp => lp.cislo_lp || lp.kod)
+                            .join(', ');
+                          
+                          const hasMore = filteredLpKodyOptions.length > maxShow;
+                          return hasMore ? `např. ${lpCodes}, ...` : `např. ${lpCodes}`;
+                        })()}
+                        field="lp_kod"
+                        loading={false}
+                        loadingText=""
+                        icon={<Hash />}
+                        disabled={shouldLockFinancovaniSection || !formData.prikazce_id}
+                        hasError={!!validationErrors.lp_kod}
+                        required={true}
+                        multiple={true}
+                        getOptionLabel={getOptionLabel}
+                        // getOptionValue ODEBRÁN - použij default (opt.id || opt.value || opt)
+                      />
+                      {validationErrors.lp_kod && (
+                        <ErrorText>{validationErrors.lp_kod}</ErrorText>
+                      )}
+                    </FormGroup>
+                  </FormRow>
+                  
+                  {/* LP Poznámka - zobrazi se po LP kódech */}
+                  <FormRow>
+                    <FormGroup style={{gridColumn: '1 / -1'}}>
+                      <Label>POZNÁMKA K LP</Label>
+                      <InputWithIcon hasIcon>
+                        <FileText />
+                        <Input
+                          type="text"
+                          name="lp_poznamka"
+                          placeholder="Dodatečné informace k limitovanému příslibu"
+                          value={formData.lp_poznamka || ''}
+                          onChange={(e) => handleInputChange('lp_poznamka', e.target.value)}
+                          onBlur={() => handleFieldBlur('lp_poznamka', formData.lp_poznamka)}
+                          disabled={shouldLockFinancovaniSection}
+                          hasError={!!validationErrors.lp_poznamka}
+                          hasIcon
+                        />
+                      </InputWithIcon>
+                    </FormGroup>
+                  </FormRow>
+                </>
               )}
 
               {(() => {
@@ -21022,7 +21048,7 @@ function OrderForm25() {
 
                     {/* Komentář/Důvod - zobrazuje se pro VŠECHNY stavy */}
                     {formData.stav_schvaleni && (
-                      <div style={{ flex: '1', minWidth: '300px' }}>
+                      <div style={{ flex: '1', minWidth: '300px', marginTop: '1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <label style={{
                             fontWeight: '500',

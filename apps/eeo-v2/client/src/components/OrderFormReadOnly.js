@@ -798,6 +798,22 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 </KeyValuePair>
               )}
 
+              {/* LP Poznámka - dynamické pole */}
+              {(() => {
+                const typKod = orderData.financovani?.typ_kod || orderData.financovani?.typ || orderData.zpusob_financovani;
+                const isLP = typKod === 'LP' || typKod?.toUpperCase?.() === 'LP';
+                
+                if (isLP && (orderData.financovani?.lp_poznamka || orderData.lp_poznamka)) {
+                  return (
+                    <KeyValuePair style={{ gridColumn: '1 / -1' }}>
+                      <KeyLabel>Poznámka k LP</KeyLabel>
+                      <ValueText>{orderData.financovani?.lp_poznamka || orderData.lp_poznamka}</ValueText>
+                    </KeyValuePair>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Smlouva - dynamické pole */}
               {(() => {
                 const typKod = orderData.financovani?.typ_kod || orderData.financovani?.typ || orderData.zpusob_financovani;

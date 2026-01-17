@@ -131,6 +131,7 @@ export const useOrderDataLoader = ({ token, username, dictionaries }) => {
       financovaniVnorena = {
         lp_kod: dbOrder.financovani.lp_kody || [], // V2 používá "lp_kody"
         lp_nazev: dbOrder.financovani.nazev || '', // Název LP
+        lp_poznamka: dbOrder.lp_poznamka || dbOrder.financovani.lp_poznamka || '', // ✅ LP poznámka
         // Další pole (pokud existují)
         paragraf: dbOrder.financovani.paragraf || '',
         polozka: dbOrder.financovani.polozka || '',
