@@ -1990,6 +1990,12 @@ const Invoices25List = () => {
         const castkaTrimmed = columnFilters.castka.trim();
         const match = castkaTrimmed.match(/^([=<>])(.+)$/);
         
+        console.log('🔍 CASTKA FILTER DEBUG:', {
+          original: columnFilters.castka,
+          trimmed: castkaTrimmed,
+          match: match
+        });
+        
         if (match) {
           const operator = match[1];
           const amount = parseFloat(match[2].replace(/\s/g, '').replace(/,/g, ''));
@@ -1998,10 +2004,13 @@ const Invoices25List = () => {
             // Přeložit operátor na API parametry
             if (operator === '=') {
               apiParams.castka_eq = amount;
+              console.log('✅ CASTKA EQ:', amount);
             } else if (operator === '<') {
               apiParams.castka_lt = amount;
+              console.log('✅ CASTKA LT:', amount);
             } else if (operator === '>') {
               apiParams.castka_gt = amount;
+              console.log('✅ CASTKA GT:', amount);
             }
           }
         }
@@ -3221,7 +3230,7 @@ const Invoices25List = () => {
                   <TableHeader 
                     className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
                     onClick={() => handleSort('castka')}
-                    style={{ textAlign: 'right' }}
+                    style={{ textAlign: 'center', minWidth: '180px', width: '180px' }}
                   >
                     Částka
                     {sortField === 'castka' && (
@@ -3427,7 +3436,7 @@ const Invoices25List = () => {
                   </TableHeader>
 
                   {/* Částka */}
-                  <TableHeader className="filter-cell">
+                  <TableHeader className="filter-cell amount-column">
                     <div className="operator-filter-wrapper">
                       <OperatorInput
                         value={columnFilters.castka || ''}
@@ -3758,7 +3767,7 @@ const Invoices25List = () => {
                     <TableCell className="center">
                       <span className="storno-content">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
                     </TableCell>
-                    <TableCell className="right">
+                    <TableCell className="amount-column">
                       <span className="storno-content"><strong>{formatCurrency(invoice.castka)}</strong></span>
                     </TableCell>
                     <TableCell className="center">
