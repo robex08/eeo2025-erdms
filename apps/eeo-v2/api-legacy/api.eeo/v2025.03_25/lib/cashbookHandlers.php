@@ -948,8 +948,8 @@ function handle_cashbook_entry_delete_post($config, $input) {
         $book = $bookModel->getBookById($entry['pokladni_kniha_id']);
         
         if (!$book) {
-            http_response_code(200);
-            echo json_encode(['status' => 'debug', 'step' => '4-book-not-found', 'kniha_id' => $entry['pokladni_kniha_id']]);
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Book not found']);
             exit;
         }
         

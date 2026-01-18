@@ -9822,14 +9822,7 @@ const Orders25List = () => {
     try {
       // 🔄 KRITICKÁ OPRAVA: Načti detail objednávky s enriched daty (LP názvy, faktury, atd.)
       const enrichedOrder = await getOrderV2(order.id, token, username, true, 0);
-      
-      // 🚨 DEBUG: Zkontroluj enriched data před posláním do PDF
-      console.log('🚨 ORDERS25 DEBUG - Enriched data pro PDF:');
-      console.log('📄 enrichedOrder:', enrichedOrder);
-      console.log('💰 enrichedOrder.financovani:', enrichedOrder?.financovani);
-      console.log('🔍 enrichedOrder.financovani.lp_nazvy:', enrichedOrder?.financovani?.lp_nazvy);
-      console.log('🔢 enrichedOrder.financovani.lp_kody:', enrichedOrder?.financovani?.lp_kody);
-      console.log('🚨 ORDERS25 DEBUG END');
+
       
       // Otevření modalu s náhledem PDF finanční kontroly
       setFinancialControlOrder(enrichedOrder);

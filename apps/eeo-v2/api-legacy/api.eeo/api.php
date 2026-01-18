@@ -1,7 +1,7 @@
 <?php
-// TEMPORARY DEBUG - enable error reporting to see 500 error details
+// Standard error reporting for production
 ini_set('display_errors', 0);
-ini_set('display_startup_errors', 1); 
+ini_set('display_startup_errors', 0); 
 ini_set('log_errors', 1);
 ini_set('error_log', '/tmp/php_errors.log');
 error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
@@ -325,42 +325,6 @@ if (isset($_SERVER['HTTP_X_ENDPOINT'])) {
     }
 }
 
-// 🔥 SPECIAL DEBUG ENDPOINT - pro testování routingu
-if ($endpoint === 'debug-routing') {
-    echo json_encode(array(
-        'status' => 'ok',
-        'debug_info' => array(
-            'REQUEST_URI' => $_SERVER['REQUEST_URI'],
-            'HTTP_X_ENDPOINT' => isset($_SERVER['HTTP_X_ENDPOINT']) ? $_SERVER['HTTP_X_ENDPOINT'] : null,
-            'extracted_endpoint' => $endpoint,
-            'request_method' => $request_method,
-            'matches_from_regex' => isset($matches) ? $matches : null,
-            'raw_input' => $input
-        )
-    ));
-    exit;
-}
-
-// 🔥 TEST INVOICE ATTACHMENTS DEBUG
-if ($endpoint === 'test-invoice-debug') {
-    echo json_encode(array(
-        'status' => 'ok', 
-        'message' => 'Test endpoint works',
-        'functions' => array(
-            'get_invoices_table_name' => function_exists('get_invoices_table_name'),
-            'get_invoice_attachments_table_name' => function_exists('get_invoice_attachments_table_name'),
-            'handle_order_v2_list_invoice_attachments' => function_exists('handle_order_v2_list_invoice_attachments'),
-            'get_db' => function_exists('get_db'),
-            'verify_token' => function_exists('verify_token')
-        ),
-        'table_names' => array(
-            'invoices' => function_exists('get_invoices_table_name') ? get_invoices_table_name() : 'FUNCTION_NOT_EXISTS',
-            'invoice_attachments' => function_exists('get_invoice_attachments_table_name') ? get_invoice_attachments_table_name() : 'FUNCTION_NOT_EXISTS'
-        )
-    ));
-    exit;
-}
-
 // === VERSION ENDPOINT - GET /api.eeo/version (no auth required) ===
 if ($endpoint === 'version') {
     if ($request_method === 'GET') {
@@ -559,7 +523,7 @@ if ($endpoint === 'api.php' && isset($_GET['action']) && $_GET['action'] === 'bi
     exit;
 }
 
-// Debug removed - back to normal operation
+
 
 // === SUPPORT FOR POST BODY ACTION + OPERATION ROUTING ===
 // Pokud endpoint je "api.php" (nebo prázdný) a v POST body je action + operation,
@@ -3211,15 +3175,11 @@ switch ($endpoint) {
         }
         
         // PUT /api.eeo/order-v2/{id}/update - update objednavky
-        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
-            // 🔥 DEBUG: Force immediate debug info
-            file_put_contents('/tmp/debug_order_routing.log', date('Y-m-d H:i:s') . " - ROUTING MATCH: order-v2/{$matches[1]}/update | Method: $request_method\n", FILE_APPEND);
-            
+        if (preg_match('/^order-v2/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             
             if ($request_method === 'POST' || $request_method === 'PUT') {
-                file_put_contents('/tmp/debug_order_routing.log', date('Y-m-d H:i:s') . " - CALLING handle_order_v2_update for ID: {$input['id']}\n", FILE_APPEND);
                 handle_order_v2_update($input, $config, $queries);
             } else {
                 http_response_code(405);
