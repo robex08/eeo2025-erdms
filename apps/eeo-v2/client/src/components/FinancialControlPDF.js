@@ -577,20 +577,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     pojistna_udalost_poznamka: order?.pojistna_udalost_poznamka || ''
   };
   
-  // 🔍 DEBUG: Zkontroluj, co backend poslal
-  console.log('🚨 FinancialControlPDF DEBUG START 🚨');
-  console.log('📄 Raw order object:', order);
-  console.log('💰 order.financovani:', order?.financovani);
-  console.log('🎯 order.zpusob_financovani:', order?.zpusob_financovani);
-  console.log('🔢 order.lp_kod:', order?.lp_kod);
-  console.log('🏷️ order.lp_nazvy:', order?.lp_nazvy);
-  console.log('📋 financovaniData:', financovaniData);
-  console.log('🏷️ financovaniData.lp_nazvy:', financovaniData?.lp_nazvy);
-  console.log('🔢 financovaniData.lp_kody:', financovaniData?.lp_kody);
-  console.log('📊 financovaniData.typ:', financovaniData?.typ);
-  console.log('✅ Je LP typ?:', (financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB'));
-  console.log('✅ Má LP názvy?:', financovaniData?.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0);
-  console.log('🚨 FinancialControlPDF DEBUG END 🚨');
+
   
   // 💰 Maximální cena s DPH (z objednávky)
   const maxCenaSvDph = order?.max_cena_s_dph ? parseFloat(order.max_cena_s_dph) : null;
