@@ -3175,7 +3175,7 @@ switch ($endpoint) {
         }
         
         // PUT /api.eeo/order-v2/{id}/update - update objednavky
-        if (preg_match('/^order-v2/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
+        if (preg_match('/^order-v2\/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
             // Support both numeric and string IDs
             $input['id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             
