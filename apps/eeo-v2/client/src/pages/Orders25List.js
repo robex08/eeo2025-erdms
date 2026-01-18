@@ -9818,11 +9818,27 @@ const Orders25List = () => {
     handleExportDocument(order);
   }, [handleExportDocument]);
 
-  const handleGenerateFinancialControl = useCallback((order) => {
-    // Otevření modalu s náhledem PDF finanční kontroly
-    setFinancialControlOrder(order);
-    setFinancialControlModalOpen(true);
-  }, []);
+  const handleGenerateFinancialControl = useCallback(async (order) => {
+    try {
+      // 🔄 KRITICKÁ OPRAVA: Načti detail objednávky s enriched daty (LP názvy, faktury, atd.)
+      const enrichedOrder = await getOrderV2(order.id, token, username, true, 0);
+      
+      // 🚨 DEBUG: Zkontroluj enriched data před posláním do PDF
+      console.log('🚨 ORDERS25 DEBUG - Enriched data pro PDF:');
+      console.log('📄 enrichedOrder:', enrichedOrder);
+      console.log('💰 enrichedOrder.financovani:', enrichedOrder?.financovani);
+      console.log('🔍 enrichedOrder.financovani.lp_nazvy:', enrichedOrder?.financovani?.lp_nazvy);
+      console.log('🔢 enrichedOrder.financovani.lp_kody:', enrichedOrder?.financovani?.lp_kody);
+      console.log('🚨 ORDERS25 DEBUG END');
+      
+      // Otevření modalu s náhledem PDF finanční kontroly
+      setFinancialControlOrder(enrichedOrder);
+      setFinancialControlModalOpen(true);
+    } catch (error) {
+      console.error('Chyba při načítání detailu objednávky pro finanční kontrolu:', error);
+      showToast('Nepodařilo se načíst detail objednávky', { type: 'error' });
+    }
+  }, [token, username, showToast]);
 
   // 🎯 Handler pro schválení objednávky z kontextového menu (příkazce)
   const handleApproveFromContextMenu = useCallback(async (order) => {
