@@ -20410,7 +20410,8 @@ function OrderForm25() {
               {(() => {
                 const selectedSource = financovaniOptions.find(opt => opt.kod_stavu === formData.zpusob_financovani || opt.kod === formData.zpusob_financovani);
                 const nazev = selectedSource?.nazev_stavu || selectedSource?.nazev || '';
-                return nazev.includes('Limitovan') || nazev.includes('příslib');
+                // Kontrola s i bez diakritiky pro spolehlivost
+                return nazev.includes('Limitovan') || nazev.includes('příslib') || nazev.includes('prislib');
               })() && (
                 <>
                   <FormRow>
