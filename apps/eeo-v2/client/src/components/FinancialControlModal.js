@@ -253,6 +253,8 @@ const FinancialControlModal = ({ order, onClose, generatedBy }) => {
         <FinancialControlPDF
           order={order}
           generatedBy={generatedBy}
+          organizace={organizace}
+          strediskaMap={strediskaMap}
         />
       ).toBlob();
 

@@ -563,28 +563,34 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   const financovani = order?.financovani?.typ_nazev || order?.financovani?.typ || order?.zpusob_financovani || MISSING;
   
   // Použít data přímo z order.financovani (backend již obohatil)
-  const financovaniData = order?.financovani ? {
-    typ: order.financovani.typ,
-    lp_kody: order.financovani.lp_kody,
-    lp_kod: order.financovani.lp_kody,
-    lp_nazvy: order.financovani.lp_nazvy, // ✨ Už enriched!
-    lp_poznamka: order.financovani.lp_poznamka || order.lp_poznamka,
-    cislo_smlouvy: order.financovani.cislo_smlouvy || order.cislo_smlouvy,
-    smlouva_poznamka: order.financovani.smlouva_poznamka || order.smlouva_poznamka,
-    individualni_schvaleni: order.financovani.individualni_schvaleni || order.individualni_schvaleni,
-    individualni_poznamka: order.financovani.individualni_poznamka || order.individualni_poznamka,
-    pojistna_udalost_cislo: order.financovani.pojistna_udalost_cislo || order.pojistna_udalost_cislo,
-    pojistna_udalost_poznamka: order.financovani.pojistna_udalost_poznamka || order.pojistna_udalost_poznamka
-  } : null;
+  const financovaniData = {
+    typ: order?.zpusob_financovani || '',
+    lp_kody: order?.lp_kod || [], // ✅ Přímo z order objektu
+    lp_kod: order?.lp_kod || [],  
+    lp_nazvy: order?.lp_nazvy || [], // ✅ Enriched data přímo z order objektu
+    lp_poznamka: order?.lp_poznamka || '',
+    cislo_smlouvy: order?.cislo_smlouvy || '',
+    smlouva_poznamka: order?.smlouva_poznamka || '',
+    individualni_schvaleni: order?.individualni_schvaleni || '',
+    individualni_poznamka: order?.individualni_poznamka || '',
+    pojistna_udalost_cislo: order?.pojistna_udalost_cislo || '',
+    pojistna_udalost_poznamka: order?.pojistna_udalost_poznamka || ''
+  };
   
   // 🔍 DEBUG: Zkontroluj, co backend poslal
-  
-  // 🎯 Helper: Najít název LP kódu podle ID z enriched dat
-  const getLPNazevById = (lpId) => {
-    if (!lpId || !financovaniData?.lp_nazvy) return lpId; // Fallback: zobrazit ID
-    const lp = financovaniData.lp_nazvy.find(item => item.id === lpId);
-    return lp ? `${lp.cislo_lp || lpId} - ${lp.nazev || '---'}` : lpId;
-  };
+  console.log('🚨 FinancialControlPDF DEBUG START 🚨');
+  console.log('📄 Raw order object:', order);
+  console.log('💰 order.financovani:', order?.financovani);
+  console.log('🎯 order.zpusob_financovani:', order?.zpusob_financovani);
+  console.log('🔢 order.lp_kod:', order?.lp_kod);
+  console.log('🏷️ order.lp_nazvy:', order?.lp_nazvy);
+  console.log('📋 financovaniData:', financovaniData);
+  console.log('🏷️ financovaniData.lp_nazvy:', financovaniData?.lp_nazvy);
+  console.log('🔢 financovaniData.lp_kody:', financovaniData?.lp_kody);
+  console.log('📊 financovaniData.typ:', financovaniData?.typ);
+  console.log('✅ Je LP typ?:', (financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB'));
+  console.log('✅ Má LP názvy?:', financovaniData?.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0);
+  console.log('🚨 FinancialControlPDF DEBUG END 🚨');
   
   // 💰 Maximální cena s DPH (z objednávky)
   const maxCenaSvDph = order?.max_cena_s_dph ? parseFloat(order.max_cena_s_dph) : null;
@@ -792,27 +798,30 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
 
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Financování:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(financovani)]}>{financovani}</Text>
+            <Text style={[styles.controlValue, getMissingStyle(financovani)]}>
+              {(() => {
+                // Zobraz typ financování
+                let result = financovani;
+                
+                // Pokud je LP a máme názvy, přidej je
+                if ((financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB') && 
+                    financovaniData.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0) {
+                  const lpNazvy = financovaniData.lp_nazvy.map(lp => {
+                    const kod = lp.cislo_lp || lp.kod || lp.id;
+                    const nazev = lp.nazev || '';
+                    return kod && nazev ? `${kod} - ${nazev}` : (kod || nazev);
+                  }).join(', ');
+                  result += ` (${lpNazvy})`;
+                }
+                
+                return result;
+              })()}
+            </Text>
           </View>
 
           {/* Detaily financování podle typu */}
           {financovaniData && (
             <>
-              {/* LP kódy - zobrazit NÁZVY místo ID! */}
-              {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && (
-                <View style={styles.controlRow}>
-                  <Text style={styles.controlLabel}>LP kódy:</Text>
-                  <Text style={styles.controlValue}>
-                    {financovaniData.lp_nazvy && Array.isArray(financovaniData.lp_nazvy) && financovaniData.lp_nazvy.length > 0
-                      ? financovaniData.lp_nazvy.map(lp => `${lp.cislo_lp || lp.id} - ${lp.nazev || '---'}`).join(', ')
-                      : (Array.isArray(financovaniData.lp_kody) 
-                          ? financovaniData.lp_kody.join(', ') 
-                          : Array.isArray(financovaniData.lp_kod)
-                            ? financovaniData.lp_kod.join(', ')
-                            : (financovaniData.lp_kody || financovaniData.lp_kod || '---'))}
-                  </Text>
-                </View>
-              )}
               {(financovaniData.typ === 'LP' || financovaniData.typ === 'LIMITOVANY_PRISLIB') && financovaniData.lp_poznamka && (
                 <View style={styles.controlRow}>
                   <Text style={styles.controlLabel}>Poznámka k LP:</Text>
@@ -924,7 +933,19 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                       <View style={styles.controlRow}>
                         <Text style={[styles.controlLabel, { width: '30%' }]}>LP kód:</Text>
                         <Text style={[styles.controlValue, { width: '70%' }]}>
-                          {getLPNazevById(polozka.lp_id)}
+                          {(() => {
+                            // Zkus najít LP kód z enriched dat
+                            if (financovaniData?.lp_nazvy) {
+                              const lp = financovaniData.lp_nazvy.find(item => item.id === polozka.lp_id);
+                              if (lp) {
+                                const kod = lp.cislo_lp || lp.kod || lp.id;
+                                const nazev = lp.nazev || '';
+                                return kod && nazev ? `${kod} - ${nazev}` : (kod || nazev);
+                              }
+                            }
+                            // Fallback: zobraz jen ID
+                            return `LP ID: ${polozka.lp_id}`;
+                          })()}
                         </Text>
                       </View>
                     )}
