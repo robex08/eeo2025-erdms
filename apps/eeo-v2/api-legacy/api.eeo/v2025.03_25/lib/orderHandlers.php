@@ -82,15 +82,23 @@ function validateAndParseOrderItems($input) {
     
     if (isset($input['polozky'])) {
         $polozky_data = $input['polozky'];
+        error_log("validateAndParseOrderItems: Našel jsem 'polozky' v inputu");
     } elseif (isset($input['polozky_objednavky'])) {
         $polozky_data = $input['polozky_objednavky'];
+        error_log("validateAndParseOrderItems: Našel jsem 'polozky_objednavky' v inputu");
+    } else {
+        error_log("validateAndParseOrderItems: Nenašel jsem ani 'polozky' ani 'polozky_objednavky' v inputu");
     }
     
     if ($polozky_data !== null) {
+        error_log("validateAndParseOrderItems: polozky_data type = " . gettype($polozky_data) . ", count = " . (is_array($polozky_data) ? count($polozky_data) : 'N/A'));
+        
         // Pokud je to JSON string, dekódujeme
         if (is_string($polozky_data)) {
+            error_log("validateAndParseOrderItems: Dekóduji JSON string");
             $polozky_data = json_decode($polozky_data, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log("validateAndParseOrderItems: JSON dekódování selhalo - " . json_last_error_msg());
                 return ['valid' => false, 'errors' => ['Chybný formát JSON pro položky objednávky']]; // Chybný JSON
             }
         }
@@ -164,17 +172,22 @@ function validateAndParseOrderItems($input) {
             // Přidáme pouze položky s popisem
             if (!empty($validatedItem['popis'])) {
                 $items[] = $validatedItem;
+            } else {
+                error_log("validateAndParseOrderItems: Položka #{$index} přeskočena - prázdný popis");
             }
         }
     }
     
     // ✅ Vrátit chyby pokud nějaké vznikly
     if (!empty($errors)) {
+        error_log("validateAndParseOrderItems: VALIDACE SELHALA - " . count($errors) . " chyb");
         return ['valid' => false, 'errors' => $errors];
     }
     
     // ✅ Zpětná kompatibilita: pokud jsou validní položky, vrátit pole, jinak false
-    return empty($items) ? false : $items;
+    $result = empty($items) ? false : $items;
+    error_log("validateAndParseOrderItems: Vracím " . (is_array($result) ? count($result) . " položek" : "FALSE (žádné validní položky)"));
+    return $result;
 }
 
 /**
