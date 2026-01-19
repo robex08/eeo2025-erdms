@@ -366,102 +366,142 @@ function handle_order_v2_list($input, $config, $queries) {
         $hasOrderApproveAll = in_array('ORDER_APPROVE_ALL', $user_permissions);
         $hasOrderEditAll = in_array('ORDER_EDIT_ALL', $user_permissions);
         $hasOrderDeleteAll = in_array('ORDER_DELETE_ALL', $user_permissions);
+        $hasOrderOld = in_array('ORDER_OLD', $user_permissions);
+        
+        // 🔥 CRITICAL: Definice $hasReadAllPermissions PŘED použitím!
+        $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll;
+        $hasWriteAllPermissions = $hasOrderEditAll || $hasOrderDeleteAll || $hasOrderApproveAll;
         
         // 🔥 KRITICKÉ FIX: Full admin = POUZE role SUPERADMIN nebo ADMINISTRATOR
         $isFullAdmin = $isAdminByRole;
         
         error_log("Order V2 LIST: Role check - SUPERADMIN/ADMINISTRATOR: " . ($isAdminByRole ? 'YES' : 'NO'));
+        error_log("Order V2 LIST: Permission check - ORDER_READ_ALL: " . ($hasOrderReadAll ? 'YES' : 'NO') . 
+                  ", ORDER_VIEW_ALL: " . ($hasOrderViewAll ? 'YES' : 'NO') .
+                  ", hasReadAllPermissions: " . ($hasReadAllPermissions ? 'YES' : 'NO'));
         
-        // 🌲 HIERARCHIE WORKFLOW: REPLACES role-based filter (ale POUZE pro non-admins!)
+        // 🌲 VISIBILITY FILTERS: Kombinace role-based + hierarchie + department (OR logika)
         // ============================================================================
+        // 🎯 NOVÁ LOGIKA (2026-01-19):
+        // - Role-based filtr (12 polí) = ZÁKLAD (base viditelnost)
+        // - Hierarchie = ROZŠÍŘENÍ (přidává viditelnost OR metodou)
+        // - Department subordinate = ROZŠÍŘENÍ (přidává viditelnost OR metodou)
+        // - Výsledek: (role-based) OR (hierarchie) OR (department) = MAX viditelnost
+        
+        $visibilityConditions = [];
         $hierarchyApplied = false;
-        
-        if (!$isFullAdmin) { // 🔥 SUPERADMIN/ADMINISTRATOR jsou osvobozeni od hierarchie
-            error_log("🔍 TEST: User is NOT admin, checking hierarchy filter");
-            global $HIERARCHY_DEBUG_INFO;
-            $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
-            error_log("🔍 TEST: After calling applyHierarchyFilterToOrders, result=" . ($hierarchyFilter === null ? 'NULL' : $hierarchyFilter));
-            
-            if ($hierarchyFilter !== null) {
-                $whereConditions[] = $hierarchyFilter;
-                $hierarchyApplied = true;
-                error_log("✅ TEST: HIERARCHY filter APPLIED - will SKIP role-based filter");
-            } else {
-                error_log("ℹ️ TEST: HIERARCHY filter NOT applied - will use role-based filter");
-            }
-        } else {
-            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING hierarchy filter completely");
-        }
-        // ============================================================================
-        
-        // 🏢 DEPARTMENT-BASED SUBORDINATE PERMISSIONS: Úsek-based viditelnost (ale POUZE pro non-admins!)
-        // ============================================================================
-        $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
-        $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
-        
         $departmentFilterApplied = false;
         
-        if (!$isFullAdmin && ($hasOrderReadSubordinate || $hasOrderEditSubordinate)) {
-            // 🔥 SUPERADMIN/ADMINISTRATOR jsou osvobozeni od department filtru
-            // Načíst kolegy ze stejného úseku
-            $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
+        // Aplikuje se POUZE pro non-admins BEZ ORDER_READ_ALL
+        if (!$isFullAdmin && !$hasReadAllPermissions) {
             
-            if (!empty($departmentColleagueIds)) {
-                // Vytvořit SQL podmínku pro viditelnost objednávek kolegů z úseku
-                // Uživatel vidí objednávky kde JAKÝKOLIV z 12 rolí je kolega z jeho úseku
-                $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
-                
-                $departmentCondition = "(
-                    o.uzivatel_id IN ($departmentColleagueIdsStr)
-                    OR o.objednatel_id IN ($departmentColleagueIdsStr)
-                    OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
-                    OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
-                    OR o.prikazce_id IN ($departmentColleagueIdsStr)
-                    OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
-                    OR o.odesilatel_id IN ($departmentColleagueIdsStr)
-                    OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
-                    OR o.zverejnil_id IN ($departmentColleagueIdsStr)
-                    OR o.fakturant_id IN ($departmentColleagueIdsStr)
-                    OR o.dokoncil_id IN ($departmentColleagueIdsStr)
-                    OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
-                )";
-                
-                $whereConditions[] = $departmentCondition;
-                $departmentFilterApplied = true;
-                
-                $permission_type = $hasOrderEditSubordinate ? 'ORDER_EDIT_SUBORDINATE' : 'ORDER_READ_SUBORDINATE';
-                error_log("✅ DEPARTMENT SUBORDINATE: Applied $permission_type filter for " . count($departmentColleagueIds) . " colleagues");
+            // 1️⃣ ROLE-BASED FILTER (12 polí) - ZÁKLAD pro všechny
+            // ========================================================
+            error_log("📋 VISIBILITY: Building role-based filter (BASE) for user $current_user_id");
+            
+            $roleBasedCondition = "(
+                o.uzivatel_id = :role_user_id
+                OR o.objednatel_id = :role_user_id
+                OR o.garant_uzivatel_id = :role_user_id
+                OR o.schvalovatel_id = :role_user_id
+                OR o.prikazce_id = :role_user_id
+                OR o.uzivatel_akt_id = :role_user_id
+                OR o.odesilatel_id = :role_user_id
+                OR o.dodavatel_potvrdil_id = :role_user_id
+                OR o.zverejnil_id = :role_user_id
+                OR o.fakturant_id = :role_user_id
+                OR o.dokoncil_id = :role_user_id
+                OR o.potvrdil_vecnou_spravnost_id = :role_user_id
+            )";
+            
+            $visibilityConditions[] = $roleBasedCondition;
+            $params['role_user_id'] = $current_user_id;
+            error_log("✅ VISIBILITY: Role-based filter added as BASE");
+            
+            // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní a uživatel v profilu)
+            // ========================================================
+            error_log("🔍 HIERARCHY CHECK: Checking if user $current_user_id is in hierarchy profile");
+            global $HIERARCHY_DEBUG_INFO;
+            $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
+            error_log("🔍 HIERARCHY CHECK: Result=" . ($hierarchyFilter === null ? 'NULL' : 'FILTER'));
+            
+            if ($hierarchyFilter !== null) {
+                $visibilityConditions[] = $hierarchyFilter;
+                $hierarchyApplied = true;
+                error_log("✅ HIERARCHY: Filter ADDED as OR extension (expands visibility)");
             } else {
-                error_log("⚠️ DEPARTMENT SUBORDINATE: User $current_user_id has no usek_id or no colleagues in department");
+                error_log("ℹ️ HIERARCHY: Not applied (user not in profile or no relationships)");
             }
+            
+            // 3️⃣ DEPARTMENT SUBORDINATE - ROZŠÍŘENÍ (pokud má právo)
+            // ========================================================
+            $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
+            $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
+            
+            if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+                error_log("🔍 DEPARTMENT CHECK: User has subordinate permissions");
+                $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
+                
+                if (!empty($departmentColleagueIds)) {
+                    $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
+                    
+                    $departmentCondition = "(
+                        o.uzivatel_id IN ($departmentColleagueIdsStr)
+                        OR o.objednatel_id IN ($departmentColleagueIdsStr)
+                        OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
+                        OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
+                        OR o.prikazce_id IN ($departmentColleagueIdsStr)
+                        OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
+                        OR o.odesilatel_id IN ($departmentColleagueIdsStr)
+                        OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
+                        OR o.zverejnil_id IN ($departmentColleagueIdsStr)
+                        OR o.fakturant_id IN ($departmentColleagueIdsStr)
+                        OR o.dokoncil_id IN ($departmentColleagueIdsStr)
+                        OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
+                    )";
+                    
+                    $visibilityConditions[] = $departmentCondition;
+                    $departmentFilterApplied = true;
+                    
+                    $permission_type = $hasOrderEditSubordinate ? 'ORDER_EDIT_SUBORDINATE' : 'ORDER_READ_SUBORDINATE';
+                    error_log("✅ DEPARTMENT: Filter ADDED as OR extension for " . count($departmentColleagueIds) . " colleagues ($permission_type)");
+                } else {
+                    error_log("ℹ️ DEPARTMENT: User has no colleagues in department");
+                }
+            }
+            
+            // 4️⃣ KOMBINACE S OR LOGIKOU
+            // ========================================================
+            // Spojíme všechny podmínky s OR → uživatel vidí objednávky z KTERÉHOKOLIV filtru
+            if (!empty($visibilityConditions)) {
+                if (count($visibilityConditions) == 1) {
+                    // Jen role-based (žádné rozšíření)
+                    $whereConditions[] = $visibilityConditions[0];
+                    error_log("📊 VISIBILITY RESULT: Only role-based filter (no extensions)");
+                } else {
+                    // Role-based + rozšíření (hierarchie/department) spojené s OR
+                    $combinedFilter = "(" . implode(" OR ", $visibilityConditions) . ")";
+                    $whereConditions[] = $combinedFilter;
+                    error_log("📊 VISIBILITY RESULT: Combined " . count($visibilityConditions) . " filters with OR logic");
+                    error_log("   - Role-based: YES");
+                    error_log("   - Hierarchy: " . ($hierarchyApplied ? 'YES (extends)' : 'NO'));
+                    error_log("   - Department: " . ($departmentFilterApplied ? 'YES (extends)' : 'NO'));
+                }
+            }
+            
         } else if ($isFullAdmin) {
-            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING department subordinate filter");
+            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING all visibility filters");
+        } else if ($hasReadAllPermissions) {
+            error_log("✅ READ_ALL BYPASS: User has ORDER_READ_ALL/VIEW_ALL - SKIPPING all visibility filters");
         }
         // ============================================================================
         
-        // 🔥 ORDER_OLD = Speciální právo pro přístup k VŠEM archivovaným objednávkám
-        $hasOrderOld = in_array('ORDER_OLD', $user_permissions);
+        // 🔥 Kontrola parametru archivovano z FE
+        $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
         
-        // 🔥 ORDER_*_ALL = Rozšířená práva (vidí všechny objednávky, ale bez archivovaných pokud nemá ORDER_OLD)
-        $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll;
-        $hasWriteAllPermissions = $hasOrderEditAll || $hasOrderDeleteAll || $hasOrderApproveAll;
-        
-        error_log("Order V2 LIST: Role check - SUPERADMIN/ADMINISTRATOR: " . ($isAdminByRole ? 'YES' : 'NO'));
         error_log("Order V2 LIST: Permission check - ORDER_MANAGE: " . ($hasOrderManage ? 'YES' : 'NO') . 
-                  ", ORDER_READ_ALL: " . ($hasOrderReadAll ? 'YES' : 'NO') . 
-                  ", ORDER_VIEW_ALL: " . ($hasOrderViewAll ? 'YES' : 'NO') .
                   ", ORDER_APPROVE_ALL: " . ($hasOrderApproveAll ? 'YES' : 'NO') .
                   ", ORDER_OLD: " . ($hasOrderOld ? 'YES' : 'NO'));
-        error_log("Order V2 LIST: Final admin status - isFullAdmin: " . ($isFullAdmin ? 'YES' : 'NO') . 
-                  " (ONLY by ROLE, not by permissions)");
-        error_log("Order V2 LIST: Extended permissions - hasReadAllPermissions: " . ($hasReadAllPermissions ? 'YES' : 'NO') . 
-                  ", hasOrderOld: " . ($hasOrderOld ? 'YES' : 'NO'));
-        
-        // 🔥 KRITICKÉ: Logika filtrování podle ORDER_OLD a rolí
-        // ORDER_OLD = PRÁVO vidět archivované, ale respektuje parametr archivovano z FE
-        
-        // Kontrola parametru archivovano z FE
-        $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
         
         if ($hasOrderOld && $includeArchived) {
             // 🔥 ORDER_OLD + archivovano=1 = Vidí VŠECHNY archivované objednávky BEZ role filtru
@@ -530,42 +570,15 @@ function handle_order_v2_list($input, $config, $queries) {
             }
             
         } else {
-            // 🔥 Běžný uživatel (ORDER_READ_OWN) - aplikuj 12-role WHERE filter
-            // POKUD NENÍ HIERARCHIE ANI DEPARTMENT SUBORDINATE! (ty je nahrazují)
+            // 🔥 Běžný uživatel bez speciálních práv
+            // Viditelnost už byla nastavena výše přes visibility filters (role-based + hierarchie + department)
+            // Zde jen řešíme archivované objednávky
             
-            if (!$hierarchyApplied && !$departmentFilterApplied) {
-                error_log("Order V2 LIST: Regular user (ORDER_READ_OWN) - applying role-based filter for user ID: $current_user_id");
-                
-                // Multi-role WHERE podmínka podle všech 12 user ID polí
-                $roleBasedCondition = "(
-                    o.uzivatel_id = :role_user_id
-                    OR o.objednatel_id = :role_user_id
-                    OR o.garant_uzivatel_id = :role_user_id
-                    OR o.schvalovatel_id = :role_user_id
-                    OR o.prikazce_id = :role_user_id
-                    OR o.uzivatel_akt_id = :role_user_id
-                    OR o.odesilatel_id = :role_user_id
-                    OR o.dodavatel_potvrdil_id = :role_user_id
-                    OR o.zverejnil_id = :role_user_id
-                    OR o.fakturant_id = :role_user_id
-                    OR o.dokoncil_id = :role_user_id
-                    OR o.potvrdil_vecnou_spravnost_id = :role_user_id
-                )";
-                
-                $whereConditions[] = $roleBasedCondition;
-                $params['role_user_id'] = $current_user_id;
-            } else if ($hierarchyApplied) {
-                error_log("Order V2 LIST: Regular user - SKIPPING role-based filter (hierarchy REPLACES it)");
-            } else if ($departmentFilterApplied) {
-                error_log("Order V2 LIST: Regular user - SKIPPING role-based filter (department subordinate REPLACES it)");
-            }
-            
-            // Běžný user: archivované jen pokud archivovano=1
             if (!$includeArchived) {
                 $whereConditions[] = "o.stav_objednavky != 'ARCHIVOVANO'";
                 error_log("Order V2 LIST: Regular user - excluding archived orders (archivovano=0 or not set)");
             } else {
-                error_log("Order V2 LIST: Regular user - including archived orders where user has role (archivovano=1)");
+                error_log("Order V2 LIST: Regular user - including archived orders where user has visibility (archivovano=1)");
             }
         }
         
@@ -1211,15 +1224,60 @@ function handle_order_v2_update($input, $config, $queries) {
             return;
         }
         
-        // Detekce partial update pro archivaci - ŽÁDNÁ VALIDACE
-        $is_archivation_update = false;
+        // 🔥 DETEKCE PARTIAL UPDATE - různé scénáře bez úplné validace
+        $is_partial_update = false;
+        $skip_items_validation = false;
+        
+        // Scénář 1: Archivace - jen změna stavu
         if (isset($input['stav_workflow_kod']) && is_array($input['stav_workflow_kod']) && 
             count($input['stav_workflow_kod']) === 1 && $input['stav_workflow_kod'][0] === 'ARCHIVOVANO') {
-            $is_archivation_update = true;
+            $is_partial_update = true;
+            $skip_items_validation = true;
+            error_log("Order V2 UPDATE: Detected ARCHIVATION partial update - skipping full validation");
         }
         
-        // Validace vstupních dat - přeskočit pro archivaci
-        if (!$is_archivation_update) {
+        // Scénář 2: Admin odemkl UZAVŘENOU objednávku k ex post opravě
+        // Ex post oprava = objednávka je POUZE v locked state BEZ editovatelných stavů (ROZPRACOVANA, NOVA)
+        $locked_states = ['SCHVALENA', 'ODESLAN_DODAVATELI', 'ZKONTROLOVANA', 'VECNA_SPRAVNOST', 'FAKTURACE', 'DOKONCENA'];
+        $editable_states = ['ROZPRACOVANA', 'NOVA'];
+        $is_ex_post_edit = false;
+        
+        if (isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod'])) {
+            $has_locked_state = false;
+            $has_editable_state = false;
+            
+            foreach ($existingOrder['stav_workflow_kod'] as $state) {
+                if (in_array($state, $locked_states)) {
+                    $has_locked_state = true;
+                }
+                if (in_array($state, $editable_states)) {
+                    $has_editable_state = true;
+                }
+            }
+            
+            // Ex post oprava = má locked state ALE NEMÁ editovatelný stav
+            if ($has_locked_state && !$has_editable_state) {
+                $is_ex_post_edit = true;
+                error_log("Order V2 UPDATE: Order $order_id is EX POST EDIT (locked without editable state)");
+            } elseif ($has_locked_state && $has_editable_state) {
+                error_log("Order V2 UPDATE: Order $order_id has locked state BUT ALSO editable state - NORMAL WORKFLOW");
+            }
+        }
+        
+        // 🔥 Ex post oprava: Skipni validaci položek JEN pokud frontend NEPOSLAL položky
+        // Normální workflow (má ROZPRACOVANA/NOVA): VŽDY zpracuj položky pokud je frontend poslal
+        $frontend_sent_items = array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input);
+        
+        if ($is_ex_post_edit && !$frontend_sent_items) {
+            $skip_items_validation = true;
+            $is_partial_update = true;
+            error_log("Order V2 UPDATE: Ex post edit WITHOUT items in payload - enabling partial update mode");
+        } elseif ($is_ex_post_edit && $frontend_sent_items) {
+            error_log("Order V2 UPDATE: Ex post edit WITH items in payload - WILL SAVE items");
+        }
+        
+        // Validace vstupních dat - přeskočit pro partial updates
+        if (!$is_partial_update) {
             $validation = $handler->validateOrderDataForUpdate($input);
             if (!$validation['valid']) {
                 http_response_code(400);
@@ -1230,6 +1288,8 @@ function handle_order_v2_update($input, $config, $queries) {
                 ));
                 return;
             }
+        } else {
+            error_log("Order V2 UPDATE: Partial update detected - skipping full data validation");
         }
         
         // Transformace dat pro DB
@@ -1286,8 +1346,34 @@ function handle_order_v2_update($input, $config, $queries) {
             $items_processed = 0;
             $items_updated = false;
             
+            // � DEBUG: Zalogovat informace o položkách v inputu
+            $has_polozky = array_key_exists('polozky', $input);
+            $has_polozky_objednavky = array_key_exists('polozky_objednavky', $input);
+            error_log("Order V2 UPDATE [{$order_id}]: DEBUG položky - has_polozky=" . ($has_polozky ? 'YES' : 'NO') . ", has_polozky_objednavky=" . ($has_polozky_objednavky ? 'YES' : 'NO'));
+            
+            if ($has_polozky) {
+                $polozky_count = is_array($input['polozky']) ? count($input['polozky']) : 'NOT_ARRAY';
+                error_log("Order V2 UPDATE [{$order_id}]: polozky count = {$polozky_count}");
+                if (is_array($input['polozky']) && count($input['polozky']) > 0) {
+                    error_log("Order V2 UPDATE [{$order_id}]: polozky[0] = " . json_encode($input['polozky'][0]));
+                }
+            }
+            
+            if ($has_polozky_objednavky) {
+                $polozky_objednavky_count = is_array($input['polozky_objednavky']) ? count($input['polozky_objednavky']) : 'NOT_ARRAY';
+                error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky count = {$polozky_objednavky_count}");
+                if (is_array($input['polozky_objednavky']) && count($input['polozky_objednavky']) > 0) {
+                    error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky[0] = " . json_encode($input['polozky_objednavky'][0]));
+                }
+            }
+            
+            // �🔥 SKIP validace položek pro partial updates (admin mění zamčenou objednávku)
+            if ($skip_items_validation) {
+                error_log("Order V2 UPDATE: Skipping items validation/update (partial update mode)");
+                // Položky se neaktualizují, zůstávají původní
+            }
             // Kontrola, zda jsou v input datech položky k aktualizaci
-            if (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
+            elseif (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
                 // Validace a parsování položek (lp_id je součástí validateAndParseOrderItems)
                 $order_items = validateAndParseOrderItems($input);
                 
@@ -1314,7 +1400,8 @@ function handle_order_v2_update($input, $config, $queries) {
                         throw new Exception('Chyba při aktualizaci položek objednávky');
                     }
                 } else {
-                    throw new Exception('Nevalidní formát položek objednávky');
+                    // Prázdné položky nebo chybný formát - ale můžeme pokračovat pro partial update
+                    error_log("Order V2 UPDATE: Empty or invalid items format, but continuing (may be partial update)");
                 }
             }
             

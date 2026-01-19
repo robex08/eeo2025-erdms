@@ -1941,6 +1941,11 @@ const CashBookPage = () => {
           if (saved) {
             const savedData = JSON.parse(saved);
             selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
+            
+            // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
+            if (!selectedAssignment) {
+              localStorage.removeItem('cashbook_selector_cashbox');
+            }
           }
         } catch (err) {
           // Tichá chyba

@@ -6429,7 +6429,7 @@ function OrderForm25() {
         
         // ✅ TRANSFORMOVAT POLOŽKY Z DRAFTU - parsovat poznámky z JSON
         if (cleanedDraftData.polozky_objednavky && Array.isArray(cleanedDraftData.polozky_objednavky)) {
-          cleanedDraftData.polozky_objednavky = cleanedDraftData.polozky_objednavky.map(item => {
+          cleanedDraftData.polozky_objednavky = cleanedDraftData.polozky_objednavky.map((item, idx) => {
             // ✅ JEDNODUŠE: Pokud je poznámka JSON string, parsuj a extrahuj poznamka_lokalizace
             let poznamkaText = '';
             
@@ -6448,10 +6448,12 @@ function OrderForm25() {
               }
             }
             
-            return {
+            const result = {
               ...item,
               poznamka: poznamkaText  // ✅ Vždy plain text
             };
+            
+            return result;
           });
         }
 
@@ -8867,7 +8869,6 @@ function OrderForm25() {
             objednavka_cislo: formData.cislo_objednavky
           }
         );
-        console.log(`✅ Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice ${realFakturaId}`);
       } catch (notifErr) {
         console.error('⚠️ Notification trigger failed:', notifErr);
         // Neblokovat proces - notifikace je sekundární
@@ -12256,6 +12257,7 @@ function OrderForm25() {
 
       // Zkontroluj existující draft pro firstSaveDate
       const existingDraft = await draftManager.hasDraft();
+      
       let firstSaveDate = null;
       
       // 🔥 KRITICKÉ: Detekce první autosave (NOVA → KONCEPT)
@@ -12379,6 +12381,9 @@ function OrderForm25() {
 
       return true;
     } catch (error) {
+      console.error('❌ saveDraftUnified CHYBA:', error);
+      console.error('❌ Stack trace:', error.stack);
+      
       if (!isAutoSave) {
         showToast && showToast('Nepodařilo se uložit koncept', { type: 'error' });
       }
