@@ -1523,14 +1523,6 @@ export async function updateInvoiceV2({
       ...updateData
     };
 
-    console.log('🔍 DEBUG - api25invoices.updateInvoiceV2 - Odesílaný payload:', {
-      invoice_id,
-      payload,
-      updateData_keys: Object.keys(updateData),
-      vecna_spravnost_umisteni_majetku: payload.vecna_spravnost_umisteni_majetku,
-      vecna_spravnost_poznamka: payload.vecna_spravnost_poznamka
-    });
-
     const response = await api25invoices.post(
       `order-v2/invoices/${invoice_id}/update`,
       payload,
