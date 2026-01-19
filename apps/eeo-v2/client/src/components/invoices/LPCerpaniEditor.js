@@ -558,64 +558,78 @@ function LPCerpaniEditor({
     }
   }, [faktura?.id]);
 
-  // Inicializace rows z lpCerpani prop - JEN JEDNOU při první inicializaci nebo změně faktury
+  // Inicializace rows z lpCerpani prop - JEDNODUCHÁ LOGIKA
   useEffect(() => {
-    // 🔥 FIX: Inicializovat JEN když se změní faktura nebo je to první načtení
-    // Neměnit rows když se mění lpCerpani props (to by způsobilo přepsání lokálních změn)
-    if (!autoFilledRef.current && faktura?.id) {
-      const currentLength = lpCerpani?.length || 0;
+    // Získat ID faktury z různých možných umístění
+    const fakturaId = faktura?.id || faktura?.invoice_id;
+    
+    console.log('🔍 DEBUG LPCerpaniEditor useEffect TRIGGERED:', {
+      lpCerpaniLength: lpCerpani?.length,
+      lpCerpani,
+      fakturaId,
+      faktura_id_field: faktura?.id,
+      faktura_invoice_id_field: faktura?.invoice_id
+    });
+    
+    if (!fakturaId) {
+      console.log('⚠️ Není faktura ID - ale pokračuji stejně pokud máme lpCerpani data');
+      // Pokračovat i bez ID pokud máme data
+    }
+    
+    // Pokud máme lpCerpani data, naplnit rows
+    if (lpCerpani && lpCerpani.length > 0) {
+      console.log('✅ Mám lpCerpani data, mapuji do rows');
       
-      if (currentLength > 0) {
-        // Načíst existující data z props (první načtení)
-        setRows(lpCerpani.map((item, idx) => {
-          // Najít LP kód v dostupných options pro správné namapování
-          const matchedLP = availableLPCodes?.find(lp => 
-            lp.id === item.lp_id || 
-            lp.cislo_lp === item.lp_cislo || 
-            lp.kod === item.lp_cislo
-          );
-          
-          return {
-            id: item.id || `row_${idx}_${Date.now()}`,
-            lp_cislo: item.lp_cislo || '',
-            lp_id: item.lp_id || (matchedLP ? matchedLP.id : null),
-            castka: item.castka || 0,
-            poznamka: item.poznamka || '',
-            lp_data: matchedLP || null
-          };
-        }));
-        autoFilledRef.current = true;
-      } else if (isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka) {
-        // 🔥 AUTO-FILL: Pouze pokud ještě nebylo auto-filled
-        const autoRow = {
-          id: `row_auto_${Date.now()}`,
-          lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
-          lp_id: filteredLPCodes[0].id,
-          castka: parseFloat(faktura.fa_castka),
-          poznamka: '',
-          lp_data: filteredLPCodes[0]
-        };
-        setRows([autoRow]);
-        autoFilledRef.current = true;
+      const newRows = lpCerpani.map((item, idx) => {
+        const matchedLP = availableLPCodes?.find(lp => 
+          lp.id === item.lp_id || 
+          lp.cislo_lp === item.lp_cislo || 
+          lp.kod === item.lp_cislo
+        );
         
-        // ✅ OPRAVA: Zavolat onChange po auto-fill, aby parent měl správná data
-        if (onChange) {
-          // Použít setTimeout pro volání onChange až po dokončení render cyklu
-          setTimeout(() => {
-            onChange([autoRow]);
-          }, 0);
-        }
-      } else {
-        // Prázdné lpCerpani a není co auto-fillovat - nechat prázdné
-        setRows([]);
-        autoFilledRef.current = true; // Označit jako inicializované
+        return {
+          id: item.id || `row_${idx}_${Date.now()}`,
+          lp_cislo: item.lp_cislo || '',
+          lp_id: item.lp_id || (matchedLP ? matchedLP.id : null),
+          castka: parseFloat(item.castka) || 0,
+          poznamka: item.poznamka || '',
+          lp_data: matchedLP || null
+        };
+      });
+      
+      console.log('✅ Nastavuji rows:', newRows);
+      setRows(newRows);
+    } 
+    // Auto-fill pro jeden LP kód
+    else if (lpCerpani && lpCerpani.length === 0 && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka && !autoFilledRef.current) {
+      console.log('✅ Auto-fill jednoho LP kódu');
+      const autoRow = {
+        id: `row_auto_${Date.now()}`,
+        lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
+        lp_id: filteredLPCodes[0].id,
+        castka: parseFloat(faktura.fa_castka),
+        poznamka: '',
+        lp_data: filteredLPCodes[0]
+      };
+      setRows([autoRow]);
+      autoFilledRef.current = true;
+      
+      if (onChange) {
+        onChange([autoRow]);
       }
     }
-  }, [faktura?.id, isLPFinancing, filteredLPCodes, onChange]);
+  }, [lpCerpani, faktura?.id, faktura?.invoice_id, faktura?.fa_castka, isLPFinancing, filteredLPCodes, availableLPCodes, onChange]);
 
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {
-    return rows.reduce((sum, row) => sum + (parseFloat(row.castka) || 0), 0);
+    const sum = rows.reduce((sum, row) => sum + (parseFloat(row.castka) || 0), 0);
+    console.log('🔍 DEBUG LPCerpaniEditor - totalAssigned:', {
+      rows,
+      rowsLength: rows.length,
+      sum,
+      rowsCastky: rows.map(r => ({ castka: r.castka, parsed: parseFloat(r.castka) }))
+    });
+    return sum;
   }, [rows]);
 
   // Validace
@@ -880,11 +894,11 @@ function LPCerpaniEditor({
         </LPRow>
       ))}
 
-      {filteredLPCodes.length > rows.length && (
+      {/* Tlačítko "Přidat další LP kód" - skrýt když je disabled (věcná už byla potvrzena) */}
+      {!disabled && filteredLPCodes.length > rows.length && (
         <AddButton
           type="button"
           onClick={handleAddRow}
-          disabled={disabled}
         >
           <FontAwesomeIcon icon={faPlus} /> Přidat další LP kód
         </AddButton>
