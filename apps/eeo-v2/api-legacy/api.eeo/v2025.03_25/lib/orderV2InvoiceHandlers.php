@@ -559,6 +559,11 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
             
             if (isset($input[$field])) {
+                // 🔍 DEBUG: Log věcné správnosti
+                if ($field === 'vecna_spravnost_umisteni_majetku' || $field === 'vecna_spravnost_poznamka') {
+                    error_log("🔍 DEBUG - Ukládání faktury #$invoice_id - pole $field: " . json_encode($input[$field]));
+                }
+                
                 if ($field === 'fa_cislo_vema') {
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = trim($input[$field]);
@@ -577,6 +582,10 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                 }
             }
         }
+        
+        error_log("🔍 DEBUG - UPDATE SQL pro fakturu #$invoice_id:");
+        error_log("  Fields: " . implode(', ', $updateFields));
+        error_log("  Values: " . json_encode($updateValues));
         
         if (empty($updateFields)) {
             http_response_code(400);
