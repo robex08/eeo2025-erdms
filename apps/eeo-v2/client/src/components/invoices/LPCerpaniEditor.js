@@ -563,22 +563,8 @@ function LPCerpaniEditor({
     // Získat ID faktury z různých možných umístění
     const fakturaId = faktura?.id || faktura?.invoice_id;
     
-    console.log('🔍 DEBUG LPCerpaniEditor useEffect TRIGGERED:', {
-      lpCerpaniLength: lpCerpani?.length,
-      lpCerpani,
-      fakturaId,
-      faktura_id_field: faktura?.id,
-      faktura_invoice_id_field: faktura?.invoice_id
-    });
-    
-    if (!fakturaId) {
-      console.log('⚠️ Není faktura ID - ale pokračuji stejně pokud máme lpCerpani data');
-      // Pokračovat i bez ID pokud máme data
-    }
-    
     // Pokud máme lpCerpani data, naplnit rows
     if (lpCerpani && lpCerpani.length > 0) {
-      console.log('✅ Mám lpCerpani data, mapuji do rows');
       
       const newRows = lpCerpani.map((item, idx) => {
         const matchedLP = availableLPCodes?.find(lp => 
@@ -597,12 +583,10 @@ function LPCerpaniEditor({
         };
       });
       
-      console.log('✅ Nastavuji rows:', newRows);
       setRows(newRows);
     } 
     // Auto-fill pro jeden LP kód
     else if (lpCerpani && lpCerpani.length === 0 && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka && !autoFilledRef.current) {
-      console.log('✅ Auto-fill jednoho LP kódu');
       const autoRow = {
         id: `row_auto_${Date.now()}`,
         lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
@@ -623,12 +607,6 @@ function LPCerpaniEditor({
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {
     const sum = rows.reduce((sum, row) => sum + (parseFloat(row.castka) || 0), 0);
-    console.log('🔍 DEBUG LPCerpaniEditor - totalAssigned:', {
-      rows,
-      rowsLength: rows.length,
-      sum,
-      rowsCastky: rows.map(r => ({ castka: r.castka, parsed: parseFloat(r.castka) }))
-    });
     return sum;
   }, [rows]);
 

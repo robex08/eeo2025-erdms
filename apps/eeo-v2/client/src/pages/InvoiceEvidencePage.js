@@ -2491,14 +2491,6 @@ export default function InvoiceEvidencePage() {
             invoice_id: invoiceData.id
           };
           
-          // 🔍 DEBUG: Kontrola loadedFormData před setFormData
-          console.log('🔍 DEBUG - Načtená data faktury z API:', {
-            invoice_id: invoiceData.id,
-            vecna_spravnost_umisteni_majetku: invoiceData.vecna_spravnost_umisteni_majetku,
-            vecna_spravnost_poznamka: invoiceData.vecna_spravnost_poznamka,
-            vecna_spravnost_potvrzeno: invoiceData.vecna_spravnost_potvrzeno
-          });
-          console.log('🔍 DEBUG - Připravená loadedFormData:', loadedFormData);
           
           
           // �🚀 BATCH všechny setState operace najednou (méně re-renderů)
@@ -2541,17 +2533,13 @@ export default function InvoiceEvidencePage() {
           // 🆕 LP ČERPÁNÍ: Načíst čerpání LP pokud má objednávku (předběžně načteme, finální check bude až po loadOrderData)
           if (invoiceData.objednavka_id) {
             try {
-              console.log('🔍 DEBUG - Načítám LP čerpání pro fakturu:', editIdToLoad);
               const lpResponse = await getFakturaLPCerpani(editIdToLoad, token, username);
-              console.log('🔍 DEBUG - LP Response:', lpResponse);
               
               // ✅ Backend vrací: { status: "ok", data: { lp_cerpani: [...], suma, fa_castka } }
               if (lpResponse && lpResponse.status === 'ok' && lpResponse.data && lpResponse.data.lp_cerpani) {
-                console.log('✅ DEBUG - LP čerpání načteno:', lpResponse.data.lp_cerpani);
                 setLpCerpani(lpResponse.data.lp_cerpani);
                 setLpCerpaniLoaded(true);
               } else {
-                console.log('⚠️ DEBUG - LP čerpání není k dispozici');
                 setLpCerpani([]);
                 setLpCerpaniLoaded(true);
               }
@@ -3243,16 +3231,12 @@ export default function InvoiceEvidencePage() {
     // 🆕 LP ČERPÁNÍ: Načíst LP čerpání pokud má objednávku
     if (faktura.objednavka_id && token && username) {
       try {
-        console.log('🔍 DEBUG - handleEditInvoice: Načítám LP čerpání pro fakturu:', faktura.id);
         const lpResponse = await getFakturaLPCerpani(faktura.id, token, username);
-        console.log('🔍 DEBUG - handleEditInvoice: LP Response:', lpResponse);
         
         if (lpResponse && lpResponse.status === 'ok' && lpResponse.data && lpResponse.data.lp_cerpani) {
-          console.log('✅ DEBUG - handleEditInvoice: LP čerpání načteno:', lpResponse.data.lp_cerpani);
           setLpCerpani(lpResponse.data.lp_cerpani);
           setLpCerpaniLoaded(true);
         } else {
-          console.log('⚠️ DEBUG - handleEditInvoice: LP čerpání není k dispozici');
           setLpCerpani([]);
           setLpCerpaniLoaded(true);
         }
@@ -3263,7 +3247,6 @@ export default function InvoiceEvidencePage() {
       }
     } else {
       // Faktura nemá objednávku - vyčistit LP čerpání
-      console.log('ℹ️ DEBUG - handleEditInvoice: Faktura nemá objednávku, čistím LP čerpání');
       setLpCerpani([]);
       setLpCerpaniLoaded(true);
     }
@@ -3935,15 +3918,6 @@ export default function InvoiceEvidencePage() {
         }
       }
 
-      // 🔍 DEBUG: Zkontrolovat formData před vytvořením updateData
-      console.log('🔍 DEBUG - formData PŘED vytvořením updateData:', {
-        vecna_spravnost_umisteni_majetku: formData.vecna_spravnost_umisteni_majetku,
-        vecna_spravnost_poznamka: formData.vecna_spravnost_poznamka,
-        vecna_spravnost_potvrzeno: formData.vecna_spravnost_potvrzeno,
-        typeof_umisteni: typeof formData.vecna_spravnost_umisteni_majetku,
-        typeof_poznamka: typeof formData.vecna_spravnost_poznamka
-      });
-
       // Partial update - pouze pole věcné kontroly
       const updateData = {
         vecna_spravnost_umisteni_majetku: formData.vecna_spravnost_umisteni_majetku || '',
@@ -3953,24 +3927,12 @@ export default function InvoiceEvidencePage() {
         dt_potvrzeni_vecne_spravnosti: formData.dt_potvrzeni_vecne_spravnosti
       };
       
-      console.log('🔍 DEBUG - Ukládání věcné správnosti faktury:', {
-        invoice_id: editingInvoiceId,
-        updateData,
-        formData: {
-          umisteni: formData.vecna_spravnost_umisteni_majetku,
-          poznamka: formData.vecna_spravnost_poznamka,
-          potvrzeno: formData.vecna_spravnost_potvrzeno
-        }
-      });
-      
       const response = await updateInvoiceV2({
         token,
         username,
         invoice_id: editingInvoiceId,
         updateData
       });
-      
-      console.log('✅ DEBUG - Response z updateInvoiceV2:', response);
 
       // ✅ Úspěšná aktualizace - zkontrolovat různé formáty response
       const isSuccess = response?.success === true || 
@@ -6718,13 +6680,6 @@ export default function InvoiceEvidencePage() {
                       : orderData.financovani;
                     
                     if (fin?.typ === 'LP') {
-                      console.log('🔍 DEBUG - Renderuji LPCerpaniEditor s daty:', {
-                        lpCerpani,
-                        lpCerpaniLength: lpCerpani?.length,
-                        formData_castka: formData.fa_castka,
-                        isVecnaSpravnostEditable
-                      });
-                      
                       return (
                         <>
                           <LPCerpaniEditor
