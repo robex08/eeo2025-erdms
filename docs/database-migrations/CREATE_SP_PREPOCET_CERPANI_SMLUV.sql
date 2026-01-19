@@ -68,9 +68,10 @@ BEGIN
       -- ========================================
       
       -- 1. POŽADOVÁNO - max_cena_s_dph z objednávek
+      -- OPRAVA: MySQL 5.5 kompatibilita + escapované lomítka (\/)
       SELECT COALESCE(SUM(max_cena_s_dph), 0) INTO v_cerpano_pozadovano
       FROM 25a_objednavky
-      WHERE JSON_UNQUOTE(JSON_EXTRACT(financovani, '$.cislo_smlouvy')) = v_cislo_smlouvy
+      WHERE REPLACE(financovani, '\\/', '/') LIKE CONCAT('%"cislo_smlouvy":"', v_cislo_smlouvy, '"%')
         AND stav_objednavky NOT IN ('STORNOVA', 'ZAMITNUTA');
       
       -- 2. PLÁNOVÁNO - součet položek objednávek
@@ -82,6 +83,7 @@ BEGIN
       -- Dvě možnosti propojení faktur:
       -- A) Faktury navázané přes objednávku (objednavka_id IS NOT NULL)
       -- B) Faktury navázané přímo na smlouvu (smlouva_id a objednavka_id IS NULL)
+      -- OPRAVA: MySQL 5.5 kompatibilita + escapované lomítka (\/)
       SELECT COALESCE(
         SUM(CASE 
           WHEN f.objednavka_id IS NOT NULL THEN f.fa_castka
@@ -91,7 +93,7 @@ BEGIN
       FROM 25a_objednavky_faktury f
       LEFT JOIN 25a_objednavky o ON f.objednavka_id = o.id
       WHERE (
-        (f.objednavka_id IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = v_cislo_smlouvy)
+        (f.objednavka_id IS NOT NULL AND REPLACE(o.financovani, '\\/', '/') LIKE CONCAT('%"cislo_smlouvy":"', v_cislo_smlouvy, '"%'))
         OR
         (f.smlouva_id = v_smlouva_id AND f.objednavka_id IS NULL)
       )
@@ -120,28 +122,29 @@ BEGIN
     -- LOGIKA:
     -- - Smlouvy se stropem (hodnota > 0): zbyva = hodnota - cerpano, procento = (cerpano/hodnota)*100
     -- - Smlouvy bez stropu (hodnota = 0): zbyva = NULL, procento = NULL
+    -- - Ošetření overflow: LEAST() omezuje max hodnotu na 9999.99 (max pro DECIMAL(7,2))
     
     UPDATE 25_smlouvy
     SET 
       -- Požadované čerpání (max_cena_s_dph)
       cerpano_pozadovano = v_cerpano_pozadovano,
       zbyva_pozadovano = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_pozadovano, NULL),
-      procento_pozadovano = IF(hodnota_s_dph > 0, (v_cerpano_pozadovano / hodnota_s_dph) * 100, NULL),
+      procento_pozadovano = IF(hodnota_s_dph > 0, LEAST((v_cerpano_pozadovano / hodnota_s_dph) * 100, 9999.99), NULL),
       
       -- Plánované čerpání (suma položek)
       cerpano_planovano = v_cerpano_planovano,
       zbyva_planovano = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_planovano, NULL),
-      procento_planovano = IF(hodnota_s_dph > 0, (v_cerpano_planovano / hodnota_s_dph) * 100, NULL),
+      procento_planovano = IF(hodnota_s_dph > 0, LEAST((v_cerpano_planovano / hodnota_s_dph) * 100, 9999.99), NULL),
       
       -- Skutečné čerpání (faktury)
       cerpano_skutecne = v_cerpano_skutecne,
       zbyva_skutecne = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_skutecne, NULL),
-      procento_skutecne = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, NULL),
+      procento_skutecne = IF(hodnota_s_dph > 0, LEAST((v_cerpano_skutecne / hodnota_s_dph) * 100, 9999.99), NULL),
       
       -- Zpětná kompatibilita: cerpano_celkem = skutečné čerpání
       cerpano_celkem = v_cerpano_skutecne,
       zbyva = IF(hodnota_s_dph > 0, hodnota_s_dph - v_cerpano_skutecne, NULL),
-      procento_cerpani = IF(hodnota_s_dph > 0, (v_cerpano_skutecne / hodnota_s_dph) * 100, NULL),
+      procento_cerpani = IF(hodnota_s_dph > 0, LEAST((v_cerpano_skutecne / hodnota_s_dph) * 100, 9999.99), NULL),
       
       posledni_prepocet = NOW()
     WHERE id = v_smlouva_id;

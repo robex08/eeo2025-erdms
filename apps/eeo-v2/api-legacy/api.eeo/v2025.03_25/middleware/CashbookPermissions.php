@@ -91,6 +91,10 @@ class CashbookPermissions {
      * @return bool True pokud má oprávnění
      */
     public function canReadCashbook($cashbookUserId, $pokladnaId = null) {
+        // 🔥 Normalizace ID na int pro robustní porovnání
+        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
+        $currentUserId = intval($this->user['id']);
+        
         // Super admin může vše
         if ($this->isSuperAdmin()) {
             return true;
@@ -106,9 +110,13 @@ class CashbookPermissions {
             return true;
         }
         
-        // CASH_BOOK_READ_OWN může číst pouze své knihy
-        if ($this->hasPermission('CASH_BOOK_READ_OWN') && $cashbookUserId == $this->user['id']) {
-            return true;
+        // 🔥 FIX: CASH_BOOK_READ_OWN - POUZE když JE specifikován cashbookUserId
+        // Když je null, znamená to check "může číst VŠECHNY knihy?" → READ_OWN to NEUMÍ
+        if ($this->hasPermission('CASH_BOOK_READ_OWN')) {
+            // Pouze pokud JE specifikován owner a je to ten samý uživatel
+            if ($cashbookUserId !== null && $cashbookUserId === $currentUserId) {
+                return true;
+            }
         }
         
         // Uživatel bez globálních práv může číst knihy z pokladen, ke kterým je přiřazen
@@ -127,10 +135,20 @@ class CashbookPermissions {
      * @return bool True pokud má oprávnění
      */
     public function canEditCashbook($cashbookUserId, $pokladnaId = null) {
+        // 🔥 Normalizace ID na int
+        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
+        $currentUserId = intval($this->user['id']);
+        
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_EDIT_ALL')) return true;
-        if ($this->hasPermission('CASH_BOOK_EDIT_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // 🔥 FIX: EDIT_OWN - pokud není specifikován cashbookUserId (null), nebo je to stejný uživatel
+        if ($this->hasPermission('CASH_BOOK_EDIT_OWN')) {
+            if ($cashbookUserId === null || $cashbookUserId === $currentUserId) {
+                return true;
+            }
+        }
         
         // Uživatel bez globálních práv může editovat knihy z pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
@@ -148,10 +166,20 @@ class CashbookPermissions {
      * @return bool True pokud má oprávnění
      */
     public function canDeleteCashbook($cashbookUserId, $pokladnaId = null) {
+        // 🔥 Normalizace ID na int
+        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
+        $currentUserId = intval($this->user['id']);
+        
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_DELETE_ALL')) return true;
-        if ($this->hasPermission('CASH_BOOK_DELETE_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // 🔥 FIX: DELETE_OWN - pokud není specifikován cashbookUserId (null), nebo je to stejný uživatel
+        if ($this->hasPermission('CASH_BOOK_DELETE_OWN')) {
+            if ($cashbookUserId === null || $cashbookUserId === $currentUserId) {
+                return true;
+            }
+        }
         
         // Uživatel bez globálních práv může mazat knihy z pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
@@ -169,10 +197,20 @@ class CashbookPermissions {
      * @return bool True pokud má oprávnění
      */
     public function canExportCashbook($cashbookUserId, $pokladnaId = null) {
+        // 🔥 Normalizace ID na int
+        $cashbookUserId = $cashbookUserId !== null ? intval($cashbookUserId) : null;
+        $currentUserId = intval($this->user['id']);
+        
         if ($this->isSuperAdmin()) return true;
         if ($this->hasPermission('CASH_BOOK_MANAGE')) return true;
         if ($this->hasPermission('CASH_BOOK_EXPORT_ALL')) return true;
-        if ($this->hasPermission('CASH_BOOK_EXPORT_OWN') && $cashbookUserId == $this->user['id']) return true;
+        
+        // 🔥 FIX: EXPORT_OWN - pokud není specifikován cashbookUserId (null), nebo je to stejný uživatel
+        if ($this->hasPermission('CASH_BOOK_EXPORT_OWN')) {
+            if ($cashbookUserId === null || $cashbookUserId === $currentUserId) {
+                return true;
+            }
+        }
         
         // Uživatel bez globálních práv může exportovat knihy z pokladen, ke kterým je přiřazen
         if ($pokladnaId !== null && $this->isOwnCashbox($pokladnaId)) {
