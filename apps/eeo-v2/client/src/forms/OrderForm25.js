@@ -5136,6 +5136,9 @@ function OrderForm25() {
   // 💰 LP ČERPÁNÍ NA FAKTURÁCH - state pro každou fakturu
   // Struktura: { [fakturaId]: { lpCerpani: [...], loaded: boolean } }
   const [fakturyLPCerpani, setFakturyLPCerpani] = useState({});
+  
+  // Ref pro sledování, které faktury už byly načteny (aby se useEffect nezacyklil)
+  const loadedFakturyRef = useRef(new Set());
 
   // 📎 PŘÍLOHY FAKTUR - už řešeno samostatnou komponentou InvoiceAttachmentsCompact
   // (staré state proměnné fakturaAttachments, uploadingFakturaFiles, draggingFakturaId, fakturaFileInputRefs odstraněny)
@@ -8151,26 +8154,32 @@ function OrderForm25() {
       return;
     }
 
-    // Skip pokud už je načtené
-    if (fakturyLPCerpani[fakturaId]?.loaded) {
-      return;
-    }
-
     try {
       const response = await getFakturaLPCerpani(fakturaId, token, username);
       
       if (response && response.status === 'ok' && response.data) {
-        setFakturyLPCerpani(prev => ({
-          ...prev,
-          [fakturaId]: {
-            lpCerpani: response.data.lp_cerpani || [],
-            loaded: true
+        setFakturyLPCerpani(prev => {
+          // Skip pokud už je načtené (check uvnitř state update)
+          if (prev[fakturaId]?.loaded) {
+            return prev;
           }
-        }));
+          
+          // Označit v ref jako načtené
+          loadedFakturyRef.current.add(fakturaId);
+          
+          return {
+            ...prev,
+            [fakturaId]: {
+              lpCerpani: response.data.lp_cerpani || [],
+              loaded: true
+            }
+          };
+        });
       }
     } catch (error) {
       console.error('❌ [LP] Chyba při načítání LP čerpání:', error);
       // Označit jako načtené (ale prázdné) aby se neopakoval request
+      loadedFakturyRef.current.add(fakturaId);
       setFakturyLPCerpani(prev => ({
         ...prev,
         [fakturaId]: {
@@ -8179,9 +8188,10 @@ function OrderForm25() {
         }
       }));
     }
-  }, [token, username, fakturyLPCerpani]);
+  }, [token, username]);
 
-  // 💰 LP ČERPÁNÍ: Uložit LP čerpání faktury
+
+  // �💰 LP ČERPÁNÍ: Uložit LP čerpání faktury
   const saveFakturaLPCerpaniData = useCallback(async (fakturaId, lpCerpaniData) => {
     // Skip pro temp faktury
     if (!fakturaId || String(fakturaId).startsWith('temp-')) {
@@ -24154,9 +24164,11 @@ function OrderForm25() {
                                         : financovani;
                                       
                                       // Zobrazit LP editor pouze pokud:
-                                      // 1. typ_financovani obsahuje "LP" NEBO
-                                      // 2. má vybrané LP kódy v lp_kod
+                                      // 1. typ === 'LP' NEBO
+                                      // 2. typ_financovani obsahuje "LP" NEBO
+                                      // 3. má vybrané LP kódy v lp_kod
                                       const isLPFinancing = (
+                                        fin?.typ === 'LP' ||
                                         (fin?.typ_financovani && fin.typ_financovani.includes('LP')) ||
                                         (Array.isArray(formData.lp_kod) && formData.lp_kod.length > 0)
                                       );
@@ -24165,20 +24177,15 @@ function OrderForm25() {
                                         return null;
                                       }
                                       
-                                      // Načíst LP čerpání pro fakturu s reálným ID
+                                      // Získat fakturaId a LP data z state
                                       const fakturaId = faktura.id;
                                       const isRealInvoice = fakturaId && !String(fakturaId).startsWith('temp-');
-                                      
-                                      // Načtení LP dat - lazy loading při prvním zobrazení
-                                      if (isRealInvoice && !fakturyLPCerpani[fakturaId]?.loaded) {
-                                        // Načíst asynchronně - nebude blokovat render
-                                        Promise.resolve().then(() => {
-                                          loadFakturaLPCerpani(fakturaId);
-                                        });
-                                      }
-                                      
-                                      // Získat LP data z state
                                       const lpData = fakturyLPCerpani[fakturaId] || { lpCerpani: [], loaded: false };
+                                      
+                                      // 🔄 Načíst LP čerpání pokud ještě není načtené
+                                      if (isRealInvoice && !lpData.loaded && !loadedFakturyRef.current.has(fakturaId)) {
+                                        loadFakturaLPCerpani(fakturaId);
+                                      }
                                       
                                       return (
                                         <div style={{ 
@@ -24197,7 +24204,7 @@ function OrderForm25() {
                                             💰 Rozdělení faktury mezi LP kódy
                                           </div>
                                           <LPCerpaniEditor
-                                            faktura={faktura}
+                                            faktura={{ ...faktura, invoice_id: faktura.id }}
                                             orderData={formData}
                                             lpCerpani={lpData.lpCerpani}
                                             availableLPCodes={lpKodyOptions || []}
