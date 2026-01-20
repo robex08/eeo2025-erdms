@@ -5771,8 +5771,9 @@ export default function InvoiceEvidencePage() {
                 <CustomSelect
                   field="fa_typ"
                   value={formData.fa_typ}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, fa_typ: e.target.value }));
+                  onChange={(value) => {
+                    // CustomSelect pro fa_typ volá onChange PŘÍMO s hodnotou (string), ne s eventem
+                    setFormData(prev => ({ ...prev, fa_typ: value }));
                   }}
                   disabled={!isInvoiceEditable || loading || invoiceTypesLoading}
                   options={invoiceTypesOptions}
