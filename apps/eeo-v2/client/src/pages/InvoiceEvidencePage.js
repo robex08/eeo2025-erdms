@@ -3274,6 +3274,7 @@ export default function InvoiceEvidencePage() {
 
   // � Handler: Odpojit fakturu od objednávky
   const handleUnlinkInvoice = useCallback((faktura) => {
+    console.log('🔍 UNLINK DEBUG - handleUnlinkInvoice volán pro fakturu:', faktura);
     setConfirmDialog({
       isOpen: true,
       title: '⚠️ Odpojit fakturu od objednávky?',
@@ -3285,11 +3286,24 @@ export default function InvoiceEvidencePage() {
         `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n\n` +
         `⚠️ Tuto akci NELZE vzít zpět!`,
       onConfirm: async () => {
+        console.log('🔍 UNLINK DEBUG - onConfirm callback spuštěn pro fakturu ID:', faktura.id);
         try {
           // Zavřít dialog
           setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
           
           // Zavolat API pro odpojení faktury
+          console.log('🔍 UNLINK DEBUG - Odesílám updateData:', {
+            objednavka_id: null,
+            vecna_spravnost_potvrzeno: 0,
+            potvrdil_vecnou_spravnost_id: null,
+            dt_vecna_spravnost: null,
+            vecna_spravnost_poznamka: '',
+            vecna_spravnost_umisteni_majetku: '',
+            fa_predana_zam_id: null,
+            fa_datum_predani_zam: null,
+            fa_datum_vraceni_zam: null
+          });
+          
           await updateInvoiceV2({
             token,
             username,
@@ -3301,7 +3315,11 @@ export default function InvoiceEvidencePage() {
               potvrdil_vecnou_spravnost_id: null,
               dt_vecna_spravnost: null,
               vecna_spravnost_poznamka: '',
-              vecna_spravnost_umisteni_majetku: ''
+              vecna_spravnost_umisteni_majetku: '',
+              // Vynulovat předání zaměstnanci
+              fa_predana_zam_id: null,
+              fa_datum_predani_zam: null,
+              fa_datum_vraceni_zam: null
             }
           });
           
@@ -3314,7 +3332,10 @@ export default function InvoiceEvidencePage() {
               potvrdil_vecnou_spravnost_id: null,
               dt_vecna_spravnost: null,
               vecna_spravnost_poznamka: '',
-              vecna_spravnost_umisteni_majetku: ''
+              vecna_spravnost_umisteni_majetku: '',
+              fa_predana_zam_id: null,
+              fa_datum_predani_zam: '',
+              fa_datum_vraceni_zam: ''
             }));
             setOriginalFormData(prev => ({
               ...prev,
@@ -3323,12 +3344,34 @@ export default function InvoiceEvidencePage() {
               potvrdil_vecnou_spravnost_id: null,
               dt_vecna_spravnost: null,
               vecna_spravnost_poznamka: '',
-              vecna_spravnost_umisteni_majetku: ''
+              vecna_spravnost_umisteni_majetku: '',
+              fa_predana_zam_id: null,
+              fa_datum_predani_zam: '',
+              fa_datum_vraceni_zam: ''
             }));
           }
           
           // Reload objednávky aby se aktualizoval seznam faktur
           await loadOrderData(formData.order_id);
+          
+          // Pokud je odpojená faktura právě editovaná, reload jej z DB pro jistotu
+          if (editingInvoiceId && editingInvoiceId === faktura.id) {
+            try {
+              const invoiceResponse = await fetch(`${process.env.REACT_APP_API2_BASE_URL}get-invoice.php?invoice_id=${faktura.id}&token=${token}&username=${username}`);
+              const invoiceData = await invoiceResponse.json();
+              if (invoiceData.success && invoiceData.data) {
+                // Aktualizovat formData z DB
+                setFormData(prev => ({
+                  ...prev,
+                  ...invoiceData.data,
+                  order_id: '',
+                  dt_potvrzeni_vecne_spravnosti: invoiceData.data.dt_vecna_spravnost || ''
+                }));
+              }
+            } catch (reloadErr) {
+              console.warn('Nepodařilo se reloadnout fakturu:', reloadErr);
+            }
+          }
           
           showToast && showToast(`✅ Faktura ${faktura.fa_cislo_vema || faktura.cislo_faktury || `#${faktura.id}`} byla odpojena od objednávky`, 'success');
         } catch (err) {
@@ -4553,13 +4596,7 @@ export default function InvoiceEvidencePage() {
             console.error('   Stack:', notifErr.stack);
             console.error('   Response:', notifErr.response?.data);
           }
-        } else {
-          if (!stavChanged) console.log('   - Stav se NEZMĚNIL');
-          if (!isPredanaStav) console.log('   - Stav NENÍ typu PREDANA/PREDANA_PO/PREDANA_VECNA');
         }
-      } else {
-        if (!editingInvoiceId) console.log('   - editingInvoiceId je NULL (není to editace)');
-        if (!originalFormData) console.log('   - originalFormData je NULL');
       }
 
       // 🔔 NOTIFIKACE: Změna "Předáno komu"
@@ -4582,12 +4619,7 @@ export default function InvoiceEvidencePage() {
         const isCreate = !editingInvoiceId; // Nová faktura
         const hasChanged = !isCreate && (originalPredanoKomu !== currentPredanoKomu); // Změna při UPDATE
         
-        console.log('  isCreate:', isCreate);
-        console.log('  originalPredanoKomu:', originalPredanoKomu);
-        console.log('  currentPredanoKomu:', currentPredanoKomu);
-        console.log('  hasChanged:', hasChanged);
-        console.log('  hasDatePredani:', hasDatePredani);
-        console.log('  hasDateVraceni:', hasDateVraceni);
+
         
         // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se)
         if ((isCreate || hasChanged) && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
@@ -4635,15 +4667,7 @@ export default function InvoiceEvidencePage() {
             console.error('   Stack:', notifErr.stack);
             console.error('   Response:', notifErr.response?.data);
           }
-        } else {
-          if (!isCreate && !hasChanged) console.log('   - Předáno komu se NEZMĚNILO (UPDATE bez změny)');
-          if (!currentPredanoKomu) console.log('   - Předáno komu není vyplněno');
-          if (!hasDatePredani) console.log('   - Chybí datum předání');
-          if (hasDateVraceni) console.log('   - Je vyplněno datum vrácení');
         }
-      } else {
-        if (!invoiceIdForNotification) console.log('   - invoiceIdForNotification je NULL (faktura se neuložila)');
-        if (!formData.fa_predana_zam_id) console.log('   - fa_predana_zam_id není vyplněno');
       }
 
       // 🎯 FINÁLNÍ SUCCESS MESSAGE - zobrazí se AŽ PO workflow update
@@ -7330,8 +7354,8 @@ export default function InvoiceEvidencePage() {
               orderData={orderData}
               onCollapseChange={setHasAnySectionCollapsed}
               onEditInvoice={isReadOnlyMode ? null : handleEditInvoice}
-              onUnlinkInvoice={isReadOnlyMode ? null : handleUnlinkInvoice}
-              canEditInvoice={!isReadOnlyMode && canAddInvoiceToOrder(orderData).allowed}
+              onUnlinkInvoice={(isReadOnlyMode && !hasPermission('ADMIN')) ? null : handleUnlinkInvoice}
+              canEditInvoice={(!isReadOnlyMode || hasPermission('ADMIN')) && canAddInvoiceToOrder(orderData).allowed}
               editingInvoiceId={editingInvoiceId} // ✅ Předat ID editované faktury pro zvýraznění
               isReadOnlyMode={isReadOnlyMode} // ✅ Předat readonly režim pro změnu textu
               token={token}
