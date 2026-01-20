@@ -1184,7 +1184,7 @@ const HelpPage = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '1.25rem' }}>🎯</span>
-                  <span style={{ color: '#64748b' }}>V přehledu faktur → klikněte na <strong style={{ color: '#dc2626' }}>Vymazat vše</strong></span>
+                  <span style={{ color: '#64748b' }}>V přehledu faktur → klikněte na <strong style={{ color: '#dc2626' }}>Vymazat filtry</strong></span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '1.25rem' }}>🔎</span>

@@ -12856,7 +12856,17 @@ const Orders25List = () => {
               {hasPolozky ? (
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                {polozky.slice(0, 10).map((polozka, index) => (
+                {polozky.slice(0, 10).map((polozka, index) => {
+                  // 🔍 DEBUG: Zobraz LP data v konzoli
+                  if (index === 0) console.log('🔍 LP DEBUG položka:', { 
+                    popis: polozka.popis,
+                    lp_id: polozka.lp_id, 
+                    lp_kod: polozka.lp_kod, 
+                    lp_nazev: polozka.lp_nazev,
+                    raw: polozka 
+                  });
+                  
+                  return (
                   <ListItemCard key={index}>
                     <ListItemHeader>
                       <ListItemTitle>
@@ -12870,6 +12880,16 @@ const Orders25List = () => {
                           }}>
                             #{polozka.id}
                           </sup>
+                        )}
+                        {polozka.lp_id && (
+                          <span style={{
+                            fontSize: '0.85em',
+                            color: polozka.lp_kod ? '#8b5cf6' : '#dc2626',
+                            fontWeight: 500,
+                            marginLeft: '8px'
+                          }}>
+                            ({polozka.lp_kod || `LP#${polozka.lp_id}`}{polozka.lp_nazev && polozka.lp_nazev !== 'LP nenalezeno' ? ` - ${polozka.lp_nazev}` : polozka.lp_nazev === 'LP nenalezeno' ? ' - ⚠️ LP nenalezeno' : ''})
+                          </span>
                         )}
                       </ListItemTitle>
 
@@ -13058,7 +13078,8 @@ const Orders25List = () => {
                       )}
                     </ListItemMeta>
                   </ListItemCard>
-                ))}
+                );
+                })}
 
                 {polozky.length > 10 && (
                   <div style={{
