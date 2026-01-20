@@ -402,6 +402,27 @@ function enrichOrderWithItems($db, &$order) {
 }
 
 /**
+ * Načte LP čerpání pro konkrétní fakturu
+ * @param PDO $db - Databázové spojení
+ * @param int $faktura_id - ID faktury
+ * @return array - Pole LP čerpání [{lp_cislo, lp_id, castka, poznamka}]
+ */
+function loadInvoiceLpCerpani($db, $faktura_id) {
+    try {
+        $sql = "SELECT lp_cislo, lp_id, castka, poznamka 
+                FROM 25a_faktury_lp_cerpani 
+                WHERE faktura_id = ? 
+                ORDER BY id";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$faktura_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("loadInvoiceLpCerpani: Error loading LP cerpani for invoice $faktura_id: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
  * Přidá položky k více objednávkám
  * @param PDO $db - Databázové spojení
  * @param array $orders - Reference na pole objednávek (bude upraveno)
@@ -531,11 +552,13 @@ function loadOrderInvoices($db, $order_id) {
             $invoice['fa_strediska_kod'] = array();
         }
         
-        // ✅ PŘIDÁNO: Načtení příloh faktury
+        // ✅ PŘIDÁNO: Načtení příloh faktury a LP čerpání
         if (isset($invoice['id'])) {
             $invoice['prilohy'] = loadInvoiceAttachments($db, $invoice['id']);
+            $invoice['lp_cerpani'] = loadInvoiceLpCerpani($db, $invoice['id']);
         } else {
             $invoice['prilohy'] = array();
+            $invoice['lp_cerpani'] = array();
         }
     }
     

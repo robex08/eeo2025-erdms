@@ -7173,10 +7173,34 @@ const Orders25List = () => {
       cell: ({ row }) => {
         const order = row.original;
         let financovaniText = '---';
+        let detailText = '';
 
         // STEJNÁ LOGIKA JAKO V PODŘÁDKU: order.financovani.typ_nazev nebo order.financovani.typ
         if (order.financovani && typeof order.financovani === 'object') {
           financovaniText = order.financovani.typ_nazev || order.financovani.typ || '---';
+          
+          // Získat detail podle typu financování
+          const typ = order.financovani.typ || '';
+          
+          // LP - zobrazit kódy LP z položek (LPIT1, LPIT2 atd.)
+          if (typ === 'LP') {
+            if (order.polozky && Array.isArray(order.polozky)) {
+              const lpKody = order.polozky
+                .filter(p => p.lp_kod && p.lp_kod !== 'LP nenalezeno')
+                .map(p => p.lp_kod);
+              if (lpKody.length > 0) {
+                detailText = [...new Set(lpKody)].join(', ');
+              }
+            }
+          }
+          // Smlouva - zobrazit číslo smlouvy
+          else if (typ === 'SMLOUVA') {
+            detailText = order.financovani.cislo_smlouvy || '';
+          }
+          // Individuální schválení - zobrazit číslo individuálního schválení
+          else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+            detailText = order.financovani.individualni_schvaleni || '';
+          }
         }
 
         // Zkrátit víceoslovné názvy: "Limitovaný příslib" -> "Limitovaný p."
@@ -7192,16 +7216,33 @@ const Orders25List = () => {
         return (
           <div style={{
             textAlign: 'left',
-            whiteSpace: 'nowrap',
-            fontWeight: 600,
-            color: '#7c3aed'
+            whiteSpace: 'normal',
+            lineHeight: '1.3'
           }}
           title={financovaniText !== '---' ? financovaniText : ''}
           >
-            {globalFilter
-              ? highlightText(displayText, globalFilter)
-              : displayText
-            }
+            <div style={{
+              fontWeight: 600,
+              color: '#7c3aed'
+            }}>
+              {globalFilter
+                ? highlightText(displayText, globalFilter)
+                : displayText
+              }
+            </div>
+            {detailText && (
+              <div style={{
+                fontSize: '0.8em',
+                color: '#6b7280',
+                marginTop: '2px',
+                fontWeight: 500
+              }}>
+                {globalFilter
+                  ? highlightText(detailText, globalFilter)
+                  : detailText
+                }
+              </div>
+            )}
           </div>
         );
       },
@@ -12857,40 +12898,35 @@ const Orders25List = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
                 {polozky.slice(0, 10).map((polozka, index) => {
-                  // 🔍 DEBUG: Zobraz LP data v konzoli
-                  if (index === 0) console.log('🔍 LP DEBUG položka:', { 
-                    popis: polozka.popis,
-                    lp_id: polozka.lp_id, 
-                    lp_kod: polozka.lp_kod, 
-                    lp_nazev: polozka.lp_nazev,
-                    raw: polozka 
-                  });
-                  
                   return (
                   <ListItemCard key={index}>
                     <ListItemHeader>
                       <ListItemTitle>
-                        {highlightSearchText(polozka.popis || polozka.nazev || `Položka ${index + 1}`, globalFilter)}
-                        {polozka.id && (
-                          <sup style={{
-                            fontSize: '0.6em',
-                            color: '#94a3b8',
-                            fontWeight: 400,
-                            marginLeft: '4px'
-                          }}>
-                            #{polozka.id}
-                          </sup>
-                        )}
-                        {polozka.lp_id && (
-                          <span style={{
-                            fontSize: '0.85em',
-                            color: polozka.lp_kod ? '#8b5cf6' : '#dc2626',
-                            fontWeight: 500,
-                            marginLeft: '8px'
-                          }}>
-                            ({polozka.lp_kod || `LP#${polozka.lp_id}`}{polozka.lp_nazev && polozka.lp_nazev !== 'LP nenalezeno' ? ` - ${polozka.lp_nazev}` : polozka.lp_nazev === 'LP nenalezeno' ? ' - ⚠️ LP nenalezeno' : ''})
-                          </span>
-                        )}
+                        <div>
+                          {highlightSearchText(polozka.popis || polozka.nazev || `Položka ${index + 1}`, globalFilter)}
+                          {polozka.id && (
+                            <sup style={{
+                              fontSize: '0.6em',
+                              color: '#94a3b8',
+                              fontWeight: 400,
+                              marginLeft: '4px'
+                            }}>
+                              #{polozka.id}
+                            </sup>
+                          )}
+                          {polozka.lp_id && (
+                            <div style={{
+                              fontSize: '0.8em',
+                              color: polozka.lp_kod ? '#8b5cf6' : '#dc2626',
+                              fontWeight: 500,
+                              marginTop: '6px',
+                              paddingLeft: '8px',
+                              borderLeft: `3px solid ${polozka.lp_kod ? '#8b5cf6' : '#dc2626'}`
+                            }}>
+                              {polozka.lp_kod || `LP#${polozka.lp_id}`}{polozka.lp_nazev && polozka.lp_nazev !== 'LP nenalezeno' ? ` - ${polozka.lp_nazev}` : polozka.lp_nazev === 'LP nenalezeno' ? ' - ⚠️ LP nenalezeno' : ''}
+                            </div>
+                          )}
+                        </div>
                       </ListItemTitle>
 
                       {/* Cena s DPH - hlavní hodnota */}
@@ -13142,15 +13178,30 @@ const Orders25List = () => {
                 {faktury.map((faktura, index) => {
                   return (
                     <ListItemCard key={index}>
-                      {/* Nadpis: Faktura 1 - číslo */}
-                      <div style={{
-                        fontSize: '1.1em',
-                        fontWeight: 700,
-                        color: '#059669',
-                        marginBottom: '8px'
-                      }}>
-                        Faktura {index + 1} - {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `${index + 1}`, globalFilter)}
-                      </div>
+                      {/* Nadpis: VS a částka vedle sebe */}
+                      <ListItemHeader>
+                        <ListItemTitle>
+                          <div style={{
+                            fontSize: '1.05em',
+                            fontWeight: 700,
+                            color: '#059669'
+                          }}>
+                            {highlightSearchText(faktura.fa_cislo_vema || faktura.cislo_faktury || `Faktura ${index + 1}`, globalFilter)}
+                          </div>
+                        </ListItemTitle>
+                        
+                        {/* Částka faktury - vpravo */}
+                        {faktura.fa_castka && parseFloat(faktura.fa_castka) > 0 && (
+                          <div style={{
+                            fontWeight: 700,
+                            fontSize: '1.1em',
+                            color: '#059669',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {parseFloat(faktura.fa_castka).toLocaleString('cs-CZ')}&nbsp;Kč
+                          </div>
+                        )}
+                      </ListItemHeader>
 
                       <ListItemHeader style={{ marginTop: '8px' }}>
                         <ListItemTitle style={{ fontSize: '0.9em', color: '#64748b' }}>
@@ -13169,11 +13220,15 @@ const Orders25List = () => {
                         {faktura.stav && (
                           <ListItemBadge
                             $success={faktura.stav === 'ZAPLACENA'}
-                            $warning={faktura.stav === 'NEZAPLACENA'}
+                            $warning={faktura.stav === 'NEZAPLACENA' || faktura.stav === 'VECNA_SPRAVNOST'}
                           >
                             {faktura.stav === 'ZAPLACENA' && <FontAwesomeIcon icon={faCheckCircle} />}
                             {faktura.stav === 'NEZAPLACENA' && <FontAwesomeIcon icon={faHourglassHalf} />}
-                            {faktura.stav}
+                            {faktura.stav === 'VECNA_SPRAVNOST' && <FontAwesomeIcon icon={faHourglassHalf} />}
+                            {faktura.stav === 'ZAPLACENA' ? 'Zaplacena' : 
+                             faktura.stav === 'NEZAPLACENA' ? 'Nezaplacena' :
+                             faktura.stav === 'VECNA_SPRAVNOST' ? 'Věcná správnost' :
+                             faktura.stav}
                           </ListItemBadge>
                         )}
                       </ListItemHeader>
@@ -13263,6 +13318,111 @@ const Orders25List = () => {
                             Poznámka:
                           </div>
                           {highlightSearchText(faktura.fa_poznamka, globalFilter)}
+                        </div>
+                      )}
+
+                      {/* Informace o věcné správnosti - zobrazit pouze pokud je potvrzena */}
+                      {faktura.stav === 'VECNA_SPRAVNOST' && faktura.vecna_spravnost_potvrzeno === 1 && (
+                        <div style={{
+                          marginTop: '8px',
+                          padding: '10px 12px',
+                          backgroundColor: '#f0fdf4',
+                          border: '1px solid #86efac',
+                          borderRadius: '4px',
+                          fontSize: '0.85em'
+                        }}>
+                          {/* Hlavní nadpis s LP čerpáním */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '8px'
+                          }}>
+                            <div style={{ 
+                              fontWeight: 700, 
+                              color: '#059669',
+                              fontSize: '0.95em'
+                            }}>
+                              ✓ Věcná správnost potvrzena
+                            </div>
+                            
+                            {/* Čerpání z LP - nadpis vpravo */}
+                            {faktura.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0 && (
+                              <div style={{ fontWeight: 600, color: '#064e3b', fontSize: '0.9em' }}>
+                                Čerpání z LP:
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Grid layout: Umístění + Poznámka vlevo | LP čerpání vpravo */}
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '2fr 1fr',
+                            gap: '12px',
+                            alignItems: 'start'
+                          }}>
+                            {/* Levý sloupec: Umístění a Poznámka */}
+                            <div>
+                              {/* Umístění majetku */}
+                              {faktura.vecna_spravnost_umisteni_majetku && (
+                                <div style={{ marginBottom: '6px', color: '#064e3b' }}>
+                                  <span style={{ fontWeight: 600 }}>Umístění:</span>{' '}
+                                  {highlightSearchText(faktura.vecna_spravnost_umisteni_majetku, globalFilter)}
+                                </div>
+                              )}
+                              
+                              {/* Poznámka k věcné správnosti */}
+                              {faktura.vecna_spravnost_poznamka && (
+                                <div style={{ color: '#064e3b' }}>
+                                  <span style={{ fontWeight: 600 }}>Poznámka:</span>{' '}
+                                  {highlightSearchText(faktura.vecna_spravnost_poznamka, globalFilter)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Pravý sloupec: LP čerpání - pouze částky a kódy */}
+                            {faktura.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0 && (
+                              <div style={{ 
+                                paddingLeft: '12px',
+                                borderLeft: '2px solid #86efac',
+                                textAlign: 'right'
+                              }}>
+                                {faktura.lp_cerpani.map((lp, idx) => (
+                                  <div key={idx} style={{ marginBottom: '6px' }}>
+                                    <div style={{ 
+                                      fontWeight: 600,
+                                      color: '#065f46',
+                                      fontSize: '0.95em'
+                                    }}>
+                                      {lp.lp_cislo || lp.lp_kod}
+                                    </div>
+                                    <div style={{ 
+                                      fontWeight: 700,
+                                      color: '#059669',
+                                      fontSize: '1em'
+                                    }}>
+                                      {parseFloat(lp.castka).toLocaleString('cs-CZ')}&nbsp;Kč
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Kdo potvrdil */}
+                          {faktura.potvrdil_vecnou_spravnost_jmeno && faktura.potvrdil_vecnou_spravnost_prijmeni && (
+                            <div style={{ 
+                              marginTop: '6px', 
+                              fontSize: '0.9em',
+                              color: '#6b7280',
+                              fontStyle: 'italic'
+                            }}>
+                              Potvrdil: {faktura.potvrdil_vecnou_spravnost_jmeno} {faktura.potvrdil_vecnou_spravnost_prijmeni}
+                              {faktura.dt_potvrzeni_vecne_spravnosti && (
+                                <span> ({prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)})</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </ListItemCard>
