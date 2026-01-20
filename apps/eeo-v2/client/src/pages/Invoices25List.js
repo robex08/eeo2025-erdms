@@ -1490,7 +1490,8 @@ const Invoices25List = () => {
     unpaidAmount: 0,    // Částka nezaplacených
     overdueAmount: 0,   // Částka po splatnosti
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
-    myInvoices: 0       // Moje faktury (jen pro admin/invoice_manage)
+    myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
+    kontrolovano: 0     // Zkontrolované faktury (kontrola_radku)
   });
   
   // 🔍 Sidebar search pro objednávky bez faktury
@@ -2382,7 +2383,8 @@ const Invoices25List = () => {
           withOrder: response.statistiky.pocet_s_objednavkou || 0,
           withContract: response.statistiky.pocet_s_smlouvou || 0,
           withoutOrder: response.statistiky.pocet_bez_prirazeni || 0,
-          fromSpisovka: response.statistiky.pocet_ze_spisovky || 0
+          fromSpisovka: response.statistiky.pocet_ze_spisovky || 0,
+          kontrolovano: response.statistiky.pocet_zkontrolovano || 0
         });
       } else {
         // Fallback: pokud BE nevrátilo statistiky, spočítej lokálně (jen aktuální stránka!)
@@ -3389,6 +3391,22 @@ const Invoices25List = () => {
               </StatHeader>
               <StatValue>{stats.fromSpisovka}</StatValue>
               <StatLabel>Import ze Spisovky</StatLabel>
+            </DashboardCard>
+
+            {/* Kontrola faktur */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('kontrolovano')}
+              $isActive={activeFilterStatus === 'kontrolovano'}
+              $color="#22c55e"
+            >
+              <StatHeader>
+                <StatLabel>Kontrola faktur</StatLabel>
+                <StatIcon $color="#22c55e">
+                  <FontAwesomeIcon icon={faCheckCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.kontrolovano}</StatValue>
+              <StatLabel>Zkontrolováno</StatLabel>
             </DashboardCard>
 
             {/* Moje faktury - pouze pro admin/invoice_manage */}

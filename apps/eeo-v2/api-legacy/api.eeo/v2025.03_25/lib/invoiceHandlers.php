@@ -1775,6 +1775,11 @@ function handle_invoices25_list($input, $config, $queries) {
                     $where_conditions[] = 'szl.id IS NOT NULL';
                     break;
                     
+                case 'kontrolovano':
+                    // Zkontrolované faktury (kontrola_radku.kontrolovano = true)
+                    $where_conditions[] = 'JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = TRUE';
+                    break;
+                    
                 default:
                     // Neznámá hodnota - ignorovat
                     error_log("Invoices25 LIST: Unknown filter_status value: " . $filter_status);
@@ -1840,7 +1845,8 @@ function handle_invoices25_list($input, $config, $queries) {
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
             COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
-            COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky
+            COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky,
+            COUNT(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 END) as pocet_zkontrolovano
         FROM `$faktury_table` f
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -1872,7 +1878,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
             'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
             'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],
-            'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky']
+            'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky'],
+            'pocet_zkontrolovano' => (int)$stats['pocet_zkontrolovano']
         );
         
         // KROK 2: Načíst samotné záznamy
