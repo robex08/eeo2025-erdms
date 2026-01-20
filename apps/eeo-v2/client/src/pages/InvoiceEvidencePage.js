@@ -3295,9 +3295,37 @@ export default function InvoiceEvidencePage() {
             username,
             invoice_id: faktura.id,
             updateData: {
-              objednavka_id: null  // Odpojit od objednávky
+              objednavka_id: null,  // Odpojit od objednávky
+              // Vynulovat věcnou správnost při odpojení
+              vecna_spravnost_potvrzeno: 0,
+              potvrdil_vecnou_spravnost_id: null,
+              dt_vecna_spravnost: null,
+              vecna_spravnost_poznamka: '',
+              vecna_spravnost_umisteni_majetku: ''
             }
           });
+          
+          // Pokud je tato faktura právě editovaná, aktualizovat i formData
+          if (editingInvoiceId && editingInvoiceId === faktura.id) {
+            setFormData(prev => ({
+              ...prev,
+              order_id: '',
+              vecna_spravnost_potvrzeno: 0,
+              potvrdil_vecnou_spravnost_id: null,
+              dt_vecna_spravnost: null,
+              vecna_spravnost_poznamka: '',
+              vecna_spravnost_umisteni_majetku: ''
+            }));
+            setOriginalFormData(prev => ({
+              ...prev,
+              order_id: '',
+              vecna_spravnost_potvrzeno: 0,
+              potvrdil_vecnou_spravnost_id: null,
+              dt_vecna_spravnost: null,
+              vecna_spravnost_poznamka: '',
+              vecna_spravnost_umisteni_majetku: ''
+            }));
+          }
           
           // Reload objednávky aby se aktualizoval seznam faktur
           await loadOrderData(formData.order_id);
@@ -4817,14 +4845,18 @@ export default function InvoiceEvidencePage() {
       message: 'Opravdu chcete odemknout tuto fakturu pro editaci? Po odemčení bude možné upravit všechna pole včetně těch, která byla zamčena po schválení věcné správnosti.',
       onConfirm: async () => {
         try {
-          // Odemknout = nastavit vecna_spravnost_potvrzeno na 0 pomocí updateInvoiceV2
+          // Odemknout = nastavit vecna_spravnost_potvrzeno na 0 a vynulovat všechna související pole
           await updateInvoiceV2({
             token,
             username,
-            id: editingInvoiceId,
-            vecna_spravnost_potvrzeno: 0,
-            potvrdil_vecnou_spravnost_id: null,
-            dt_vecna_spravnost: null
+            invoice_id: editingInvoiceId,
+            updateData: {
+              vecna_spravnost_potvrzeno: 0,
+              potvrdil_vecnou_spravnost_id: null,
+              dt_vecna_spravnost: null,
+              vecna_spravnost_poznamka: '',
+              vecna_spravnost_umisteni_majetku: ''
+            }
           });
           
           // Aktualizovat originalFormData a formData
@@ -4832,14 +4864,18 @@ export default function InvoiceEvidencePage() {
             ...prev,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,
-            dt_vecna_spravnost: null
+            dt_vecna_spravnost: null,
+            vecna_spravnost_poznamka: '',
+            vecna_spravnost_umisteni_majetku: ''
           }));
           
           setFormData(prev => ({
             ...prev,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,
-            dt_vecna_spravnost: null
+            dt_vecna_spravnost: null,
+            vecna_spravnost_poznamka: '',
+            vecna_spravnost_umisteni_majetku: ''
           }));
           
           showToast?.('Faktura byla úspěšně odemčena', 'success');
@@ -5204,12 +5240,51 @@ export default function InvoiceEvidencePage() {
   const PageContent = (
     <>
       <PageHeader>
-        <PageTitle>
-          <FontAwesomeIcon icon={(editingInvoiceId && invoiceUserConfirmed) ? faEdit : faFileInvoice} />
-          {(editingInvoiceId && invoiceUserConfirmed)
-            ? (isReadOnlyMode ? 'Doplnění věcné správnosti k faktuře' : 'Upravit fakturu') 
-            : 'Zaevidovat fakturu'
-          }
+        <PageTitle style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <FontAwesomeIcon icon={(editingInvoiceId && invoiceUserConfirmed) ? faEdit : faFileInvoice} />
+            {(editingInvoiceId && invoiceUserConfirmed)
+              ? (isReadOnlyMode ? 'Doplnění věcné správnosti k faktuře' : 'Upravit fakturu') 
+              : 'Zaevidovat fakturu'
+            }
+          </div>
+          {/* Tlačítko pro odemčení faktury - pouze pokud je zamčená a uživatel má práva */}
+          {/* NESMÍ se zobrazit pro faktury přidružené k objednávce ve stavu DOKONCENA */}
+          {editingInvoiceId && 
+           !isReadOnlyMode && 
+           originalFormData?.vecna_spravnost_potvrzeno === 1 && 
+           !hasPermission('INVOICE_MANAGE_ALL') &&
+           (hasPermission('INVOICE_MANAGE') || hasPermission('ADMIN')) && 
+           !isOrderCompleted && (
+            <button
+              onClick={handleUnlockInvoice}
+              style={{
+                marginLeft: 'auto',
+                background: '#f59e0b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '0.5rem 1rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#d97706';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#f59e0b';
+              }}
+              title="Odemknout fakturu pro editaci"
+            >
+              <FontAwesomeIcon icon={faUnlock} />
+              Odemknout
+            </button>
+          )}
         </PageTitle>
         <HeaderActions>
           {(hasPermission('ADMIN') || hasPermission('FILE_REGISTRY_MANAGE')) && (
@@ -5349,42 +5424,6 @@ export default function InvoiceEvidencePage() {
                       <FontAwesomeIcon icon={faLock} />
                       Faktura uzamčena
                     </span>
-                    
-                    {/* Tlačítko pro odemčení - pouze pro adminy a INVOICE_MANAGE */}
-                    {/* NEZOBRAZOVAT pokud je objednávka dokončená */}
-                    {(hasPermission('INVOICE_MANAGE') || hasPermission('ADMIN')) && 
-                     (!orderData || orderData.stav_objednavky !== 'DOKONCENA') && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnlockInvoice();
-                        }}
-                        style={{
-                          background: '#f59e0b',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          padding: '0.25rem 0.75rem',
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = '#d97706';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = '#f59e0b';
-                        }}
-                        title="Odemknout fakturu pro editaci"
-                      >
-                        <FontAwesomeIcon icon={faUnlock} />
-                        Odemknout
-                      </button>
-                    )}
                   </div>
                 )}
                 
