@@ -558,7 +558,8 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                 continue;
             }
             
-            if (isset($input[$field])) {
+            // ✅ OPRAVA: Používat array_key_exists() místo isset() aby se správně zpracovaly NULL hodnoty
+            if (array_key_exists($field, $input)) {
                 // 🔍 DEBUG: Log věcné správnosti
                 if ($field === 'vecna_spravnost_umisteni_majetku' || $field === 'vecna_spravnost_poznamka') {
                     error_log("🔍 DEBUG - Ukládání faktury #$invoice_id - pole $field: " . json_encode($input[$field]));
@@ -571,8 +572,18 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = (int)$input[$field];
                 } else if (in_array($field, array('potvrdil_vecnou_spravnost_id', 'fa_predana_zam_id'))) {
+                    // ✅ Pro ID pole: povolit NULL hodnoty
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = !empty($input[$field]) ? (int)$input[$field] : null;
+                } else if (in_array($field, array('fa_datum_predani_zam', 'fa_datum_vraceni_zam', 
+                                                    'dt_potvrzeni_vecne_spravnosti', 'fa_datum_zaplaceni'))) {
+                    // ✅ Pro datumová pole: povolit NULL hodnoty
+                    $updateFields[] = $field . ' = ?';
+                    $updateValues[] = !empty($input[$field]) ? $input[$field] : null;
+                } else if (in_array($field, array('vecna_spravnost_umisteni_majetku', 'vecna_spravnost_poznamka'))) {
+                    // ✅ Pro textová pole věcné správnosti: povolit prázdné stringy nebo NULL
+                    $updateFields[] = $field . ' = ?';
+                    $updateValues[] = ($input[$field] !== null && $input[$field] !== '') ? $input[$field] : null;
                 } else if ($field === 'rozsirujici_data') {
                     $updateFields[] = $field . ' = ?';
                     $updateValues[] = is_array($input[$field]) ? json_encode($input[$field]) : $input[$field];

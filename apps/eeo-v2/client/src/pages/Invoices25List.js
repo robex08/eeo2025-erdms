@@ -2804,7 +2804,8 @@ const Invoices25List = () => {
         `• ${entityType === 'objednávky' ? 'Objednávka' : 'Smlouva'} už nebude vidět tuto fakturu\n` +
         `• Workflow ${entityType === 'objednávky' ? 'objednávky' : 'smlouvy'} se může změnit\n` +
         `• Čerpání LP bude odebráno (pokud bylo přiřazeno)\n` +
-        `• Věcná správnost bude VYMAZÁNA (datum, umístění, potvrzující uživatel)\n\n` +
+        `• Věcná správnost bude VYMAZÁNA (datum, umístění, potvrzující uživatel)\n` +
+        `• Předání zaměstnanci bude VYMAZÁNO (komu, datum předání i vrácení)\n\n` +
         `⚠️ Tuto akci NELZE vzít zpět!`,
       onConfirm: async () => {
         try {
@@ -2829,6 +2830,11 @@ const Invoices25List = () => {
           updateData.vecna_spravnost_poznamka = null;
           updateData.potvrdil_vecnou_spravnost_id = null;
           updateData.vecna_spravnost_potvrzeno = 0;
+          
+          // ✅ Vymazat všechny údaje o předání zaměstnanci při odpojení
+          updateData.fa_predana_zam_id = null;
+          updateData.fa_datum_predani_zam = null;
+          updateData.fa_datum_vraceni_zam = null;
           
           await updateInvoiceV2({
             token,
