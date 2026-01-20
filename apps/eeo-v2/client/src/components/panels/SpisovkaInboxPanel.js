@@ -1566,10 +1566,17 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
             // 🔍 Filtrování faktur podle režimu + datum rozsahu + název (pouze faktury)
             const filteredFaktury = faktury.filter(faktura => {
               // 0. Filter podle názvu - pouze dokumenty obsahující "Faktura", "Fa č.", "Fač.", "FA" atd.
-              // Regex zachytí: faktura/faktúra, fa.č./fa.c./fa č./fa c./fač./fac./fak.č./fak.c./fak č./fak c., FA na začátku
+              // Regex zachytí: 
+              // - faktura/faktúra
+              // - fa.č./fa.c./fa č./fa c./fač./fac.
+              // - fak.č./fak.c./fak č./fak c.
+              // - daňový doklad č./danovy doklad c.
+              // - zálohová fa č./zalohova fa c.
+              // - dobropis č./dobropis c.
+              // - FA na začátku
               const nazev = (faktura.nazev || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Normalizace diakritiky
-              const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
-                                /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
+              const isFaktura = /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|dan[oóů]v[yýá][\s]+doklad[\s]+(c|č)[\s\.]?|z[aá]lohov[aá][\s]+fa[\s]+(c|č)[\s\.]?|dobropis[\s]+(c|č)[\s\.]?|^fa\s/i.test(nazev) || 
+                                /faktur[aáuú]|fa[\s\.]*(c|č)[\s\.]?|fak[\s\.]*(c|č)[\s\.]?|dan[oóů]v[yýá][\s]+doklad[\s]+(c|č)[\s\.]?|z[aá]lohov[aá][\s]+fa[\s]+(c|č)[\s\.]?|dobropis[\s]+(c|č)[\s\.]?|^fa\s/i.test(faktura.nazev || '');
               
               if (!isFaktura) {
                 return false; // Není faktura podle názvu
@@ -1787,7 +1794,23 @@ const SpisovkaInboxPanel = ({ panelState, setPanelState, beginDrag, onClose, onO
                       </PrilohaTitle>
                       {(() => {
                         const isExpanded = expandedAttachments.has(faktura.dokument_id);
-                        const attachmentsToShow = isExpanded ? faktura.prilohy : faktura.prilohy.slice(0, 3);
+                        
+                        // 🔄 Seřazení příloh: 1. PDF, 2. obrázky, 3. TXT, 4. ostatní
+                        const sortedPrilohy = [...faktura.prilohy].sort((a, b) => {
+                          const getFileType = (priloha) => {
+                            const mime = (priloha.mime_type || '').toLowerCase();
+                            const filename = (priloha.filename || '').toLowerCase();
+                            
+                            if (mime === 'application/pdf' || filename.endsWith('.pdf')) return 1; // PDF první
+                            if (mime.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|svg|webp)$/.test(filename)) return 2; // Obrázky druhé
+                            if (mime === 'text/plain' || filename.endsWith('.txt')) return 4; // TXT poslední
+                            return 3; // Ostatní uprostřed
+                          };
+                          
+                          return getFileType(a) - getFileType(b);
+                        });
+                        
+                        const attachmentsToShow = isExpanded ? sortedPrilohy : sortedPrilohy.slice(0, 3);
                         return attachmentsToShow.map((priloha) => {
                         const isPdf = priloha.mime_type === 'application/pdf';
                         const isTxt = priloha.mime_type === 'text/plain' || priloha.filename.toLowerCase().endsWith('.txt');
