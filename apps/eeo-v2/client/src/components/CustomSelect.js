@@ -320,11 +320,23 @@ const CustomSelect = ({
   setTouchedSelectFields,
   hasTriedToSubmit,
   toggleSelect,
-  filterOptions,
-  getOptionLabel
+  filterOptions = (options, searchTerm, field) => {
+    // Výchozí implementace pokud není poskytnuta
+    if (!searchTerm) return options;
+    const lowerSearch = searchTerm.toLowerCase();
+    return options.filter(opt => {
+      const label = opt.nazev || opt.label || opt.nazev_stavu || opt.name || opt.value || String(opt);
+      return label.toLowerCase().includes(lowerSearch);
+    });
+  },
+  getOptionLabel = (option, field) => {
+    // Výchozí implementace pokud není poskytnuta
+    if (!option) return '';
+    return option.nazev || option.label || option.nazev_stavu || option.name || option.value || String(option);
+  }
 }) => {
-  const isOpen = selectStates[field];
-  const searchTerm = searchStates[field];
+  const isOpen = selectStates?.[field] || false;
+  const searchTerm = searchStates?.[field] || '';
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -335,6 +347,13 @@ const CustomSelect = ({
   
   // State pro pozicování dropdownu (pro portal)
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0, openUpwards: false });
+
+  // 🔥 OPRAVA: Fallback pro toggleSelect pokud není poskytnut
+  const safeToggleSelect = toggleSelect || ((fieldName) => {
+    if (setSelectStates) {
+      setSelectStates(prev => ({ ...prev, [fieldName]: !prev[fieldName] }));
+    }
+  });
 
   const filteredOptions = filterOptions(options, searchTerm, field);
   
@@ -631,7 +650,7 @@ const CustomSelect = ({
         ref={buttonRef}
         onClick={() => {
           if (!disabled) {
-            toggleSelect(field);
+            safeToggleSelect(field);
           }
         }}
         disabled={disabled}
@@ -652,7 +671,7 @@ const CustomSelect = ({
           // Space nebo Enter otevře dropdown (pokud není otevřený)
           if ((e.key === ' ' || e.key === 'Enter') && !isOpen) {
             e.preventDefault();
-            toggleSelect(field);
+            safeToggleSelect(field);
             return;
           }
 

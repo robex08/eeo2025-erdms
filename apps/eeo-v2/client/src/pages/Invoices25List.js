@@ -1758,9 +1758,9 @@ const Invoices25List = () => {
       return;
     }
 
-    // Otevřít stránku s filtrem na faktury této smlouvy
-    // TODO: Implementovat po vytvoření stránky pro správu smluv
-    showToast('Zobrazení faktur ke smlouvě bude brzy dostupné', { type: 'info' });
+    // Otevřít fakturu k editaci/potvrzení věcné správnosti
+    // Používáme stejnou logiku jako handleEditInvoice, ale pro faktury se smlouvou
+    handleEditInvoice(invoice);
   };
 
   // Handler: Otevřít fakturu k náhledu kliknutím na číslo objednávky/smlouvy
