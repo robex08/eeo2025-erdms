@@ -17,6 +17,13 @@
  * @date 29. listopadu 2025
  */
 
+// Definice konstant pro názvy tabulek (pokud ještě nejsou definované)
+if (!defined('TBL_LP_MASTER')) define('TBL_LP_MASTER', '25_limitovane_prisliby');
+if (!defined('TBL_USEKY')) define('TBL_USEKY', '25_useky');
+
+// Include orderQueries.php pro get_order_items_table_name()
+require_once __DIR__ . '/orderQueries.php';
+
 /**
  * Uložení LP ID pro položky objednávky
  * 
@@ -115,7 +122,10 @@ function nacist_polozky_lp($db, $objednavka_id) {
  * @return array Obohacené položky
  */
 function enrich_polozky_s_lp($db, $polozky, $dostupne_lp_ids = array()) {
+    error_log("🔍 enrich_polozky_s_lp: START - počet položek: " . count($polozky));
+    
     if (!is_array($polozky) || empty($polozky)) {
+        error_log("⚠️ enrich_polozky_s_lp: Prázdné pole položek");
         return $polozky;
     }
     
@@ -127,12 +137,17 @@ function enrich_polozky_s_lp($db, $polozky, $dostupne_lp_ids = array()) {
         }
     }
     
+    error_log("🔍 enrich_polozky_s_lp: Nalezených LP IDs: " . json_encode($lp_ids_v_polozkach));
+    
     if (empty($lp_ids_v_polozkach)) {
+        error_log("⚠️ enrich_polozky_s_lp: Žádné LP ID v položkách");
         return $polozky;
     }
     
     // Načti LP data pro všechna ID najednou
     $lp_data_map = nacist_lp_data_batch($db, $lp_ids_v_polozkach);
+    error_log("🔍 enrich_polozky_s_lp: Načteno LP dat: " . count($lp_data_map));
+    error_log("🔍 enrich_polozky_s_lp: LP data: " . json_encode($lp_data_map));
     
     // Obohať každou položku
     foreach ($polozky as &$polozka) {
@@ -146,8 +161,8 @@ function enrich_polozky_s_lp($db, $polozky, $dostupne_lp_ids = array()) {
                 $polozka['lp_kod'] = $lp_info['cislo_lp'];
                 $polozka['lp_nazev'] = $lp_info['nazev_uctu'];
                 $polozka['lp_kategorie'] = $lp_info['kategorie'];
-                $polozka['lp_limit'] = floatval($lp_info['celkovy_limit']);
-                $polozka['lp_rok'] = intval($lp_info['rok']);
+                $polozka['lp_limit'] = isset($lp_info['vyse_financniho_kryti']) ? floatval($lp_info['vyse_financniho_kryti']) : 0;
+                $polozka['lp_rok'] = isset($lp_info['platne_od']) ? intval(date('Y', strtotime($lp_info['platne_od']))) : 0;
                 $polozka['lp_usek_nazev'] = $lp_info['usek_nazev'];
                 
                 // Validace: Je toto LP mezi dostupnými?
@@ -200,23 +215,31 @@ function nacist_lp_data_batch($db, $lp_ids) {
                 lp.cislo_lp,
                 lp.nazev_uctu,
                 lp.kategorie,
-                lp.celkovy_limit,
-                lp.rok,
-                u.nazev AS usek_nazev
+                lp.vyse_financniho_kryti,
+                lp.platne_od,
+                lp.platne_do,
+                u.usek_nazev AS usek_nazev
             FROM " . TBL_LP_MASTER . " lp
             LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id
             WHERE lp.id IN ($placeholders)
         ";
         
+        error_log("🔍 LP SQL: " . $query);
+        error_log("🔍 LP IDs: " . print_r($safe_ids, true));
+        
         $stmt = $db->prepare($query);
         $stmt->execute($safe_ids);
         
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        error_log("🔍 LP počet řádků: " . count($rows));
+        error_log("🔍 LP data: " . print_r($rows, true));
+        
         foreach ($rows as $row) {
             $lp_data_map[intval($row['id'])] = $row;
         }
     } catch (Exception $e) {
-        error_log("Chyba načítání LP batch: " . $e->getMessage());
+        error_log("❌ Chyba načítání LP batch: " . $e->getMessage());
+        error_log("❌ SQL: " . $query);
     }
     
     return $lp_data_map;
