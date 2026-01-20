@@ -253,6 +253,7 @@ require_once __DIR__ . '/v2025.03_25/lib/orderV2AttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2PolozkyLPHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/fakturyLpCerpaniHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
 
 // CASHBOOK - Pokladní knihy
 require_once __DIR__ . '/v2025.03_25/lib/cashbookHandlers.php';
@@ -2288,6 +2289,30 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+        
+    // ========================================
+    // INVOICES - KONTROLA ŘÁDKŮ (2026-01-20)
+    // ========================================
+    
+    case 'invoices/toggle-check':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
+            handle_invoice_toggle_check($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+        
+    case 'invoices/get-checks':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';
+            handle_invoice_get_checks($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
 
