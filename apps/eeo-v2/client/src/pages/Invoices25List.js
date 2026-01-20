@@ -3392,9 +3392,9 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faSearch} />
               Vyhledávání
             </SearchPanelTitle>
-            <ClearAllButton onClick={handleClearAllFilters}>
+            <ClearAllButton onClick={handleClearAllFilters} title="Vymazat všechny filtry">
               <FontAwesomeIcon icon={faEraser} />
-              Vymazat vše
+              Vymazat filtry
             </ClearAllButton>
           </SearchPanelHeader>
           
