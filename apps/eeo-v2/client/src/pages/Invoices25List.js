@@ -11,7 +11,7 @@ import {
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
-  faLock, faEnvelope, faPhone, faClock, faUnlink
+  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -30,6 +30,7 @@ import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
 import { getOrderV2 } from '../services/apiOrderV2';
+import { toggleInvoiceCheck, getInvoiceChecks } from '../services/apiInvoiceCheck';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -1428,6 +1429,7 @@ const Invoices25List = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [invoiceChecks, setInvoiceChecks] = useState({});
   const [selectedYear, setSelectedYear] = useState(savedState?.selectedYear || new Date().getFullYear());
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
@@ -2180,6 +2182,11 @@ const Invoices25List = () => {
         apiParams.filter_vytvoril_uzivatel = debouncedColumnFilters.vytvoril_uzivatel.trim();
       }
       
+      // Kontrola řádku (all/kontrolovano/nekontrolovano)
+      if (debouncedColumnFilters.kontrola_radku && debouncedColumnFilters.kontrola_radku !== 'all') {
+        apiParams.filter_kontrola_radku = debouncedColumnFilters.kontrola_radku;
+      }
+      
       // Částka - operátor-based filtr (=, <, >)
       // Format: "=5000" nebo ">1000" nebo "<500"
       if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
@@ -2454,6 +2461,26 @@ const Invoices25List = () => {
     loadData();
   }, [loadData]);
 
+  // Načtení stavů kontrol po načtení faktur
+  useEffect(() => {
+    const loadChecks = async () => {
+      if (!invoices || invoices.length === 0 || !token || !username) return;
+      
+      try {
+        const ids = invoices.map(inv => inv.id);
+        const response = await getInvoiceChecks(ids, token, username);
+        if (response && response.data) {
+          setInvoiceChecks(response.data);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání stavů kontrol faktur:', err);
+        // Nezobrazujeme toast - není to kritická chyba
+      }
+    };
+
+    loadChecks();
+  }, [invoices, token, username]);
+
   // Načtení typů faktur z DB (pouze jednou při mount)
   useEffect(() => {
     const loadInvoiceTypes = async () => {
@@ -2660,7 +2687,7 @@ const Invoices25List = () => {
   // ⚠️ ŘAZENÍ DĚLÁ BACKEND - invoices už jsou seřazené podle sortField a sortDirection!
   // Client-side řazení je zakázáno - používáme data přímo z BE
   const sortedInvoices = useMemo(() => {
-    return invoices; // Backend už vrací seřazená data
+    return invoices; // Backend už vrací seřazená a filtrovaná data
   }, [invoices]);
 
   // ⚠️ Filtrování a pagination dělá BE - invoices už jsou filtrované a stránkované!
@@ -3433,6 +3460,10 @@ const Invoices25List = () => {
               <TableHead>
                 {/* Hlavní řádek se jmény sloupců */}
                 <tr>
+                  {/* PRVNÍ SLOUPEC - Kontrola řádku */}
+                  <TableHeader title="Kontrola">
+                    <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#64748b' }} />
+                  </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'dt_aktualizace' ? 'active' : ''}`}
                     onClick={() => handleSort('dt_aktualizace')}
@@ -3601,6 +3632,69 @@ const Invoices25List = () => {
                 </tr>
                 {/* NOVÝ KONZISTENTNÍ FILTROVACÍ ŘÁDEK */}
                 <tr className="filter-row">
+                  {/* Kontrola řádku - PRVNÍ SLOUPEC */}
+                  <TableHeader className="filter-cell">
+                    <button
+                      onClick={() => {
+                        const currentState = columnFilters.kontrola_radku || 'all';
+                        const nextState = currentState === 'all' ? 'kontrolovano' : 
+                                         currentState === 'kontrolovano' ? 'nekontrolovano' : 
+                                         'all';
+                        setColumnFilters({...columnFilters, kontrola_radku: nextState});
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        transition: 'all 0.2s'
+                      }}
+                      title={(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'kontrolovano') return 'Filtr: Pouze zkontrolované (klikněte pro nekontrolované)';
+                        if (state === 'nekontrolovano') return 'Filtr: Pouze nekontrolované (klikněte pro vše)';
+                        return 'Filtr: Vše (klikněte pro zkontrolované)';
+                      })()}
+                    >
+                      {(() => {
+                        const state = columnFilters.kontrola_radku || 'all';
+                        if (state === 'all') {
+                          return (
+                            <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                              <defs>
+                                <clipPath id="clip-left-kontrola">
+                                  <rect x="0" y="0" width="224" height="512"/>
+                                </clipPath>
+                                <clipPath id="clip-right-kontrola">
+                                  <rect x="224" y="0" width="224" height="512"/>
+                                </clipPath>
+                              </defs>
+                              {/* Plný vyplněný čtvereček - levá polovina zelená */}
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#10b981" clipPath="url(#clip-left-kontrola)"/>
+                              {/* Plný vyplněný čtvereček - pravá polovina šedá */}
+                              <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384z"
+                                    fill="#94a3b8" clipPath="url(#clip-right-kontrola)"/>
+                            </svg>
+                          );
+                        }
+                        if (state === 'kontrolovano') {
+                          return <FontAwesomeIcon icon={faCheckSquare} style={{ color: '#10b981', fontSize: '20px' }}/>;
+                        }
+                        // Nekontrolováno - prázdný čtvereček se silnějším obrysem
+                        return (
+                          <svg viewBox="0 0 448 512" style={{ width: '20px', height: '20px' }}>
+                            <path d="M384 32C419.3 32 448 60.65 448 96V416C448 451.3 419.3 480 384 480H64C28.65 480 0 451.3 0 416V96C0 60.65 28.65 32 64 32H384zM384 80H64C55.16 80 48 87.16 48 96V416C48 424.8 55.16 432 64 432H384C392.8 432 400 424.8 400 416V96C400 87.16 392.8 80 384 80z"
+                                  fill="#64748b" 
+                                  stroke="#64748b" 
+                                  strokeWidth="32"/>
+                          </svg>
+                        );
+                      })()}
+                    </button>
+                  </TableHeader>
+                  
                   {/* Aktualizováno */}
                   <TableHeader className="filter-cell">
                     <div className="date-filter-wrapper">
@@ -3909,7 +4003,7 @@ const Invoices25List = () => {
                 {/* Error State v tabulce */}
                 {error && (
                   <tr>
-                    <td colSpan="14" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="16" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={error.includes('ve vývoji') || error.includes('404') ? faExclamationTriangle : faTimesCircle} />
                       </EmptyStateIcon>
@@ -3937,7 +4031,7 @@ const Invoices25List = () => {
                 {/* Empty State v tabulce */}
                 {!error && invoices.length === 0 && !loading && (
                   <tr>
-                    <td colSpan="14" style={{ padding: '3rem', textAlign: 'center' }}>
+                    <td colSpan="16" style={{ padding: '3rem', textAlign: 'center' }}>
                       <EmptyStateIcon>
                         <FontAwesomeIcon icon={faFileInvoice} />
                       </EmptyStateIcon>
@@ -3955,6 +4049,53 @@ const Invoices25List = () => {
                       backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
                     }}
                   >
+                    {/* Kontrola řádku faktury - PRVNÍ SLOUPEC */}
+                    <TableCell className="center">
+                      <input
+                        type="checkbox"
+                        checked={invoiceChecks[invoice.id]?.kontrola?.kontrolovano || false}
+                        onChange={async (e) => {
+                          e.stopPropagation();
+                          const newState = e.target.checked;
+                          try {
+                            await toggleInvoiceCheck(
+                              invoice.id, 
+                              newState, 
+                              token, 
+                              username
+                            );
+                            // Reload checks pro tuto fakturu
+                            const response = await getInvoiceChecks(
+                              [invoice.id], 
+                              token, 
+                              username
+                            );
+                            setInvoiceChecks(prev => ({...prev, ...response.data}));
+                            showToast(
+                              newState 
+                                ? '✅ Faktura označena jako zkontrolovaná' 
+                                : '⚪ Kontrola zrušena',
+                              'success'
+                            );
+                          } catch (err) {
+                            console.error('Chyba při změně stavu kontroly:', err);
+                            showToast(err.message || 'Chyba při změně stavu kontroly', 'error');
+                          }
+                        }}
+                        style={{
+                          cursor: 'pointer',
+                          width: '18px',
+                          height: '18px',
+                          accentColor: '#10b981'
+                        }}
+                        title={
+                          invoiceChecks[invoice.id]?.kontrola?.kontrolovano
+                            ? `Zkontroloval: ${invoiceChecks[invoice.id]?.kontrola?.kontroloval_cele_jmeno || invoiceChecks[invoice.id]?.kontrola?.kontroloval_username}\n${invoiceChecks[invoice.id]?.kontrola?.dt_kontroly}`
+                            : 'Klikněte pro označení jako zkontrolováno'
+                        }
+                      />
+                    </TableCell>
+                    
                     <TableCell className="center">
                       <span className="storno-content">
                         {invoice.dt_aktualizace ? (
@@ -6082,6 +6223,9 @@ const Invoices25List = () => {
                       </span>
                     )}
                   </TableHeader>
+                  <TableHeader title="Kontrola řádku faktury">
+                    <FontAwesomeIcon icon={faCheck} style={{ color: '#64748b' }} />
+                  </TableHeader>
                   <TableHeader>
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
                   </TableHeader>
@@ -6375,6 +6519,11 @@ const Invoices25List = () => {
                         placeholder="Vše"
                       />
                     </div>
+                  </TableHeader>
+
+                  {/* Kontrola řádku - prázdná */}
+                  <TableHeader className="filter-cell">
+                    {/* Prázdná buňka pro checkbox kontroly */}
                   </TableHeader>
 
                   {/* Akce */}

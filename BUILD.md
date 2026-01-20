@@ -4,7 +4,7 @@
 
 ERDMS používá automatizované build skripty pro konzistentní development a production buildy. **VŽDY POUŽÍVEJ TYTO SKRIPTY** místo manuálních NPM commandů!
 
-**Aktuální DEV verze:** `2.17` *(aktivní verze)*
+**Aktuální DEV verze:** `2.18` *(aktivní verze)*
 
 ## ⚠️ KRITICKÉ UPOZORNĚNÍ - PRODUCTION URL ⚠️
 

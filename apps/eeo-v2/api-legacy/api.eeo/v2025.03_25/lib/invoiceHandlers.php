@@ -1312,6 +1312,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'castka_gt', 'castka_lt', 'castka_eq', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
             'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
+            // Filtr pro kontrolu řádku
+            'filter_kontrola_radku',
             // ŘAZENÍ - order_by a order_direction  
             'order_by', 'order_direction'
         );
@@ -1703,6 +1705,20 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . $search_predano . '%';
             $params[] = '%' . $search_predano . '%';
             $params[] = '%' . $search_predano . '%';
+        }
+        
+        // Filtr: filter_kontrola_radku (kontrola řádku - kontrolovano/nekontrolovano)
+        if (isset($filters['filter_kontrola_radku']) && trim($filters['filter_kontrola_radku']) !== '') {
+            $filter_kontrola = trim($filters['filter_kontrola_radku']);
+            error_log("Invoices25 LIST: Applying filter_kontrola_radku = '$filter_kontrola'");
+            
+            if ($filter_kontrola === 'kontrolovano') {
+                // Pouze kontrolované - JSON obsahuje kontrola.kontrolovano = true
+                $where_conditions[] = 'JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = TRUE';
+            } else if ($filter_kontrola === 'nekontrolovano') {
+                // Pouze nekontrolované - buď JSON neobsahuje kontrola_radku, nebo kontrolovano = false/null
+                $where_conditions[] = '(JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") IS NULL OR JSON_EXTRACT(f.rozsirujici_data, "$.kontrola_radku.kontrolovano") = FALSE)';
+            }
         }
         
         // Filtr: filter_status (dashboard stav faktury - zaplaceno, nezaplaceno, po splatnosti, atd.)
