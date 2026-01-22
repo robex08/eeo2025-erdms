@@ -571,6 +571,28 @@ function canUserViewOrder($orderId, $userId, $db) {
         return true;
     }
     
+    // 0b. Check if user has invoice assigned to them (fa_predana_zam_id) for this order
+    try {
+        $invoiceCheckSql = "
+            SELECT COUNT(*) as cnt 
+            FROM 25a_objednavky_faktury 
+            WHERE objednavka_id = :orderId 
+              AND fa_predana_zam_id = :userId 
+              AND aktivni = 1
+        ";
+        $stmt = $db->prepare($invoiceCheckSql);
+        $stmt->execute(['orderId' => $orderId, 'userId' => $userId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result && $result['cnt'] > 0) {
+            error_log("HIERARCHY: User $userId CAN view order $orderId (has invoice assigned - fa_predana_zam_id)");
+            return true;
+        }
+    } catch (PDOException $e) {
+        error_log("HIERARCHY ERROR: Failed to check invoice assignment: " . $e->getMessage());
+        // Pokračujeme dál, nepřerušujeme kontrolu
+    }
+    
     // 1. Načti nastavení hierarchie
     $settings = getHierarchySettings($db);
     

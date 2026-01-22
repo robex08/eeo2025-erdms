@@ -3079,7 +3079,9 @@ export default function InvoiceEvidencePage() {
   };
 
   // Handler: vymazání hledání objednávky
-  const handleClearSearch = () => {
+  const handleClearSearch = (e) => {
+    e?.stopPropagation();
+    e?.preventDefault();
     setSearchTerm('');
     setSuggestions([]);
     setShowSuggestions(false);
@@ -4033,7 +4035,11 @@ export default function InvoiceEvidencePage() {
         }));
 
         // 🆕 LP ČERPÁNÍ: Uložit čerpání LP po úspěšné aktualizaci věcné správnosti
-        if (lpCerpani && lpCerpani.length > 0) {
+        // 🔥 KONTROLA: Ukládat LP čerpání JEN pokud je objednávka financována z LP
+        const isLPFinancing = orderData?.financovani?.typ === 'LP' || 
+                             (orderData?.zpusob_financovani && String(orderData.zpusob_financovani).toLowerCase().includes('lp'));
+        
+        if (isLPFinancing && lpCerpani && lpCerpani.length > 0) {
           try {
             // 🔥 FIX: Filtrovat jen validní řádky před uložením do DB
             const validLpCerpani = lpCerpani.filter(lp => lp.lp_id && lp.lp_cislo && lp.castka > 0);
@@ -5985,7 +5991,11 @@ export default function InvoiceEvidencePage() {
                   {formData.fa_cislo_vema && (
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, fa_cislo_vema: '' }))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setFormData(prev => ({ ...prev, fa_cislo_vema: '' }));
+                      }}
                       disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
@@ -6093,7 +6103,11 @@ export default function InvoiceEvidencePage() {
                   {formData.fa_castka && (
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, fa_castka: '' }))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setFormData(prev => ({ ...prev, fa_castka: '' }));
+                      }}
                       disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
@@ -6157,7 +6171,11 @@ export default function InvoiceEvidencePage() {
                   {formData.fa_strediska_kod && formData.fa_strediska_kod.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, fa_strediska_kod: [] }))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setFormData(prev => ({ ...prev, fa_strediska_kod: [] }));
+                      }}
                       disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
@@ -6202,7 +6220,11 @@ export default function InvoiceEvidencePage() {
                   {formData.fa_poznamka && (
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, fa_poznamka: '' }))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setFormData(prev => ({ ...prev, fa_poznamka: '' }));
+                      }}
                       disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',
@@ -6322,12 +6344,16 @@ export default function InvoiceEvidencePage() {
                   {formData.fa_predana_zam_id && (
                     <button
                       type="button"
-                      onClick={() => setFormData(prev => ({ 
-                        ...prev, 
-                        fa_predana_zam_id: null,
-                        fa_datum_predani_zam: '',
-                        fa_datum_vraceni_zam: ''
-                      }))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          fa_predana_zam_id: null,
+                          fa_datum_predani_zam: '',
+                          fa_datum_vraceni_zam: ''
+                        }));
+                      }}
                       disabled={!isInvoiceEditable}
                       style={{
                         background: 'none',

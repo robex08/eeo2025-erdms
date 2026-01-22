@@ -608,7 +608,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     if (order?.faktury && Array.isArray(order.faktury) && order.faktury.length > 0) {
       const fa = order.faktury[0];
       if (fa.fa_strediska_kod && Array.isArray(fa.fa_strediska_kod) && fa.fa_strediska_kod.length > 0) {
-        return fa.fa_strediska_kod.join(', ');
+        // Použij mapu pro převod kódů na názvy
+        return fa.fa_strediska_kod.map(kod => strediskaMap[kod] || kod).join(', ');
       }
     }
     return MISSING;
@@ -996,27 +997,11 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                   </View>
                 )}
 
-                {/* Financování pro tuto fakturu z rozsirujici_data */}
-                {(() => {
-                  let fakturaFinancovani = MISSING;
-                  try {
-                    if (faktura.rozsirujici_data) {
-                      const data = typeof faktura.rozsirujici_data === 'string' 
-                        ? JSON.parse(faktura.rozsirujici_data) 
-                        : faktura.rozsirujici_data;
-                      // Zkusit získat financování z různých možných vlastností
-                      fakturaFinancovani = data.typ || data.zpusob_financovani || data.financovani || data.typ_platby || MISSING;
-                    }
-                  } catch (e) {
-                    // JSON parsing failed, keep MISSING
-                  }
-                  return fakturaFinancovani !== MISSING ? (
-                    <View style={styles.controlRow}>
-                      <Text style={styles.controlLabel}>Financování:</Text>
-                      <Text style={[styles.controlValue, getMissingStyle(fakturaFinancovani)]}>{fakturaFinancovani}</Text>
-                    </View>
-                  ) : null;
-                })()}
+                {/* Financování - jen typ bez detailů */}
+                <View style={styles.controlRow}>
+                  <Text style={styles.controlLabel}>Financování:</Text>
+                  <Text style={[styles.controlValue, getMissingStyle(financovani)]}>{financovani}</Text>
+                </View>
 
                 {/* Věcná kontrola pro tuto fakturu */}
                 <View style={styles.controlRow}>
@@ -1032,6 +1017,48 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                     {faktura.dt_potvrzeni_vecne_spravnosti ? formatDate(faktura.dt_potvrzeni_vecne_spravnosti) : MISSING}
                   </Text>
                 </View>
+
+                {/* LP rozpis s částkami - POD Kontrolou věcné správnosti */}
+                {(() => {
+                  // 🔥 OPRAVENO: Načíst LP čerpání z faktury (z tabulky 25a_faktury_lp_cerpani)
+                  // NE z položek objednávky! Faktura má vlastní rozdělení LP.
+                  const lpKodyProFakturu = [];
+                  
+                  if (faktura?.lp_cerpani && Array.isArray(faktura.lp_cerpani) && faktura.lp_cerpani.length > 0) {
+                    faktura.lp_cerpani.forEach(lpItem => {
+                      if (lpItem.lp_id && lpItem.castka) {
+                        const lpId = lpItem.lp_id;
+                        const castka = parseFloat(lpItem.castka) || 0;
+                        
+                        // Najít LP kód a název z financovaniData.lp_nazvy
+                        let lpKod = lpItem.lp_cislo || null;
+                        let lpNazev = null;
+                        
+                        if (financovaniData?.lp_nazvy) {
+                          const lpData = financovaniData.lp_nazvy.find(item => item.id === lpId);
+                          if (lpData) {
+                            lpKod = lpData.cislo_lp || lpData.kod || lpKod || `LP ID: ${lpId}`;
+                            lpNazev = lpData.nazev || '';
+                          }
+                        }
+                        
+                        const text = lpNazev 
+                          ? `${lpKod} - ${lpNazev}: ${formatCurrency(castka)}`
+                          : `${lpKod || `LP ID: ${lpId}`}: ${formatCurrency(castka)}`;
+                        lpKodyProFakturu.push(text);
+                      }
+                    });
+                  }
+                  
+                  return lpKodyProFakturu.length > 0 ? (
+                    <View style={styles.controlRow}>
+                      <Text style={styles.controlLabel}>LP rozpis:</Text>
+                      <Text style={styles.controlValue}>
+                        {lpKodyProFakturu.join('\n')}
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
               </View>
             ))
           ) : (

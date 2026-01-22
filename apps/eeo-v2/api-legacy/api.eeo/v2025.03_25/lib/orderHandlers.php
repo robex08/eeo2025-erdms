@@ -299,12 +299,16 @@ function loadOrderItems($db, $order_id) {
         $stmt = $db->prepare($query);
         $stmt->bindParam(':objednavka_id', $order_id, PDO::PARAM_INT);
         $stmt->execute();
-        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        error_log("loadOrderItems: Found " . count($items) . " items for order_id = " . $order_id);
+        error_log("loadOrderItems: Found " . count($allItems) . " total items (main + sub) for order_id = " . $order_id);
         
-        // ✅ poznamka vrátit jako plain text (extrahovat poznamka_lokalizace z JSON)
-        foreach ($items as &$item) {
+        // 🔥 STRUKTURA PODŘÁDKŮ: Rozdělení na hlavní položky a podřádky
+        $mainItems = array();
+        $subItemsMap = array(); // [parent_item_id => [subitems]]
+        
+        foreach ($allItems as &$item) {
+            // ✅ poznamka vrátit jako plain text (extrahovat poznamka_lokalizace z JSON)
             if (!empty($item['poznamka'])) {
                 $poznamkaData = json_decode($item['poznamka'], true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($poznamkaData)) {
@@ -317,10 +321,37 @@ function loadOrderItems($db, $order_id) {
             } else {
                 $item['poznamka'] = '';
             }
+            
+            // Rozdělení na hlavní a podřádky podle parent_item_id
+            if (empty($item['parent_item_id']) || $item['parent_item_id'] === null) {
+                // Hlavní položka
+                $item['podradky'] = array(); // Inicializuj prázdné pole podřádků
+                $mainItems[] = $item;
+            } else {
+                // Podřádek - přidej do mapy podle parent_item_id
+                $parentId = $item['parent_item_id'];
+                if (!isset($subItemsMap[$parentId])) {
+                    $subItemsMap[$parentId] = array();
+                }
+                $subItemsMap[$parentId][] = $item;
+            }
         }
+        unset($item);
         
-        return $items;
+        // ✅ PŘIŘAZENÍ PODŘÁDKŮ k hlavním položkám
+        foreach ($mainItems as &$mainItem) {
+            if (isset($mainItem['id']) && isset($subItemsMap[$mainItem['id']])) {
+                $mainItem['podradky'] = $subItemsMap[$mainItem['id']];
+                error_log("loadOrderItems: Main item ID {$mainItem['id']} has " . count($mainItem['podradky']) . " sub-items");
+            }
+        }
+        unset($mainItem);
+        
+        error_log("loadOrderItems: Returning " . count($mainItems) . " main items with nested sub-items for order_id = " . $order_id);
+        
+        return $mainItems;
     } catch (Exception $e) {
+        error_log("loadOrderItems: Error - " . $e->getMessage());
         return [];
     }
 }
@@ -1447,7 +1478,26 @@ function enrichOrderWithCodebooks($db, &$order) {
     
     // Druh objednávky
     if (isset($order['druh_objednavky_kod']) && $order['druh_objednavky_kod']) {
-        $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $order['druh_objednavky_kod']);
+        $druh_value = $order['druh_objednavky_kod'];
+        
+        // 🔥 FIX: Pokud je druh_objednavky_kod JSON objekt, extrahuj kod_stavu
+        if (is_string($druh_value)) {
+            $decoded = json_decode($druh_value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                // Je to JSON objekt - použij přímo pro enrichment
+                $enriched['druh_objednavky'] = array(
+                    'kod' => isset($decoded['kod_stavu']) ? $decoded['kod_stavu'] : (isset($decoded['kod']) ? $decoded['kod'] : ''),
+                    'nazev' => isset($decoded['nazev_stavu']) ? $decoded['nazev_stavu'] : (isset($decoded['nazev']) ? $decoded['nazev'] : ''),
+                    'popis' => isset($decoded['popis']) ? $decoded['popis'] : null
+                );
+            } else {
+                // Je to plain string (kód) - načti z databáze
+                $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $druh_value);
+            }
+        } else {
+            // Není string - pravděpodobně už je to pole
+            $enriched['druh_objednavky'] = loadDruhObjednavkyByKod($db, $druh_value);
+        }
     }
     
     // Enrichment pro faktury (potvrdil_vecnou_spravnost)

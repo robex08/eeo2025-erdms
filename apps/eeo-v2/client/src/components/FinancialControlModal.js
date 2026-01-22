@@ -196,16 +196,12 @@ const FinancialControlModal = ({ order, onClose, generatedBy }) => {
         try {
           const strediskaList = await getStrediska25({ token, username, aktivni: null }); // null = všechna střediska
           
-          // Vytvoříme mapu: kod_stavu -> nazev_stavu
-          // API vrací hierarchickou strukturu s 'value' (=kod_stavu) a 'label' (=nazev_stavu)
+          // Vytvoříme mapu: value -> label (celý kód střediska)
+          // API vrací hierarchickou strukturu s 'value' a 'label' 
+          // JEDNODUŠE: value = "102_RLP_RAKOVNIK", label = "RLP Rakovník"
           strediskaData = strediskaList.reduce((acc, stredisko) => {
-            // Použij value a label z hierarchické struktury
-            if (stredisko.value) {
-              acc[stredisko.value] = stredisko.label || stredisko.value;
-            }
-            // Fallback: pokud existuje raw objekt, použij i ten
-            if (stredisko.raw?.kod_stavu) {
-              acc[stredisko.raw.kod_stavu] = stredisko.raw.nazev_stavu || stredisko.raw.kod_stavu;
+            if (stredisko.value && stredisko.label) {
+              acc[stredisko.value] = stredisko.label;
             }
             return acc;
           }, {});

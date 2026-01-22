@@ -7182,15 +7182,21 @@ const Orders25List = () => {
           // Získat detail podle typu financování
           const typ = order.financovani.typ || '';
           
-          // LP - zobrazit kódy LP z položek (LPIT1, LPIT2 atd.)
+          // LP - zobrazit jen LP kódy (bez popisů)
           if (typ === 'LP') {
-            if (order.polozky && Array.isArray(order.polozky)) {
-              const lpKody = order.polozky
-                .filter(p => p.lp_kod && p.lp_kod !== 'LP nenalezeno')
-                .map(p => p.lp_kod);
+            // Priorita 1: lp_nazvy array (enriched data) - ale použij jen kódy
+            if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+              const lpKody = order.financovani.lp_nazvy
+                .map(lp => lp.cislo_lp || lp.kod || '')
+                .filter(Boolean);
+              
               if (lpKody.length > 0) {
-                detailText = [...new Set(lpKody)].join(', ');
+                detailText = lpKody.join(', ');
               }
+            }
+            // Fallback: lp_kody array
+            else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+              detailText = order.financovani.lp_kody.join(', ');
             }
           }
           // Smlouva - zobrazit číslo smlouvy
@@ -9921,7 +9927,8 @@ const Orders25List = () => {
       );
 
       let orderUpdate = {
-        schvaleni_komentar: approvalComment || '' // ✅ Ukládá se vždy - i prázdný pro schválení
+        schvaleni_komentar: approvalComment || '', // ✅ Ukládá se vždy - i prázdný pro schválení
+        mimoradna_udalost: orderToApprove.mimoradna_udalost // ✅ ZACHOVAT status Mimořádná událost
       };
 
       const timestamp = new Date().toISOString();
@@ -12009,7 +12016,7 @@ const Orders25List = () => {
             <InfoRow>
               <InfoLabel>Druh objednávky:</InfoLabel>
               <InfoValue style={{ fontWeight: 500, fontSize: '0.9em' }}>
-                {(() => {
+                {highlightSearchText((() => {
                   // Podpora různých formátů dat z backendu
                   // 1. Enriched: order.druh_objednavky = {kod, nazev}
                   if (order.druh_objednavky?.nazev) {
@@ -12028,7 +12035,7 @@ const Orders25List = () => {
                     return getDruhObjednavkyNazev(order.druh_objednavky);
                   }
                   return '---';
-                })()}
+                })(), globalFilter)}
               </InfoValue>
             </InfoRow>
 
@@ -13387,24 +13394,39 @@ const Orders25List = () => {
                                 borderLeft: '2px solid #86efac',
                                 textAlign: 'right'
                               }}>
-                                {faktura.lp_cerpani.map((lp, idx) => (
-                                  <div key={idx} style={{ marginBottom: '6px' }}>
-                                    <div style={{ 
-                                      fontWeight: 600,
-                                      color: '#065f46',
-                                      fontSize: '0.95em'
-                                    }}>
-                                      {lp.lp_cislo || lp.lp_kod}
+                                {faktura.lp_cerpani.map((lp, idx) => {
+                                  // 🔥 FIX: Najít název LP podle lp_id z order.financovani.lp_nazvy
+                                  let lpText = lp.lp_cislo || lp.lp_kod || `LP ID: ${lp.lp_id}`;
+                                  
+                                  // Pokud máme LP názvy v order.financovani.lp_nazvy, použij je
+                                  if (order?.financovani?.lp_nazvy && Array.isArray(order.financovani.lp_nazvy)) {
+                                    const lpData = order.financovani.lp_nazvy.find(item => item.id === lp.lp_id);
+                                    if (lpData) {
+                                      const kod = lpData.cislo_lp || lpData.kod || lp.lp_cislo || lp.lp_kod;
+                                      const nazev = lpData.nazev || '';
+                                      lpText = nazev ? `${kod} - ${nazev}` : kod;
+                                    }
+                                  }
+                                  
+                                  return (
+                                    <div key={idx} style={{ marginBottom: '6px' }}>
+                                      <div style={{ 
+                                        fontWeight: 600,
+                                        color: '#065f46',
+                                        fontSize: '0.95em'
+                                      }}>
+                                        {lpText}
+                                      </div>
+                                      <div style={{ 
+                                        fontWeight: 700,
+                                        color: '#059669',
+                                        fontSize: '1em'
+                                      }}>
+                                        {parseFloat(lp.castka).toLocaleString('cs-CZ')}&nbsp;Kč
+                                      </div>
                                     </div>
-                                    <div style={{ 
-                                      fontWeight: 700,
-                                      color: '#059669',
-                                      fontSize: '1em'
-                                    }}>
-                                      {parseFloat(lp.castka).toLocaleString('cs-CZ')}&nbsp;Kč
-                                    </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -17752,6 +17774,18 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                 }}>
                   {orderToApprove.stav_objednavky || '---'}
                 </span>
+                {orderToApprove.mimoradna_udalost == 1 && (
+                  <span style={{ 
+                    marginLeft: '0.5rem',
+                    fontSize: '1.1em',
+                    display: 'inline-block',
+                    verticalAlign: 'middle',
+                    color: '#dc2626',
+                    fontWeight: 'bold'
+                  }} title="Mimořádná událost">
+                    <FontAwesomeIcon icon={faBoltLightning} />
+                  </span>
+                )}
               </ApprovalDialogTitle>
             </ApprovalDialogHeader>
 

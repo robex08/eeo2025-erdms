@@ -6,6 +6,20 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 
 **Aktuální DEV verze:** `2.18` *(aktivní verze)*
 
+## ⚠️ KRITICKÉ - DEV BUILD S EXPLICITNÍ DB ⚠️
+
+**DEV prostředí MUSÍ používat databázi:** `EEO-OSTRA-DEV`  
+**Build command:** `./build-eeo-v2.sh --dev --explicit`
+
+```bash
+# ✅ SPRÁVNĚ: DEV build s explicitní DB
+./build-eeo-v2.sh --dev --explicit
+
+# Database: EEO-OSTRA-DEV
+# Cesta API: /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/
+# .env MUSÍ obsahovat: DB_NAME=EEO-OSTRA-DEV
+```
+
 ## ⚠️ KRITICKÉ UPOZORNĚNÍ - PRODUCTION URL ⚠️
 
 **NIKDY** nepoužívej `eeo.zachranka.cz` pro production!  
