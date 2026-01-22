@@ -465,9 +465,20 @@ function LPCerpaniEditor({
   lpCerpani = [], 
   availableLPCodes = [], 
   onChange,
-  onValidationChange, 
+  hasTriedToSubmit = false,
   disabled = false
 }) {
+  
+  // 🛡️ NORMALIZACE: Zajistit, že lpCerpani je vždy pole
+  const normalizedLpCerpani = useMemo(() => {
+    if (!lpCerpani) return [];
+    if (Array.isArray(lpCerpani)) return lpCerpani;
+    // Pokud je to objekt (např. z localStorage), převést na pole
+    if (typeof lpCerpani === 'object') {
+      return Object.values(lpCerpani);
+    }
+    return [];
+  }, [lpCerpani]);
   
   const [rows, setRows] = useState([]);
   const [validationMessages, setValidationMessages] = useState([]);
@@ -481,12 +492,6 @@ function LPCerpaniEditor({
   const autoFilledRef = useRef(false);
   const prevFakturaIdRef = useRef(null);
   const prevLpCerpaniLengthRef = useRef(0);
-  
-  // 🔥 Stabilní ref pro onValidationChange callback (prevence infinite loop)
-  const onValidationChangeRef = useRef(onValidationChange);
-  useEffect(() => {
-    onValidationChangeRef.current = onValidationChange;
-  }, [onValidationChange]);
 
   // Filtrovat LP kódy podle financování objednávky
   const filteredLPCodes = useMemo(() => {
@@ -558,15 +563,24 @@ function LPCerpaniEditor({
     }
   }, [faktura?.id]);
 
-  // Inicializace rows z lpCerpani prop - JEDNODUCHÁ LOGIKA
+  // 🔥 STABILIZACE: Použít useMemo pro lpCerpani serializaci (zabránit změně reference)
+  const lpCerpaniKey = useMemo(() => {
+    if (!normalizedLpCerpani || normalizedLpCerpani.length === 0) return 'empty';
+    // Vytvořit stabilní klíč z hlavních atributů
+    return normalizedLpCerpani.map(lp => `${lp.lp_id}_${lp.castka}`).join('|');
+  }, [normalizedLpCerpani]);
+
+  // Inicializace rows z lpCerpani prop - s kontrolou změn
   useEffect(() => {
-    // Získat ID faktury z různých možných umístění
-    const fakturaId = faktura?.id || faktura?.invoice_id;
+    // 🔥 GUARD: Pokud je nová faktura (změnilo se ID), resetovat auto-fill flag
+    if (faktura?.id !== prevFakturaIdRef.current) {
+      autoFilledRef.current = false;
+      prevFakturaIdRef.current = faktura?.id;
+    }
     
     // Pokud máme lpCerpani data, naplnit rows
-    if (lpCerpani && lpCerpani.length > 0) {
-      
-      const newRows = lpCerpani.map((item, idx) => {
+    if (normalizedLpCerpani && normalizedLpCerpani.length > 0) {
+      const newRows = normalizedLpCerpani.map((item, idx) => {
         const matchedLP = availableLPCodes?.find(lp => 
           lp.id === item.lp_id || 
           lp.cislo_lp === item.lp_cislo || 
@@ -583,10 +597,37 @@ function LPCerpaniEditor({
         };
       });
       
-      setRows(newRows);
+      // 🔥 OPTIMALIZACE: Pouze aktualizovat pokud se data skutečně změnila
+      setRows(prevRows => {
+        // Rychlá kontrola délky
+        if (prevRows.length !== newRows.length) {
+          return newRows;
+        }
+        
+        // Deep comparison - porovnat lp_id, castka, lp_cislo
+        const hasChanges = newRows.some((newRow, idx) => {
+          const prevRow = prevRows[idx];
+          if (!prevRow) return true;
+          
+          // Pokud jsou oba řádky prázdné (nemají lp_id a castka = 0), považovat za stejné
+          const isPrevEmpty = !prevRow.lp_id && (!prevRow.castka || prevRow.castka === 0);
+          const isNewEmpty = !newRow.lp_id && (!newRow.castka || newRow.castka === 0);
+          
+          if (isPrevEmpty && isNewEmpty) {
+            return false; // Oba jsou prázdné → žádná změna
+          }
+          
+          // Porovnat konkrétní hodnoty (ID nepočítat - může se generovat nové)
+          return prevRow.lp_id !== newRow.lp_id ||
+                 prevRow.castka !== newRow.castka ||
+                 prevRow.lp_cislo !== newRow.lp_cislo;
+        });
+        
+        return hasChanges ? newRows : prevRows;
+      });
     } 
     // Auto-fill pro jeden LP kód
-    else if (lpCerpani && lpCerpani.length === 0 && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka && !autoFilledRef.current) {
+    else if (normalizedLpCerpani && normalizedLpCerpani.length === 0 && isLPFinancing && filteredLPCodes.length === 1 && faktura?.fa_castka && !autoFilledRef.current) {
       const autoRow = {
         id: `row_auto_${Date.now()}`,
         lp_cislo: filteredLPCodes[0].cislo_lp || filteredLPCodes[0].kod,
@@ -598,11 +639,17 @@ function LPCerpaniEditor({
       setRows([autoRow]);
       autoFilledRef.current = true;
       
+      // Volat onChange pouze pokud existuje
       if (onChange) {
         onChange([autoRow]);
       }
     }
-  }, [lpCerpani, faktura?.id, faktura?.invoice_id, faktura?.fa_castka, isLPFinancing, filteredLPCodes, availableLPCodes, onChange]);
+    // Pokud lpCerpani je prázdné a není LP financování, vyčistit rows
+    else if (!isLPFinancing && rows.length > 0) {
+      setRows([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lpCerpaniKey, faktura?.id, faktura?.fa_castka, isLPFinancing]);
 
   // Součet přiřazených částek
   const totalAssigned = useMemo(() => {
@@ -610,23 +657,25 @@ function LPCerpaniEditor({
     return sum;
   }, [rows]);
 
-  // Validace
+  // 💬 Lokální validace pro ZOBRAZENÍ HLÁŠEK (nestaví errors v parent)
   useEffect(() => {
-    const messages = [];
-    const faCastka = parseFloat(faktura?.fa_castka) || 0;
+    if (!hasTriedToSubmit) {
+      setValidationMessages([]);
+      return;
+    }
 
-    // 1. Povinnost pro LP financování - musí mít alespoň jeden VALIDNÍ řádek
-    const validRows = rows.filter(r => r.lp_id && r.lp_cislo && r.castka > 0);
-    // ❌ ZRUŠENO: Nezobrazovat warning v disabled stavu
-    if (!disabled && isLPFinancing && validRows.length === 0) {
+    const messages = [];
+    
+    // Prázdné řádky
+    const emptyRows = rows.filter(r => r.id && !r.lp_id && (!r.castka || r.castka <= 0));
+    if (emptyRows.length > 0) {
       messages.push({
         type: 'error',
-        text: '⚠️ Objednávka je financována z LP. Musíte přiřadit alespoň jeden LP kód s částkou!',
-        code: 'MISSING_LP'
+        text: `Máte ${emptyRows.length} prázdný řádek. Vyplňte LP kód a částku nebo jej smažte.`
       });
     }
 
-    // 2. Kontrola nevyplněných řádků (má LP kód ale ne částku nebo naopak)
+    // Neúplné řádky
     const incompleteRows = rows.filter(r => 
       (r.lp_id && (!r.castka || r.castka <= 0)) || 
       (!r.lp_id && r.castka > 0)
@@ -634,46 +683,12 @@ function LPCerpaniEditor({
     if (incompleteRows.length > 0) {
       messages.push({
         type: 'error',
-        text: '❌ Všechny řádky musí mít vyplněný LP kód i částku',
-        code: 'INCOMPLETE_ROWS'
-      });
-    }
-
-    // 3. Kontrola překročení
-    if (totalAssigned > faCastka) {
-      messages.push({
-        type: 'error',
-        text: `❌ Součet LP čerpání (${formatCurrency(totalAssigned)} Kč) překračuje částku faktury (${formatCurrency(faCastka)} Kč)`,
-        code: 'EXCEEDS_LIMIT'
-      });
-    }
-
-    // 4. Informace o neúplném přiřazení (ne error!)
-    if (totalAssigned > 0 && totalAssigned < faCastka) {
-      messages.push({
-        type: 'info',
-        text: `ℹ️ Přiřadili jste ${formatCurrency(totalAssigned)} Kč z ${formatCurrency(faCastka)} Kč faktury. Rozdělení částky je na vaší odpovědnosti.`,
-        code: 'PARTIAL_ASSIGNMENT'
-      });
-    }
-
-    // 5. Potvrzení úplného přiřazení
-    if (totalAssigned === faCastka && rows.length > 0) {
-      messages.push({
-        type: 'success',
-        text: `✅ Celá částka faktury byla přiřazena na LP kódy.`,
-        code: 'COMPLETE'
+        text: 'Všechny řádky musí mít vyplněný LP kód i částku'
       });
     }
 
     setValidationMessages(messages);
-    
-    // Informovat parent o chybách pomocí stabilního ref callbacku
-    if (onValidationChangeRef.current) {
-      const hasErrors = messages.some(m => m.type === 'error');
-      onValidationChangeRef.current(hasErrors);
-    }
-  }, [rows, totalAssigned, faktura, isLPFinancing]);
+  }, [hasTriedToSubmit, rows]);
 
   // Handler pro změnu LP kódu
   const handleLPChange = useCallback((rowId, selectedLpId) => {
@@ -693,9 +708,10 @@ function LPCerpaniEditor({
         return row;
       });
       
-      // 🔥 FIX: Posílat VŠECHNY řádky (i částečně vyplněné), parent má validovat před uložením
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
       if (onChange) {
-        setTimeout(() => onChange(updated), 0);
+        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
       }
       
       return updated;
@@ -711,9 +727,10 @@ function LPCerpaniEditor({
           : row
       );
       
-      // 🔥 FIX: Posílat VŠECHNY řádky (i částečně vyplněné), parent má validovat před uložením
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
       if (onChange) {
-        setTimeout(() => onChange(updated), 0);
+        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
       }
       
       return updated;
@@ -725,9 +742,10 @@ function LPCerpaniEditor({
     setRows(prev => {
       const updated = prev.filter(row => row.id !== rowId);
       
-      // Volání onChange okamžitě po aktualizaci - poslat všechny zbývající řádky
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
       if (onChange) {
-        setTimeout(() => onChange(updated), 0);
+        const validRows = updated.filter(row => row.lp_id && row.castka && row.castka > 0);
+        setTimeout(() => onChange(validRows), 0);
       }
       
       return updated;
@@ -746,18 +764,19 @@ function LPCerpaniEditor({
     setRows(prev => {
       const updated = [...prev, newRow];
       
-      // 🔥 FIX: NEVOLAT onChange při přidání prázdného řádku
-      // onChange se zavolá až při vyplnění LP kódu nebo částky (handleLPChange, handleCastkaChange)
-      // Jinak se resetuje parent state a řádek zmizí
+      // 🔥 NEVOLAT onChange při přidání prázdného řádku - pouze lokálně přidat do state
+      // onChange se zavolá až když uživatel vyplní LP kód nebo částku
       
       return updated;
     });
-  }, []);
+  }, [onChange]);
   
   // Handler pro uložení dat při opuštění pole
   const handleSaveData = useCallback(() => {
     if (onChange) {
-      onChange(rows);
+      // 🔥 FILTER: Posílat pouze vyplněné řádky (má LP kód A částku > 0)
+      const validRows = rows.filter(row => row.lp_id && row.castka && row.castka > 0);
+      onChange(validRows);
     }
   }, [onChange, rows]);
 
@@ -811,7 +830,13 @@ function LPCerpaniEditor({
         </AutoFillNote>
       )}
 
-      {rows.map((row, index) => (
+      {rows.map((row, index) => {
+        // Detekce chybného řádku pro červené zvýraznění - POUZE když validateNow=true
+        const isEmptyRow = !row.lp_id && (!row.castka || row.castka <= 0);
+        const hasLpError = !row.lp_id && row.castka > 0; // má částku ale ne LP kód
+        const hasCastkaError = row.lp_id && (!row.castka || row.castka <= 0); // má LP kód ale ne částku
+        
+        return (
         <LPRow key={row.id}>
           <FormGroup>
             <label>
@@ -830,7 +855,7 @@ function LPCerpaniEditor({
               field={`lp_kod_${row.id}`}
               icon={<Hash />}
               disabled={disabled}
-              hasError={!row.lp_id}
+              hasError={hasTriedToSubmit && (isEmptyRow || hasLpError)}
               required={true}
               multiple={false}
               selectStates={selectStates}
@@ -852,7 +877,7 @@ function LPCerpaniEditor({
               value={row.castka || ''}
               onChange={(newValue) => handleCastkaChange(row.id, newValue)}
               onBlur={handleSaveData}
-              hasError={!row.castka || row.castka <= 0}
+              hasError={hasTriedToSubmit && (isEmptyRow || hasCastkaError)}
               disabled={disabled}
               required
             />
@@ -870,7 +895,8 @@ function LPCerpaniEditor({
             </IconButton>
           </ButtonGroup>
         </LPRow>
-      ))}
+        );
+      })}
 
       {/* Tlačítko "Přidat další LP kód" - skrýt když je disabled (věcná už byla potvrzena) */}
       {!disabled && filteredLPCodes.length > rows.length && (
@@ -882,7 +908,8 @@ function LPCerpaniEditor({
         </AddButton>
       )}
 
-      {validationMessages.map((msg, idx) => (
+      {/* 💬 Validace - POUZE lokální zobrazení, centrální validace běží v OrderForm25 */}
+      {hasTriedToSubmit && validationMessages.length > 0 && validationMessages.map((msg, idx) => (
         <ValidationMessage key={idx} type={msg.type}>
           <FontAwesomeIcon 
             icon={

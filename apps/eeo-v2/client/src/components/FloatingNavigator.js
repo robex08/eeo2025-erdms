@@ -71,8 +71,10 @@ const categorizeErrorKey = (key) => {
     return 'stav_odeslani';
   }
   
-  // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_"
-  if (key.startsWith('faktura_') && key.includes('vecna_spravnost')) {
+  // 7. Věcná správnost - MUSÍ BÝT PŘED obecným "faktura_" - včetně LP čerpání
+  if ((key.startsWith('faktura_') && key.includes('vecna_spravnost')) || 
+      key.startsWith('vecna_lp_') || 
+      key.includes('vecna_poznamka')) {
     return 'vecna_spravnost';
   }
   

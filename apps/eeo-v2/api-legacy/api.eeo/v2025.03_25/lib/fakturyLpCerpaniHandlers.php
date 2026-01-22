@@ -117,6 +117,25 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
                 ));
                 return;
             }
+            
+            // 🔥 NOVÁ VALIDACE: LP kódy faktury MUSÍ být ze seznamu LP kódů objednávky
+            if ($faktura['objednavka_id'] && isset($financovani['lp_kody']) && is_array($financovani['lp_kody'])) {
+                $allowed_lp_kody = $financovani['lp_kody'];
+                
+                foreach ($lp_cerpani as $item) {
+                    $faktura_lp_kod = trim($item['lp_cislo']);
+                    
+                    if (!in_array($faktura_lp_kod, $allowed_lp_kody)) {
+                        $db->rollBack();
+                        http_response_code(400);
+                        echo json_encode(array(
+                            'status' => 'error', 
+                            'message' => 'LP kód "' . $faktura_lp_kod . '" není přiřazen k objednávce. Povolené LP kódy: ' . implode(', ', $allowed_lp_kody)
+                        ));
+                        return;
+                    }
+                }
+            }
         }
         
         // 4. Validace: součet částek nesmí překročit fa_castka
