@@ -87,7 +87,8 @@ class Order25DraftStorageService {
       orderId = null,        // ✅ savedOrderId - pokud je vyplněno = editace existující
       step = 0,
       attachments = [],
-      metadata = {}          // isChanged, isEditMode, atd.
+      metadata = {},         // isChanged, isEditMode, atd.
+      fakturyLPCerpani = {}  // 💰 LP čerpání dat
     } = options;
 
     try {
@@ -105,7 +106,7 @@ class Order25DraftStorageService {
         // Ignoruj chyby načítání - není to kritické
       }
 
-      // ✅ UNIFIED DRAFT: Obsahuje všechno (formData + metadata)
+      // ✅ UNIFIED DRAFT: Obsahuje všechno (formData + metadata + fakturyLPCerpani)
       const draftData = {
         formData,
         timestamp: Date.now(),
@@ -114,6 +115,8 @@ class Order25DraftStorageService {
         savedOrderId: orderId,     // ✅ null = nová, number = editace
         lastDBUpdate: formData.datum_posledni_zmeny || null,  // ✅ DB timestamp pro sync check
         ...metadata,               // isChanged, isEditMode, isOrderSavedToDB, atd.
+        // 💰 LP čerpání: Ukládat pouze pokud existují data
+        ...(fakturyLPCerpani && Object.keys(fakturyLPCerpani).length > 0 && { fakturyLPCerpani }),
         // 🚫 KRITICKÉ: ZACHOVEJ existující invalidated flag!
         invalidated: metadata.invalidated !== undefined ? metadata.invalidated : existingInvalidated
       };
