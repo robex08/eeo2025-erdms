@@ -9610,8 +9610,26 @@ const Orders25List = () => {
         return;
       }
 
+      // 🔥 KRITICKÉ: Obohacení order objektu o LP názvy (stejně jako v OrderForm25)
+      let enrichedOrder = { ...order };
+      
+      // Načíst LP názvy VŽDY (ne jen pro LP financování)
+      try {
+        const lpNazvy = await fetchLimitovanePrisliby({ token, username });
+        enrichedOrder = {
+          ...order,
+          lp_nazvy: lpNazvy,
+          financovani: {
+            ...order.financovani,
+            lp_nazvy: lpNazvy
+          }
+        };
+      } catch (error) {
+        console.error('❌ [Orders25List] Chyba při načítání LP názvy:', error);
+      }
+
       // Otevři modal s PDF náhledem
-      setFinancialControlOrder(order);
+      setFinancialControlOrder(enrichedOrder);
       setFinancialControlModalOpen(true);
     } catch (error) {
       console.error('❌ [Orders25List] Chyba při otevírání finanční kontroly:', error);

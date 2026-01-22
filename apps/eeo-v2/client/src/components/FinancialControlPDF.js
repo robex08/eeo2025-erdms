@@ -567,7 +567,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
     typ: order?.zpusob_financovani || '',
     lp_kody: order?.lp_kod || [], // ✅ Přímo z order objektu
     lp_kod: order?.lp_kod || [],  
-    lp_nazvy: order?.lp_nazvy || [], // ✅ Enriched data přímo z order objektu
+    lp_nazvy: order?.lp_nazvy || order?.financovani?.lp_nazvy || [], // ✅ Enriched data z order nebo financovani
     lp_poznamka: order?.lp_poznamka || '',
     cislo_smlouvy: order?.cislo_smlouvy || '',
     smlouva_poznamka: order?.smlouva_poznamka || '',
@@ -896,8 +896,8 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
               </Text>
               
               {order.polozky.map((polozka, index) => {
-                // LP ID zobrazit JEN když je financování typu LP (limitovaný příslib)
-                const jeFinancovaniLP = financovaniData?.typ === 'LP' || financovaniData?.typ === 'LIMITOVANY_PRISLIB';
+                // LP zobrazit JEN když je financování typu LP (limitovaný příslib) 
+                const jeFinancovaniLP = order?.zpusob_financovani === 'LP' || order?.zpusob_financovani === 'LIMITOVANY_PRISLIB';
                 
                 return (
                   <View key={polozka.id || index} style={{
@@ -917,22 +917,25 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
                         {polozka.cena_s_dph ? formatCurrency(parseFloat(polozka.cena_s_dph)) : MISSING}
                       </Text>
                     </View>
-                    {jeFinancovaniLP && polozka.lp_id && (
+                    {/* 🔥 LP KÓDY PRO POLOŽKY - VŽDY ZOBRAZIT POKUD EXISTUJÍ */}
+                    {(polozka.lp_id || polozka.polozka_lp_id) && (
                       <View style={styles.controlRow}>
-                        <Text style={[styles.controlLabel, { width: '30%' }]}>LP kód:</Text>
+                        <Text style={[styles.controlLabel, { width: '30%' }]}>LP:</Text>
                         <Text style={[styles.controlValue, { width: '70%' }]}>
                           {(() => {
-                            // Zkus najít LP kód z enriched dat
+                            const lpId = polozka.lp_id || polozka.polozka_lp_id;
+                            
+                            // Najít LP název z enriched dat
                             if (financovaniData?.lp_nazvy) {
-                              const lp = financovaniData.lp_nazvy.find(item => item.id === polozka.lp_id);
+                              const lp = financovaniData.lp_nazvy.find(item => item.id === parseInt(lpId));
                               if (lp) {
-                                const kod = lp.cislo_lp || lp.kod || lp.id;
+                                const kod = lp.cislo_lp || lp.kod || lpId;
                                 const nazev = lp.nazev || '';
-                                return kod && nazev ? `${kod} - ${nazev}` : (kod || nazev);
+                                return nazev ? `${kod} - ${nazev}` : kod;
                               }
                             }
-                            // Fallback: zobraz jen ID
-                            return `LP ID: ${polozka.lp_id}`;
+                            // Fallback: zobraz jen kód/ID
+                            return `LP ${lpId}`;
                           })()}
                         </Text>
                       </View>
