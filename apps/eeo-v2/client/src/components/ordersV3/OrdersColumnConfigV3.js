@@ -237,6 +237,13 @@ const SaveButton = styled.button`
 `;
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+// Sloupce které nelze skrýt ani přesunout
+const LOCKED_COLUMNS = ['expander', 'actions'];
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -269,20 +276,39 @@ function OrdersColumnConfigV3({
   const safeColumnOrder = Array.isArray(columnOrder) ? columnOrder : [];
 
   const handleToggleVisibility = (columnId) => {
+    // Zakázat skrytí locked sloupců
+    if (LOCKED_COLUMNS.includes(columnId)) {
+      return;
+    }
     onVisibilityChange?.(columnId, !columnVisibility[columnId]);
   };
 
-  const handleDragStart = (e, index) => {
+  const handleDragStart = (e, index, columnId) => {
+    // Zakázat drag locked sloupců
+    if (LOCKED_COLUMNS.includes(columnId)) {
+      e.preventDefault();
+      return;
+    }
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e, index) => {
+  const handleDragOver = (e, index, columnId) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
 
+    // Zakázat drop na locked sloupce
+    if (LOCKED_COLUMNS.includes(columnId)) {
+      return;
+    }
+
     const newOrder = [...safeColumnOrder];
     const draggedItem = newOrder[draggedIndex];
+    
+    // Zakázat přesun locked sloupců
+    if (LOCKED_COLUMNS.includes(draggedItem)) {
+      return;
+    }
 
     // Remove from old position
     newOrder.splice(draggedIndex, 1);
@@ -330,32 +356,52 @@ function OrdersColumnConfigV3({
 
             <ModalBody>
               <ColumnList>
-                {safeColumnOrder.map((columnId, index) => (
-                  <ColumnItem
-                    key={columnId}
-                    $visible={columnVisibility[columnId]}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <DragHandle title="Přetáhněte pro změnu pořadí">
-                      <FontAwesomeIcon icon={faGripVertical} />
-                    </DragHandle>
-
-                    <ColumnLabel $visible={columnVisibility[columnId]}>
-                      {columnLabels[columnId] || columnId}
-                    </ColumnLabel>
-
-                    <VisibilityToggle
+                {safeColumnOrder.map((columnId, index) => {
+                  const isLocked = LOCKED_COLUMNS.includes(columnId);
+                  
+                  return (
+                    <ColumnItem
+                      key={columnId}
                       $visible={columnVisibility[columnId]}
-                      onClick={() => handleToggleVisibility(columnId)}
-                      title={columnVisibility[columnId] ? 'Skrýt sloupec' : 'Zobrazit sloupec'}
+                      draggable={!isLocked}
+                      onDragStart={(e) => handleDragStart(e, index, columnId)}
+                      onDragOver={(e) => handleDragOver(e, index, columnId)}
+                      onDragEnd={handleDragEnd}
+                      style={{
+                        opacity: isLocked ? 0.6 : 1,
+                        cursor: isLocked ? 'not-allowed' : 'default'
+                      }}
                     >
-                      <FontAwesomeIcon icon={columnVisibility[columnId] ? faEye : faEyeSlash} />
-                    </VisibilityToggle>
-                  </ColumnItem>
-                ))}
+                      <DragHandle 
+                        title={isLocked ? 'Tento sloupec nelze přesouvat' : 'Přetáhněte pro změnu pořadí'}
+                        style={{ 
+                          cursor: isLocked ? 'not-allowed' : 'grab',
+                          opacity: isLocked ? 0.3 : 1
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faGripVertical} />
+                      </DragHandle>
+
+                      <ColumnLabel $visible={columnVisibility[columnId]}>
+                        {columnLabels[columnId] || columnId}
+                        {isLocked && <span style={{ marginLeft: '8px', fontSize: '0.75em', color: '#94a3b8' }}>(固定)</span>}
+                      </ColumnLabel>
+
+                      <VisibilityToggle
+                        $visible={columnVisibility[columnId]}
+                        onClick={() => handleToggleVisibility(columnId)}
+                        title={isLocked ? 'Tento sloupec nelze skrýt' : (columnVisibility[columnId] ? 'Skrýt sloupec' : 'Zobrazit sloupec')}
+                        disabled={isLocked}
+                        style={{
+                          opacity: isLocked ? 0.3 : 1,
+                          cursor: isLocked ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <FontAwesomeIcon icon={columnVisibility[columnId] ? faEye : faEyeSlash} />
+                      </VisibilityToggle>
+                    </ColumnItem>
+                  );
+                })}
               </ColumnList>
             </ModalBody>
 
