@@ -18,7 +18,8 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, lazy, Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -40,6 +41,10 @@ import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
 // Context
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
+import { ToastContext } from '../context/ToastContext';
+
+// API Services
+import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
@@ -50,6 +55,9 @@ import OrdersFiltersV3 from '../components/ordersV3/OrdersFiltersV3';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
+
+// Lazy loaded components for performance
+const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal').then(m => ({ default: m.DocxGeneratorModal })));
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -324,6 +332,29 @@ const getRowBackgroundColor = (order) => {
   }
 };
 
+// Funkce pro získání system status kódu objednávky
+const getOrderSystemStatus = (order) => {
+  if (!order) return 'NOVA';
+  
+  try {
+    if (order.stav_workflow_kod) {
+      const workflowStates = Array.isArray(order.stav_workflow_kod) 
+        ? order.stav_workflow_kod 
+        : JSON.parse(order.stav_workflow_kod);
+      if (Array.isArray(workflowStates) && workflowStates.length > 0) {
+        const lastState = workflowStates[workflowStates.length - 1];
+        if (typeof lastState === 'object' && (lastState.kod_stavu || lastState.nazev_stavu)) {
+          return lastState.kod_stavu || 'NEZNAMY';
+        } else {
+          return typeof lastState === 'string' ? lastState : 'NOVA';
+        }
+      }
+    }
+  } catch {}
+  
+  return order.stav_id_num || order.stav_id || 'NOVA';
+};
+
 // ============================================================================
 // COLUMN LABELS (pro konfiguraci)
 // ============================================================================
@@ -351,8 +382,173 @@ const COLUMN_LABELS = {
 
 function Orders25ListV3() {
   // Contexts
-  const { token, username, user_id } = useContext(AuthContext);
-  const { showProgress, hideProgress } = useContext(ProgressContext) || {};
+  const { user_id, userDetail, token, username, hasPermission } = useContext(AuthContext);
+  const { showToast: progressShowToast, showProgress, hideProgress } = useContext(ProgressContext);
+  const { showToast: toastShowToast } = useContext(ToastContext);
+  const navigate = useNavigate();
+  
+  // Prefer ToastContext, fallback to ProgressContext
+  const showToast = toastShowToast || progressShowToast;
+
+  // Permission check functions
+  const canEdit = (order) => {
+    if (!hasPermission) return false;
+
+    // Koncepty může editovat každý kdo má základní práva
+    if (order.isDraft || order.je_koncept) {
+      return hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_EDIT_OWN');
+    }
+
+    // Uživatelé s ORDER_*_ALL oprávněními mohou editovat všechny objednávky
+    if (hasPermission('ORDER_EDIT_ALL') || hasPermission('ORDER_MANAGE')) {
+      return true;
+    }
+
+    // DEPARTMENT-BASED SUBORDINATE PERMISSIONS
+    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      return true;
+    }
+
+    // ORDER_READ_SUBORDINATE = POUZE čtení, ŽÁDNÁ editace
+    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      const isInOrderRole = (
+        order.objednatel_id === user_id ||
+        order.uzivatel_id === user_id ||
+        order.garant_uzivatel_id === user_id ||
+        order.schvalovatel_id === user_id ||
+        order.prikazce_id === user_id
+      );
+      if (!isInOrderRole) return false;
+    }
+
+    // Uživatelé s ORDER_*_OWN oprávněními mohou editovat pouze své objednávky
+    if (hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_2025')) {
+      return order.objednatel_id === user_id ||
+             order.uzivatel_id === user_id ||
+             order.garant_uzivatel_id === user_id ||
+             order.schvalovatel_id === user_id;
+    }
+
+    return false;
+  };
+
+  const canExportDocument = (order) => {
+    if (!order) return false;
+
+    const allowedStates = [
+      'ROZPRACOVANA', 'POTVRZENA', 'ODESLANA', 'UVEREJNIT', 'UVEREJNENA',
+      'NEUVEREJNIT', 'FAKTURACE', 'VECNA_SPRAVNOST', 'DOKONCENA', 'ZKONTROLOVANA', 'CEKA_SE'
+    ];
+
+    let workflowStates = [];
+    try {
+      if (order.stav_workflow_kod) {
+        workflowStates = Array.isArray(order.stav_workflow_kod)
+          ? order.stav_workflow_kod
+          : JSON.parse(order.stav_workflow_kod);
+        if (!Array.isArray(workflowStates)) workflowStates = [];
+      }
+    } catch {
+      workflowStates = [];
+    }
+
+    return workflowStates.some(state => {
+      let stavCode = '';
+      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
+        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
+      } else if (typeof state === 'string') {
+        stavCode = String(state).toUpperCase().trim();
+      }
+      return allowedStates.includes(stavCode);
+    });
+  };
+
+  const canCreateInvoice = (order) => {
+    if (!order) return false;
+    if (!hasPermission) return false;
+
+    const hasInvoicePermission = hasPermission('ADMINI') ||
+                                  hasPermission('INVOICE_MANAGE') ||
+                                  hasPermission('INVOICE_ADD');
+    if (!hasInvoicePermission) return false;
+
+    const allowedStates = [
+      'ROZPRACOVANA', 'ODESLANA', 'ODESLANO', 'POTVRZENA', 'UVEREJNIT',
+      'NEUVEREJNIT', 'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST',
+      'ZKONTROLOVANA', 'DOKONCENA'
+    ];
+
+    let workflowStates = [];
+    try {
+      if (order.stav_workflow_kod) {
+        workflowStates = Array.isArray(order.stav_workflow_kod)
+          ? order.stav_workflow_kod
+          : JSON.parse(order.stav_workflow_kod);
+        if (!Array.isArray(workflowStates)) workflowStates = [];
+      }
+    } catch {
+      workflowStates = [];
+    }
+
+    return workflowStates.some(state => {
+      let stavCode = '';
+      if (typeof state === 'object' && (state.kod_stavu || state.nazev_stavu)) {
+        stavCode = String(state.kod_stavu || state.nazev_stavu).toUpperCase().trim();
+      } else if (typeof state === 'string') {
+        stavCode = String(state).toUpperCase().trim();
+      }
+      return allowedStates.includes(stavCode);
+    });
+  };
+
+  const canDelete = (order) => {
+    if (!hasPermission) return false;
+
+    // Zakázat smazání pro koncepty/drafty
+    if (order.isDraft || order.je_koncept || order.hasLocalDraftChanges) return false;
+
+    // Importované objednávky (ARCHIVOVANO) mohou mazat pouze ORDER_MANAGE a ORDER_DELETE_ALL
+    if (order.stav_objednavky === 'ARCHIVOVANO') {
+      return hasPermission('ORDER_MANAGE') || hasPermission('ORDER_DELETE_ALL');
+    }
+
+    // Uživatelé s ORDER_DELETE_ALL nebo ORDER_MANAGE mohou mazat všechny objednávky
+    if (hasPermission('ORDER_DELETE_ALL') || hasPermission('ORDER_MANAGE')) {
+      return true;
+    }
+
+    // DEPARTMENT-BASED SUBORDINATE PERMISSIONS
+    if (hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      return true;
+    }
+
+    // ORDER_READ_SUBORDINATE = NESMÍ mazat (read-only)
+    if (hasPermission('ORDER_READ_SUBORDINATE') && !hasPermission('ORDER_EDIT_SUBORDINATE')) {
+      const isInOrderRole = (
+        order.objednatel_id === user_id ||
+        order.uzivatel_id === user_id ||
+        order.garant_uzivatel_id === user_id ||
+        order.schvalovatel_id === user_id ||
+        order.prikazce_id === user_id
+      );
+      if (!isInOrderRole) return false;
+    }
+
+    // Uživatelé s ORDER_DELETE_OWN mohou mazat pouze své objednávky
+    if (hasPermission('ORDER_DELETE_OWN')) {
+      return order.objednatel_id === user_id ||
+             order.uzivatel_id === user_id ||
+             order.garant_uzivatel_id === user_id ||
+             order.schvalovatel_id === user_id;
+    }
+
+    return false;
+  };
+
+  const canHardDelete = (order) => {
+    // Hard delete pouze pro ADMINI
+    return hasPermission && hasPermission('ADMINI');
+  };
 
   // Custom hook pro Orders V3
   const {
@@ -423,6 +619,10 @@ function Orders25ListV3() {
     return saved !== null ? JSON.parse(saved) : true;
   });
   
+  // State pro dialogy
+  const [docxModalOpen, setDocxModalOpen] = useState(false);
+  const [docxModalOrder, setDocxModalOrder] = useState(null);
+  
   // State pro třídění
   const [sorting, setSorting] = useState([]);
 
@@ -480,21 +680,162 @@ function Orders25ListV3() {
     window.location.reload(); // Reload pro aplikaci změn
   };
 
+  // Handler pro editaci objednávky
+  const handleEditOrder = async (order) => {
+    // 🔒 KONTROLA OPRÁVNĚNÍ - PRVNÍ VĚC!
+    if (!canEdit(order)) {
+      showToast('Nemáte oprávnění editovat tuto objednávku', { type: 'warning' });
+      return;
+    }
+
+    // 🔒 KONTROLA ZAMČENÍ - PŘED NAČÍTÁNÍM DAT!
+    const orderIdToCheck = order.id || order.objednavka_id;
+
+    try {
+      // ✅ V2 API - načti aktuální data z DB pro kontrolu lock_info
+      const dbOrder = await getOrderV2(
+        orderIdToCheck,
+        token,
+        username,
+        true // enriched = true
+      );
+
+      if (!dbOrder) {
+        showToast('Nepodařilo se načíst objednávku z databáze', { type: 'error' });
+        return;
+      }
+
+      // 🔒 Kontrola zamčení jiným uživatelem
+      if (dbOrder.lock_info?.locked === true && !dbOrder.lock_info?.is_owned_by_me && !dbOrder.lock_info?.is_expired) {
+        const lockInfo = dbOrder.lock_info;
+        const lockedByUserName = lockInfo.locked_by_user_fullname || `uživatel #${lockInfo.locked_by_user_id}`;
+        
+        showToast(
+          `Objednávka je zamčená uživatelem ${lockedByUserName}. Nemůžete ji editovat.`,
+          { type: 'warning' }
+        );
+        return;
+      }
+
+      // ✅ Objednávka je dostupná - naviguj na formulář
+      navigate(`/order-form-25?edit=${order.id}`);
+      
+    } catch (error) {
+      console.error('❌ Chyba při kontrole dostupnosti objednávky:', error);
+      showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
+    }
+  };
+
+  // Handler pro evidování faktury
+  const handleCreateInvoice = (order) => {
+    // ✅ Kontrola zda je objednávka ve správném stavu a má práva
+    if (!canCreateInvoice(order)) {
+      const hasInvoicePermission = hasPermission && (hasPermission('ADMINI') || 
+                                     hasPermission('INVOICE_MANAGE') || 
+                                     hasPermission('INVOICE_ADD'));
+      
+      if (!hasInvoicePermission) {
+        showToast('Nemáte oprávnění pro evidování faktur', { type: 'error' });
+      } else {
+        showToast('Evidování faktury je dostupné pouze pro objednávky od stavu ROZPRACOVANÁ', { type: 'warning' });
+      }
+      return;
+    }
+    
+    // 🎯 Získat číslo objednávky pro prefill v našeptávači
+    const orderNumber = order.cislo_objednavky || order.evidencni_cislo || `#${order.id}`;
+    
+    // Navigace do modulu faktur s číslem objednávky v searchTerm
+    navigate('/invoice-evidence', { 
+      state: { 
+        prefillSearchTerm: orderNumber,
+        orderIdForLoad: order.id
+      } 
+    });
+  };
+
+  // Handler pro export DOCX
+  const handleExportOrder = async (order) => {
+    try {
+      // 🔄 Načíst enriched data z BE (V3 API nevrací enriched uživatele)
+      showProgress?.();
+      
+      const enrichedOrder = await getOrderV2(order.id, token, username, true);
+      
+      if (!enrichedOrder) {
+        throw new Error('Nepodařilo se načíst detaily objednávky');
+      }
+      
+      hideProgress?.();
+      
+      // ✅ Předej enriched data do dialogu
+      setDocxModalOrder(enrichedOrder);
+      setDocxModalOpen(true);
+
+    } catch (error) {
+      console.error('❌ [Orders25ListV3] Chyba při otevírání DOCX dialogu:', error);
+      hideProgress?.();
+      showToast?.(`Chyba při otevírání DOCX generátoru: ${error.message}`, { type: 'error' });
+    }
+  };
+
+  // Handler pro zavření DOCX modalu
+  const handleDocxModalClose = () => {
+    setDocxModalOpen(false);
+    setDocxModalOrder(null);
+  };
+
   // Handler pro akce v tabulce
   const handleActionClick = (action, order) => {
     console.log('🎯 Action clicked:', action, order);
-    // TODO: Implementovat akce (edit, create-invoice, export)
+    
+    switch (action) {
+      case 'edit':
+        console.log('→ Editace objednávky', order.id);
+        handleEditOrder(order);
+        break;
+      case 'create-invoice':
+        console.log('→ Evidovat fakturu k objednávce', order.id);
+        handleCreateInvoice(order);
+        break;
+      case 'export':
+        console.log('→ Generovat DOCX objednávky', order.id);
+        handleExportOrder(order);
+        break;
+      case 'delete':
+        console.log('→ Smazat objednávku', order.id);
+        handleDeleteOrder(order);
+        break;
+      default:
+        console.warn('Neznámá akce:', action);
+    }
+  };
+
+  // Handler pro smazání objednávky
+  const handleDeleteOrder = (order) => {
+    const isHardDelete = canHardDelete(order);
+    const deleteType = isHardDelete ? 'HARD DELETE' : 'SOFT DELETE (deaktivace)';
+    
+    // TODO: Zobrazit custom dialog s volbou hard/soft delete
+    const confirmMessage = isHardDelete
+      ? `Opravdu chcete NATRVALO SMAZAT objednávku ${order.cislo_objednavky}?\n\nADMIN MODE: Můžete zvolit:\n- HARD DELETE (natrvalo)\n- SOFT DELETE (deaktivovat)\n\nTato akce je nevratná!`
+      : `Opravdu chcete DEAKTIVOVAT objednávku ${order.cislo_objednavky}?\n\nObjednávka bude skryta, ale data zůstanou v systému.`;
+    
+    if (window.confirm(confirmMessage)) {
+      console.log(`🗑️ ${deleteType}:`, order.id);
+      // TODO: Implementovat API volání pro delete/deactivate
+      // if (isHardDelete) {
+      //   await deleteOrder(order.id, 'hard');
+      // } else {
+      //   await deleteOrder(order.id, 'soft');
+      // }
+    }
   };
 
   // Handler pro rozbalení řádku
   const handleRowExpand = (order) => {
     handleToggleRow(order.id);
   };
-
-  // Dummy handlers pro actions (budou implementovány)
-  const canEdit = () => true;
-  const canCreateInvoice = () => true;
-  const canExportDocument = () => true;
 
   return (
     <Container>
@@ -584,7 +925,7 @@ function Orders25ListV3() {
           stats={stats}
           totalAmount={stats.totalAmount || 0}
           filteredTotalAmount={stats.filteredTotalAmount || stats.totalAmount || 0}
-          filteredCount={orders.length}
+          filteredCount={totalItems}
           hasActiveFilters={dashboardFilters.filter_status || Object.keys(columnFilters).length > 0}
           activeStatus={dashboardFilters.filter_status}
           onStatusClick={handleDashboardFilterChange}
@@ -617,17 +958,6 @@ function Orders25ListV3() {
         </LoadingOverlay>
       )}
 
-      {/* Table (placeholder pro nyní) */}
-      {!loading && orders.length === 0 && !error && (
-        <EmptyState>
-          <EmptyIcon>📋</EmptyIcon>
-          <EmptyTitle>Žádné objednávky</EmptyTitle>
-          <EmptyText>
-            Pro vybraný rok {selectedYear} nebyly nalezeny žádné objednávky.
-          </EmptyText>
-        </EmptyState>
-      )}
-
       {/* Table - zobrazit vždy */}
       <OrdersTableV3
         data={orders}
@@ -645,6 +975,8 @@ function Orders25ListV3() {
         canEdit={canEdit}
         canCreateInvoice={canCreateInvoice}
         canExportDocument={canExportDocument}
+        canDelete={canDelete}
+        canHardDelete={canHardDelete}
         showRowColoring={showRowColoring}
         getRowBackgroundColor={getRowBackgroundColor}
       />
@@ -660,6 +992,17 @@ function Orders25ListV3() {
           onItemsPerPageChange={handleItemsPerPageChange}
           loading={loading}
         />
+      )}
+
+      {/* DOCX Generator Modal - Lazy loaded for better performance */}
+      {docxModalOpen && (
+        <Suspense fallback={<div>Načítání...</div>}>
+          <DocxGeneratorModal
+            order={docxModalOrder}
+            isOpen={docxModalOpen}
+            onClose={handleDocxModalClose}
+          />
+        </Suspense>
       )}
     </Container>
   );
