@@ -21,6 +21,35 @@ require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
 
 /**
+ * Parsuje hodnotu s operátorem (>=10000, >10000, =10000, <10000, <=10000)
+ * @param string $input - Input z frontendu (např. ">=10000")
+ * @return array|null - ['operator' => '>=', 'value' => 10000] nebo null
+ */
+function parseOperatorValue($input) {
+    if (empty($input)) {
+        return null;
+    }
+    
+    // Regex pro operátor a číslo
+    if (preg_match('/^(>=|<=|>|<|=)\s*(\d+(?:\.\d+)?)$/', trim($input), $matches)) {
+        return array(
+            'operator' => $matches[1],
+            'value' => floatval($matches[2])
+        );
+    }
+    
+    // Pokud není operátor, default je =
+    if (is_numeric($input)) {
+        return array(
+            'operator' => '=',
+            'value' => floatval($input)
+        );
+    }
+    
+    return null;
+}
+
+/**
  * Bezpečné JSON parsování - stejné jako v OrderV2Handler
  * 
  * @param string|null $json JSON string
@@ -331,9 +360,35 @@ function handle_order_v3_list($input, $config, $queries) {
         }
         
         if (!empty($filters['objednatel_jmeno'])) {
-            $where_conditions[] = "(u1.jmeno LIKE ? OR u1.prijmeni LIKE ?)";
+            $where_conditions[] = "CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ?";
             $where_params[] = '%' . $filters['objednatel_jmeno'] . '%';
-            $where_params[] = '%' . $filters['objednatel_jmeno'] . '%';
+        }
+        
+        // Filtr pro garanta
+        if (!empty($filters['garant_jmeno'])) {
+            $where_conditions[] = "CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?";
+            $where_params[] = '%' . $filters['garant_jmeno'] . '%';
+        }
+        
+        // Filtr pro příkazce
+        if (!empty($filters['prikazce_jmeno'])) {
+            $where_conditions[] = "CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ?";
+            $where_params[] = '%' . $filters['prikazce_jmeno'] . '%';
+        }
+        
+        // Filtr pro schvalovatele
+        if (!empty($filters['schvalovatel_jmeno'])) {
+            $where_conditions[] = "CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?";
+            $where_params[] = '%' . $filters['schvalovatel_jmeno'] . '%';
+        }
+        
+        // Filtr pro financování - hledá v JSON poli dle typu nebo typu názvu
+        if (!empty($filters['financovani'])) {
+            // Vyhledává v financovani JSON poli podle typu nebo typ_nazev
+            $financovani_search = $filters['financovani'];
+            // Hledáme v JSON: buď typ (LP, SMLOUVA), nebo typ_nazev (Limitovaný příslib, Smlouva)
+            $where_conditions[] = "(o.financovani LIKE ?)";
+            $where_params[] = '%' . $financovani_search . '%';
         }
         
         // Filtr pro workflow stav
@@ -396,6 +451,67 @@ function handle_order_v3_list($input, $config, $queries) {
         if (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
         }
+        
+        // Filtr pro dodavatele (mapování z dodavatel_nazev na dodavatel)
+        if (!empty($filters['dodavatel'])) {
+            $where_conditions[] = "d.nazev LIKE ?";
+            $where_params[] = '%' . $filters['dodavatel'] . '%';
+        }
+        
+        // Datumové filtry
+        if (!empty($filters['datum_od'])) {
+            $where_conditions[] = "DATE(o.dt_objednavky) >= ?";
+            $where_params[] = $filters['datum_od'];
+        }
+        
+        if (!empty($filters['datum_do'])) {
+            $where_conditions[] = "DATE(o.dt_objednavky) <= ?";
+            $where_params[] = $filters['datum_do'];
+        }
+        
+        // Číselné filtry s operátory (>=10000, <=50000, =25000)
+        // Format: ">=10000" nebo ">10000" nebo "=10000"
+        
+        // max_cena_s_dph - maximální cena objednávky
+        if (!empty($filters['cena_max'])) {
+            $parsed = parseOperatorValue($filters['cena_max']);
+            if ($parsed) {
+                $where_conditions[] = "o.max_cena_s_dph {$parsed['operator']} ?";
+                $where_params[] = $parsed['value'];
+            }
+        }
+        
+        // cena_polozky - součet cen položek (HAVING klauzule kvůli subquery)
+        if (!empty($filters['cena_polozky'])) {
+            $parsed = parseOperatorValue($filters['cena_polozky']);
+            if ($parsed) {
+                // Použijeme EXISTS s subquery, protože nemůžeme použít HAVING ve WHERE
+                $where_conditions[] = "EXISTS (
+                    SELECT 1 
+                    FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                    WHERE pol.objednavka_id = o.id 
+                    GROUP BY pol.objednavka_id 
+                    HAVING SUM(pol.cena_s_dph) {$parsed['operator']} ?
+                )";
+                $where_params[] = $parsed['value'];
+            }
+        }
+        
+        // cena_faktury - součet částek faktur
+        if (!empty($filters['cena_faktury'])) {
+            $parsed = parseOperatorValue($filters['cena_faktury']);
+            if ($parsed) {
+                // Použijeme EXISTS s subquery
+                $where_conditions[] = "EXISTS (
+                    SELECT 1 
+                    FROM " . TBL_FAKTURY . " f 
+                    WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                    GROUP BY f.objednavka_id 
+                    HAVING SUM(f.fa_castka) {$parsed['operator']} ?
+                )";
+                $where_params[] = $parsed['value'];
+            }
+        }
 
         $where_sql = implode(' AND ', $where_conditions);
 
@@ -436,6 +552,9 @@ function handle_order_v3_list($input, $config, $queries) {
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN " . TBL_DODAVATELE . " d ON o.dodavatel_id = d.id
             LEFT JOIN " . TBL_UZIVATELE . " u1 ON o.objednatel_id = u1.id
+            LEFT JOIN " . TBL_UZIVATELE . " u2 ON o.garant_uzivatel_id = u2.id
+            LEFT JOIN " . TBL_UZIVATELE . " u3 ON o.prikazce_id = u3.id
+            LEFT JOIN " . TBL_UZIVATELE . " u4 ON o.schvalovatel_id = u4.id
             WHERE $where_sql
         ";
         

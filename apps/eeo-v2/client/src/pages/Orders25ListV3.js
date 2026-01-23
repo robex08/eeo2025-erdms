@@ -969,6 +969,7 @@ function Orders25ListV3() {
         onActionClick={handleActionClick}
         onColumnVisibilityChange={handleColumnVisibilityChange}
         onColumnReorder={handleColumnOrderChange}
+        onColumnFiltersChange={handleColumnFilterChange}
         userId={user_id}
         isLoading={loading}
         error={error}
