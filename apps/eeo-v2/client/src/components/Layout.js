@@ -3685,8 +3685,19 @@ const Layout = ({ children }) => {
               fontWeight: (process.env.REACT_APP_API2_BASE_URL || '').includes('/dev/') ? '700' : '400'
             }}>
               {(() => {
+                // Detekce skutečné API cesty
+                const isDevelopment = process.env.NODE_ENV === 'development';
                 const apiUrl = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
-                return apiUrl.includes('/dev/') ? '/dev/api.eeo' : '/api.eeo';
+                
+                // V npm start (development) se používá setupProxy.js který přesměruje /api.eeo -> /dev/api.eeo
+                // V buildu se používá přímá cesta z REACT_APP_API2_BASE_URL
+                if (isDevelopment) {
+                  return '/dev/api.eeo (proxy)';
+                } else if (apiUrl.includes('/dev/')) {
+                  return '/dev/api.eeo';
+                } else {
+                  return '/api.eeo';
+                }
               })()}
             </span>
             {' | '}

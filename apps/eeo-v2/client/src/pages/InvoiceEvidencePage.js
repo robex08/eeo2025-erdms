@@ -1711,12 +1711,29 @@ export default function InvoiceEvidencePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { orderId } = useParams(); // URL param
-  const { token, username, user_id, hasPermission } = useContext(AuthContext);
+  const { token, username, user_id, hasPermission, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
   const { setProgress } = useContext(ProgressContext) || {};
 
   // 📚 LP Kódy pro čerpání 
   const dictionaries = useDictionaries({ token, username, showToast });
+
+  // 🔐 Helper: Kontrola role UCETNI nebo HLAVNI_UCETNI
+  // Backend poskytuje těmto rolím automatický plný přístup ke všem fakturám
+  const hasAccountantRole = useMemo(() => {
+    if (!userDetail?.roles || !Array.isArray(userDetail.roles)) return false;
+    return userDetail.roles.some(role => 
+      role.kod_role === 'UCETNI' || role.kod_role === 'HLAVNI_UCETNI'
+    );
+  }, [userDetail]);
+
+  // 🔐 Helper: Kontrola role KONTROLOR_FAKTUR
+  // Backend poskytuje této roli automatický přístup ke všem fakturám (READ-ONLY)
+  // Kontrolor může vidět všechny faktury a zaškrtávat checkbox kontroly, ale NEMŮŽE editovat
+  const hasInvoiceControlRole = useMemo(() => {
+    if (!userDetail?.roles || !Array.isArray(userDetail.roles)) return false;
+    return userDetail.roles.some(role => role.kod_role === 'KONTROLOR_FAKTUR');
+  }, [userDetail]);
 
   // Kontrola oprávnění - uživatelé s MANAGE právy nebo ADMIN role vidí všechny objednávky
   // hasPermission('ADMIN') kontroluje SUPERADMIN NEBO ADMINISTRATOR (speciální alias v AuthContext)
@@ -1792,13 +1809,20 @@ export default function InvoiceEvidencePage() {
 
   // 🎨 Readonly režim pro omezené účty
   // Readonly mode pokud:
-  // 1. Má pouze INVOICE_VIEW (bez INVOICE_MANAGE) - úplné readonly
-  // 2. Má INVOICE_MATERIAL_CORRECTNESS (bez INVOICE_MANAGE) - může editovat věcnou správnost
+  // 1. Má pouze INVOICE_VIEW (bez INVOICE_MANAGE a bez role ÚČETNÍ a není KONTROLOR) - úplné readonly
+  // 2. Má INVOICE_MATERIAL_CORRECTNESS (bez INVOICE_MANAGE a bez role ÚČETNÍ a není KONTROLOR) - může editovat věcnou správnost
+  // 3. Je KONTROLOR_FAKTUR - plné readonly (vidí všechny faktury, může používat checkbox kontroly, ale NEMŮŽE editovat)
+  // ⚠️ DŮLEŽITÉ: Role UCETNI/HLAVNI_UCETNI mají automatický plný přístup (NOT readonly)
+  // ⚠️ DŮLEŽITÉ: Role KONTROLOR_FAKTUR má readonly přístup ke všem fakturám
   const hasOnlyViewPermission = hasPermission('INVOICE_VIEW') && 
                                  !hasPermission('INVOICE_MANAGE') && 
-                                 !hasPermission('INVOICE_MATERIAL_CORRECTNESS');
-  const isReadOnlyMode = !hasPermission('INVOICE_MANAGE') && 
-                         (hasPermission('INVOICE_MATERIAL_CORRECTNESS') || hasPermission('INVOICE_VIEW'));
+                                 !hasPermission('INVOICE_MATERIAL_CORRECTNESS') &&
+                                 !hasAccountantRole &&
+                                 !hasInvoiceControlRole;
+  const isReadOnlyMode = (!hasPermission('INVOICE_MANAGE') && 
+                         !hasAccountantRole &&
+                         (hasPermission('INVOICE_MATERIAL_CORRECTNESS') || hasPermission('INVOICE_VIEW'))) ||
+                         hasInvoiceControlRole; // KONTROLOR_FAKTUR = vždy readonly
 
   // �📂 Collapsible sections state
   const [sectionStates, setSectionStates] = useState(() => {
@@ -2062,35 +2086,38 @@ export default function InvoiceEvidencePage() {
     // Readonly režim - nemůže editovat
     if (isReadOnlyMode) return false;
     
-    // � OPRAVA: Pokud se data ještě nenačetla (originalFormData je null), faktura není editovatelná
+    // ✅ NOVÁ FAKTURA: Pokud se vytváří nová faktura (originalFormData je null),
+    // povolíme editaci pro uživatele s INVOICE_MANAGE, ADMIN oprávněním nebo rolí ÚČETNÍ
     if (!originalFormData) {
-      return false;
+      const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+      const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+      return isAdmin || hasInvoiceManage || hasAccountantRole;
     }
     
     // 🔥 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze ji editovat
-    // (kromě adminů nebo INVOICE_MANAGE)
+    // (kromě adminů, INVOICE_MANAGE nebo ÚČETNÍ)
     if (originalFormData.stav === 'DOKONCENA') {
       const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
       const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
-      return isAdmin || hasInvoiceManage;
+      return isAdmin || hasInvoiceManage || hasAccountantRole;
     }
     
     // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
     if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
     
     // 🔥 VĚCNÁ SPRÁVNOST: Po potvrzení věcné správnosti je faktura DISABLED
-    // (kromě ADMIN nebo INVOICE_MANAGE kterí mohou odemknout tlačítkem)
+    // (kromě ADMIN, INVOICE_MANAGE nebo ÚČETNÍ kterí mohou odemknout tlačítkem)
     // POUŽIJ originalFormData místo formData!
     if (originalFormData.vecna_spravnost_potvrzeno === 1) {
-      // Pouze ADMIN nebo INVOICE_MANAGE může editovat po potvrzení věcné správnosti
+      // Pouze ADMIN, INVOICE_MANAGE nebo ÚČETNÍ může editovat po potvrzení věcné správnosti
       const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
       const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
       return false; // Faktura je DISABLED po potvrzení věcné správnosti
     }
     
-    // Běžná editace: INVOICE_MANAGE může editovat dokud není potvrzena věcná správnost
-    return hasPermission('INVOICE_MANAGE');
-  }, [isReadOnlyMode, originalFormData, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
+    // Běžná editace: INVOICE_MANAGE nebo ÚČETNÍ může editovat dokud není potvrzena věcná správnost
+    return hasPermission('INVOICE_MANAGE') || hasAccountantRole;
+  }, [isReadOnlyMode, originalFormData, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission, hasAccountantRole]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO PŘÍLOHY - dostupné dokud faktura NENÍ DOKONČENÁ
   const areAttachmentsEditable = useMemo(() => {
@@ -2103,8 +2130,8 @@ export default function InvoiceEvidencePage() {
     const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
     const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
     
-    // Admini a INVOICE_MANAGE mohou vždy editovat (dokud není DOKONČENÁ)
-    if (isAdmin || hasInvoiceManage) {
+    // Admini, INVOICE_MANAGE a ÚČETNÍ mohou vždy editovat (dokud není DOKONČENÁ)
+    if (isAdmin || hasInvoiceManage || hasAccountantRole) {
       // Pokud se data ještě nenačetla, předpokládáme že může editovat
       if (!originalFormData) {
         return true;
@@ -2125,7 +2152,7 @@ export default function InvoiceEvidencePage() {
     // Pro běžné uživatele: přílohy editovatelné dokud faktura NENÍ DOKONČENÁ
     // (konkrétní oprávnění pro delete/edit konkrétních příloh kontroluje backend)
     return originalFormData.stav !== 'DOKONCENA';
-  }, [editingInvoiceId, originalFormData, hasPermission]);
+  }, [editingInvoiceId, originalFormData, hasPermission, hasAccountantRole]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
   // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI

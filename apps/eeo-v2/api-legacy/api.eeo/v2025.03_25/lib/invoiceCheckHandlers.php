@@ -1,13 +1,14 @@
 <?php
 
 /**
- * Invoice Check Handlers - Kontrola řádků faktur v InvoiceListu
+ * Invoice Check Handlers - Kontrola faktur v InvoiceListu
  * PHP 5.6 Compatible
  * Autor: Development Team
  * Datum: 2026-01-20
  * 
  * 🎯 ÚČEL:
- * - Umožnit kontrolorům odškrtávat jednotlivé FAKTURY (řádky) v tabulce faktur
+ * - Umožnit kontrolorům zkontrolovat správnost VŠECH faktur v systému
+ * - Kontrola se vztahuje na všechny typy financování
  * - Stav kontroly se ukládá do rozsirujici_data JSON v tabulce 25a_objednavky_faktury
  * - Právo kontroly má role KONTROLOR_FAKTUR (ID=17), SUPERADMIN (ID=1) a ADMINISTRATOR (ID=2)
  * 
@@ -91,12 +92,13 @@ function handle_invoice_toggle_check($input, $config) {
         // Nastavit timezone
         TimezoneHelper::setMysqlTimezone($db);
 
-        // 4. Kontrola role KONTROLOR_FAKTUR (ID=17) nebo SUPERADMIN (ID=1) nebo ADMINISTRATOR (ID=2)
+        // 4. Kontrola role KONTROLOR_FAKTUR nebo SUPERADMIN nebo ADMINISTRATOR
         $stmt_role = $db->prepare("
             SELECT COUNT(*) as has_role 
             FROM " . TBL_UZIVATELE_ROLE . " ur
+            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
             WHERE ur.uzivatel_id = ? 
-            AND ur.role_id IN (1, 2, 17)
+            AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR', 'KONTROLOR_FAKTUR')
         ");
         $stmt_role->execute(array($token_data['id']));
         $role_check = $stmt_role->fetch(PDO::FETCH_ASSOC);

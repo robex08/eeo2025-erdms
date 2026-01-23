@@ -2,18 +2,22 @@
 -- MIGRACE: Přidání role KONTROLOR_FAKTUR
 -- Datum: 2026-01-20
 -- Autor: Development Team
--- Popis: Nová role pro kontrolu řádků faktur (LP čerpání)
+-- Popis: Nová role pro kontrolu všech faktur v systému
 -- =============================================================================
 -- 
 -- Účel:
--- - Umožnit kontrolorům odškrtávat jednotlivé řádky faktur
--- - Kontrola probíhá na úrovni LP čerpání (25a_faktury_lp_cerpani)
+-- - Umožnit kontrolorům zkontrolovat správnost všech faktur v systému
+-- - Kontrola se vztahuje na všechny typy financování
 -- - Stav kontroly se ukládá do rozsirujici_data JSON v tabulce 25a_objednavky_faktury
 --
--- Database: eeo2025-dev (DEV)
+-- DŮLEŽITÉ:
+-- - V aplikačním kódu VŽDY používat 'kod_role' (např. 'KONTROLOR_FAKTUR')
+-- - NIKDY nepoužívat ID role (ID se může změnit při migracích)
+--
+-- Database: EEO-OSTRA-DEV (DEV)
 -- =============================================================================
 
-USE `eeo2025-dev`;
+USE `EEO-OSTRA-DEV`;
 
 -- Přidání nové role KONTROLOR_FAKTUR
 INSERT INTO `25_role` (`aktivni`, `kod_role`, `nazev_role`, `Popis`)
@@ -21,7 +25,7 @@ VALUES (
     1,
     'KONTROLOR_FAKTUR',
     'Kontrolor faktur',
-    'Může odškrtávat kontrolu jednotlivých řádků faktur (LP čerpání)'
+    'Může zkontrolovat správnost všech faktur v systému'
 );
 
 -- Poznámka: ID role bude přiděleno automaticky (AUTO_INCREMENT)
