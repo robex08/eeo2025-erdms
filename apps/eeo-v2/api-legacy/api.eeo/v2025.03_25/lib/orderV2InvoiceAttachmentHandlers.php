@@ -31,31 +31,57 @@ if (!function_exists('get_db')) {
 
 // ========== HELPER FUNCTIONS PRO INVOICE ATTACHMENTS ==========
 
+// safe_path_join is defined in orderV2AttachmentHandlers.php - no need to redefine
+
 /**
- * Bezpečné spojení cesty a názvu souboru
- * Ošetří duplicitní nebo chybějící lomítka
- * 
- * @param string $basePath Základní cesta (např. /var/www/uploads/)
- * @param string $filename Název souboru (např. fa-2025-11-16_abc.pdf)
- * @return string Správně spojená cesta
+ * Kontroluje zda má uživatel právo editovat/mazat konkrétní přílohu
+ * @param int $user_id ID uživatele
+ * @param array $user_roles Role uživatele  
+ * @param int $attachment_uploader_id ID uživatele který nahrál přílohu
+ * @param string $attachment_uploader_usek Úsek uživatele který nahrál přílohu
+ * @param string $current_user_usek Úsek aktuálního uživatele
+ * @param PDO $db Databázové připojení
+ * @return bool
  */
-function safe_path_join($basePath, $filename) {
-    // Ošetření prázdných hodnot
-    if (empty($basePath)) {
-        return $filename;
+function canEditAttachment($user_id, $user_roles, $attachment_uploader_id, $attachment_uploader_usek, $current_user_usek, $db) {
+    // ADMIN a INVOICE_MANAGE mohou vše
+    $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
+    
+    // Kontrola INVOICE_MANAGE práva
+    $has_invoice_manage = false;
+    try {
+        $perms_sql = "SELECT COUNT(*) as count FROM `25_prava` p 
+                     WHERE p.kod_prava = 'INVOICE_MANAGE' 
+                     AND p.id IN (
+                         SELECT rp.pravo_id FROM `25_role_prava` rp WHERE rp.user_id = ?
+                         UNION
+                         SELECT rp.pravo_id FROM `25_uzivatele_role` ur
+                         JOIN `25_role_prava` rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                         WHERE ur.uzivatel_id = ?
+                     )";
+        $perms_stmt = $db->prepare($perms_sql);
+        $perms_stmt->execute(array($user_id, $user_id));
+        $result = $perms_stmt->fetch(PDO::FETCH_ASSOC);
+        $has_invoice_manage = $result && $result['count'] > 0;
+    } catch (Exception $e) {
+        error_log("INVOICE_MANAGE check error: " . $e->getMessage());
     }
-    if (empty($filename)) {
-        return $basePath;
+    
+    if ($is_admin || $has_invoice_manage) {
+        return true;
     }
     
-    // Odstranění koncového lomítka z base path
-    $basePath = rtrim($basePath, '/');
+    // Běžný uživatel může editovat jen své přílohy nebo přílohy ze svého úseku
+    if ($attachment_uploader_id == $user_id) {
+        return true; // Svá příloha
+    }
     
-    // Odstranění úvodního lomítka z filename (kdyby tam byl)
-    $filename = ltrim($filename, '/');
+    if (!empty($attachment_uploader_usek) && !empty($current_user_usek) && 
+        $attachment_uploader_usek === $current_user_usek) {
+        return true; // Příloha ze stejného úseku
+    }
     
-    // Spojení s právě jedním lomítkem
-    return $basePath . '/' . $filename;
+    return false;
 }
 
 /**
@@ -112,6 +138,37 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
         return;
+    }
+    
+    // 🔐 PERMISSION CHECKING PRO UPLOAD PŘÍLOH
+    $user_id = $token_data['user_id'];
+    $user_roles = $token_data['roles'] ?? array();
+    
+    // Upload příloh může kdokoliv (nejen ADMIN/INVOICE_MANAGE)
+    // Kontrola se dělá jen při edit/delete konkrétních příloh
+    
+    // 🚫 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze přidávat přílohy
+    // (bez ohledu na stav objednávky či smlouvy)
+    try {
+        $db_temp = get_db($config);
+        if ($db_temp) {
+            $invoice_state_sql = "SELECT stav FROM `25a_objednavky_faktury` WHERE id = ?";
+            $invoice_state_stmt = $db_temp->prepare($invoice_state_sql);
+            $invoice_state_stmt->execute(array($numeric_invoice_id));
+            $invoice_state = $invoice_state_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($invoice_state && $invoice_state['stav'] === 'DOKONCENA') {
+                http_response_code(403);
+                echo json_encode(array(
+                    'status' => 'error', 
+                    'message' => 'Nelze přidávat přílohy k dokončené faktuře.',
+                    'invoice_status' => 'DOKONCENA'
+                ));
+                return;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Invoice state check error: " . $e->getMessage());
     }
     
     
@@ -532,6 +589,93 @@ function handle_order_v2_delete_invoice_attachment($input, $config, $queries) {
         return;
     }
     
+    // 🔐 PERMISSION CHECKING PRO MAZÁNÍ PŘÍLOH
+    $user_id = $token_data['user_id'];
+    $user_roles = $token_data['roles'] ?? array();
+    
+    // Načíst údaje o uživateli (úsek) a příloze (kdo ji nahrál)
+    try {
+        $db_temp = get_db($config);
+        if (!$db_temp) {
+            throw new Exception('Database connection failed');
+        }
+        
+        // Načíst údaje o příloze včetně toho kdo ji nahrál
+        $attachment_sql = "SELECT fa.nahrano_uzivatel_id, u.usek_id as uploader_usek_id, us.usek_zkr as uploader_usek_zkr
+                          FROM `25a_objednavky_faktury_prilohy` fa
+                          LEFT JOIN `25_uzivatele` u ON fa.nahrano_uzivatel_id = u.id  
+                          LEFT JOIN `25_useky` us ON u.usek_id = us.id
+                          WHERE fa.id = ? AND fa.faktura_id = ?";
+        $attachment_stmt = $db_temp->prepare($attachment_sql);
+        $attachment_stmt->execute(array($attachment_id, $numeric_invoice_id));
+        $attachment_info = $attachment_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$attachment_info) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Příloha nebyla nalezena'));
+            return;
+        }
+        
+        // Načíst údaje o aktuálním uživateli (úsek)
+        $user_sql = "SELECT u.usek_id, us.usek_zkr 
+                     FROM `25_uzivatele` u 
+                     LEFT JOIN `25_useky` us ON u.usek_id = us.id
+                     WHERE u.id = ?";
+        $user_stmt = $db_temp->prepare($user_sql);
+        $user_stmt->execute(array($user_id));
+        $user_info = $user_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Kontrola oprávnění k mazání této konkrétní přílohy
+        $can_edit = canEditAttachment(
+            $user_id, 
+            $user_roles,
+            $attachment_info['nahrano_uzivatel_id'],
+            $attachment_info['uploader_usek_zkr'], 
+            $user_info ? $user_info['usek_zkr'] : null,
+            $db_temp
+        );
+        
+        if (!$can_edit) {
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Nemáte oprávnění k mazání této přílohy. Můžete mazat pouze své přílohy nebo přílohy ze svého úseku.',
+                'attachment_owner' => $attachment_info['nahrano_uzivatel_id'],
+                'attachment_department' => $attachment_info['uploader_usek_zkr']
+            ));
+            return;
+        }
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při kontrole oprávnění: ' . $e->getMessage()));
+        return;
+    }
+    
+    // 🚫 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze mazat přílohy
+    // (bez ohledu na stav objednávky či smlouvy)
+    try {
+        $db_temp = get_db($config);
+        if ($db_temp) {
+            $invoice_state_sql = "SELECT stav FROM `25a_objednavky_faktury` WHERE id = ?";
+            $invoice_state_stmt = $db_temp->prepare($invoice_state_sql);
+            $invoice_state_stmt->execute(array($numeric_invoice_id));
+            $invoice_state = $invoice_state_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($invoice_state && $invoice_state['stav'] === 'DOKONCENA') {
+                http_response_code(403);
+                echo json_encode(array(
+                    'status' => 'error', 
+                    'message' => 'Nelze mazat přílohy dokončené faktury.',
+                    'invoice_status' => 'DOKONCENA'
+                ));
+                return;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Invoice state check error: " . $e->getMessage());
+    }
+    
     // Convert invoice_id to numeric
     $numeric_invoice_id = intval($invoice_id);
     
@@ -887,6 +1031,93 @@ function handle_order_v2_update_invoice_attachment($input, $config, $queries) {
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
         return;
+    }
+    
+    // 🔐 PERMISSION CHECKING PRO EDITACI PŘÍLOH
+    $user_id = $token_data['user_id'];
+    $user_roles = $token_data['roles'] ?? array();
+    
+    // Načíst údaje o uživateli (úsek) a příloze (kdo ji nahrál) - stejně jako u delete
+    try {
+        $db_temp = get_db($config);
+        if (!$db_temp) {
+            throw new Exception('Database connection failed');
+        }
+        
+        // Načíst údaje o příloze včetně toho kdo ji nahrál
+        $attachment_sql = "SELECT fa.nahrano_uzivatel_id, u.usek_id as uploader_usek_id, us.usek_zkr as uploader_usek_zkr
+                          FROM `25a_objednavky_faktury_prilohy` fa
+                          LEFT JOIN `25_uzivatele` u ON fa.nahrano_uzivatel_id = u.id  
+                          LEFT JOIN `25_useky` us ON u.usek_id = us.id
+                          WHERE fa.id = ? AND fa.faktura_id = ?";
+        $attachment_stmt = $db_temp->prepare($attachment_sql);
+        $attachment_stmt->execute(array($attachment_id, $invoice_id));
+        $attachment_info = $attachment_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$attachment_info) {
+            http_response_code(404);
+            echo json_encode(array('status' => 'error', 'message' => 'Příloha nebyla nalezena'));
+            return;
+        }
+        
+        // Načíst údaje o aktuálním uživateli (úsek)
+        $user_sql = "SELECT u.usek_id, us.usek_zkr 
+                     FROM `25_uzivatele` u 
+                     LEFT JOIN `25_useky` us ON u.usek_id = us.id
+                     WHERE u.id = ?";
+        $user_stmt = $db_temp->prepare($user_sql);
+        $user_stmt->execute(array($user_id));
+        $user_info = $user_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Kontrola oprávnění k editaci této konkrétní přílohy
+        $can_edit = canEditAttachment(
+            $user_id, 
+            $user_roles,
+            $attachment_info['nahrano_uzivatel_id'],
+            $attachment_info['uploader_usek_zkr'], 
+            $user_info ? $user_info['usek_zkr'] : null,
+            $db_temp
+        );
+        
+        if (!$can_edit) {
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Nemáte oprávnění k editaci této přílohy. Můžete editovat pouze své přílohy nebo přílohy ze svého úseku.',
+                'attachment_owner' => $attachment_info['nahrano_uzivatel_id'],
+                'attachment_department' => $attachment_info['uploader_usek_zkr']
+            ));
+            return;
+        }
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při kontrole oprávnění: ' . $e->getMessage()));
+        return;
+    }
+    
+    // 🚫 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze editovat přílohy
+    // (bez ohledu na stav objednávky či smlouvy)
+    try {
+        $db_temp = get_db($config);
+        if ($db_temp) {
+            $invoice_state_sql = "SELECT stav FROM `25a_objednavky_faktury` WHERE id = ?";
+            $invoice_state_stmt = $db_temp->prepare($invoice_state_sql);
+            $invoice_state_stmt->execute(array($invoice_id));
+            $invoice_state = $invoice_state_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($invoice_state && $invoice_state['stav'] === 'DOKONCENA') {
+                http_response_code(403);
+                echo json_encode(array(
+                    'status' => 'error', 
+                    'message' => 'Nelze editovat přílohy dokončené faktury.',
+                    'invoice_status' => 'DOKONCENA'
+                ));
+                return;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Invoice state check error: " . $e->getMessage());
     }
     
     if (empty($invoice_id) || $attachment_id <= 0) {

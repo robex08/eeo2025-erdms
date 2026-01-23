@@ -236,7 +236,7 @@ require_once __DIR__ . '/v2025.03_25/lib/orderHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderAttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlers.php';
-require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlersOrderV2.php';
+// require_once __DIR__ . '/v2025.03_25/lib/invoiceAttachmentHandlersOrderV2.php'; // DEPRECATED - replaced by orderV2InvoiceAttachmentHandlers.php
 require_once __DIR__ . '/v2025.03_25/lib/notificationHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/notificationTemplatesHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/ciselnikyHandlers.php';
@@ -251,6 +251,7 @@ require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2Endpoints.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2AttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/orderV2InvoiceAttachmentHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/orderV2PolozkyLPHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/fakturyLpCerpaniHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/invoiceCheckHandlers.php';

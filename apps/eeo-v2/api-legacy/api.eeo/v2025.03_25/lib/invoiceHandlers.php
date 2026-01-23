@@ -1617,13 +1617,13 @@ function handle_invoices25_list($input, $config, $queries) {
                 $filter_stav_lower = strtolower($filter_stav);
                 switch ($filter_stav_lower) {
                     case 'paid':
-                        $where_conditions[] = 'f.fa_zaplacena = 1';
+                        $where_conditions[] = '(f.fa_zaplacena = 1 OR f.stav IN ("ZAPLACENO", "DOKONCENA"))';
                         break;
                     case 'unpaid':
-                        $where_conditions[] = 'f.fa_zaplacena = 0 AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
+                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND (f.fa_datum_splatnosti >= CURDATE() OR f.fa_datum_splatnosti IS NULL)';
                         break;
                     case 'overdue':
-                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
+                        $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti < CURDATE()';
                         break;
                 }
             }
@@ -1728,18 +1728,18 @@ function handle_invoices25_list($input, $config, $queries) {
             
             switch ($filter_status) {
                 case 'paid':
-                    // Zaplaceno: fa_zaplacena = 1
-                    $where_conditions[] = 'f.fa_zaplacena = 1';
+                    // Zaplaceno: fa_zaplacena = 1 OR stav = 'ZAPLACENO' OR stav = 'DOKONCENA'
+                    $where_conditions[] = '(f.fa_zaplacena = 1 OR f.stav IN ("ZAPLACENO", "DOKONCENA"))';
                     break;
                     
                 case 'unpaid':
-                    // Nezaplaceno (ještě NEpřekročily splatnost)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti >= CURDATE()';
+                    // Nezaplaceno (ještě NEpřekročily splatnost a nejsou DOKONCENA)
+                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti >= CURDATE()';
                     break;
                     
                 case 'overdue':
-                    // Po splatnosti (nezaplacené a překročily splatnost)
-                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE()';
+                    // Po splatnosti (nezaplacené, nejsou DOKONCENA a překročily splatnost)
+                    $where_conditions[] = 'f.fa_zaplacena = 0 AND f.stav NOT IN ("ZAPLACENO", "DOKONCENA") AND f.fa_datum_splatnosti < CURDATE()';
                     break;
                     
                 case 'without_order':
@@ -1834,12 +1834,12 @@ function handle_invoices25_list($input, $config, $queries) {
         $stats_sql = "SELECT 
             COUNT(*) as total,
             COALESCE(SUM(f.fa_castka), 0) as celkem_castka,
-            COUNT(CASE WHEN f.fa_zaplacena = 1 THEN 1 END) as pocet_zaplaceno,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 1 THEN f.fa_castka ELSE 0 END), 0) as celkem_zaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 THEN 1 END) as pocet_nezaplaceno,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
-            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
-            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
+            COUNT(CASE WHEN f.fa_zaplacena = 1 OR f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN 1 END) as pocet_zaplaceno,
+            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 1 OR f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as celkem_zaplaceno,
+            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') THEN 1 END) as pocet_nezaplaceno,
+            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as celkem_nezaplaceno,
+            COUNT(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') AND f.fa_datum_splatnosti < CURDATE() THEN 1 END) as pocet_po_splatnosti,
+            COALESCE(SUM(CASE WHEN f.fa_zaplacena = 0 AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA') AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as celkem_po_splatnosti,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
@@ -1959,14 +1959,17 @@ function handle_invoices25_list($input, $config, $queries) {
             'dt_aktualizace' => 'f.dt_aktualizace',
             'cislo_faktury' => 'f.fa_cislo_vema', 
             'fa_typ' => 'f.fa_typ',
-            'cislo_objednavky' => 'o.cislo',
+            'cislo_objednavky' => 'o.cislo_objednavky',
             'datum_doruceni' => 'f.fa_datum_doruceni',
             'datum_vystaveni' => 'f.fa_datum_vystaveni',
             'datum_splatnosti' => 'f.fa_datum_splatnosti',
             'castka' => 'f.fa_castka',
-            'status' => 'f.fa_zaplacena', // status se počítá podle fa_zaplacena + splatnosti
+            'status' => 'f.stav', // workflow stav faktury (ZAEVIDOVANA, VECNA_SPRAVNOST, atd.)
             'vytvoril_uzivatel' => 'u_vytvoril.prijmeni',
-            'fa_predana_zam_jmeno' => 'u_predana.prijmeni'
+            'fa_predana_zam_jmeno' => 'u_predana.prijmeni',
+            'potvrdil_vecnou_spravnost_jmeno' => 'u_vecna.prijmeni',
+            'vecna_spravnost_potvrzeno' => 'f.vecna_spravnost_potvrzeno',
+            'pocet_priloh' => 'pocet_priloh'
         );
         
         if (isset($valid_order_fields[$order_by])) {

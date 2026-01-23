@@ -10,6 +10,105 @@
  */
 
 /**
+ * Získá údaje o uživateli včetně rolí a úseku pro permission kontrolu
+ * @param string $username
+ * @param PDO $db
+ * @return array|null
+ */
+function getUserDataForAttachmentPermissions($username, $db) {
+    try {
+        // Získat základní údaje uživatele
+        $sql = "SELECT u.id, u.username, u.usek_id, us.usek_zkr 
+                FROM `25_uzivatele` u 
+                LEFT JOIN `25_useky` us ON u.usek_id = us.id 
+                WHERE u.username = ? AND u.aktivni = 1";
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array($username));
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            return null;
+        }
+        
+        // Získat role uživatele
+        $roles_sql = "SELECT r.kod_role 
+                      FROM `25_uzivatele_role` ur 
+                      JOIN `25_role` r ON ur.role_id = r.id 
+                      WHERE ur.uzivatel_id = ? AND ur.aktivni = 1";
+        $roles_stmt = $db->prepare($roles_sql);
+        $roles_stmt->execute(array($user['id']));
+        
+        $user['roles'] = array();
+        while ($role = $roles_stmt->fetch(PDO::FETCH_ASSOC)) {
+            $user['roles'][] = $role['kod_role'];
+        }
+        
+        return $user;
+        
+    } catch (Exception $e) {
+        error_log("Error getting user data for attachment permissions: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Kontroluje zda má uživatel právo editovat přílohu podle rolí a úseku
+ * @param array $user_data Data uživatele z getUserDataForAttachmentPermissions
+ * @param array $attachment Data přílohy včetně nahrano_uzivatel_id
+ * @param array $invoice Data faktury pro kontrolu stavu
+ * @return array ['can_edit' => bool, 'can_delete' => bool, 'reason' => string]
+ */
+function checkAttachmentEditPermission($user_data, $attachment, $invoice = null) {
+    // 1. Kontrola stavu faktury - pokud je DOKONČENO, nikdo nemůže editovat
+    if ($invoice && isset($invoice['stav']) && $invoice['stav'] === 'DOKONCENO') {
+        return array(
+            'can_edit' => false,
+            'can_delete' => false,
+            'reason' => 'faktura_completed'
+        );
+    }
+    
+    // 2. ADMINI mají vždy plná práva
+    $is_admin = in_array('SUPERADMIN', $user_data['roles']) || 
+                in_array('ADMINISTRATOR', $user_data['roles']);
+    
+    if ($is_admin) {
+        return array(
+            'can_edit' => true,
+            'can_delete' => true,
+            'reason' => 'admin_role'
+        );
+    }
+    
+    // 3. Kontrola vlastnictví - vlastník může vždy editovat svou přílohu
+    if ((int)$attachment['nahrano_uzivatel_id'] === (int)$user_data['id']) {
+        return array(
+            'can_edit' => true,
+            'can_delete' => true,
+            'reason' => 'owner'
+        );
+    }
+    
+    // 4. Kontrola stejného úseku
+    if ($user_data['usek_id'] && $attachment['uploader_usek_id']) {
+        if ((int)$user_data['usek_id'] === (int)$attachment['uploader_usek_id']) {
+            return array(
+                'can_edit' => true,
+                'can_delete' => true,
+                'reason' => 'same_department'
+            );
+        }
+    }
+    
+    // 5. Ostatní - pouze čtení
+    return array(
+        'can_edit' => false,
+        'can_delete' => false,
+        'reason' => 'read_only'
+    );
+}
+
+/**
  * POST /order-v2/invoices/{invoice_id}/attachments
  * Seznam příloh faktury
  * 
@@ -62,9 +161,28 @@ function handle_order_v2_list_invoice_attachments($input, $config, $queries) {
             echo json_encode(array('success' => false, 'error' => 'Chyba připojení k databázi'));
             return;
         }
+        
+        // Získat údaje uživatele včetně rolí
+        $user_data = getUserDataForAttachmentPermissions($username, $db);
+        if (!$user_data) {
+            http_response_code(404);
+            echo json_encode(array('success' => false, 'error' => 'Uživatel nenalezen'));
+            return;
+        }
 
-        // SQL dotaz - načíst přílohy faktury
-        // ✅ OPRAVENO: Odstraněn LEFT JOIN na neexistující tabulku slovníku
+        // Načíst údaje o faktuře pro kontrolu stavu
+        $invoice_sql = "SELECT f.id, f.fa_stav, 
+                               CASE WHEN FIND_IN_SET('DOKONCENO', REPLACE(o.stav_workflow_kod, '[', '')) > 0 
+                                    THEN 'DOKONCENO' 
+                                    ELSE 'AKTIVNI' END as stav
+                        FROM `25a_objednavky_faktury` f
+                        LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+                        WHERE f.id = ?";
+        $invoice_stmt = $db->prepare($invoice_sql);
+        $invoice_stmt->execute(array($invoice_id));
+        $invoice_data = $invoice_stmt->fetch(PDO::FETCH_ASSOC);
+
+        // SQL dotaz - načíst přílohy faktury + údaje o uploaderovi
         $sql = "SELECT 
             fp.id,
             fp.faktura_id,
@@ -79,8 +197,15 @@ function handle_order_v2_list_invoice_attachments($input, $config, $queries) {
             fp.isdoc_data_json,
             fp.nahrano_uzivatel_id,
             fp.dt_vytvoreni,
-            fp.dt_aktualizace
+            fp.dt_aktualizace,
+            u.username as uploader_username,
+            u.jmeno as uploader_jmeno,
+            u.prijmeni as uploader_prijmeni,
+            u.usek_id as uploader_usek_id,
+            us.usek_zkr as uploader_usek_zkr
         FROM `25a_faktury_prilohy` fp
+        LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
+        LEFT JOIN `25_useky` us ON u.usek_id = us.id
         WHERE fp.faktura_id = ?";
         
         // Přidat filtr podle objednávky pokud je zadáno
@@ -114,6 +239,9 @@ function handle_order_v2_list_invoice_attachments($input, $config, $queries) {
             }
             $file_exists = file_exists($file_path);
             
+            // Kontrola oprávnění pro tuto přílohu
+            $permissions = checkAttachmentEditPermission($user_data, $att, $invoice_data);
+            
             $formatted_attachments[] = array(
                 'id' => (int)$att['id'],
                 'faktura_id' => (int)$att['faktura_id'],
@@ -129,7 +257,19 @@ function handle_order_v2_list_invoice_attachments($input, $config, $queries) {
                 'nahrano_uzivatel_id' => (int)$att['nahrano_uzivatel_id'],
                 'dt_vytvoreni' => $att['dt_vytvoreni'],
                 'dt_aktualizace' => $att['dt_aktualizace'],
-                'file_exists' => $file_exists
+                'file_exists' => $file_exists,
+                // 🆕 NOVÉ: Permission údaje pro frontend
+                'uploader_info' => array(
+                    'username' => $att['uploader_username'],
+                    'jmeno' => $att['uploader_jmeno'],
+                    'prijmeni' => $att['uploader_prijmeni'],
+                    'usek_zkr' => $att['uploader_usek_zkr']
+                ),
+                'permissions' => array(
+                    'can_edit' => $permissions['can_edit'],
+                    'can_delete' => $permissions['can_delete'],
+                    'reason' => $permissions['reason']
+                )
             );
         }
 
@@ -229,16 +369,8 @@ function handle_order_v2_upload_invoice_attachment($input, $config, $queries) {
             return;
         }
         
-        // Získat ID uživatele
-        $stmt = $db->prepare("SELECT id FROM `25_uzivatele` WHERE username = ? LIMIT 1");
-        $stmt->execute(array($username));
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$user) {
-            http_response_code(404);
-            echo json_encode(array('success' => false, 'error' => 'Uživatel nenalezen'));
-            return;
-        }
-        $user_id = (int)$user['id'];
+        // Použíj již načtené údaje uživatele
+        $user_id = (int)$user_data['id'];
 
         // Informace o souboru
         $file = $_FILES['file'];
@@ -435,10 +567,27 @@ function handle_order_v2_delete_invoice_attachment($input, $config, $queries) {
             echo json_encode(array('success' => false, 'error' => 'Chyba připojení k databázi'));
             return;
         }
+        
+        // Získat údaje uživatele včetně rolí
+        $user_data = getUserDataForAttachmentPermissions($username, $db);
+        if (!$user_data) {
+            http_response_code(404);
+            echo json_encode(array('success' => false, 'error' => 'Uživatel nenalezen'));
+            return;
+        }
 
-        // Načíst přílohu pro získání cesty k souboru
-        $sql = "SELECT systemova_cesta FROM `25a_faktury_prilohy` 
-                WHERE id = ? AND faktura_id = ? LIMIT 1";
+        // Načíst přílohu pro získání cesty k souboru a kontrolu oprávnění
+        $sql = "SELECT fp.systemova_cesta, fp.nahrano_uzivatel_id,
+                       u.usek_id as uploader_usek_id,
+                       f.id as faktura_id, f.fa_stav,
+                       CASE WHEN FIND_IN_SET('DOKONCENO', REPLACE(o.stav_workflow_kod, '[', '')) > 0 
+                            THEN 'DOKONCENO' 
+                            ELSE 'AKTIVNI' END as invoice_stav
+                FROM `25a_faktury_prilohy` fp
+                LEFT JOIN `25_uzivatele` u ON fp.nahrano_uzivatel_id = u.id
+                LEFT JOIN `25a_objednavky_faktury` f ON fp.faktura_id = f.id
+                LEFT JOIN `25a_objednavky` o ON f.objednavka_id = o.id
+                WHERE fp.id = ? AND fp.faktura_id = ? LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute(array($attachment_id, $invoice_id));
         $attachment = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -448,6 +597,20 @@ function handle_order_v2_delete_invoice_attachment($input, $config, $queries) {
             echo json_encode(array(
                 'success' => false,
                 'error' => 'Příloha nenalezena'
+            ));
+            return;
+        }
+        
+        // Kontrola oprávnění pro mazní přílohy
+        $invoice_for_check = array('stav' => $attachment['invoice_stav']);
+        $permissions = checkAttachmentEditPermission($user_data, $attachment, $invoice_for_check);
+        
+        if (!$permissions['can_delete']) {
+            http_response_code(403);
+            echo json_encode(array(
+                'success' => false,
+                'error' => 'Nemáte oprávnění smazat tuto přílohu',
+                'reason' => $permissions['reason']
             ));
             return;
         }

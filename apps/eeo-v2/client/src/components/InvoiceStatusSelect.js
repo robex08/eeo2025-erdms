@@ -350,7 +350,7 @@ const InvoiceStatusSelect = ({
 
   // Získat konfiguraci aktuálního stavu
   const activeStateConfig = INVOICE_STATES[currentStatus] || INVOICE_STATES.ZAEVIDOVANA;
-  const isFinalState = ['ZAPLACENO', 'K_ZAPLACENI', 'STORNO'].includes(currentStatus);
+  const isFinalState = ['ZAPLACENO', 'K_ZAPLACENI', 'STORNO', 'DOKONCENA'].includes(currentStatus);
 
   // Výpočet rozdílu dní do/po splatnosti
   const getDaysDiff = () => {
