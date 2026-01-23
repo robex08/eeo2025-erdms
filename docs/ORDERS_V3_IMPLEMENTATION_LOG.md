@@ -2,7 +2,7 @@
 
 **Projekt:** Objednávky V3 s backend paging  
 **Začátek:** 23. ledna 2026  
-**Status:** 🚧 V IMPLEMENTACI  
+**Status:** 🚧 V IMPLEMENTACI (Phase 2 hotovo, čeká se na backend)  
 **Dokumentace:** [ORDERS25LIST_BACKEND_PAGINATION_ANALYSIS.md](ORDERS25LIST_BACKEND_PAGINATION_ANALYSIS.md)
 
 ---
@@ -25,6 +25,8 @@ Vytvořit novou verzi seznamu objednávek (V3) s:
 **Commity:**
 - `f90648e` - Příprava před začátkem implementace
 - `7b3c7d8` - Fáze 1 - Routing a menu pro Orders V3 Beta
+- `8605bac` - Dokumentace implementation log
+- `ba0b7e8` - Phase 1 summary
 
 **Implementováno:**
 
