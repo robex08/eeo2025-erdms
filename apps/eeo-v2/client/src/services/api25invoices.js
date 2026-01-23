@@ -1682,7 +1682,9 @@ export async function listInvoices25({
   filter_vecna_kontrola,  // 📋 Sloupcový filtr - věcná kontrola
   filter_vecnou_provedl,  // 📋 Sloupcový filtr - kdo provedl věcnou kontrolu
   filter_predano_zamestnanec,  // 📋 Sloupcový filtr - předáno zaměstnanci
-  filter_kontrola_radku  // ✅ Sloupcový filtr - kontrola řádku (kontrolovano/nekontrolovano)
+  filter_kontrola_radku,  // ✅ Sloupcový filtr - kontrola řádku (kontrolovano/nekontrolovano)
+  order_by,    // 📊 Třídění - sloupec pro řazení
+  order_direction  // 📊 Třídění - směr řazení (ASC/DESC)
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
@@ -1737,6 +1739,10 @@ export async function listInvoices25({
     
     // ✅ Filtr pro kontrolu řádku (kontrolovano/nekontrolovano)
     if (filter_kontrola_radku !== undefined && filter_kontrola_radku !== '') payload.filter_kontrola_radku = filter_kontrola_radku;
+
+    // 📊 Třídění
+    if (order_by !== undefined && order_by !== '') payload.order_by = order_by;
+    if (order_direction !== undefined && order_direction !== '') payload.order_direction = order_direction;
 
     const response = await api25invoices.post('invoices25/list', payload, {
       timeout: 30000

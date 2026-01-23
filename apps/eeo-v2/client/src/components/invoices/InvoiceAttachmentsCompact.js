@@ -565,6 +565,22 @@ const InvoiceAttachmentsCompact = ({
     return parts.length > 0 ? parts.join(' ') : (user.username || `Uživatel #${userId}`);
   }, [allUsers, username]);
 
+  // 🛡️ Helper funkce pro zobrazení důvodů oprávnění
+  const getPermissionReasonText = useCallback((reason) => {
+    switch (reason) {
+      case 'not_author':
+        return 'Můžete mazat pouze vlastní přílohy';
+      case 'different_department':
+        return 'Můžete mazat pouze přílohy od kolegů ze svého úseku';
+      case 'invoice_completed':
+        return 'Nelze mazat přílohy u dokončené faktury';
+      case 'admin_only':
+        return 'Pouze administrátoři mohou mazat tuto přílohu';
+      default:
+        return reason || 'Nemáte oprávnění smazat tuto přílohu';
+    }
+  }, []);
+
   // �🎯 Drag handlers pro file viewer
   const handleFileViewerDrag = useCallback((e) => {
     if (!isDraggingViewer) return;
@@ -748,6 +764,13 @@ const InvoiceAttachmentsCompact = ({
         // 🔍 Najít název typu přílohy z číselníku
         const typPrilohy = fakturaTypyPrilohOptions.find(t => t.kod === att.typ_prilohy);
 
+        // 🛡️ Oprávnění z backendu
+        const permissions = att.permissions || {};
+        const canEdit = permissions.can_edit !== false; // Default true pokud není definováno
+        const canDelete = permissions.can_delete !== false; // Default true pokud není definováno
+        const editReason = permissions.edit_reason || null;
+        const deleteReason = permissions.delete_reason || null;
+
         // ✅ ZACHOVAT ČESKÉ NÁZVY 1:1 JAK JSOU V DB - NEPŘEJMENOVÁVAT!
         // + přidat aliasy pro zpětnou kompatibilitu
         return {
@@ -765,6 +788,13 @@ const InvoiceAttachmentsCompact = ({
           status: fileExists ? 'uploaded' : 'error',
           file_exists: fileExists,
           error: hasError || (!fileExists ? 'Fyzický soubor chybí na disku' : null),
+          // 🛡️ Oprávnění pro UI
+          permissions: {
+            can_edit: canEdit,
+            can_delete: canDelete,
+            edit_reason: editReason,
+            delete_reason: deleteReason
+          },
           // Aliasy pro zpětnou kompatibilitu s kódem který používá name/size/klasifikace
           name: att.originalni_nazev_souboru,
           size: att.velikost_souboru_b,
@@ -2536,28 +2566,56 @@ const InvoiceAttachmentsCompact = ({
                       </button>
                     )}
 
-                    {/* Koš */}
+                    {/* Koš - zobrazit pouze pokud má uživatel oprávnění */}
                     {!readOnly && (
                       <button
                         type="button"
                         onClick={() => file.serverId ? deleteFromServer(file.id) : removeFile(file.id)}
-                        disabled={file.status === 'uploading'}
+                        disabled={
+                          file.status === 'uploading' || 
+                          (file.serverId && file.permissions && file.permissions.can_delete === false)
+                        }
                         style={{
                           background: 'none',
                           border: 'none',
-                          color: file.status === 'uploading' ? '#9ca3af' : '#dc2626',
-                          cursor: file.status === 'uploading' ? 'not-allowed' : 'pointer',
+                          color: file.status === 'uploading' ? '#9ca3af' : 
+                                (file.serverId && file.permissions && file.permissions.can_delete === false) ? '#9ca3af' : '#dc2626',
+                          cursor: (file.status === 'uploading' || 
+                                  (file.serverId && file.permissions && file.permissions.can_delete === false)) 
+                                  ? 'not-allowed' : 'pointer',
                           padding: '2px',
                           display: 'flex',
                           alignItems: 'center',
-                          opacity: file.status === 'uploading' ? 0.6 : 1,
+                          opacity: (file.status === 'uploading' || 
+                                   (file.serverId && file.permissions && file.permissions.can_delete === false)) ? 0.6 : 1,
                           fontSize: '12px',
                           flexShrink: 0
                         }}
-                        title={file.serverId ? "Smazat ze serveru" : "Smazat soubor"}
+                        title={
+                          file.status === 'uploading' ? 'Probíhá nahrávání...' :
+                          (file.serverId && file.permissions && file.permissions.can_delete === false) ? 
+                            (file.permissions.delete_reason || 'Nemáte oprávnění smazat tuto přílohu') :
+                            (file.serverId ? "Smazat ze serveru" : "Smazat soubor")
+                        }
                       >
                         <Trash2 size={14} />
                       </button>
+                    )}
+                    
+                    {/* Informace o oprávnění - zobrazit důvod pro read-only přílohy */}
+                    {file.serverId && file.permissions && !file.permissions.can_delete && (
+                      <span style={{
+                        color: '#6b7280',
+                        fontSize: '0.6875rem',
+                        backgroundColor: '#f3f4f6',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        flexShrink: 0
+                      }}
+                      title={getPermissionReasonText(file.permissions.delete_reason)}
+                      >
+                        🔒
+                      </span>
                     )}
                   </div>
                 </div>

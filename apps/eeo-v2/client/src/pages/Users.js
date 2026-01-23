@@ -1835,6 +1835,7 @@ const Users = () => {
       if (columnFilters.username && !normalizeForSearch(user.username).includes(normalizeForSearch(columnFilters.username))) return false;
       if (columnFilters.fullName && !normalizeForSearch(user.fullName).includes(normalizeForSearch(columnFilters.fullName))) return false;
       if (columnFilters.email && !normalizeForSearch(user.email).includes(normalizeForSearch(columnFilters.email))) return false;
+      if (columnFilters.phone && !normalizeForSearch(user.phone || user.telefon).includes(normalizeForSearch(columnFilters.phone))) return false;
       if (columnFilters.location && !normalizeForSearch(user.location).includes(normalizeForSearch(columnFilters.location))) return false;
       if (columnFilters.department && !normalizeForSearch(user.department).includes(normalizeForSearch(columnFilters.department))) return false;
       if (columnFilters.position && !normalizeForSearch(user.position).includes(normalizeForSearch(columnFilters.position))) return false;

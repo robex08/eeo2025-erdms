@@ -8250,7 +8250,6 @@ function OrderForm25() {
                          (formData?.zpusob_financovani && String(formData.zpusob_financovani).toLowerCase().includes('lp'));
     
     if (!isLPFinancing) {
-      console.log('⏭️ [LP] Objednávka není LP financování, přeskakuji uložení LP čerpání');
       return { success: 0, failed: 0, skipped: 0 };
     }
 
@@ -16750,7 +16749,6 @@ function OrderForm25() {
     if (isWorkflowCompleted) {
       try {
         // � NOVÉ: Před zavřením uložit všechny LP čerpání faktur
-        console.log('💾 [LP] Ukládám všechna LP čerpání před zavřením...');
         await saveAllFakturyLPCerpani();
         
         // �🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
@@ -16866,7 +16864,6 @@ function OrderForm25() {
 
     try {
       // � NOVÉ: Před zavřením uložit všechny LP čerpání faktur
-      console.log('💾 [LP] Ukládám všechna LP čerpání před zavřením...');
       await saveAllFakturyLPCerpani();
       
       // �🚨🚨🚨 KRITICKÉ: OKAMŽITĚ ZABLOKOVAT VŠECHNY SAVE OPERACE 🚨🚨🚨
@@ -16937,7 +16934,6 @@ function OrderForm25() {
           
           // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
           localStorage.removeItem(`order25_lpCerpani_${user_id}`);
-          console.log('[LP] Vyčištěno z LS při Cancel');
         } catch (e) {
           // ignoruj chybu
         }
