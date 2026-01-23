@@ -2062,17 +2062,54 @@ export default function InvoiceEvidencePage() {
     // Readonly režim - nemůže editovat
     if (isReadOnlyMode) return false;
     
-    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
-    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
-    
-    // 🔥 OPRAVA: Běžný uživatel (s INVOICE_MANAGE) nemůže editovat fakturu po schválení věcné správnosti
-    // Pouze admin (INVOICE_MANAGE_ALL) může editovat i po schválení
-    if (formData.vecna_spravnost_potvrzeno === 1 && !hasPermission('INVOICE_MANAGE_ALL')) {
+    // � OPRAVA: Pokud se data ještě nenačetla (originalFormData je null), faktura není editovatelná
+    if (!originalFormData) {
       return false;
     }
     
-    return true;
-  }, [isReadOnlyMode, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
+    // 🔥 KONTROLA STAVU FAKTURY: Pokud je faktura DOKONČENÁ, nelze ji editovat
+    // (kromě adminů nebo INVOICE_MANAGE)
+    if (originalFormData.stav === 'DOKONCENA') {
+      const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+      const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+      return isAdmin || hasInvoiceManage;
+    }
+    
+    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
+    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
+    
+    // 🔥 VĚCNÁ SPRÁVNOST: Po potvrzení věcné správnosti je faktura DISABLED
+    // (kromě ADMIN nebo INVOICE_MANAGE kterí mohou odemknout tlačítkem)
+    // POUŽIJ originalFormData místo formData!
+    if (originalFormData.vecna_spravnost_potvrzeno === 1) {
+      // Pouze ADMIN nebo INVOICE_MANAGE může editovat po potvrzení věcné správnosti
+      const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+      const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+      return false; // Faktura je DISABLED po potvrzení věcné správnosti
+    }
+    
+    // Běžná editace: INVOICE_MANAGE může editovat dokud není potvrzena věcná správnost
+    return hasPermission('INVOICE_MANAGE');
+  }, [isReadOnlyMode, originalFormData, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission]);
+
+  // 🆕 SEPARÁTNÍ LOGIKA PRO PŘÍLOHY - dostupné dokud faktura NENÍ DOKONČENÁ
+  const areAttachmentsEditable = useMemo(() => {
+    // Kontrola oprávnění uživatele pro přílohy
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (!isAdmin && !hasInvoiceManage) {
+      return false;
+    }
+    
+    // 🔧 OPRAVA: Pokud se data ještě nenačetla (originalFormData je null), přílohy nejsou dostupné
+    if (!originalFormData) {
+      return false;
+    }
+    
+    // Přílohy jsou editovatelné dokud faktura NENÍ DOKONČENÁ (bez ohledu na jiné stavy)
+    return originalFormData.stav !== 'DOKONCENA';
+  }, [originalFormData, hasPermission]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
   // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI
@@ -2134,21 +2171,27 @@ export default function InvoiceEvidencePage() {
       
       localStorage.setItem(`invoiceOrigEntity_${user_id}`, JSON.stringify(hadOriginalEntity));
       
-      // 🆕 Uložit LP čerpání
-      if (lpCerpani && Array.isArray(lpCerpani) && lpCerpani.length > 0) {
-        localStorage.setItem(`invoiceLpCerpani_${user_id}`, JSON.stringify(lpCerpani));
-      } else {
-        localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
-      }
+
       
       // 🆕 Uložit stav sekcí (sbalené/rozbalené)
       localStorage.setItem(`invoiceSections_${user_id}`, JSON.stringify(sectionStates));
     } catch (err) {
       console.warn('❌ Chyba při ukládání do localStorage:', err);
     }
-  }, [formData, attachments, editingInvoiceId, hadOriginalEntity, lpCerpani, sectionStates, user_id, lsLoaded, allowLSSave]); // ✅ Přidáno lpCerpani, sectionStates
+  }, [formData, attachments, editingInvoiceId, hadOriginalEntity, sectionStates, user_id, lsLoaded, allowLSSave]); // ✅ Odstraněno lpCerpani - má vlastní debounced save
 
-  // 🔄 NOVÝ: Načtení dat z localStorage při mount (pouze jednou, po získání user_id)
+  // � SEKCE STATES - zůstává v localStorage (není součást draftu)
+  useEffect(() => {
+    if (!lsLoaded || !user_id || !allowLSSave) return;
+    
+    try {
+      localStorage.setItem(`invoiceSections_${user_id}`, JSON.stringify(sectionStates));
+    } catch (err) {
+      console.warn('❌ Chyba při ukládání section states:', err);
+    }
+  }, [sectionStates, user_id, lsLoaded, allowLSSave]);
+
+  // 🔄 NAČTENÍ dat z DraftManager při mount (místo localStorage)
   useEffect(() => {
     if (!user_id || lsLoaded || isResettingRef.current) return;
     
@@ -2176,53 +2219,45 @@ export default function InvoiceEvidencePage() {
       return;
     }
     
-    try {
-      // Načíst editingInvoiceId
-      const savedEditId = localStorage.getItem(`invoiceEdit_${user_id}`);
-      if (savedEditId) {
-        setEditingInvoiceId(JSON.parse(savedEditId));
-        // 🆕 Pokud je uloženo editingInvoiceId, nastavit i invoiceUserConfirmed
-        // (protože to znamená, že faktura byla již potvrzena)
-        setInvoiceUserConfirmed(true);
-        setIsOriginalEdit(true);
-      }
-      
-      // Načíst hadOriginalEntity
-      const savedOrigEntity = localStorage.getItem(`invoiceOrigEntity_${user_id}`);
-      if (savedOrigEntity) {
-        setHadOriginalEntity(JSON.parse(savedOrigEntity));
-      }
-      
-      // 🆕 Načíst LP čerpání
-      const savedLpCerpani = localStorage.getItem(`invoiceLpCerpani_${user_id}`);
-      if (savedLpCerpani) {
-        try {
-          const parsed = JSON.parse(savedLpCerpani);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setLpCerpani(parsed);
+    const loadFromDraft = async () => {
+      try {
+        draftManager.setCurrentUser(user_id);
+        const draft = await draftManager.loadDraft();
+        
+        if (draft && draft.formData && draft.metadata?.isInvoiceEvidence) {
+          // Načíst formData
+          setFormData(draft.formData);
+          
+          // Načíst attachments
+          if (draft.attachments) {
+            setAttachments(draft.attachments);
           }
-        } catch (e) {
-          console.warn('⚠️ Chyba při parsování LP čerpání z localStorage:', e);
+          
+          // Načíst editingInvoiceId
+          if (draft.metadata.editingInvoiceId) {
+            setEditingInvoiceId(draft.metadata.editingInvoiceId);
+            setInvoiceUserConfirmed(true);
+            setIsOriginalEdit(true);
+          }
+          
+          // Načíst hadOriginalEntity  
+          if (draft.metadata.hadOriginalEntity) {
+            setHadOriginalEntity(draft.metadata.hadOriginalEntity);
+          }
+          
+          // Načíst LP čerpání
+          if (draft.lpCerpani && Array.isArray(draft.lpCerpani)) {
+            setLpCerpani(draft.lpCerpani);
+          }
         }
+      } catch (err) {
+        console.warn('⚠️ Chyba při načítání draftu:', err);
       }
       
-      // Načíst formData
-      const savedForm = localStorage.getItem(`invoiceForm_${user_id}`);
-      if (savedForm) {
-        const parsed = JSON.parse(savedForm);
-        setFormData(parsed);
-      }
-      
-      // Načíst attachments
-      const savedAttach = localStorage.getItem(`invoiceAttach_${user_id}`);
-      if (savedAttach) {
-        setAttachments(JSON.parse(savedAttach));
-      }
-    } catch (err) {
-      console.warn('⚠️ Chyba při načítání dat z localStorage:', err);
-    }
+      setLsLoaded(true);
+    };
     
-    setLsLoaded(true);
+    loadFromDraft();
   }, [user_id, lsLoaded]);
 
   // Načtení středisek, typů faktur a zaměstnanců při mount (pouze jednou!)
@@ -2503,7 +2538,9 @@ export default function InvoiceEvidencePage() {
             potvrdil_vecnou_spravnost_id: invoiceData.potvrdil_vecnou_spravnost_id || null,
             dt_potvrzeni_vecne_spravnosti: invoiceData.dt_potvrzeni_vecne_spravnosti || '',
             // ID faktury pro editaci a LP čerpání
-            invoice_id: invoiceData.id
+            invoice_id: invoiceData.id,
+            // Stav faktury (pro kontrolu DOKONČENÁ)
+            stav: invoiceData.stav || 'ZAEVIDOVANA'
           };
           
           
@@ -2594,12 +2631,19 @@ export default function InvoiceEvidencePage() {
       }
     };
     
-    // Spustit pokud existuje editInvoiceId v location.state NEBO v editingInvoiceId (z localStorage)
+    // Spustit pokud existuje editInvoiceId v location.state NEBO v editingInvoiceId (z draftu)
+    // ⚠️ POUZE pokud není načítání z draftu (aby se draft nepřepsal daty z DB)
     const editIdToLoad = location.state?.editInvoiceId || editingInvoiceId;
+    const isExplicitEdit = !!location.state?.editInvoiceId; // Explicitní edit z odkazu/navigace
+    const isDraftEdit = !isExplicitEdit && !!editingInvoiceId; // Edit z draftu
+    
     if (editIdToLoad && strediskaOptions.length > 0) {
-      loadInvoiceForEdit();
+      // Načíst z DB pouze při explicitní navigaci, ne při load z draftu
+      if (isExplicitEdit) {
+        loadInvoiceForEdit();
+      }
     }
-  }, [location.state?.editInvoiceId, editingInvoiceId, token, username, strediskaOptions.length]); // ✅ OPRAVENO: sledujeme .length místo celého pole
+  }, [location.state?.editInvoiceId, token, username, strediskaOptions.length]); // ✅ ODSTRANĚNO: editingInvoiceId dependency
 
   // Načtení objednávky při mount nebo změně orderId
   const loadOrderData = useCallback(async (orderIdToLoad) => {
@@ -2732,15 +2776,20 @@ export default function InvoiceEvidencePage() {
         try {
           // InvoiceEvidencePage unmount: Čištění localStorage
           
-          // 1. 📋 Invoice form data
-          localStorage.removeItem(`invoiceForm_${user_id}`);
-          localStorage.removeItem(`invoiceAttach_${user_id}`);
-          localStorage.removeItem(`invoiceEdit_${user_id}`);
-          localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
-          localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
+          // 1. 📋 Invoice draft data - vymažeme přes DraftManager
+          if (user_id) {
+            try {
+              draftManager.setCurrentUser(user_id);
+              draftManager.deleteDraft().catch(e => console.warn('⚠️ Chyba při mazání invoice draftu:', e));
+            } catch (e) {
+              console.warn('⚠️ Chyba při mazání invoice draftu:', e);
+            }
+          }
+          
+          // 2. 🎨 Section states - zůstává v localStorage
           localStorage.removeItem(`invoiceSections_${user_id}`);
           
-          // 2. 🌍 Global flags
+          // 3. 🌍 Global flags
           localStorage.removeItem('hadOriginalEntity');
           localStorage.removeItem(`activeOrderEditId_${user_id}`);
           localStorage.removeItem('spisovka_active_dokument');
@@ -4041,8 +4090,18 @@ export default function InvoiceEvidencePage() {
         
         if (isLPFinancing && lpCerpani && lpCerpani.length > 0) {
           try {
-            // 🔥 FIX: Filtrovat jen validní řádky před uložením do DB
-            const validLpCerpani = lpCerpani.filter(lp => lp.lp_id && lp.lp_cislo && lp.castka > 0);
+            // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
+            const validLpCerpani = lpCerpani.filter(row => {
+              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasCastka = row.castka && parseFloat(row.castka) > 0;
+              return hasLpId && hasCastka;
+            }).map(row => ({
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
+              lp_cislo: String(row.lp_id).trim(),
+              lp_id: parseInt(row.lp_id, 10),
+              castka: parseFloat(row.castka),
+              poznamka: row.poznamka || ''
+            }));
             
             if (validLpCerpani.length > 0) {
               await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
@@ -4402,7 +4461,22 @@ export default function InvoiceEvidencePage() {
         
         if (lpCerpani && lpCerpani.length > 0) {
           try {
-            await saveFakturaLPCerpani(editingInvoiceId, lpCerpani, token, username);
+            // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
+            const validLpCerpani = lpCerpani.filter(row => {
+              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasCastka = row.castka && parseFloat(row.castka) > 0;
+              return hasLpId && hasCastka;
+            }).map(row => ({
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
+              lp_cislo: String(row.lp_id).trim(),
+              lp_id: parseInt(row.lp_id, 10),
+              castka: parseFloat(row.castka),
+              poznamka: row.poznamka || ''
+            }));
+            
+            if (validLpCerpani.length > 0) {
+              await saveFakturaLPCerpani(editingInvoiceId, validLpCerpani, token, username);
+            }
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
@@ -4441,7 +4515,22 @@ export default function InvoiceEvidencePage() {
         
         if (newInvoiceId && lpCerpani && lpCerpani.length > 0) {
           try {
-            await saveFakturaLPCerpani(newInvoiceId, lpCerpani, token, username);
+            // 🔥 FIX: Stejná logika jako v OrderForm25 - filtrovat a mapovat data
+            const validLpCerpani = lpCerpani.filter(row => {
+              const hasLpId = row.lp_id && parseInt(row.lp_id, 10) > 0;
+              const hasCastka = row.castka && parseFloat(row.castka) > 0;
+              return hasLpId && hasCastka;
+            }).map(row => ({
+              // Backend validuje lp_cislo podle financovani.lp_kody - MUSÍ být LP ID jako string
+              lp_cislo: String(row.lp_id).trim(),
+              lp_id: parseInt(row.lp_id, 10),
+              castka: parseFloat(row.castka),
+              poznamka: row.poznamka || ''
+            }));
+            
+            if (validLpCerpani.length > 0) {
+              await saveFakturaLPCerpani(newInvoiceId, validLpCerpani, token, username);
+            }
           } catch (lpError) {
             console.error('❌ Chyba při ukládání LP čerpání:', lpError);
             // Nezastavujeme proces - LP čerpání je bonusová data, faktura už je uložena
@@ -4807,13 +4896,16 @@ export default function InvoiceEvidencePage() {
       
       // 💾 Vyčistit localStorage
       try {
-        localStorage.removeItem(`invoiceForm_${user_id}`);
-        localStorage.removeItem(`invoiceAttach_${user_id}`);
-        localStorage.removeItem(`invoiceEdit_${user_id}`);
-        localStorage.removeItem(`invoiceOrigEntity_${user_id}`);
-        localStorage.removeItem(`invoiceLpCerpani_${user_id}`);
+        // DraftManager cleanup
+        if (user_id) {
+          draftManager.setCurrentUser(user_id);
+          draftManager.deleteDraft().catch(e => console.warn('Draft cleanup error:', e));
+        }
+        
+        // Section states cleanup
+        localStorage.removeItem(`invoiceSections_${user_id}`);
       } catch (lsErr) {
-        console.warn('Chyba při mazání localStorage:', lsErr);
+        console.warn('Chyba při cleanup:', lsErr);
       }
       
       // Reset formuláře do výchozího stavu
@@ -6259,7 +6351,7 @@ export default function InvoiceEvidencePage() {
               fakturaId={editingInvoiceId || 'temp-new-invoice'}
               objednavkaId={formData.order_id || null}
               fakturaTypyPrilohOptions={typyFakturOptions}
-              readOnly={!isInvoiceEditable}
+              readOnly={!areAttachmentsEditable}
               onISDOCParsed={handleISDOCParsed}
               formData={formData}
               faktura={{

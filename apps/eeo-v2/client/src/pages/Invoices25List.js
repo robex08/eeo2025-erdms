@@ -2061,12 +2061,12 @@ const Invoices25List = () => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) → ZAPLACENO
-    if (invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true) {
+    // 1️⃣ Pokud je ZAPLACENÁ (fa_zaplacena = 1) nebo DOKONČENÁ (stav = 'DOKONCENA') → ZAPLACENO
+    if (invoice.fa_zaplacena === 1 || invoice.fa_zaplacena === true || invoice.stav === 'DOKONCENA' || invoice.stav === 'ZAPLACENO') {
       return 'paid';
     }
     
-    // 2️⃣ Pokud NENÍ zaplacená a má datum splatnosti → kontrola po splatnosti
+    // 2️⃣ Pokud NENÍ zaplacená/dokončená a má datum splatnosti → kontrola po splatnosti
     if (invoice.fa_datum_splatnosti) {
       const splatnost = new Date(invoice.fa_datum_splatnosti);
       splatnost.setHours(0, 0, 0, 0);
@@ -2677,14 +2677,20 @@ const Invoices25List = () => {
   // Handler pro třídění tabulky
   const handleSort = useCallback((field) => {
     if (sortField === field) {
-      // Toggle směr třídění
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      // Cycle: ASC → DESC → NONE (reset)
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        // Zrušit třídění
+        setSortField('');
+        setSortDirection('asc');
+      }
     } else {
       // Nové pole -> výchozí směr ASC
       setSortField(field);
       setSortDirection('asc');
     }
-  }, [sortField]);
+  }, [sortField, sortDirection]);
 
   // ⚠️ ŘAZENÍ DĚLÁ BACKEND - invoices už jsou seřazené podle sortField a sortDirection!
   // Client-side řazení je zakázáno - používáme data přímo z BE
