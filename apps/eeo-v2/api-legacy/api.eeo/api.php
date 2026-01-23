@@ -3547,9 +3547,9 @@ switch ($endpoint) {
         }
         
         // PUT /api.eeo/order-v2/invoices/{invoice_id}/attachments/{att_id}/update - update metadata prilohy faktury
-        if (preg_match('/^order-v2\/invoices\/([a-zA-Z0-9_-]+)\/attachments\/(\d+)\/update$/', $endpoint, $matches)) {
+        if (preg_match('/^order-v2\/invoices\/([a-zA-Z0-9_-]+)\/attachments\/([a-zA-Z0-9_-]+)\/update$/', $endpoint, $matches)) {
             $input['invoice_id'] = $matches[1];
-            $input['attachment_id'] = (int)$matches[2];
+            $input['attachment_id'] = $matches[2]; // Může být číslo nebo pending-xxx
             
             if ($request_method === 'PUT' || $request_method === 'POST') {
                 handle_order_v2_update_invoice_attachment($input, $config, $queries);

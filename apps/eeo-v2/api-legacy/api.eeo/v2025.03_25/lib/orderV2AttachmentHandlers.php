@@ -1,5 +1,4 @@
 <?php
-require_once __DIR__ . "/TimezoneHelper.php";
 /**
  * Order V2 Attachment Handlers - Kompletní správa příloh
  * 
@@ -23,6 +22,9 @@ require_once __DIR__ . '/TimezoneHelper.php';
 
 // Include necessary functions from handlers.php
 if (!function_exists('verify_token')) {
+    require_once __DIR__ . '/handlers.php';
+}
+if (!function_exists('verify_token_v2')) {
     require_once __DIR__ . '/handlers.php';
 }
 if (!function_exists('get_db')) {
