@@ -1743,8 +1743,8 @@ function handle_invoices25_list($input, $config, $queries) {
                     break;
                     
                 case 'without_order':
-                    // Bez objednávky
-                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0)';
+                    // Bez objednávky a bez smlouvy (faktury bez přiřazení)
+                    $where_conditions[] = '(f.objednavka_id IS NULL OR f.objednavka_id = 0) AND (f.smlouva_id IS NULL OR f.smlouva_id = 0)';
                     break;
                     
                 case 'my_invoices':
