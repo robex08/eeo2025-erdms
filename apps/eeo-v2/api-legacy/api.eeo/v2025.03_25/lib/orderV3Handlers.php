@@ -62,6 +62,153 @@ function parseFinancovani($financovaniRaw) {
 }
 
 /**
+ * Načte LP detaily podle ID z tabulky 25_limitovane_prisliby
+ * @param PDO $db
+ * @param int $lp_id
+ * @return array|null - Array s cislo_lp a nazev_uctu nebo null
+ */
+function getLPDetailyV3($db, $lp_id) {
+    if (empty($lp_id)) return null;
+    
+    try {
+        $stmt = $db->prepare("SELECT cislo_lp, nazev_uctu FROM " . TBL_LIMITOVANE_PRISLIBY . " WHERE id = ? LIMIT 1");
+        $stmt->execute(array($lp_id));
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result : null;
+    } catch (Exception $e) {
+        error_log("getLPDetailyV3 Error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Obohacení financování o LP názvy z tabulky 25_limitovane_prisliby
+ * @param PDO $db
+ * @param array $order - Reference na objednávku (bude upravena)
+ */
+function enrichFinancovaniV3($db, &$order) {
+    if (!isset($order['financovani']) || !is_array($order['financovani'])) {
+        return;
+    }
+    
+    // Manuální mapování typů financování na lidské názvy
+    if (isset($order['financovani']['typ']) && !empty($order['financovani']['typ'])) {
+        $typ_nazvy = array(
+            'LP' => 'Limitovaný příslib',
+            'SMLOUVA' => 'Smlouva',
+            'INDIVIDUALNI_SCHVALENI' => 'Individuální schválení',
+            'FINKP' => 'Finanční kontrola'
+        );
+        
+        if (isset($typ_nazvy[$order['financovani']['typ']])) {
+            $order['financovani']['typ_nazev'] = $typ_nazvy[$order['financovani']['typ']];
+        }
+    }
+    
+    // LP názvy - načíst z tabulky limitovane_prisliby
+    if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
+        $lp_nazvy = array();
+        
+        foreach ($order['financovani']['lp_kody'] as $lp_id) {
+            $lp = getLPDetailyV3($db, $lp_id);
+            
+            if ($lp) {
+                $lp_nazvy[] = array(
+                    'id' => $lp_id,
+                    'cislo_lp' => $lp['cislo_lp'],
+                    'kod' => $lp['cislo_lp'],
+                    'nazev' => $lp['nazev_uctu']
+                );
+            }
+        }
+        
+        if (!empty($lp_nazvy)) {
+            $order['financovani']['lp_nazvy'] = $lp_nazvy;
+        }
+    }
+}
+
+/**
+ * Obohacení dodavatele - pokud je dodavatel_id, načte celé info z tabulky dodavatelů
+ * @param PDO $db
+ * @param array $order - Reference na objednávku (bude upravena)
+ */
+function enrichDodavatelV3($db, &$order) {
+    if (empty($order['dodavatel_id'])) {
+        return;
+    }
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT id, nazev, ico, dic, ulice, mesto, psc, stat, kontakt_jmeno, kontakt_email, kontakt_telefon
+            FROM " . TBL_DODAVATELE . "
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute(array($order['dodavatel_id']));
+        $dodavatel = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($dodavatel) {
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            $order['_enriched']['dodavatel'] = $dodavatel;
+        }
+    } catch (Exception $e) {
+        error_log("enrichDodavatelV3 Error: " . $e->getMessage());
+    }
+}
+
+/**
+ * Obohacení registru zveřejnění - data PŘÍMO z objednávky (ne z modulu smluv)
+ * @param PDO $db
+ * @param array $order - Reference na objednávku (bude upravena)
+ */
+function enrichRegistrZverejneniV3($db, &$order) {
+    $registr = array(
+        'zverejnit' => isset($order['zverejnit']) ? $order['zverejnit'] : null,
+        'dt_zverejneni' => isset($order['dt_zverejneni']) ? $order['dt_zverejneni'] : null,
+        'registr_iddt' => isset($order['registr_iddt']) ? $order['registr_iddt'] : null,
+        'zverejnil' => null
+    );
+    
+    // Načíst uživatele který zveřejnil
+    if (!empty($order['zverejnil_id'])) {
+        try {
+            $stmt = $db->prepare("
+                SELECT id, jmeno, prijmeni, email, titul_pred, titul_za
+                FROM " . TBL_UZIVATELE . "
+                WHERE id = ?
+                LIMIT 1
+            ");
+            $stmt->execute(array($order['zverejnil_id']));
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($user) {
+                $celeMeno = '';
+                if (!empty($user['titul_pred'])) {
+                    $celeMeno .= $user['titul_pred'] . ' ';
+                }
+                $celeMeno .= trim($user['jmeno'] . ' ' . $user['prijmeni']);
+                if (!empty($user['titul_za'])) {
+                    $celeMeno .= ', ' . $user['titul_za'];
+                }
+                
+                $registr['zverejnil'] = array(
+                    'cele_jmeno' => $celeMeno,
+                    'email' => $user['email'],
+                    'datum' => $registr['dt_zverejneni']
+                );
+            }
+        } catch (Exception $e) {
+            error_log("enrichRegistrZverejneniV3 Error: " . $e->getMessage());
+        }
+    }
+    
+    $order['registr_smluv'] = $registr;
+}
+
+/**
  * POST order-v3/list
  * Načte seznam objednávek s paging a statistikami
  * 
@@ -255,11 +402,17 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.stav_objednavky,
                 o.stav_workflow_kod,
                 o.zverejnit,
+                o.dt_zverejneni,
+                o.registr_iddt,
+                o.zverejnil_id,
                 
-                -- Dodavatel
-                d.id as dodavatel_id,
-                d.nazev as dodavatel_nazev,
-                d.ico as dodavatel_ico,
+                -- Dodavatel - prioritizovat přímé sloupce z objednávky, pak z číselníku
+                o.dodavatel_id,
+                COALESCE(o.dodavatel_nazev, d.nazev) as dodavatel_nazev,
+                COALESCE(o.dodavatel_ico, d.ico) as dodavatel_ico,
+                o.dodavatel_adresa,
+                o.dodavatel_kontakt_jmeno,
+                o.dodavatel_kontakt_email,
                 
                 -- Objednatel
                 u1.id as objednatel_id,
@@ -311,7 +464,7 @@ function handle_order_v3_list($input, $config, $queries) {
         $stmt_orders->execute($where_params);
         $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
 
-        // 13. Post-processing - parsování JSON polí jako v OrderV2
+        // 13. Post-processing - parsování JSON polí a enrichment
         foreach ($orders as &$order) {
             // Parsovat financovani z TEXT/JSON do array
             if (isset($order['financovani'])) {
@@ -322,6 +475,11 @@ function handle_order_v3_list($input, $config, $queries) {
             if (isset($order['stav_workflow_kod'])) {
                 $order['stav_workflow_kod'] = safeJsonDecode($order['stav_workflow_kod'], array());
             }
+            
+            // ENRICHMENT - obohacení dat z dalších tabulek
+            enrichFinancovaniV3($db, $order);           // LP názvy z 25_limitovane_prisliby
+            enrichDodavatelV3($db, $order);             // Dodavatel z 25_dodavatele
+            enrichRegistrZverejneniV3($db, $order);     // Registr zveřejnění z objednávky (ne smlouvy!)
         }
         unset($order); // Break reference
 
