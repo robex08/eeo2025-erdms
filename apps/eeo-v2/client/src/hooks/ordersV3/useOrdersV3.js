@@ -285,7 +285,7 @@ export function useOrdersV3({
     } catch (err) {
       console.error('❌ useOrdersV3: Error loading orders:', err);
       setError(err?.message || 'Chyba při načítání objednávek');
-      setOrders([]);
+      // Nemazat data při chybě - ponechat předchozí zobrazení
     } finally {
       setLoading(false);
       hideProgress?.();
@@ -308,30 +308,62 @@ export function useOrdersV3({
   
   /**
    * Změní sloupcový filtr (s debounce pro text inputy)
+   * Mapuje ID sloupců z tabulky na názvy API parametrů
    */
-  const handleColumnFilterChange = useCallback((filterName, value, debounceMs = 500) => {
-    // Pro text inputy použít debounce
-    if (typeof value === 'string' && debounceMs > 0) {
-      // Clear previous timer
-      if (filterDebounceTimers.current[filterName]) {
-        clearTimeout(filterDebounceTimers.current[filterName]);
-      }
-      
-      // Set new timer
-      filterDebounceTimers.current[filterName] = setTimeout(() => {
+  const handleColumnFilterChange = useCallback((columnId, value, debounceMs = 500) => {
+    // Mapování ID sloupců z tabulky na názvy API parametrů
+    const columnToFilterMapping = {
+      'cislo_objednavky': 'cislo_objednavky',
+      'predmet': 'predmet',
+      'dodavatel_nazev': 'dodavatel_nazev',
+      'stav_objednavky': 'stav_workflow',
+      'dt_objednavky': 'datum_od', // Date column - bude potřeba speciální handling
+      'objednatel_garant': 'objednatel_jmeno', // Hledá v objednatel i garant
+      'prikazce_schvalovatel': 'prikazce_jmeno', // Hledá v příkazce i schvalovatel
+      'financovani': 'financovani',
+      'max_cena_s_dph': 'cena_max',
+      'cena_s_dph': 'cena_polozky',
+      'faktury_celkova_castka_s_dph': 'cena_faktury',
+    };
+    
+    const filterName = columnToFilterMapping[columnId] || columnId;
+    
+    // Funkce pro aplikaci filtru
+    const applyFilter = () => {
+      // Pro kombinované sloupce - poslat hodnotu oběma polím
+      if (columnId === 'objednatel_garant') {
+        setColumnFilters(prev => ({
+          ...prev,
+          objednatel_jmeno: value,
+          garant_jmeno: value,
+        }));
+      } else if (columnId === 'prikazce_schvalovatel') {
+        setColumnFilters(prev => ({
+          ...prev,
+          prikazce_jmeno: value,
+          schvalovatel_jmeno: value,
+        }));
+      } else {
         setColumnFilters(prev => ({
           ...prev,
           [filterName]: value,
         }));
-        setCurrentPage(1); // Reset na první stránku
-      }, debounceMs);
+      }
+      setCurrentPage(1); // Reset na první stránku
+    };
+    
+    // Pro text inputy použít debounce
+    if (typeof value === 'string' && debounceMs > 0) {
+      // Clear previous timer
+      if (filterDebounceTimers.current[columnId]) {
+        clearTimeout(filterDebounceTimers.current[columnId]);
+      }
+      
+      // Set new timer
+      filterDebounceTimers.current[columnId] = setTimeout(applyFilter, debounceMs);
     } else {
       // Pro select, checkbox, atd. aplikovat hned
-      setColumnFilters(prev => ({
-        ...prev,
-        [filterName]: value,
-      }));
-      setCurrentPage(1); // Reset na první stránku
+      applyFilter();
     }
   }, []);
   
@@ -357,13 +389,18 @@ export function useOrdersV3({
     setColumnFilters({
       cislo_objednavky: '',
       predmet: '',
-      dodavatel: '',
-      uzivatel: '',
-      stav: '',
+      dodavatel_nazev: '',
+      objednatel_jmeno: '',
+      garant_jmeno: '',
+      prikazce_jmeno: '',
+      schvalovatel_jmeno: '',
+      financovani: '',
+      stav_workflow: '',
       datum_od: '',
       datum_do: '',
-      cena_min: '',
       cena_max: '',
+      cena_polozky: '',
+      cena_faktury: '',
     });
     setDashboardFilters({
       filter_status: '',

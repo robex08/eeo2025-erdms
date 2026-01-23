@@ -84,13 +84,12 @@ const Wrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
   background: white;
   transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
-  max-width: 135px;
   width: 100%;
 
   &:focus-within {
@@ -102,8 +101,8 @@ const Wrapper = styled.div`
 const OperatorSelect = styled.select`
   border: none;
   background: #f8fafc;
-  padding: 0.4rem 0.3rem;
-  font-size: 0.875rem;
+  padding: 0.35rem 0.3rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: #1e293b;
   cursor: pointer;
@@ -161,9 +160,9 @@ const ClearButton = styled.button`
 const NumberInput = styled.input`
   flex: 1;
   border: none;
-  padding: 0.4rem 0.3rem;
+  padding: 0.35rem 0.3rem;
   padding-right: 2rem; /* Vždy místo pro clear button */
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: #1e293b;
   outline: none;
   text-align: right;
