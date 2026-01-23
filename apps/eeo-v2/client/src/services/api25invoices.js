@@ -1604,6 +1604,63 @@ export async function deleteInvoiceV2(invoiceId, token, username, hardDelete = f
   }
 }
 
+/**
+ * Obnovit neaktivní (soft-deleted) fakturu
+ * POST /api.eeo/invoices25/restore
+ * 
+ * ⚠️ Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ * 
+ * @param {number} invoiceId - ID faktury k obnovení
+ * @param {string} token - Auth token
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Response data
+ *
+ * @example
+ * await restoreInvoiceV2(123, token, username);
+ */
+export async function restoreInvoiceV2(invoiceId, token, username) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
+  }
+
+  if (!invoiceId) {
+    throw new Error('Chybí ID faktury.');
+  }
+
+  try {
+    const payload = {
+      token,
+      username,
+      id: invoiceId
+    };
+
+    const response = await api25invoices.post('invoices25/restore', payload, {
+      timeout: 10000
+    });
+
+    if (response.status !== 200 && response.status !== 201) {
+      throw new Error('Neočekávaný kód odpovědi při obnově faktury');
+    }
+
+    const data = response.data;
+
+    // Kontrola různých formátů odpovědi
+    if (data.err || data.error) {
+      const errorMsg = data.err || data.error || 'Chyba při obnově faktury';
+      throw new Error(errorMsg);
+    }
+
+    if (data.status === 'ok' || data.success === true) {
+      return data;
+    }
+
+    throw new Error('Neočekávaná struktura odpovědi ze serveru');
+
+  } catch (error) {
+    throw new Error(normalizeApi25InvoicesError(error));
+  }
+}
+
 // ===================================================================
 // INVOICE LIST - Načtení seznamu faktur
 // ===================================================================

@@ -27,7 +27,7 @@ import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachments
 import OrderAttachmentsTooltip from '../components/orders/OrderAttachmentsTooltip';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import OperatorInput from '../components/OperatorInput';
-import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
+import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, restoreInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
 import { getOrderV2 } from '../services/apiOrderV2';
 import { toggleInvoiceCheck, getInvoiceChecks } from '../services/apiInvoiceCheck';
@@ -753,6 +753,23 @@ const TableRow = styled.tr`
   &[data-storno="true"] td:nth-of-type(9) {
     text-decoration: none;
     opacity: 1;
+  }
+  
+  /* 🔧 NEAKTIVNÍ (SMAZANÉ) FAKTURY - admin view */
+  &[data-inactive="true"] {
+    background: #fef2f2 !important;
+    opacity: 0.75;
+    
+    &:hover {
+      background: #fee2e2 !important;
+    }
+    
+    /* Dvojité přeškrtnutí textu */
+    .inactive-content {
+      text-decoration: line-through double;
+      text-decoration-color: #dc2626;
+      opacity: 0.7;
+    }
   }
 `;
 
@@ -3056,6 +3073,45 @@ const Invoices25List = () => {
     }
   };
 
+  const confirmRestoreInvoice = async () => {
+    const { invoice } = deleteDialog;
+    
+    if (!invoice) return;
+    
+    try {
+      showProgress?.('Obnovuji fakturu...');
+      
+      await restoreInvoiceV2(invoice.id, token, username);
+      
+      showToast?.(`Faktura ${invoice.cislo_faktury} byla úspěšně obnovena`, { 
+        type: 'success' 
+      });
+      
+      // Zavřít dialog
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
+      // Obnovit seznam
+      loadData();
+      
+    } catch (err) {
+      console.error('Error restoring invoice:', err);
+      
+      if (err.message?.includes('oprávnění') || err.message?.includes('administrátor') || err.message?.includes('SUPERADMIN')) {
+        showToast?.(err.message || 'Nemáte oprávnění k této akci', { type: 'error', duration: 5000 });
+      } else {
+        showToast?.(err.message || 'Chyba při obnově faktury', { type: 'error' });
+      }
+      
+      // Zavřít dialog
+      setDeleteDialog({ isOpen: false, invoice: null });
+      setDeleteType('soft');
+      
+    } finally {
+      hideProgress?.();
+    }
+  };
+
   // Handle invoice status change (workflow state)
   const handleStatusChange = async (invoice, newStatus) => {
     if (!invoice || !newStatus) return;
@@ -4156,6 +4212,7 @@ const Invoices25List = () => {
                   <TableRow 
                     key={invoice.id}
                     data-storno={invoice.stav === 'STORNO' ? 'true' : 'false'}
+                    data-inactive={!invoice.aktivni ? 'true' : 'false'}
                     style={{
                       backgroundColor: invoice.from_spisovka ? '#f0fdf4' : 'transparent'
                     }}
@@ -4208,7 +4265,7 @@ const Invoices25List = () => {
                     </TableCell>
                     
                     <TableCell className="center">
-                      <span className="storno-content">
+                      <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.dt_aktualizace ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                             <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
@@ -4220,10 +4277,12 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className="storno-content"><strong>{invoice.cislo_faktury}</strong></span>
+                      <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        <strong>{invoice.cislo_faktury}</strong>
+                      </span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         <span style={{ 
                           display: 'inline-block',
                           padding: '0.25rem 0.5rem',
@@ -4244,7 +4303,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell style={{ whiteSpace: 'nowrap' }}>
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.cislo_smlouvy || invoice.cislo_objednavky ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                             {/* První řádek - číslo smlouvy/objednávky s ikonami */}
@@ -4345,7 +4404,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center" style={{ whiteSpace: 'nowrap' }}>
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.datum_doruceni ? (
                           <span style={{ color: '#059669', fontWeight: 600 }}>
                             <FontAwesomeIcon icon={faCheckCircle} style={{ marginRight: '0.35rem' }} />
@@ -4357,13 +4416,13 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className="storno-content">{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</span>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>{invoice.datum_vystaveni ? formatDateOnly(invoice.datum_vystaveni) : '—'}</span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className="storno-content">{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
                     </TableCell>
                     <TableCell className="amount-column">
-                      <span className="storno-content"><strong>{formatCurrency(invoice.castka)}</strong></span>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}><strong>{formatCurrency(invoice.castka)}</strong></span>
                     </TableCell>
                     <TableCell className="center">
                       <InvoiceStatusSelect 
@@ -4374,7 +4433,7 @@ const Invoices25List = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.vytvoril_uzivatel_zkracene ? (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.75rem' }} />
@@ -4386,7 +4445,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.fa_predana_zam_jmeno_cele ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -4421,7 +4480,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.potvrdil_vecnou_spravnost_zkracene ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -4443,7 +4502,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className="storno-content">
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
                         {invoice.vecna_spravnost_potvrzeno ? (
                           <div style={{
                             display: 'inline-flex',
@@ -4689,7 +4748,7 @@ const Invoices25List = () => {
         </TableScrollWrapper>
       </Container>
       
-      {/* Delete Confirmation Dialog */}
+      {/* Delete/Restore Confirmation Dialog */}
       {deleteDialog.isOpen && (
         <ConfirmDialog
           isOpen={deleteDialog.isOpen}
@@ -4697,13 +4756,27 @@ const Invoices25List = () => {
             setDeleteDialog({ isOpen: false, invoice: null });
             setDeleteType('soft');
           }}
-          onConfirm={() => confirmDeleteInvoice(deleteType === 'hard')}
-          title="Odstranit fakturu"
-          icon={faTrash}
-          variant={deleteType === 'hard' ? 'danger' : 'warning'}
-          confirmText={isAdmin ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat") : "Smazat"}
+          onConfirm={() => {
+            // 🔄 Pokud je faktura neaktivní a uživatel je admin -> obnovit
+            if (!deleteDialog.invoice?.aktivni && isAdmin) {
+              confirmRestoreInvoice();
+            } else {
+              // Jinak normální smazání
+              confirmDeleteInvoice(deleteType === 'hard');
+            }
+          }}
+          title={!deleteDialog.invoice?.aktivni && isAdmin ? "Obnovit fakturu" : "Odstranit fakturu"}
+          icon={!deleteDialog.invoice?.aktivni && isAdmin ? faCheckCircle : faTrash}
+          variant={!deleteDialog.invoice?.aktivni && isAdmin ? 'success' : (deleteType === 'hard' ? 'danger' : 'warning')}
+          confirmText={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? "✅ Obnovit fakturu" 
+              : isAdmin 
+                ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat") 
+                : "Smazat"
+          }
           cancelText="Zrušit"
-          key={deleteType}
+          key={deleteType + (deleteDialog.invoice?.aktivni ? '-active' : '-inactive')}
         >
           <div style={{
             display: 'grid',
@@ -4711,16 +4784,41 @@ const Invoices25List = () => {
             gap: '1.5rem',
             padding: '1rem 0'
           }}>
-            {/* LEVÝ SLOUPEC - Volba typu smazání */}
+            {/* LEVÝ SLOUPEC - Volba typu smazání nebo obnova */}
             <div>
-              <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
-                Opravdu chcete smazat fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
-              </p>
-
-              {isAdmin ? (
+              {!deleteDialog.invoice?.aktivni && isAdmin ? (
+                /* NEAKTIVNÍ FAKTURA - Možnost obnovení */
                 <>
-                  {/* Výběr typu mazání pro adminy */}
+                  <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                    Chcete obnovit neaktivní fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+                  </p>
                   <div style={{
+                    background: '#f0fdf4',
+                    border: '2px solid #86efac',
+                    borderRadius: '8px',
+                    padding: '1rem'
+                  }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#166534', fontSize: '1rem' }}>
+                      🔄 Obnova faktury
+                    </h4>
+                    <p style={{ margin: 0, color: '#166534', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                      Faktura bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
+                      <br /><br />
+                      Všechna data, přílohy a historie zůstanou zachovány.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                /* AKTIVNÍ FAKTURA - Možnosti smazání */
+                <>
+                  <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
+                    Opravdu chcete smazat fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+                  </p>
+
+                  {isAdmin ? (
+                    <>
+                      {/* Výběr typu mazání pro adminy */}
+                      <div style={{
                     background: '#f8fafc',
                     border: '2px solid #cbd5e1',
                     borderRadius: '8px',
@@ -4815,6 +4913,8 @@ const Invoices25List = () => {
                     Administrátor ji může později obnovit.
                   </p>
                 </div>
+              )}
+                </>
               )}
             </div>
 

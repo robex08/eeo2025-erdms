@@ -2403,3 +2403,112 @@ function handle_invoices25_list($input, $config, $queries) {
     }
 }
 
+/**
+ * POST /invoices25/restore
+ * Obnovení neaktivní faktury (nastavení aktivni = 1)
+ * Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
+ */
+function handle_invoices25_restore($input, $config, $queries) {
+    // Ověření tokenu z POST dat
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+    $invoice_id = isset($input['id']) ? (int)$input['id'] : 0;
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Neplatný nebo chybějící token']);
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
+        return;
+    }
+
+    if ($invoice_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['err' => 'Neplatné ID faktury']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // 🔒 ADMIN CHECK - pouze admin může obnovit fakturu
+        $is_admin = false;
+        if (isset($token_data['roles']) && is_array($token_data['roles'])) {
+            foreach ($token_data['roles'] as $role) {
+                if (in_array($role, ['SUPERADMIN', 'ADMINISTRATOR'])) {
+                    $is_admin = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!$is_admin) {
+            http_response_code(403);
+            echo json_encode(['err' => 'Pouze ADMIN může obnovit faktury']);
+            debug_log("⛔ RESTORE invoices25: Uživatel {$token_data['username']} (ID {$token_data['id']}) nemá ADMIN oprávnění");
+            return;
+        }
+
+        $db->beginTransaction();
+
+        // Zkontrolovat, zda faktura existuje (včetně deaktivovaných)
+        $checkStmt = $db->prepare("SELECT * FROM faktury25 WHERE id = :id");
+        $checkStmt->bindParam(':id', $invoice_id, PDO::PARAM_INT);
+        $checkStmt->execute();
+        $invoice = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$invoice) {
+            $db->rollBack();
+            http_response_code(404);
+            echo json_encode(['err' => 'Faktura nebyla nalezena']);
+            debug_log("⛔ RESTORE invoices25: Faktura #$invoice_id neexistuje");
+            return;
+        }
+
+        // Zkontrolovat, zda je deaktivovaná
+        if ($invoice['aktivni'] == 1) {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['err' => 'Faktura je již aktivní']);
+            debug_log("⚠️ RESTORE invoices25: Faktura #$invoice_id je již aktivní");
+            return;
+        }
+
+        // Restore - nastavit aktivni = 1 a aktualizovat datum
+        $restoreStmt = $db->prepare("UPDATE faktury25 
+                                     SET aktivni = 1, 
+                                         dt_aktualizace = NOW()
+                                     WHERE id = :id");
+        $restoreStmt->bindParam(':id', $invoice_id, PDO::PARAM_INT);
+        $restoreStmt->execute();
+
+        $db->commit();
+
+        debug_log("✅ RESTORE invoices25: Faktura #$invoice_id (číslo: {$invoice['cislo_faktury']}) byla obnovena uživatelem {$token_data['username']} (ID {$token_data['id']})");
+
+        echo json_encode([
+            'status' => 'ok',
+            'message' => 'Faktura byla úspěšně obnovena',
+            'data' => [
+                'id' => $invoice_id,
+                'cislo_faktury' => $invoice['cislo_faktury'],
+                'aktivni' => 1,
+                'obnoveno_uzivatelem' => $token_data['id']
+            ]
+        ]);
+        
+    } catch (Exception $e) {
+        if (isset($db) && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        http_response_code(500);
+        debug_log("⛔ RESTORE invoices25 ERROR: " . $e->getMessage());
+        echo json_encode(['err' => 'Chyba při obnově faktury: ' . $e->getMessage()]);
+    }
+}
+
