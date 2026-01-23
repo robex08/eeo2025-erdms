@@ -11,7 +11,7 @@ import {
   faCalendarAlt, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
-  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare
+  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -279,6 +279,42 @@ const ClearAllButton = styled.button`
   
   &:active {
     transform: translateY(0);
+  }
+`;
+
+// 🔧 ADMIN: Checkbox pro zobrazení neaktivních faktur
+const AdminCheckboxWrapper = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #fef3c7;
+  border: 2px solid #fbbf24;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #92400e;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: #fde68a;
+    border-color: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+  }
+  
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #f59e0b;
+  }
+  
+  svg {
+    color: #d97706;
+    font-size: 1rem;
   }
 `;
 
@@ -1475,9 +1511,26 @@ const Invoices25List = () => {
   // 🔍 Globální vyhledávání (nový state)
   const [globalSearchTerm, setGlobalSearchTerm] = useState(savedState?.globalSearchTerm || '');
   
-  // 📊 Sorting state (client-side)
+  // � ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+  // Checkbox viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
+  const [showOnlyInactive, setShowOnlyInactive] = useState(false); // NEVER persisted to localStorage
+  
+  // �📊 Sorting state (client-side)
   const [sortField, setSortField] = useState(savedState?.sortField || null);
   const [sortDirection, setSortDirection] = useState(savedState?.sortDirection || 'asc'); // 'asc' nebo 'desc'
+  
+  // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
+  const isAdmin = hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR'));
+  
+  // Debug: Log admin status on component mount
+  useEffect(() => {
+    console.log('🔐 Admin Status Check:', {
+      hasPermission: !!hasPermission,
+      isSuperAdmin: hasPermission && hasPermission('SUPERADMIN'),
+      isAdministrator: hasPermission && hasPermission('ADMINISTRATOR'),
+      isAdmin: isAdmin
+    });
+  }, [hasPermission, isAdmin]);
   
   // Dashboard statistiky (z BE - celkové součty podle filtru, NE jen aktuální stránka!)
   const [stats, setStats] = useState({
@@ -1532,10 +1585,6 @@ const Invoices25List = () => {
   
   const canManageInvoices = React.useMemo(() => {
     return hasPermission && hasPermission('INVOICE_MANAGE');
-  }, [hasPermission]);
-  
-  const isAdmin = React.useMemo(() => {
-    return hasPermission && hasPermission('ADMIN');
   }, [hasPermission]);
   
   // Právo pro věcnou kontrolu - vyžaduje OBĚ práva současně (pokud org. hierarchie neříká jinak)
@@ -2042,6 +2091,7 @@ const Invoices25List = () => {
     setFilters({ filter_status: '' });
     setActiveFilterStatus(null);
     setGlobalSearchTerm('');
+    setShowOnlyInactive(false); // 🔧 Reset admin checkbox
     setCurrentPage(1);
   }, []);
   
@@ -2245,8 +2295,18 @@ const Invoices25List = () => {
         apiParams.order_by = sortField.trim();
         apiParams.order_direction = sortDirection || 'desc'; // default DESC
       }
+      
+      // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+      // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
+      if (isAdmin && showOnlyInactive) {
+        apiParams.show_only_inactive = 1;
+        console.log('🔧 ADMIN: Requesting ONLY inactive invoices (show_only_inactive=1)');
+      } else {
+        console.log('📋 STANDARD: Requesting active invoices only (default)');
+      }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
+      console.log('📤 API Request params:', apiParams);
       const response = await listInvoices25(apiParams);
 
       // Transformace dat z BE formátu
@@ -2456,12 +2516,13 @@ const Invoices25List = () => {
       setLoading(false);
       hideProgress?.();
     }
-  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, showProgress, hideProgress, showToast, getInvoiceStatus]);
+  }, [token, username, selectedYear, currentPage, itemsPerPage, debouncedColumnFilters, filters, globalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
   // Initial load
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadData]); // showOnlyInactive is already in loadData dependencies
 
   // Načtení stavů kontrol po načtení faktur
   useEffect(() => {
@@ -3449,10 +3510,30 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faSearch} />
               Vyhledávání
             </SearchPanelTitle>
-            <ClearAllButton onClick={handleClearAllFilters} title="Vymazat všechny filtry">
-              <FontAwesomeIcon icon={faEraser} />
-              Vymazat filtry
-            </ClearAllButton>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* 🔧 ADMIN: Checkbox pro zobrazení POUZE neaktivních faktur */}
+              {isAdmin && (
+                <AdminCheckboxWrapper title="Zobrazit pouze neaktivní (smazané) faktury - viditelné pouze pro administrátory">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyInactive}
+                    onChange={(e) => {
+                      const newValue = e.target.checked;
+                      console.log('🔧 ADMIN Checkbox changed:', newValue);
+                      console.log('🔧 Current isAdmin:', isAdmin);
+                      setShowOnlyInactive(newValue);
+                      setCurrentPage(1); // Reset to first page when toggling
+                    }}
+                  />
+                  <FontAwesomeIcon icon={faEyeSlash} />
+                  <span>Pouze neaktivní</span>
+                </AdminCheckboxWrapper>
+              )}
+              <ClearAllButton onClick={handleClearAllFilters} title="Vymazat všechny filtry">
+                <FontAwesomeIcon icon={faEraser} />
+                Vymazat filtry
+              </ClearAllButton>
+            </div>
           </SearchPanelHeader>
           
           <SearchInputWrapper>

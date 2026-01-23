@@ -34,12 +34,15 @@ require_once 'orderQueries.php';
  * @deprecated Používej order-v2 API pro získání faktur přes order detail
  */
 function handle_invoices25_by_order($input, $config, $queries) {
+    debug_log("START invoices25/by-order", ['objednavka_id' => $input['objednavka_id'] ?? null]);
+    
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     $objednavka_id = isset($input['objednavka_id']) ? (int)$input['objednavka_id'] : 0;
     
     if (!$token || !$request_username || $objednavka_id <= 0) {
+        debug_log("ERROR: Missing parameters", ['token' => !!$token, 'username' => !!$request_username, 'objednavka_id' => $objednavka_id]);
         http_response_code(400);
         echo json_encode([
             'err' => 'Chybí povinné parametry'
@@ -50,13 +53,17 @@ function handle_invoices25_by_order($input, $config, $queries) {
     // Ověř token
     $token_data = verify_token($token);
     if (!$token_data) {
+        debug_log("ERROR: Invalid token");
         http_response_code(401);
         echo json_encode(['err' => 'Neplatný token']);
         return;
     }
     
+    debug_log("Token verified", ['username' => $token_data['username']]);
+    
     // Kontrola uživatele
     if ($token_data['username'] !== $request_username) {
+        debug_log("ERROR: Username mismatch");
         http_response_code(403);
         echo json_encode(['err' => 'Neautorizovaný přístup']);
         return;
@@ -1234,7 +1241,20 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
-    // 🐛 DEBUG: Log úplný payload
+    // ==========================================
+    // 🐛 DEV DEBUG LOGGING - MODUL FAKTUR
+    // ==========================================
+    error_log("╔═══════════════════════════════════════════════════════════");
+    error_log("║ 📋 MODUL FAKTUR - NAČÍTÁNÍ SEZNAMU");
+    error_log("║ Čas: " . date('Y-m-d H:i:s'));
+    error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
+    error_log("║ Endpoint: invoices25/list");
+    error_log("╚═══════════════════════════════════════════════════════════");
+    
+    // � FORCE WARNING TEST
+    trigger_error("TEST WARNING - Tento warning MUSÍ být v logu!", E_USER_WARNING);
+    
+    // �🐛 DEBUG: Log úplný payload
     error_log("INVOICE LIST PAYLOAD DEBUG: " . json_encode($input, JSON_UNESCAPED_UNICODE));
     
     // 🔍 DEBUG: Specifically log amount filter parameters
@@ -1314,6 +1334,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
             // Filtr pro kontrolu řádku
             'filter_kontrola_radku',
+            // ADMIN FEATURE: Zobrazení pouze neaktivních faktur
+            'show_only_inactive',
             // ŘAZENÍ - order_by a order_direction  
             'order_by', 'order_direction'
         );
@@ -1325,9 +1347,25 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         
         // DEBUG: Log merged filters
-        error_log("Invoices25 LIST: Final filters array: " . json_encode($filters));
+        debug_log("Invoices25 LIST: Final filters array", $filters);
         
-        $where_conditions = array('f.aktivni = 1');
+        // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
+        // Tento filtr je viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
+        // Pokud je show_only_inactive = 1 → zobrazí POUZE neaktivní faktury (soft-deleted)
+        $show_only_inactive = isset($filters['show_only_inactive']) && (int)$filters['show_only_inactive'] === 1;
+        debug_log("Invoices25 LIST: show_only_inactive check", [
+            'isset' => isset($filters['show_only_inactive']),
+            'value' => isset($filters['show_only_inactive']) ? $filters['show_only_inactive'] : null,
+            'result' => $show_only_inactive
+        ]);
+        
+        if ($show_only_inactive) {
+            $where_conditions = array('f.aktivni = 0');
+            debug_log("Invoices25 LIST: ADMIN MODE - showing ONLY inactive invoices (aktivni = 0)");
+        } else {
+            $where_conditions = array('f.aktivni = 1');
+            debug_log("Invoices25 LIST: STANDARD MODE - showing only active invoices (aktivni = 1)");
+        }
         $params = array();
         
         // 🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
