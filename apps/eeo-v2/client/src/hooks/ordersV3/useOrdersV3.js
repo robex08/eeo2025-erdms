@@ -131,7 +131,7 @@ export function useOrdersV3({
         const saved = localStorage.getItem(`ordersV3_columnOrder_${userId}`);
         if (saved) {
           let parsed = JSON.parse(saved);
-          console.log('📋 Orders V3: Loaded column order from localStorage:', parsed);
+          // console.log('📋 Orders V3: Loaded column order from localStorage:', parsed);
           
           // MIGRACE: Opravit staré názvy sloupců
           const oldToNewMapping = {
@@ -154,7 +154,7 @@ export function useOrdersV3({
           
           // Pokud byla provedena migrace, uložit zpět
           if (migrated) {
-            console.log('💾 Orders V3: Saving migrated column order:', parsed);
+            // console.log('💾 Orders V3: Saving migrated column order:', parsed);
             localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(parsed));
           }
           
@@ -181,7 +181,7 @@ export function useOrdersV3({
       'faktury_celkova_castka_s_dph',
       'actions',
     ];
-    console.log('📋 Orders V3: Using default column order:', defaultOrder);
+    // console.log('📋 Orders V3: Using default column order:', defaultOrder);
     return defaultOrder;
   });
   
@@ -216,11 +216,11 @@ export function useOrdersV3({
     showProgress?.();
     
     try {
-      console.log('📋 useOrdersV3: Loading orders...', {
-        page: currentPage,
-        per_page: itemsPerPage,
-        year: selectedYear,
-      });
+      // console.log('📋 useOrdersV3: Loading orders...', {
+      //   page: currentPage,
+      //   per_page: itemsPerPage,
+      //   year: selectedYear,
+      // });
       
       // Připravit filtry pro backend (pouze neprázdné)
       const activeFilters = {};
@@ -270,14 +270,14 @@ export function useOrdersV3({
         
         // Stats (pouze pro page=1)
         if (response.data.stats) {
-          console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
+          // console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
           setStats(response.data.stats);
         }
         
-        console.log('✅ useOrdersV3: Orders loaded', {
-          count: response.data.orders?.length || 0,
-          total: response.data.pagination?.total || 0,
-        });
+        // console.log('✅ useOrdersV3: Orders loaded', {
+        //   count: response.data.orders?.length || 0,
+        //   total: response.data.pagination?.total || 0,
+        // });
       } else {
         throw new Error(response.message || 'Neplatná odpověď serveru');
       }
@@ -450,17 +450,17 @@ export function useOrdersV3({
    * @param {string} [toColumn] - ID sloupce kam se přesouvá (pokud je první param string)
    */
   const handleColumnOrderChange = useCallback((fromColumnOrNewOrder, toColumn) => {
-    console.log('🔄 Orders V3: Column reorder requested:', { fromColumnOrNewOrder, toColumn });
+    // console.log('🔄 Orders V3: Column reorder requested:', { fromColumnOrNewOrder, toColumn });
     
     if (Array.isArray(fromColumnOrNewOrder)) {
       // Přijato celé nové pole
-      console.log('📋 Orders V3: Setting new column order:', fromColumnOrNewOrder);
+      // console.log('📋 Orders V3: Setting new column order:', fromColumnOrNewOrder);
       setColumnOrder(fromColumnOrNewOrder);
       // Uložit do localStorage (per user)
       if (userId) {
         try {
           localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(fromColumnOrNewOrder));
-          console.log('💾 Orders V3: Column order saved to localStorage');
+          // console.log('💾 Orders V3: Column order saved to localStorage');
         } catch (err) {
           console.warn('Failed to save column order:', err);
         }
@@ -471,13 +471,13 @@ export function useOrdersV3({
         const fromIndex = prevOrder.indexOf(fromColumnOrNewOrder);
         const toIndex = prevOrder.indexOf(toColumn);
         
-        console.log('📋 Orders V3: Moving column:', {
-          from: fromColumnOrNewOrder,
-          fromIndex,
-          to: toColumn,
-          toIndex,
-          currentOrder: prevOrder
-        });
+        // console.log('📋 Orders V3: Moving column:', {
+        //   from: fromColumnOrNewOrder,
+        //   fromIndex,
+        //   to: toColumn,
+        //   toIndex,
+        //   currentOrder: prevOrder
+        // });
         
         if (fromIndex === -1 || toIndex === -1) {
           console.warn('⚠️ Orders V3: Invalid column indices!');
@@ -488,13 +488,13 @@ export function useOrdersV3({
         newOrder.splice(fromIndex, 1);
         newOrder.splice(toIndex, 0, fromColumnOrNewOrder);
         
-        console.log('✅ Orders V3: New column order:', newOrder);
+        // console.log('✅ Orders V3: New column order:', newOrder);
         
         // Uložit do localStorage (per user)
         if (userId) {
           try {
             localStorage.setItem(`ordersV3_columnOrder_${userId}`, JSON.stringify(newOrder));
-            console.log('💾 Orders V3: Column order saved to localStorage');
+            // console.log('💾 Orders V3: Column order saved to localStorage');
           } catch (err) {
             console.warn('Failed to save column order:', err);
           }
@@ -561,7 +561,7 @@ export function useOrdersV3({
     // Pokud rozbalujeme a ještě nemáme data, načíst je
     if (!isExpanded && !subRowsData[orderId]) {
       try {
-        console.log('📋 Loading subrow data for order:', orderId);
+        // console.log('📋 Loading subrow data for order:', orderId);
         
         // TODO: Implementovat načítání detailu
         // const detail = await getOrderDetail(orderId, token, username);
