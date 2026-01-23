@@ -491,12 +491,22 @@ function handle_order_v3_list($input, $config, $queries) {
         // Číselné filtry s operátory (>=10000, <=50000, =25000)
         // Format: ">=10000" nebo ">10000" nebo "=10000"
         
+        // DEBUG: Log příchozích číselných filtrů
+        if (!empty($filters['cena_max']) || !empty($filters['cena_polozky']) || !empty($filters['cena_faktury'])) {
+            error_log("[OrderV3] Number filters received: cena_max=" . ($filters['cena_max'] ?? 'null') . 
+                      ", cena_polozky=" . ($filters['cena_polozky'] ?? 'null') . 
+                      ", cena_faktury=" . ($filters['cena_faktury'] ?? 'null'));
+        }
+        
         // max_cena_s_dph - maximální cena objednávky
         if (!empty($filters['cena_max'])) {
             $parsed = parseOperatorValue($filters['cena_max']);
             if ($parsed) {
+                error_log("[OrderV3] Parsed cena_max: operator={$parsed['operator']}, value={$parsed['value']}");
                 $where_conditions[] = "o.max_cena_s_dph {$parsed['operator']} ?";
                 $where_params[] = $parsed['value'];
+            } else {
+                error_log("[OrderV3] Failed to parse cena_max: {$filters['cena_max']}");
             }
         }
         

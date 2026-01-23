@@ -50,12 +50,12 @@ import {
 
 const TableContainer = styled.div`
   width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+  overflow-y: visible;
 
   /* Optimalizace pro širokoúhlé monitory */
   @media (min-width: 1920px) {
@@ -78,10 +78,9 @@ const Table = styled.table`
 
 const TableHead = styled.thead`
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  position: sticky;
-  top: 0;
-  z-index: 10;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  
+  /* Sticky nefunguje kvůli Layout overflow structure - vypnuto */
 `;
 
 const TableHeaderCell = styled.th`
@@ -984,7 +983,7 @@ const OrdersTableV3 = ({
   const [columnSizing, setColumnSizing] = useState(() => {
     if (userId) {
       try {
-        const saved = localStorage.getItem(`ordersV3_columnSizing_${userId}`);
+        const saved = localStorage.getItem(`ordersV3_columnSizing_v2_${userId}`);
         return saved ? JSON.parse(saved) : {};
       } catch {
         return {};
@@ -996,7 +995,7 @@ const OrdersTableV3 = ({
   // Uložit column sizing do localStorage při změně (per user)
   useEffect(() => {
     if (userId && Object.keys(columnSizing).length > 0) {
-      localStorage.setItem(`ordersV3_columnSizing_${userId}`, JSON.stringify(columnSizing));
+      localStorage.setItem(`ordersV3_columnSizing_v2_${userId}`, JSON.stringify(columnSizing));
     }
   }, [columnSizing, userId]);
   
@@ -1307,7 +1306,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 240,
+        size: 300,
         enableSorting: true,
       },
       {
@@ -1441,7 +1440,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 130,
         enableSorting: true,
       },
       {
@@ -1464,7 +1463,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 130,
         enableSorting: true,
       },
       {
@@ -1491,7 +1490,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 130,
         enableSorting: true,
       },
       {

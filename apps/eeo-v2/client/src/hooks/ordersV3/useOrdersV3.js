@@ -38,31 +38,63 @@ export function useOrdersV3({
   const [error, setError] = useState(null);
   
   // ============================================================================
-  // STATE - Pagination (Server-side)
+  // STATE - Pagination (Server-side) - s localStorage
   // ============================================================================
   
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`ordersV3_itemsPerPage_${userId}`);
+        return saved ? parseInt(saved, 10) : 50;
+      } catch {
+        return 50;
+      }
+    }
+    return 50;
+  });
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
   
   // ============================================================================
-  // STATE - Filtry
+  // STATE - Filtry - s localStorage
   // ============================================================================
   
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(() => {
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`ordersV3_selectedYear_${userId}`);
+        return saved ? parseInt(saved, 10) : new Date().getFullYear();
+      } catch {
+        return new Date().getFullYear();
+      }
+    }
+    return new Date().getFullYear();
+  });
   
-  // Sloupcové filtry (pro backend)
-  const [columnFilters, setColumnFilters] = useState({
-    cislo_objednavky: '',
-    predmet: '',
-    dodavatel: '',
-    uzivatel: '',
-    stav: '',
-    datum_od: '',
-    datum_do: '',
-    cena_min: '',
-    cena_max: '',
+  // Sloupcové filtry (pro backend) - načíst z localStorage
+  const [columnFilters, setColumnFilters] = useState(() => {
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`ordersV3_columnFilters_${userId}`);
+        if (saved) {
+          return JSON.parse(saved);
+        }
+      } catch {
+        // Ignorovat chybu
+      }
+    }
+    return {
+      cislo_objednavky: '',
+      predmet: '',
+      dodavatel: '',
+      uzivatel: '',
+      stav: '',
+      datum_od: '',
+      datum_do: '',
+      cena_min: '',
+      cena_max: '',
+    };
   });
   
   // Dashboard filtry
@@ -191,6 +223,31 @@ export function useOrdersV3({
   
   const [expandedRows, setExpandedRows] = useState({});
   const [subRowsData, setSubRowsData] = useState({}); // Cache pro načtené detaily
+  
+  // ============================================================================
+  // EFFECTS - Uložení do localStorage při změně
+  // ============================================================================
+  
+  // Uložit itemsPerPage do localStorage
+  useEffect(() => {
+    if (userId && itemsPerPage) {
+      localStorage.setItem(`ordersV3_itemsPerPage_${userId}`, itemsPerPage.toString());
+    }
+  }, [userId, itemsPerPage]);
+  
+  // Uložit selectedYear do localStorage
+  useEffect(() => {
+    if (userId && selectedYear) {
+      localStorage.setItem(`ordersV3_selectedYear_${userId}`, selectedYear.toString());
+    }
+  }, [userId, selectedYear]);
+  
+  // Uložit columnFilters do localStorage
+  useEffect(() => {
+    if (userId && columnFilters) {
+      localStorage.setItem(`ordersV3_columnFilters_${userId}`, JSON.stringify(columnFilters));
+    }
+  }, [userId, columnFilters]);
   
   // ============================================================================
   // REF - Debounce timers
@@ -333,6 +390,16 @@ export function useOrdersV3({
     
     const filterName = columnToFilterMapping[columnId] || columnId;
     
+    // DEBUG: Log číselné filtry
+    if (['max_cena_s_dph', 'cena_s_dph', 'faktury_celkova_castka_s_dph'].includes(columnId)) {
+      console.log('🔢 OrdersV3 Number Filter:', {
+        columnId,
+        filterName,
+        value,
+        type: typeof value
+      });
+    }
+    
     // Funkce pro aplikaci filtru
     const applyFilter = () => {
       // Pro kombinované sloupce - poslat hodnotu oběma polím
@@ -388,10 +455,10 @@ export function useOrdersV3({
   }, [dashboardFilters.filter_status]);
   
   /**
-   * Vyčistí všechny filtry
+   * Vyčistí všechny filtry a localStorage
    */
   const handleClearFilters = useCallback(() => {
-    setColumnFilters({
+    const emptyFilters = {
       cislo_objednavky: '',
       predmet: '',
       dodavatel_nazev: '',
@@ -406,14 +473,22 @@ export function useOrdersV3({
       cena_max: '',
       cena_polozky: '',
       cena_faktury: '',
-    });
+    };
+    
+    setColumnFilters(emptyFilters);
+    
+    // Clear filters from localStorage
+    if (userId) {
+      localStorage.removeItem(`ordersV3_columnFilters_${userId}`);
+    }
+    
     setDashboardFilters({
       filter_status: '',
       filter_my_orders: false,
       filter_archivovano: false,
     });
     setCurrentPage(1);
-  }, []);
+  }, [userId]);
   
   // ============================================================================
   // FUNKCE - Pagination
