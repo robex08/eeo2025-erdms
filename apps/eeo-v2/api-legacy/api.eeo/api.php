@@ -2275,6 +2275,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+    
+    case 'invoices25/restore':
+        if ($request_method === 'POST') {
+            handle_invoices25_restore($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
 
     // === INVOICE ATTACHMENTS API (PŘÍLOHY FAKTUR) ===
     case 'invoices25/attachments/by-invoice':

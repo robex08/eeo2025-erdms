@@ -435,8 +435,23 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
         
+        // 🔒 ADMIN CHECK - potřeba pro práci s neaktivními fakturami
+        $is_admin = false;
+        if (isset($token_data['roles']) && is_array($token_data['roles'])) {
+            foreach ($token_data['roles'] as $role) {
+                if (in_array($role, ['SUPERADMIN', 'ADMINISTRATOR'])) {
+                    $is_admin = true;
+                    break;
+                }
+            }
+        }
+        
         // Načíst současný stav faktury
-        $sql_current = "SELECT * FROM " . TBL_FAKTURY . " WHERE id = ? AND aktivni = 1";
+        // ✅ Admin může aktualizovat i neaktivní faktury
+        $sql_current = "SELECT * FROM " . TBL_FAKTURY . " WHERE id = ?";
+        if (!$is_admin) {
+            $sql_current .= " AND aktivni = 1";
+        }
         $stmt_current = $db->prepare($sql_current);
         $stmt_current->execute(array($invoice_id));
         $current_invoice = $stmt_current->fetch(PDO::FETCH_ASSOC);
