@@ -254,15 +254,19 @@ const SaveButton = styled.button`
  */
 function OrdersColumnConfigV3({
   columnVisibility,
-  columnOrder,
+  columnOrder = [],
   columnLabels,
   onVisibilityChange,
   onOrderChange,
   onReset,
   onSave,
+  userId,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState(null);
+  
+  // Ensure columnOrder is always an array
+  const safeColumnOrder = Array.isArray(columnOrder) ? columnOrder : [];
 
   const handleToggleVisibility = (columnId) => {
     onVisibilityChange?.(columnId, !columnVisibility[columnId]);
@@ -277,7 +281,7 @@ function OrdersColumnConfigV3({
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
 
-    const newOrder = [...columnOrder];
+    const newOrder = [...safeColumnOrder];
     const draggedItem = newOrder[draggedIndex];
 
     // Remove from old position
@@ -326,7 +330,7 @@ function OrdersColumnConfigV3({
 
             <ModalBody>
               <ColumnList>
-                {columnOrder.map((columnId, index) => (
+                {safeColumnOrder.map((columnId, index) => (
                   <ColumnItem
                     key={columnId}
                     $visible={columnVisibility[columnId]}
@@ -359,6 +363,23 @@ function OrdersColumnConfigV3({
               <ResetButton onClick={handleReset} title="Obnovit výchozí nastavení">
                 <FontAwesomeIcon icon={faUndo} />
                 Výchozí
+              </ResetButton>
+              
+              <ResetButton 
+                onClick={() => {
+                  if (userId) {
+                    localStorage.removeItem(`ordersV3_columnSizing_${userId}`);
+                    alert('Šířky sloupců byly resetovány. Stránka se obnoví.');
+                    window.location.reload();
+                  } else {
+                    alert('userId není k dispozici pro reset šířek');
+                  }
+                }} 
+                title="Resetovat šířky sloupců"
+                style={{ marginLeft: '8px' }}
+              >
+                <FontAwesomeIcon icon={faUndo} />
+                Reset šířek
               </ResetButton>
 
               <SaveButton onClick={handleSave} title="Uložit nastavení">

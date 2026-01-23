@@ -250,7 +250,7 @@ const COLUMN_LABELS = {
   approve: '',
   dt_objednavky: 'Datum objednávky',
   cislo_objednavky: 'Evidenční číslo',
-  zpusob_financovani: 'Financování',
+  financovani: 'Financování',
   objednatel_garant: 'Objednatel / Garant',
   prikazce_schvalovatel: 'Příkazce / Schvalovatel',
   dodavatel_nazev: 'Dodavatel',
@@ -330,20 +330,30 @@ function Orders25ListV3() {
   // Handler pro uložení konfigurace sloupců
   const handleSaveColumnConfig = async () => {
     try {
-      // TODO: Implementovat uložení do user settings
+      // Uložit do localStorage (per user)
+      if (user_id) {
+        localStorage.setItem(`ordersV3_columnVisibility_${user_id}`, JSON.stringify(columnVisibility));
+        localStorage.setItem(`ordersV3_columnOrder_${user_id}`, JSON.stringify(columnOrder));
+      }
+      
+      // TODO: Implementovat uložení do user settings na backend
       console.log('💾 Saving column config:', {
         columnVisibility,
         columnOrder,
       });
       
-      // Placeholder - localStorage
-      localStorage.setItem('ordersV3_columnVisibility', JSON.stringify(columnVisibility));
-      localStorage.setItem('ordersV3_columnOrder', JSON.stringify(columnOrder));
-      
       console.log('✅ Column config saved to localStorage');
     } catch (err) {
       console.error('❌ Error saving column config:', err);
     }
+  };
+
+  // Handler pro reset šířek sloupců
+  const handleResetColumnWidths = () => {
+    if (user_id) {
+      localStorage.removeItem(`ordersV3_columnSizing_${user_id}`);
+    }
+    window.location.reload(); // Reload pro aplikaci změn
   };
 
   // Handler pro akce v tabulce
@@ -420,6 +430,7 @@ function Orders25ListV3() {
             onOrderChange={handleColumnOrderChange}
             onReset={handleResetColumnConfig}
             onSave={handleSaveColumnConfig}
+            userId={user_id}
           />
         </HeaderActions>
       </Header>
@@ -484,23 +495,24 @@ function Orders25ListV3() {
         </EmptyState>
       )}
 
-      {/* Table */}
-      {!loading && orders.length > 0 && (
-        <OrdersTableV3
-          data={orders}
-          visibleColumns={Object.keys(columnVisibility).filter(col => columnVisibility[col])}
-          sorting={sorting}
-          onSortingChange={setSorting}
-          onRowExpand={handleRowExpand}
-          onActionClick={handleActionClick}
-          onColumnVisibilityChange={handleColumnVisibilityChange}
-          onColumnReorder={handleColumnOrderChange}
-          isLoading={loading}
-          canEdit={canEdit}
-          canCreateInvoice={canCreateInvoice}
-          canExportDocument={canExportDocument}
-        />
-      )}
+      {/* Table - zobrazit vždy */}
+      <OrdersTableV3
+        data={orders}
+        visibleColumns={Object.keys(columnVisibility).filter(col => columnVisibility[col])}
+        columnOrder={columnOrder}
+        sorting={sorting}
+        onSortingChange={setSorting}
+        onRowExpand={handleRowExpand}
+        onActionClick={handleActionClick}
+        onColumnVisibilityChange={handleColumnVisibilityChange}
+        onColumnReorder={handleColumnOrderChange}
+        userId={user_id}
+        isLoading={loading}
+        error={error}
+        canEdit={canEdit}
+        canCreateInvoice={canCreateInvoice}
+        canExportDocument={canExportDocument}
+      />
 
       {/* Pagination */}
       {totalItems > 0 && (
