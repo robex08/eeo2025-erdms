@@ -248,7 +248,7 @@ export function useOrdersV3({
       }
       
       // 🔍 DEBUG: Zobrazit aktivní filtry
-      console.log('🔍 DEBUG: Active filters being sent to API:', activeFilters);
+      // console.log('🔍 DEBUG: Active filters being sent to API:', activeFilters);
       
       // Volání V3 API
       const response = await listOrdersV3({
@@ -262,9 +262,9 @@ export function useOrdersV3({
       });
       
       // 🔍 DEBUG: Zobrazit celý response
-      console.log('🔍 DEBUG: Full API Response:', JSON.stringify(response, null, 2));
-      console.log('🔍 DEBUG: Orders array:', response.data?.orders);
-      console.log('🔍 DEBUG: Orders count:', response.data?.orders?.length);
+      // console.log('🔍 DEBUG: Full API Response:', JSON.stringify(response, null, 2));
+      // console.log('🔍 DEBUG: Orders array:', response.data?.orders);
+      // console.log('🔍 DEBUG: Orders count:', response.data?.orders?.length);
       
       // Response format: { status, data: { orders, pagination, stats }, message }
       if (response.status === 'success' && response.data) {
@@ -282,7 +282,7 @@ export function useOrdersV3({
           setStats(response.data.stats);
         }
         
-        console.log('✅ Orders set to state:', response.data.orders?.length || 0, 'items');
+        // console.log('✅ Orders set to state:', response.data.orders?.length || 0, 'items');
       } else {
         throw new Error(response.message || 'Neplatná odpověď serveru');
       }
