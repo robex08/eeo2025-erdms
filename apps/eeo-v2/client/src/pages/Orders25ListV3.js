@@ -661,12 +661,12 @@ function Orders25ListV3() {
       }
       
       // TODO: Implementovat uložení do user settings na backend
-      console.log('💾 Saving column config:', {
-        columnVisibility,
-        columnOrder,
-      });
+      // console.log('💾 Saving column config:', {
+      //   columnVisibility,
+      //   columnOrder,
+      // });
       
-      console.log('✅ Column config saved to localStorage');
+      // console.log('✅ Column config saved to localStorage');
     } catch (err) {
       console.error('❌ Error saving column config:', err);
     }
