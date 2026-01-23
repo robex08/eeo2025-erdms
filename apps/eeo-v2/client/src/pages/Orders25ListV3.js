@@ -493,6 +493,8 @@ function Orders25ListV3() {
           onSortingChange={setSorting}
           onRowExpand={handleRowExpand}
           onActionClick={handleActionClick}
+          onColumnVisibilityChange={handleColumnVisibilityChange}
+          onColumnReorder={handleColumnOrderChange}
           isLoading={loading}
           canEdit={canEdit}
           canCreateInvoice={canCreateInvoice}
