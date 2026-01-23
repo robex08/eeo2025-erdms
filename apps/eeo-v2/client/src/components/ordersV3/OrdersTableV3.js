@@ -34,6 +34,8 @@ import {
   faFileWord,
   faBolt,
   faBoltLightning,
+  faGripVertical,
+  faEyeSlash,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -87,9 +89,45 @@ const TableHeaderCell = styled.th`
   cursor: ${props => props.$sortable ? 'pointer' : 'default'};
   user-select: none;
   transition: background-color 0.2s ease;
+  position: relative;
 
   &:hover {
     background-color: ${props => props.$sortable ? '#e2e8f0' : 'transparent'};
+    
+    .column-actions {
+      opacity: 1;
+    }
+  }
+
+  /* Drag & Drop styling */
+  &[data-dragging="true"] {
+    opacity: 0.5;
+    background-color: #dbeafe;
+  }
+
+  &[data-drag-over="true"] {
+    border-left: 3px solid #3b82f6;
+  }
+
+  /* Resize handle */
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 5px;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+    background: transparent;
+    
+    &:hover {
+      background: #3b82f6;
+    }
+    
+    &:active {
+      background: #2563eb;
+    }
   }
 
   /* Šířky sloupců */
@@ -97,6 +135,57 @@ const TableHeaderCell = styled.th`
     if (props.$width) return props.$width;
     return 'auto';
   }};
+`;
+
+const HeaderContent = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+`;
+
+const HeaderText = styled.span`
+  flex: 1;
+`;
+
+const ColumnActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+`;
+
+const ColumnActionButton = styled.button`
+  background: transparent;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  font-size: 0.85rem;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+  }
+
+  &.hide-column:hover {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+
+  &.drag-handle {
+    cursor: grab;
+    
+    &:active {
+      cursor: grabbing;
+    }
+  }
 `;
 
 const TableBody = styled.tbody`
@@ -476,6 +565,8 @@ const OrdersTableV3 = ({
   onSortingChange,
   onRowExpand,
   onActionClick,
+  onColumnVisibilityChange,
+  onColumnReorder,
   isLoading = false,
   canEdit = () => true,
   canCreateInvoice = () => true,
@@ -483,6 +574,13 @@ const OrdersTableV3 = ({
 }) => {
   // State pro expandované řádky
   const [expandedRows, setExpandedRows] = useState({});
+  
+  // State pro drag & drop
+  const [draggedColumn, setDraggedColumn] = useState(null);
+  const [dragOverColumn, setDragOverColumn] = useState(null);
+  
+  // State pro resizing
+  const [columnSizing, setColumnSizing] = useState({});
   
   // Handler pro toggle expandování
   const handleRowExpand = useCallback((orderId) => {
@@ -492,6 +590,39 @@ const OrdersTableV3 = ({
     }));
     onRowExpand?.(orderId);
   }, [onRowExpand]);
+  
+  // Handler pro skrytí sloupce
+  const handleHideColumn = useCallback((columnId) => {
+    onColumnVisibilityChange?.(columnId, false);
+  }, [onColumnVisibilityChange]);
+  
+  // Drag & Drop handlers
+  const handleDragStart = useCallback((columnId) => {
+    setDraggedColumn(columnId);
+  }, []);
+  
+  const handleDragOver = useCallback((e, columnId) => {
+    e.preventDefault();
+    setDragOverColumn(columnId);
+  }, []);
+  
+  const handleDragLeave = useCallback(() => {
+    setDragOverColumn(null);
+  }, []);
+  
+  const handleDrop = useCallback((e, targetColumnId) => {
+    e.preventDefault();
+    if (draggedColumn && draggedColumn !== targetColumnId) {
+      onColumnReorder?.(draggedColumn, targetColumnId);
+    }
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  }, [draggedColumn, onColumnReorder]);
+  
+  const handleDragEnd = useCallback(() => {
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  }, []);
   
   // Definice sloupců přesně jako v původním Orders25List.js
   const columns = useMemo(() => {
@@ -931,27 +1062,94 @@ const OrdersTableV3 = ({
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id}>
-              {headerGroup.headers.map(header => (
-                <TableHeaderCell
-                  key={header.id}
-                  $align={header.column.columnDef.meta?.align || 'left'}
-                  $sortable={header.column.getCanSort()}
-                  $width={header.column.columnDef.size ? `${header.column.columnDef.size}px` : undefined}
-                  onClick={header.column.getToggleSortingHandler()}
-                >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                  {header.column.getCanSort() && (
-                    <span style={{ marginLeft: '0.25rem', opacity: 0.6 }}>
-                      {{
-                        asc: ' ↑',
-                        desc: ' ↓',
-                      }[header.column.getIsSorted()] ?? ''}
-                    </span>
-                  )}
-                </TableHeaderCell>
-              ))}
+              {headerGroup.headers.map(header => {
+                const columnId = header.column.id;
+                const canHide = columnId !== 'expander' && columnId !== 'actions';
+                
+                return (
+                  <TableHeaderCell
+                    key={header.id}
+                    $align={header.column.columnDef.meta?.align || 'left'}
+                    $sortable={header.column.getCanSort()}
+                    $width={columnSizing[columnId] || (header.column.columnDef.size ? `${header.column.columnDef.size}px` : undefined)}
+                    data-dragging={draggedColumn === columnId}
+                    data-drag-over={dragOverColumn === columnId}
+                    draggable={canHide}
+                    onDragStart={() => handleDragStart(columnId)}
+                    onDragOver={(e) => handleDragOver(e, columnId)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, columnId)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <HeaderContent>
+                      <HeaderText onClick={header.column.getToggleSortingHandler()}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && (
+                          <span style={{ marginLeft: '0.25rem', opacity: 0.6 }}>
+                            {{
+                              asc: ' ↑',
+                              desc: ' ↓',
+                            }[header.column.getIsSorted()] ?? ''}
+                          </span>
+                        )}
+                      </HeaderText>
+                      
+                      {canHide && (
+                        <ColumnActions className="column-actions">
+                          <ColumnActionButton
+                            className="drag-handle"
+                            title="Přesunout sloupec"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            <FontAwesomeIcon icon={faGripVertical} />
+                          </ColumnActionButton>
+                          <ColumnActionButton
+                            className="hide-column"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleHideColumn(columnId);
+                            }}
+                            title="Skrýt sloupec"
+                          >
+                            <FontAwesomeIcon icon={faEyeSlash} />
+                          </ColumnActionButton>
+                        </ColumnActions>
+                      )}
+                    </HeaderContent>
+                    
+                    {/* Resize handle */}
+                    {canHide && (
+                      <div
+                        className="resize-handle"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          const startX = e.clientX;
+                          const startWidth = header.column.getSize();
+                          
+                          const handleMouseMove = (moveEvent) => {
+                            const diff = moveEvent.clientX - startX;
+                            const newWidth = Math.max(50, startWidth + diff);
+                            setColumnSizing(prev => ({
+                              ...prev,
+                              [columnId]: `${newWidth}px`
+                            }));
+                          };
+                          
+                          const handleMouseUp = () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                          };
+                          
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                      />
+                    )}
+                  </TableHeaderCell>
+                );
+              })}
             </tr>
           ))}
         </TableHead>
