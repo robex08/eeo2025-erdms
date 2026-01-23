@@ -7,7 +7,7 @@
  * Optimalizováno pro širokoúhlé monitory s horizontal scrollem
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import styled from '@emotion/styled';
 import {
   flexRender,
@@ -63,7 +63,7 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  min-width: 1400px; /* Minimální šířka pro všechny sloupce */
+  table-layout: auto; /* Dynamická šířka sloupců */
 `;
 
 const TableHead = styled.thead`
@@ -110,6 +110,15 @@ const TableBody = styled.tbody`
 
   tr:hover {
     background-color: #f1f5f9;
+  }
+  
+  /* Podřádek styling */
+  tr.subrow {
+    background-color: #fef3c7 !important;
+    
+    td {
+      padding: 0;
+    }
   }
 `;
 
@@ -260,12 +269,113 @@ const ActionMenuButton = styled.button`
   }
 `;
 
+const SubRowContainer = styled.div`
+  padding: 1rem;
+  background-color: #fffbeb;
+  border-left: 3px solid #fbbf24;
+  line-height: 1.5;
+  
+  h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    color: #92400e;
+    font-weight: 600;
+  }
+  
+  .sub-row-section {
+    margin-bottom: 1rem;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+  
+  .sub-row-label {
+    font-weight: 600;
+    color: #78350f;
+    margin-right: 0.5rem;
+  }
+  
+  .sub-row-value {
+    color: #451a03;
+  }
+  
+  .sub-row-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0 0;
+    
+    li {
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #fde68a;
+      
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+  }
+`;
+
 const EmptyState = styled.div`
   text-align: center;
   padding: 3rem 1rem;
   color: #64748b;
   font-size: 1rem;
 `;
+
+/**
+ * Renderuje podřádek s detaily objednávky
+ */
+const SubRowDetail = ({ order }) => {
+  return (
+    <SubRowContainer>
+      <h4>Detail objednávky #{order.id}</h4>
+      
+      <div className="sub-row-section">
+        <span className="sub-row-label">Předmět:</span>
+        <span className="sub-row-value">{order.predmet || '---'}</span>
+      </div>
+      
+      {order.poznamka && (
+        <div className="sub-row-section">
+          <span className="sub-row-label">Poznámka:</span>
+          <span className="sub-row-value">{order.poznamka}</span>
+        </div>
+      )}
+      
+      {order.polozky && order.polozky.length > 0 && (
+        <div className="sub-row-section">
+          <span className="sub-row-label">Položky ({order.polozky.length}):</span>
+          <ul className="sub-row-list">
+            {order.polozky.slice(0, 5).map((item, idx) => (
+              <li key={idx}>
+                <span style={{ fontWeight: 500 }}>{item.nazev || item.popis || 'Položka'}</span>
+                {item.mnozstvi && <span> - {item.mnozstvi} {item.jednotka || 'ks'}</span>}
+                {item.cena_s_dph && (
+                  <span style={{ float: 'right', fontWeight: 600, fontFamily: 'monospace' }}>
+                    {parseFloat(item.cena_s_dph).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                  </span>
+                )}
+              </li>
+            ))}
+            {order.polozky.length > 5 && (
+              <li style={{ fontStyle: 'italic', color: '#92400e' }}>
+                ... a dalších {order.polozky.length - 5} položek
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+      
+      {order.prilohy && order.prilohy.length > 0 && (
+        <div className="sub-row-section">
+          <span className="sub-row-label">Přílohy:</span>
+          <span className="sub-row-value">{order.prilohy.length} souborů</span>
+        </div>
+      )}
+    </SubRowContainer>
+  );
+};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -371,20 +481,37 @@ const OrdersTableV3 = ({
   canCreateInvoice = () => true,
   canExportDocument = () => true,
 }) => {
+  // State pro expandované řádky
+  const [expandedRows, setExpandedRows] = useState({});
+  
+  // Handler pro toggle expandování
+  const handleRowExpand = useCallback((orderId) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId]
+    }));
+    onRowExpand?.(orderId);
+  }, [onRowExpand]);
+  
   // Definice sloupců přesně jako v původním Orders25List.js
   const columns = useMemo(() => {
     const allColumns = [
       {
         id: 'expander',
         header: '',
-        cell: ({ row }) => (
-          <ExpandButton
-            onClick={() => onRowExpand?.(row.original)}
-            title={row.getIsExpanded() ? 'Sbalit' : 'Rozbalit'}
-          >
-            <FontAwesomeIcon icon={row.getIsExpanded() ? faMinus : faPlus} />
-          </ExpandButton>
-        ),
+        cell: ({ row }) => {
+          const order = row.original;
+          const isExpanded = expandedRows[order.id];
+          
+          return (
+            <ExpandButton
+              onClick={() => handleRowExpand(order.id)}
+              title={isExpanded ? 'Sbalit' : 'Rozbalit'}
+            >
+              <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
+            </ExpandButton>
+          );
+        },
         size: 50,
         enableSorting: false,
       },
@@ -688,7 +815,10 @@ const OrdersTableV3 = ({
         id: 'faktury_celkova_castka_s_dph',
         header: 'Cena FA s DPH',
         cell: ({ row }) => {
-          const price = parseFloat(row.original.faktury_celkova_castka_s_dph || 0);
+          const order = row.original;
+          const price = parseFloat(order.faktury_celkova_castka_s_dph || 0);
+          const maxPrice = parseFloat(order.max_cena_s_dph || 0);
+          const isOverLimit = price > 0 && maxPrice > 0 && price > maxPrice;
           
           return (
             <div style={{
@@ -759,7 +889,7 @@ const OrdersTableV3 = ({
     }
     
     return allColumns;
-  }, [visibleColumns, onRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument]);
+  }, [visibleColumns, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, expandedRows]);
 
   const table = useReactTable({
     data,
@@ -826,18 +956,33 @@ const OrdersTableV3 = ({
           ))}
         </TableHead>
         <TableBody>
-          {table.getRowModel().rows.map(row => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map(cell => (
-                <TableCell
-                  key={cell.id}
-                  $align={cell.column.columnDef.meta?.align || 'left'}
-                >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map(row => {
+            const order = row.original;
+            const isExpanded = expandedRows[order.id];
+            const colSpan = row.getVisibleCells().length;
+            
+            return (
+              <React.Fragment key={row.id}>
+                <tr>
+                  {row.getVisibleCells().map(cell => (
+                    <TableCell
+                      key={cell.id}
+                      $align={cell.column.columnDef.meta?.align || 'left'}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </tr>
+                {isExpanded && (
+                  <tr className="subrow">
+                    <td colSpan={colSpan}>
+                      <SubRowDetail order={order} />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>

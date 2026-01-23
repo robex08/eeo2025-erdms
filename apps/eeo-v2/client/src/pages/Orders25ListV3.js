@@ -18,7 +18,7 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -27,6 +27,10 @@ import {
   faExclamationTriangle,
   faInfoCircle,
   faCog,
+  faChartBar,
+  faFilter,
+  faEye,
+  faEyeSlash,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Context
@@ -38,6 +42,7 @@ import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
 
 // Components
 import OrdersDashboardV3Full from '../components/ordersV3/OrdersDashboardV3Full';
+import OrdersFiltersV3 from '../components/ordersV3/OrdersFiltersV3';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
@@ -47,29 +52,13 @@ import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
 // ============================================================================
 
 const Container = styled.div`
-  padding: 1.5rem;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  margin: 0;
   min-height: calc(100vh - var(--app-fixed-offset, 140px));
-
-  /* Optimalizace pro širokoúhlé monitory */
-  @media (min-width: 1920px) {
-    padding: 2rem 3rem;
-  }
-
-  @media (min-width: 2560px) {
-    padding: 2rem 4rem;
-  }
-
-  /* Menší rozlišení */
-  @media (max-width: 1200px) {
-    padding: 1rem;
-  }
-
-  @media (max-width: 768px) {
-    padding: 0.75rem;
-  }
+  box-sizing: border-box;
 `;
+
 
 const Header = styled.div`
   display: flex;
@@ -115,6 +104,30 @@ const HeaderActions = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
+`;
+
+const ToggleButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: ${props => props.$active ? '#3b82f6' : 'white'};
+  border: 2px solid ${props => props.$active ? '#3b82f6' : '#e2e8f0'};
+  border-radius: 8px;
+  color: ${props => props.$active ? 'white' : '#475569'};
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.$active ? '#2563eb' : '#f1f5f9'};
+    border-color: ${props => props.$active ? '#2563eb' : '#3b82f6'};
+  }
+
+  svg {
+    font-size: 0.9rem;
+  }
 `;
 
 const YearSelector = styled.select`
@@ -233,14 +246,20 @@ const TablePlaceholder = styled.div`
 // ============================================================================
 
 const COLUMN_LABELS = {
-  cislo_objednavky: 'Číslo objednávky',
-  predmet: 'Předmět',
+  expander: '',
+  approve: '',
+  dt_objednavky: 'Datum objednávky',
+  cislo_objednavky: 'Evidenční číslo',
+  zpusob_financovani: 'Financování',
+  objednatel_garant: 'Objednatel / Garant',
+  prikazce_schvalovatel: 'Příkazce / Schvalovatel',
   dodavatel_nazev: 'Dodavatel',
-  dt_objednavky: 'Datum',
-  max_cena_s_dph: 'Cena s DPH',
   stav_objednavky: 'Stav',
-  vytvoril_uzivatel: 'Vytvořil',
-  akce: 'Akce',
+  stav_registru: 'Stav registru',
+  max_cena_s_dph: 'Max. cena s DPH',
+  cena_s_dph: 'Cena s DPH',
+  faktury_celkova_castka_s_dph: 'Cena FA s DPH',
+  actions: 'Akce',
 };
 
 // ============================================================================
@@ -300,6 +319,14 @@ function Orders25ListV3() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
+  // Local state pro UI toggles
+  const [showDashboard, setShowDashboard] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [dashboardMode, setDashboardMode] = useState('FULL'); // FULL, DYNAMIC, COMPACT
+  
+  // State pro třídění
+  const [sorting, setSorting] = useState([]);
+
   // Handler pro uložení konfigurace sloupců
   const handleSaveColumnConfig = async () => {
     try {
@@ -318,10 +345,6 @@ function Orders25ListV3() {
       console.error('❌ Error saving column config:', err);
     }
   };
-
-  // State pro dashboard mode
-  const [dashboardMode, setDashboardMode] = React.useState('full'); // 'full' | 'dynamic' | 'compact'
-  const [showDashboard, setShowDashboard] = React.useState(true);
 
   // Handler pro akce v tabulce
   const handleActionClick = (action, order) => {
@@ -355,6 +378,26 @@ function Orders25ListV3() {
         </TitleSection>
 
         <HeaderActions>
+          {/* Toggle Dashboard */}
+          <ToggleButton
+            $active={showDashboard}
+            onClick={() => setShowDashboard(!showDashboard)}
+            title={showDashboard ? 'Skrýt dashboard' : 'Zobrazit dashboard'}
+          >
+            <FontAwesomeIcon icon={showDashboard ? faEyeSlash : faEye} />
+            <FontAwesomeIcon icon={faChartBar} />
+          </ToggleButton>
+
+          {/* Toggle Filtry */}
+          <ToggleButton
+            $active={showFilters}
+            onClick={() => setShowFilters(!showFilters)}
+            title={showFilters ? 'Skrýt filtry' : 'Zobrazit filtry'}
+          >
+            <FontAwesomeIcon icon={showFilters ? faEyeSlash : faEye} />
+            <FontAwesomeIcon icon={faFilter} />
+          </ToggleButton>
+
           {/* Výběr roku */}
           <YearSelector
             value={selectedYear}
@@ -407,6 +450,19 @@ function Orders25ListV3() {
         />
       )}
 
+      {/* Filters */}
+      {showFilters && (
+        <OrdersFiltersV3
+          filters={columnFilters}
+          onFilterChange={handleColumnFilterChange}
+          onClearAll={handleClearFilters}
+          availableYears={years}
+          availableStates={[]}
+          availableUsers={[]}
+          availableSuppliers={[]}
+        />
+      )}
+
       {/* Loading state */}
       {loading && orders.length === 0 && (
         <LoadingOverlay>
@@ -433,8 +489,8 @@ function Orders25ListV3() {
         <OrdersTableV3
           data={orders}
           visibleColumns={Object.keys(columnVisibility).filter(col => columnVisibility[col])}
-          sorting={[]} // TODO: implementovat sorting state
-          onSortingChange={() => {}} // TODO
+          sorting={sorting}
+          onSortingChange={setSorting}
           onRowExpand={handleRowExpand}
           onActionClick={handleActionClick}
           isLoading={loading}

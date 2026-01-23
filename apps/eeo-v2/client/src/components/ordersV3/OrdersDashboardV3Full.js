@@ -96,17 +96,12 @@ const ActionButton = styled.button`
 
 const DashboardGrid = styled.div`
   display: grid;
-  grid-template-columns: minmax(400px, 450px) repeat(auto-fit, minmax(200px, 240px));
-  gap: clamp(1rem, 1.5vw, 1.75rem);
-  align-items: start;
-  justify-content: start;
-
-  @media (max-width: 1600px) {
-    grid-template-columns: minmax(350px, 400px) repeat(auto-fit, minmax(180px, 220px));
-  }
+  grid-template-columns: minmax(380px, 420px) repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  width: 100%;
 
   @media (max-width: 1200px) {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   }
 
   @media (max-width: 768px) {
