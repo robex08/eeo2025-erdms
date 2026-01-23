@@ -129,6 +129,7 @@ function verify_token_v2($username, $token, $db = null) {
         
         // Admin může být SUPERADMIN nebo ADMINISTRATOR
         $token_data['is_admin'] = !empty(array_intersect($roles, array('SUPERADMIN', 'ADMINISTRATOR')));
+        $token_data['roles'] = $roles; // ✅ Přidat pole rolí do výstupu
         
         // DEBUG log
         $roles_str = !empty($roles) ? implode(', ', $roles) : 'ŽÁDNÉ ROLE';

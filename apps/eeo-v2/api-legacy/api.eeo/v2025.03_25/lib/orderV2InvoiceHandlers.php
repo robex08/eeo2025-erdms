@@ -429,6 +429,8 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         return;
     }
     
+    debug_log("📝 UPDATE INVOICE #$invoice_id - User: {$input['username']}, token_data: " . json_encode($token_data, JSON_UNESCAPED_UNICODE));
+    
     try {
         $db = get_db($config);
         
@@ -436,15 +438,9 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         
         // 🔒 ADMIN CHECK - potřeba pro práci s neaktivními fakturami
-        $is_admin = false;
-        if (isset($token_data['roles']) && is_array($token_data['roles'])) {
-            foreach ($token_data['roles'] as $role) {
-                if (in_array($role, ['SUPERADMIN', 'ADMINISTRATOR'])) {
-                    $is_admin = true;
-                    break;
-                }
-            }
-        }
+        $is_admin = isset($token_data['is_admin']) ? (bool)$token_data['is_admin'] : false;
+        
+        debug_log("🔒 UPDATE INVOICE #$invoice_id - is_admin: " . ($is_admin ? 'TRUE' : 'FALSE'));
         
         // Načíst současný stav faktury
         // ✅ Admin může aktualizovat i neaktivní faktury
@@ -452,15 +448,21 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         if (!$is_admin) {
             $sql_current .= " AND aktivni = 1";
         }
+        
+        debug_log("🔍 UPDATE INVOICE #$invoice_id - SQL: $sql_current");
+        
         $stmt_current = $db->prepare($sql_current);
         $stmt_current->execute(array($invoice_id));
         $current_invoice = $stmt_current->fetch(PDO::FETCH_ASSOC);
         
         if (!$current_invoice) {
+            debug_log("⛔ UPDATE INVOICE #$invoice_id - Faktura nebyla nalezena (is_admin=$is_admin)");
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena'));
             return;
         }
+        
+        debug_log("✅ UPDATE INVOICE #$invoice_id - Faktura nalezena, aktivni={$current_invoice['aktivni']}");
         
         // Build dynamic update query based on provided fields
         $updateFields = array();
@@ -626,16 +628,25 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         
         $updateValues[] = $invoice_id;
         
-        $sql_update = "UPDATE " . TBL_FAKTURY . " SET " . implode(', ', $updateFields) . " WHERE id = ? AND aktivni = 1";
+        // ✅ Admin může aktualizovat i neaktivní faktury
+        $sql_update = "UPDATE " . TBL_FAKTURY . " SET " . implode(', ', $updateFields) . " WHERE id = ?";
+        if (!$is_admin) {
+            $sql_update .= " AND aktivni = 1";
+        }
+        
+        debug_log("🔧 UPDATE INVOICE #$invoice_id - SQL: $sql_update");
         
         $stmt = $db->prepare($sql_update);
         $stmt->execute($updateValues);
         
         if ($stmt->rowCount() === 0) {
+            debug_log("⛔ UPDATE INVOICE #$invoice_id - rowCount=0, faktura nebyla aktualizována");
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena nebo není aktivní'));
             return;
         }
+        
+        debug_log("✅ UPDATE INVOICE #$invoice_id - Aktualizováno {$stmt->rowCount()} řádků");
         
         // =========================================================================
         // 🔄 AUTOMATICKÁ ZMĚNA WORKFLOW OBJEDNÁVKY PO UPDATE FAKTURY
