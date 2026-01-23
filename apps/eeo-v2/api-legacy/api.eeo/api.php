@@ -289,6 +289,9 @@ require_once __DIR__ . '/v2025.03_25/lib/searchHandlers.php';
 // REPORTS - Order V2 Reports
 require_once __DIR__ . '/v2025.03_25/lib/reportsHandlers.php';
 
+// ORDER V3 - Optimized API for React Frontend
+require_once __DIR__ . '/v2025.03_25/lib/orderV3Handlers.php';
+
 // SPISOVKA ZPRACOVANI - Tracking zpracovaných dokumentů ze Spisovka InBox
 require_once __DIR__ . '/v2025.03_25/lib/spisovkaZpracovaniEndpoints.php';
 
@@ -2086,6 +2089,38 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
+
+    // === ORDER V3 - OPTIMIZED API FOR REACT FRONTEND ===
+    
+    // POST /api.eeo/order-v3/list - Optimized listing with pagination and stats
+    case 'order-v3/list':
+        if ($request_method === 'POST') {
+            handle_order_v3_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/order-v3/stats - Statistics only (lightweight for dashboard)
+    case 'order-v3/stats':
+        if ($request_method === 'POST') {
+            handle_order_v3_stats($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/order-v3/items - Lazy load order items (subrows)
+    case 'order-v3/items':
+        if ($request_method === 'POST') {
+            handle_order_v3_items($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
 
