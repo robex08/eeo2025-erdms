@@ -993,10 +993,14 @@ function handle_todonotes_load($input, $config, $queries) {
  * Parametry: username, token, typ (TODO|NOTES), obsah, [id]
  */
 function handle_todonotes_save($input, $config, $queries) {
+    // 🔍 DEBUG: Log vstupních parametrů
+    debug_log("📝 TODONOTES SAVE - Received input: " . json_encode($input, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+    
     // Validace povinných parametrů
     $required = ['username', 'token', 'typ', 'obsah'];
     foreach ($required as $param) {
         if (!isset($input[$param])) {
+            debug_log("⛔ TODONOTES SAVE - Missing parameter: $param");
             api_error(400, "Chybí povinný parametr: $param", 'MISSING_PARAMETERS');
             return;
         }
