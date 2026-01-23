@@ -627,12 +627,11 @@ function getOrderStats($db, $year, $user_id = 0) {
             END) as mimoradneUdalosti,
             -- MOJE OBJEDNÁVKY (kde jsem objednatel, garant, příkazce nebo schvalovatel)
             SUM(CASE 
-                WHEN ? > 0 AND (
-                    o.objednatel_id = ? OR 
+                WHEN o.objednatel_id = ? OR 
                     o.garant_uzivatel_id = ? OR 
                     o.prikazce_id = ? OR 
                     o.schvalovatel_id = ?
-                ) THEN 1 
+                THEN 1 
                 ELSE 0 
             END) as mojeObjednavky
         FROM " . TBL_OBJEDNAVKY . " o
@@ -640,7 +639,7 @@ function getOrderStats($db, $year, $user_id = 0) {
     ";
     
     $stmt_stats = $db->prepare($sql_stats);
-    $stmt_stats->execute(array($user_id, $user_id, $user_id, $user_id, $user_id, $year));
+    $stmt_stats->execute(array($user_id, $user_id, $user_id, $user_id, $year));
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
     
     // Celková cena s DPH - priorita: faktury > položky > max_cena_s_dph
@@ -667,7 +666,39 @@ function getOrderStats($db, $year, $user_id = 0) {
                     -- Priorita 3: Použij max_cena_s_dph
                     ELSE COALESCE(o.max_cena_s_dph, 0)
                 END
-            ), 0) as totalAmount
+            ), 0) as totalAmount,
+            
+            -- Částka ROZPRACOVANÝCH objednávek
+            COALESCE(SUM(
+                CASE
+                    WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'ROZPRACOVANA'
+                    THEN
+                        CASE
+                            WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                            THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                            WHEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) > 0
+                            THEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id)
+                            ELSE COALESCE(o.max_cena_s_dph, 0)
+                        END
+                    ELSE 0
+                END
+            ), 0) as rozpracovanaAmount,
+            
+            -- Částka DOKONČENÝCH objednávek
+            COALESCE(SUM(
+                CASE
+                    WHEN JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = 'DOKONCENA'
+                    THEN
+                        CASE
+                            WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                            THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                            WHEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) > 0
+                            THEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id)
+                            ELSE COALESCE(o.max_cena_s_dph, 0)
+                        END
+                    ELSE 0
+                END
+            ), 0) as dokoncenaAmount
         FROM " . TBL_OBJEDNAVKY . " o
         WHERE o.aktivni = 1 AND YEAR(o.dt_objednavky) = ?
     ";
@@ -676,8 +707,10 @@ function getOrderStats($db, $year, $user_id = 0) {
     $stmt_amount->execute(array($year));
     $amount_data = $stmt_amount->fetch(PDO::FETCH_ASSOC);
     
-    // Přidat totalAmount do stats
+    // Přidat totalAmount a další částky do stats
     $stats['totalAmount'] = floatval($amount_data['totalAmount']);
+    $stats['rozpracovanaAmount'] = floatval($amount_data['rozpracovanaAmount']);
+    $stats['dokoncenaAmount'] = floatval($amount_data['dokoncenaAmount']);
     
     return $stats;
 }
