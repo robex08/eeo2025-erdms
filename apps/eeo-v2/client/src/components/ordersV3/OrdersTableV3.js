@@ -7,7 +7,7 @@
  * Optimalizováno pro širokoúhlé monitory s horizontal scrollem
  */
 
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import styled from '@emotion/styled';
 import {
   flexRender,
@@ -16,6 +16,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import DatePicker from '../DatePicker';
+import OperatorInput from '../OperatorInput';
 import {
   faPlus,
   faMinus,
@@ -161,7 +163,7 @@ const TableHeaderCell = styled.th`
 const HeaderContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
   flex: 1;
   min-width: 0;
   align-items: ${props => {
@@ -952,6 +954,7 @@ const OrdersTableV3 = ({
   onActionClick,
   onColumnVisibilityChange,
   onColumnReorder,
+  onColumnFiltersChange, // Callback pro změny filtrů
   userId, // Přidáno pro localStorage per user
   isLoading = false,
   error = null,
@@ -966,8 +969,12 @@ const OrdersTableV3 = ({
   // State pro expandované řádky
   const [expandedRows, setExpandedRows] = useState({});
   
-  // State pro column filters (lokální filtrace v tabulce)
+  // State pro column filters (lokální - zobrazení v UI)
   const [columnFilters, setColumnFilters] = useState({});
+  const [localColumnFilters, setLocalColumnFilters] = useState({});
+  
+  // Ref pro debounce timery
+  const filterTimers = useRef({});
   
   // State pro drag & drop
   const [draggedColumn, setDraggedColumn] = useState(null);
@@ -992,6 +999,38 @@ const OrdersTableV3 = ({
       localStorage.setItem(`ordersV3_columnSizing_${userId}`, JSON.stringify(columnSizing));
     }
   }, [columnSizing, userId]);
+  
+  // Debounced filter change - posílá změny do parent komponenty po 1000ms
+  const handleFilterChange = useCallback((columnId, value) => {
+    // Update lokální state okamžitě (pro UI)
+    setLocalColumnFilters(prev => ({
+      ...prev,
+      [columnId]: value
+    }));
+    
+    // Debounce pro volání API (1000ms)
+    if (filterTimers.current[columnId]) {
+      clearTimeout(filterTimers.current[columnId]);
+    }
+    
+    filterTimers.current[columnId] = setTimeout(() => {
+      // Update hlavní state a předat změnu do parent komponenty
+      setColumnFilters(prev => ({
+        ...prev,
+        [columnId]: value
+      }));
+      if (onColumnFiltersChange) {
+        onColumnFiltersChange(columnId, value);
+      }
+    }, 1000);
+  }, [onColumnFiltersChange]);
+  
+  // Cleanup timers při unmount
+  useEffect(() => {
+    return () => {
+      Object.values(filterTimers.current).forEach(clearTimeout);
+    };
+  }, []);
   
   // Handler pro toggle expandování
   const handleRowExpand = useCallback((orderId) => {
@@ -1402,7 +1441,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 110,
+        size: 150,
         enableSorting: true,
       },
       {
@@ -1425,7 +1464,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 110,
+        size: 150,
         enableSorting: true,
       },
       {
@@ -1452,7 +1491,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 150,
         enableSorting: true,
       },
       {
@@ -1702,21 +1741,65 @@ const OrdersTableV3 = ({
                       </HeaderRow>
                       
                       {/* Druhý řádek: filtrovací pole v celé šířce */}
-                      {header.column.getCanSort() && (
-                        <ColumnFilterInput
-                          type="text"
-                          placeholder="Filtrovat..."
-                          value={columnFilters[columnId] || ''}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            setColumnFilters(prev => ({
-                              ...prev,
-                              [columnId]: e.target.value
-                            }));
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      )}
+                      {header.column.getCanSort() && (() => {
+                        const columnId = header.column.id;
+                        
+                        // Datum sloupec - DatePicker
+                        if (columnId === 'dt_objednavky') {
+                          return (
+                            <div style={{ position: 'relative', marginTop: '4px' }}>
+                              <DatePicker
+                                fieldName={`${columnId}_filter`}
+                                value={localColumnFilters[columnId] || ''}
+                                onChange={(value) => handleFilterChange(columnId, value)}
+                                placeholder="Datum"
+                                variant="compact"
+                              />
+                            </div>
+                          );
+                        }
+                        
+                        // Číselné sloupce - OperatorInput
+                        if (columnId === 'max_cena_s_dph' || columnId === 'cena_s_dph' || columnId === 'faktury_celkova_castka_s_dph') {
+                          return (
+                            <div style={{ position: 'relative', marginTop: '4px' }}>
+                              <OperatorInput
+                                value={localColumnFilters[columnId] || ''}
+                                onChange={(value) => handleFilterChange(columnId, value)}
+                                placeholder={
+                                  columnId === 'max_cena_s_dph' ? 'Max. cena s DPH' :
+                                  columnId === 'cena_s_dph' ? 'Cena s DPH' :
+                                  'Cena FA s DPH'
+                                }
+                              />
+                            </div>
+                          );
+                        }
+                        
+                        // Textové sloupce - standardní input
+                        return (
+                          <ColumnFilterWrapper>
+                            <FontAwesomeIcon icon={faSearch} />
+                            <ColumnFilterInput
+                              type="text"
+                              placeholder="Filtrovat..."
+                              value={localColumnFilters[columnId] || ''}
+                              onChange={(e) => handleFilterChange(columnId, e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            {localColumnFilters[columnId] && (
+                              <ColumnClearButton
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFilterChange(columnId, '');
+                                }}
+                              >
+                                <FontAwesomeIcon icon={faTimes} />
+                              </ColumnClearButton>
+                            )}
+                          </ColumnFilterWrapper>
+                        );
+                      })()}
                     </HeaderContent>
                     
                     {/* Resize handle */}
@@ -1775,7 +1858,7 @@ const OrdersTableV3 = ({
                 </div>
               </td>
             </ErrorRow>
-          ) : isLoading ? (
+          ) : isLoading && !hasData ? (
             <LoadingRow>
               <td colSpan={colSpan}>
                 <div className="loading-spinner">
