@@ -2409,12 +2409,16 @@ function handle_invoices25_list($input, $config, $queries) {
  * Pouze pro ADMIN role (SUPERADMIN, ADMINISTRATOR)
  */
 function handle_invoices25_restore($input, $config, $queries) {
+    debug_log("🚀 RESTORE invoices25 STARTED - Input: " . json_encode($input));
+    
     // Ověření tokenu z POST dat
     $token = isset($input['token']) ? $input['token'] : '';
     $request_username = isset($input['username']) ? $input['username'] : '';
     $invoice_id = isset($input['id']) ? (int)$input['id'] : 0;
+    
+    debug_log("🔑 Token: " . substr($token, 0, 20) . "..., Username: $request_username, Invoice ID: $invoice_id");
 
-    $token_data = verify_token($token);
+    $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
         http_response_code(401);
         echo json_encode(['err' => 'Neplatný nebo chybějící token']);
@@ -2437,15 +2441,9 @@ function handle_invoices25_restore($input, $config, $queries) {
         $db = get_db($config);
         
         // 🔒 ADMIN CHECK - pouze admin může obnovit fakturu
-        $is_admin = false;
-        if (isset($token_data['roles']) && is_array($token_data['roles'])) {
-            foreach ($token_data['roles'] as $role) {
-                if (in_array($role, ['SUPERADMIN', 'ADMINISTRATOR'])) {
-                    $is_admin = true;
-                    break;
-                }
-            }
-        }
+        $is_admin = isset($token_data['is_admin']) && $token_data['is_admin'] === true;
+        
+        debug_log("🔍 RESTORE invoices25: User {$token_data['username']} (ID {$token_data['id']}), is_admin: " . ($is_admin ? 'TRUE' : 'FALSE'));
         
         if (!$is_admin) {
             http_response_code(403);
@@ -2457,7 +2455,7 @@ function handle_invoices25_restore($input, $config, $queries) {
         $db->beginTransaction();
 
         // Zkontrolovat, zda faktura existuje (včetně deaktivovaných)
-        $checkStmt = $db->prepare("SELECT * FROM faktury25 WHERE id = :id");
+        $checkStmt = $db->prepare("SELECT * FROM " . TBL_FAKTURY . " WHERE id = :id");
         $checkStmt->bindParam(':id', $invoice_id, PDO::PARAM_INT);
         $checkStmt->execute();
         $invoice = $checkStmt->fetch(PDO::FETCH_ASSOC);
@@ -2480,7 +2478,7 @@ function handle_invoices25_restore($input, $config, $queries) {
         }
 
         // Restore - nastavit aktivni = 1 a aktualizovat datum
-        $restoreStmt = $db->prepare("UPDATE faktury25 
+        $restoreStmt = $db->prepare("UPDATE " . TBL_FAKTURY . " 
                                      SET aktivni = 1, 
                                          dt_aktualizace = NOW()
                                      WHERE id = :id");

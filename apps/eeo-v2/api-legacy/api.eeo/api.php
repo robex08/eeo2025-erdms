@@ -325,6 +325,17 @@ if ($is_multipart) {
     if (json_last_error() !== JSON_ERROR_NONE || empty($input)) {
         $input = $_POST;
     }
+    
+    // ✅ SPECIAL: DELETE requests s JSON payloadem
+    // Axios DELETE s {data: payload} posílá JSON v body, ale PHP neparsuje $_POST pro DELETE
+    if ($request_method === 'DELETE' && !empty($raw_input) && empty($input)) {
+        debug_log("⚠️ DELETE request with raw input, attempting JSON parse");
+        $input = json_decode($raw_input, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            debug_log("❌ JSON parse failed for DELETE request");
+            $input = array();
+        }
+    }
 }
 
 // Extrakce endpointu - priorita X-Endpoint header, pak URI
@@ -3448,6 +3459,8 @@ switch ($endpoint) {
         
         // === ORDER V2 INVOICE MANAGEMENT ENDPOINTS ===
         
+        debug_log("🔍 Checking ORDER V2 INVOICE endpoints - endpoint: {$endpoint}, method: {$request_method}");
+        
         // POST /api.eeo/order-v2/invoices/create-with-attachment - vytvoří STANDALONE fakturu s přílohou (bez objednávky)
         if (preg_match('/^order-v2\/invoices\/create-with-attachment$/', $endpoint, $matches)) {
             $input['order_id'] = null; // Standalone faktura
@@ -3653,9 +3666,11 @@ switch ($endpoint) {
 
         // DELETE /api.eeo/order-v2/invoices/{invoice_id} - delete faktury (RESTful DELETE)
         if (preg_match('/^order-v2\/invoices\/(\d+)$/', $endpoint, $matches)) {
+            debug_log("🗑️ DELETE invoice - endpoint matched: order-v2/invoices/{$matches[1]}, method: {$request_method}");
             $input['invoice_id'] = (int)$matches[1];
             
             if ($request_method === 'DELETE' || $request_method === 'POST') {
+                debug_log("🗑️ Calling handle_order_v2_delete_invoice with input: " . json_encode($input));
                 handle_order_v2_delete_invoice($input, $config, $queries);
             } else {
                 http_response_code(405);

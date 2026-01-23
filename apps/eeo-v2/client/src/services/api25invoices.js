@@ -1575,9 +1575,8 @@ export async function deleteInvoiceV2(invoiceId, token, username, hardDelete = f
       hard_delete: hardDelete ? 1 : 0
     };
 
-    // ✅ V2 API: DELETE /order-v2/invoices/{id}
-    const response = await api25invoices.delete(`order-v2/invoices/${invoiceId}`, {
-      data: payload,
+    // ✅ V2 API: POST /order-v2/invoices/{id}/delete (Apache blokuje DELETE method)
+    const response = await api25invoices.post(`order-v2/invoices/${invoiceId}/delete`, payload, {
       timeout: 10000
     });
 
