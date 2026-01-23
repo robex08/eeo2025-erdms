@@ -18,25 +18,38 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useContext } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faRocket, 
   faSpinner, 
   faExclamationTriangle,
-  faInfoCircle 
+  faInfoCircle,
+  faCog,
 } from '@fortawesome/free-solid-svg-icons';
+
+// Context
+import { AuthContext } from '../context/AuthContext';
+import { ProgressContext } from '../context/ProgressContext';
+
+// Custom hooks
+import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
+
+// Components
+import OrdersDashboardV3 from '../components/ordersV3/OrdersDashboardV3';
+import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
+import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 
 // ============================================================================
 // STYLED COMPONENTS
 // ============================================================================
 
 const Container = styled.div`
-  padding: 2rem;
-  max-width: 1400px;
+  padding: 1.5rem;
+  max-width: 1600px;
   margin: 0 auto;
-  min-height: calc(100vh - 200px);
+  min-height: calc(100vh - var(--app-fixed-offset, 140px));
 `;
 
 const Header = styled.div`
@@ -46,6 +59,14 @@ const Header = styled.div`
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #e5e7eb;
+  flex-wrap: wrap;
+  gap: 1rem;
+`;
+
+const TitleSection = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 `;
 
 const Title = styled.h1`
@@ -71,173 +92,313 @@ const Badge = styled.span`
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 `;
 
-const InfoCard = styled.div`
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border: 2px solid #3b82f6;
-  border-radius: 12px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 `;
 
-const InfoTitle = styled.h2`
-  font-size: 1.5rem;
+const YearSelector = styled.select`
+  padding: 0.625rem 1rem;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
   font-weight: 600;
-  color: #1e40af;
-  margin: 0 0 1rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-`;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
 
-const InfoText = styled.p`
-  font-size: 1rem;
-  line-height: 1.6;
-  color: #1e3a8a;
-  margin: 0.5rem 0;
-`;
+  &:hover {
+    border-color: #3b82f6;
+  }
 
-const FeatureList = styled.ul`
-  list-style: none;
-  padding: 0;
-  margin: 1rem 0;
-`;
-
-const FeatureItem = styled.li`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-  font-size: 1rem;
-  color: #1e40af;
-  
-  &:before {
-    content: '✅';
-    font-size: 1.25rem;
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 `;
 
-const StatusCard = styled.div`
+const LoadingOverlay = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
   background: white;
-  border: 2px solid #e5e7eb;
   border-radius: 12px;
-  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+`;
+
+const LoadingText = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1.125rem;
+  color: #64748b;
+  font-weight: 500;
+
+  svg {
+    font-size: 1.5rem;
+    color: #3b82f6;
+  }
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   text-align: center;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 `;
 
-const StatusIcon = styled.div`
+const EmptyIcon = styled.div`
   font-size: 4rem;
+  color: #cbd5e1;
   margin-bottom: 1rem;
-  color: #3b82f6;
 `;
 
-const StatusTitle = styled.h3`
-  font-size: 1.5rem;
+const EmptyTitle = styled.h3`
+  font-size: 1.25rem;
   font-weight: 600;
-  color: #1f2937;
+  color: #475569;
   margin: 0 0 0.5rem 0;
 `;
 
-const StatusText = styled.p`
+const EmptyText = styled.p`
   font-size: 1rem;
-  color: #6b7280;
+  color: #64748b;
   margin: 0;
 `;
 
-const VersionInfo = styled.div`
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-top: 2rem;
-  font-size: 0.875rem;
-  color: #6b7280;
-  text-align: center;
+const ErrorAlert = styled.div`
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 2px solid #ef4444;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 `;
+
+const ErrorIcon = styled.div`
+  font-size: 2rem;
+  color: #ef4444;
+`;
+
+const ErrorMessage = styled.div`
+  flex: 1;
+  font-size: 1rem;
+  color: #b91c1c;
+  font-weight: 500;
+`;
+
+const TablePlaceholder = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  text-align: center;
+  color: #64748b;
+  font-size: 1rem;
+  font-style: italic;
+`;
+
+// ============================================================================
+// COLUMN LABELS (pro konfiguraci)
+// ============================================================================
+
+const COLUMN_LABELS = {
+  cislo_objednavky: 'Číslo objednávky',
+  predmet: 'Předmět',
+  dodavatel_nazev: 'Dodavatel',
+  dt_objednavky: 'Datum',
+  max_cena_s_dph: 'Cena s DPH',
+  stav_objednavky: 'Stav',
+  vytvoril_uzivatel: 'Vytvořil',
+  akce: 'Akce',
+};
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
 function Orders25ListV3() {
-  const [isLoading, setIsLoading] = useState(false);
+  // Contexts
+  const { token, username, user_id } = useContext(AuthContext);
+  const { showProgress, hideProgress } = useContext(ProgressContext) || {};
 
-  // Placeholder pro budoucí implementaci
-  useEffect(() => {
-    console.log('📋 Orders25ListV3 mounted - BETA verze 3.0');
-    return () => {
-      console.log('📋 Orders25ListV3 unmounted');
-    };
-  }, []);
+  // Custom hook pro Orders V3
+  const {
+    // Data
+    orders,
+    loading,
+    error,
+    stats,
+    
+    // Pagination
+    currentPage,
+    itemsPerPage,
+    totalPages,
+    totalItems,
+    handlePageChange,
+    handleItemsPerPageChange,
+    
+    // Filtry
+    selectedYear,
+    setSelectedYear,
+    columnFilters,
+    dashboardFilters,
+    handleColumnFilterChange,
+    handleDashboardFilterChange,
+    handleClearFilters,
+    
+    // Column Configuration
+    columnVisibility,
+    columnOrder,
+    handleColumnVisibilityChange,
+    handleColumnOrderChange,
+    handleResetColumnConfig,
+    
+    // Expanded Rows
+    expandedRows,
+    subRowsData,
+    handleToggleRow,
+  } = useOrdersV3({
+    token,
+    username,
+    userId: user_id,
+    showProgress,
+    hideProgress,
+  });
+
+  // Generovat roky pro selector
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
+
+  // Handler pro uložení konfigurace sloupců
+  const handleSaveColumnConfig = async () => {
+    try {
+      // TODO: Implementovat uložení do user settings
+      console.log('💾 Saving column config:', {
+        columnVisibility,
+        columnOrder,
+      });
+      
+      // Placeholder - localStorage
+      localStorage.setItem('ordersV3_columnVisibility', JSON.stringify(columnVisibility));
+      localStorage.setItem('ordersV3_columnOrder', JSON.stringify(columnOrder));
+      
+      console.log('✅ Column config saved to localStorage');
+    } catch (err) {
+      console.error('❌ Error saving column config:', err);
+    }
+  };
 
   return (
     <Container>
+      {/* Header */}
       <Header>
-        <Title>
-          <FontAwesomeIcon icon={faRocket} style={{ color: '#3b82f6' }} />
-          Objednávky V3
-          <Badge>
-            <FontAwesomeIcon icon={faInfoCircle} />
-            BETA
-          </Badge>
-        </Title>
+        <TitleSection>
+          <Title>
+            <FontAwesomeIcon icon={faRocket} style={{ color: '#3b82f6' }} />
+            Objednávky V3
+            <Badge>
+              <FontAwesomeIcon icon={faInfoCircle} />
+              BETA
+            </Badge>
+          </Title>
+        </TitleSection>
+
+        <HeaderActions>
+          {/* Výběr roku */}
+          <YearSelector
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+            disabled={loading}
+          >
+            {years.map(year => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </YearSelector>
+
+          {/* Konfigurace sloupců */}
+          <OrdersColumnConfigV3
+            columnVisibility={columnVisibility}
+            columnOrder={columnOrder}
+            columnLabels={COLUMN_LABELS}
+            onVisibilityChange={handleColumnVisibilityChange}
+            onOrderChange={handleColumnOrderChange}
+            onReset={handleResetColumnConfig}
+            onSave={handleSaveColumnConfig}
+          />
+        </HeaderActions>
       </Header>
 
-      <InfoCard>
-        <InfoTitle>
-          <FontAwesomeIcon icon={faRocket} />
-          Vítejte v nové verzi Objednávek!
-        </InfoTitle>
-        <InfoText>
-          Toto je <strong>beta verze 3.0</strong> seznamu objednávek s pokročilými funkcemi
-          pro optimální výkon a lepší uživatelský zážitek.
-        </InfoText>
-        
-        <FeatureList>
-          <FeatureItem>
-            <strong>Backend pagination</strong> - Rychlejší načítání (50-100 záznamů najednou)
-          </FeatureItem>
-          <FeatureItem>
-            <strong>Backend filtering</strong> - Efektivní filtrování přímo v databázi
-          </FeatureItem>
-          <FeatureItem>
-            <strong>Postupné načítání</strong> - Data se načítají jen když je potřebujete
-          </FeatureItem>
-          <FeatureItem>
-            <strong>Optimalizace výkonu</strong> - Funguje skvěle i s tisíci objednávek
-          </FeatureItem>
-          <FeatureItem>
-            <strong>Nižší spotřeba RAM</strong> - Šetří paměť vašeho prohlížeče
-          </FeatureItem>
-        </FeatureList>
+      {/* Error state */}
+      {error && (
+        <ErrorAlert>
+          <ErrorIcon>
+            <FontAwesomeIcon icon={faExclamationTriangle} />
+          </ErrorIcon>
+          <ErrorMessage>{error}</ErrorMessage>
+        </ErrorAlert>
+      )}
 
-        <InfoText style={{ marginTop: '1rem', fontWeight: 600 }}>
-          ⚠️ Tato verze je zatím dostupná pouze pro administrátory pro účely testování.
-        </InfoText>
-      </InfoCard>
+      {/* Dashboard */}
+      <OrdersDashboardV3
+        stats={stats}
+        activeFilter={dashboardFilters.filter_status}
+        onFilterChange={handleDashboardFilterChange}
+      />
 
-      <StatusCard>
-        <StatusIcon>
-          <FontAwesomeIcon icon={faSpinner} spin />
-        </StatusIcon>
-        <StatusTitle>Implementace probíhá...</StatusTitle>
-        <StatusText>
-          V3 verze je momentálně ve vývoji. Brzy zde uvidíte plně funkční 
-          seznam objednávek s novými funkcemi.
-        </StatusText>
-      </StatusCard>
+      {/* Loading state */}
+      {loading && orders.length === 0 && (
+        <LoadingOverlay>
+          <LoadingText>
+            <FontAwesomeIcon icon={faSpinner} spin />
+            Načítám objednávky...
+          </LoadingText>
+        </LoadingOverlay>
+      )}
 
-      <VersionInfo>
-        📋 Orders V3 Beta • Verze 3.0.0-beta.1 • 23. ledna 2026 • 
-        <a 
-          href="/docs/ORDERS25LIST_BACKEND_PAGINATION_ANALYSIS.md" 
-          target="_blank"
-          style={{ marginLeft: '0.5rem', color: '#3b82f6', textDecoration: 'none' }}
-        >
-          Dokumentace
-        </a>
-      </VersionInfo>
+      {/* Table (placeholder pro nyní) */}
+      {!loading && orders.length === 0 && !error && (
+        <EmptyState>
+          <EmptyIcon>📋</EmptyIcon>
+          <EmptyTitle>Žádné objednávky</EmptyTitle>
+          <EmptyText>
+            Pro vybraný rok {selectedYear} nebyly nalezeny žádné objednávky.
+          </EmptyText>
+        </EmptyState>
+      )}
+
+      {/* TODO: OrdersTableV3 - bude implementováno */}
+      {!loading && orders.length > 0 && (
+        <TablePlaceholder>
+          📊 Tabulka s daty bude zde (OrdersTableV3 component) - {orders.length} objednávek načteno
+        </TablePlaceholder>
+      )}
+
+      {/* Pagination */}
+      {totalItems > 0 && (
+        <OrdersPaginationV3
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          onItemsPerPageChange={handleItemsPerPageChange}
+          loading={loading}
+        />
+      )}
     </Container>
   );
 }
