@@ -2094,22 +2094,38 @@ export default function InvoiceEvidencePage() {
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO PŘÍLOHY - dostupné dokud faktura NENÍ DOKONČENÁ
   const areAttachmentsEditable = useMemo(() => {
+    // Pro nové faktury (editingInvoiceId je null) jsou přílohy VŽDY dostupné
+    if (!editingInvoiceId) {
+      return true;
+    }
+    
     // Kontrola oprávnění uživatele pro přílohy
     const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
     const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
     
-    if (!isAdmin && !hasInvoiceManage) {
-      return false;
+    // Admini a INVOICE_MANAGE mohou vždy editovat (dokud není DOKONČENÁ)
+    if (isAdmin || hasInvoiceManage) {
+      // Pokud se data ještě nenačetla, předpokládáme že může editovat
+      if (!originalFormData) {
+        return true;
+      }
+      // Přílohy jsou editovatelné dokud faktura NENÍ DOKONČENÁ
+      return originalFormData.stav !== 'DOKONCENA';
     }
     
-    // 🔧 OPRAVA: Pokud se data ještě nenačetla (originalFormData je null), přílohy nejsou dostupné
+    // 🔧 OPRAVA: Běžný uživatel může přidávat přílohy i bez admin oprávnění
+    // Backend kontroluje permission matrix: vlastní přílohy + přílohy ze svého úseku
+    // Frontend povolí upload a backend při uploadu zkontroluje konkrétní oprávnění
+    
+    // Pokud se data ještě nenačetla, předpokládáme že může editovat
     if (!originalFormData) {
-      return false;
+      return true;
     }
     
-    // Přílohy jsou editovatelné dokud faktura NENÍ DOKONČENÁ (bez ohledu na jiné stavy)
+    // Pro běžné uživatele: přílohy editovatelné dokud faktura NENÍ DOKONČENÁ
+    // (konkrétní oprávnění pro delete/edit konkrétních příloh kontroluje backend)
     return originalFormData.stav !== 'DOKONCENA';
-  }, [originalFormData, hasPermission]);
+  }, [editingInvoiceId, originalFormData, hasPermission]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
   // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI
