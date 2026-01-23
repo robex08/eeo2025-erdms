@@ -37,9 +37,10 @@ import { ProgressContext } from '../context/ProgressContext';
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
 
 // Components
-import OrdersDashboardV3 from '../components/ordersV3/OrdersDashboardV3';
+import OrdersDashboardV3Full from '../components/ordersV3/OrdersDashboardV3Full';
 import OrdersPaginationV3 from '../components/ordersV3/OrdersPaginationV3';
 import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
+import OrdersTableV3 from '../components/ordersV3/OrdersTableV3';
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -47,9 +48,27 @@ import OrdersColumnConfigV3 from '../components/ordersV3/OrdersColumnConfigV3';
 
 const Container = styled.div`
   padding: 1.5rem;
-  max-width: 1600px;
+  max-width: 100%;
   margin: 0 auto;
   min-height: calc(100vh - var(--app-fixed-offset, 140px));
+
+  /* Optimalizace pro širokoúhlé monitory */
+  @media (min-width: 1920px) {
+    padding: 2rem 3rem;
+  }
+
+  @media (min-width: 2560px) {
+    padding: 2rem 4rem;
+  }
+
+  /* Menší rozlišení */
+  @media (max-width: 1200px) {
+    padding: 1rem;
+  }
+
+  @media (max-width: 768px) {
+    padding: 0.75rem;
+  }
 `;
 
 const Header = styled.div`
@@ -300,6 +319,26 @@ function Orders25ListV3() {
     }
   };
 
+  // State pro dashboard mode
+  const [dashboardMode, setDashboardMode] = React.useState('full'); // 'full' | 'dynamic' | 'compact'
+  const [showDashboard, setShowDashboard] = React.useState(true);
+
+  // Handler pro akce v tabulce
+  const handleActionClick = (action, order) => {
+    console.log('🎯 Action clicked:', action, order);
+    // TODO: Implementovat akce (edit, create-invoice, export)
+  };
+
+  // Handler pro rozbalení řádku
+  const handleRowExpand = (order) => {
+    handleToggleRow(order.id);
+  };
+
+  // Dummy handlers pro actions (budou implementovány)
+  const canEdit = () => true;
+  const canCreateInvoice = () => true;
+  const canExportDocument = () => true;
+
   return (
     <Container>
       {/* Header */}
@@ -353,11 +392,20 @@ function Orders25ListV3() {
       )}
 
       {/* Dashboard */}
-      <OrdersDashboardV3
-        stats={stats}
-        activeFilter={dashboardFilters.filter_status}
-        onFilterChange={handleDashboardFilterChange}
-      />
+      {showDashboard && (
+        <OrdersDashboardV3Full
+          stats={stats}
+          totalAmount={stats.totalAmount || 0}
+          filteredTotalAmount={stats.filteredTotalAmount || stats.totalAmount || 0}
+          filteredCount={orders.length}
+          hasActiveFilters={dashboardFilters.filter_status || Object.keys(columnFilters).length > 0}
+          activeStatus={dashboardFilters.filter_status}
+          onStatusClick={handleDashboardFilterChange}
+          onHide={() => setShowDashboard(false)}
+          mode={dashboardMode}
+          onModeChange={setDashboardMode}
+        />
+      )}
 
       {/* Loading state */}
       {loading && orders.length === 0 && (
@@ -380,11 +428,20 @@ function Orders25ListV3() {
         </EmptyState>
       )}
 
-      {/* TODO: OrdersTableV3 - bude implementováno */}
+      {/* Table */}
       {!loading && orders.length > 0 && (
-        <TablePlaceholder>
-          📊 Tabulka s daty bude zde (OrdersTableV3 component) - {orders.length} objednávek načteno
-        </TablePlaceholder>
+        <OrdersTableV3
+          data={orders}
+          visibleColumns={Object.keys(columnVisibility).filter(col => columnVisibility[col])}
+          sorting={[]} // TODO: implementovat sorting state
+          onSortingChange={() => {}} // TODO
+          onRowExpand={handleRowExpand}
+          onActionClick={handleActionClick}
+          isLoading={loading}
+          canEdit={canEdit}
+          canCreateInvoice={canCreateInvoice}
+          canExportDocument={canExportDocument}
+        />
       )}
 
       {/* Pagination */}
