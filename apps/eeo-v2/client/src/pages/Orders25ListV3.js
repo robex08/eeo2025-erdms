@@ -31,7 +31,11 @@ import {
   faFilter,
   faEye,
   faEyeSlash,
+  faPalette,
 } from '@fortawesome/free-solid-svg-icons';
+
+// Status colors
+import { STATUS_COLORS, getStatusColor } from '../constants/orderStatusColors';
 
 // Context
 import { AuthContext } from '../context/AuthContext';
@@ -242,6 +246,85 @@ const TablePlaceholder = styled.div`
 `;
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// Funkce pro mapování uživatelského stavu na systémový kód
+const mapUserStatusToSystemCode = (userStatus) => {
+  if (userStatus && typeof userStatus === 'string') {
+    if (userStatus.startsWith('Zamítnut')) return 'ZAMITNUTA';
+    if (userStatus.startsWith('Schválen')) return 'SCHVALENA';
+    if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
+    if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
+    if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+  }
+  
+  const mapping = {
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI',
+    'Nová': 'NOVA',
+    'Rozpracovaná': 'ROZPRACOVANA',
+    'Odeslaná dodavateli': 'ODESLANA',
+    'Potvrzená dodavatelem': 'POTVRZENA',
+    'Má být zveřejněna': 'K_UVEREJNENI_DO_REGISTRU',
+    'Uveřejněná': 'UVEREJNENA',
+    'Čeká na potvrzení': 'CEKA_POTVRZENI',
+    'Čeká se': 'CEKA_SE',
+    'Fakturace': 'FAKTURACE',
+    'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Smazaná': 'SMAZANA',
+    'Koncept': 'NOVA'
+  };
+  return mapping[userStatus] || userStatus;
+};
+
+// Funkce pro barvu pozadí řádků tabulky - světlé odstíny
+const getRowBackgroundColor = (order) => {
+  try {
+    // Speciální případ pro koncepty
+    if (order?.isDraft || order?.je_koncept) {
+      return STATUS_COLORS.NOVA.light;
+    }
+
+    // Získej systémový stav pro mapování na barvy
+    let systemStatus;
+
+    // Preferuj uživatelsky přívětivý stav z stav_objednavky a zmapuj na systémový
+    if (order?.stav_objednavky) {
+      systemStatus = mapUserStatusToSystemCode(order.stav_objednavky);
+    }
+    // Fallback na stav_workflow_kod
+    else if (order?.stav_workflow_kod) {
+      try {
+        const workflowStates = Array.isArray(order.stav_workflow_kod) 
+          ? order.stav_workflow_kod 
+          : JSON.parse(order.stav_workflow_kod);
+        if (Array.isArray(workflowStates)) {
+          const lastState = workflowStates[workflowStates.length - 1];
+          if (typeof lastState === 'object' && (lastState.kod_stavu || lastState.nazev_stavu)) {
+            systemStatus = lastState.kod_stavu || 'NEZNAMY';
+          } else {
+            systemStatus = typeof lastState === 'string' ? lastState : 'NEZNAMY';
+          }
+        } else {
+          systemStatus = order.stav_workflow_kod;
+        }
+      } catch {
+        systemStatus = order.stav_workflow_kod;
+      }
+    }
+    // Další fallbacky pro různé názvy polí
+    else {
+      systemStatus = order?.stav_id_num ?? order?.stav_id ?? order?.status_id ?? order?.stav ?? 'NOVA';
+    }
+
+    const statusColors = getStatusColor(systemStatus);
+    return statusColors?.light || STATUS_COLORS.NOVA.light;
+  } catch (error) {
+    return STATUS_COLORS.NOVA.light;
+  }
+};
+
+// ============================================================================
 // COLUMN LABELS (pro konfiguraci)
 // ============================================================================
 
@@ -323,6 +406,7 @@ function Orders25ListV3() {
   const [showDashboard, setShowDashboard] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [dashboardMode, setDashboardMode] = useState('FULL'); // FULL, DYNAMIC, COMPACT
+  const [showRowColoring, setShowRowColoring] = useState(true); // Podbarvení řádků podle stavu
   
   // State pro třídění
   const [sorting, setSorting] = useState([]);
@@ -406,6 +490,15 @@ function Orders25ListV3() {
           >
             <FontAwesomeIcon icon={showFilters ? faEyeSlash : faEye} />
             <FontAwesomeIcon icon={faFilter} />
+          </ToggleButton>
+
+          {/* Toggle Podbarvení řádků */}
+          <ToggleButton
+            $active={showRowColoring}
+            onClick={() => setShowRowColoring(!showRowColoring)}
+            title={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'}
+          >
+            <FontAwesomeIcon icon={faPalette} />
           </ToggleButton>
 
           {/* Výběr roku */}
@@ -512,6 +605,8 @@ function Orders25ListV3() {
         canEdit={canEdit}
         canCreateInvoice={canCreateInvoice}
         canExportDocument={canExportDocument}
+        showRowColoring={showRowColoring}
+        getRowBackgroundColor={getRowBackgroundColor}
       />
 
       {/* Pagination */}
