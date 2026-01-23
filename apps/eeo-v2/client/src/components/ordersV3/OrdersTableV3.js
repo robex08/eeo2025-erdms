@@ -39,6 +39,7 @@ import {
   faTimes,
   faUndo,
   faTrash,
+  faSearch,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -218,23 +219,76 @@ const SortIndexBadge = styled.span`
   margin-left: 4px;
 `;
 
+const ColumnFilterWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+
+  > svg:first-of-type {
+    position: absolute;
+    left: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    z-index: 1;
+    pointer-events: none;
+    width: 12px !important;
+    height: 12px !important;
+  }
+`;
+
+const ColumnClearButton = styled.button`
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+
+  &:hover {
+    color: #6b7280;
+  }
+
+  > svg {
+    width: 10px !important;
+    height: 10px !important;
+  }
+`;
+
 const ColumnFilterInput = styled.input`
   width: 100%;
-  padding: 4px 6px;
-  font-size: 0.75rem;
+  padding: 0.35rem 1.75rem 0.35rem 1.75rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
-  background: white;
+  font-size: 0.7rem;
+  background: #f9fafb;
   transition: all 0.15s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
   
   &:focus {
     outline: none;
     border-color: #3b82f6;
+    background: white;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
   
   &::placeholder {
     color: #9ca3af;
+    font-size: 0.7rem;
   }
 `;
 
