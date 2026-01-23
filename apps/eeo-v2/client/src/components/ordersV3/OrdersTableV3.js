@@ -7,7 +7,7 @@
  * Optimalizováno pro širokoúhlé monitory s horizontal scrollem
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import styled from '@emotion/styled';
 import {
   flexRender,
@@ -36,6 +36,8 @@ import {
   faBoltLightning,
   faGripVertical,
   faEyeSlash,
+  faTimes,
+  faUndo,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -112,21 +114,35 @@ const TableHeaderCell = styled.th`
   /* Resize handle */
   .resize-handle {
     position: absolute;
-    right: 0;
+    right: -8px;
     top: 0;
     height: 100%;
-    width: 5px;
+    width: 16px;
     cursor: col-resize;
     user-select: none;
     touch-action: none;
     background: transparent;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
-    &:hover {
+    &::before {
+      content: '';
+      width: 3px;
+      height: 60%;
+      background: transparent;
+      border-radius: 2px;
+      transition: background 0.15s ease;
+    }
+    
+    &:hover::before {
       background: #3b82f6;
     }
     
-    &:active {
+    &:active::before {
       background: #2563eb;
+      width: 4px;
     }
   }
 
@@ -139,13 +155,154 @@ const TableHeaderCell = styled.th`
 
 const HeaderContent = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  align-items: ${props => {
+    if (props.$align === 'center') return 'center';
+    if (props.$align === 'right') return 'flex-end';
+    return 'flex-start';
+  }};
+`;
+
+const HeaderRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: ${props => {
+    if (props.$align === 'center') return 'center';
+    if (props.$align === 'right') return 'flex-end';
+    return 'space-between';
+  }};
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+`;
+
+const HeaderTextWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
 `;
 
 const HeaderText = styled.span`
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+`;
+
+const SortIndexBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: ${props => props.$asc ? '#3b82f6' : '#ef4444'};
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9px;
+  margin-left: 4px;
+`;
+
+const ColumnFilterInput = styled.input`
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  transition: all 0.15s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+  
+  &::placeholder {
+    color: #9ca3af;
+  }
+`;
+
+const TableToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  gap: 1rem;
+`;
+
+const ToolbarInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: #64748b;
+`;
+
+const ToolbarActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const ResetButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  
+  &:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #1e293b;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  svg {
+    font-size: 0.875rem;
+  }
+`;
+
+const FilterBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: #3b82f6;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 10px;
+  margin-left: 4px;
 `;
 
 const ColumnActions = styled.div`
@@ -412,6 +569,90 @@ const EmptyState = styled.div`
   font-size: 1rem;
 `;
 
+const EmptyStateRow = styled.tr`
+  td {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #64748b;
+    font-size: 1rem;
+  }
+  
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+  }
+  
+  .empty-message {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+  
+  .empty-hint {
+    font-size: 0.9rem;
+    color: #9ca3af;
+  }
+`;
+
+const ErrorRow = styled.tr`
+  td {
+    text-align: center;
+    padding: 3rem 1rem;
+  }
+  
+  .error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    color: #ef4444;
+    opacity: 0.8;
+  }
+  
+  .error-message {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: #dc2626;
+  }
+  
+  .error-detail {
+    font-size: 0.9rem;
+    color: #64748b;
+    margin-top: 0.5rem;
+    background: #fef2f2;
+    padding: 0.75rem;
+    border-radius: 6px;
+    display: inline-block;
+    max-width: 600px;
+    word-break: break-word;
+  }
+`;
+
+
+const LoadingRow = styled.tr`
+  td {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #64748b;
+    font-size: 1rem;
+  }
+  
+  .loading-spinner {
+    font-size: 2rem;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+
 /**
  * Renderuje podřádek s detaily objednávky
  */
@@ -471,49 +712,148 @@ const SubRowDetail = ({ order }) => {
 // ============================================================================
 
 /**
- * Získá zobrazovací stav objednávky
+ * Získá zobrazovací stav objednávky - používá DB sloupec 'stav_objednavky' (čitelný český název)
  */
 const getOrderDisplayStatus = (order) => {
-  if (order.isDraft || order.je_koncept) return 'Nova / koncept';
-  if (order.stav_workflow) {
-    if (typeof order.stav_workflow === 'object') {
-      return order.stav_workflow.nazev_stavu || order.stav_workflow.nazev || 'Neznámý stav';
-    }
-    return String(order.stav_workflow);
-  }
-  return order.stav_objednavky || 'Neznámý stav';
+  // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
+  // např. "Nová", "Ke schválení", "Schválená", "Dokončená", "Fakturace", atd.
+  return order.stav_objednavky || '---';
 };
 
 /**
- * Získá systémový status kód
+ * Mapuje čitelný stav na systémový kód pro barvy a ikony
+ */
+const mapUserStatusToSystemCode = (userStatus) => {
+  // Kontrola na začátek textu pro různé varianty
+  if (userStatus && typeof userStatus === 'string') {
+    if (userStatus.startsWith('Zamítnut')) return 'ZAMITNUTA';
+    if (userStatus.startsWith('Schválen')) return 'SCHVALENA';
+    if (userStatus.startsWith('Dokončen')) return 'DOKONCENA';
+    if (userStatus.startsWith('Zrušen')) return 'ZRUSENA';
+    if (userStatus.startsWith('Archivován')) return 'ARCHIVOVANO';
+  }
+  
+  const mapping = {
+    'Ke schválení': 'ODESLANA_KE_SCHVALENI',
+    'Nová': 'NOVA',
+    'Rozpracovaná': 'ROZPRACOVANA',
+    'Odeslaná dodavateli': 'ODESLANA',
+    'Potvrzená dodavatelem': 'POTVRZENA',
+    'Má být zveřejněna': 'K_UVEREJNENI_DO_REGISTRU',
+    'Uveřejněná': 'UVEREJNENA',
+    'Čeká na potvrzení': 'CEKA_POTVRZENI',
+    'Čeká se': 'CEKA_SE',
+    'Fakturace': 'FAKTURACE',
+    'Věcná správnost': 'VECNA_SPRAVNOST',
+    'Zkontrolována': 'ZKONTROLOVANA',
+    'Smazaná': 'SMAZANA',
+    'Koncept': 'NOVA',
+  };
+  return mapping[userStatus] || 'DEFAULT';
+};
+
+/**
+ * Formátuje financování podle OrderV2 logiky
+ * Vrací název typu financování (zkrácený)
+ */
+const getFinancovaniText = (order) => {
+  // Backend vrací financovani jako objekt (už parsované)
+  if (order.financovani && typeof order.financovani === 'object' && !Array.isArray(order.financovani)) {
+    const fullText = order.financovani.typ_nazev || order.financovani.typ || '---';
+    
+    // Zkrátit víceoslovné názvy: "Limitovaný příslib" -> "Limitovaný p."
+    if (fullText !== '---') {
+      const words = fullText.trim().split(/\s+/);
+      if (words.length > 1) {
+        // První slovo celé + první písmeno dalších slov s tečkou
+        return words[0] + ' ' + words.slice(1).map(w => w.charAt(0) + '.').join(' ');
+      }
+    }
+    
+    return fullText;
+  }
+  return '---';
+};
+
+/**
+ * Získá detail financování (LP kódy, číslo smlouvy, ID individuálního schválení, atd.)
+ */
+const getFinancovaniDetail = (order) => {
+  // Backend vrací financovani jako objekt (už parsované)
+  if (!order.financovani || typeof order.financovani !== 'object' || Array.isArray(order.financovani)) {
+    return '';
+  }
+  
+  const typ = order.financovani.typ || '';
+  
+  // LP - zobrazit LP kód + název nebo jen kód pokud název chybí
+  if (typ === 'LP') {
+    // Priorita 1: lp_nazvy array s kompletními daty (kód + název)
+    if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+      const lpTexty = order.financovani.lp_nazvy
+        .map(lp => {
+          const kod = lp.cislo_lp || lp.kod || '';
+          const nazev = lp.nazev || '';
+          
+          // Pokud máme i kód i název, zobrazit formát "KOD - NAZEV"
+          if (kod && nazev) {
+            return `${kod} - ${nazev}`;
+          } 
+          // Jinak jen kód
+          else if (kod) {
+            return kod;
+          }
+          return '';
+        })
+        .filter(Boolean);
+      
+      if (lpTexty.length > 0) {
+        return lpTexty.join(', ');
+      }
+    }
+    // Fallback: lp_kody array (jen kódy bez názvů)
+    else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
+      return order.financovani.lp_kody.join(', ');
+    }
+  }
+  // Smlouva - zobrazit číslo smlouvy
+  else if (typ === 'SMLOUVA') {
+    return order.financovani.cislo_smlouvy || '';
+  }
+  // Individuální schválení - zobrazit ID individuálního schválení
+  else if (typ === 'INDIVIDUALNI_SCHVALENI') {
+    return order.financovani.individualni_schvaleni || '';
+  }
+  
+  return '';
+};
+
+/**
+ * Získá systémový status kód - DB sloupec 1:1
  */
 const getOrderSystemStatus = (order) => {
-  if (order.isDraft || order.je_koncept) return 'NOVA';
-  
-  // Mapování z workflow stavu
-  const workflowMap = {
-    'ODESLANA_KE_SCHVALENI': 'KE_SCHVALENI',
-    'SCHVALENA': 'SCHVALENA',
-    'ZAMITNUTA': 'ZAMITNUTA',
-    'ROZPRACOVANA': 'ROZPRACOVANA',
-    'ODESLANA': 'ODESLANA',
-    'POTVRZENA': 'POTVRZENA',
-    'K_UVEREJNENI': 'K_UVEREJNENI_DO_REGISTRU',
-    'UVEREJNENA': 'UVEREJNENA',
-    'DOKONCENA': 'DOKONCENA',
-    'ZRUSENA': 'ZRUSENA',
-    'CANCELLED': 'CANCELLED',
-  };
-
-  if (order.stav_workflow) {
-    const kod = typeof order.stav_workflow === 'object' 
-      ? order.stav_workflow.kod_stavu 
-      : order.stav_workflow;
+  // Backend vrací stav_workflow_kod jako array (už parsované): ["NOVA", "KE_SCHVALENI", ...]
+  if (order.stav_workflow_kod) {
+    // Pokud je to array, použít přímo
+    if (Array.isArray(order.stav_workflow_kod) && order.stav_workflow_kod.length > 0) {
+      // Vrátit poslední stav z pole
+      return order.stav_workflow_kod[order.stav_workflow_kod.length - 1];
+    }
     
-    return workflowMap[kod] || kod;
+    // Fallback pro starý formát (JSON string) - pro zpětnou kompatibilitu
+    if (typeof order.stav_workflow_kod === 'string') {
+      try {
+        const stavy = JSON.parse(order.stav_workflow_kod);
+        if (Array.isArray(stavy) && stavy.length > 0) {
+          return stavy[stavy.length - 1];
+        }
+      } catch (err) {
+        console.warn('Failed to parse stav_workflow_kod:', err);
+      }
+    }
   }
 
-  return order.stav_objednavky || 'NOVA';
+  return 'NOVA';
 };
 
 /**
@@ -527,19 +867,13 @@ const formatDateOnly = (date) => {
 };
 
 /**
- * Získá celkovou cenu s DPH
+ * Získá celkovou cenu s DPH - DB sloupec 1:1
  */
 const getOrderTotalPriceWithDPH = (order) => {
-  if (order.polozky_celkova_cena_s_dph != null && order.polozky_celkova_cena_s_dph !== '') {
-    const value = parseFloat(order.polozky_celkova_cena_s_dph);
-    if (!isNaN(value) && value > 0) return value;
-  }
-  
-  if (order.polozky && Array.isArray(order.polozky) && order.polozky.length > 0) {
-    return order.polozky.reduce((sum, item) => {
-      const cena = parseFloat(item.cena_s_dph || 0);
-      return sum + (isNaN(cena) ? 0 : cena);
-    }, 0);
+  // Backend vrací cena_s_dph přímo z DB
+  if (order.cena_s_dph != null && order.cena_s_dph !== '') {
+    const value = parseFloat(order.cena_s_dph);
+    if (!isNaN(value)) return value;
   }
   
   return 0;
@@ -557,17 +891,21 @@ const getOrderTotalPriceWithDPH = (order) => {
  * @param {Object} sorting - Aktuální třídění
  * @param {Function} onSortingChange - Handler pro změnu třídění
  * @param {boolean} isLoading - Stav načítání
+ * @param {Object} error - Error objekt pokud došlo k chybě
  */
 const OrdersTableV3 = ({
   data = [],
   visibleColumns = [], // pole ID sloupců k zobrazení
+  columnOrder = [], // pořadí sloupců
   sorting = [],
   onSortingChange,
   onRowExpand,
   onActionClick,
   onColumnVisibilityChange,
   onColumnReorder,
+  userId, // Přidáno pro localStorage per user
   isLoading = false,
+  error = null,
   canEdit = () => true,
   canCreateInvoice = () => true,
   canExportDocument = () => true,
@@ -575,12 +913,32 @@ const OrdersTableV3 = ({
   // State pro expandované řádky
   const [expandedRows, setExpandedRows] = useState({});
   
+  // State pro column filters (lokální filtrace v tabulce)
+  const [columnFilters, setColumnFilters] = useState({});
+  
   // State pro drag & drop
   const [draggedColumn, setDraggedColumn] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   
-  // State pro resizing
-  const [columnSizing, setColumnSizing] = useState({});
+  // State pro resizing - načíst z localStorage (per user)
+  const [columnSizing, setColumnSizing] = useState(() => {
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`ordersV3_columnSizing_${userId}`);
+        return saved ? JSON.parse(saved) : {};
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
+  
+  // Uložit column sizing do localStorage při změně (per user)
+  useEffect(() => {
+    if (userId && Object.keys(columnSizing).length > 0) {
+      localStorage.setItem(`ordersV3_columnSizing_${userId}`, JSON.stringify(columnSizing));
+    }
+  }, [columnSizing, userId]);
   
   // Handler pro toggle expandování
   const handleRowExpand = useCallback((orderId) => {
@@ -613,6 +971,7 @@ const OrdersTableV3 = ({
   const handleDrop = useCallback((e, targetColumnId) => {
     e.preventDefault();
     if (draggedColumn && draggedColumn !== targetColumnId) {
+      // Předat oba parametry (from, to) do callback
       onColumnReorder?.(draggedColumn, targetColumnId);
     }
     setDraggedColumn(null);
@@ -664,7 +1023,7 @@ const OrdersTableV3 = ({
       {
         accessorKey: 'dt_objednavky',
         id: 'dt_objednavky',
-        header: 'Datum objednávky',
+        header: 'Datum',
         cell: ({ row }) => {
           const order = row.original;
           const lastModified = order.dt_aktualizace || order.dt_objednavky;
@@ -725,39 +1084,37 @@ const OrdersTableV3 = ({
         enableSorting: true,
       },
       {
-        accessorKey: 'zpusob_financovani',
-        id: 'zpusob_financovani',
+        accessorKey: 'financovani',
+        id: 'financovani',
         header: 'Financování',
         cell: ({ row }) => {
           const order = row.original;
-          let financovaniText = '---';
-          let detailText = '';
+          const financovaniText = getFinancovaniText(order); // Zkrácený název
+          const detailText = getFinancovaniDetail(order);
           
-          if (order.financovani && typeof order.financovani === 'object') {
-            financovaniText = order.financovani.typ_nazev || order.financovani.typ || '---';
-            
-            const typ = order.financovani.typ || '';
-            if (typ === 'LP' && order.financovani.lp_kody) {
-              detailText = Array.isArray(order.financovani.lp_kody) 
-                ? order.financovani.lp_kody.join(', ') 
-                : order.financovani.lp_kody;
-            } else if (typ === 'SMLOUVA') {
-              detailText = order.financovani.cislo_smlouvy || '';
-            }
-          }
+          // Plný název pro title (tooltip)
+          const fullName = order.financovani?.typ_nazev || order.financovani?.typ || '';
           
           return (
-            <div style={{ textAlign: 'left', whiteSpace: 'normal', lineHeight: '1.3' }}>
+            <div 
+              style={{ textAlign: 'left', whiteSpace: 'normal', lineHeight: '1.3' }}
+              title={fullName || undefined}
+            >
               <div style={{ fontWeight: 600, color: '#7c3aed' }}>{financovaniText}</div>
               {detailText && (
-                <div style={{ fontSize: '0.8em', color: '#6b7280', marginTop: '2px' }}>
+                <div style={{ 
+                  fontSize: '0.8em', 
+                  color: '#6b7280', 
+                  marginTop: '2px',
+                  fontWeight: 500
+                }}>
                   {detailText}
                 </div>
               )}
             </div>
           );
         },
-        size: 120,
+        size: 150,
         enableSorting: true,
       },
       {
@@ -766,8 +1123,9 @@ const OrdersTableV3 = ({
         header: 'Objednatel / Garant',
         cell: ({ row }) => {
           const order = row.original;
-          const objednatel = order.objednatel_uzivatel?.cele_jmeno || order.objednatel?.cele_jmeno || '---';
-          const garant = order.garant_uzivatel?.cele_jmeno || order.garant?.cele_jmeno || '---';
+          // DB sloupce 1:1 bez konverzí
+          const objednatel = order.objednatel_jmeno || '---';
+          const garant = order.garant_jmeno || '---';
           
           return (
             <div style={{ lineHeight: '1.3' }}>
@@ -785,8 +1143,9 @@ const OrdersTableV3 = ({
         header: 'Příkazce / Schvalovatel',
         cell: ({ row }) => {
           const order = row.original;
-          const prikazce = order.prikazce_uzivatel?.cele_jmeno || order.prikazce?.cele_jmeno || '---';
-          const schvalovatel = order.schvalovatel_uzivatel?.cele_jmeno || order.schvalovatel?.cele_jmeno || '---';
+          // DB sloupce 1:1 bez konverzí
+          const prikazce = order.prikazce_jmeno || '---';
+          const schvalovatel = order.schvalovatel_jmeno || '---';
           
           return (
             <div style={{ lineHeight: '1.3' }}>
@@ -829,17 +1188,25 @@ const OrdersTableV3 = ({
         header: 'Stav',
         cell: ({ row }) => {
           const order = row.original;
-          const statusCode = getOrderSystemStatus(order);
-          const displayStatus = getOrderDisplayStatus(order);
+          const displayStatus = getOrderDisplayStatus(order); // Čitelný český název z DB
+          const statusCode = mapUserStatusToSystemCode(displayStatus); // Převod na systémový kód
           
+          // Mapování systémových kódů na ikony
           const iconMap = {
             NOVA: faFilePen,
-            KE_SCHVALENI: faClock,
+            ODESLANA_KE_SCHVALENI: faClock,
             SCHVALENA: faShield,
             POTVRZENA: faCheckCircle,
             UVEREJNENA: faFileContract,
             DOKONCENA: faTruck,
             ZRUSENA: faXmark,
+            ZAMITNUTA: faXmark,
+            ODESLANA: faCheckCircle,
+            FAKTURACE: faFileInvoice,
+            VECNA_SPRAVNOST: faCheckCircle,
+            ZKONTROLOVANA: faCheckCircle,
+            CEKA_POTVRZENI: faClock,
+            K_UVEREJNENI_DO_REGISTRU: faClock,
           };
           
           return (
@@ -858,9 +1225,9 @@ const OrdersTableV3 = ({
         header: 'Stav registru',
         cell: ({ row }) => {
           const order = row.original;
-          const registr = order.registr_smluv;
+          // DB sloupce 1:1: registr_id, registr_iddt, dt_zverejneni, registr_zverejnit
           
-          if (!registr || (!registr.dt_zverejneni && !registr.zverejnit)) {
+          if (!order.registr_id && (!order.dt_zverejneni && order.registr_zverejnit !== 'ANO')) {
             return <div style={{ color: '#94a3b8', fontSize: '0.9em' }}>---</div>;
           }
           
@@ -868,11 +1235,12 @@ const OrdersTableV3 = ({
           let statusCode = 'EMPTY';
           let icon = null;
           
-          if (registr.dt_zverejneni && registr.registr_iddt) {
+          // Použití DB sloupců 1:1
+          if (order.dt_zverejneni && order.registr_iddt) {
             stavText = 'Zveřejněno';
             statusCode = 'UVEREJNENA';
             icon = faCheckCircle;
-          } else if (registr.zverejnit === 'ANO') {
+          } else if (order.registr_zverejnit === 'ANO') {
             stavText = 'Má být zveřejněno';
             statusCode = 'KE_SCHVALENI';
             icon = faClock;
@@ -971,10 +1339,13 @@ const OrdersTableV3 = ({
       {
         id: 'actions',
         header: () => (
-          <div style={{ textAlign: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
             <FontAwesomeIcon icon={faBolt} style={{ color: '#eab308', fontSize: '16px' }} />
           </div>
         ),
+        meta: {
+          align: 'center',
+        },
         cell: ({ row }) => {
           const order = row.original;
           
@@ -1015,15 +1386,48 @@ const OrdersTableV3 = ({
     ];
 
     // Filtrovat pouze viditelné sloupce
+    let filtered = allColumns;
     if (visibleColumns && visibleColumns.length > 0) {
-      return allColumns.filter(col => visibleColumns.includes(col.id));
+      filtered = allColumns.filter(col => visibleColumns.includes(col.id));
     }
     
-    return allColumns;
-  }, [visibleColumns, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, expandedRows]);
+    // Seřadit podle columnOrder
+    if (columnOrder && columnOrder.length > 0) {
+      filtered = filtered.sort((a, b) => {
+        const indexA = columnOrder.indexOf(a.id);
+        const indexB = columnOrder.indexOf(b.id);
+        
+        // Pokud sloupec není v columnOrder, dát ho na konec
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        
+        return indexA - indexB;
+      });
+    }
+    
+    return filtered;
+  }, [visibleColumns, columnOrder, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, expandedRows]);
+
+  // Filtrovat data podle columnFilters (lokální filtr v tabulce)
+  const filteredData = useMemo(() => {
+    if (Object.keys(columnFilters).length === 0) return data;
+    
+    return data.filter(row => {
+      return Object.entries(columnFilters).every(([columnId, filterValue]) => {
+        if (!filterValue) return true;
+        
+        const cellValue = row[columnId];
+        if (cellValue === null || cellValue === undefined) return false;
+        
+        // Case-insensitive string match
+        return String(cellValue).toLowerCase().includes(String(filterValue).toLowerCase());
+      });
+    });
+  }, [data, columnFilters]);
 
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     state: {
       sorting,
@@ -1032,32 +1436,51 @@ const OrdersTableV3 = ({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableSortingRemoval: false,
+    enableMultiSort: true, // Povolit multi-column sorting
+    maxMultiSortColCount: 5, // Maximálně 5 sloupců pro třídění
+    isMultiSortEvent: (e) => e.shiftKey, // Shift+click pro multi-sort
   });
 
-  if (isLoading) {
-    return (
-      <TableContainer>
-        <EmptyState>Načítání objednávek...</EmptyState>
-      </TableContainer>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <TableContainer>
-        <EmptyState>
-          Žádné objednávky nenalezeny.
-          <br />
-          <small style={{ color: '#9ca3af', marginTop: '0.5rem', display: 'block' }}>
-            Zkuste změnit filtry nebo vytvořit novou objednávku.
-          </small>
-        </EmptyState>
-      </TableContainer>
-    );
-  }
+  const activeFiltersCount = Object.values(columnFilters).filter(v => v).length;
+  const hasActiveSorting = sorting.length > 0;
+  const hasData = data && data.length > 0;
+  const colSpan = table.getAllColumns().length;
 
   return (
     <TableContainer>
+      {/* Toolbar s info a reset tlačítky */}
+      {(hasActiveSorting || activeFiltersCount > 0) && (
+        <TableToolbar>
+          <ToolbarInfo>
+            {hasActiveSorting && (
+              <span>
+                🔄 Třídění: <strong>{sorting.length}</strong> {sorting.length === 1 ? 'sloupec' : 'sloupce'}
+              </span>
+            )}
+            {activeFiltersCount > 0 && (
+              <span>
+                🔍 Filtry: <strong>{activeFiltersCount}</strong>
+                <FilterBadge>{filteredData.length}</FilterBadge>
+              </span>
+            )}
+          </ToolbarInfo>
+          <ToolbarActions>
+            {activeFiltersCount > 0 && (
+              <ResetButton onClick={() => setColumnFilters({})}>
+                <FontAwesomeIcon icon={faTimes} />
+                Vymazat filtry
+              </ResetButton>
+            )}
+            {hasActiveSorting && (
+              <ResetButton onClick={() => onSortingChange?.([])}>
+                <FontAwesomeIcon icon={faUndo} />
+                Reset třídění
+              </ResetButton>
+            )}
+          </ToolbarActions>
+        </TableToolbar>
+      )}
+      
       <Table>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
@@ -1081,41 +1504,86 @@ const OrdersTableV3 = ({
                     onDrop={(e) => handleDrop(e, columnId)}
                     onDragEnd={handleDragEnd}
                   >
-                    <HeaderContent>
-                      <HeaderText onClick={header.column.getToggleSortingHandler()}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getCanSort() && (
-                          <span style={{ marginLeft: '0.25rem', opacity: 0.6 }}>
-                            {{
-                              asc: ' ↑',
-                              desc: ' ↓',
-                            }[header.column.getIsSorted()] ?? ''}
-                          </span>
+                    <HeaderContent $align={header.column.columnDef.meta?.align || 'left'}>
+                      {/* První řádek: název + sorting + akce */}
+                      <HeaderRow $align={header.column.columnDef.meta?.align || 'left'}>
+                        <HeaderTextWrapper
+                          onClick={(e) => {
+                            // Shift+click pro multi-column sorting
+                            if (header.column.getCanSort()) {
+                              const handler = header.column.getToggleSortingHandler();
+                              if (handler) {
+                                handler(e);
+                              }
+                            }
+                          }}
+                        >
+                          <HeaderText>
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanSort() && (() => {
+                              const sortDirection = header.column.getIsSorted();
+                              const sortIndex = sorting.findIndex(s => s.id === columnId);
+                              
+                              if (sortDirection && sorting.length > 1 && sortIndex !== -1) {
+                                // Zobrazit index třídění pokud je více sloupců
+                                return (
+                                  <SortIndexBadge $asc={sortDirection === 'asc'}>
+                                    {sortIndex + 1}
+                                    {sortDirection === 'asc' ? '↑' : '↓'}
+                                  </SortIndexBadge>
+                                );
+                              } else if (sortDirection) {
+                                // Zobrazit pouze šipku pokud je jeden sloupec
+                                return (
+                                  <span style={{ marginLeft: '0.25rem', opacity: 0.6 }}>
+                                    {sortDirection === 'asc' ? '↑' : '↓'}
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </HeaderText>
+                        </HeaderTextWrapper>
+                        
+                        {canHide && (
+                          <ColumnActions className="column-actions">
+                            <ColumnActionButton
+                              className="drag-handle"
+                              title="Přesunout sloupec (táhněte)"
+                            >
+                              <FontAwesomeIcon icon={faGripVertical} />
+                            </ColumnActionButton>
+                            <ColumnActionButton
+                              className="hide-column"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleHideColumn(columnId);
+                              }}
+                              title="Skrýt sloupec"
+                            >
+                              <FontAwesomeIcon icon={faEyeSlash} />
+                            </ColumnActionButton>
+                          </ColumnActions>
                         )}
-                      </HeaderText>
+                      </HeaderRow>
                       
-                      {canHide && (
-                        <ColumnActions className="column-actions">
-                          <ColumnActionButton
-                            className="drag-handle"
-                            title="Přesunout sloupec"
-                            onMouseDown={(e) => e.stopPropagation()}
-                          >
-                            <FontAwesomeIcon icon={faGripVertical} />
-                          </ColumnActionButton>
-                          <ColumnActionButton
-                            className="hide-column"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleHideColumn(columnId);
-                            }}
-                            title="Skrýt sloupec"
-                          >
-                            <FontAwesomeIcon icon={faEyeSlash} />
-                          </ColumnActionButton>
-                        </ColumnActions>
+                      {/* Druhý řádek: filtrovací pole v celé šířce */}
+                      {header.column.getCanSort() && (
+                        <ColumnFilterInput
+                          type="text"
+                          placeholder="Filtrovat..."
+                          value={columnFilters[columnId] || ''}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setColumnFilters(prev => ({
+                              ...prev,
+                              [columnId]: e.target.value
+                            }));
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
                       )}
                     </HeaderContent>
                     
@@ -1125,8 +1593,13 @@ const OrdersTableV3 = ({
                         className="resize-handle"
                         onMouseDown={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           const startX = e.clientX;
-                          const startWidth = header.column.getSize();
+                          const startWidth = e.currentTarget.parentElement.offsetWidth;
+                          
+                          // Přidat vizuální feedback
+                          document.body.style.cursor = 'col-resize';
+                          document.body.style.userSelect = 'none';
                           
                           const handleMouseMove = (moveEvent) => {
                             const diff = moveEvent.clientX - startX;
@@ -1138,6 +1611,8 @@ const OrdersTableV3 = ({
                           };
                           
                           const handleMouseUp = () => {
+                            document.body.style.cursor = '';
+                            document.body.style.userSelect = '';
                             document.removeEventListener('mousemove', handleMouseMove);
                             document.removeEventListener('mouseup', handleMouseUp);
                           };
@@ -1154,33 +1629,72 @@ const OrdersTableV3 = ({
           ))}
         </TableHead>
         <TableBody>
-          {table.getRowModel().rows.map(row => {
-            const order = row.original;
-            const isExpanded = expandedRows[order.id];
-            const colSpan = row.getVisibleCells().length;
-            
-            return (
-              <React.Fragment key={row.id}>
-                <tr>
-                  {row.getVisibleCells().map(cell => (
-                    <TableCell
-                      key={cell.id}
-                      $align={cell.column.columnDef.meta?.align || 'left'}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </tr>
-                {isExpanded && (
-                  <tr className="subrow">
-                    <td colSpan={colSpan}>
-                      <SubRowDetail order={order} />
-                    </td>
+          {error ? (
+            <ErrorRow>
+              <td colSpan={colSpan}>
+                <div className="error-icon">
+                  <FontAwesomeIcon icon={faTimesCircle} />
+                </div>
+                <div className="error-message">
+                  Chyba při načítání objednávek
+                </div>
+                <div className="error-detail">
+                  {error.message || error.toString()}
+                </div>
+              </td>
+            </ErrorRow>
+          ) : isLoading ? (
+            <LoadingRow>
+              <td colSpan={colSpan}>
+                <div className="loading-spinner">
+                  <FontAwesomeIcon icon={faCircleNotch} spin />
+                </div>
+                <div style={{ marginTop: '1rem' }}>Načítání objednávek...</div>
+              </td>
+            </LoadingRow>
+          ) : !hasData ? (
+            <EmptyStateRow>
+              <td colSpan={colSpan}>
+                <div className="empty-icon">
+                  <FontAwesomeIcon icon={faFileContract} />
+                </div>
+                <div className="empty-message">
+                  Žádné objednávky nenalezeny
+                </div>
+                <div className="empty-hint">
+                  Zkuste změnit filtry nebo vytvořit novou objednávku
+                </div>
+              </td>
+            </EmptyStateRow>
+          ) : (
+            table.getRowModel().rows.map(row => {
+              const order = row.original;
+              const isExpanded = expandedRows[order.id];
+              const rowColSpan = row.getVisibleCells().length;
+              
+              return (
+                <React.Fragment key={row.id}>
+                  <tr>
+                    {row.getVisibleCells().map(cell => (
+                      <TableCell
+                        key={cell.id}
+                        $align={cell.column.columnDef.meta?.align || 'left'}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
                   </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
+                  {isExpanded && (
+                    <tr className="subrow">
+                      <td colSpan={rowColSpan}>
+                        <SubRowDetail order={order} />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })
+          )}
         </TableBody>
       </Table>
     </TableContainer>
