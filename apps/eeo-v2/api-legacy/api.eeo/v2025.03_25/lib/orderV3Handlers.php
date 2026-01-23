@@ -278,6 +278,8 @@ function handle_order_v3_list($input, $config, $queries) {
         return;
     }
 
+    $user_id = isset($token_data['user_id']) ? (int)$token_data['user_id'] : 0;
+
     try {
         // 3. Připojení k DB
         $db = get_db($config);
@@ -384,7 +386,7 @@ function handle_order_v3_list($input, $config, $queries) {
         // 11. Načíst statistiky (pokud je první stránka)
         $stats = null;
         if ($page === 1) {
-            $stats = getOrderStats($db, $year);
+            $stats = getOrderStats($db, $year, $user_id);
         }
 
         // 12. Hlavní query pro data
@@ -518,8 +520,11 @@ function handle_order_v3_list($input, $config, $queries) {
 
 /**
  * Načte statistiky objednávek pro daný rok
+ * @param PDO $db Database connection
+ * @param int $year Rok pro filtrování
+ * @param int $user_id ID přihlášeného uživatele (pro "moje objednávky")
  */
-function getOrderStats($db, $year) {
+function getOrderStats($db, $year, $user_id = 0) {
     // Počty objednávek podle stavů (poslední stav v workflow array)
     $sql_stats = "
         SELECT 
@@ -619,13 +624,23 @@ function getOrderStats($db, $year) {
             SUM(CASE 
                 WHEN o.mimoradna_udalost = 1 THEN 1 
                 ELSE 0 
-            END) as mimoradneUdalosti
+            END) as mimoradneUdalosti,
+            -- MOJE OBJEDNÁVKY (kde jsem objednatel, garant, příkazce nebo schvalovatel)
+            SUM(CASE 
+                WHEN ? > 0 AND (
+                    o.objednatel_id = ? OR 
+                    o.garant_uzivatel_id = ? OR 
+                    o.prikazce_id = ? OR 
+                    o.schvalovatel_id = ?
+                ) THEN 1 
+                ELSE 0 
+            END) as mojeObjednavky
         FROM " . TBL_OBJEDNAVKY . " o
         WHERE o.aktivni = 1 AND YEAR(o.dt_objednavky) = ?
     ";
     
     $stmt_stats = $db->prepare($sql_stats);
-    $stmt_stats->execute(array($year));
+    $stmt_stats->execute(array($user_id, $user_id, $user_id, $user_id, $user_id, $year));
     $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
     
     // Celková cena s DPH - priorita: faktury > položky > max_cena_s_dph
@@ -701,6 +716,8 @@ function handle_order_v3_stats($input, $config, $queries) {
         return;
     }
 
+    $user_id = isset($token_data['user_id']) ? (int)$token_data['user_id'] : 0;
+
     try {
         $db = get_db($config);
         if (!$db) {
@@ -710,7 +727,7 @@ function handle_order_v3_stats($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         
         $year = isset($input['year']) ? (int)$input['year'] : date('Y');
-        $stats = getOrderStats($db, $year);
+        $stats = getOrderStats($db, $year, $user_id);
 
         http_response_code(200);
         echo json_encode(array(
