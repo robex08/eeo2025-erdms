@@ -1539,16 +1539,6 @@ const Invoices25List = () => {
   // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
   const isAdmin = hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR'));
   
-  // Debug: Log admin status on component mount
-  useEffect(() => {
-    console.log('🔐 Admin Status Check:', {
-      hasPermission: !!hasPermission,
-      isSuperAdmin: hasPermission && hasPermission('SUPERADMIN'),
-      isAdministrator: hasPermission && hasPermission('ADMINISTRATOR'),
-      isAdmin: isAdmin
-    });
-  }, [hasPermission, isAdmin]);
-  
   // Dashboard statistiky (z BE - celkové součty podle filtru, NE jen aktuální stránka!)
   const [stats, setStats] = useState({
     total: 0,           // Celkový počet faktur (všechny stránky)
@@ -2317,13 +2307,9 @@ const Invoices25List = () => {
       // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
       if (isAdmin && showOnlyInactive) {
         apiParams.show_only_inactive = 1;
-        console.log('🔧 ADMIN: Requesting ONLY inactive invoices (show_only_inactive=1)');
-      } else {
-        console.log('📋 STANDARD: Requesting active invoices only (default)');
       }
 
       // 📥 Načtení faktur z BE (server-side pagination + user isolation)
-      console.log('📤 API Request params:', apiParams);
       const response = await listInvoices25(apiParams);
 
       // Transformace dat z BE formátu
@@ -2609,8 +2595,6 @@ const Invoices25List = () => {
           ).length;
           
           setOrdersReadyCount(count);
-        } else {
-          console.log('❌ Response not array');
         }
       } catch (error) {
         console.error('❌ Chyba při načítání počtu objednávek:', error);
@@ -2949,8 +2933,9 @@ const Invoices25List = () => {
   };
 
   const handleDeleteInvoice = (invoice) => {
-    // Otevře dialog a resetuje typ mazání na 'soft'
-    setDeleteType('soft');
+    // Pokud je faktura neaktivní, nastav výchozí akci na 'restore'
+    const initialType = (!invoice.aktivni && isAdmin) ? 'restore' : 'soft';
+    setDeleteType(initialType);
     setDeleteDialog({
       isOpen: true,
       invoice
@@ -3575,8 +3560,6 @@ const Invoices25List = () => {
                     checked={showOnlyInactive}
                     onChange={(e) => {
                       const newValue = e.target.checked;
-                      console.log('🔧 ADMIN Checkbox changed:', newValue);
-                      console.log('🔧 Current isAdmin:', isAdmin);
                       setShowOnlyInactive(newValue);
                       setCurrentPage(1); // Reset to first page when toggling
                     }}
@@ -4004,7 +3987,6 @@ const Invoices25List = () => {
                       <CustomSelect
                         value={columnFilters.stav || ''}
                         onChange={(value) => {
-                          console.log('🔄 STAV onChange:', value, typeof value);
                           setColumnFilters({...columnFilters, stav: value});
                         }}
                         options={stavOptions}
@@ -4757,20 +4739,37 @@ const Invoices25List = () => {
             setDeleteType('soft');
           }}
           onConfirm={() => {
-            // 🔄 Pokud je faktura neaktivní a uživatel je admin -> obnovit
+            // 🔄 Pokud je faktura neaktivní a uživatel je admin
             if (!deleteDialog.invoice?.aktivni && isAdmin) {
-              confirmRestoreInvoice();
+              // Rozlišit mezi restore a hard delete
+              if (deleteType === 'restore') {
+                confirmRestoreInvoice();
+              } else if (deleteType === 'hard') {
+                confirmDeleteInvoice(true); // ✅ Hard delete (trvale smazat z DB)
+              }
             } else {
-              // Jinak normální smazání
+              // Jinak normální smazání aktivní faktury
               confirmDeleteInvoice(deleteType === 'hard');
             }
           }}
-          title={!deleteDialog.invoice?.aktivni && isAdmin ? "Obnovit fakturu" : "Odstranit fakturu"}
-          icon={!deleteDialog.invoice?.aktivni && isAdmin ? faCheckCircle : faTrash}
-          variant={!deleteDialog.invoice?.aktivni && isAdmin ? 'success' : (deleteType === 'hard' ? 'danger' : 'warning')}
+          title={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? "Obnovit fakturu" : "Smazat fakturu úplně") 
+              : "Odstranit fakturu"
+          }
+          icon={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? faCheckCircle : faTrash) 
+              : faTrash
+          }
+          variant={
+            !deleteDialog.invoice?.aktivni && isAdmin 
+              ? (deleteType === 'restore' ? 'success' : 'danger') 
+              : (deleteType === 'hard' ? 'danger' : 'warning')
+          }
           confirmText={
             !deleteDialog.invoice?.aktivni && isAdmin 
-              ? "✅ Obnovit fakturu" 
+              ? (deleteType === 'restore' ? "✅ Obnovit fakturu" : "⚠️ Smazat úplně") 
               : isAdmin 
                 ? (deleteType === 'hard' ? "⚠️ Smazat úplně" : "Smazat") 
                 : "Smazat"
@@ -4787,25 +4786,113 @@ const Invoices25List = () => {
             {/* LEVÝ SLOUPEC - Volba typu smazání nebo obnova */}
             <div>
               {!deleteDialog.invoice?.aktivni && isAdmin ? (
-                /* NEAKTIVNÍ FAKTURA - Možnost obnovení */
+                /* NEAKTIVNÍ FAKTURA - Možnost obnovení nebo hard delete */
                 <>
                   <p style={{ marginBottom: '1rem', fontSize: '1.05rem' }}>
-                    Chcete obnovit neaktivní fakturu <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
+                    Co chcete udělat s neaktivní fakturou <strong>{deleteDialog.invoice?.cislo_faktury}</strong>?
                   </p>
                   <div style={{
-                    background: '#f0fdf4',
-                    border: '2px solid #86efac',
+                    background: '#f8fafc',
+                    border: '2px solid #cbd5e1',
                     borderRadius: '8px',
                     padding: '1rem'
                   }}>
-                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#166534', fontSize: '1rem' }}>
-                      🔄 Obnova faktury
+                    <h4 style={{ margin: '0 0 0.75rem 0', color: '#475569', fontSize: '1rem' }}>
+                      🔧 Vyberte akci:
                     </h4>
-                    <p style={{ margin: 0, color: '#166534', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                      Faktura bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
-                      <br /><br />
-                      Všechna data, přílohy a historie zůstanou zachovány.
-                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {/* OBNOVA */}
+                      <label 
+                        onClick={() => setDeleteType('restore')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                          opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'restore' ? '#10b981' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'restore' ? '#f0fdf4' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="restore"
+                          checked={deleteType === 'restore'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setDeleteType('restore');
+                          }}
+                          disabled={invoiceTypesLoading}
+                          style={{ marginTop: '0.25rem', cursor: invoiceTypesLoading ? 'wait' : 'pointer' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            fontWeight: 600, 
+                            marginBottom: '0.25rem', 
+                            color: deleteType === 'restore' ? '#166534' : '#475569' 
+                          }}>
+                            🔄 Obnovit fakturu
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.85rem', 
+                            color: deleteType === 'restore' ? '#166534' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Faktura bude znovu <strong>aktivní</strong> a objeví se v běžném přehledu.
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* HARD DELETE */}
+                      <label 
+                        onClick={() => setDeleteType('hard')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          cursor: invoiceTypesLoading ? 'wait' : 'pointer',
+                          opacity: invoiceTypesLoading ? 0.7 : 1,
+                          padding: '0.75rem',
+                          border: `2px solid ${deleteType === 'hard' ? '#ef4444' : '#e2e8f0'}`,
+                          borderRadius: '6px',
+                          background: deleteType === 'hard' ? '#fef2f2' : 'white',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="deleteType"
+                          value="hard"
+                          checked={deleteType === 'hard'}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setDeleteType('hard');
+                          }}
+                          disabled={invoiceTypesLoading}
+                          style={{ marginTop: '0.25rem', cursor: invoiceTypesLoading ? 'wait' : 'pointer' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            fontWeight: 600, 
+                            marginBottom: '0.25rem', 
+                            color: deleteType === 'hard' ? '#dc2626' : '#475569' 
+                          }}>
+                            ⚠️ Smazat úplně (HARD DELETE)
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.85rem', 
+                            color: deleteType === 'hard' ? '#dc2626' : '#64748b',
+                            lineHeight: '1.4'
+                          }}>
+                            Faktura bude <strong>fyzicky smazána z databáze</strong>. Tuto akci nelze vrátit zpět!
+                          </div>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </>
               ) : (

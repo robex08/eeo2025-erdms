@@ -828,8 +828,19 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
  * PHP 5.6 Compatible - array() syntax, PDO exceptions
  */
 function handle_order_v2_delete_invoice($input, $config, $queries) {
+    debug_log("🗑️ DELETE INVOICE HANDLER START - invoice_id: " . $input['invoice_id'] . ", user: " . $input['username']);
+    
     // Token verification - V2 enhanced
-    $token_data = verify_token_v2($input['username'], $input['token']);
+    try {
+        $token_data = verify_token_v2($input['username'], $input['token']);
+        debug_log("✅ Token verified successfully");
+    } catch (Exception $e) {
+        debug_log("❌ Token verification FAILED: " . $e->getMessage());
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Token verification failed'));
+        return;
+    }
+    
     if (!$token_data) {
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
@@ -851,10 +862,11 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         $db->beginTransaction();
         
         // Kontrola existence faktury (LEFT JOIN - vazba na objednávku není povinná)
-        $sql_check = "SELECT f.id, f.objednavka_id, f.vytvoril_uzivatel_id, o.uzivatel_id as objednavka_uzivatel_id
+        // Admin může mazat i neaktivní faktury, běžný uživatel jen aktivní
+        $sql_check = "SELECT f.id, f.objednavka_id, f.vytvoril_uzivatel_id, f.aktivni, o.uzivatel_id as objednavka_uzivatel_id
                       FROM " . TBL_FAKTURY . " f
                       LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-                      WHERE f.id = ? AND f.aktivni = 1";
+                      WHERE f.id = ?";
         
         $stmt_check = $db->prepare($sql_check);
         $stmt_check->execute(array($invoice_id));
@@ -863,7 +875,7 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         if (!$invoice) {
             $db->rollBack();
             http_response_code(404);
-            echo json_encode(array('status' => 'error', 'message' => 'Faktura nenalezena nebo byla smazána'));
+            echo json_encode(array('status' => 'error', 'message' => 'Faktura nenalezena'));
             return;
         }
         
@@ -891,7 +903,15 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         }
         
         // DEBUG: Log pro debugging
-        error_log("DELETE invoice #{$invoice_id} - user_id: {$current_user_id}, is_admin: " . ($is_admin ? 'YES' : 'NO') . ", has_invoice_manage: " . ($has_invoice_manage ? 'YES' : 'NO') . ", invoice_owner: {$invoice['vytvoril_uzivatel_id']}, order_owner: {$invoice['objednavka_uzivatel_id']}");
+        error_log("DELETE invoice #{$invoice_id} - user_id: {$current_user_id}, is_admin: " . ($is_admin ? 'YES' : 'NO') . ", has_invoice_manage: " . ($has_invoice_manage ? 'YES' : 'NO') . ", invoice_owner: {$invoice['vytvoril_uzivatel_id']}, order_owner: {$invoice['objednavka_uzivatel_id']}, aktivni: {$invoice['aktivni']}");
+        
+        // Neaktivní faktury může mazat pouze ADMIN
+        if ($invoice['aktivni'] == 0 && !$is_admin) {
+            $db->rollBack();
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Neaktivní faktury může mazat pouze administrátor'));
+            return;
+        }
         
         // HARD DELETE - pouze ADMIN (SUPERADMIN nebo ADMINISTRATOR)
         // INVOICE_MANAGE může mazat soft delete, ale NE hard delete
@@ -963,7 +983,14 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         } else {
             // ========== SOFT DELETE (default) ==========
             // 1. Soft delete faktury - nastavení aktivni = 0
-            $sql_update = "UPDATE " . TBL_FAKTURY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
+            // Admin může mazat i už neaktivní faktury (pro konzistenci), běžný uživatel jen aktivní
+            if ($is_admin) {
+                // Admin: Update bez kontroly aktivni (může "přemazat" již neaktivní fakturu)
+                $sql_update = "UPDATE " . TBL_FAKTURY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ?";
+            } else {
+                // Non-admin: Jen aktivní faktury
+                $sql_update = "UPDATE " . TBL_FAKTURY . " SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
+            }
             $stmt_update = $db->prepare($sql_update);
             $stmt_update->execute(array($invoice_id));
             
