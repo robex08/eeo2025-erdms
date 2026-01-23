@@ -359,27 +359,46 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_params[] = '%' . $filters['predmet'] . '%';
         }
         
-        if (!empty($filters['objednatel_jmeno'])) {
-            $where_conditions[] = "CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ?";
-            $where_params[] = '%' . $filters['objednatel_jmeno'] . '%';
+        // Filtr pro objednatele a garanta - pokud jsou stejné, použít OR logiku
+        $objednatel_filter = !empty($filters['objednatel_jmeno']) ? $filters['objednatel_jmeno'] : '';
+        $garant_filter = !empty($filters['garant_jmeno']) ? $filters['garant_jmeno'] : '';
+        
+        // Pokud jsou oba filtry stejné (kombinovaný sloupec z FE), použít OR
+        if ($objednatel_filter && $garant_filter && $objednatel_filter === $garant_filter) {
+            $where_conditions[] = "(CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ? OR CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?)";
+            $where_params[] = '%' . $objednatel_filter . '%';
+            $where_params[] = '%' . $objednatel_filter . '%';
+        } else {
+            // Jinak jsou to samostatné filtry, použít AND
+            if ($objednatel_filter) {
+                $where_conditions[] = "CONCAT(u1.jmeno, ' ', u1.prijmeni) LIKE ?";
+                $where_params[] = '%' . $objednatel_filter . '%';
+            }
+            if ($garant_filter) {
+                $where_conditions[] = "CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?";
+                $where_params[] = '%' . $garant_filter . '%';
+            }
         }
         
-        // Filtr pro garanta
-        if (!empty($filters['garant_jmeno'])) {
-            $where_conditions[] = "CONCAT(u2.jmeno, ' ', u2.prijmeni) LIKE ?";
-            $where_params[] = '%' . $filters['garant_jmeno'] . '%';
-        }
+        // Filtr pro příkazce a schvalovatele - pokud jsou stejné, použít OR logiku
+        $prikazce_filter = !empty($filters['prikazce_jmeno']) ? $filters['prikazce_jmeno'] : '';
+        $schvalovatel_filter = !empty($filters['schvalovatel_jmeno']) ? $filters['schvalovatel_jmeno'] : '';
         
-        // Filtr pro příkazce
-        if (!empty($filters['prikazce_jmeno'])) {
-            $where_conditions[] = "CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ?";
-            $where_params[] = '%' . $filters['prikazce_jmeno'] . '%';
-        }
-        
-        // Filtr pro schvalovatele
-        if (!empty($filters['schvalovatel_jmeno'])) {
-            $where_conditions[] = "CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?";
-            $where_params[] = '%' . $filters['schvalovatel_jmeno'] . '%';
+        // Pokud jsou oba filtry stejné (kombinovaný sloupec z FE), použít OR
+        if ($prikazce_filter && $schvalovatel_filter && $prikazce_filter === $schvalovatel_filter) {
+            $where_conditions[] = "(CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ? OR CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?)";
+            $where_params[] = '%' . $prikazce_filter . '%';
+            $where_params[] = '%' . $prikazce_filter . '%';
+        } else {
+            // Jinak jsou to samostatné filtry, použít AND
+            if ($prikazce_filter) {
+                $where_conditions[] = "CONCAT(u3.jmeno, ' ', u3.prijmeni) LIKE ?";
+                $where_params[] = '%' . $prikazce_filter . '%';
+            }
+            if ($schvalovatel_filter) {
+                $where_conditions[] = "CONCAT(u4.jmeno, ' ', u4.prijmeni) LIKE ?";
+                $where_params[] = '%' . $schvalovatel_filter . '%';
+            }
         }
         
         // Filtr pro financování - hledá v JSON poli dle typu nebo typu názvu
