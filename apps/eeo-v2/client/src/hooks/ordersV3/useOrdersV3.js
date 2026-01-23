@@ -253,6 +253,7 @@ export function useOrdersV3({
         
         // Stats (pouze pro page=1)
         if (response.data.stats) {
+          console.log('📊 RAW BACKEND STATS:', JSON.stringify(response.data.stats, null, 2));
           setStats(response.data.stats);
         }
         
