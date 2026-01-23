@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -2975,6 +2975,23 @@ const Layout = ({ children }) => {
             { hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
+              </MenuLinkLeft>
+            ) }
+            
+            {/* 🚀 V3 - BETA: Nová verze s backend paging (zatím jen pro ADMINY) */}
+            { hasAdminRole && hasAdminRole() && (
+              <MenuLinkLeft to="/orders25-list-v3" $active={isActive('/orders25-list-v3')}>
+                <FontAwesomeIcon icon={faRocket} style={{color: '#3b82f6'}} /> Objednávky V3 
+                <span style={{
+                  marginLeft: '0.5rem',
+                  padding: '0.125rem 0.5rem',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  color: 'white',
+                  fontSize: '0.7rem',
+                  fontWeight: '600',
+                  borderRadius: '10px',
+                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+                }}>BETA</span>
               </MenuLinkLeft>
             ) }
             
