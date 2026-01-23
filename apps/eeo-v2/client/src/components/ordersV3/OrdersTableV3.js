@@ -786,29 +786,16 @@ const getFinancovaniDetail = (order) => {
   
   const typ = order.financovani.typ || '';
   
-  // LP - zobrazit LP kód + název nebo jen kód pokud název chybí
+  // LP - zobrazit jen LP kód (bez názvu/popisu)
   if (typ === 'LP') {
-    // Priorita 1: lp_nazvy array s kompletními daty (kód + název)
+    // Priorita 1: lp_nazvy array s kompletními daty - zobrazit jen kód
     if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
-      const lpTexty = order.financovani.lp_nazvy
-        .map(lp => {
-          const kod = lp.cislo_lp || lp.kod || '';
-          const nazev = lp.nazev || '';
-          
-          // Pokud máme i kód i název, zobrazit formát "KOD - NAZEV"
-          if (kod && nazev) {
-            return `${kod} - ${nazev}`;
-          } 
-          // Jinak jen kód
-          else if (kod) {
-            return kod;
-          }
-          return '';
-        })
+      const lpKody = order.financovani.lp_nazvy
+        .map(lp => lp.cislo_lp || lp.kod || '')
         .filter(Boolean);
       
-      if (lpTexty.length > 0) {
-        return lpTexty.join(', ');
+      if (lpKody.length > 0) {
+        return lpKody.join(', ');
       }
     }
     // Fallback: lp_kody array (jen kódy bez názvů)
@@ -1169,17 +1156,34 @@ const OrdersTableV3 = ({
           }
           
           return (
-            <div style={{ lineHeight: '1.4', whiteSpace: 'nowrap' }}>
-              <div style={{ fontWeight: 500 }}>{order.dodavatel_nazev}</div>
+            <div style={{ lineHeight: '1.5' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.95em', marginBottom: '2px' }}>
+                {order.dodavatel_nazev}
+              </div>
+              
+              {order.dodavatel_adresa && (
+                <div style={{ 
+                  fontSize: '0.80em', 
+                  color: '#4b5563',
+                  marginBottom: '2px'
+                }}>
+                  {order.dodavatel_adresa}
+                </div>
+              )}
+              
               {order.dodavatel_ico && (
-                <div style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                <div style={{ 
+                  fontSize: '0.80em', 
+                  color: '#6b7280',
+                  fontWeight: 500
+                }}>
                   IČO: {order.dodavatel_ico}
                 </div>
               )}
             </div>
           );
         },
-        size: 220,
+        size: 280,
         enableSorting: true,
       },
       {
