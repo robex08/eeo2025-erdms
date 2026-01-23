@@ -307,7 +307,7 @@ function OrdersPaginationV3({
           <option value={25}>25</option>
           <option value={50}>50</option>
           <option value={100}>100</option>
-          <option value={250}>250</option>
+          <option value={200}>200</option>
         </select>
       </ItemsPerPageSelect>
 
