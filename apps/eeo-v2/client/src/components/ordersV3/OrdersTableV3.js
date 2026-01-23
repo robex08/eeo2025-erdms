@@ -68,6 +68,8 @@ const Table = styled.table`
   border-collapse: collapse;
   font-size: 0.875rem;
   table-layout: auto; /* Dynamická šířka sloupců */
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: -0.01em;
 `;
 
 const TableHead = styled.thead`
@@ -92,6 +94,7 @@ const TableHeaderCell = styled.th`
   user-select: none;
   transition: background-color 0.2s ease;
   position: relative;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 
   &:hover {
     background-color: ${props => props.$sortable ? '#e2e8f0' : 'transparent'};
@@ -346,16 +349,13 @@ const ColumnActionButton = styled.button`
 `;
 
 const TableBody = styled.tbody`
-  tr:nth-of-type(odd) {
-    background-color: #ffffff;
-  }
-
-  tr:nth-of-type(even) {
-    background-color: #f9fafb;
+  /* Základní styling */
+  tr {
+    transition: background-color 0.15s ease;
   }
 
   tr:hover {
-    background-color: #f1f5f9;
+    filter: brightness(0.95);
   }
   
   /* Podřádek styling */
@@ -375,6 +375,7 @@ const TableCell = styled.td`
   vertical-align: middle;
   color: #1e293b;
   font-size: 0.875rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 `;
 
 const ExpandButton = styled.button`
@@ -896,6 +897,8 @@ const OrdersTableV3 = ({
   canEdit = () => true,
   canCreateInvoice = () => true,
   canExportDocument = () => true,
+  showRowColoring = false, // Podbarvení řádků podle stavu
+  getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
 }) => {
   // State pro expandované řádky
   const [expandedRows, setExpandedRows] = useState({});
@@ -1180,6 +1183,25 @@ const OrdersTableV3 = ({
                   IČO: {order.dodavatel_ico}
                 </div>
               )}
+              
+              {(order.dodavatel_kontakt_jmeno || order.dodavatel_kontakt_email || order.dodavatel_kontakt_telefon) && (
+                <div style={{
+                  fontSize: '0.80em',
+                  color: '#1f2937',
+                  marginTop: '4px',
+                  fontWeight: 500
+                }}>
+                  {order.dodavatel_kontakt_jmeno && (
+                    <div>Kontakt: {order.dodavatel_kontakt_jmeno}</div>
+                  )}
+                  {order.dodavatel_kontakt_email && (
+                    <div>✉ {order.dodavatel_kontakt_email}</div>
+                  )}
+                  {order.dodavatel_kontakt_telefon && (
+                    <div>☎ {order.dodavatel_kontakt_telefon}</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         },
@@ -1229,27 +1251,57 @@ const OrdersTableV3 = ({
         header: 'Stav registru',
         cell: ({ row }) => {
           const order = row.original;
-          // DB sloupce 1:1: registr_id, registr_iddt, dt_zverejneni, registr_zverejnit
-          
-          if (!order.registr_id && (!order.dt_zverejneni && order.registr_zverejnit !== 'ANO')) {
-            return <div style={{ color: '#94a3b8', fontSize: '0.9em' }}>---</div>;
-          }
+          const registr = order.registr_smluv;
           
           let stavText = '';
           let statusCode = 'EMPTY';
           let icon = null;
           
-          // Použití DB sloupců 1:1
-          if (order.dt_zverejneni && order.registr_iddt) {
-            stavText = 'Zveřejněno';
-            statusCode = 'UVEREJNENA';
-            icon = faCheckCircle;
-          } else if (order.registr_zverejnit === 'ANO') {
-            stavText = 'Má být zveřejněno';
-            statusCode = 'KE_SCHVALENI';
-            icon = faClock;
+          // Získání workflow stavu (podle OrderV2)
+          let workflowStatus = null;
+          if (order.stav_workflow_kod) {
+            try {
+              const parsed = Array.isArray(order.stav_workflow_kod) 
+                ? order.stav_workflow_kod 
+                : JSON.parse(order.stav_workflow_kod);
+              
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                workflowStatus = parsed[parsed.length - 1];
+              } else {
+                workflowStatus = parsed;
+              }
+            } catch (e) {
+              workflowStatus = order.stav_workflow_kod;
+            }
           }
           
+          // Logika podle OrderV2:
+          // 1. Pokud existuje dt_zverejneni A registr_iddt -> "Zveřejněno"
+          // 2. Pokud workflow stav = 'UVEREJNIT' NEBO zverejnit === 'ANO' -> "Má být zveřejněno"
+          // 3. Jinak -> prázdné
+          
+          if (registr) {
+            // 1. Zveřejněno - má vyplněné oboje dt_zverejneni I registr_iddt
+            if (registr.dt_zverejneni && registr.registr_iddt) {
+              stavText = 'Zveřejněno';
+              icon = faCheckCircle;
+              statusCode = 'UVEREJNENA';
+            }
+            // 2. Má být zveřejněno - workflow = UVEREJNIT NEBO zverejnit === 'ANO'
+            else if (workflowStatus === 'UVEREJNIT' || registr.zverejnit === 'ANO') {
+              stavText = 'Má být zveřejněno';
+              icon = faClock;
+              statusCode = 'KE_SCHVALENI';
+            }
+          }
+          // Kontrola i pokud registr neexistuje, ale workflow = UVEREJNIT
+          else if (workflowStatus === 'UVEREJNIT') {
+            stavText = 'Má být zveřejněno';
+            icon = faClock;
+            statusCode = 'KE_SCHVALENI';
+          }
+          
+          // Pokud nemáme žádný stav, vrať ---
           if (!stavText) {
             return <div style={{ color: '#94a3b8', fontSize: '0.9em' }}>---</div>;
           }
@@ -1676,9 +1728,22 @@ const OrdersTableV3 = ({
               const isExpanded = expandedRows[order.id];
               const rowColSpan = row.getVisibleCells().length;
               
+              // Získat barvu pozadí řádku
+              let rowStyle = {};
+              if (showRowColoring && getRowBackgroundColor) {
+                const bgColor = getRowBackgroundColor(order);
+                if (bgColor) {
+                  rowStyle.background = `linear-gradient(135deg, ${bgColor} 0%, ${bgColor}dd 50%, ${bgColor} 100%)`;
+                }
+              } else {
+                // Výchozí striping pokud není podbarvení zapnuté
+                const rowIndex = table.getRowModel().rows.indexOf(row);
+                rowStyle.backgroundColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb';
+              }
+              
               return (
                 <React.Fragment key={row.id}>
-                  <tr>
+                  <tr style={rowStyle}>
                     {row.getVisibleCells().map(cell => (
                       <TableCell
                         key={cell.id}
