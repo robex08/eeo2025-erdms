@@ -50,6 +50,18 @@ require_once __DIR__ . '/handlers.php';
  * @return void Vrací JSON response
  */
 function handle_invoice_toggle_check($input, $config) {
+    // ==========================================
+    // 🐛 DEV DEBUG LOGGING - KONTROLA FAKTURY
+    // ==========================================
+    error_log("╔═══════════════════════════════════════════════════════════");
+    error_log("║ ✅ MODUL FAKTUR - KONTROLA ŘÁDKU");
+    error_log("║ Čas: " . date('Y-m-d H:i:s'));
+    error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
+    error_log("║ Faktura ID: " . (isset($input['faktura_id']) ? $input['faktura_id'] : 'N/A'));
+    error_log("║ Kontrolováno: " . (isset($input['kontrolovano']) ? ($input['kontrolovano'] ? 'ANO' : 'NE') : 'N/A'));
+    error_log("║ Endpoint: invoices/toggle-check");
+    error_log("╚═══════════════════════════════════════════════════════════");
+    
     // 1. Validace HTTP metody
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
