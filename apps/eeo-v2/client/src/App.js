@@ -224,6 +224,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail 
               'cash-book': '/cash-book',
               'profile': '/profile',
               'orders25-list': '/orders25-list',
+              'orders25-list-v3': '/orders25-list-v3', // Objednávky V3 (BETA)
               'invoices25-list': '/invoices25-list',
               'users': '/users',
               'help': '/help' // Nápověda a manuály
