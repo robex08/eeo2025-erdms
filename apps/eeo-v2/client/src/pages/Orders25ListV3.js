@@ -18,7 +18,7 @@
  * - ✅ Rychlejší response time
  */
 
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
@@ -402,14 +402,54 @@ function Orders25ListV3() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
-  // Local state pro UI toggles
-  const [showDashboard, setShowDashboard] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
-  const [dashboardMode, setDashboardMode] = useState('FULL'); // FULL, DYNAMIC, COMPACT
-  const [showRowColoring, setShowRowColoring] = useState(true); // Podbarvení řádků podle stavu
+  // Local state pro UI toggles s LocalStorage persistencí
+  const [showDashboard, setShowDashboard] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_showDashboard_${user_id}`);
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  
+  const [showFilters, setShowFilters] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_showFilters_${user_id}`);
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+  
+  const [dashboardMode, setDashboardMode] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_dashboardMode_${user_id}`);
+    return saved || 'DYNAMIC'; // FULL, DYNAMIC, COMPACT - výchozí DYNAMIC
+  });
+  
+  const [showRowColoring, setShowRowColoring] = useState(() => {
+    const saved = localStorage.getItem(`ordersV3_showRowColoring_${user_id}`);
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   
   // State pro třídění
   const [sorting, setSorting] = useState([]);
+
+  // Efekty pro uložení do LocalStorage při změně
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_showDashboard_${user_id}`, JSON.stringify(showDashboard));
+    }
+  }, [showDashboard, user_id]);
+
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_showFilters_${user_id}`, JSON.stringify(showFilters));
+    }
+  }, [showFilters, user_id]);
+
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_dashboardMode_${user_id}`, dashboardMode);
+    }
+  }, [dashboardMode, user_id]);
+
+  useEffect(() => {
+    if (user_id) {
+      localStorage.setItem(`ordersV3_showRowColoring_${user_id}`, JSON.stringify(showRowColoring));
+    }
+  }, [showRowColoring, user_id]);
 
   // Handler pro uložení konfigurace sloupců
   const handleSaveColumnConfig = async () => {
