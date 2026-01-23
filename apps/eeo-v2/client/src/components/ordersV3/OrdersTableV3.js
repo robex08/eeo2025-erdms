@@ -1581,21 +1581,12 @@ const OrdersTableV3 = ({
   }, [visibleColumns, columnOrder, handleRowExpand, onActionClick, canEdit, canCreateInvoice, canExportDocument, expandedRows]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
+  // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
+  // Data jsou již vyfiltrovaná, takže lokální filtr by je filtroval 2x
   const filteredData = useMemo(() => {
-    if (Object.keys(columnFilters).length === 0) return data;
-    
-    return data.filter(row => {
-      return Object.entries(columnFilters).every(([columnId, filterValue]) => {
-        if (!filterValue) return true;
-        
-        const cellValue = row[columnId];
-        if (cellValue === null || cellValue === undefined) return false;
-        
-        // Case-insensitive string match
-        return String(cellValue).toLowerCase().includes(String(filterValue).toLowerCase());
-      });
-    });
-  }, [data, columnFilters]);
+    // Vrátit data bez dalšího filtrování - backend už je vyfiltroval
+    return data;
+  }, [data]);
 
   const table = useReactTable({
     data: filteredData,
