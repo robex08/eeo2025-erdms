@@ -278,7 +278,7 @@ function handle_order_v3_list($input, $config, $queries) {
         return;
     }
 
-    $user_id = isset($token_data['user_id']) ? (int)$token_data['user_id'] : 0;
+    $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
 
     try {
         // 3. Připojení k DB
@@ -334,6 +334,67 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "(u1.jmeno LIKE ? OR u1.prijmeni LIKE ?)";
             $where_params[] = '%' . $filters['objednatel_jmeno'] . '%';
             $where_params[] = '%' . $filters['objednatel_jmeno'] . '%';
+        }
+        
+        // Filtr pro workflow stav
+        if (!empty($filters['stav_workflow'])) {
+            $stav = $filters['stav_workflow'];
+            
+            // Mapování frontend stavu na backend workflow kód
+            $stav_map = array(
+                'nova' => 'NOVA',
+                'ke_schvaleni' => 'ODESLANA_KE_SCHVALENI',
+                'schvalena' => 'SCHVALENA',
+                'zamitnuta' => 'ZAMITNUTA',
+                'rozpracovana' => 'ROZPRACOVANA',
+                'odeslana' => 'ODESLANA',
+                'potvrzena' => 'POTVRZENA',
+                'k_uverejneni_do_registru' => 'K_UVEREJNENI_DO_REGISTRU',
+                'uverejnena' => 'UVEREJNIT',
+                'fakturace' => 'FAKTURACE',
+                'vecna_spravnost' => 'VECNA_SPRAVNOST',
+                'zkontrolovana' => 'ZKONTROLOVANA',
+                'dokoncena' => 'DOKONCENA',
+                'zrusena' => 'ZRUSENA',
+                'smazana' => 'SMAZANA'
+            );
+            
+            if (isset($stav_map[$stav])) {
+                $workflow_kod = $stav_map[$stav];
+                
+                // Pro NOVA kontroluj první element pole (index 0)
+                if ($stav === 'nova') {
+                    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, '$[0]')) = ?";
+                } else {
+                    // Pro ostatní kontroluj poslední element
+                    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) = ?";
+                }
+                $where_params[] = $workflow_kod;
+            }
+        }
+        
+        // Filtr "moje objednávky" - kde jsem objednatel, garant, příkazce nebo schvalovatel
+        if (!empty($filters['moje_objednavky']) && $filters['moje_objednavky'] === true) {
+            $where_conditions[] = "(o.objednatel_id = ? OR o.garant_uzivatel_id = ? OR o.prikazce_id = ? OR o.schvalovatel_id = ?)";
+            $where_params[] = $user_id;
+            $where_params[] = $user_id;
+            $where_params[] = $user_id;
+            $where_params[] = $user_id;
+        }
+        
+        // Filtr pro mimořádné události
+        if (!empty($filters['mimoradne_udalosti']) && $filters['mimoradne_udalosti'] === true) {
+            $where_conditions[] = "o.mimoradna_udalost = 1";
+        }
+        
+        // Filtr pro objednávky s fakturami
+        if (!empty($filters['s_fakturou']) && $filters['s_fakturou'] === true) {
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)";
+        }
+        
+        // Filtr pro objednávky s přílohami
+        if (!empty($filters['s_prilohami']) && $filters['s_prilohami'] === true) {
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p WHERE p.objednavka_id = o.id AND p.aktivni = 1)";
         }
 
         $where_sql = implode(' AND ', $where_conditions);
@@ -543,7 +604,7 @@ function getOrderStats($db, $year, $user_id = 0) {
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'SCHVALENA' THEN 1 
                 ELSE 0 
-            END) as schvalene,
+            END) as schvalena,
             -- ZAMÍTNUTÉ
             SUM(CASE 
                 WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZAMITNUTA' THEN 1 
@@ -712,6 +773,20 @@ function getOrderStats($db, $year, $user_id = 0) {
     $stats['rozpracovanaAmount'] = floatval($amount_data['rozpracovanaAmount']);
     $stats['dokoncenaAmount'] = floatval($amount_data['dokoncenaAmount']);
     
+    // Převést všechny countery na INT (MySQL SUM vrací string)
+    $counter_fields = array(
+        'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana', 
+        'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnene', 
+        'fakturace', 'vecna_spravnost', 'zkontrolovana', 'dokoncena', 'zrusena', 
+        'smazana', 'withInvoices', 'withAttachments', 'mimoradneUdalosti', 'mojeObjednavky'
+    );
+    
+    foreach ($counter_fields as $field) {
+        if (isset($stats[$field])) {
+            $stats[$field] = intval($stats[$field]);
+        }
+    }
+    
     return $stats;
 }
 
@@ -749,7 +824,7 @@ function handle_order_v3_stats($input, $config, $queries) {
         return;
     }
 
-    $user_id = isset($token_data['user_id']) ? (int)$token_data['user_id'] : 0;
+    $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
 
     try {
         $db = get_db($config);

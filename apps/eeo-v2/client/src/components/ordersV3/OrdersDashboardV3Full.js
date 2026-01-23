@@ -181,7 +181,8 @@ const StatCard = styled.div`
     `linear-gradient(145deg, ${props.$color || '#3b82f6'}20, ${props.$color || '#3b82f6'}10)` :
     'linear-gradient(145deg, #ffffff, #f9fafb)'};
   border-radius: 12px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
+  min-height: 85px;
   border-left: 4px solid ${props => props.$color || '#3b82f6'};
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: all 0.25s ease;
@@ -513,28 +514,28 @@ const OrdersDashboardV3Full = ({
 
           <SummaryRow>
             <SummaryItem $color="#d97706" $bg="rgba(217, 119, 6, 0.08)">
-              <SummaryLabel $color="#92400e">Rozpracované</SummaryLabel>
-              <SummaryValue>
-                {/* Rozpracované = všechny kromě zrušených a dokončených */}
-                {Math.round(
-                  (stats.nova || 0) +
-                  (stats.ke_schvaleni || 0) +
-                  (stats.schvalena || 0) +
-                  (stats.rozpracovana || 0) +
-                  (stats.odeslana || 0) +
-                  (stats.potvrzena || 0) +
-                  (stats.k_uverejneni_do_registru || 0) +
-                  (stats.uverejnena || 0) +
-                  (stats.fakturace || 0) +
-                  (stats.vecna_spravnost || 0)
-                ).toLocaleString('cs-CZ')}
+              <SummaryLabel $color="#92400e">ROZPRACOVANÉ</SummaryLabel>
+              <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                {Math.round(stats.rozpracovanaAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+              </SummaryValue>
+              <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
+                {/* Rozpracované = celkem - dokončené - zrušené - smazané */}
+                {(
+                  (stats.total || 0) -
+                  (stats.dokoncena || 0) -
+                  (stats.zrusena || 0) -
+                  (stats.smazana || 0)
+                ).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
 
             <SummaryItem $color="#059669" $bg="rgba(5, 150, 105, 0.08)">
-              <SummaryLabel $color="#065f46">Dokončené</SummaryLabel>
-              <SummaryValue>
-                {(stats.dokoncena || 0).toLocaleString('cs-CZ')}
+              <SummaryLabel $color="#065f46">DOKONČENÉ</SummaryLabel>
+              <SummaryValue style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                {Math.round(stats.dokoncenaAmount || 0).toLocaleString('cs-CZ')}&nbsp;Kč
+              </SummaryValue>
+              <SummaryValue style={{ fontSize: '0.85rem', fontWeight: '600', opacity: 0.8 }}>
+                {(stats.dokoncena || 0).toLocaleString('cs-CZ')} obj
               </SummaryValue>
             </SummaryItem>
           </SummaryRow>

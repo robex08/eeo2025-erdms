@@ -38,6 +38,7 @@ import {
   faEyeSlash,
   faTimes,
   faUndo,
+  faTrash,
 } from '@fortawesome/free-solid-svg-icons';
 
 // ============================================================================
@@ -412,21 +413,21 @@ const StatusBadge = styled.div`
   font-weight: 600;
   background: ${props => {
     const colors = {
-      NOVA: '#dbeafe',
-      KE_SCHVALENI: '#fee2e2',
-      SCHVALENA: '#fed7aa',
-      ZAMITNUTA: '#e5e7eb',
-      ROZPRACOVANA: '#fef3c7',
-      ODESLANA: '#e0e7ff',
-      POTVRZENA: '#ddd6fe',
-      K_UVEREJNENI_DO_REGISTRU: '#ccfbf1',
-      UVEREJNENA: '#d1fae5',
-      DOKONCENA: '#d1fae5',
-      ZRUSENA: '#fecaca',
-      CANCELLED: '#fecaca',
+      NOVA: 'rgba(219, 234, 254, 0.4)',
+      KE_SCHVALENI: 'rgba(254, 226, 226, 0.4)',
+      SCHVALENA: 'rgba(254, 215, 170, 0.4)',
+      ZAMITNUTA: 'rgba(229, 231, 235, 0.4)',
+      ROZPRACOVANA: 'rgba(254, 243, 199, 0.4)',
+      ODESLANA: 'rgba(224, 231, 255, 0.4)',
+      POTVRZENA: 'rgba(221, 214, 254, 0.4)',
+      K_UVEREJNENI_DO_REGISTRU: 'rgba(204, 251, 241, 0.4)',
+      UVEREJNENA: 'rgba(209, 250, 229, 0.4)',
+      DOKONCENA: 'rgba(209, 250, 229, 0.4)',
+      ZRUSENA: 'rgba(254, 202, 202, 0.4)',
+      CANCELLED: 'rgba(254, 202, 202, 0.4)',
       EMPTY: 'transparent',
     };
-    return colors[props.$status] || '#f1f5f9';
+    return colors[props.$status] || 'rgba(241, 245, 249, 0.4)';
   }};
   color: ${props => {
     const colors = {
@@ -434,9 +435,9 @@ const StatusBadge = styled.div`
       KE_SCHVALENI: '#dc2626',
       SCHVALENA: '#ea580c',
       ZAMITNUTA: '#6b7280',
-      ROZPRACOVANA: '#f59e0b',
-      ODESLANA: '#6366f1',
-      POTVRZENA: '#7c3aed',
+      ROZPRACOVANA: '#d97706',
+      ODESLANA: '#4f46e5',
+      POTVRZENA: '#6d28d9',
       K_UVEREJNENI_DO_REGISTRU: '#0d9488',
       UVEREJNENA: '#059669',
       DOKONCENA: '#059669',
@@ -446,23 +447,23 @@ const StatusBadge = styled.div`
     };
     return colors[props.$status] || '#64748b';
   }};
-  border: 1px solid ${props => {
+  border: 1.5px solid ${props => {
     const colors = {
-      NOVA: '#93c5fd',
-      KE_SCHVALENI: '#fca5a5',
-      SCHVALENA: '#fdba74',
-      ZAMITNUTA: '#d1d5db',
-      ROZPRACOVANA: '#fde68a',
-      ODESLANA: '#a5b4fc',
-      POTVRZENA: '#c4b5fd',
-      K_UVEREJNENI_DO_REGISTRU: '#5eead4',
-      UVEREJNENA: '#6ee7b7',
-      DOKONCENA: '#6ee7b7',
-      ZRUSENA: '#f87171',
-      CANCELLED: '#f87171',
+      NOVA: '#1e40af',
+      KE_SCHVALENI: '#dc2626',
+      SCHVALENA: '#ea580c',
+      ZAMITNUTA: '#6b7280',
+      ROZPRACOVANA: '#d97706',
+      ODESLANA: '#4f46e5',
+      POTVRZENA: '#6d28d9',
+      K_UVEREJNENI_DO_REGISTRU: '#0d9488',
+      UVEREJNENA: '#059669',
+      DOKONCENA: '#059669',
+      ZRUSENA: '#dc2626',
+      CANCELLED: '#dc2626',
       EMPTY: 'transparent',
     };
-    return colors[props.$status] || '#cbd5e1';
+    return colors[props.$status] || '#94a3b8';
   }};
 `;
 
@@ -513,6 +514,12 @@ const ActionMenuButton = styled.button`
     background: #fef3c7;
     border-color: #f59e0b;
     color: #92400e;
+  }
+
+  &.delete:hover:not(:disabled) {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #dc2626;
   }
 `;
 
@@ -897,6 +904,8 @@ const OrdersTableV3 = ({
   canEdit = () => true,
   canCreateInvoice = () => true,
   canExportDocument = () => true,
+  canDelete = () => false,
+  canHardDelete = () => false,
   showRowColoring = false, // Podbarvení řádků podle stavu
   getRowBackgroundColor = null, // Funkce pro získání barvy pozadí
 }) => {
@@ -1104,7 +1113,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 130,
         enableSorting: true,
       },
       {
@@ -1124,7 +1133,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 180,
+        size: 160,
         enableSorting: true,
       },
       {
@@ -1144,7 +1153,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 180,
+        size: 160,
         enableSorting: true,
       },
       {
@@ -1205,7 +1214,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 280,
+        size: 240,
         enableSorting: true,
       },
       {
@@ -1339,7 +1348,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 110,
         enableSorting: true,
       },
       {
@@ -1362,7 +1371,7 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 130,
+        size: 110,
         enableSorting: true,
       },
       {
@@ -1404,6 +1413,8 @@ const OrdersTableV3 = ({
         },
         cell: ({ row }) => {
           const order = row.original;
+          const showDelete = canDelete(order);
+          const isHardDelete = canHardDelete(order);
           
           return (
             <ActionMenu>
@@ -1433,10 +1444,21 @@ const OrdersTableV3 = ({
               >
                 <FontAwesomeIcon icon={faFileWord} />
               </ActionMenuButton>
+              
+              {showDelete && (
+                <ActionMenuButton
+                  className="delete"
+                  onClick={() => onActionClick?.('delete', order)}
+                  title={isHardDelete ? "Smazat objednávku (ADMIN: hard/soft delete)" : "Deaktivovat objednávku (soft delete)"}
+                  disabled={false}
+                >
+                  <FontAwesomeIcon icon={faTrash} />
+                </ActionMenuButton>
+              )}
             </ActionMenu>
           );
         },
-        size: 120,
+        size: 140,
         enableSorting: false,
       },
     ];

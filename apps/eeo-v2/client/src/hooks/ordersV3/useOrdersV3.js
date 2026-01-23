@@ -230,6 +230,23 @@ export function useOrdersV3({
         }
       });
       
+      // Přidat dashboard filtr pro workflow stav
+      if (dashboardFilters.filter_status) {
+        // Speciální filtry
+        if (dashboardFilters.filter_status === 'moje_objednavky') {
+          activeFilters.moje_objednavky = true;
+        } else if (dashboardFilters.filter_status === 'mimoradne_udalosti') {
+          activeFilters.mimoradne_udalosti = true;
+        } else if (dashboardFilters.filter_status === 's_fakturou') {
+          activeFilters.s_fakturou = true;
+        } else if (dashboardFilters.filter_status === 's_prilohami') {
+          activeFilters.s_prilohami = true;
+        } else {
+          // Jinak je to workflow stav
+          activeFilters.stav_workflow = dashboardFilters.filter_status;
+        }
+      }
+      
       // Volání V3 API
       const response = await listOrdersV3({
         token,
@@ -280,6 +297,7 @@ export function useOrdersV3({
     itemsPerPage,
     selectedYear,
     columnFilters,
+    dashboardFilters,
     showProgress,
     hideProgress,
   ]);
@@ -319,6 +337,7 @@ export function useOrdersV3({
   
   /**
    * Změní dashboard filtr (status cards)
+   * @param {string} filterType - Typ filtru: 'nova', 'schvalena', 'moje_objednavky', atd.
    */
   const handleDashboardFilterChange = useCallback((filterType) => {
     const isCurrentlyActive = dashboardFilters.filter_status === filterType;
