@@ -401,6 +401,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.max_cena_s_dph,
                 o.stav_objednavky,
                 o.stav_workflow_kod,
+                o.mimoradna_udalost,
                 o.zverejnit,
                 o.dt_zverejneni,
                 o.registr_iddt,
@@ -519,40 +520,151 @@ function handle_order_v3_list($input, $config, $queries) {
  * Načte statistiky objednávek pro daný rok
  */
 function getOrderStats($db, $year) {
+    // Počty objednávek podle stavů (poslední stav v workflow array)
     $sql_stats = "
         SELECT 
             COUNT(*) as total,
+            -- NOVÉ (první stav v array)
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, '$[0]') = '\"NOVA\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, '$[0]')) = 'NOVA' THEN 1 
                 ELSE 0 
             END) as nove,
+            -- KE SCHVÁLENÍ (ODESLANA_KE_SCHVALENI nebo KE_SCHVALENI)
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')) = '\"KE_SCHVALENI\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) IN ('ODESLANA_KE_SCHVALENI', 'KE_SCHVALENI') THEN 1 
                 ELSE 0 
             END) as ke_schvaleni,
+            -- SCHVÁLENÉ
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')) = '\"SCHVALENA\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'SCHVALENA' THEN 1 
                 ELSE 0 
             END) as schvalene,
+            -- ZAMÍTNUTÉ
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')) = '\"POTVRZENA\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZAMITNUTA' THEN 1 
                 ELSE 0 
-            END) as potvrzene,
+            END) as zamitnuta,
+            -- ROZPRACOVANÉ
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')) = '\"UVEREJNENA\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ROZPRACOVANA' THEN 1 
+                ELSE 0 
+            END) as rozpracovana,
+            -- ODESLANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ODESLANA' THEN 1 
+                ELSE 0 
+            END) as odeslana,
+            -- POTVRZENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'POTVRZENA' THEN 1 
+                ELSE 0 
+            END) as potvrzena,
+            -- K UVEŘEJNĚNÍ (UVEREJNIT v workflow)
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNIT' THEN 1 
+                ELSE 0 
+            END) as k_uverejneni_do_registru,
+            -- UVEŘEJNĚNÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'UVEREJNENA' THEN 1 
                 ELSE 0 
             END) as uverejnene,
+            -- FAKTURACE
             SUM(CASE 
-                WHEN JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')) = '\"DOKONCENA\"' THEN 1 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'FAKTURACE' THEN 1 
                 ELSE 0 
-            END) as dokoncene
-        FROM " . TBL_OBJEDNAVKY . "
-        WHERE aktivni = 1 AND YEAR(dt_objednavky) = ?
+            END) as fakturace,
+            -- VĚCNÁ SPRÁVNOST
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'VECNA_SPRAVNOST' THEN 1 
+                ELSE 0 
+            END) as vecna_spravnost,
+            -- ZKONTROLOVANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZKONTROLOVANA' THEN 1 
+                ELSE 0 
+            END) as zkontrolovana,
+            -- DOKONČENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'DOKONCENA' THEN 1 
+                ELSE 0 
+            END) as dokoncena,
+            -- ZRUŠENÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'ZRUSENA' THEN 1 
+                ELSE 0 
+            END) as zrusena,
+            -- SMAZANÉ
+            SUM(CASE 
+                WHEN JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']'))) = 'SMAZANA' THEN 1 
+                ELSE 0 
+            END) as smazana,
+            -- S FAKTURAMI (alespoň 1 faktura)
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_FAKTURY . " f 
+                    WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                ) THEN 1 
+                ELSE 0 
+            END) as withInvoices,
+            -- S PŘÍLOHAMI (alespoň 1 příloha)
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_OBJEDNAVKY_PRILOHY . " p 
+                    WHERE p.objednavka_id = o.id
+                ) THEN 1 
+                ELSE 0 
+            END) as withAttachments,
+            -- MIMOŘÁDNÉ UDÁLOSTI
+            SUM(CASE 
+                WHEN o.mimoradna_udalost = 1 THEN 1 
+                ELSE 0 
+            END) as mimoradneUdalosti
+        FROM " . TBL_OBJEDNAVKY . " o
+        WHERE o.aktivni = 1 AND YEAR(o.dt_objednavky) = ?
     ";
     
     $stmt_stats = $db->prepare($sql_stats);
     $stmt_stats->execute(array($year));
-    return $stmt_stats->fetch(PDO::FETCH_ASSOC);
+    $stats = $stmt_stats->fetch(PDO::FETCH_ASSOC);
+    
+    // Celková cena s DPH - priorita: faktury > položky > max_cena_s_dph
+    $sql_total_amount = "
+        SELECT 
+            COALESCE(SUM(
+                CASE
+                    -- Priorita 1: Pokud existují faktury, použij součet faktur
+                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                          FROM " . TBL_FAKTURY . " f 
+                          WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) 
+                          FROM " . TBL_FAKTURY . " f 
+                          WHERE f.objednavka_id = o.id AND f.aktivni = 1)
+                    
+                    -- Priorita 2: Pokud existují položky, použij součet položek
+                    WHEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) 
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                          WHERE pol.objednavka_id = o.id) > 0
+                    THEN (SELECT COALESCE(SUM(pol.cena_s_dph), 0) 
+                          FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol 
+                          WHERE pol.objednavka_id = o.id)
+                    
+                    -- Priorita 3: Použij max_cena_s_dph
+                    ELSE COALESCE(o.max_cena_s_dph, 0)
+                END
+            ), 0) as totalAmount
+        FROM " . TBL_OBJEDNAVKY . " o
+        WHERE o.aktivni = 1 AND YEAR(o.dt_objednavky) = ?
+    ";
+    
+    $stmt_amount = $db->prepare($sql_total_amount);
+    $stmt_amount->execute(array($year));
+    $amount_data = $stmt_amount->fetch(PDO::FETCH_ASSOC);
+    
+    // Přidat totalAmount do stats
+    $stats['totalAmount'] = floatval($amount_data['totalAmount']);
+    
+    return $stats;
 }
 
 /**

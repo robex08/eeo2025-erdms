@@ -1041,7 +1041,7 @@ const OrdersTableV3 = ({
           return (
             <div style={{ textAlign: 'left', whiteSpace: 'normal' }}>
               <div style={{ fontWeight: 600, color: '#1e293b', fontFamily: 'monospace' }}>
-                {order.mimoradna_udalost && (
+                {(order.mimoradna_udalost === 1 || order.mimoradna_udalost === '1') && (
                   <span style={{ color: '#dc2626', marginRight: '4px' }}>
                     <FontAwesomeIcon icon={faBoltLightning} />
                   </span>
