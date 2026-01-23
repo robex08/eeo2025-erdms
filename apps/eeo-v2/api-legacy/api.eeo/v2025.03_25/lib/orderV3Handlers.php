@@ -413,6 +413,7 @@ function handle_order_v3_list($input, $config, $queries) {
                 o.dodavatel_adresa,
                 o.dodavatel_kontakt_jmeno,
                 o.dodavatel_kontakt_email,
+                o.dodavatel_kontakt_telefon,
                 
                 -- Objednatel
                 u1.id as objednatel_id,
