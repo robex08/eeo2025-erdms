@@ -1673,6 +1673,7 @@ export async function listInvoices25({
   filter_vecnou_provedl,  // 📋 Sloupcový filtr - kdo provedl věcnou kontrolu
   filter_predano_zamestnanec,  // 📋 Sloupcový filtr - předáno zaměstnanci
   filter_kontrola_radku,  // ✅ Sloupcový filtr - kontrola řádku (kontrolovano/nekontrolovano)
+  show_only_inactive,  // 🔧 ADMIN FEATURE: Zobrazení pouze neaktivních faktur (aktivni = 0)
   order_by,    // 📊 Třídění - sloupec pro řazení
   order_direction  // 📊 Třídění - směr řazení (ASC/DESC)
 }) {
@@ -1729,6 +1730,9 @@ export async function listInvoices25({
     
     // ✅ Filtr pro kontrolu řádku (kontrolovano/nekontrolovano)
     if (filter_kontrola_radku !== undefined && filter_kontrola_radku !== '') payload.filter_kontrola_radku = filter_kontrola_radku;
+    
+    // 🔧 ADMIN FEATURE: Zobrazení pouze neaktivních faktur
+    if (show_only_inactive !== undefined && show_only_inactive !== '') payload.show_only_inactive = show_only_inactive;
 
     // 📊 Třídění
     if (order_by !== undefined && order_by !== '') payload.order_by = order_by;

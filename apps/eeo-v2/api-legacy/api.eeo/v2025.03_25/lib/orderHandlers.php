@@ -542,7 +542,7 @@ function loadOrderInvoices($db, $order_id) {
         LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `$users_table` u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
-        WHERE f.objednavka_id = ? 
+        WHERE f.objednavka_id = ? AND f.aktivni = 1
         ORDER BY f.id ASC
     ");
     $stmt->execute([$order_id]);

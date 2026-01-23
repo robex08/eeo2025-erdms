@@ -5,11 +5,23 @@
  * Read-only přístup k fakturám a jejich přílohám
  */
 
+// ============ ENV DETECTION ============
+define('IS_DEV_SPISOVKA', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
+
 // Error reporting
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', '/tmp/php_spisovka_errors.log');
-error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+if (IS_DEV_SPISOVKA) {
+    // 🐛 DEV - Debug režim
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/log/apache2/erdms-dev-php-error.log');
+    error_reporting(E_ALL);
+} else {
+    // PROD - Standard
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/tmp/php_spisovka_errors.log');
+    error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+}
 
 // CORS headers are handled by Apache - do not send them from PHP to avoid duplication
 header("Content-Type: application/json; charset=utf-8");

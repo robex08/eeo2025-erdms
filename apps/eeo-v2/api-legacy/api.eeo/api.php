@@ -1,10 +1,28 @@
 <?php
-// Standard error reporting for production
-ini_set('display_errors', 0);
-ini_set('display_startup_errors', 0); 
-ini_set('log_errors', 1);
-ini_set('error_log', '/tmp/php_errors.log');
-error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+// ============ ENV DETECTION ============
+// Detekuje DEV/PROD prostředí podle REQUEST_URI
+define('IS_DEV_ENV', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
+define('ENV_NAME', IS_DEV_ENV ? 'DEV' : 'PROD');
+
+// ============ ERROR LOGGING SETUP ============
+if (IS_DEV_ENV) {
+    // 🐛 DEV - Debug režim s podrobným logováním
+    ini_set('display_errors', 0);  // Bezpečnost - nezobrazovat errory
+    ini_set('display_startup_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/var/www/erdms-dev/logs/php-error.log');
+    error_reporting(E_ALL);  // Všechny chyby včetně notices, warnings
+    
+    // Include custom debug logger (obchází nefunkční error_log v PHP 8.4 FPM)
+    require_once __DIR__ . '/debug_logger.php';
+} else {
+    // PROD - Standard error reporting
+    ini_set('display_errors', 0);
+    ini_set('display_startup_errors', 0); 
+    ini_set('log_errors', 1);
+    ini_set('error_log', '/tmp/php_errors.log');
+    error_reporting(E_ALL & ~E_NOTICE & ~E_STRICT & ~E_DEPRECATED);
+}
 
 // CORS headers are handled by Apache - do not send them from PHP to avoid duplication
 header("Content-Type: application/json; charset=utf-8");
@@ -15,11 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
-
-// ============ ENV DETECTION ============
-// Detekuje DEV/PROD prostředí podle REQUEST_URI
-define('IS_DEV_ENV', strpos($_SERVER['REQUEST_URI'], '/dev/api.eeo') !== false);
-define('ENV_NAME', IS_DEV_ENV ? 'DEV' : 'PROD');
 
 define('VERSION', 'v2025.03_25');
 
@@ -559,6 +572,40 @@ try {
 
 // Routing podle endpointu
 switch ($endpoint) {
+    // === TEST LOGGING ENDPOINT - POUZE PRO DEV ===
+    case 'test-logging':
+        error_log("=== TEST LOGGING START ===");
+        error_log("ENV: " . ENV_NAME);
+        error_log("Time: " . date('Y-m-d H:i:s'));
+        error_log("Endpoint: " . $endpoint);
+        error_log("Method: " . $request_method);
+        error_log("PHP error_log setting: " . ini_get('error_log'));
+        error_log("log_errors: " . (ini_get('log_errors') ? 'ON' : 'OFF'));
+        error_log("display_errors: " . (ini_get('display_errors') ? 'ON' : 'OFF'));
+        error_log("error_reporting: " . ini_get('error_reporting'));
+        
+        // Test varování
+        trigger_error("Test WARNING from API", E_USER_WARNING);
+        
+        // Test chyba
+        try {
+            throw new Exception("Test EXCEPTION from API");
+        } catch (Exception $e) {
+            error_log("Caught exception: " . $e->getMessage());
+        }
+        
+        error_log("=== TEST LOGGING END ===");
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Test logging dokončen',
+            'env' => ENV_NAME,
+            'log_file' => ini_get('error_log'),
+            'instructions' => 'Zkontroluj: tail -f /var/log/apache2/erdms-dev-php-error.log'
+        ]);
+        break;
+    
     case 'login':
     case 'user/login':
         if ($request_method === 'POST') {
