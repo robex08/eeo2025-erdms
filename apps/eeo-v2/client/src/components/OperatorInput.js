@@ -27,7 +27,9 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
     if (!number || number.trim() === '') {
       onChange('');
     } else {
-      onChange(`${newOperator}${number}`);
+      // DŮLEŽITÉ: Odstranit mezery před odesláním do API
+      const valueWithoutSpaces = number.replace(/\s/g, '');
+      onChange(`${newOperator}${valueWithoutSpaces}`);
     }
   };
 
@@ -40,7 +42,9 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
     if (!cleanValue || cleanValue.trim() === '') {
       onChange('');
     } else {
-      onChange(operator + cleanValue);
+      // DŮLEŽITÉ: Odstranit mezery před odesláním do API
+      const valueWithoutSpaces = cleanValue.replace(/\s/g, '');
+      onChange(operator + valueWithoutSpaces);
     }
   };
 
