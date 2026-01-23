@@ -1396,13 +1396,15 @@ function handle_invoices25_list($input, $config, $queries) {
         // Kontrola INVOICE_MANAGE práva
         $has_invoice_manage = in_array('INVOICE_MANAGE', $user_permissions);
         
-        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR, UCETNI nebo INVOICE_MANAGE = plný přístup (vidí VŠE)
+        // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR, UCETNI, KONTROLOR_FAKTUR nebo INVOICE_MANAGE = plný přístup (vidí VŠE)
         // Role UCETNI má automatický přístup ke všem fakturám pro účetní operace
+        // Role KONTROLOR_FAKTUR má automatický přístup ke všem fakturám pro kontrolu (readonly)
         // Právo INVOICE_MANAGE umožňuje správu všech faktur v systému
         $is_admin = in_array('SUPERADMIN', $user_roles) || 
                     in_array('ADMINISTRATOR', $user_roles) || 
                     in_array('UCETNI', $user_roles) ||
                     in_array('HLAVNI_UCETNI', $user_roles) ||
+                    in_array('KONTROLOR_FAKTUR', $user_roles) ||
                     $has_invoice_manage;
         
         // DEBUG logging
@@ -1410,7 +1412,7 @@ function handle_invoices25_list($input, $config, $queries) {
         error_log("Invoices25 LIST: User $user_id permissions: " . implode(', ', $user_permissions));
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
         error_log("Invoices25 LIST: Has INVOICE_MANAGE: " . ($has_invoice_manage ? 'YES' : 'NO'));
-        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI/HLAVNI_UCETNI/INVOICE_MANAGE): " . ($is_admin ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI/HLAVNI_UCETNI/KONTROLOR_FAKTUR/INVOICE_MANAGE): " . ($is_admin ? 'YES' : 'NO'));
 
         // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem
         if (!$is_admin) {
@@ -1498,8 +1500,11 @@ function handle_invoices25_list($input, $config, $queries) {
         }
 
         // Filtr: year (FE kompatibilita - root level parametr)
+        // Filtruje podle jednoho z datumů (OR): vystavení, doručení nebo splatnost
         if (isset($input['year']) && (int)$input['year'] > 0) {
-            $where_conditions[] = 'YEAR(f.fa_datum_vystaveni) = ?';
+            $where_conditions[] = '(YEAR(f.fa_datum_vystaveni) = ? OR YEAR(f.fa_datum_doruceni) = ? OR YEAR(f.fa_datum_splatnosti) = ?)';
+            $params[] = (int)$input['year'];
+            $params[] = (int)$input['year'];
             $params[] = (int)$input['year'];
         }
 
@@ -1521,15 +1526,19 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = '%' . trim($filters['fa_cislo_vema']) . '%';
         }
 
-        // Filtr: datum vystavení - od
+        // Filtr: datum OD - kontroluje vystavení, doručení nebo splatnost (OR)
         if (isset($filters['datum_od']) && !empty($filters['datum_od'])) {
-            $where_conditions[] = 'f.fa_datum_vystaveni >= ?';
+            $where_conditions[] = '(f.fa_datum_vystaveni >= ? OR f.fa_datum_doruceni >= ? OR f.fa_datum_splatnosti >= ?)';
+            $params[] = $filters['datum_od'];
+            $params[] = $filters['datum_od'];
             $params[] = $filters['datum_od'];
         }
 
-        // Filtr: datum vystavení - do
+        // Filtr: datum DO - kontroluje vystavení, doručení nebo splatnost (OR)
         if (isset($filters['datum_do']) && !empty($filters['datum_do'])) {
-            $where_conditions[] = 'f.fa_datum_vystaveni <= ?';
+            $where_conditions[] = '(f.fa_datum_vystaveni <= ? OR f.fa_datum_doruceni <= ? OR f.fa_datum_splatnosti <= ?)';
+            $params[] = $filters['datum_do'];
+            $params[] = $filters['datum_do'];
             $params[] = $filters['datum_do'];
         }
 

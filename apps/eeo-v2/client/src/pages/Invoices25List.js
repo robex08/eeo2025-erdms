@@ -3149,7 +3149,7 @@ const Invoices25List = () => {
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
     const years = [];
-    for (let year = currentYear; year >= 2020; year--) {
+    for (let year = currentYear; year >= 2025; year--) {
       years.push(year);
     }
     return years;

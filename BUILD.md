@@ -6,6 +6,64 @@ ERDMS používá automatizované build skripty pro konzistentní development a p
 
 **Aktuální DEV verze:** `2.18` *(aktivní verze)*
 
+## 🎯 KRITICKÉ - KONFIGURACE PROSTŘEDÍ
+
+### 🔴 TŘI REŽIMY PROVOZU:
+
+| Režim | Command | API Cesta | Databáze | Účel |
+|-------|---------|-----------|----------|------|
+| **HRM (npm start)** | `npm start` | `/api.eeo/` → proxy → `/dev/api.eeo/` | `EEO-OSTRA-DEV` | Lokální vývoj s hot reload |
+| **DEV Build** | `./build-eeo-v2.sh --dev --explicit` | `/dev/api.eeo/` (přímá) | `EEO-OSTRA-DEV` | Testování na DEV serveru |
+| **PROD Build** | `./build-eeo-v2.sh --prod` | `/api.eeo/` (přímá) | `eeo2025` | Ostrý provoz |
+
+### 📍 Jak to funguje:
+
+#### 1️⃣ HRM - Lokální vývoj (npm start)
+```bash
+cd /var/www/erdms-dev/apps/eeo-v2/client
+npm start
+```
+- **Frontend:** `http://localhost:3001`
+- **API cesta FE:** `/api.eeo/` (definováno v `.env`)
+- **Proxy:** `setupProxy.js` přesměruje `/api.eeo/` → `http://localhost/dev/api.eeo/`
+- **Skutečné API:** `/dev/api.eeo/` (Apache alias)
+- **Databáze:** `EEO-OSTRA-DEV` (z `/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env`)
+- **Zobrazení v patičce:** `/dev/api.eeo (proxy)` + `DB: EEO-OSTRA-DEV`
+
+#### 2️⃣ DEV Build - Testování
+```bash
+./build-eeo-v2.sh --dev --explicit
+```
+- **Build script:** Nastaví `REACT_APP_API2_BASE_URL=/dev/api.eeo/`
+- **API cesta:** `/dev/api.eeo/` (přímá, bez proxy)
+- **Databáze:** `EEO-OSTRA-DEV`
+- **Deploy:** `/var/www/erdms-dev/apps/eeo-v2/client/build/`
+- **URL:** `http://erdms.zachranka.cz/dev/`
+- **Zobrazení v patičce:** `/dev/api.eeo` + `DB: EEO-OSTRA-DEV`
+
+#### 3️⃣ PROD Build - Ostrý provoz
+```bash
+./build-eeo-v2.sh --prod
+```
+- **Build script:** Nastaví `REACT_APP_API2_BASE_URL=/api.eeo/`
+- **API cesta:** `/api.eeo/` (přímá)
+- **Databáze:** `eeo2025`
+- **Deploy:** `/var/www/erdms-platform/apps/eeo-v2/client/build/`
+- **URL:** `https://erdms.zachranka.cz/`
+- **Zobrazení v patičce:** `/api.eeo` + `DB: eeo2025`
+
+### ⚠️ KONTROLA SPRÁVNOSTI:
+
+**V PATIČCE APLIKACE MUSÍŠ VIDĚT:**
+
+| Režim | Patička musí zobrazovat |
+|-------|-------------------------|
+| HRM (npm start) | `API: /dev/api.eeo (proxy)` + `DB: EEO-OSTRA-DEV` |
+| DEV Build | `API: /dev/api.eeo` + `DB: EEO-OSTRA-DEV` |
+| PROD Build | `API: /api.eeo` + `DB: eeo2025` |
+
+**POKUD VIDÍŠ NĚCO JINÉHO = CHYBA V KONFIGURACI!**
+
 ## ⚠️ KRITICKÉ - DEV BUILD S EXPLICITNÍ DB ⚠️
 
 **DEV prostředí MUSÍ používat databázi:** `EEO-OSTRA-DEV`  
