@@ -11528,18 +11528,16 @@ const Orders25List = () => {
     try {
       let blob;
       
-      // ✅ Rozlišení podle typu přílohy - faktury vs objednávky
-      if (attachment.typ_prilohy && attachment.typ_prilohy.startsWith('FAKTURA')) {
-        // Příloha faktury - použij invoice attachment endpoint
-        // Potřebuji faktura_id - může být v attachment.faktura_id
-        const fakturaId = attachment.faktura_id || attachment.invoice_id;
-        if (!fakturaId) {
-          showToast?.('Nelze stáhnout přílohu faktury - chybí ID faktury', { type: 'error' });
-          return;
-        }
+      // ✅ Rozlišení podle tabulky (ne podle typ_prilohy):
+      // - Má faktura_id → příloha z tabulky 25a_faktury_prilohy → příloha FAKTURY
+      // - Nemá faktura_id → příloha z tabulky 25a_objednavky_prilohy → příloha OBJEDNÁVKY
+      const fakturaId = attachment.faktura_id || attachment.invoice_id;
+      
+      if (fakturaId) {
+        // Příloha faktury (z tabulky faktury_prilohy)
         blob = await downloadInvoiceAttachment(fakturaId, attachment.id, username, token);
       } else {
-        // Příloha objednávky
+        // Příloha objednávky (z tabulky objednavky_prilohy)
         blob = await downloadOrderAttachment(orderId, attachment.id, username, token);
       }
 
