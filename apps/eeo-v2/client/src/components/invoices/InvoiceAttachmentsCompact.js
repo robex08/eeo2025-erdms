@@ -439,7 +439,7 @@ const InvoiceAttachmentsCompact = ({
   onOCRDataExtracted, // 🆕 Callback pro předání OCR vytěžených dat
   allUsers = [] // 🆕 Seznam všech uživatelů pro zobrazení jména nahrávajícího uživatele
 }) => {
-  const { username, token } = useContext(AuthContext);
+  const { username, token, userDetail } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext); // ✅ OPRAVENO: showToast místo addToast
 
   const [loading, setLoading] = useState(false);
@@ -547,8 +547,16 @@ const InvoiceAttachmentsCompact = ({
     }
   }, [onAttachmentsChange]);
 
-  // � Helper funkce pro získání jména uživatele podle ID
-  const getUserDisplayName = useCallback((userId) => {
+  // 📛 Helper funkce pro získání jména uživatele podle ID nebo přímo z objektu
+  const getUserDisplayName = useCallback((userId, directJmeno, directPrijmeni) => {
+    // Pokud máme přímo jméno a příjmení, použít je
+    if (directJmeno || directPrijmeni) {
+      const parts = [];
+      if (directJmeno) parts.push(directJmeno);
+      if (directPrijmeni) parts.push(directPrijmeni);
+      return parts.length > 0 ? parts.join(' ') : (username || 'Neznámý uživatel');
+    }
+    
     if (!userId) return username || 'Neznámý uživatel';
     
     // Najít uživatele v seznamu
@@ -564,6 +572,52 @@ const InvoiceAttachmentsCompact = ({
     
     return parts.length > 0 ? parts.join(' ') : (user.username || `Uživatel #${userId}`);
   }, [allUsers, username]);
+
+  // 🛡️ Kontrola oprávnění pro editaci/mazání přílohy
+  const canEditAttachment = useCallback((attachment) => {
+    if (!attachment) return false;
+    
+    // Pending attachments může vždy editovat/mazat
+    if (attachment.status === 'pending' || attachment.status === 'pending_classification') {
+      return true;
+    }
+    
+    // Načíst aktuálního uživatele z AuthContext
+    const currentUserId = userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id;
+    const currentUserUsekId = userDetail?.usek_id;
+    const userRoles = userDetail?.roles || [];
+    
+    // Admin a SUPERADMIN může vše
+    const isAdmin = userRoles.some(role => 
+      role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+    );
+    if (isAdmin) {
+      return true;
+    }
+    
+    // Uživatel s INVOICE_MANAGE může vše
+    const directRights = userDetail?.direct_rights || [];
+    const hasInvoiceManage = directRights.some(p => p.kod_prava === 'INVOICE_MANAGE');
+    if (hasInvoiceManage) {
+      return true;
+    }
+    
+    // Vlastní příloha - porovnat ID uživatele
+    const uploadedByUserId = attachment.nahrano_uzivatel_id || attachment.uploaded_by_user_id;
+    if (uploadedByUserId && uploadedByUserId === currentUserId) {
+      return true;
+    }
+    
+    // Příloha ze stejného úseku - najít uživatele v allUsers a porovnat usek_id
+    if (uploadedByUserId && currentUserUsekId) {
+      const uploaderUser = allUsers.find(u => u.id === uploadedByUserId || u.user_id === uploadedByUserId);
+      if (uploaderUser && uploaderUser.usek_id === currentUserUsekId) {
+        return true;
+      }
+    }
+    
+    return false;
+  }, [allUsers, userDetail]);
 
   // 🛡️ Helper funkce pro zobrazení důvodů oprávnění
   const getPermissionReasonText = useCallback((reason) => {
@@ -702,12 +756,20 @@ const InvoiceAttachmentsCompact = ({
                               response.data?.id || 
                               response.id;
           
+          // Získej údaje o uživateli z response
+          const nahrano_uzivatel_id = response.priloha?.nahrano_uzivatel_id || response.priloha?.nahrano_uzivatel?.id;
+          const nahrano_uzivatel_jmeno = response.priloha?.nahrano_uzivatel?.jmeno;
+          const nahrano_uzivatel_prijmeni = response.priloha?.nahrano_uzivatel?.prijmeni;
+          
           // Update status -> uploaded
           updateAttachments(prev => prev.map(a =>
             a.id === attachment.id ? {
               ...a,
               status: 'uploaded',
               serverId: attachmentId,
+              nahrano_uzivatel_id: nahrano_uzivatel_id,
+              nahrano_uzivatel_jmeno: nahrano_uzivatel_jmeno,
+              nahrano_uzivatel_prijmeni: nahrano_uzivatel_prijmeni,
               file: undefined // Odstraň File object
             } : a
           ));
@@ -782,6 +844,8 @@ const InvoiceAttachmentsCompact = ({
           systemova_cesta: att.systemova_cesta,
           dt_vytvoreni: att.dt_vytvoreni,
           nahrano_uzivatel_id: att.nahrano_uzivatel_id,
+          nahrano_uzivatel_jmeno: att.nahrano_uzivatel?.jmeno,
+          nahrano_uzivatel_prijmeni: att.nahrano_uzivatel?.prijmeni,
           je_isdoc: att.je_isdoc,
           faktura_typ_nazev: typPrilohy?.nazev || att.faktura_typ_nazev,
           type: (att.originalni_nazev_souboru || '').endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
@@ -1007,6 +1071,10 @@ const InvoiceAttachmentsCompact = ({
           uploadDate: new Date().toISOString(),
           status: 'pending_upload', // ✅ Ready k uploadu s auto-klasifikací
           je_isdoc: jeISDOC ? 1 : 0,
+          // ✅ Přidat user data z AuthContext pro správné zobrazení jména
+          nahrano_uzivatel_id: userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id,
+          nahrano_uzivatel_jmeno: userDetail?.jmeno,
+          nahrano_uzivatel_prijmeni: userDetail?.prijmeni,
           // 📋 SPISOVKA METADATA pro automatický tracking (pokud existují)
           ...(file.spisovka_dokument_id && { spisovka_dokument_id: file.spisovka_dokument_id }),
           ...(file.spisovka_file_id && { spisovka_file_id: file.spisovka_file_id })
@@ -1253,6 +1321,11 @@ const InvoiceAttachmentsCompact = ({
                             response.data?.id || 
                             response.id;
 
+        // Získej údaje o uživateli z response
+        const nahrano_uzivatel_id = response.priloha?.nahrano_uzivatel_id || response.priloha?.nahrano_uzivatel?.id;
+        const nahrano_uzivatel_jmeno = response.priloha?.nahrano_uzivatel?.jmeno;
+        const nahrano_uzivatel_prijmeni = response.priloha?.nahrano_uzivatel?.prijmeni;
+
         // Attachment ID (temp upload)
 
         // Update s server ID
@@ -1264,6 +1337,9 @@ const InvoiceAttachmentsCompact = ({
               serverId: attachmentId,
               klasifikace: klasifikace, // ✅ Uložit klasifikaci pro pozdější porovnání
               faktura_typ_nazev: typPrilohy?.nazev || klasifikace,
+              nahrano_uzivatel_id: nahrano_uzivatel_id,
+              nahrano_uzivatel_jmeno: nahrano_uzivatel_jmeno,
+              nahrano_uzivatel_prijmeni: nahrano_uzivatel_prijmeni,
               file: undefined, // Odstraň File object
               // 📋 Zachovat Spisovka metadata (pokud existují)
               ...(f.spisovka_dokument_id && { spisovka_dokument_id: f.spisovka_dokument_id }),
@@ -2214,7 +2290,10 @@ const InvoiceAttachmentsCompact = ({
         uploadDate: response.priloha?.dt_vytvoreni || new Date().toISOString(),
         status: 'uploaded',
         je_isdoc: 1,
-        guid: response.priloha?.guid
+        guid: response.priloha?.guid,
+        nahrano_uzivatel_id: response.priloha?.nahrano_uzivatel_id || response.priloha?.nahrano_uzivatel?.id,
+        nahrano_uzivatel_jmeno: response.priloha?.nahrano_uzivatel?.jmeno,
+        nahrano_uzivatel_prijmeni: response.priloha?.nahrano_uzivatel?.prijmeni
       };
 
       updateAttachments(prev => [...prev, serverAttachment]);
@@ -2257,7 +2336,11 @@ const InvoiceAttachmentsCompact = ({
         klasifikace: 'ISDOC', // ✅ ISDOC typ pro ISDOC soubory
         uploadDate: new Date().toISOString(),
         status: 'pending_upload',
-        je_isdoc: 1
+        je_isdoc: 1,
+        // ✅ Přidat user data z AuthContext
+        nahrano_uzivatel_id: userDetail?.uzivatel_id || userDetail?.user_id || userDetail?.id,
+        nahrano_uzivatel_jmeno: userDetail?.jmeno,
+        nahrano_uzivatel_prijmeni: userDetail?.prijmeni
       };
 
       updateAttachments(prev => [...prev, isdocAttachment]);
@@ -2573,28 +2656,28 @@ const InvoiceAttachmentsCompact = ({
                         onClick={() => file.serverId ? deleteFromServer(file.id) : removeFile(file.id)}
                         disabled={
                           file.status === 'uploading' || 
-                          (file.serverId && file.permissions && file.permissions.can_delete === false)
+                          (file.serverId && !canEditAttachment(file))
                         }
                         style={{
                           background: 'none',
                           border: 'none',
                           color: file.status === 'uploading' ? '#9ca3af' : 
-                                (file.serverId && file.permissions && file.permissions.can_delete === false) ? '#9ca3af' : '#dc2626',
+                                (file.serverId && !canEditAttachment(file)) ? '#9ca3af' : '#dc2626',
                           cursor: (file.status === 'uploading' || 
-                                  (file.serverId && file.permissions && file.permissions.can_delete === false)) 
+                                  (file.serverId && !canEditAttachment(file))) 
                                   ? 'not-allowed' : 'pointer',
                           padding: '2px',
                           display: 'flex',
                           alignItems: 'center',
                           opacity: (file.status === 'uploading' || 
-                                   (file.serverId && file.permissions && file.permissions.can_delete === false)) ? 0.6 : 1,
+                                   (file.serverId && !canEditAttachment(file))) ? 0.6 : 1,
                           fontSize: '12px',
                           flexShrink: 0
                         }}
                         title={
                           file.status === 'uploading' ? 'Probíhá nahrávání...' :
-                          (file.serverId && file.permissions && file.permissions.can_delete === false) ? 
-                            (file.permissions.delete_reason || 'Nemáte oprávnění smazat tuto přílohu') :
+                          (file.serverId && !canEditAttachment(file)) ? 
+                            'Nemáte oprávnění smazat tuto přílohu' :
                             (file.serverId ? "Smazat ze serveru" : "Smazat soubor")
                         }
                       >
@@ -2603,7 +2686,7 @@ const InvoiceAttachmentsCompact = ({
                     )}
                     
                     {/* Informace o oprávnění - zobrazit důvod pro read-only přílohy */}
-                    {file.serverId && file.permissions && !file.permissions.can_delete && (
+                    {file.serverId && !canEditAttachment(file) && (
                       <span style={{
                         color: '#6b7280',
                         fontSize: '0.6875rem',
@@ -2612,7 +2695,7 @@ const InvoiceAttachmentsCompact = ({
                         borderRadius: '3px',
                         flexShrink: 0
                       }}
-                      title={getPermissionReasonText(file.permissions.delete_reason)}
+                      title="Nemáte oprávnění upravovat tuto přílohu"
                       >
                         🔒
                       </span>
@@ -2655,7 +2738,7 @@ const InvoiceAttachmentsCompact = ({
                     fontSize: '0.6875rem',
                     fontWeight: '500'
                   }}>
-                    Nahráno: {getUserDisplayName(file.nahrano_uzivatel_id)}
+                    Nahráno: {getUserDisplayName(file.nahrano_uzivatel_id, file.nahrano_uzivatel_jmeno, file.nahrano_uzivatel_prijmeni)}
                   </span>
                   {file.faktura_typ_nazev && (
                     <>
@@ -2680,18 +2763,19 @@ const InvoiceAttachmentsCompact = ({
                 <select
                   value={file.klasifikace || ''}
                   onChange={(e) => updateFileKlasifikace(file.id, e.target.value)}
-                  disabled={file.status === 'uploading' || readOnly}
+                  disabled={file.status === 'uploading' || readOnly || !canEditAttachment(file)}
                   style={{
                     width: '100%',
                     padding: '0.5rem 0.75rem',
                     border: `1px solid ${!file.klasifikace ? '#fca5a5' : '#d1d5db'}`,
                     borderRadius: '6px',
                     fontSize: '0.875rem',
-                    backgroundColor: (file.status === 'uploading' || readOnly) ? '#f3f4f6' : 'white',
+                    backgroundColor: (file.status === 'uploading' || readOnly || !canEditAttachment(file)) ? '#f3f4f6' : 'white',
                     color: file.klasifikace ? '#374151' : '#6b7280',
-                    cursor: (file.status === 'uploading' || readOnly) ? 'not-allowed' : 'pointer',
-                    opacity: (file.status === 'uploading' || readOnly) ? 0.6 : 1
+                    cursor: (file.status === 'uploading' || readOnly || !canEditAttachment(file)) ? 'not-allowed' : 'pointer',
+                    opacity: (file.status === 'uploading' || readOnly || !canEditAttachment(file)) ? 0.6 : 1
                   }}
+                  title={!canEditAttachment(file) ? 'Nemáte oprávnění měnit klasifikaci této přílohy' : ''}
                 >
                   <option value="" style={{ color: '#6b7280' }}>Vyberte...</option>
                   {fakturaTypyPrilohOptions.map(typ => (

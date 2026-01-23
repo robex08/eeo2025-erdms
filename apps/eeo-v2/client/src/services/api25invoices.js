@@ -173,22 +173,12 @@ export async function uploadInvoiceAttachment25({
 
     const data = response.data;
 
-    // ✅ NOVÁ STRUKTURA: { success: true, message: "...", priloha: {...} }
-    if (data.success === true) {
-      return data;
-    }
-
-    // ✅ STARÁ STRUKTURA: { status: 'ok', ... } (backwards compatibility)
+    // ✅ ORDER V2 STANDARD: status === 'ok' (jediný podporovaný formát)
     if (data.status === 'ok') {
       return data;
     }
 
-    // ❌ CHYBA - NOVÁ STRUKTURA: { success: false, error: "..." }
-    if (data.success === false) {
-      throw new Error(data.error || data.message || 'Chyba při nahrávání přílohy faktury');
-    }
-
-    // ❌ CHYBA - STARÁ STRUKTURA: { status: 'error', message: "..." }
+    // ❌ CHYBA: status === 'error'
     if (data.status === 'error') {
       throw new Error(data.message || 'Chyba při nahrávání přílohy faktury');
     }
