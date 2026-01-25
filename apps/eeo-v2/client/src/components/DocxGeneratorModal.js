@@ -727,8 +727,12 @@ export const DocxGeneratorModal = ({ order, isOpen, onClose }) => {
         selectedUserId: selectedUserId // ✅ ID vybraného uživatele pro podpis
       });
 
-      // Stáhni vygenerovaný dokument
-      const fileName = `objednavka_${order.cislo_objednavky || orderId}_${selectedTemplate.nazev}.docx`;
+      // Stáhni vygenerovaný dokument - odstraň "(šablona)" z názvu (včetně variant s/bez diakritiky)
+      const templateName = selectedTemplate.nazev
+        .replace(/\s*\([^\)]*[šsŠS][aáAÁ][bB][lL][oóOÓ][nňNŇ][aáAÁ][^\)]*\)\s*/gi, '') // Odstraň (šablona)/(sablona) všude
+        .replace(/\s+/g, ' ')
+        .trim();
+      const fileName = `objednavka_${order.cislo_objednavky || orderId}_${templateName}.docx`;
       downloadGeneratedDocx(generatedDocx, fileName);
 
       showToast?.(
