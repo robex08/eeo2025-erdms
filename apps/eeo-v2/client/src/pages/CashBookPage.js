@@ -690,8 +690,8 @@ const Table = styled.table`
   }
 
   .date-cell {
-    width: 65px; /* Zúženo na minimum pro dd.mm.rrrr */
-    min-width: 65px;
+    width: 110px; /* Rozšířeno pro celé datum v editaci */
+    min-width: 110px;
     padding: 0.5rem;
     position: relative;
     overflow: visible;
@@ -1303,10 +1303,6 @@ const CashBookPage = () => {
    */
   const ensureBookExists = useCallback(async () => {
     if (!mainAssignment?.id || !userDetail?.id) {
-      console.warn('⚠️ ensureBookExists: Chybí mainAssignment nebo userDetail', { 
-        hasMainAssignment: !!mainAssignment?.id, 
-        hasUserDetail: !!userDetail?.id 
-      });
       return null;
     }
 
@@ -1315,13 +1311,11 @@ const CashBookPage = () => {
       const cisloPokladny = mainAssignment.cislo_pokladny;
       const pokladnaId = mainAssignment.pokladna_id;
       
-      console.log('🔍 Načítám knihu pro pokladnu', { cisloPokladny, pokladnaId, rok: currentYear, mesic: currentMonth });
       
       // 1. Načíst knihu pro tuto pokladnu (backend vrátí jednu sdílenou knihu)
       const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, currentYear, currentMonth);
       
       if (booksResult.status !== 'ok' || !booksResult.data?.books || booksResult.data.books.length === 0) {
-        console.warn('⚠️ Žádná kniha pro pokladnu', { cisloPokladny, pokladnaId });
         
         // Pokud kniha neexistuje, zkusit vytvořit novou
         // createBook(prirazeniPokladnyId, rok, mesic, uzivatelId)
@@ -1333,7 +1327,6 @@ const CashBookPage = () => {
         );
         if (createResult.status === 'ok' && createResult.data?.book) {
           const newBook = createResult.data.book;
-          console.log('✅ Vytvořena nová kniha', newBook);
           
           setCurrentBookId(newBook.id);
           setCurrentBookData(newBook);
@@ -1349,7 +1342,6 @@ const CashBookPage = () => {
       
       // 2. Použít první (a jedinou) knihu
       const mainBook = booksResult.data.books[0];
-      console.log('📖 Načtena kniha', mainBook);
 
       setCurrentBookId(mainBook.id);
       setCurrentBookData(mainBook);
@@ -1360,7 +1352,6 @@ const CashBookPage = () => {
       // 3. Načíst položky z knihy
       const bookDetail = await cashbookAPI.getBook(mainBook.id, true);
       if (bookDetail.status !== 'ok' || !bookDetail.data?.entries) {
-        console.warn('⚠️ Nelze načíst položky knihy');
         return { book: mainBook, entries: [] };
       }
       
@@ -1373,17 +1364,11 @@ const CashBookPage = () => {
         if (dateA.getTime() !== dateB.getTime()) {
           return dateA - dateB;
         }
-        return (a.poradi_radku || 0) - (b.poradi_radku || 0);
+        // Při stejném datu seřadit podle ID (vyšší ID = později)
+        return (a.id || 0) - (b.id || 0);
       });
       
       const transformedEntries = allEntries.map(transformDBEntryToFrontend);
-      
-      console.log('✅ ensureBookExists vrací:', { 
-        bookId: mainBook.id, 
-        entriesCount: transformedEntries.length,
-        prevod: mainBook.prevod_z_predchoziho,
-        stav: mainBook.stav_knihy
-      });
       
       return { book: mainBook, entries: transformedEntries };
     } catch (error) {
@@ -1528,12 +1513,6 @@ const CashBookPage = () => {
     }
 
     const loadDataFromDB = async () => {
-      console.log('🔄 loadDataFromDB START', { 
-        assignmentId: mainAssignment?.id, 
-        cisloPokladny: mainAssignment?.cislo_pokladny,
-        pokladnaId: mainAssignment?.pokladna_id
-      });
-      
       try {
         // Reset error state při úspěšném načtení
         setAccessError(null);
@@ -1580,13 +1559,6 @@ const CashBookPage = () => {
         const currentAssignmentId = mainAssignment?.id;
         const isCashboxChange = prevAssignmentIdRef.current !== null && 
                                 prevAssignmentIdRef.current !== currentAssignmentId;
-        
-        console.log('🔍 Detekce změny pokladny:', { 
-          prev: prevAssignmentIdRef.current, 
-          current: currentAssignmentId, 
-          isCashboxChange,
-          isPageReload
-        });
         
         // Aktualizovat ref pro příští kontrolu
         prevAssignmentIdRef.current = currentAssignmentId;
@@ -1639,7 +1611,6 @@ const CashBookPage = () => {
         }
         // 🎯 PRAVIDLO 1B: Pokud uživatel/admin změnil pokladnu, VŽDY načíst z DB
         else if (isCashboxChange) {
-          console.log('🔄 Detekována změna pokladny → force reload z DB, entries:', entries.length);
           setCashBookEntries(entries);
           // Pro vlastní pokladny uložit do localStorage, pro cizí NE
           if (isOwnCashbox && entries.length > 0) {
@@ -1652,7 +1623,6 @@ const CashBookPage = () => {
         }
         // 🎯 PRAVIDLO 1C: Admin prohlíží cizí pokladnu → VŽDY jen DB, NIKDY localStorage
         else if (!isOwnCashbox) {
-          console.log('👁️ Admin prohlíží cizí pokladnu → pouze DB data (localStorage ignorován)');
           setCashBookEntries(entries);
           // Nesynchronizovat do localStorage (není to adminova pokladna)
           setLastSyncTimestamp(new Date().toISOString());
@@ -1674,7 +1644,6 @@ const CashBookPage = () => {
         // 🎯 PRAVIDLO 4: DB je prázdná, ale localStorage má unsyncnutá data (POUZE pro vlastní pokladny)
         else if (entries.length === 0 && localEntries.length > 0 && isOwnCashbox) {
           // Offline režim - použít lokální data a pokusit se sync
-          console.log('📦 Načítám unsyncnutá data z localStorage pro vlastní pokladnu');
           setCashBookEntries(localEntries);
           syncLocalChangesToDB(localEntries, book.id);
         }
@@ -1813,7 +1782,6 @@ const CashBookPage = () => {
       const shouldShow = scrollTop > threshold;
 
       // Debug - odkomentuj pro testování
-      // console.log('Scroll:', scrollTop, 'Threshold:', threshold, 'Show:', shouldShow);
 
       setShowStickySummary(shouldShow);
     };
@@ -2017,7 +1985,6 @@ const CashBookPage = () => {
               
               // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
               if (!selectedAssignment) {
-                console.log('🗑️ Cached pokladna není dostupná, čistím cache');
                 localStorage.removeItem('cashbook_selector_cashbox');
               }
             }
@@ -3538,7 +3505,6 @@ const CashBookPage = () => {
         const bookResult = await cashbookAPI.getBook(book.id, false); // force_recalc = false
 
         if (bookResult.status !== 'ok' || !bookResult.data?.entries) {
-          console.warn(`⚠️ Nepodařilo se načíst entries pro knihu ${book.id}`);
           continue;
         }
 
